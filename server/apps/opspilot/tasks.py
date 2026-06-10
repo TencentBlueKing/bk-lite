@@ -26,7 +26,6 @@ from apps.opspilot.models import (
     KnowledgeGraph,
     KnowledgeTask,
     LLMModel,
-    ManualKnowledge,
     Memory,
     MemorySpace,
     MemoryWriteCache,
@@ -95,6 +94,7 @@ def _build_memory_write_client(effective_model_id):
         openai_api_key=llm_model.openai_api_key,
         model=llm_model.model_name,
         protocol_type=llm_model.protocol_type,
+        vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
         temperature=0.3,
     )
     return LLMClientFactory.create_client(llm_request, disable_stream=True)
@@ -839,9 +839,7 @@ def _process_single_qa_pairs(qa_pairs, qa_json, params, rag, task_obj):
 
         # 每10个记录输出一次进度日志
         if (index + 1) % 10 == 0:
-            logger.info(
-                f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 待重试: {len(pending_retry)}"
-            )
+            logger.info(f"已处理 {index + 1}/{len(qa_json)} 个问答对，成功: {success_count}, 待重试: {len(pending_retry)}")
 
         task_progress += train_progress
         task_obj.train_progress = round(task_progress, 2)
@@ -1075,7 +1073,7 @@ def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, ex
             engine.execute(input_data)
             logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
         except Exception as e:
-            logger.exception(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, " f"execution_id={execution_id}, error={str(e)}")
+            logger.exception(f"ChatFlow测试异步任务失败: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}, error={str(e)}")
 
     return _run_in_native_thread(_execute)
 
@@ -1359,7 +1357,7 @@ def process_memory_write_cache(
         )
     except Exception as e:
         logger.error(
-            f"[MemoryWriteBatchTask] 批量写入失败: workflow_id={workflow_id}, node_id={node_id}, " f"target={memory_target_id}, error={e}",
+            f"[MemoryWriteBatchTask] 批量写入失败: workflow_id={workflow_id}, node_id={node_id}, target={memory_target_id}, error={e}",
             exc_info=True,
         )
         raise

@@ -215,6 +215,26 @@ class TestToolChoiceAny:
 
         assert bind_kwargs[0]["tool_choice"] == "any"
 
+    async def test_anthropic_compatible_thinking_downgrades_any_to_auto(self):
+        request = BasicLLMRequest(
+            protocol_type="anthropic",
+            vendor_type="deepseek",
+            max_steps=5,
+            compaction_enabled=False,
+            retry_config=RetryConfig(enabled=False),
+            reflection_config=ReflectionConfig(enabled=False),
+            timeout_config=TimeoutConfig(enabled=False),
+            tool_choice_config=ToolChoiceConfig(mode="any"),
+        )
+        responses = [
+            AIMessage(content="t1", tool_calls=[{"name": "search_tool", "args": {"query": "x"}, "id": "c1"}]),
+            AIMessage(content="Done."),
+        ]
+
+        _, bind_kwargs = await _build_and_run(request, responses)
+
+        assert bind_kwargs[0]["tool_choice"] == "auto"
+
     async def test_any_mode_forces_tool_use(self):
         request = BasicLLMRequest(
             max_steps=5,

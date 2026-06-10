@@ -391,6 +391,7 @@ class BasicLLMRequest(BaseModel):
     openai_api_key: str = ""
     model: str = "gpt-4o"
     protocol_type: str = "openai"  # "openai" 或 "anthropic"
+    vendor_type: str = ""
 
     system_message_prompt: str = ""
     enable_suggest: bool = False

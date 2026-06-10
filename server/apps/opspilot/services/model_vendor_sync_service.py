@@ -3,9 +3,9 @@ from typing import ContextManager, cast
 
 from django.db import transaction
 
-from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.loader import LanguageLoader
-from apps.core.utils.safe_requests import safe_get_llm_endpoint, safe_post_llm_endpoint
+from apps.core.utils.safe_requests import safe_get_llm_endpoint
+from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import ANTHROPIC_INVALID_API_KEY_ERROR, AnthropicCompatibleAdapter
 from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankProvider
 
 OPENAI_COMPATIBLE_VENDOR_TYPES = {"openai", "azure", "deepseek", "other"}
@@ -95,28 +95,13 @@ class ModelVendorSyncService:
         if not api_key:
             raise ValueError(loader.get("error.vendor_api_key_required", "供应商 API Key 不能为空"))
 
-        normalized_api_base = (api_base or "https://api.anthropic.com").rstrip("/")
         test_model = model or "claude-3-haiku-20240307"
-
-        response = safe_post_llm_endpoint(
-            f"{normalized_api_base}/v1/messages",
-            headers={
-                "x-api-key": api_key,
-                "anthropic-version": "2023-06-01",
-                "content-type": "application/json",
-            },
-            json={
-                "model": test_model,
-                "max_tokens": 1,
-                "messages": [{"role": "user", "content": "hi"}],
-            },
-            timeout=15,
-        )
-        if response.status_code == 401:
-            raise ValueError(loader.get("error.vendor_api_key_invalid", "API Key 无效"))
-        if response.status_code >= 400:
-            error_msg = response.text[:200] if response.text else f"HTTP {response.status_code}"
-            raise ValueError(f"API 连接失败: {error_msg}")
+        try:
+            AnthropicCompatibleAdapter.validate_minimal_connection(api_base, api_key, test_model)
+        except ValueError as exc:
+            if str(exc) == ANTHROPIC_INVALID_API_KEY_ERROR:
+                raise ValueError(loader.get("error.vendor_api_key_invalid", "API Key 无效")) from exc
+            raise
 
     @classmethod
     def sync_vendor_models(cls, vendor, locale=None):

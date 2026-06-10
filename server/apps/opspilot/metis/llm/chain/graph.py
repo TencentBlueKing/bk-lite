@@ -716,13 +716,54 @@ class BasicGraph(ABC):
         current_message_id: Optional[str],
         current_tool_calls: Dict[str, Dict],
     ) -> list[str]:
-        """处理 on_chat_model_end 事件中的完整工具调用"""
+        """处理 on_chat_model_end 事件：补充文本输出（非流式 adapter）和工具调用"""
         events = []
         output = event_data.get("output")
-        if not (output and hasattr(output, "tool_calls") and output.tool_calls):
+        if not output:
             return events
 
-        for tool_call in output.tool_calls:
+        # 非流式 adapter（如 AnthropicCompatibleChatClient）不产生 on_chat_model_stream，
+        # 文本内容只出现在 on_chat_model_end。若 message_started 为 False 说明还没推送过文本。
+        text_content = getattr(output, "content", "") or ""
+        tool_calls_list = getattr(output, "tool_calls", None) or []
+        if text_content and not tool_calls_list:
+            # 纯文本响应：发 TEXT_MESSAGE_START + CONTENT + END
+            msg_id = current_message_id or str(uuid.uuid4())
+            events.append(
+                encoder.encode(
+                    TextMessageStartEvent(
+                        type=EventType.TEXT_MESSAGE_START,
+                        message_id=msg_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            events.append(
+                encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=msg_id,
+                        delta=text_content,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            events.append(
+                encoder.encode(
+                    TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=msg_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            return events
+
+        # 工具调用：补充未经 on_chat_model_stream 发出的 tool_call 事件
+        if not tool_calls_list:
+            return events
+
+        for tool_call in tool_calls_list:
             if hasattr(tool_call, "get"):
                 tool_call_id = tool_call.get("id") or f"tool_{uuid.uuid4()}"
                 tool_name = tool_call.get("name", "unknown")
@@ -746,7 +787,6 @@ class BasicGraph(ABC):
                     )
                 )
                 if tool_args:
-                    # Mask sensitive data (password, token, etc.) for SSE output only
                     masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
                     events.append(
                         encoder.encode(
@@ -847,16 +887,14 @@ class BasicGraph(ABC):
                 if event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
                     if not suppress_text_after_tool_call:
-                        content_events, current_message_id, message_started, thinking_started = (
-                            self._handle_chat_model_stream_content(
-                                chunk,
-                                encoder,
-                                run_id,
-                                current_message_id,
-                                message_started,
-                                show_think,
-                                thinking_started,
-                            )
+                        content_events, current_message_id, message_started, thinking_started = self._handle_chat_model_stream_content(
+                            chunk,
+                            encoder,
+                            run_id,
+                            current_message_id,
+                            message_started,
+                            show_think,
+                            thinking_started,
                         )
                         for ev in content_events:
                             yield ev
