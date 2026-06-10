@@ -2,19 +2,10 @@
 
 import pytest
 
+from apps.cmdb.collect.extensions import CollectEnterpriseExtension, get_collect_enterprise_extension
 from apps.cmdb.extensions import registry
-from apps.cmdb.model_ops.extensions import (
-    ModelEnterpriseExtension,
-    get_model_enterprise_extension,
-)
-from apps.cmdb.instance_ops.extensions import (
-    InstanceEnterpriseExtension,
-    get_instance_enterprise_extension,
-)
-from apps.cmdb.collect.extensions import (
-    CollectEnterpriseExtension,
-    get_collect_enterprise_extension,
-)
+from apps.cmdb.instance_ops.extensions import InstanceEnterpriseExtension, get_instance_enterprise_extension
+from apps.cmdb.model_ops.extensions import ModelEnterpriseExtension, get_model_enterprise_extension
 
 
 @pytest.fixture(autouse=True)
@@ -36,6 +27,10 @@ def test_model_default_when_unregistered():
     assert isinstance(ext, ModelEnterpriseExtension)
     assert ext.file_attr_types() == set()
     assert ext.unsupported_unique_attr_types() == set()
+    assert ext.normalize_import_attr({"attr_id": "name"}) == {"attr_id": "name"}
+    assert ext.extra_export_attr_headers() == ([], [])
+    assert ext.extend_export_attr_row({"attr_id": "name"}) == {}
+    assert ext.build_attr_change_message({}, {}) == ""
 
 
 def test_model_uses_registered_impl():
