@@ -73,8 +73,7 @@ export const ACTIVEMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'database',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '当前积压', detail: 'Topic 当前存储消息数量，持续升高时说明消费落后于生产。' }],
-      footer: [{ label: '消费者数', metric: 'activemq_topics_consumer_count', unit: 'counts' }]
+      guide: [{ label: '当前积压', detail: 'Topic 当前存储消息数量，持续升高时说明消费落后于生产。' }]
     },
     {
       title: '净流入速率',
@@ -102,6 +101,15 @@ export const ACTIVEMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'thunder',
       guide: [{ label: '入队速率', detail: 'Topic 每秒入队消息数量，反映生产侧写入压力。' }],
       footer: [{ label: '当前积压', metric: 'activemq_topics_size', unit: 'counts' }]
+    },
+    {
+      title: '出队速率',
+      metric: 'activemq_topics_dequeue_rate',
+      unit: 'cps',
+      color: '#27c274',
+      icon: 'thunder',
+      guide: [{ label: '出队速率', detail: 'Topic 每秒出队消息数量，反映消费侧处理能力。' }],
+      footer: [{ label: '当前积压', metric: 'activemq_topics_size', unit: 'counts' }]
     }
   ],
   charts: [
@@ -116,28 +124,36 @@ export const ACTIVEMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '积压与消费趋势',
-      subtitle: '当前积压、消费者数变化',
-      metric: 'activemq_topics_size',
-      guide: [{ label: '积压与消费', detail: '对比 Topic 积压消息数与消费者数量。积压升高而消费者不增，说明消费能力不足或消费者已掉线。' }],
+      title: '入出队总量趋势',
+      subtitle: '累计入队与出队消息',
+      metric: 'activemq_topics_enqueue_count',
+      guide: [{ label: '入出队总量', detail: '对比 Topic 累计入队与出队消息数，两线差值即当前积压。' }],
       series: [
-        { metric: 'activemq_topics_size', label: '积压', color: '#ff8a1f', unit: 'counts' },
-        { metric: 'activemq_topics_consumer_count', label: '消费者', color: '#2f6bff', unit: 'counts' }
+        { metric: 'activemq_topics_enqueue_count', label: '入队总量', color: '#2f6bff', unit: 'counts' },
+        { metric: 'activemq_topics_dequeue_count', label: '出队总量', color: '#27c274', unit: 'counts' }
       ]
-    }
-  ],
-  details: [
+    },
     {
-      title: 'Topic 指标详情',
-      subtitle: '吞吐、积压与消费者',
-      rows: [
-        { label: '入队总量(累计)', metric: 'activemq_topics_enqueue_count', unit: 'counts' },
-        { label: '出队总量(累计)', metric: 'activemq_topics_dequeue_count', unit: 'counts' },
-        { label: '当前积压', metric: 'activemq_topics_size', unit: 'counts' },
-        { label: '消费者数', metric: 'activemq_topics_consumer_count', unit: 'counts' }
+      title: '当前积压趋势',
+      subtitle: '主题未消费消息数',
+      metric: 'activemq_topics_size',
+      guide: [{ label: '当前积压', detail: 'Topic 当前存储消息数量，持续升高说明消费落后于生产。' }],
+      series: [
+        { metric: 'activemq_topics_size', label: '当前积压', color: '#ff8a1f', unit: 'counts' }
+      ]
+    },
+    {
+      title: '消费者数趋势',
+      subtitle: '主题消费者连接数',
+      metric: 'activemq_topics_consumer_count',
+      guide: [{ label: '消费者数', detail: '当前 Topic 消费者连接数，降为 0 即积压无人处理。' }],
+      series: [
+        { metric: 'activemq_topics_consumer_count', label: '消费者数', color: '#2f6bff', unit: 'counts' }
       ]
     }
   ],
+  // 入出队总量/积压/消费者均已改为「积压与消费」分区下的独立折线图,不再用 detail 卡片。
+  details: [],
   ringPanels: [],
   barPanels: []
 };

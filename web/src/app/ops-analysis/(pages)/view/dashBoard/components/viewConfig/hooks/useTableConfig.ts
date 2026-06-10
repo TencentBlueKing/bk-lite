@@ -20,6 +20,7 @@ import {
   mergeDetectedFieldsWithSchema,
   createDefaultDisplayColumn as createDefaultColumn,
 } from '../utils/columnProbing';
+import { createOperationColumnKey } from '@/app/ops-analysis/utils/dashboardActions';
 
 export type FilterFieldRow = TableFilterFieldConfig & { id: string };
 
@@ -85,6 +86,19 @@ export function useTableConfig({
   const createDefaultDisplayColumn = useCallback(
     (): DisplayColumnRow => createDefaultColumn(displayColumns.length),
     [displayColumns.length],
+  );
+
+  const createDefaultOperationColumn = useCallback(
+    (): DisplayColumnRow => ({
+      id: `column_actions_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+      key: createOperationColumnKey(displayColumns),
+      title: t('dashboard.operationColumnTitle'),
+      visible: true,
+      order: displayColumns.length,
+      columnType: 'actions',
+      isDefault: false,
+    }),
+    [displayColumns, t],
   );
 
   const handleAddFilterField = useCallback(
@@ -350,6 +364,7 @@ export function useTableConfig({
     setDisplayColumnsError,
     createDefaultFilterField,
     createDefaultDisplayColumn,
+    createDefaultOperationColumn,
     handleAddFilterField,
     handleDeleteFilterField,
     handleFilterFieldChange,

@@ -1,6 +1,7 @@
 import requests
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.rpc.executor import Executor
@@ -66,7 +67,7 @@ def get_manual_install_command(
             json=params,
             headers={"Content-Type": "application/json"},
             timeout=InstallerConstants.REQUEST_TIMEOUT,
-            verify=False,  # 跳过 SSL 证书验证
+            verify=get_webhook_tls_verify(),
         )
 
         # 检查响应状态

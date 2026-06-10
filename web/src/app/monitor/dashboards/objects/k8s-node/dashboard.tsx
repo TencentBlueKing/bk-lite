@@ -66,7 +66,9 @@ export default function K8sNodeDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
+          <div className={styles.sectionLabel}>节点概览</div>
           <KpiSection dashboard={dashboard} summaryCards={dashboard.summaryCards} kpiCols={6} styles={styles} />
+          <div className={styles.sectionLabel}>资源趋势</div>
           <TrendSection
             charts={dashboard.chartPanels}
             onXRangeChange={dashboard.onXRangeChange}
@@ -74,6 +76,7 @@ export default function K8sNodeDashboardPage() {
             spanClass={() => `${styles.span6} ${styles.compactTrend}`}
             styles={styles}
           />
+          <div className={styles.sectionLabel}>分布与详情</div>
           <FlexiblePanelSection styles={styles}>
             {dashboard.ringPanels.map((ring) => (
               <RingChartPanel
@@ -98,6 +101,7 @@ export default function K8sNodeDashboardPage() {
               />
             ))}
           </FlexiblePanelSection>
+          <div className={styles.sectionLabel}>Pod 资源排行</div>
           <FlexiblePanelSection styles={styles}>
             <HorizontalBarPanel
               title="Top Pod · CPU"

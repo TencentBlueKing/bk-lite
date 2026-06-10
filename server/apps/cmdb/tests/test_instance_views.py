@@ -513,12 +513,13 @@ def test_instance_association_ok(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_download_file_redirects_after_permission(superuser, monkeypatch):
+def test_download_file_returns_presigned_url_after_permission(superuser, monkeypatch):
     captured = {}
 
-    def handle_download(*, request, file_id, check_read_permission=None):
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
         captured["file_id"] = file_id
         captured["has_cb"] = callable(check_read_permission)
+        captured["as_attachment"] = as_attachment
         return "https://minio/presigned-url"
 
     monkeypatch.setattr(
@@ -526,11 +527,37 @@ def test_download_file_redirects_after_permission(superuser, monkeypatch):
         lambda: types.SimpleNamespace(handle_download=handle_download),
     )
     response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
-    assert response.status_code == status.HTTP_302_FOUND
-    assert response["Location"] == "https://minio/presigned-url"
+    body = _body(response)
+    # 返回 JSON 预签名直链（前端经 axios 带令牌取，再直接用于 img/下载）
+    assert body["result"] is True
+    assert body["data"]["url"] == "https://minio/presigned-url"
     assert captured["file_id"] == "fid-1"
     # 下载校权回调被透传给企业实现（实例读权限）
     assert captured["has_cb"] is True
+    # 默认内联（预览用），未要求附件下载
+    assert captured["as_attachment"] is False
+
+
+@pytest.mark.django_db
+def test_download_file_attachment_disposition_when_download_flag(superuser, monkeypatch):
+    """download=1 时透传 as_attachment=True，使企业实现生成附件 disposition 的预签名 URL。"""
+    captured = {}
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        captured["as_attachment"] = as_attachment
+        return "https://minio/presigned-url"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    factory = APIRequestFactory()
+    request = factory.get("/x/", data={"download": "1"})
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=superuser)
+    response = _call({"get": "download_file"}, request, file_id="fid-1")
+    assert _body(response)["result"] is True
+    assert captured["as_attachment"] is True
 
 
 @pytest.mark.django_db

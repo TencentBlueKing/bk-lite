@@ -37,7 +37,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库读延迟',
       description: '数据库文件读操作的平均延迟时间。',
       unit: 'ms',
-      query: 'avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[5m])',
+      query: 'avg without (database) (avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[5m]))',
       color: '#2f6bff'
     },
     {
@@ -45,7 +45,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库写延迟',
       description: '数据库文件写操作的平均延迟时间。',
       unit: 'ms',
-      query: 'avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[5m])',
+      query: 'avg without (database) (avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[5m]))',
       color: '#ff8a1f'
     },
     {
@@ -53,7 +53,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库读取速率',
       description: '数据库文件读操作速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_database_io_reads{__$labels__}[5m])',
+      query: 'sum without (database) (rate(sqlserver_database_io_reads{__$labels__}[5m]))',
       color: '#2f6bff'
     },
     {
@@ -61,7 +61,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '数据库写入速率',
       description: '数据库文件写操作速率。',
       unit: 'cps',
-      query: 'rate(sqlserver_database_io_writes{__$labels__}[5m])',
+      query: 'sum without (database) (rate(sqlserver_database_io_writes{__$labels__}[5m]))',
       color: '#27c274'
     },
     {
@@ -243,7 +243,7 @@ export const MSSQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       isUptimeCard: true,
       hideTrend: true,
       guide: [{ label: '运行时长', detail: '实例自上次启动以来的持续运行时间。' }],
-      footer: [{ label: '启动时间', metric: 'sqlserver_server_properties_uptime', formatter: 'startedAt' }]
+      footer: [{ label: '启动', metric: 'sqlserver_server_properties_uptime', formatter: 'startedAt' }]
     },
     {
       title: '批量请求速率',

@@ -1,5 +1,8 @@
 # CMDB 企业版分层规范（v2）
 
+> ⚠️ **已被 v3 取代（2026-06-09）**：商业版已从嵌套 `apps/cmdb/enterprise/` 重构为同级 overlay app `apps/cmdb_enterprise` + 注册表 IoC。当前权威规范见
+> `docs/superpowers/specs/2026-06-09-cmdb-enterprise-architecture-v3.md`。本文仅作历史保留。
+
 > 本文为 CMDB 商业版代码的**落地规范**，取代同名的早期实施计划（早期计划只覆盖
 > 读路径 facade，未涉及写路径/持久化/任务/调度/配置）。代码内同步副本见
 > `server/apps/cmdb/enterprise/README.md`，二者保持一致；本文为权威全量版。

@@ -4,15 +4,18 @@
  * CMDB 附件/图片字段组件（企业版）。
  *
  * - FileFieldUpload：实例新增/编辑表单中的上传控件（受 antd Form 控制，value/onChange）。
- * - FileFieldDisplay：详情页只读展示（附件文件名列表+下载；图片缩略图+放大预览）。
- * - FileFieldCell：列表摘要（附件文件数；图片首张缩略图）。
+ * - FileFieldDisplay：详情页只读展示（附件文件名列表+下载；图片缩略图+文件名+放大预览）。
+ * - FileFieldCell：列表摘要（附件首个文件名+数量；图片首张缩略图）。
  *
- * 后端把字段值存为元数据 JSON 字符串数组：
- *   [{ file_id, file_name, file_size, mime_type, object_key, upload_time, uploader }]
- * 上传走后端校验（预上传），保存时提交引用；下载经后端校权后 302 跳预签名 URL。
+ * 后端字段值为元数据 JSON 字符串数组：[{ file_id, file_name, ... }]。
+ * 下载/预览：后端 download_file 返回预签名 URL（JSON），前端经 axios（带令牌）取回后
+ * 直接用于 <img src>/下载——绕开「直链请求不带令牌」的鉴权问题（请提供令牌）。
+ *
+ * 注意：下载触发用「动态 <a>.click()」而非 await 后的 window.open——后者在 await 之后
+ * 脱离用户手势上下文会被浏览器弹窗拦截（表现为「点击无反应/不弹出下载」）。
  */
 
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Upload, Image, Button, message } from 'antd';
 import { UploadOutlined, PaperClipOutlined, DownloadOutlined } from '@ant-design/icons';
 import type { UploadFile, UploadProps } from 'antd';
@@ -68,17 +71,72 @@ export const parseFileValue = (value: any): FileMeta[] => {
     .filter((m: FileMeta) => m && m.file_id);
 };
 
-/** 浏览器直链下载/预览（经代理，后端校权后 302 跳预签名 URL）。 */
-export const fileDownloadUrl = (fileId: string): string =>
-  `/api/proxy/cmdb/api/instance/download_file/${fileId}/`;
-
 const metaToUploadFile = (m: FileMeta): UploadFile => ({
   uid: m.file_id,
   name: m.file_name,
   status: 'done',
-  url: fileDownloadUrl(m.file_id),
-  thumbUrl: fileDownloadUrl(m.file_id),
 });
+
+/**
+ * 触发浏览器下载。用动态 <a>.click() 而非 window.open：
+ * - 不受弹窗拦截（即便在 await 之后调用，下载导航也不会被当作 popup 拦截）。
+ * - URL 自带 response-content-disposition=attachment，浏览器直接保存文件。
+ */
+const triggerDownload = (url: string) => {
+  const a = document.createElement('a');
+  a.href = url;
+  a.rel = 'noopener';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+};
+
+// ---------------------------------------------------------------- 鉴权直链
+
+/** 经鉴权接口（axios 带令牌）取预签名 URL 后渲染 antd Image，支持放大预览。 */
+const AuthedImage: React.FC<{
+  fileId: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+  preview?: boolean;
+}> = ({ fileId, alt, width = 64, height = 64, preview = true }) => {
+  const instanceApi = useInstanceApi();
+  const apiRef = useRef(instanceApi);
+  apiRef.current = instanceApi;
+  const [src, setSrc] = useState<string>('');
+
+  useEffect(() => {
+    let alive = true;
+    apiRef.current
+      .getFileUrl(fileId)
+      .then((r) => {
+        if (alive) setSrc(r?.url || '');
+      })
+      .catch(() => undefined);
+    return () => {
+      alive = false;
+    };
+  }, [fileId]);
+
+  if (!src) {
+    return (
+      <div
+        style={{ width, height, borderRadius: 4, background: 'var(--color-fill-2, #f0f0f0)' }}
+      />
+    );
+  }
+  return (
+    <Image
+      src={src}
+      alt={alt}
+      width={width}
+      height={height}
+      preview={preview}
+      style={{ objectFit: 'cover', borderRadius: 4 }}
+    />
+  );
+};
 
 // ---------------------------------------------------------------- 上传控件
 
@@ -167,8 +225,13 @@ export const FileFieldUpload: React.FC<FileFieldUploadProps> = ({
     return true;
   };
 
-  const onPreview = (file: UploadFile) => {
-    window.open(file.url || fileDownloadUrl(String(file.uid)), '_blank');
+  const onPreview = async (file: UploadFile) => {
+    try {
+      const r = await instanceApi.getFileUrl(String(file.uid), true);
+      if (r?.url) triggerDownload(r.url);
+    } catch {
+      // ignore
+    }
   };
 
   const reachedMax = fileList.length >= limits.maxCount;
@@ -207,22 +270,37 @@ interface FileFieldDisplayProps {
 }
 
 export const FileFieldDisplay: React.FC<FileFieldDisplayProps> = ({ value, fieldType }) => {
+  const instanceApi = useInstanceApi();
   const metas = useMemo(() => parseFileValue(value), [value]);
   if (!metas.length) return <>--</>;
+
+  const openFile = async (fileId: string) => {
+    try {
+      const r = await instanceApi.getFileUrl(fileId, true);
+      if (r?.url) triggerDownload(r.url);
+    } catch {
+      // ignore
+    }
+  };
 
   if (fieldType === 'image') {
     return (
       <Image.PreviewGroup>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           {metas.map((m) => (
-            <Image
+            <div
               key={m.file_id}
-              src={fileDownloadUrl(m.file_id)}
-              alt={m.file_name}
-              width={64}
-              height={64}
-              style={{ objectFit: 'cover', borderRadius: 4 }}
-            />
+              className="flex flex-col items-center gap-1"
+              style={{ width: 72 }}
+            >
+              <AuthedImage fileId={m.file_id} alt={m.file_name} width={64} height={64} />
+              <span
+                className="block w-full text-center text-[12px] text-[var(--color-text-3)] truncate"
+                title={m.file_name}
+              >
+                {m.file_name}
+              </span>
+            </div>
           ))}
         </div>
       </Image.PreviewGroup>
@@ -234,10 +312,8 @@ export const FileFieldDisplay: React.FC<FileFieldDisplayProps> = ({ value, field
       {metas.map((m) => (
         <a
           key={m.file_id}
-          href={fileDownloadUrl(m.file_id)}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center gap-1"
+          onClick={() => openFile(m.file_id)}
+          className="inline-flex items-center gap-1 cursor-pointer"
         >
           <PaperClipOutlined />
           <span>{m.file_name}</span>
@@ -261,23 +337,30 @@ export const FileFieldCell: React.FC<FileFieldCellProps> = ({ value, fieldType }
 
   if (fieldType === 'image') {
     return (
-      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
-        <Image
-          src={fileDownloadUrl(metas[0].file_id)}
-          alt={metas[0].file_name}
-          width={28}
-          height={28}
-          style={{ objectFit: 'cover', borderRadius: 4 }}
-        />
-        {metas.length > 1 && <span className="text-[12px] text-[var(--color-text-3)]">+{metas.length - 1}</span>}
+      <div
+        className="flex items-center gap-1"
+        onClick={(e) => e.stopPropagation()}
+        title={metas.map((m) => m.file_name).join('\n')}
+      >
+        <AuthedImage fileId={metas[0].file_id} alt={metas[0].file_name} width={28} height={28} preview={false} />
+        {metas.length > 1 && (
+          <span className="text-[12px] text-[var(--color-text-3)]">+{metas.length - 1}</span>
+        )}
       </div>
     );
   }
 
+  // 附件：列表展示首个文件名 + 数量
   return (
-    <span className="inline-flex items-center gap-1">
+    <span
+      className="inline-flex items-center gap-1 max-w-[220px]"
+      title={metas.map((m) => m.file_name).join('\n')}
+    >
       <PaperClipOutlined />
-      {metas.length}
+      <span className="truncate">{metas[0].file_name}</span>
+      {metas.length > 1 && (
+        <span className="text-[12px] text-[var(--color-text-3)]">+{metas.length - 1}</span>
+      )}
     </span>
   );
 };

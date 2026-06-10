@@ -6,6 +6,7 @@ from django.core.cache import cache
 from apps.cmdb.constants.infra import InfraConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
+from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.rpc.node_mgmt import NodeMgmt
 
 
@@ -133,7 +134,7 @@ class InfraService:
                 json=params,
                 headers={'Content-Type': 'application/json'},
                 timeout=InfraConstants.REQUEST_TIMEOUT,
-                verify=False,
+                verify=get_webhook_tls_verify(),
             )
 
             if response.status_code != 200:

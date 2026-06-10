@@ -136,7 +136,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '包接收速率',
       description: 'Zookeeper 网络包接收速率。',
       unit: 'cps',
-      query: 'zookeeper_packets_received_rate{__$labels__}',
+      query: 'rate(zookeeper_packets_received{__$labels__}[5m])',
       color: '#2f6bff'
     },
     {
@@ -144,7 +144,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '包发送速率',
       description: 'Zookeeper 网络包发送速率。',
       unit: 'cps',
-      query: 'zookeeper_packets_sent_rate{__$labels__}',
+      query: 'rate(zookeeper_packets_sent{__$labels__}[5m])',
       color: '#27c274'
     },
     {
@@ -152,7 +152,7 @@ export const ZOOKEEPER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Fsync 超阈速率',
       description: 'Zookeeper fsync 超过阈值的速率。',
       unit: 'cps',
-      query: 'zookeeper_fsync_threshold_exceed_rate{__$labels__}',
+      query: 'rate(zookeeper_fsync_threshold_exceed_count{__$labels__}[5m])',
       color: '#ff4d4f'
     }
   ],

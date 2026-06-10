@@ -8,6 +8,7 @@ from django.core.cache import cache
 from django.utils import timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
@@ -232,7 +233,7 @@ class K8sLogCollectService:
                 },
                 headers={"Content-Type": "application/json"},
                 timeout=cls.REQUEST_TIMEOUT,
-                verify=False,
+                verify=get_webhook_tls_verify(),
             )
             if response.status_code != 200:
                 raise BaseAppException(f"Infra API returned status {response.status_code}: {response.text}")

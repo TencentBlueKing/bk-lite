@@ -16,7 +16,7 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { APACHE_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['请求处理速率', '数据传输速率', 'Worker 饱和度'];
+const SUMMARY_TITLES = ['运行时长', '请求处理速率', '数据传输速率', 'Worker 饱和度', '请求变化速率'];
 const CHART_TITLES = ['请求吞吐趋势', 'Worker 状态趋势', 'Scoreboard 状态趋势', '系统负载趋势'];
 const RING_TITLES = ['Worker 使用分布'];
 const DETAIL_TITLES = ['运行细节'];
@@ -38,8 +38,11 @@ export default function ApacheDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>健康概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
+
           {/* Row 1: 请求吞吐 span6 + Worker 状态 span6 = 12 */}
+          <div className={styles.sectionLabel}>性能趋势</div>
           <FlexiblePanelSection styles={styles}>
             {[throughputChart, workerChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -58,7 +61,11 @@ export default function ApacheDashboardPage() {
                 styles={styles}
               />
             ) : null)}
-            {/* Row 2: Worker 使用环 span4 + 系统负载趋势 span8 = 12 —— 环图配折线消除中部留白 */}
+          </FlexiblePanelSection>
+
+          {/* Row 2: Worker 使用环 span4 + 系统负载趋势 span8 = 12 —— 环图配折线消除中部留白 */}
+          <div className={styles.sectionLabel}>分布与负载</div>
+          <FlexiblePanelSection styles={styles}>
             {workerRing ? (
               <RingChartPanel
                 key={workerRing.panel.title}
@@ -90,7 +97,11 @@ export default function ApacheDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {/* Row 3: Scoreboard 趋势 span6 + 运行细节详情 span6 = 12 —— 详情配折线 */}
+          </FlexiblePanelSection>
+
+          {/* Row 3: Scoreboard 趋势 span6 + 运行细节详情 span6 = 12 —— 详情配折线 */}
+          <div className={styles.sectionLabel}>连接与详情</div>
+          <FlexiblePanelSection styles={styles}>
             {scoreboardChart ? (
               <TrendChartPanel
                 key={scoreboardChart.chart.title}

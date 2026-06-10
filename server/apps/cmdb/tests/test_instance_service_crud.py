@@ -120,6 +120,45 @@ def test_batch_instance_update_ok(fake_graph, patch_side_effects):
     assert out[0]["inst_name"] == "h2"
 
 
+@pytest.mark.django_db
+def test_batch_instance_update_runs_file_field_hooks(fake_graph, patch_side_effects):
+    # 编辑实例（前端走 batch_update）必须像 create/update 一样规范化并提交附件/图片字段，
+    # 否则字段值不落成元数据 JSON、文件不落账 → 列表/详情无法回显且文件被 GC。
+    from apps.cmdb.extensions import registry
+    from apps.cmdb.instance_ops.extensions import InstanceEnterpriseExtension
+
+    calls = {"normalize": 0, "commit": []}
+
+    class _Spy(InstanceEnterpriseExtension):
+        def normalize_file_fields(self, model_id, instance_data, attrs, *, operator, old_instance=None):
+            calls["normalize"] += 1
+            return instance_data
+
+        def commit_instance_files(self, model_id, inst_id, saved, attrs, *, operator):
+            calls["commit"].append(inst_id)
+
+    saved_ext = registry._registry.get("instance_ops")
+    registry.register("instance_ops", _Spy())
+    try:
+        fake_graph(
+            MODULE,
+            query_entity_by_ids=[{"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [1]}],
+            query_entity=([], 0),
+            set_entity_properties=[{"_id": 1, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+        )
+        InstanceManage.batch_instance_update(
+            [{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin"
+        )
+    finally:
+        if saved_ext is not None:
+            registry.register("instance_ops", saved_ext)
+        else:
+            registry._registry.pop("instance_ops", None)
+
+    assert calls["normalize"] == 1, "batch_instance_update 应规范化附件/图片字段"
+    assert calls["commit"] == [1], "batch_instance_update 应对每个更新实例提交文件落账"
+
+
 # --------------------------------------------------------------------------
 # instance_batch_delete
 # --------------------------------------------------------------------------

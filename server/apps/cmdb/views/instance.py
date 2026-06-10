@@ -1,4 +1,4 @@
-from django.http import HttpResponse, HttpResponseRedirect, JsonResponse
+from django.http import HttpResponse, JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -308,7 +308,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @HasPermission("asset_info-View")
     @action(detail=False, methods=["get"], url_path="download_file/(?P<file_id>[^/]+)")
     def download_file(self, request, file_id: str):
-        """下载附件/图片：校验实例读权限后 302 跳转到短时效预签名 URL。"""
+        """获取附件/图片的短时效预签名直链。
+
+        校验实例读权限后返回预签名 URL（JSON）。前端经 axios（带令牌）调用本接口拿到
+        URL，再直接用于 <img src> / 下载——浏览器对 MinIO 的图片显示与下载导航不受 CORS
+        限制，从而绕开「直链请求不带令牌」的鉴权问题。
+        """
 
         def _check_read(inst_id):
             if inst_id is None:
@@ -316,10 +321,12 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             instance = InstanceManage.query_entity_by_id(int(inst_id))
             return bool(instance) and self._check_instance_read_permission(request, instance)
 
+        as_attachment = request.query_params.get("download") == "1"
         url = get_instance_enterprise_extension().handle_download(
-            request=request, file_id=file_id, check_read_permission=_check_read
+            request=request, file_id=file_id, check_read_permission=_check_read,
+            as_attachment=as_attachment,
         )
-        return HttpResponseRedirect(url)
+        return WebUtils.response_success({"url": url})
 
     @HasPermission("asset_info-Add")
     @action(detail=False, methods=["delete"], url_path="delete_file/(?P<file_id>[^/]+)")

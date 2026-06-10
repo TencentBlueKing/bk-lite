@@ -13,16 +13,18 @@ class AnthropicRuntimeCapabilities:
 def build_anthropic_runtime_capabilities(
     vendor_type: str,
     protocol_type: str,
-    model: str,
 ) -> AnthropicRuntimeCapabilities:
     if protocol_type != "anthropic":
         return AnthropicRuntimeCapabilities()
 
+    if not vendor_type:
+        return AnthropicRuntimeCapabilities(
+            use_native_anthropic_sdk=True,
+        )
+
     if vendor_type == "anthropic":
         return AnthropicRuntimeCapabilities(
             use_native_anthropic_sdk=True,
-            supports_direct_messages_api=True,
-            requires_normalized_base_url=True,
         )
 
     if vendor_type == "deepseek":
@@ -34,6 +36,7 @@ def build_anthropic_runtime_capabilities(
         )
 
     return AnthropicRuntimeCapabilities(
+        use_anthropic_compatible_adapter=True,
         supports_direct_messages_api=True,
         requires_normalized_base_url=True,
     )

@@ -1,14 +1,13 @@
 """实例能力域的企业版扩展契约（社区侧门面）。
 
 社区默认实现为空契约：文件字段不做任何处理，上传/下载/临时删除接口返回
-「未启用」。企业版通过
-``apps.cmdb.enterprise.instance_ops.provider.get_instance_enterprise_extension``
-返回携带附件/图片真实逻辑的子类实例。
+「未启用」。商业实现由 overlay 在启动时注册到扩展注册表的 "instance_ops" 槽位，
+社区只 get 不 import。
 """
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 
-from apps.cmdb.extensions.loader import load_provider
+from apps.cmdb.extensions import registry
 
 ENTERPRISE_DISABLED_MESSAGE = "附件/图片功能未启用（企业版）"
 
@@ -38,8 +37,8 @@ class InstanceEnterpriseExtension:
         """实例保存后落账：引用文件转 committed 并补 inst_id、移除文件标 orphaned。默认 no-op。"""
         return None
 
-    def on_instance_delete(self, model_id: str, inst_id, instance: dict) -> None:
-        """实例删除后回调，企业版据此把该实例的文件标记为 orphaned。默认 no-op。"""
+    def on_instances_delete(self, inst_ids: list) -> None:
+        """实例（批量）删除后回调，企业版据此把这些实例的文件标记为 orphaned。默认 no-op。"""
         return None
 
     # ---- 接口：上传/下载/临时删除（社区 view 委托，默认未启用） ----
@@ -47,7 +46,7 @@ class InstanceEnterpriseExtension:
     def handle_upload(self, *, request, model_id: str, attr_id: str, uploaded_file):
         raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
 
-    def handle_download(self, *, request, file_id: str, check_read_permission=None):
+    def handle_download(self, *, request, file_id: str, check_read_permission=None, as_attachment=False):
         raise BaseAppException(ENTERPRISE_DISABLED_MESSAGE)
 
     def handle_delete_temp(self, *, request, file_id: str):
@@ -58,9 +57,4 @@ _EMPTY_INSTANCE_EXTENSION = InstanceEnterpriseExtension()
 
 
 def get_instance_enterprise_extension() -> InstanceEnterpriseExtension:
-    factory = load_provider(
-        "apps.cmdb.enterprise.instance_ops.provider",
-        "get_instance_enterprise_extension",
-        default=lambda: _EMPTY_INSTANCE_EXTENSION,
-    )
-    return factory()
+    return registry.get("instance_ops", _EMPTY_INSTANCE_EXTENSION)

@@ -38,7 +38,10 @@ export default function TomcatDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+
+          <div className={styles.sectionLabel}>性能趋势</div>
           <FlexiblePanelSection styles={styles}>
             {/* Row 1: two trend charts side-by-side (span6 + span6 = 12) */}
             {requestChart ? (
@@ -110,6 +113,10 @@ export default function TomcatDashboardPage() {
                 styles={styles}
               />
             ) : null}
+          </FlexiblePanelSection>
+
+          <div className={styles.sectionLabel}>分布与详情</div>
+          <FlexiblePanelSection styles={styles}>
             {/* Footer row: ring(span4) + detail(span4) + memorypool chart(span4) = 12 */}
             {threadRing ? (
               <RingChartPanel

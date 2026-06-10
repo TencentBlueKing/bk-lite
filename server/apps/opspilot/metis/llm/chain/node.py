@@ -2,6 +2,7 @@ import asyncio
 import hashlib
 import inspect
 import json
+import sys
 import time
 import uuid
 from collections import Counter
@@ -10,10 +11,9 @@ from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
-
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
-from langchain_core.messages import AIMessage, AIMessageChunk, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -35,18 +35,6 @@ from apps.opspilot.metis.llm.chain.entity import (
     StopConditionResult,
     normalize_tool_calls,
 )
-from apps.opspilot.metis.llm.chain.message_trim import trim_messages
-from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
-from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
-from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
-from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
-from apps.opspilot.metis.utils.template_loader import TemplateLoader
-from apps.opspilot.services.approval import wait_for_approval
-from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
-from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
-from apps.opspilot.utils.user_choice import wait_for_choice
-from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
 # ---------------------------------------------------------------------------
 # Facade re-exports (structural refactor, no behavior change).
@@ -79,14 +67,24 @@ from apps.opspilot.metis.llm.chain.lc_patches import (  # noqa: E402,F401
     _patched_convert_message_to_dict,
     _patched_create_chat_result,
 )
+from apps.opspilot.metis.llm.chain.message_trim import trim_messages
+from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
+from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
+from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+from apps.opspilot.metis.utils.template_loader import TemplateLoader
+from apps.opspilot.services.approval import wait_for_approval
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
+from apps.opspilot.utils.user_choice import wait_for_choice
+from apps.opspilot.utils.verification import get_verification_spec, run_verification
 
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
-    安全地截取日志预览内容。
-
-    使用 UTF-8（由日志 handler 负责编码），保留 emoji 与全部 Unicode 字符，
-    仅做长度截断。
+    安全地截取日志预览内容，过滤无法被控制台编码（如 Windows GBK）表示的字符。
 
     Args:
         content: 原始内容
@@ -97,7 +95,9 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
     if not content:
         return ""
-    return str(content)[:max_len]
+    preview = str(content)[:max_len]
+    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
+    return preview.encode(encoding, errors="replace").decode(encoding)
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -2065,12 +2065,12 @@ class ToolsNodes(BasicNode):
                 current_tools = []
                 logger.info(f"[{trace_id}] agent_node: 寒暄模式，清空工具列表")
 
-            logger.info(
-                f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
-                f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
-                f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
-                f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
-            )
+            # logger.info(
+            #     f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
+            #     f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
+            #     f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
+            #     f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
+            # )
 
             extra_system_prompt_override = None
 
@@ -2326,10 +2326,16 @@ class ToolsNodes(BasicNode):
                             bind_kwargs["tool_choice"] = "any"
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
+                if "tool_choice" in bind_kwargs:
+                    capabilities = build_anthropic_runtime_capabilities(
+                        getattr(graph_request, "vendor_type", ""),
+                        getattr(graph_request, "protocol_type", "openai"),
+                    )
+                    bind_kwargs["tool_choice"] = normalize_tool_choice_for_capabilities(bind_kwargs["tool_choice"], capabilities)
                 # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
-                if _has_pending_choice and "tool_choice" not in bind_kwargs:
-                    bind_kwargs["tool_choice"] = "any"
-                    logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
+                # if _has_pending_choice and "tool_choice" not in bind_kwargs:
+                #     bind_kwargs["tool_choice"] = "any"
+                #     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
 
                 # Thinking 模式兼容性处理：
                 # DeepSeek V4 和 Qwen 在 thinking 模式下只支持 tool_choice="auto" 或 "none"，
@@ -2343,7 +2349,6 @@ class ToolsNodes(BasicNode):
                     is_thinking_enabled = deepseek_thinking or qwen_thinking
                     if is_thinking_enabled:
                         bind_kwargs["tool_choice"] = "auto"
-
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
@@ -2408,10 +2413,10 @@ class ToolsNodes(BasicNode):
             if isinstance(usage_metadata, dict):
                 token_counter["total"] += usage_metadata.get("total_tokens", 0)
 
-            logger.info(
-                f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
-                f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
-            )
+            # logger.info(
+            #     f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
+            #     f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
+            # )
 
             if tool_calls:
                 logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
@@ -2881,9 +2886,7 @@ class ToolsNodes(BasicNode):
                                 break
                         if failed_tool_call is None:
                             # 找不到对应 tool_call（理论上不应发生），保留原始错误，不重试
-                            logger.warning(
-                                f"[{trace_id}] 工具重试: 未找到 tool_call_id={tool_call_id} 对应的 tool_call，跳过重试"
-                            )
+                            logger.warning(f"[{trace_id}] 工具重试: 未找到 tool_call_id={tool_call_id} 对应的 tool_call，跳过重试")
                             continue
 
                         for attempt in range(1, retry_cfg.max_retries_per_tool + 1):
@@ -3140,11 +3143,6 @@ class ToolsNodes(BasicNode):
 
             # 如果 LLM 没有发起工具调用，自然结束
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
-                logger.info(
-                    "ReAct should_continue: 未检测到 tool_calls，结束循环, "
-                    f"last_message_type={type(last_message).__name__}, "
-                    f"content_preview={_safe_log_preview(str(getattr(last_message, 'content', '')))!r}"
-                )
                 return "end"
 
             # ========== stopWhen 条件链评估 ==========

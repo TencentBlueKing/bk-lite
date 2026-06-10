@@ -65,6 +65,7 @@ export interface TableColumnConfigItem {
   visible: boolean;
   order: number;
   width?: number;
+  columnType?: 'data' | 'actions';
 }
 
 /** 表格组件配置 */
@@ -93,6 +94,22 @@ export interface ValueConfig {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  actions?: DashboardActionConfig[];
+}
+
+export interface DashboardActionParamMapping {
+  key: string;
+  source: 'rowField' | 'fixed';
+  sourceKey?: string;
+  value?: string | number | boolean | null;
+}
+
+export interface DashboardActionConfig {
+  columnKey: string;
+  text: string;
+  url?: string;
+  openMode?: 'sameTab' | 'newTab';
+  params?: DashboardActionParamMapping[];
 }
 
 export interface WidgetConfig extends ValueConfig {

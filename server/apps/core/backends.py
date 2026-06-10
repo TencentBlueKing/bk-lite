@@ -13,6 +13,8 @@ from apps.core.constants import VERIFY_TOKEN_USER_NOT_FOUND_CODE, VERIFY_TOKEN_U
 from apps.core.logger import logger
 from apps.core.utils.custom_error import DoesNotExist
 from apps.rpc.system_mgmt import SystemMgmt
+from apps.system_mgmt.models import Group, Menu, Role
+from apps.system_mgmt.models import User as SystemUser
 
 # 常量定义
 DEFAULT_LOCALE = "en"
@@ -81,9 +83,6 @@ class APISecretAuthBackend(ModelBackend):
             # 获取用户所有角色
             all_role_ids = self._get_user_all_roles(user)
 
-            # 延迟导入避免循环依赖
-            from apps.system_mgmt.models import Menu, Role
-
             # 获取角色名称
             role_list = Role.objects.filter(id__in=all_role_ids)
             role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
@@ -138,11 +137,12 @@ class APISecretAuthBackend(ModelBackend):
 
         复用 system_mgmt/nats_api.py 中 get_user_all_roles 的逻辑。
         """
-        # 延迟导入避免循环依赖
-        from apps.system_mgmt.models import Group
-
-        # 用户直接授权的角色
-        personal_role_ids = set(getattr(user, "role_list", []) or [])
+        # 用户直接授权的角色：base.User 存储的是 role_names，需从 system_mgmt.User 获取 role_list（ID 列表）
+        try:
+            sys_user = SystemUser.objects.filter(username=user.username, domain=user.domain).first()
+            personal_role_ids = set(sys_user.role_list if sys_user and sys_user.role_list else [])
+        except Exception:
+            personal_role_ids = set()
 
         group_role_ids: Set[int] = set()
         user_groups = user.group_list or []

@@ -20,10 +20,13 @@ DOWNLOAD_DIR="${DOWNLOAD_DIR:-${SCRIPT_DIR}/data/downloads}"
 EXTRACT_DIR="${EXTRACT_DIR:-${SCRIPT_DIR}/data/datasets}"
 CONFIG_DIR="${CONFIG_DIR:-${SCRIPT_DIR}/data/configs}"
 
-# MinIO 连接配置（通过环境变量配置）
-MINIO_ENDPOINT="${MINIO_ENDPOINT:-10.10.41.149:9000}"
-MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:-minio}"
-MINIO_SECRET_KEY="${MINIO_SECRET_KEY:-x6dES11CBh2omEuuujMK96Q0GWHrSCQ6}"
+# MinIO 连接配置（必须通过环境变量提供）
+# BL-NEW-006：删除脚本内置的固定内网地址、默认账号与泄露的真实密钥。
+# 改为强制要求环境变量，未提供时直接失败退出（${VAR:?}），不再内置任何凭据。
+# ⚠️ 历史版本中内置的 MINIO_SECRET_KEY 已泄露，运维须立即在 MinIO 侧轮换该密钥。
+MINIO_ENDPOINT="${MINIO_ENDPOINT:?必须设置 MINIO_ENDPOINT 环境变量}"
+MINIO_ACCESS_KEY="${MINIO_ACCESS_KEY:?必须设置 MINIO_ACCESS_KEY 环境变量}"
+MINIO_SECRET_KEY="${MINIO_SECRET_KEY:?必须设置 MINIO_SECRET_KEY 环境变量（不再使用脚本内置默认值）}"
 MINIO_USE_HTTPS="${MINIO_USE_HTTPS:-0}"
 
 # ==================== 参数解析 ====================
@@ -32,7 +35,8 @@ DATASET_NAME="${2:-${DATASET_NAME:-anomaly_train_data.zip}}"
 CONFIG_NAME="$3"
 
 # MLflow 配置
-MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:-http://10.10.41.149:15000}"
+# BL-NEW-006：移除硬编码的内网 MLflow 地址，强制由环境变量提供。
+MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI:?必须设置 MLFLOW_TRACKING_URI 环境变量}"
 
 # ==================== 函数定义 ====================
 function log_info() {
@@ -62,16 +66,8 @@ fi
 
 log_info "使用下载脚本: ${DOWNLOAD_SCRIPT}"
 
-# 检查 MinIO 连接配置
-if [ -z "${MINIO_ENDPOINT}" ] || [ -z "${MINIO_ACCESS_KEY}" ] || [ -z "${MINIO_SECRET_KEY}" ]; then
-    log_error "MinIO 连接信息未配置"
-    log_error "请设置以下环境变量："
-    log_error "  MINIO_ENDPOINT=10.10.41.149:9000"
-    log_error "  MINIO_ACCESS_KEY=minio"
-    log_error "  MINIO_SECRET_KEY=your-secret-key"
-    log_error "  MINIO_USE_HTTPS=0  # 可选，默认为 0"
-    exit 1
-fi
+# MinIO / MLflow 连接配置已在上方通过 ${VAR:?...} 强制校验：缺失任一环境变量时
+# 脚本会立即报错退出，不再内置任何默认地址 / 账号 / 密钥（BL-NEW-006）。
 
 log_info "MinIO Endpoint: ${MINIO_ENDPOINT}"
 

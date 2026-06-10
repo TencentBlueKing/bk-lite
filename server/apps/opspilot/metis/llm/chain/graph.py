@@ -388,13 +388,24 @@ class BasicGraph(ABC):
             (events_to_yield, updated_message_id, updated_message_started, updated_thinking_started)
         """
         events = []
-        if not (chunk and hasattr(chunk, "content") and chunk.content):
+        if not (chunk and hasattr(chunk, "content")):
             return events, current_message_id, message_started, thinking_started
 
         # 处理 Anthropic 格式的 content（可能是 list of content blocks）
         content_delta, thinking_delta = self._extract_content_from_chunk(chunk.content)
 
-        # 处理 thinking 内容（Anthropic 格式）
+        # 从 additional_kwargs 中提取 reasoning_content（DeepSeek/Gemma 等通过 vLLM
+        # reasoning-parser 暴露的推理内容，lc_patches.py 已统一归到此字段）
+        if not thinking_delta:
+            rc = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content", "")
+            if rc:
+                logger.info(f"[BasicGraph] reasoning_content detected in chunk.additional_kwargs: " f"{len(rc)} chars, show_think={show_think}")
+                thinking_delta = rc
+
+        if not chunk.content and not thinking_delta:
+            return events, current_message_id, message_started, thinking_started
+
+        # 处理 thinking 内容（Anthropic 格式 / vLLM reasoning-parser 格式）
         if thinking_delta and show_think:
             if not thinking_started:
                 thinking_started = True
@@ -716,13 +727,54 @@ class BasicGraph(ABC):
         current_message_id: Optional[str],
         current_tool_calls: Dict[str, Dict],
     ) -> list[str]:
-        """处理 on_chat_model_end 事件中的完整工具调用"""
+        """处理 on_chat_model_end 事件：补充文本输出（非流式 adapter）和工具调用"""
         events = []
         output = event_data.get("output")
-        if not (output and hasattr(output, "tool_calls") and output.tool_calls):
+        if not output:
             return events
 
-        for tool_call in output.tool_calls:
+        # 非流式 adapter（如 AnthropicCompatibleChatClient）不产生 on_chat_model_stream，
+        # 文本内容只出现在 on_chat_model_end。若 message_started 为 False 说明还没推送过文本。
+        text_content = getattr(output, "content", "") or ""
+        tool_calls_list = getattr(output, "tool_calls", None) or []
+        if text_content and not tool_calls_list:
+            # 纯文本响应：发 TEXT_MESSAGE_START + CONTENT + END
+            msg_id = current_message_id or str(uuid.uuid4())
+            events.append(
+                encoder.encode(
+                    TextMessageStartEvent(
+                        type=EventType.TEXT_MESSAGE_START,
+                        message_id=msg_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            events.append(
+                encoder.encode(
+                    TextMessageContentEvent(
+                        type=EventType.TEXT_MESSAGE_CONTENT,
+                        message_id=msg_id,
+                        delta=text_content,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            events.append(
+                encoder.encode(
+                    TextMessageEndEvent(
+                        type=EventType.TEXT_MESSAGE_END,
+                        message_id=msg_id,
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            return events
+
+        # 工具调用：补充未经 on_chat_model_stream 发出的 tool_call 事件
+        if not tool_calls_list:
+            return events
+
+        for tool_call in tool_calls_list:
             if hasattr(tool_call, "get"):
                 tool_call_id = tool_call.get("id") or f"tool_{uuid.uuid4()}"
                 tool_name = tool_call.get("name", "unknown")
@@ -746,7 +798,6 @@ class BasicGraph(ABC):
                     )
                 )
                 if tool_args:
-                    # Mask sensitive data (password, token, etc.) for SSE output only
                     masked_args = _mask_sensitive_data(tool_args) if isinstance(tool_args, dict) else tool_args
                     events.append(
                         encoder.encode(
@@ -847,16 +898,14 @@ class BasicGraph(ABC):
                 if event_type == "on_chat_model_stream":
                     chunk = event_data.get("chunk")
                     if not suppress_text_after_tool_call:
-                        content_events, current_message_id, message_started, thinking_started = (
-                            self._handle_chat_model_stream_content(
-                                chunk,
-                                encoder,
-                                run_id,
-                                current_message_id,
-                                message_started,
-                                show_think,
-                                thinking_started,
-                            )
+                        content_events, current_message_id, message_started, thinking_started = self._handle_chat_model_stream_content(
+                            chunk,
+                            encoder,
+                            run_id,
+                            current_message_id,
+                            message_started,
+                            show_think,
+                            thinking_started,
                         )
                         for ev in content_events:
                             yield ev
