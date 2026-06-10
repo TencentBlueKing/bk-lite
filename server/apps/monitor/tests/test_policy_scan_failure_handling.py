@@ -1022,3 +1022,195 @@ def test_policy_baseline_refresh_clears_baselines_when_query_succeeds_but_is_emp
 
     assert clear_calls == [True]
     assert replace_calls == []
+
+
+def _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect):
+    """Helper: install minimal mocks to load alert_lifecycle_notify.py"""
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.system_mgmt_api",
+        SystemMgmtUtils=types.SimpleNamespace(send_msg_with_channel=send_side_effect),
+    )
+    _install_module(monkeypatch, "apps.system_mgmt.models", Channel=object)
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+    return _load_module(
+        f"monitor_alert_lifecycle_retry_{id(send_side_effect)}",
+        Path(__file__).resolve().parents[1] / "services" / "alert_lifecycle_notify.py",
+    )
+
+
+def test_push_to_alert_center_retries_on_failure_and_succeeds_on_third_attempt(monkeypatch):
+    """_push_to_alert_center 应在前两次失败后第三次成功，并返回 success=True"""
+    call_count = []
+
+    def send_side_effect(*args, **kwargs):
+        call_count.append(1)
+        if len(call_count) < 3:
+            return {"result": False, "message": "transient error"}
+        return {"result": True}
+
+    sleep_calls = []
+    monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+    module = _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect)
+
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = None
+
+    alert = types.SimpleNamespace(
+        id=1,
+        policy_id=10,
+        content="test",
+        level="warning",
+        value=50.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-1",
+        monitor_instance_name="Host 1",
+        dimensions={},
+        metric_instance_id="",
+        status="recovered",
+    )
+
+    results = notifier._push_to_alert_center(9, "alert-center", [alert], "recovered", "", "")
+
+    assert len(call_count) == 3
+    assert sleep_calls == [0.5, 1.0]
+    assert len(results) == 1
+    log_alert, log_entry = results[0]
+    assert log_entry["success"] is True
+    assert log_entry.get("is_alert_center") is True
+
+
+def test_push_to_alert_center_exhausts_all_retries_and_returns_failure(monkeypatch):
+    """3次全部失败时 success=False，重试间隔正确"""
+    call_count = []
+
+    def always_fail(*args, **kwargs):
+        call_count.append(1)
+        return {"result": False, "message": "nats down"}
+
+    sleep_calls = []
+    monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_fail)
+
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = None
+
+    alert = types.SimpleNamespace(
+        id=2,
+        policy_id=10,
+        content="test",
+        level="critical",
+        value=99.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-2",
+        monitor_instance_name="Host 2",
+        dimensions={},
+        metric_instance_id="",
+        status="closed",
+    )
+
+    results = notifier._push_to_alert_center(9, "alert-center", [alert], "closed", "", "")
+
+    assert len(call_count) == 3
+    assert sleep_calls == [0.5, 1.0]
+    log_alert, log_entry = results[0]
+    assert log_entry["success"] is False
+    assert "error" in log_entry
+
+
+def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_failures(monkeypatch):
+    """补偿任务：成功的告警标记 notified=True，失败的递增 retry_count"""
+    recovered_alert = types.SimpleNamespace(
+        id=10,
+        status="recovered",
+        alert_center_notified=False,
+        alert_center_retry_count=0,
+    )
+    closed_alert = types.SimpleNamespace(
+        id=20,
+        status="closed",
+        alert_center_notified=False,
+        alert_center_retry_count=2,
+    )
+    bulk_updates = []
+
+    class _AlertQS:
+        def filter(self, **kwargs):
+            return self
+
+        def order_by(self, *args):
+            return self
+
+        def __getitem__(self, sl):
+            return [recovered_alert, closed_alert]
+
+    class _MonitorAlert:
+        objects = _AlertQS()
+
+        @staticmethod
+        def bulk_update(alerts, fields):
+            bulk_updates.append((list(alerts), list(fields)))
+
+    def shared_task(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    # recovered → push succeeds, closed → push fails
+    push_results = {
+        "recovered": [(recovered_alert, True)],
+        "closed": [(closed_alert, False)],
+    }
+
+    class _FakeNotifier:
+        def __init__(self, policy=None):
+            pass
+
+        def push_to_alert_center_only(self, alerts, action, **kwargs):
+            return push_results[action]
+
+    _install_module(monkeypatch, "celery", shared_task=shared_task)
+    _install_module(monkeypatch, "celery_singleton", Singleton=object)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
+    _install_module(monkeypatch, "apps.monitor.models", MonitorPolicy=object, MonitorAlert=_MonitorAlert)
+    _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
+    _install_module(monkeypatch, "apps.monitor.tasks.services.policy_scan", MonitorPolicyScan=object)
+    _install_module(monkeypatch, "apps.monitor.tasks.utils.policy_methods", period_to_seconds=lambda p: 60)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.alert_policy",
+        AlertConstants=types.SimpleNamespace(MAX_BACKFILL_SECONDS=3600, MAX_BACKFILL_COUNT=10),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.alert_lifecycle_notify",
+        AlertLifecycleNotifier=_FakeNotifier,
+    )
+
+    module = _load_module(
+        "monitor_policy_retry_task_test_module",
+        Path(__file__).resolve().parents[1] / "tasks" / "monitor_policy.py",
+    )
+
+    result = module.retry_alert_center_lifecycle_notify_task()
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert result["total"] == 2
+
+    # success bulk_update
+    success_update = next((u for u in bulk_updates if "alert_center_notified" in u[1] and "alert_center_retry_count" in u[1]), None)
+    assert success_update is not None
+    assert recovered_alert in success_update[0]
+    assert recovered_alert.alert_center_notified is True
+    assert recovered_alert.alert_center_retry_count == 0
+
+    # failure bulk_update
+    fail_update = next((u for u in bulk_updates if u[1] == ["alert_center_retry_count"]), None)
+    assert fail_update is not None
+    assert closed_alert in fail_update[0]
+    assert closed_alert.alert_center_retry_count == 3
