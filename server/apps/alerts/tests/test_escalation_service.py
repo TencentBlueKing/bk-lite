@@ -97,3 +97,60 @@ def test_compute_roster_append_dedups_and_orders():
     layers = [{"personnel": ["u1", "u2"]}, {"personnel": ["u2", "u3"]}]
     assert ES.compute_roster(layers, 0, "append") == ["u1", "u2"]
     assert ES.compute_roster(layers, 1, "append") == ["u1", "u2", "u3"]
+
+
+@pytest.mark.django_db
+def test_create_escalation_task_none_when_disabled():
+    alert = _make_alert()
+    assignment = _make_assignment(escalation=None)
+    assert ES.create_escalation_task(alert, assignment) is None
+
+
+@pytest.mark.django_db
+def test_create_escalation_task_creates_at_layer_zero():
+    alert = _make_alert(operator=["existing"])
+    assignment = _make_assignment(escalation=_chain(mode="append"))
+    task = ES.create_escalation_task(alert, assignment)
+    assert task is not None
+    assert task.current_layer_index == 0
+    assert task.mode == "append"
+    assert task.is_active is True
+    alert.refresh_from_db()
+    assert "existing" in alert.operator
+    assert "u1" in alert.operator
+
+
+@pytest.mark.django_db
+def test_create_escalation_task_idempotent_reactivates():
+    alert = _make_alert()
+    assignment = _make_assignment(escalation=_chain())
+    first = ES.create_escalation_task(alert, assignment)
+    first.is_active = False
+    first.current_layer_index = 1
+    first.save()
+    second = ES.create_escalation_task(alert, assignment)
+    assert second.alert_id == first.alert_id
+    assert second.is_active is True
+    assert second.current_layer_index == 0
+
+
+@pytest.mark.django_db
+def test_stop_escalation_task():
+    alert = _make_alert()
+    assignment = _make_assignment(escalation=_chain())
+    ES.create_escalation_task(alert, assignment)
+    assert ES.stop_escalation_task(alert) is True
+    assert AlertEscalationTask.objects.get(alert=alert).is_active is False
+
+
+@pytest.mark.django_db
+def test_reset_escalation_task_back_to_layer_zero():
+    alert = _make_alert()
+    assignment = _make_assignment(escalation=_chain())
+    task = ES.create_escalation_task(alert, assignment)
+    task.current_layer_index = 1
+    task.is_active = False
+    task.save()
+    reset = ES.reset_escalation_task(alert, assignment)
+    assert reset.current_layer_index == 0
+    assert reset.is_active is True
