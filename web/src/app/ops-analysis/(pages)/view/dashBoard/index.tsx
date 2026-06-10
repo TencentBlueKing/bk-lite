@@ -586,6 +586,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           gaugeMax: config.gaugeMax,
           gaugeShape: config.gaugeShape,
           compare: config.compare,
+          actions: config.actions,
         },
       };
       const nextLayout = pendingNewWidgetGroupId
@@ -949,6 +950,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 gaugeMax: values.gaugeMax,
                 gaugeShape: values.gaugeShape,
                 compare: values.compare,
+                actions: values.actions,
               },
             };
           }
