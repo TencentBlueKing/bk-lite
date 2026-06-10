@@ -201,7 +201,9 @@ class MonitorAlertViewSet(
                     "time": now.isoformat(),
                 }
             ]
-            updated_data["alert_center_notified"] = False
+            # 只有 new → closed 的转换才需要补偿推送，避免重复关闭触发多余的告警中心推送
+            if old_status == "new":
+                updated_data["alert_center_notified"] = False
 
             if instance.alert_type == "no_data" and instance.metric_instance_id:
                 update_baseline = request.data.get("update_baseline", False)

@@ -1,4 +1,3 @@
-import time
 from collections import defaultdict
 from datetime import datetime, timezone
 
@@ -33,6 +32,8 @@ class AlertLifecycleNotifier:
 
         if self.policy and not self.policy.notice:
             logger.info(f"Policy {self.policy.id} notice is disabled, skip lifecycle notify: action={action}")
+            # 调用方可能预先置了 notified=False，此处归还为 True（不推送）
+            self._reset_alert_center_flags(alerts)
             return
 
         alert_log_entries = defaultdict(list)
@@ -48,6 +49,7 @@ class AlertLifecycleNotifier:
                 groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
 
         alert_center_success_ids = set()
+        alert_center_target_ids = set()  # 实际走到了 NATS 推送路径的告警
 
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
@@ -55,8 +57,10 @@ class AlertLifecycleNotifier:
                 results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason)
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
-                    if log_entry.get("is_alert_center") and log_entry.get("success"):
-                        alert_center_success_ids.add(alert.id)
+                    if log_entry.get("is_alert_center"):
+                        alert_center_target_ids.add(alert.id)
+                        if log_entry.get("success"):
+                            alert_center_success_ids.add(alert.id)
             except Exception as e:
                 logger.error(
                     f"Lifecycle notify exception: action={action}, channel_id={channel_id}, error={e}",
@@ -73,10 +77,24 @@ class AlertLifecycleNotifier:
                             "error": str(e),
                         }
                     )
+                # 异常时无法确认是否为 NATS 渠道，保守地标记为已命中，避免误清 notified 标志
+                try:
+                    exc_channel = Channel.objects.filter(id=channel_id).first()
+                    if exc_channel and exc_channel.channel_type == "nats" and exc_channel.config.get("method_name") == "receive_alert_events":
+                        for alert in group_alerts:
+                            alert_center_target_ids.add(alert.id)
+                except Exception:
+                    for alert in group_alerts:
+                        alert_center_target_ids.add(alert.id)
 
         self._persist_notice_logs(alerts, alert_log_entries)
         if alert_center_success_ids:
             self._mark_alert_center_notified(alert_center_success_ids)
+
+        # 未经过 NATS 推送路径的告警（无告警中心渠道）：归还 notified=True，避免补偿任务空转
+        not_targeted_ids = {a.id for a in alerts} - alert_center_target_ids
+        if not_targeted_ids:
+            self._reset_alert_center_flags_by_ids(not_targeted_ids)
 
     def _mark_alert_center_notified(self, alert_ids):
         from apps.monitor.models import MonitorAlert
@@ -88,14 +106,33 @@ class AlertLifecycleNotifier:
         if alerts:
             MonitorAlert.objects.bulk_update(alerts, fields=["alert_center_notified", "alert_center_retry_count"])
 
+    def _reset_alert_center_flags(self, alerts):
+        """通知被跳过（policy.notice=False 等），将预设的 notified=False 归还为 True"""
+        if not alerts:
+            return
+        from apps.monitor.models import MonitorAlert
+        MonitorAlert.objects.filter(id__in=[a.id for a in alerts], alert_center_notified=False).update(alert_center_notified=True)
+
+    def _reset_alert_center_flags_by_ids(self, alert_ids):
+        """告警未经过 NATS 推送路径，将预设的 notified=False 归还为 True"""
+        if not alert_ids:
+            return
+        from apps.monitor.models import MonitorAlert
+        MonitorAlert.objects.filter(id__in=alert_ids, alert_center_notified=False).update(alert_center_notified=True)
+
     def push_to_alert_center_only(self, alerts, action, operator="", reason=""):
         """专用于告警中心补偿通知，跳过 IM 通知直接推送到 NATS 告警中心"""
         channel = Channel.objects.filter(channel_type="nats", config__method_name="receive_alert_events").first()
         if not channel:
             logger.warning("告警中心 NATS channel 未配置，跳过补偿推送")
             return [(alert, False) for alert in alerts]
-        results = self._push_to_alert_center(channel.id, channel.name or str(channel.id), alerts, action, operator, reason)
-        return [(alert, log_entry.get("success", False)) for alert, log_entry in results]
+        push_results = self._push_to_alert_center(channel.id, channel.name or str(channel.id), alerts, action, operator, reason)
+        # 写入 notice_logs，与即时层保持一致
+        alert_log_entries = defaultdict(list)
+        for alert, log_entry in push_results:
+            alert_log_entries[alert.id].append(log_entry)
+        self._persist_notice_logs(alerts, alert_log_entries)
+        return [(alert, log_entry.get("success", False)) for alert, log_entry in push_results]
 
     def _persist_notice_logs(self, alerts, alert_log_entries):
         if not alert_log_entries:
@@ -208,24 +245,16 @@ class AlertLifecycleNotifier:
         }
         success = False
         error_msg = ""
-        for attempt in range(3):
-            if attempt > 0:
-                time.sleep(0.5 * attempt)  # 第2次等0.5s，第3次等1.0s
-            try:
-                send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
-                success, error_msg = self._parse_channel_result(send_result)
-                if success:
-                    logger.info(f"Lifecycle push to alert center success: action={action}, count={len(alerts)}, attempt={attempt + 1}")
-                    break
-                logger.warning(
-                    f"Lifecycle push to alert center failed (attempt {attempt + 1}/3): action={action}, count={len(alerts)}, message={error_msg}"
-                )
-            except Exception as e:
-                error_msg = str(e)
-                logger.warning(f"Lifecycle push to alert center exception (attempt {attempt + 1}/3): action={action}, error={e}")
-
-        if not success:
-            logger.error(f"Lifecycle push to alert center failed after 3 attempts: action={action}, count={len(alerts)}, message={error_msg}")
+        try:
+            send_result = SystemMgmtUtils.send_msg_with_channel(channel_id, "", content, [])
+            success, error_msg = self._parse_channel_result(send_result)
+            if success:
+                logger.info(f"Lifecycle push to alert center success: action={action}, count={len(alerts)}")
+            else:
+                logger.error(f"Lifecycle push to alert center failed: action={action}, count={len(alerts)}, message={error_msg}")
+        except Exception as e:
+            error_msg = str(e)
+            logger.error(f"Lifecycle push to alert center exception: action={action}, error={e}", exc_info=True)
 
         results = []
         for alert in alerts:

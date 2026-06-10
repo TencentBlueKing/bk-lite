@@ -1086,20 +1086,18 @@ def _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect):
     )
 
 
-def test_push_to_alert_center_retries_on_failure_and_succeeds_on_third_attempt(monkeypatch):
-    """_push_to_alert_center 应在前两次失败后第三次成功，并返回 success=True"""
+def test_push_to_alert_center_returns_failure_on_first_failed_attempt(monkeypatch):
+    """_push_to_alert_center 单次尝试失败时应返回 success=False，不重试"""
     call_count = []
 
-    def send_side_effect(*args, **kwargs):
+    def always_fail(*args, **kwargs):
         call_count.append(1)
-        if len(call_count) < 3:
-            return {"result": False, "message": "transient error"}
-        return {"result": True}
+        return {"result": False, "message": "transient error"}
 
     sleep_calls = []
     monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-    module = _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect)
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_fail)
 
     notifier = object.__new__(module.AlertLifecycleNotifier)
     notifier.policy = None
@@ -1121,26 +1119,26 @@ def test_push_to_alert_center_retries_on_failure_and_succeeds_on_third_attempt(m
 
     results = notifier._push_to_alert_center(9, "alert-center", [alert], "recovered", "", "")
 
-    assert len(call_count) == 3
-    assert sleep_calls == [0.5, 1.0]
+    assert len(call_count) == 1
+    assert sleep_calls == []
     assert len(results) == 1
     log_alert, log_entry = results[0]
-    assert log_entry["success"] is True
+    assert log_entry["success"] is False
     assert log_entry.get("is_alert_center") is True
 
 
-def test_push_to_alert_center_exhausts_all_retries_and_returns_failure(monkeypatch):
-    """3次全部失败时 success=False，重试间隔正确"""
+def test_push_to_alert_center_returns_success_on_first_successful_attempt(monkeypatch):
+    """_push_to_alert_center 单次尝试成功时应返回 success=True"""
     call_count = []
 
-    def always_fail(*args, **kwargs):
+    def always_succeed(*args, **kwargs):
         call_count.append(1)
-        return {"result": False, "message": "nats down"}
+        return {"result": True}
 
     sleep_calls = []
     monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
 
-    module = _install_lifecycle_notify_dependencies(monkeypatch, always_fail)
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_succeed)
 
     notifier = object.__new__(module.AlertLifecycleNotifier)
     notifier.policy = None
@@ -1162,10 +1160,10 @@ def test_push_to_alert_center_exhausts_all_retries_and_returns_failure(monkeypat
 
     results = notifier._push_to_alert_center(9, "alert-center", [alert], "closed", "", "")
 
-    assert len(call_count) == 3
-    assert sleep_calls == [0.5, 1.0]
+    assert len(call_count) == 1
+    assert sleep_calls == []
     log_alert, log_entry = results[0]
-    assert log_entry["success"] is False
+    assert log_entry["success"] is True
     assert "error" in log_entry
 
 

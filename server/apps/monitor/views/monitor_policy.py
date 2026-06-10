@@ -185,6 +185,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                     operator=request.user.username,
                     reason="policy_deleted",
                 )
+        PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
         return super().destroy(request, *args, **kwargs)
 
