@@ -14,7 +14,6 @@ except ModuleNotFoundError:  # pragma: no cover - exercised in environments with
 from sanic.log import logger
 
 from plugins.inputs.network_topo.protocol_oids import (
-    NETWORK_TOPO_OIDS,
     PROTOCOL_OID_GROUPS,
     flatten_oid_registry,
     get_oid_meta,
@@ -326,7 +325,6 @@ class SnmpTopo:
 
     @staticmethod
     def _is_scalar_oid(root_oid):
-        from plugins.inputs.network_topo.protocol_oids import get_oid_meta
         return get_oid_meta(root_oid).get("ifindex_type") == "scalar"
 
     def _walk_oid_with_next_cmd(self, oid):
