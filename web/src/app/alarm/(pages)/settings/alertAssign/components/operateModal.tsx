@@ -196,7 +196,8 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
       }));
       params.config = {
         ...params.config,
-        escalation: { enabled: true, mode: esc.mode || 'append', layers },
+        // 当前仅支持累加模式（不提供替换）；后端仍兼容 replace，此处固定 append
+        escalation: { enabled: true, mode: 'append', layers },
       };
       if (layers[0]?.personnel?.length) {
         params.personnel = layers[0].personnel;
@@ -425,9 +426,6 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                 </div>
               </div>
             </Form.Item>
-            <div className="text-base font-bold mb-2">
-              {t('settings.assignStrategy.escalation')}
-            </div>
             <EscalationChain
               enabled={!!escalationEnabled}
               personnelOptions={personnelOptions}
