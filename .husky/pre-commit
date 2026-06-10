@@ -1,9 +1,53 @@
 #!/bin/sh
-# Delegate to .git/hooks/pre-commit to avoid Windows file lock issues
-# when Python pre-commit framework tries to stash/restore.
-HOOK="$(git rev-parse --git-dir)/hooks/pre-commit-main"
-if [ -x "$HOOK" ]; then
-    exec "$HOOK" "$@"
-elif [ -f "$HOOK" ]; then
-    exec sh "$HOOK" "$@"
+
+CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
+
+
+# ===== Python pre-commit (server) =====
+# Set BKLITE_PYTHON env var to override, e.g.:
+#   export BKLITE_PYTHON="/path/to/venv/bin/python"
+if echo "$CHANGED_FILES" | grep -q '\.py$'; then
+    ARGS="hook-impl --config=server/.pre-commit-config.yaml --hook-type=pre-commit --skip-on-missing-config"
+
+    # Use .git/hooks as hook-dir to avoid Windows file lock on .husky/pre-commit
+    # during pre-commit's stash/restore cycle
+    HOOK_DIR="$(git rev-parse --git-dir)/hooks"
+
+    if [ -n "$BKLITE_PYTHON" ] && [ -x "$BKLITE_PYTHON" ]; then
+        "$BKLITE_PYTHON" -mpre_commit $ARGS --hook-dir "$HOOK_DIR" -- "$@"
+    elif command -v pre-commit > /dev/null; then
+        pre-commit $ARGS --hook-dir "$HOOK_DIR" -- "$@"
+    elif command -v python > /dev/null; then
+        python -mpre_commit $ARGS --hook-dir "$HOOK_DIR" -- "$@"
+    else
+        echo 'pre-commit not found. Set BKLITE_PYTHON or activate your virtualenv.' 1>&2
+        exit 1
+    fi
+
+    PYTHON_EXIT=$?
+    if [ $PYTHON_EXIT -ne 0 ]; then
+        exit $PYTHON_EXIT
+    fi
 fi
+
+# ===== Web frontend checks =====
+WEB_FILES=$(echo "$CHANGED_FILES" | grep "^web/" | grep -E '\.(js|jsx|ts|tsx)$')
+if [ -n "$WEB_FILES" ]; then
+    echo "Checking web project..."
+    WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||')
+    cd web && echo "$WEB_LINT_FILES" | xargs pnpm eslint || exit 1
+    pnpm type-check || exit 1
+    cd ..
+fi
+
+# ===== Mobile frontend checks =====
+MOBILE_FILES=$(echo "$CHANGED_FILES" | grep "^mobile/" | grep -E '\.(js|jsx|ts|tsx)$')
+if [ -n "$MOBILE_FILES" ]; then
+    echo "Checking mobile project..."
+    MOBILE_LINT_FILES=$(echo "$MOBILE_FILES" | sed 's|^mobile/||')
+    cd mobile && echo "$MOBILE_LINT_FILES" | xargs pnpm eslint || exit 1
+    pnpm type-check || exit 1
+    cd ..
+fi
+
+echo "Pre-commit checks passed!"
