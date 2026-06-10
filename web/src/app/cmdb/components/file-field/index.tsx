@@ -213,16 +213,27 @@ export const FileFieldDisplay: React.FC<FileFieldDisplayProps> = ({ value, field
   if (fieldType === 'image') {
     return (
       <Image.PreviewGroup>
-        <div className="flex flex-wrap gap-2">
+        <div className="flex flex-wrap gap-3">
           {metas.map((m) => (
-            <Image
+            <div
               key={m.file_id}
-              src={fileDownloadUrl(m.file_id)}
-              alt={m.file_name}
-              width={64}
-              height={64}
-              style={{ objectFit: 'cover', borderRadius: 4 }}
-            />
+              className="flex flex-col items-center gap-1"
+              style={{ width: 72 }}
+            >
+              <Image
+                src={fileDownloadUrl(m.file_id)}
+                alt={m.file_name}
+                width={64}
+                height={64}
+                style={{ objectFit: 'cover', borderRadius: 4 }}
+              />
+              <span
+                className="block w-full text-center text-[12px] text-[var(--color-text-3)] truncate"
+                title={m.file_name}
+              >
+                {m.file_name}
+              </span>
+            </div>
           ))}
         </div>
       </Image.PreviewGroup>
@@ -261,7 +272,11 @@ export const FileFieldCell: React.FC<FileFieldCellProps> = ({ value, fieldType }
 
   if (fieldType === 'image') {
     return (
-      <div className="flex items-center gap-1" onClick={(e) => e.stopPropagation()}>
+      <div
+        className="flex items-center gap-1"
+        onClick={(e) => e.stopPropagation()}
+        title={metas.map((m) => m.file_name).join('\n')}
+      >
         <Image
           src={fileDownloadUrl(metas[0].file_id)}
           alt={metas[0].file_name}
