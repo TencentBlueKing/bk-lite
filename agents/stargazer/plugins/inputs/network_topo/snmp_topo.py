@@ -157,6 +157,7 @@ class SnmpAuth(object):
 
 class SnmpTopo:
     BASE_COLLECTION_PROTOCOLS = ("system", "arp", "interface", "ipaddr")
+    # fdp 仅采集证据行（由 server 端流水线按 tag 解析），不参与 agent 侧 facts 构建
     DEFAULT_TOPOLOGY_PROTOCOLS = ("lldp", "cdp", "fdp", "fdb", "arp")
     SUPPORTED_TOPOLOGY_FACT_PROTOCOLS = ("lldp", "cdp", "fdb", "arp")
 

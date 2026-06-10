@@ -175,7 +175,7 @@ PROTOCOL_OID_GROUPS = {
                 "group": "neighbors",
             },
             {
-                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.19",
+                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.17",
                 "tag": "CDP-SysName",
                 "ifindex_type": "suffix",
                 "index_kind": "cdp_cache",
@@ -188,7 +188,7 @@ PROTOCOL_OID_GROUPS = {
         "default_confidence": 0.9,
         "oids": [
             {
-                "key": "1.3.6.1.4.1.1991.1.1.3.1.1.2",
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.3",
                 "tag": "FDP-DeviceId",
                 "ifindex_type": "suffix",
                 "index_kind": "fdp_cache",
@@ -196,7 +196,15 @@ PROTOCOL_OID_GROUPS = {
                 "group": "neighbors",
             },
             {
-                "key": "1.3.6.1.4.1.1991.1.1.3.1.1.3",
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6",
+                "tag": "FDP-Version",
+                "ifindex_type": "suffix",
+                "index_kind": "fdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7",
                 "tag": "FDP-DevicePort",
                 "ifindex_type": "suffix",
                 "index_kind": "fdp_cache",
@@ -204,16 +212,8 @@ PROTOCOL_OID_GROUPS = {
                 "group": "neighbors",
             },
             {
-                "key": "1.3.6.1.4.1.1991.1.1.3.1.1.4",
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8",
                 "tag": "FDP-Platform",
-                "ifindex_type": "suffix",
-                "index_kind": "fdp_cache",
-                "index_parser": _parse_suffix_index,
-                "group": "neighbors",
-            },
-            {
-                "key": "1.3.6.1.4.1.1991.1.1.3.1.1.5",
-                "tag": "FDP-Version",
                 "ifindex_type": "suffix",
                 "index_kind": "fdp_cache",
                 "index_parser": _parse_suffix_index,

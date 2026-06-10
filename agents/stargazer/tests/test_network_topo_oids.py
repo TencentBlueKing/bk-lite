@@ -25,12 +25,12 @@ REQUIRED_TAGS = {
     "1.3.6.1.4.1.9.9.23.1.2.1.1.6": ("CDP-DeviceId", "neighbors"),
     "1.3.6.1.4.1.9.9.23.1.2.1.1.7": ("CDP-DevicePort", "neighbors"),
     "1.3.6.1.4.1.9.9.23.1.2.1.1.8": ("CDP-Platform", "neighbors"),
-    "1.3.6.1.4.1.9.9.23.1.2.1.1.19": ("CDP-SysName", "neighbors"),
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.17": ("CDP-SysName", "neighbors"),
     # fdp
-    "1.3.6.1.4.1.1991.1.1.3.1.1.2": ("FDP-DeviceId", "neighbors"),
-    "1.3.6.1.4.1.1991.1.1.3.1.1.3": ("FDP-DevicePort", "neighbors"),
-    "1.3.6.1.4.1.1991.1.1.3.1.1.4": ("FDP-Platform", "neighbors"),
-    "1.3.6.1.4.1.1991.1.1.3.1.1.5": ("FDP-Version", "neighbors"),
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.3": ("FDP-DeviceId", "neighbors"),
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6": ("FDP-Version", "neighbors"),
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7": ("FDP-DevicePort", "neighbors"),
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8": ("FDP-Platform", "neighbors"),
     # bridge / fdb / qbridge
     "1.3.6.1.2.1.17.1.4.1.2": ("BRIDGE-BasePortIfIndex", "bridge"),
     "1.3.6.1.2.1.17.4.3.1.2": ("FDB-Port", "fdb"),
