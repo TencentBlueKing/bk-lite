@@ -262,6 +262,17 @@ class EscalationService:
         return {"processed": processed, "escalated": escalated}
 
     @classmethod
+    def active_roster_for_reminder(cls, alert: Alert):
+        """供提醒发送复用：返回 (在岗集合, 当前层渠道)。
+        无活跃升级任务时返回 (None, None)，调用方沿用分派规则原值。"""
+        task = AlertEscalationTask.objects.filter(alert=alert, is_active=True).first()
+        if not task:
+            return None, None
+        roster = cls.compute_roster(task.layers, task.current_layer_index, task.mode)
+        channels = task.layers[task.current_layer_index].get("notify_channels") or None
+        return roster, channels
+
+    @classmethod
     def cleanup_expired_escalations(cls) -> int:
         cutoff = timezone.now() - timedelta(days=cls.EXPIRED_DAYS)
         deleted, _ = AlertEscalationTask.objects.filter(

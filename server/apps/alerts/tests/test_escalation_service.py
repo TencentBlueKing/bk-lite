@@ -273,3 +273,48 @@ def test_send_escalation_notification_uses_layer_channels_when_set(mock_delay, _
     params = mock_delay.call_args[0][0]
     assert params[0]["channel_id"] == 9
     assert params[0]["channel_type"] == "sms"
+
+
+@pytest.mark.django_db
+def test_active_roster_for_reminder_replace_mode():
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(escalation=_chain(mode="replace"))
+    task = ES.create_escalation_task(alert, assignment)
+    task.current_layer_index = 1
+    task.save()
+    roster, channels = ES.active_roster_for_reminder(alert)
+    assert roster == ["u2"]
+    assert channels is None
+
+
+@pytest.mark.django_db
+def test_active_roster_for_reminder_none_when_no_task():
+    alert = _make_alert(status="pending")
+    assert ES.active_roster_for_reminder(alert) == (None, None)
+
+
+@pytest.mark.django_db(transaction=True)
+@mock.patch("apps.alerts.tasks.sync_notify.delay")
+def test_reminder_send_uses_escalation_roster(mock_delay):
+    from apps.alerts.models.models import Level
+    from apps.alerts.constants.constants import LevelType
+    from apps.alerts.service.reminder_service import ReminderService
+
+    Level.objects.get_or_create(
+        level_id=0, level_type=LevelType.ALERT,
+        defaults={"level_name": "Critical", "level_display_name": "严重"},
+    )
+
+    alert = _make_alert(status="pending")
+    assignment = _make_assignment(
+        escalation=_chain(mode="replace"),
+        personnel=["orig"],
+        channels=[{"id": 1, "channel_type": "email", "name": "邮件"}],
+    )
+    task = ES.create_escalation_task(alert, assignment)
+    task.current_layer_index = 1
+    task.save()
+    ReminderService._send_reminder_notification(assignment=assignment, alert=alert, reminder_id=None)
+    args, _ = mock_delay.call_args
+    sent_usernames = args[0][0]["username_list"]
+    assert sent_usernames == ["u2"]
