@@ -513,7 +513,7 @@ def test_instance_association_ok(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
-def test_download_file_redirects_after_permission(superuser, monkeypatch):
+def test_download_file_returns_presigned_url_after_permission(superuser, monkeypatch):
     captured = {}
 
     def handle_download(*, request, file_id, check_read_permission=None):
@@ -526,8 +526,10 @@ def test_download_file_redirects_after_permission(superuser, monkeypatch):
         lambda: types.SimpleNamespace(handle_download=handle_download),
     )
     response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
-    assert response.status_code == status.HTTP_302_FOUND
-    assert response["Location"] == "https://minio/presigned-url"
+    body = _body(response)
+    # 返回 JSON 预签名直链（前端经 axios 带令牌取，再直接用于 img/下载）
+    assert body["result"] is True
+    assert body["data"]["url"] == "https://minio/presigned-url"
     assert captured["file_id"] == "fid-1"
     # 下载校权回调被透传给企业实现（实例读权限）
     assert captured["has_cb"] is True
