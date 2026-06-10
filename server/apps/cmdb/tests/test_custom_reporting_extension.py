@@ -2,11 +2,9 @@
 
 import pytest
 
+from apps.cmdb.custom_reporting.extensions import CustomReportingExtension, get_custom_reporting_extension
 from apps.cmdb.extensions import registry
-from apps.cmdb.custom_reporting.extensions import (
-    CustomReportingExtension,
-    get_custom_reporting_extension,
-)
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 @pytest.fixture(autouse=True)
@@ -28,3 +26,21 @@ def test_default_noop():
     assert ext.normalize_identity_keys(None) == []
     ext.validate_instance_fields("m", [])
     ext.validate_relation_fields("m", [])
+
+
+def test_default_list_tasks_returns_empty_page():
+    ext = CustomReportingExtension()
+    assert ext.list_tasks(request=None, params={}) == {
+        "count": 0, "next": None, "previous": None, "results": [],
+    }
+
+
+def test_default_write_ops_raise_not_enabled():
+    ext = CustomReportingExtension()
+    for call in (
+        lambda: ext.create_task(request=None, payload={}),
+        lambda: ext.ingest(request=None, token="x", payload={}),
+        lambda: ext.issue_credential(request=None, task_id=1, params={}),
+    ):
+        with pytest.raises(BaseAppException):
+            call()
