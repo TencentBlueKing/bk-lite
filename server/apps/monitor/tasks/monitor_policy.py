@@ -2,6 +2,7 @@ from celery import shared_task
 from celery_singleton import Singleton
 from collections import defaultdict
 from datetime import datetime, timedelta, timezone
+from django.db.models import F
 import time
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -122,27 +123,35 @@ def retry_alert_center_lifecycle_notify_task():
     fail_ids = []
 
     for status, group_alerts in groups.items():
-        results = notifier.push_to_alert_center_only(group_alerts, action=status)
+        # 单组异常隔离：一组毒数据不应崩溃整个任务，否则该批次会被反复取回永久楔死
+        try:
+            results = notifier.push_to_alert_center_only(group_alerts, action=status)
+        except Exception:
+            logger.exception(f"告警中心补偿任务：status={status} 推送异常，本组按失败处理")
+            fail_ids.extend(alert.id for alert in group_alerts)
+            continue
         for alert, pushed_ok in results:
             if pushed_ok:
                 success_ids.append(alert.id)
             else:
                 fail_ids.append(alert.id)
 
-    alerts_by_id = {a.id: a for a in alerts}
-
     if success_ids:
-        to_mark = [alerts_by_id[aid] for aid in success_ids]
-        for alert in to_mark:
-            alert.alert_center_notified = True
-            alert.alert_center_retry_count = 0
-        MonitorAlert.objects.bulk_update(to_mark, fields=["alert_center_notified", "alert_center_retry_count"])
+        notifier._mark_alert_center_notified(success_ids)
 
     if fail_ids:
-        to_inc = [alerts_by_id[aid] for aid in fail_ids]
-        for alert in to_inc:
-            alert.alert_center_retry_count += 1
-        MonitorAlert.objects.bulk_update(to_inc, fields=["alert_center_retry_count"])
+        # F() 原子递增，避免与并发的即时层回写（置 0）竞态丢失更新
+        MonitorAlert.objects.filter(id__in=fail_ids).update(
+            alert_center_retry_count=F("alert_center_retry_count") + 1
+        )
+        # 即将达到重试上限（10）的告警在此处汇总告警，否则它们会静默从补偿查询中消失
+        alerts_by_id = {a.id: a for a in alerts}
+        exhausted_ids = [aid for aid in fail_ids if alerts_by_id[aid].alert_center_retry_count + 1 >= 10]
+        if exhausted_ids:
+            logger.error(
+                f"告警中心补偿任务：以下 {len(exhausted_ids)} 条告警已达最大重试次数(10)，"
+                f"将不再补偿，需人工介入：{exhausted_ids}"
+            )
 
     logger.info(f"告警中心补偿任务完成：成功 {len(success_ids)} 条，失败 {len(fail_ids)} 条")
     return {"success": True, "total": len(alerts), "succeeded": len(success_ids), "failed": len(fail_ids)}

@@ -97,14 +97,14 @@ class AlertLifecycleNotifier:
             self._reset_alert_center_flags_by_ids(not_targeted_ids)
 
     def _mark_alert_center_notified(self, alert_ids):
+        if not alert_ids:
+            return
         from apps.monitor.models import MonitorAlert
 
-        alerts = list(MonitorAlert.objects.filter(id__in=alert_ids))
-        for alert in alerts:
-            alert.alert_center_notified = True
-            alert.alert_center_retry_count = 0
-        if alerts:
-            MonitorAlert.objects.bulk_update(alerts, fields=["alert_center_notified", "alert_center_retry_count"])
+        # 直接按 id 原子更新，避免重新 SELECT 已在内存中的对象
+        MonitorAlert.objects.filter(id__in=list(alert_ids)).update(
+            alert_center_notified=True, alert_center_retry_count=0
+        )
 
     def _reset_alert_center_flags(self, alerts):
         """通知被跳过（policy.notice=False 等），将预设的 notified=False 归还为 True"""

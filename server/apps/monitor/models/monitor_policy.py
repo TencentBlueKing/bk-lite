@@ -168,6 +168,11 @@ class MonitorAlert(TimeInfo):
     class Meta:
         verbose_name = "监控告警"
         verbose_name_plural = "监控告警"
+        indexes = [
+            # 支撑补偿任务查询（alert_center_notified=False + status__in）；
+            # notified=False 行稀少（default=True），该索引选择性极高
+            models.Index(fields=["alert_center_notified", "status"], name="idx_alert_center_notified"),
+        ]
 
 
 class MonitorAlertMetricSnapshot(TimeInfo):

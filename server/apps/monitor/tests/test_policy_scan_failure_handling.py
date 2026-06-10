@@ -1181,10 +1181,21 @@ def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_f
         alert_center_notified=False,
         alert_center_retry_count=2,
     )
-    bulk_updates = []
+    update_calls = []  # 记录 (filter_kwargs, update_kwargs)，验证失败路径的 F() 原子递增
+
+    class _UpdateQS:
+        def __init__(self, filter_kwargs):
+            self.filter_kwargs = filter_kwargs
+
+        def update(self, **kwargs):
+            update_calls.append((self.filter_kwargs, kwargs))
+            return len(self.filter_kwargs.get("id__in", []))
 
     class _AlertQS:
         def filter(self, **kwargs):
+            # 失败递增走 filter(id__in=...).update()；补偿查询走 order_by/__getitem__
+            if "id__in" in kwargs and "status__in" not in kwargs:
+                return _UpdateQS(kwargs)
             return self
 
         def order_by(self, *args):
@@ -1195,10 +1206,6 @@ def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_f
 
     class _MonitorAlert:
         objects = _AlertQS()
-
-        @staticmethod
-        def bulk_update(alerts, fields):
-            bulk_updates.append((list(alerts), list(fields)))
 
     def shared_task(*args, **kwargs):
         def decorator(func):
@@ -1211,12 +1218,17 @@ def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_f
         "closed": [(closed_alert, False)],
     }
 
+    marked_success = []
+
     class _FakeNotifier:
         def __init__(self, policy=None):
             pass
 
         def push_to_alert_center_only(self, alerts, action, **kwargs):
             return push_results[action]
+
+        def _mark_alert_center_notified(self, alert_ids):
+            marked_success.extend(list(alert_ids))
 
     _install_module(monkeypatch, "celery", shared_task=shared_task)
     _install_module(monkeypatch, "celery_singleton", Singleton=object)
@@ -1247,15 +1259,10 @@ def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_f
     assert result["failed"] == 1
     assert result["total"] == 2
 
-    # success bulk_update
-    success_update = next((u for u in bulk_updates if "alert_center_notified" in u[1] and "alert_center_retry_count" in u[1]), None)
-    assert success_update is not None
-    assert recovered_alert in success_update[0]
-    assert recovered_alert.alert_center_notified is True
-    assert recovered_alert.alert_center_retry_count == 0
+    # 成功路径：复用 _mark_alert_center_notified，传入成功告警 id
+    assert marked_success == [10]
 
-    # failure bulk_update
-    fail_update = next((u for u in bulk_updates if u[1] == ["alert_center_retry_count"]), None)
+    # 失败路径：filter(id__in=[20]).update() 做 F() 原子递增
+    fail_update = next((c for c in update_calls if c[0].get("id__in") == [20]), None)
     assert fail_update is not None
-    assert closed_alert in fail_update[0]
-    assert closed_alert.alert_center_retry_count == 3
+    assert "alert_center_retry_count" in fail_update[1]
