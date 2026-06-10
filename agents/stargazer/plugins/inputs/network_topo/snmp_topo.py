@@ -34,9 +34,39 @@ VAL = "val"  # oid对应值
 
 OIDKEY = [ROOT, KEY, TAG, IF_INDEX, IF_INDEX_TYPE, VAL]
 
+GROUP = "group"
+
+OPTIONAL_FALLBACK_ROOTS = {
+    "1.3.6.1.2.1.1.5",
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.3",
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.4",
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.6",
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.7",
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.8",
+    "1.3.6.1.4.1.9.9.23.1.2.1.1.17",
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.3",
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6",
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7",
+    "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8",
+    "1.3.6.1.2.1.17.7.1.2.2.1.2",
+    "1.3.6.1.2.1.17.7.1.2.2.1.3",
+}
+
+
+class IncompleteFallbackError(RuntimeError):
+    pass
+
+
+class FallbackOidResult:
+    def __init__(self, records, skipped=False):
+        self.records = records
+        self.skipped = skipped
+
 
 def get_root_oid(oid, roots=None):
-    return lookup_root_oid(oid, roots or NETWORK_TOPO_OIDS)
+    # When roots is explicitly provided (e.g. during _format_result), restrict to that set.
+    # Otherwise fall back to the full OID registry so bridge/lldp/cdp OIDs are found too.
+    return lookup_root_oid(oid, roots)
 
 
 def build_single_oid_dict(oid, val):
@@ -52,6 +82,7 @@ def build_single_oid_dict(oid, val):
         IF_INDEX: None,
         IF_INDEX_TYPE: "None",
         VAL: val,
+        GROUP: oid_dict.get("group", "interfaces"),
     }
 
 
@@ -74,6 +105,7 @@ def build_oid_dict(oid, val, parent_oid=None):
         IF_INDEX: ifIndex,
         IF_INDEX_TYPE: ifindex_type,
         VAL: val,
+        GROUP: oid_dict.get("group", "interfaces"),
     }
 
 
@@ -257,9 +289,9 @@ class SnmpTopo:
                     result.append(oid_dict)
         return result
 
-    def bulkCmd(self):
+    def _bulk_walk_all(self):
         """
-        批量获取 OID 数据
+        批量获取 OID 数据（原 bulkCmd 实现）
         """
         eval_oids = self.oids
         oids = self._format_oids(self.oids)
@@ -272,8 +304,96 @@ class SnmpTopo:
             lookupMib=False,
         )
         if errorIndication:
-            raise Exception(errorIndication)
+            raise RuntimeError(str(errorIndication))
         return self._format_result(varBindTable, eval_oids)
+
+    @staticmethod
+    def _is_retryable_fallback_error(error):
+        message = str(error).lower()
+        return "oid not increasing" in message or "empty snmp response message" in message
+
+    def bulkCmd(self):
+        """批量获取 OID 数据，失败时按 OID 逐个降级采集"""
+        try:
+            return self._bulk_walk_all()
+        except RuntimeError as err:
+            if not self._is_retryable_fallback_error(err):
+                raise
+            logger.warning(
+                f"bulkCmd retryable error host={self.host}, falling back to per-OID walk: {err}"
+            )
+            return self._fallback_walk_cmd()
+
+    @staticmethod
+    def _is_scalar_oid(root_oid):
+        from plugins.inputs.network_topo.protocol_oids import get_oid_meta
+        return get_oid_meta(root_oid).get("ifindex_type") == "scalar"
+
+    def _walk_oid_with_next_cmd(self, oid):
+        errorIndication, errorStatus, errorIndex, varBindTable = self.cmdGen.nextCmd(
+            self.auth,
+            cmdgen.UdpTransportTarget((self.host, self.snmp_port), **self.transport_opts),
+            *self._format_oids([oid]),
+            lookupMib=False,
+            lexicographicMode=False,
+            ignoreNonIncreasingOid=True,
+        )
+        if errorIndication:
+            if self._is_retryable_fallback_error(errorIndication):
+                logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorIndication}")
+                return FallbackOidResult(records=[], skipped=True)
+            raise RuntimeError(str(errorIndication))
+        if errorStatus:
+            if self._is_retryable_fallback_error(errorStatus):
+                logger.warning(f"Skipping OID subtree host={self.host} oid={oid}: {errorStatus.prettyPrint()}")
+                return FallbackOidResult(records=[], skipped=True)
+            raise RuntimeError(f"SNMP error: {errorStatus.prettyPrint()} (oid={oid})")
+        return FallbackOidResult(records=self._format_result(varBindTable, [oid]))
+
+    def _get_scalar_oid(self, oid):
+        errorIndication, errorStatus, errorIndex, varBinds = self.cmdGen.getCmd(
+            self.auth,
+            cmdgen.UdpTransportTarget((self.host, self.snmp_port), **self.transport_opts),
+            *self._format_oids([f"{oid}.0"]),
+            lookupMib=False,
+        )
+        if errorIndication:
+            if self._is_retryable_fallback_error(errorIndication):
+                return FallbackOidResult(records=[], skipped=True)
+            raise RuntimeError(str(errorIndication))
+        if errorStatus:
+            if self._is_retryable_fallback_error(errorStatus):
+                return FallbackOidResult(records=[], skipped=True)
+            raise RuntimeError(f"SNMP error: {errorStatus.prettyPrint()} (oid={oid})")
+        return FallbackOidResult(records=self._format_result([varBinds], [oid]))
+
+    def _fallback_collect_oid(self, oid):
+        if self._is_scalar_oid(oid):
+            return self._get_scalar_oid(oid)
+        return self._walk_oid_with_next_cmd(oid)
+
+    def _fallback_walk_cmd(self):
+        records = []
+        skipped_required_oids = []
+        for oid in self.oids:
+            oid_result = self._fallback_collect_oid(oid)
+            if oid_result.skipped:
+                if oid in OPTIONAL_FALLBACK_ROOTS:
+                    logger.info(f"Optional fallback OID unavailable host={self.host} oid={oid}; continuing")
+                    continue
+                skipped_required_oids.append(oid)
+                continue
+            records.extend(oid_result.records)
+        if skipped_required_oids:
+            raise IncompleteFallbackError(
+                "Fallback walk skipped required OIDs: " + ", ".join(skipped_required_oids)
+            )
+        if records:
+            return records
+        raise RuntimeError(
+            "SNMP fallback collection returned no data: "
+            "device did not respond with any requested MIB subtree"
+        )
 
     @staticmethod
     def build_topology_fact(protocol, observation, raw_evidence=None, confidence=None):

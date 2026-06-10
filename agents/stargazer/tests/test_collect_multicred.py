@@ -832,6 +832,7 @@ def test_snmp_topo_format_result_preserves_raw_row_shape_after_registry_refactor
             "ifindex": "192.168.1.10",
             "ifindex_type": "ipaddr",
             "val": "7",
+            "group": "arp",
         },
         {
             "root": "1.3.6.1.2.1.2.2.1.2",
@@ -840,6 +841,7 @@ def test_snmp_topo_format_result_preserves_raw_row_shape_after_registry_refactor
             "ifindex": "7",
             "ifindex_type": "default",
             "val": "GigabitEthernet1/0/7",
+            "group": "interfaces",
         },
     ]
 
@@ -885,6 +887,7 @@ def test_snmp_topo_format_result_prefers_longest_matching_eval_oid(monkeypatch):
             "ifindex": "5",
             "ifindex_type": "suffix",
             "val": "value",
+            "group": "interfaces",
         }
     ]
 
