@@ -1,4 +1,4 @@
-@import '../common/simple-dashboard.module.scss';
+@use '../common/simple-dashboard.module.scss';
 
 // 分区标题:与 k8s-cluster 同款(borderless),保证 集群→节点→Pod 下钻视觉一致。
 .sectionLabel {
