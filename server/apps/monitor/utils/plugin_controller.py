@@ -19,6 +19,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 _DEFAULT_JINJA_ENV = Environment()
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
+    "lower",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "agents",
