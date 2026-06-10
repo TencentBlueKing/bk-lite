@@ -950,6 +950,47 @@
   font-variant-numeric: tabular-nums;
 }
 
+// Top-N 强调行:前几名放大(更大字号 / 更高条 / 更大缩略图),拉开与其余名次的视觉层级。
+.barRowEmphasis {
+  .barLabel {
+    font-size: 16px;
+    color: #22324a;
+  }
+
+  .barValue {
+    font-size: 22px;
+  }
+
+  .barTrack {
+    height: 14px;
+  }
+
+  .barSpark {
+    height: 36px;
+  }
+}
+
+/* 分档榜单尾部(rank ≥4):缩小变淡,退为背景,让重点自然浮现。 */
+.barRowMuted {
+  opacity: 0.7;
+
+  .barLabel {
+    font-size: 13px;
+    font-weight: 600;
+    color: #8c95a8;
+  }
+
+  .barValue {
+    font-size: 14px;
+    font-weight: 700;
+    color: #6b7688;
+  }
+
+  .barTrack {
+    height: 7px;
+  }
+}
+
 /* ── Status board (boolean/flag signals: dot + state badge) ───── */
 .statusList {
   display: flex;
@@ -1239,7 +1280,8 @@
 .span8,
 .span6,
 .span4,
-.span3 {
+.span3,
+.span2 {
   min-width: 0;
 }
 
@@ -1263,6 +1305,10 @@
   grid-column: span 3;
 }
 
+.span2 {
+  grid-column: span 2;
+}
+
 .detailGridBalanced {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 420px));
@@ -1281,7 +1327,8 @@
   .span8,
   .span6,
   .span4,
-  .span3 {
+  .span3,
+  .span2 {
     grid-column: span 12;
   }
 

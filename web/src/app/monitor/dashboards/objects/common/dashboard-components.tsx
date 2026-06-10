@@ -36,6 +36,7 @@ import {
   TitleWithGuide,
   TrendChartPanel
 } from '../../shared/widgets';
+import { GuideItem } from '../../shared/types';
 import {
   PreparedSummaryCard,
   PreparedChartPanel,
@@ -405,6 +406,8 @@ export interface DetailMetricRowProps {
   statusColor?: string;
   /** sparkline 配色:取该指标语义色,与 KPI/趋势/异常信号条统一;缺省回退 tone 色 */
   color?: string;
+  /** 提供时在标签后渲染 (i) 帮助,悬停显示口径说明(术语行如「用户断言」「游标超时数」)。 */
+  guide?: GuideItem[];
   styles: DashboardStyles;
 }
 
@@ -421,6 +424,7 @@ export const DetailMetricRow = ({
   tone = 'normal',
   statusColor,
   color,
+  guide,
   styles
 }: DetailMetricRowProps) => {
   const toneColor = DETAIL_TONE_COLORS[tone];
@@ -430,7 +434,11 @@ export const DetailMetricRow = ({
   const valueColor = statusColor ?? (tone === 'normal' ? undefined : toneColor);
   return (
     <div className={styles.detailMetricRow}>
-      <span className={styles.detailMetricLabel}>{label}</span>
+      {guide && guide.length > 0 ? (
+        <TitleWithGuide title={label} items={guide} className={styles.detailMetricLabel} styles={styles} />
+      ) : (
+        <span className={styles.detailMetricLabel}>{label}</span>
+      )}
       {/* 缩略图列始终渲染(空行也占位),保证三列网格对齐:标签 · 缩略图 · 数值。 */}
       <span className={styles.detailRowViz}>
         {viz === 'spark' && <MiniTrendChart data={trend} color={vizColor} styles={styles} />}
