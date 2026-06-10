@@ -516,7 +516,18 @@
             "frequencyMsg": "Default notification once during alarm assignment",
             "notRespondMsg": "When the alarm does not respond，",
             "notifyEvery": "notify every",
-            "frequencyUnit": "minutes"
+            "frequencyUnit": "minutes",
+            "escalation": "Escalation",
+            "escalationEnable": "Enable escalation",
+            "escalationMode": "Escalation mode",
+            "escalationModeAppend": "Accumulate",
+            "escalationModeReplace": "Replace",
+            "escalationLayer": "Layer",
+            "escalationAddLayer": "Add layer",
+            "escalationWaitMinutes": "Wait before escalating",
+            "escalationLayerChannel": "Layer channels (optional)",
+            "escalationPersonnelTip": "Select responders for this layer",
+            "escalationLayerRequired": "At least one layer is required when escalation is enabled"
         },
         "globalConfig": {
             "title": "Unallocated Alarm Notification",
