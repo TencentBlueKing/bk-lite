@@ -5,6 +5,9 @@
   - 通过 sysobjectid 在 OidMapping 表查"设备型号/品牌/类型"
   - device_type 决定 model_id（switch / router / firewall…）
   - inst_name 格式：{ip}-{device_type}
+  - 拓扑发现走新流水线：server 消费 network_topo_info_gauge 原始证据行
+    （instance_id/tag/ifindex/val/group），经 build_pipeline_aggregate →
+    parse_aggregate_result 推断链路，再映射为 interface_connect_interface 关联
 """
 import jsonschema
 import pytest
@@ -17,6 +20,9 @@ NETWORK_INTERFACE_METRIC = "network_interfaces_info_gauge"
 NETWORK_TOPOLOGY_METRIC = "network_topo_info_gauge"
 NETWORK_TOPOLOGY_FACTS_METRIC = "network_topology_facts_info_gauge"
 
+DEV1 = "snmp-task-01-10.0.0.1"
+DEV2 = "snmp-task-01-10.0.0.2"
+
 
 def _build_metric(metric_name, instance_id, value="1", **metric):
     return {
@@ -25,13 +31,23 @@ def _build_metric(metric_name, instance_id, value="1", **metric):
     }
 
 
+def _topo_row(instance_id, tag, ifindex, val, group):
+    """network_topo_info_gauge 原始证据行。
+
+    Prometheus 会丢弃空标签：ifindex 为空字符串时不写该标签，
+    顺带验证适配器对缺失 ifindex 标签的容错。
+    """
+    metric = {"tag": tag, "val": val, "group": group}
+    if ifindex != "":
+        metric["ifindex"] = ifindex
+    return _build_metric(NETWORK_TOPOLOGY_METRIC, instance_id, **metric)
+
+
 def _build_network_vm_response(*extra_metrics):
-    dev1 = "snmp-task-01-10.0.0.1"
-    dev2 = "snmp-task-01-10.0.0.2"
     base_metrics = [
         _build_metric(
             NETWORK_SYSTEM_METRIC,
-            dev1,
+            DEV1,
             ip_addr="10.0.0.1",
             sysname="edge-sw-1",
             sysobjectid="1.3.6.1.4.1.9.1.1208",
@@ -39,7 +55,7 @@ def _build_network_vm_response(*extra_metrics):
         ),
         _build_metric(
             NETWORK_SYSTEM_METRIC,
-            dev2,
+            DEV2,
             ip_addr="10.0.0.2",
             sysname="dist-sw-1",
             sysobjectid="1.3.6.1.4.1.9.1.1208",
@@ -47,7 +63,7 @@ def _build_network_vm_response(*extra_metrics):
         ),
         _build_metric(
             NETWORK_INTERFACE_METRIC,
-            dev1,
+            DEV1,
             index="101",
             description="GigabitEthernet1/0/1",
             alias="edge-uplink",
@@ -56,7 +72,7 @@ def _build_network_vm_response(*extra_metrics):
         ),
         _build_metric(
             NETWORK_INTERFACE_METRIC,
-            dev2,
+            DEV2,
             index="202",
             description="GigabitEthernet1/0/24",
             alias="dist-downlink",
@@ -73,11 +89,43 @@ def _build_network_vm_response(*extra_metrics):
     }
 
 
-def _run_network_pipeline(monkeypatch, vm_resp, *, topo_enabled, sql_calls=None):
+def _interfaces_rows(instance_id, ifindex, descr, alias, mac):
+    return [
+        _topo_row(instance_id, "IFTable-IfDescr", ifindex, descr, "interfaces"),
+        _topo_row(instance_id, "IFTable-IfAlias", ifindex, alias, "interfaces"),
+        _topo_row(instance_id, "IFTable-PhysAddress", ifindex, mac, "interfaces"),
+    ]
+
+
+def _lldp_neighbor_rows(instance_id, local_ifindex, local_port_name, remote_sysname, remote_port_name):
+    suffix = f"0.{local_ifindex}.1"
+    return [
+        _topo_row(instance_id, "LLDP-RemSysName", suffix, remote_sysname, "neighbors"),
+        _topo_row(instance_id, "LLDP-RemPortId", suffix, remote_port_name, "neighbors"),
+        _topo_row(instance_id, "LLDP-RemPortIdSubtype", suffix, "5", "neighbors"),
+        _topo_row(instance_id, "LLDP-LocPortId", local_ifindex, local_port_name, "neighbors"),
+        _topo_row(instance_id, "LLDP-LocPortIdSubtype", local_ifindex, "5", "neighbors"),
+    ]
+
+
+def _arp_pair_rows():
+    """dev1 的 ARP 表看到 dev2 的接口 MAC，双方 interfaces 组带 PhysAddress"""
+    return [
+        *_interfaces_rows(DEV1, "101", "GigabitEthernet1/0/1", "edge-uplink", "0x00aabbccdd01"),
+        _topo_row(DEV1, "ARP-IfIndex", "10.0.0.2", "101", "arp"),
+        _topo_row(DEV1, "ARP-PhysAddress", "10.0.0.2", "0x00aabbccdd02", "arp"),
+        *_interfaces_rows(DEV2, "202", "GigabitEthernet1/0/24", "dist-downlink", "0x00aabbccdd02"),
+    ]
+
+
+def _run_network_pipeline(monkeypatch, vm_resp, *, topo_enabled, sql_calls=None, min_confidence=0.0):
     def fake_query(self, sql, timeout=60):
         if sql_calls is not None:
             sql_calls.append(sql)
-        return vm_resp
+        # 模拟真实 VM 行为：只返回 sql 实际请求的指标
+        requested = {part.split("{")[0].strip() for part in sql.split(" or ")}
+        filtered = [item for item in vm_resp["data"]["result"] if item["metric"]["__name__"] in requested]
+        return {**vm_resp, "data": {**vm_resp["data"], "result": filtered}}
 
     monkeypatch.setattr("apps.cmdb.collection.query_vm.Collection.query", fake_query)
 
@@ -94,9 +142,22 @@ def _run_network_pipeline(monkeypatch, vm_resp, *, topo_enabled, sql_calls=None)
 
     from types import SimpleNamespace
 
-    fake_task = SimpleNamespace(id=7001, is_network_topo=topo_enabled, instances=[])
+    fake_task = SimpleNamespace(
+        id=7001,
+        is_network_topo=topo_enabled,
+        instances=[],
+        topology_contract={
+            "has_network_topo": topo_enabled,
+            "topology_protocols": ["lldp", "cdp", "fdb", "arp"],
+            "topology_fallback_strategy": "prefer_neighbors_then_fdb_then_arp",
+            "min_confidence": min_confidence,
+        },
+        topology_snapshot={},
+    )
     monkeypatch.setattr(CollectNetworkMetrics, "get_collect_inst", lambda self: fake_task)
     monkeypatch.setattr(CollectNetworkMetrics, "model_id", property(lambda self: "network"))
+    # e2e 不落库：拓扑快照写入直接旁路
+    monkeypatch.setattr(CollectNetworkMetrics, "save_topology_snapshot", lambda self, snapshot: None)
 
     runner = CollectNetworkMetrics(
         inst_name="snmp-task-01", inst_id=70001, task_id=7001,
@@ -107,6 +168,19 @@ def _run_network_pipeline(monkeypatch, vm_resp, *, topo_enabled, sql_calls=None)
 
 def _find_interface(result, inst_name):
     return next(item for item in result["interface"] if item["inst_name"] == inst_name)
+
+
+def _connect_assos(interface):
+    return [asso for asso in interface["assos"] if asso["asst_id"] == "connect"]
+
+
+def _connect_asso(target_inst_name):
+    return {
+        "asst_id": "connect",
+        "inst_name": target_inst_name,
+        "model_asst_id": "interface_connect_interface",
+        "model_id": "interface",
+    }
 
 
 def test_vm_response_matches_schema(load_fixture, load_schema):
@@ -137,34 +211,8 @@ def test_vm_response_includes_topology_fact_metric(load_fixture, load_schema):
 def test_network_device_pipeline(load_fixture, monkeypatch):
     vm_resp = load_fixture("network/03_vm_metrics_response.json")
 
-    # 边界拦截
-    monkeypatch.setattr(
-        "apps.cmdb.collection.query_vm.Collection.query",
-        lambda self, sql, timeout=60: vm_resp,
-    )
-
-    # OidMapping DB 查询 → 内存替身
-    OID_MAP = {
-        "1.3.6.1.4.1.9.1.1208": {
-            "oid": "1.3.6.1.4.1.9.1.1208",
-            "model": "Cisco Catalyst 3850",
-            "brand": "Cisco",
-            "device_type": "switch",
-            "built_in": True,
-        }
-    }
-    monkeypatch.setattr(CollectNetworkMetrics, "get_oid_map", staticmethod(lambda: OID_MAP))
-
-    # 任务对象 + 关掉 topo
-    from types import SimpleNamespace
-    fake_task = SimpleNamespace(id=7001, is_network_topo=False, instances=[])
-    monkeypatch.setattr(CollectNetworkMetrics, "get_collect_inst", lambda self: fake_task)
-    monkeypatch.setattr(CollectNetworkMetrics, "model_id", property(lambda self: "network"))
-
-    runner = CollectNetworkMetrics(
-        inst_name="snmp-task-01", inst_id=70001, task_id=7001,
-    )
-    runner.run()
+    # 关掉 topo：fake_query 按 sql 过滤指标，fixture 中的 topo/facts 行不会被消费
+    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=False)
 
     # 设备类型由 sysobjectid 推导出 "switch" → result["switch"]
     assert "switch" in runner.result
@@ -194,430 +242,87 @@ def test_drift_detection_unknown_metric(load_schema):
 
 
 @pytest.mark.django_db
-def test_network_topology_prefers_fact_payload_when_resolvable(monkeypatch):
+def test_network_topology_lldp_authoritative_link(monkeypatch):
+    """双方 LLDP 邻居证据 → authoritative 链路 → 接口 connect 关联"""
     vm_resp = _build_network_vm_response(
-        _build_metric(
-            NETWORK_TOPOLOGY_FACTS_METRIC,
-            "snmp-task-01-10.0.0.1",
-            source_protocol="lldp",
-            local_port_id="101",
-            local_port_name="GigabitEthernet1/0/1",
-            remote_device_id="dist-sw-1",
-            remote_port_id="202",
-            remote_port_name="GigabitEthernet1/0/24",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_FACTS_METRIC,
-            "snmp-task-01-10.0.0.1",
-            source_protocol="cdp",
-            local_port_id="101",
-            local_port_name="GigabitEthernet1/0/1",
-            remote_device_id="dist-sw-1",
-            remote_port_id="202",
-            remote_port_name="GigabitEthernet1/0/24",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-IfIndex",
-            ifindex="10.0.0.2",
-            val="101",
-        ),
+        _topo_row(DEV1, "System-SysName", "", "edge-sw-1", "system"),
+        *_interfaces_rows(DEV1, "101", "GigabitEthernet1/0/1", "edge-uplink", "0x00aabbccdd01"),
+        *_lldp_neighbor_rows(DEV1, "101", "GigabitEthernet1/0/1", "dist-sw-1", "GigabitEthernet1/0/24"),
+        _topo_row(DEV2, "System-SysName", "", "dist-sw-1", "system"),
+        *_interfaces_rows(DEV2, "202", "GigabitEthernet1/0/24", "dist-downlink", "0x00aabbccdd02"),
+        *_lldp_neighbor_rows(DEV2, "202", "GigabitEthernet1/0/24", "edge-sw-1", "GigabitEthernet1/0/1"),
     )
+
+    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
+
+    uplink = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
+    downlink = _find_interface(runner.result, "10.0.0.2-switch-dist-downlink")
+    forward = _connect_assos(uplink)
+    reverse = _connect_assos(downlink)
+    # 双向证据经流水线收敛后至少产出一向 connect 关联，且无重复
+    assert forward or reverse
+    assert forward in ([], [_connect_asso("10.0.0.2-switch-dist-downlink")])
+    assert reverse in ([], [_connect_asso("10.0.0.1-switch-edge-uplink")])
+
+
+@pytest.mark.django_db
+def test_network_topology_arp_inferred_link(monkeypatch):
+    """无邻居协议证据时，ARP + 接口 MAC 推断出 connect 关联"""
+    vm_resp = _build_network_vm_response(*_arp_pair_rows())
 
     runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
 
     source_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    assert source_interface["assos"].count(
-        {
-            "asst_id": "connect",
-            "inst_name": "10.0.0.2-switch-dist-downlink",
-            "model_asst_id": "interface_connect_interface",
-            "model_id": "interface",
-        }
-    ) == 1
+    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
 
 
 @pytest.mark.django_db
-def test_network_topology_falls_back_to_raw_topo_when_facts_absent(monkeypatch):
+def test_network_topology_authoritative_suppresses_arp_duplicate(monkeypatch):
+    """同一对端点同时有 LLDP 与 ARP 证据，关联只产出一份"""
     vm_resp = _build_network_vm_response(
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfDescr",
-            ifindex="101",
-            val="GigabitEthernet1/0/1",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfAlias",
-            ifindex="101",
-            val="edge-uplink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-PhysAddress",
-            ifindex="101",
-            val="00aabbccdd01",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-IfIndex",
-            ifindex="10.0.0.2",
-            val="101",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-PhysAddress",
-            ifindex="10.0.0.2",
-            val="00aabbccdd02",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-IfDescr",
-            ifindex="202",
-            val="GigabitEthernet1/0/24",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-IfAlias",
-            ifindex="202",
-            val="dist-downlink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-PhysAddress",
-            ifindex="202",
-            val="00aabbccdd02",
-        ),
+        _topo_row(DEV1, "System-SysName", "", "edge-sw-1", "system"),
+        _topo_row(DEV2, "System-SysName", "", "dist-sw-1", "system"),
+        *_lldp_neighbor_rows(DEV1, "101", "GigabitEthernet1/0/1", "dist-sw-1", "GigabitEthernet1/0/24"),
+        *_arp_pair_rows(),
     )
 
     runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
+
+    uplink = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
+    downlink = _find_interface(runner.result, "10.0.0.2-switch-dist-downlink")
+    all_connects = _connect_assos(uplink) + _connect_assos(downlink)
+    assert len(all_connects) == 1
+    assert all_connects == [_connect_asso("10.0.0.2-switch-dist-downlink")]
+
+
+@pytest.mark.django_db
+def test_network_topology_unresolved_neighbor_does_not_create_relation(monkeypatch):
+    """LLDP 邻居指向不存在的 sysname（ghost）→ 不产生幽灵关联，正常 ARP 关联不受影响"""
+    vm_resp = _build_network_vm_response(
+        _topo_row(DEV1, "System-SysName", "", "edge-sw-1", "system"),
+        *_lldp_neighbor_rows(DEV1, "101", "GigabitEthernet1/0/1", "ghost", "GigabitEthernet1/0/99"),
+        *_arp_pair_rows(),
+    )
+
+    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
+
+    for interface in runner.result["interface"]:
+        for asso in _connect_assos(interface):
+            assert "ghost" not in asso["inst_name"]
 
     source_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    assert {
-        "asst_id": "connect",
-        "inst_name": "10.0.0.2-switch-dist-downlink",
-        "model_asst_id": "interface_connect_interface",
-        "model_id": "interface",
-    } in source_interface["assos"]
+    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
 
 
 @pytest.mark.django_db
-def test_network_topology_mixes_resolved_facts_with_raw_fallback_for_unresolved_edges(monkeypatch):
-    vm_resp = _build_network_vm_response(
-        _build_metric(
-            NETWORK_SYSTEM_METRIC,
-            "snmp-task-01-10.0.0.3",
-            ip_addr="10.0.0.3",
-            sysname="access-sw-1",
-            sysobjectid="1.3.6.1.4.1.9.1.1208",
-            port="161",
-        ),
-        _build_metric(
-            NETWORK_INTERFACE_METRIC,
-            "snmp-task-01-10.0.0.1",
-            index="303",
-            description="GigabitEthernet1/0/3",
-            alias="edge-backup",
-            mac_address="00aabbccdd03",
-            oper_status="1",
-        ),
-        _build_metric(
-            NETWORK_INTERFACE_METRIC,
-            "snmp-task-01-10.0.0.3",
-            index="404",
-            description="GigabitEthernet1/0/48",
-            alias="access-uplink",
-            mac_address="00aabbccdd04",
-            oper_status="1",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_FACTS_METRIC,
-            "snmp-task-01-10.0.0.1",
-            source_protocol="lldp",
-            local_port_id="101",
-            local_port_name="GigabitEthernet1/0/1",
-            remote_device_id="dist-sw-1",
-            remote_port_id="202",
-            remote_port_name="GigabitEthernet1/0/24",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_FACTS_METRIC,
-            "snmp-task-01-10.0.0.1",
-            source_protocol="fdb",
-            local_port_id="303",
-            local_port_name="GigabitEthernet1/0/3",
-            remote_device_id="00:11:22:33:44:55",
-            remote_port_name="dynamic-mac",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfDescr",
-            ifindex="101",
-            val="GigabitEthernet1/0/1",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfAlias",
-            ifindex="101",
-            val="edge-uplink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-PhysAddress",
-            ifindex="101",
-            val="00aabbccdd01",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-IfIndex",
-            ifindex="10.0.0.2",
-            val="101",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-PhysAddress",
-            ifindex="10.0.0.2",
-            val="00aabbccdd02",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-IfDescr",
-            ifindex="202",
-            val="GigabitEthernet1/0/24",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-IfAlias",
-            ifindex="202",
-            val="dist-downlink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-PhysAddress",
-            ifindex="202",
-            val="00aabbccdd02",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfDescr",
-            ifindex="303",
-            val="GigabitEthernet1/0/3",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfAlias",
-            ifindex="303",
-            val="edge-backup",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-PhysAddress",
-            ifindex="303",
-            val="00aabbccdd03",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-IfIndex",
-            ifindex="10.0.0.3",
-            val="303",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-PhysAddress",
-            ifindex="10.0.0.3",
-            val="00aabbccdd04",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.3",
-            tag="IFTable-IfDescr",
-            ifindex="404",
-            val="GigabitEthernet1/0/48",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.3",
-            tag="IFTable-IfAlias",
-            ifindex="404",
-            val="access-uplink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.3",
-            tag="IFTable-PhysAddress",
-            ifindex="404",
-            val="00aabbccdd04",
-        ),
-    )
+def test_network_topology_min_confidence_filters_arp(monkeypatch):
+    """契约 min_confidence=0.9（→90）高于 ARP 推断 confidence=50 → 关联被过滤"""
+    vm_resp = _build_network_vm_response(*_arp_pair_rows())
 
-    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
+    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True, min_confidence=0.9)
 
-    uplink_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    uplink_connect_assos = [asso for asso in uplink_interface["assos"] if asso["asst_id"] == "connect"]
-    assert uplink_connect_assos == [
-        {
-            "asst_id": "connect",
-            "inst_name": "10.0.0.2-switch-dist-downlink",
-            "model_asst_id": "interface_connect_interface",
-            "model_id": "interface",
-        }
-    ]
-
-    backup_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-backup")
-    backup_connect_assos = [asso for asso in backup_interface["assos"] if asso["asst_id"] == "connect"]
-    assert backup_connect_assos == [
-        {
-            "asst_id": "connect",
-            "inst_name": "10.0.0.3-switch-access-uplink",
-            "model_asst_id": "interface_connect_interface",
-            "model_id": "interface",
-        }
-    ]
-
-
-@pytest.mark.django_db
-def test_network_topology_skips_ambiguous_fact_device_lookup_and_keeps_raw_fallback_safe(monkeypatch):
-    vm_resp = _build_network_vm_response(
-        _build_metric(
-            NETWORK_SYSTEM_METRIC,
-            "snmp-task-01-10.0.0.3",
-            ip_addr="10.0.0.3",
-            sysname="dist-sw-1",
-            sysobjectid="1.3.6.1.4.1.9.1.1208",
-            port="161",
-        ),
-        _build_metric(
-            NETWORK_INTERFACE_METRIC,
-            "snmp-task-01-10.0.0.3",
-            index="303",
-            description="GigabitEthernet1/0/48",
-            alias="shadow-downlink",
-            mac_address="00aabbccdd03",
-            oper_status="1",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_FACTS_METRIC,
-            "snmp-task-01-10.0.0.1",
-            source_protocol="lldp",
-            local_port_id="101",
-            local_port_name="GigabitEthernet1/0/1",
-            remote_device_id="dist-sw-1",
-            remote_port_id="303",
-            remote_port_name="GigabitEthernet1/0/48",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfDescr",
-            ifindex="101",
-            val="GigabitEthernet1/0/1",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-IfAlias",
-            ifindex="101",
-            val="edge-uplink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="IFTable-PhysAddress",
-            ifindex="101",
-            val="00aabbccdd01",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-IfIndex",
-            ifindex="10.0.0.2",
-            val="101",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.1",
-            tag="ARP-PhysAddress",
-            ifindex="10.0.0.2",
-            val="00aabbccdd02",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-IfDescr",
-            ifindex="202",
-            val="GigabitEthernet1/0/24",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-IfAlias",
-            ifindex="202",
-            val="dist-downlink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.2",
-            tag="IFTable-PhysAddress",
-            ifindex="202",
-            val="00aabbccdd02",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.3",
-            tag="IFTable-IfDescr",
-            ifindex="303",
-            val="GigabitEthernet1/0/48",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.3",
-            tag="IFTable-IfAlias",
-            ifindex="303",
-            val="shadow-downlink",
-        ),
-        _build_metric(
-            NETWORK_TOPOLOGY_METRIC,
-            "snmp-task-01-10.0.0.3",
-            tag="IFTable-PhysAddress",
-            ifindex="303",
-            val="00aabbccdd03",
-        ),
-    )
-
-    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
-
-    uplink_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
-    uplink_connect_assos = [asso for asso in uplink_interface["assos"] if asso["asst_id"] == "connect"]
-    assert uplink_connect_assos == [
-        {
-            "asst_id": "connect",
-            "inst_name": "10.0.0.2-switch-dist-downlink",
-            "model_asst_id": "interface_connect_interface",
-            "model_id": "interface",
-        }
-    ]
+    for interface in runner.result["interface"]:
+        assert _connect_assos(interface) == []
 
 
 @pytest.mark.django_db
