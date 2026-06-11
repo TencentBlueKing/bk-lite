@@ -280,6 +280,20 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
+
+        # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
+        # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
+        if BUILTIN_ATTACHMENT_FILE_TOOL_NAME in selected_builtin_kwargs:
+            attachment_override = (
+                "\n\n【附件生成强制规则 - 最高优先级，不可违反】\n"
+                "当前工作流已配置文件生成工具 generate_attachment_file。\n"
+                "* 如果任务目标涉及生成、创建、导出任何文件、报告或文档，"
+                "必须调用 generate_attachment_file 工具，绝对不允许将文件内容以纯文字直接输出。\n"
+                "* 工具调用成功后，仅输出简短摘要与工具返回的下载链接，不要重复输出完整内容。\n"
+                "* 以上规则覆盖所有其他'直接输出'类指令。"
+            )
+            chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + attachment_override
+
         chat_kwargs.update({"tools_servers": tools})
         chat_kwargs.update({"extra_config": extra_config})
 
