@@ -749,12 +749,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           const statusColor = row.enumMap && hasMetricData(row.metric) ? formatMappedEnum(latest, row.enumMap).color : undefined;
           // sparkline 语义色:取该指标 config.color,使详情行缩略图与 KPI/趋势/异常信号条配色一致。
           const color = config.metrics.find((m) => m.name === row.metric)?.color;
+          // barValue 是「满度条」填充百分比,仅对 percent 单位有意义。其他单位(bytes/counts/rate 等)
+          // 的原始量级裁到 0–100 会得到误导性的满格条,故非百分比一律给 0。
+          const barValue =
+            row.unit === 'percent' && Number.isFinite(latest) ? Math.max(0, Math.min(100, latest)) : 0;
           return {
             label: row.label,
             value,
             viz,
             trend: series,
-            barValue: Number.isFinite(latest) ? Math.max(0, Math.min(100, latest)) : 0,
+            barValue,
             tone: row.tone ?? 'normal',
             statusColor,
             color
