@@ -89,14 +89,23 @@ class CollectDispatchService:
                     attempts.append(attempt)
                     target = target_map[attempt.object_key]
                     snapshot = CollectTargetService.build_target_snapshot(target)
-                    logger.info(
-                        "[CollectDispatch] attempt result task_id=%s object_key=%s credential_id=%s success=%s failure_kind=%s",
-                        task.id,
-                        attempt.object_key,
-                        attempt.credential_id,
-                        attempt.success,
-                        attempt.failure_kind,
-                    )
+                    if attempt.success:
+                        logger.info(
+                            "[CollectDispatch] 凭据尝试成功 task_id=%s object_key=%s credential_id=%s",
+                            task.id,
+                            attempt.object_key,
+                            attempt.credential_id,
+                        )
+                    else:
+                        logger.warning(
+                            "[CollectDispatch] 凭据尝试失败 task_id=%s object_key=%s credential_id=%s "
+                            "failure_kind=%s error=%s",
+                            task.id,
+                            attempt.object_key,
+                            attempt.credential_id,
+                            attempt.failure_kind,
+                            (attempt.error_message or "")[:500],
+                        )
                     if attempt.success:
                         CollectHitStateService.mark_success(
                             task.id,
