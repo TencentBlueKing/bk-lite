@@ -10,6 +10,7 @@ import { useCommon } from '@/app/alarm/context/common';
 import { useTranslation } from '@/utils/i18n';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useSettingApi } from '@/app/alarm/api/settings';
+import EscalationChain from './escalationChain';
 import LevelIcon from '@/app/alarm/components/levelIcon';
 import { ChannelItem, NotifyOption } from '@/app/alarm/types/settings';
 import {
@@ -108,6 +109,19 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
             start_time: currentRow.config?.start_time,
             end_time: currentRow.config?.end_time,
           },
+          escalation: currentRow.config?.escalation
+            ? {
+              ...currentRow.config.escalation,
+              layers: (currentRow.config.escalation.layers || []).map(
+                (l: any) => ({
+                  ...l,
+                  notify_channels: (l.notify_channels || []).map((ch: any) =>
+                    ch.id.toString()
+                  ),
+                })
+              ),
+            }
+            : { enabled: false },
         });
       } else {
         form.resetFields();
@@ -117,6 +131,8 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
   }, [open, currentRow, form]);
 
   const ruleType = Form.useWatch('match_type', form);
+  const escalationEnabled = Form.useWatch(['escalation', 'enabled'], form);
+  const channelCheckOptions = notifyOptions;
 
   const onFinish = async (values: any) => {
     setSubmitLoading(true);
@@ -168,6 +184,24 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
         }
       );
       params.notification_frequency = freqObj;
+    }
+    const esc = values.escalation;
+    if (esc?.enabled) {
+      const layers = (esc.layers || []).map((l: any) => ({
+        personnel: l.personnel || [],
+        wait_minutes: l.wait_minutes || 0,
+        notify_channels: (l.notify_channels || [])
+          .map((id: string) => channelList.find((ch) => ch.id.toString() === id))
+          .filter(Boolean),
+      }));
+      params.config = {
+        ...params.config,
+        // 当前仅支持累加模式（不提供替换）；后端仍兼容 replace，此处固定 append
+        escalation: { enabled: true, mode: 'append', layers },
+      };
+      // B 模型：分派人员是初始第一棒，与升级层各自独立，不再相互覆盖
+    } else {
+      params.config = { ...params.config, escalation: { enabled: false } };
     }
     return params;
   };
@@ -390,6 +424,11 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
                 </div>
               </div>
             </Form.Item>
+            <EscalationChain
+              enabled={!!escalationEnabled}
+              personnelOptions={personnelOptions}
+              channelOptions={channelCheckOptions}
+            />
           </Collapse.Panel>
         </Collapse>
       </Form>

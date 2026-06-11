@@ -106,10 +106,29 @@ def cleanup_reminder_tasks():
         from apps.alerts.service.reminder_service import ReminderService
 
         cleaned_count = ReminderService.cleanup_expired_reminders()
+        from apps.alerts.service.escalation_service import EscalationService
+        EscalationService.cleanup_expired_escalations()
         logger.info(f"== 提醒任务清理完成 == 清理了{cleaned_count}条记录")
         return cleaned_count
     except Exception as e:
         logger.error(f"清理提醒任务失败: {str(e)}")
+
+
+@shared_task
+def check_and_send_escalations():
+    """统一的升级检查任务 - 每分钟执行一次轮询"""
+    logger.info("== 开始检查升级任务 ==")
+    try:
+        from apps.alerts.service.escalation_service import EscalationService
+
+        result = EscalationService.check_and_process_escalations()
+        logger.info(
+            f"== 升级任务检查完成 == 处理={result.get('processed', 0)}, 升级={result.get('escalated', 0)}"
+        )
+        return result
+    except Exception as e:
+        logger.error(f"升级任务检查失败: {str(e)}")
+        return {"processed": 0, "escalated": 0, "error": str(e)}
 
 
 @shared_task

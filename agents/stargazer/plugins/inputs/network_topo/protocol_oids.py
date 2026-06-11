@@ -16,7 +16,23 @@ def _parse_suffix_index(oid, root_oid):
     return oid[len(root_oid) + 1:]
 
 
+def _parse_scalar_index(oid, root_oid):
+    return ""
+
+
 PROTOCOL_OID_GROUPS = {
+    "system": {
+        "oids": [
+            {
+                "key": "1.3.6.1.2.1.1.5",
+                "tag": "System-SysName",
+                "ifindex_type": "scalar",
+                "index_kind": "scalar",
+                "index_parser": _parse_scalar_index,
+                "group": "system",
+            },
+        ],
+    },
     "arp": {
         "default_confidence": 0.6,
         "oids": [
@@ -26,6 +42,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "ipaddr",
                 "index_kind": "ipaddr",
                 "index_parser": _parse_ipaddr_index,
+                "group": "arp",
             },
             {
                 "key": "1.3.6.1.2.1.4.22.1.2",
@@ -33,6 +50,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "ipaddr",
                 "index_kind": "ipaddr",
                 "index_parser": _parse_ipaddr_index,
+                "group": "arp",
             },
         ],
     },
@@ -40,11 +58,52 @@ PROTOCOL_OID_GROUPS = {
         "default_confidence": 0.95,
         "oids": [
             {
-                "key": "1.0.8802.1.1.2.1.3.7.1.3",
-                "tag": "LLDP-LocalPortId",
+                "key": "1.0.8802.1.1.2.1.3.7.1.2",
+                "tag": "LLDP-LocPortIdSubtype",
                 "ifindex_type": "suffix",
                 "index_kind": "lldp_local_port",
                 "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.0.8802.1.1.2.1.3.7.1.3",
+                "tag": "LLDP-LocPortId",
+                "ifindex_type": "suffix",
+                "index_kind": "lldp_local_port",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.0.8802.1.1.2.1.3.7.1.4",
+                "tag": "LLDP-LocPortDesc",
+                "ifindex_type": "suffix",
+                "index_kind": "lldp_local_port",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.0.8802.1.1.2.1.4.1.1.4",
+                "tag": "LLDP-RemChassisIdSubtype",
+                "ifindex_type": "suffix",
+                "index_kind": "lldp_remote_port",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.0.8802.1.1.2.1.4.1.1.5",
+                "tag": "LLDP-RemChassisId",
+                "ifindex_type": "suffix",
+                "index_kind": "lldp_remote_port",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.0.8802.1.1.2.1.4.1.1.6",
+                "tag": "LLDP-RemPortIdSubtype",
+                "ifindex_type": "suffix",
+                "index_kind": "lldp_remote_port",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
             },
             {
                 "key": "1.0.8802.1.1.2.1.4.1.1.7",
@@ -52,6 +111,15 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "suffix",
                 "index_kind": "lldp_remote_port",
                 "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.0.8802.1.1.2.1.4.1.1.8",
+                "tag": "LLDP-RemPortDesc",
+                "ifindex_type": "suffix",
+                "index_kind": "lldp_remote_port",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
             },
             {
                 "key": "1.0.8802.1.1.2.1.4.1.1.9",
@@ -59,6 +127,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "suffix",
                 "index_kind": "lldp_remote_system",
                 "index_parser": _parse_suffix_index,
+                "group": "neighbors",
             },
         ],
     },
@@ -66,18 +135,89 @@ PROTOCOL_OID_GROUPS = {
         "default_confidence": 0.9,
         "oids": [
             {
-                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.6",
-                "tag": "CDP-CacheDeviceId",
+                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.3",
+                "tag": "CDP-AddressType",
                 "ifindex_type": "suffix",
                 "index_kind": "cdp_cache",
                 "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.4",
+                "tag": "CDP-Address",
+                "ifindex_type": "suffix",
+                "index_kind": "cdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.6",
+                "tag": "CDP-DeviceId",
+                "ifindex_type": "suffix",
+                "index_kind": "cdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
             },
             {
                 "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.7",
-                "tag": "CDP-CacheDevicePort",
+                "tag": "CDP-DevicePort",
                 "ifindex_type": "suffix",
                 "index_kind": "cdp_cache",
                 "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.8",
+                "tag": "CDP-Platform",
+                "ifindex_type": "suffix",
+                "index_kind": "cdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.9.9.23.1.2.1.1.17",
+                "tag": "CDP-SysName",
+                "ifindex_type": "suffix",
+                "index_kind": "cdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+        ],
+    },
+    "fdp": {
+        "default_confidence": 0.9,
+        "oids": [
+            {
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.3",
+                "tag": "FDP-DeviceId",
+                "ifindex_type": "suffix",
+                "index_kind": "fdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.6",
+                "tag": "FDP-Version",
+                "ifindex_type": "suffix",
+                "index_kind": "fdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.7",
+                "tag": "FDP-DevicePort",
+                "ifindex_type": "suffix",
+                "index_kind": "fdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
+            },
+            {
+                "key": "1.3.6.1.4.1.1991.1.1.3.20.1.2.1.1.8",
+                "tag": "FDP-Platform",
+                "ifindex_type": "suffix",
+                "index_kind": "fdp_cache",
+                "index_parser": _parse_suffix_index,
+                "group": "neighbors",
             },
         ],
     },
@@ -86,10 +226,11 @@ PROTOCOL_OID_GROUPS = {
         "oids": [
             {
                 "key": "1.3.6.1.2.1.17.1.4.1.2",
-                "tag": "BRIDGE-MIB-BasePortIfIndex",
+                "tag": "BRIDGE-BasePortIfIndex",
                 "ifindex_type": "default",
                 "index_kind": "bridge_port",
                 "index_parser": _parse_default_index,
+                "group": "bridge",
             },
             {
                 "key": "1.3.6.1.2.1.17.4.3.1.1",
@@ -97,6 +238,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "suffix",
                 "index_kind": "mac_address",
                 "index_parser": _parse_suffix_index,
+                "group": "fdb",
             },
             {
                 "key": "1.3.6.1.2.1.17.4.3.1.2",
@@ -104,17 +246,51 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "suffix",
                 "index_kind": "mac_address",
                 "index_parser": _parse_suffix_index,
+                "group": "fdb",
+            },
+            {
+                "key": "1.3.6.1.2.1.17.4.3.1.3",
+                "tag": "FDB-Status",
+                "ifindex_type": "suffix",
+                "index_kind": "mac_address",
+                "index_parser": _parse_suffix_index,
+                "group": "fdb",
+            },
+            {
+                "key": "1.3.6.1.2.1.17.7.1.2.2.1.2",
+                "tag": "QBRIDGE-FdbPort",
+                "ifindex_type": "suffix",
+                "index_kind": "mac_address",
+                "index_parser": _parse_suffix_index,
+                "group": "fdb",
+            },
+            {
+                "key": "1.3.6.1.2.1.17.7.1.2.2.1.3",
+                "tag": "QBRIDGE-FdbStatus",
+                "ifindex_type": "suffix",
+                "index_kind": "mac_address",
+                "index_parser": _parse_suffix_index,
+                "group": "fdb",
             },
         ],
     },
     "interface": {
         "oids": [
             {
+                "key": "1.3.6.1.2.1.31.1.1.1.1",
+                "tag": "IFXTable-IfName",
+                "ifindex_type": "default",
+                "index_kind": "ifindex",
+                "index_parser": _parse_default_index,
+                "group": "interfaces",
+            },
+            {
                 "key": "1.3.6.1.2.1.2.2.1.2",
                 "tag": "IFTable-IfDescr",
                 "ifindex_type": "default",
                 "index_kind": "ifindex",
                 "index_parser": _parse_default_index,
+                "group": "interfaces",
             },
             {
                 "key": "1.3.6.1.2.1.2.2.1.6",
@@ -122,6 +298,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "default",
                 "index_kind": "ifindex",
                 "index_parser": _parse_default_index,
+                "group": "interfaces",
             },
             {
                 "key": "1.3.6.1.2.1.31.1.1.1.18",
@@ -129,6 +306,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "default",
                 "index_kind": "ifindex",
                 "index_parser": _parse_default_index,
+                "group": "interfaces",
             },
         ],
     },
@@ -140,6 +318,7 @@ PROTOCOL_OID_GROUPS = {
                 "ifindex_type": "ipaddr",
                 "index_kind": "ipaddr",
                 "index_parser": _parse_ipaddr_index,
+                "group": "ip",
             },
         ],
     },
@@ -164,7 +343,7 @@ def flatten_oid_registry(group_names=None):
 
 ALL_PROTOCOL_OID_REGISTRY = flatten_oid_registry()
 ALL_PROTOCOL_OID_MAP = {entry["key"]: entry for entry in ALL_PROTOCOL_OID_REGISTRY}
-NETWORK_TOPO_REGISTRY = flatten_oid_registry(("arp", "interface", "ipaddr"))
+NETWORK_TOPO_REGISTRY = flatten_oid_registry(("system", "arp", "interface", "ipaddr"))
 NETWORK_TOPO_OIDS = [entry["key"] for entry in NETWORK_TOPO_REGISTRY]
 
 

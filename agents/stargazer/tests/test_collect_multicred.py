@@ -956,6 +956,7 @@ def test_snmp_topo_format_result_preserves_raw_row_shape_after_registry_refactor
             "ifindex": "192.168.1.10",
             "ifindex_type": "ipaddr",
             "val": "7",
+            "group": "arp",
         },
         {
             "root": "1.3.6.1.2.1.2.2.1.2",
@@ -964,6 +965,7 @@ def test_snmp_topo_format_result_preserves_raw_row_shape_after_registry_refactor
             "ifindex": "7",
             "ifindex_type": "default",
             "val": "GigabitEthernet1/0/7",
+            "group": "interfaces",
         },
     ]
 
@@ -1009,6 +1011,7 @@ def test_snmp_topo_format_result_prefers_longest_matching_eval_oid(monkeypatch):
             "ifindex": "5",
             "ifindex_type": "suffix",
             "val": "value",
+            "group": "interfaces",
         }
     ]
 
@@ -1017,7 +1020,7 @@ def test_snmp_topo_build_topology_facts_builds_lldp_neighbor_evidence(monkeypatc
     SnmpTopo = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch).SnmpTopo
 
     snmp_rows = [
-        {"tag": "LLDP-LocalPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
+        {"tag": "LLDP-LocPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
         {"tag": "LLDP-RemSysName", "ifindex": "8457.101.1", "val": "dist-sw-1"},
         {"tag": "LLDP-RemPortId", "ifindex": "8457.101.1", "val": "GigabitEthernet1/0/24"},
     ]
@@ -1054,8 +1057,8 @@ def test_snmp_topo_build_topology_facts_builds_cdp_neighbor_evidence(monkeypatch
 
     snmp_rows = [
         {"tag": "IFTable-IfDescr", "ifindex": "7", "val": "GigabitEthernet1/0/7"},
-        {"tag": "CDP-CacheDeviceId", "ifindex": "7.1", "val": "core-sw-1"},
-        {"tag": "CDP-CacheDevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
+        {"tag": "CDP-DeviceId", "ifindex": "7.1", "val": "core-sw-1"},
+        {"tag": "CDP-DevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
     ]
 
     facts = SnmpTopo.build_topology_facts(snmp_rows, enabled_protocols=("cdp",))
@@ -1083,12 +1086,12 @@ def test_snmp_topo_build_topology_facts_returns_no_neighbor_facts_for_explicit_e
     SnmpTopo = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch).SnmpTopo
 
     snmp_rows = [
-        {"tag": "LLDP-LocalPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
+        {"tag": "LLDP-LocPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
         {"tag": "LLDP-RemSysName", "ifindex": "8457.101.1", "val": "dist-sw-1"},
         {"tag": "LLDP-RemPortId", "ifindex": "8457.101.1", "val": "GigabitEthernet1/0/24"},
         {"tag": "IFTable-IfDescr", "ifindex": "7", "val": "GigabitEthernet1/0/7"},
-        {"tag": "CDP-CacheDeviceId", "ifindex": "7.1", "val": "core-sw-1"},
-        {"tag": "CDP-CacheDevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
+        {"tag": "CDP-DeviceId", "ifindex": "7.1", "val": "core-sw-1"},
+        {"tag": "CDP-DevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
     ]
 
     assert SnmpTopo.build_topology_facts(snmp_rows, enabled_protocols=()) == []
@@ -1113,7 +1116,7 @@ def test_snmp_topo_build_topology_facts_builds_fdb_neighbor_when_bridge_port_map
     snmp_rows = [
         {"tag": "FDB-MacAddress", "ifindex": "0.17.34.51.68.85", "val": "00:11:22:33:44:55"},
         {"tag": "FDB-Port", "ifindex": "0.17.34.51.68.85", "val": "10"},
-        {"tag": "BRIDGE-MIB-BasePortIfIndex", "ifindex": "10", "val": "15"},
+        {"tag": "BRIDGE-BasePortIfIndex", "ifindex": "10", "val": "15"},
         {"tag": "IFTable-IfDescr", "ifindex": "15", "val": "GigabitEthernet1/0/15"},
         {"tag": "IFTable-IfAlias", "ifindex": "15", "val": "server-uplink"},
     ]
@@ -1203,7 +1206,7 @@ def test_snmp_facts_list_all_resources_uses_default_neighbor_protocols_when_topo
     snmp_topo_module = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch)
 
     raw_topology_rows = [
-        {"tag": "LLDP-LocalPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
+        {"tag": "LLDP-LocPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
         {"tag": "LLDP-RemSysName", "ifindex": "8457.101.1", "val": "dist-sw-1"},
         {"tag": "LLDP-RemPortId", "ifindex": "8457.101.1", "val": "GigabitEthernet1/0/24"},
     ]
@@ -1264,7 +1267,7 @@ def test_snmp_facts_list_all_resources_uses_fdb_default_fallback_when_topology_p
     raw_topology_rows = [
         {"tag": "FDB-MacAddress", "ifindex": "0.17.34.51.68.85", "val": "00:11:22:33:44:55"},
         {"tag": "FDB-Port", "ifindex": "0.17.34.51.68.85", "val": "10"},
-        {"tag": "BRIDGE-MIB-BasePortIfIndex", "ifindex": "10", "val": "15"},
+        {"tag": "BRIDGE-BasePortIfIndex", "ifindex": "10", "val": "15"},
         {"tag": "IFTable-IfDescr", "ifindex": "15", "val": "GigabitEthernet1/0/15"},
         {"tag": "IFTable-IfAlias", "ifindex": "15", "val": "server-uplink"},
     ]

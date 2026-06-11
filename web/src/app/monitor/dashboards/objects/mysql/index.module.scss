@@ -1,4 +1,4 @@
-@import '../common/simple-dashboard.module.scss';
+@use '../common/simple-dashboard.module.scss';
 
 // 区块小标题:给长滚动页面分组,提升可扫读性(镶 k8s-cluster)
 .sectionLabel {
