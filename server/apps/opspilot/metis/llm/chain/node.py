@@ -2337,6 +2337,19 @@ class ToolsNodes(BasicNode):
                         getattr(graph_request, "protocol_type", "openai"),
                     )
                     bind_kwargs["tool_choice"] = normalize_tool_choice_for_capabilities(bind_kwargs["tool_choice"], capabilities)
+
+                    # OpenAI 协议下的 thinking 兼容：
+                    # DeepSeek（extra_body.thinking.type == "enabled"）和
+                    # Qwen/Gemma（extra_body.enable_thinking == True 或 extra_body.chat_template_kwargs.enable_thinking == True）
+                    # 在 thinking 模式开启时仅支持 tool_choice="auto"/"none"，不支持 "any"/"required"。
+                    # normalize_tool_choice_for_capabilities 仅处理 anthropic 协议，这里补全 openai 协议路径。
+                    if bind_kwargs.get("tool_choice") in ("any", "required"):
+                        extra_body = getattr(llm, "extra_body", None) or {}
+                        deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
+                        qwen_thinking = extra_body.get("enable_thinking") is True
+                        gemma_thinking = (extra_body.get("chat_template_kwargs") or {}).get("enable_thinking") is True
+                        if deepseek_thinking or qwen_thinking or gemma_thinking:
+                            bind_kwargs["tool_choice"] = "auto"
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
