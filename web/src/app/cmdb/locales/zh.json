@@ -759,6 +759,16 @@
         "statusError": "异常",
         "textFormatHint": "支持粘贴 YAML、JSON、Shell 等纯文本配置"
     },
+    "AttributeGovernance": {
+        "title": "治理标记",
+        "keyAttribute": "关键属性",
+        "freshness": "时效性",
+        "notSet": "未设置",
+        "freshnessTimely": "需要及时更新（7天）",
+        "freshnessOccasional": "不频繁更新（90天）",
+        "freshnessStable": "基本不变（不参与判定）",
+        "selectFreshness": "请选择时效性"
+    },
     "CustomReporting": {
         "title": "自定义上报",
         "message": "自定义上报用于承接客户主动推送的资产数据。您可以在这里维护任务、查看接入文档，并对凭据与批次入口进行基础管理。",
