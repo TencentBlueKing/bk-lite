@@ -319,7 +319,11 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 @shared_task
 def sync_node_mgmt_hosts() -> dict:
     logger.info("==开始同步节点管理主机信息==")
-    data =  NodeMgmtSyncService.trigger_sync()
+    try:
+        data = NodeMgmtSyncService.trigger_sync()
+    except Exception:
+        logger.exception("==同步节点管理主机信息失败==")
+        raise
     logger.info("==同步节点管理主机信息完成==")
     return data
 
@@ -327,6 +331,10 @@ def sync_node_mgmt_hosts() -> dict:
 @shared_task
 def collect_node_mgmt_hosts():
     logger.info("==开始采集节点管理主机信息==")
-    NodeMgmtSyncService.trigger_collect()
+    try:
+        NodeMgmtSyncService.trigger_collect()
+    except Exception:
+        logger.exception("==采集节点管理主机信息失败==")
+        raise
     logger.info("==采集采集节点管理主机信息结束==")
 
