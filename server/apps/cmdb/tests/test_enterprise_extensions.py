@@ -53,3 +53,9 @@ def test_collect_default_empty():
     ext = get_collect_enterprise_extension()
     assert isinstance(ext, CollectEnterpriseExtension)
     assert ext.collect_tree == [] and ext.plugin_packages == ()
+
+
+def test_collect_default_after_apply_hook_is_noop():
+    ext = get_collect_enterprise_extension()
+
+    assert ext.on_collect_instances_applied(management=object(), result={}) is None
