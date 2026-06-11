@@ -321,10 +321,6 @@ class WorkflowAttachmentAsset(models.Model):
             models.Index(fields=["execution_id", "created_at"]),
         ]
 
-    @property
-    def download_url(self) -> str:
-        return f"/api/v1/opspilot/bot_mgmt/workflow_attachment/download/{self.download_token}/"
-
 
 class WorkFlowTaskNodeResult(models.Model):
     task_result = models.ForeignKey(
