@@ -5,6 +5,7 @@ from django.utils import timezone
 from rest_framework import status
 
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
+from apps.log.serializers.policy import AlertSerializer
 from apps.log.utils.log_group import LogGroupQueryBuilder
 from apps.log.models.policy import Alert, AlertSnapshot, Event, EventRawData, Policy, PolicyOrganization
 from apps.log.utils.query_log import VictoriaMetricsAPI
@@ -145,6 +146,41 @@ def _create_alert_with_event(policy, alert_id, event_id):
         content="raw event content",
     )
     return alert, event
+
+
+@pytest.mark.django_db
+def test_alert_serializer_uses_rendered_alert_content_for_alert_name():
+    policy = _create_policy("${log.container_name}-关键字分组测试", organization=1)
+    alert = Alert.objects.create(
+        id="alert-rendered-name",
+        policy=policy,
+        source_id="source-rendered-name",
+        level="warning",
+        content="bk-lite-server-关键字分组测试",
+        start_event_time=timezone.now(),
+    )
+
+    data = AlertSerializer(alert).data
+
+    assert data["alert_name"] == "bk-lite-server-关键字分组测试"
+
+
+@pytest.mark.django_db
+def test_alert_serializer_keeps_untrusted_alert_name_as_plain_string():
+    malicious_name = '<img src=x onerror=alert(1)><script>alert("xss")</script>-关键字分组测试'
+    policy = _create_policy("${log.container_name}-关键字分组测试", organization=1)
+    alert = Alert.objects.create(
+        id="alert-rendered-name-xss",
+        policy=policy,
+        source_id="source-rendered-name-xss",
+        level="warning",
+        content=malicious_name,
+        start_event_time=timezone.now(),
+    )
+
+    data = AlertSerializer(alert).data
+
+    assert data["alert_name"] == malicious_name
 
 
 @pytest.mark.django_db

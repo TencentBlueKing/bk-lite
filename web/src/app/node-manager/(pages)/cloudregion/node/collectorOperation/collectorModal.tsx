@@ -16,6 +16,7 @@ import type { TableDataItem } from '@/app/node-manager/types';
 import useCloudId from '@/app/node-manager/hooks/useCloudRegionId';
 import { COLLECTOR_LABEL } from '@/app/node-manager/constants/collector';
 import { useCommon } from '@/app/node-manager/context/common';
+import { buildCollectorOperationListParams } from '@/app/node-manager/utils/nodeOperation';
 const { Option } = Select;
 
 interface Option {
@@ -103,15 +104,11 @@ const CollectorModal = forwardRef<ModalRef, ModalSuccess>(
       const currentType = typeTag || selectedType;
       const currentArch = arch !== undefined ? arch : cpuArchitecture;
       try {
-        const params: any = {
-          node_operating_system: selectedsystem
-        };
-        if (currentArch) {
-          params.cpu_architecture = currentArch;
-        }
-        if (currentType) {
-          params.tags = currentType;
-        }
+        const params = buildCollectorOperationListParams({
+          operatingSystem: selectedsystem,
+          cpuArchitecture: currentArch,
+          typeTag: currentType
+        });
         const data = await getCollectorlist(params);
         const natsexecutorId =
           selectedsystem === 'linux'
