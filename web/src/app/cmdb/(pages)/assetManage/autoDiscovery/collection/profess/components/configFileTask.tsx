@@ -192,13 +192,13 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
           />
 
           <Form.Item
-            label="配置文件绝对路径"
+            label={t('Collection.configFilePath')}
             name="configFilePath"
             rules={[{ validator: validateConfigFilePath }]}
           >
             <Input
               autoComplete="off"
-              placeholder="/etc/nginx/nginx.conf 或 C:\\Windows\\System32\\drivers\\etc\\hosts"
+              placeholder={t('Collection.configFilePathPlaceholder')}
             />
           </Form.Item>
 

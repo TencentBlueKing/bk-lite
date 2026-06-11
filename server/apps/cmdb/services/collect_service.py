@@ -375,10 +375,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main()
-        logger.debug(f"推送节点参数: {node_params}")
+        logger.debug("[CollectTask] 推送节点参数 task_id=%s, node_params=%s", instance.id, node_params)
         node_mgmt = NodeMgmt()
         result = node_mgmt.batch_add_node_child_config(node_params)
-        logger.debug(f"推送节点参数结果: {result}")
+        logger.debug("[CollectTask] 推送节点参数结果 task_id=%s, result=%s", instance.id, result)
 
     @staticmethod
     def delete_butch_node_params(instance):
@@ -387,10 +387,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main(operator="delete")
-        logger.debug(f"删除节点参数: {node_params}")
+        logger.debug("[CollectTask] 删除节点参数 task_id=%s, node_params=%s", instance.id, node_params)
         node_mgmt = NodeMgmt()
         result = node_mgmt.delete_child_configs(node_params)
-        logger.debug(f"删除节点参数结果: {result}")
+        logger.debug("[CollectTask] 删除节点参数结果 task_id=%s, result=%s", instance.id, result)
 
     @classmethod
     def create(cls, request, view_self):
@@ -422,7 +422,12 @@ class CollectModelService(object):
                     cls.push_butch_node_params(instance)
             except Exception as e:
                 # 外部操作失败，记录详细错误日志并抛出异常，触发事务回滚
-                logger.error(f"创建采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
+                logger.error(
+                    "[CollectTask] 创建采集任务时外部操作失败，事务将回滚 task_name=%s, error=%s",
+                    instance.name,
+                    e,
+                    exc_info=True,
+                )
                 # 重新抛出异常，让事务回滚
                 raise BaseAppException(f"创建采集任务失败：{str(e)}")
 
@@ -483,7 +488,12 @@ class CollectModelService(object):
                     cls.push_butch_node_params(instance)
             except Exception as e:
                 # 外部操作失败，记录错误并抛出异常，触发事务回滚
-                logger.error(f"更新采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
+                logger.error(
+                    "[CollectTask] 更新采集任务时外部操作失败，事务将回滚 task_name=%s, error=%s",
+                    instance.name,
+                    e,
+                    exc_info=True,
+                )
                 raise BaseAppException(f"更新采集任务失败：{str(e)}")
 
             cls.delete_team(instance.id, old_instance.team, request.data["team"], view_self)
@@ -538,7 +548,12 @@ class CollectModelService(object):
                     cls.delete_butch_node_params(instance_copy)
             except Exception as e:
                 # 外部资源清理失败，记录错误并抛出异常，触发事务回滚
-                logger.error(f"删除采集任务时外部资源清理失败，事务将回滚: task_name={instance_name}, error={str(e)}")
+                logger.error(
+                    "[CollectTask] 删除采集任务时外部资源清理失败，事务将回滚 task_name=%s, error=%s",
+                    instance_name,
+                    e,
+                    exc_info=True,
+                )
                 raise BaseAppException(f"删除采集任务失败：{str(e)}")
 
             # 外部资源清理成功后，再删除数据库记录

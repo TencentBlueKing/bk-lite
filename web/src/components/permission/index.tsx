@@ -1,6 +1,7 @@
 import React from 'react';
 import { Tooltip } from 'antd';
 import usePermissions from '@/hooks/usePermissions';
+import { useTranslation } from '@/utils/i18n';
 
 interface PermissionWrapperProps {
   requiredPermissions: string[];
@@ -14,10 +15,11 @@ const PermissionWrapper: React.FC<React.PropsWithChildren<PermissionWrapperProps
   requiredPermissions,
   instPermissions,
   fallback = null,
-  tooltip = "暂无权限",
+  tooltip,
   className,
   children
 }) => {
+  const { t } = useTranslation();
   const { hasPermission } = usePermissions();
   const instancePermissions = instPermissions || ['Operate'];
 
@@ -26,7 +28,7 @@ const PermissionWrapper: React.FC<React.PropsWithChildren<PermissionWrapperProps
   }
 
   return (
-    <Tooltip title={tooltip} zIndex={99999}>
+    <Tooltip title={tooltip ?? t('common.noAuth')} zIndex={99999}>
       <div
         className={className}
         style={{ display: 'inline-block', cursor: 'not-allowed' }}

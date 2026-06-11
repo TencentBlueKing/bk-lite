@@ -1,5 +1,8 @@
 'use client';
 
+import { useTranslation } from '@/utils/i18n';
+
 export default function FeatureLibraryPage() {
-  return <div>扫描特征</div>;
+  const { t } = useTranslation();
+  return <div>{t('OidLibrary.scanFeatureTitle')}</div>;
 }

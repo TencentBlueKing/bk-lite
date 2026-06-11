@@ -63,6 +63,7 @@
     },
     "alarms": {
         "monitor": "Monitor",
+        "alarmName": "Alarm Name",
         "logs": "Logs",
         "indexView": "Index View",
         "filterItems": "Filter Items",
@@ -177,6 +178,26 @@
         "whyRelatedTimeWindow": "Time window: only alerts from the last hour are recommended to keep triage fast and explainable."
     },
     "integration": {
+        "refreshEvents": "Refresh events",
+        "precheck": {
+            "networkLabel": "Network Connectivity",
+            "networkStatus": "Accessible",
+            "pushEndpointLabel": "Push Endpoint Validity",
+            "pushEndpointStatus": "Valid",
+            "yamlDownloadLabel": "YAML File Download",
+            "yamlDownloadStatus": "Downloadable",
+            "imageAccessLabel": "Image Accessible",
+            "imageAccessStatus": "Pullable",
+            "rbacLabel": "RBAC Permission (Optional)",
+            "rbacStatus": "Configured"
+        },
+        "guideStep": "Step {num}",
+        "fillDeployParamsDesc": "Fill in the parameters written into the deployment manifest first to keep the downloaded file consistent with the cluster identifier.",
+        "downloadDeployYamlDesc": "Download the rendered deployment file, then apply it on the cluster side.",
+        "prepareImageDesc": "Prepare the event exporter image and offline import command, keeping the page capabilities consistent with the actual deployment actions.",
+        "renderedConfigDesc": "Review the key rendered variables and confirm only the currently configurable items are shown.",
+        "applyToClusterDesc": "Apply the downloaded deployment file in the cluster environment.",
+        "verifyResultDesc": "After deployment, use the existing event preview and event table to confirm reports are being received.",
         "description": "Description",
         "baseInfo": "Base Info",
         "eventFieldsMapping": "Event Fields Mapping",
@@ -354,8 +375,6 @@
             "instantAlertDesc": "Matched events bypass aggregation and produce one alert per event for immediate dispatch.",
             "defineInstantTrigger": "Define Trigger Events",
             "instantTriggerGuide": "Events matching the filter conditions produce alerts directly without any aggregation or convergence.",
-            "alertTitle": "Alert Title",
-            "alertDescription": "Alert Description",
             "instantTemplatePlaceholder": "e.g. {service} order failed",
             "instantDescPlaceholder": "e.g. {title} | resource {resource_name}",
             "instantTemplateHint": "Supported event field placeholders: {service} {location} {resource_name} {resource_id} {item} {title} {level} ...",

@@ -27,7 +27,9 @@ class NotifyResultService(object):
         格式化通知结果
         """
         try:
-            status = self.notify_result.get("result", False)
+            # 下游通知系统不归一化返回，格式不固定；约定：失败一定返回 result=False。
+            # 因此缺省视为成功（默认 True），仅当显式 result=False 才记失败。
+            status = self.notify_result.get("result", True)
             if status:
                 return NotifyResultStatus.SUCCESS
             else:

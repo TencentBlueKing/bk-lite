@@ -240,8 +240,16 @@
       "datetime": "日期时间"
     }
   },
+  "opsAnalysis": {
+    "architecture": {
+      "loadFailed": "加载失败"
+    }
+  },
   "dashboard": {
     "endTime": "结束时间",
+    "duplicateFieldKey": "字段 key 不能重复",
+    "selectDashboardFirst": "请先选择一个仪表盘",
+    "fetchDataFieldsFailed": "获取数据字段失败",
     "timeRange": "时间范围",
     "noData": "暂无数据",
     "dataSourceAttr": "数据源属性",
