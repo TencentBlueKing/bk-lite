@@ -28,6 +28,10 @@ import {
   ShowModalParams,
   TemplateDrawerRef,
 } from '@/app/monitor/types/integration';
+import {
+  getPluginConfigFetchDecision,
+  isSameTemplatePlugin,
+} from './templateConfigDrawerLogic';
 
 const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -166,15 +170,16 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setShowTemplateList(true);
     };
 
-    const handlePluginClick = (plugin: PluginItem) => {
-      if (
-        selectedPlugin?.name === plugin.name &&
-        selectedPlugin?.collect_type === plugin.collect_type
-      ) {
+    const handlePluginClick = async (plugin: PluginItem) => {
+      const decision = getPluginConfigFetchDecision(selectedPlugin, plugin);
+      if (!decision.shouldChangeSelection) {
         return;
       }
       setSelectedPlugin(plugin);
       setConfigList([]);
+      if (decision.shouldFetchConfig) {
+        await fetchConfigList({ plugin });
+      }
     };
 
     const getCollectType = (row: ConfigItem) => {
@@ -349,10 +354,10 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                             const pluginStatusInfo = getStatusInfo(
                               plugin.status
                             );
-                            const isSelected =
-                              selectedPlugin?.name === plugin.name &&
-                              selectedPlugin?.collect_type ===
-                                plugin.collect_type;
+                            const isSelected = isSameTemplatePlugin(
+                              selectedPlugin,
+                              plugin
+                            );
                             return (
                               <div
                                 key={`${plugin.name}-${idx}`}
