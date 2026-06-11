@@ -6,7 +6,7 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
@@ -18,16 +18,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import WorkFlowTaskStatus
-from apps.opspilot.models import (
-    Bot,
-    BotChannel,
-    BotConversationHistory,
-    BotWorkFlow,
-    LLMSkill,
-    SkillRequestLog,
-    WorkflowAttachmentAsset,
-    WorkFlowTaskResult,
-)
+from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, SkillRequestLog, WorkFlowTaskResult
 from apps.opspilot.serializers.request_serializers import (
     InterruptChatFlowRequestSerializer,
     SubmitApprovalRequestSerializer,
@@ -35,16 +26,16 @@ from apps.opspilot.serializers.request_serializers import (
 )
 from apps.opspilot.services.chat_completion_service import ChatCompletionService
 from apps.opspilot.services.chat_service import ChatService
+from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
+from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
 from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
-from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.utils.execution_interrupt import request_interrupt
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
-from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
 
@@ -165,8 +156,9 @@ def validate_openai_token(token, team=None, is_mobile=False):
             domain=user_info["domain"],
             team=int(team),
         )
-        # Token 认证：从 verify_token 结果获取 locale
+        # Token 认证：从 verify_token 结果获取 locale 和 group_list
         user.locale = user_info.get("locale", "en")
+        user.group_list = user_info.get("group_list", [])
     else:
         # UserAPISecret 认证：查询用户信息获取 locale
         user.locale = _get_user_locale(user.username, user.domain)
@@ -649,11 +641,20 @@ async def execute_chat_flow(request, bot_id, node_id):
     # 验证Bot — 始终按已验证用户所属团队作用域解析 bot，所有客户端一致
     # (此前移动端基于可伪造的 User-Agent 绕过 team 校验，构成跨租户越权，已移除)
     user = msg
-    filter_dict = {"id": bot_id, "team__contains": int(user.team)}
+    # 构建 team 过滤：用户所属团队 + OpsPilotGuest 顶级组（若有）
+    guest_group_ids = {
+        int(group["id"])
+        for group in getattr(user, "group_list", [])
+        if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
+    }
+    team_filter = Q(team__contains=[int(user.team)])
+    for gid in guest_group_ids:
+        team_filter |= Q(team__contains=[gid])
 
+    bot_query = Bot.objects.filter(Q(id=bot_id) & team_filter)
     if not is_test:
-        filter_dict["online"] = True
-    bot_obj = await sync_to_async(Bot.objects.filter(**filter_dict).first, thread_sensitive=False)()
+        bot_query = bot_query.filter(online=True)
+    bot_obj = await sync_to_async(bot_query.first, thread_sensitive=False)()
     if not bot_obj:
         return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
