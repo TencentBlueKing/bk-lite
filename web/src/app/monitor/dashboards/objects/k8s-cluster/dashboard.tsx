@@ -21,7 +21,8 @@ import {
   parseLegacyParamList,
   formatMetricValue,
   buildPreviousPeriodTimeValues,
-  getPeriodCompare
+  getPeriodCompare,
+  useLoadSequence
 } from '../../shared/utils';
 import {
   StatCard,
@@ -136,7 +137,7 @@ export default function K8sClusterDashboardPage() {
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const loadSeqRef = useRef(0);
+  const loadSequence = useLoadSequence();
 
   // 实例列表
   useEffect(() => {
@@ -187,19 +188,19 @@ export default function K8sClusterDashboardPage() {
     });
 
   const loadAll = async (silent = false) => {
-    const seq = ++loadSeqRef.current;
+    const seq = loadSequence.begin();
     if (!silent) setLoading(true);
     const heroResults = await runGroup(QUERY_GROUPS.hero, timeValues);
-    if (loadSeqRef.current !== seq) return;
+    if (!loadSequence.isCurrent(seq)) return;
     setRaw((prev) => (silent ? { ...prev, ...Object.fromEntries(heroResults) } : Object.fromEntries(heroResults)));
     if (!silent) setLoading(false);
     runGroup(QUERY_GROUPS.panels, timeValues).then((panelResults) => {
-      if (loadSeqRef.current === seq) setRaw((prev) => ({ ...prev, ...Object.fromEntries(panelResults) }));
+      if (loadSequence.isCurrent(seq)) setRaw((prev) => ({ ...prev, ...Object.fromEntries(panelResults) }));
     });
     // KPI 卡「较上一周期」对比:取上一周期同样窗口的计数。
     const prevTv = buildPreviousPeriodTimeValues(timeValues);
     runGroup(KPI_COMPARE_KEYS, prevTv).then((prevResults) => {
-      if (loadSeqRef.current === seq) setPreviousRaw(Object.fromEntries(prevResults));
+      if (loadSequence.isCurrent(seq)) setPreviousRaw(Object.fromEntries(prevResults));
     });
   };
 

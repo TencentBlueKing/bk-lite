@@ -38,7 +38,8 @@ import {
   mergeChartSeries,
   getCollectionStatus,
   runWithConcurrency,
-  formatMetricValue
+  formatMetricValue,
+  useLoadSequence
 } from '../../shared/utils';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
@@ -136,7 +137,7 @@ export default function MongoDashboardPage() {
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
-  const loadSeqRef = useRef(0);
+  const loadSequence = useLoadSequence();
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || 'Mongodb';
@@ -234,8 +235,7 @@ export default function MongoDashboardPage() {
   };
 
   const loadMetrics = async (silent = false) => {
-    const loadSeq = loadSeqRef.current + 1;
-    loadSeqRef.current = loadSeq;
+    const loadSeq = loadSequence.begin();
 
     if (!silent) setLoading(true);
     try {
@@ -297,7 +297,7 @@ export default function MongoDashboardPage() {
         }
 
         previousMetricResultsPromise.then((previousResults) => {
-          if (loadSeqRef.current !== loadSeq) return;
+          if (!loadSequence.isCurrent(loadSeq)) return;
           setPreviousSeries(Object.fromEntries(previousResults));
         });
 
@@ -306,7 +306,7 @@ export default function MongoDashboardPage() {
           collectionStatusPromise
         ]);
 
-        if (loadSeqRef.current !== loadSeq) return;
+        if (!loadSequence.isCurrent(loadSeq)) return;
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setCollectionStatusMetric(collectionStatus);
@@ -315,7 +315,7 @@ export default function MongoDashboardPage() {
 
         MONGODB_METRIC_GROUPS.slice(1).forEach((group) => {
           loadMetricGroup(group.names).then((results) => {
-            if (loadSeqRef.current !== loadSeq) return;
+            if (!loadSequence.isCurrent(loadSeq)) return;
             setSeries((prev) => ({ ...prev, ...Object.fromEntries(results) }));
           });
         });
@@ -326,7 +326,7 @@ export default function MongoDashboardPage() {
         if (!silent) setLoading(false);
       }
     } catch {
-      if (loadSeqRef.current === loadSeq && !silent) setLoading(false);
+      if (loadSequence.isCurrent(loadSeq) && !silent) setLoading(false);
     }
   };
 

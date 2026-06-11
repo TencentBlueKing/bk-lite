@@ -22,7 +22,8 @@ import {
   toMetricSeries,
   buildMetricItem,
   getCollectionStatus,
-  buildCollectionStatusTimeline
+  buildCollectionStatusTimeline,
+  useLoadSequence
 } from '../../shared/utils';
 import {
   CompareFavorableDirection,
@@ -326,7 +327,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
-  const loadSeqRef = useRef(0);
+  // 每次 loadMetrics(含静默自动刷新)递增,供 bespoke 取数面板(如 ES/PG 的 TopN)
+  // 与核心盘同步刷新——核心盘重载即 bespoke 面板重载,而非各自维护定时器。
+  const [loadTick, setLoadTick] = useState(0);
+  const loadSequence = useLoadSequence();
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || config.objectFallbackName;
@@ -438,8 +442,8 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   );
 
   const loadMetrics = useCallback(async (silent = false) => {
-    const loadSeq = loadSeqRef.current + 1;
-    loadSeqRef.current = loadSeq;
+    const loadSeq = loadSequence.begin();
+    setLoadTick((value) => value + 1);
 
     if (!silent) setLoading(true);
     try {
@@ -502,7 +506,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         }
 
         previousMetricResultsPromise.then((previousResults) => {
-          if (loadSeqRef.current !== loadSeq) return;
+          if (!loadSequence.isCurrent(loadSeq)) return;
           setPreviousSeries(Object.fromEntries(previousResults));
         });
 
@@ -512,7 +516,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           collectionStatusPromise
         ]);
 
-        if (loadSeqRef.current !== loadSeq) return;
+        if (!loadSequence.isCurrent(loadSeq)) return;
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setCollectionStatusMetric(collectionStatus);
@@ -522,7 +526,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         if (trendMetrics.length > 0) {
           runWithConcurrency(trendMetrics, METRIC_QUERY_CONCURRENCY, (metric) => loadSingleMetric(metric, timeValues))
             .then((trendResults) => {
-              if (loadSeqRef.current !== loadSeq) return;
+              if (!loadSequence.isCurrent(loadSeq)) return;
               setSeries((prev) => ({ ...prev, ...Object.fromEntries(trendResults) }));
             });
         }
@@ -533,9 +537,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         if (!silent) setLoading(false);
       }
     } catch {
-      if (loadSeqRef.current === loadSeq && !silent) setLoading(false);
+      if (loadSequence.isCurrent(loadSeq) && !silent) setLoading(false);
     }
-  }, [config, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues]);
+  }, [config, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSequence, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues]);
 
   useEffect(() => {
     if (displayMode === 'dashboard') {
@@ -811,6 +815,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     frequence,
     setFrequence,
     metricsRefreshSignal,
+    loadTick,
     monitorObjectId,
     monitorObjectName,
     instanceId,
