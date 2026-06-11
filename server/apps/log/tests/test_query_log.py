@@ -166,6 +166,24 @@ def test_alert_serializer_uses_rendered_alert_content_for_alert_name():
 
 
 @pytest.mark.django_db
+def test_alert_serializer_keeps_untrusted_alert_name_as_plain_string():
+    malicious_name = '<img src=x onerror=alert(1)><script>alert("xss")</script>-关键字分组测试'
+    policy = _create_policy("${log.container_name}-关键字分组测试", organization=1)
+    alert = Alert.objects.create(
+        id="alert-rendered-name-xss",
+        policy=policy,
+        source_id="source-rendered-name-xss",
+        level="warning",
+        content=malicious_name,
+        start_event_time=timezone.now(),
+    )
+
+    data = AlertSerializer(alert).data
+
+    assert data["alert_name"] == malicious_name
+
+
+@pytest.mark.django_db
 def test_search_endpoint_requires_log_groups(api_client, authenticated_user, mocker):
     LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
     LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
