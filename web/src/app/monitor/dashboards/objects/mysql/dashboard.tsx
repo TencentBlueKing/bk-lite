@@ -41,7 +41,8 @@ import {
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
-  getCollectionStatus
+  getCollectionStatus,
+  useLoadSequence
 } from '../../shared/utils';
 import {
   StatCard,
@@ -267,7 +268,7 @@ export default function MysqlDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const loadSeqRef = useRef(0);
+  const loadSequence = useLoadSequence();
   const [, setLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
@@ -394,8 +395,7 @@ export default function MysqlDashboardPage() {
   };
 
   const loadMetrics = async (silent = false) => {
-    const loadSeq = loadSeqRef.current + 1;
-    loadSeqRef.current = loadSeq;
+    const loadSeq = loadSequence.begin();
 
     if (!silent) {
       setLoading(true);
@@ -457,7 +457,7 @@ export default function MysqlDashboardPage() {
         }
 
         previousMetricResultsPromise.then((previousResults) => {
-          if (loadSeqRef.current !== loadSeq) {
+          if (!loadSequence.isCurrent(loadSeq)) {
             return;
           }
           setPreviousSeries(Object.fromEntries(previousResults));
@@ -468,7 +468,7 @@ export default function MysqlDashboardPage() {
           collectionStatusPromise
         ]);
 
-        if (loadSeqRef.current !== loadSeq) {
+        if (!loadSequence.isCurrent(loadSeq)) {
           return;
         }
 
@@ -481,7 +481,7 @@ export default function MysqlDashboardPage() {
 
         MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
           loadMetricGroup(group.names, timeValues).then((results) => {
-            if (loadSeqRef.current !== loadSeq) {
+            if (!loadSequence.isCurrent(loadSeq)) {
               return;
             }
 
@@ -494,7 +494,7 @@ export default function MysqlDashboardPage() {
         setCollectionStatusMetric(null);
       }
     } finally {
-      if (loadSeqRef.current === loadSeq) {
+      if (loadSequence.isCurrent(loadSeq)) {
         setLoading(false);
       }
     }

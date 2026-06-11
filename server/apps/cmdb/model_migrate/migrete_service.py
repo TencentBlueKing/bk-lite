@@ -29,6 +29,7 @@ from apps.cmdb.constants.field_constraints import (
 )
 from apps.cmdb.display_field import ExcludeFieldsCache
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.model_ops.extensions import get_model_enterprise_extension
 from apps.cmdb.models.field_group import FieldGroup
 from apps.cmdb.models.public_enum_library import PublicEnumLibrary
 from apps.cmdb.services.model import ModelManage
@@ -157,7 +158,7 @@ class ModelMigrate:
         user_prompt = attr.get("prompt", "") or attr.get("user_prompt", "")
         attr["user_prompt"] = str(user_prompt) if user_prompt else ""
 
-        return attr
+        return get_model_enterprise_extension().normalize_import_attr(attr)
 
     def model_add_organization(self, model):
         """
@@ -577,6 +578,10 @@ class ModelMigrate:
 
         if "option" in incoming_attr and existing_attr.get("option") != incoming_attr.get("option"):
             existing_attr["option"] = incoming_attr.get("option")
+            changed = True
+
+        if "governance" in incoming_attr and existing_attr.get("governance") != incoming_attr.get("governance"):
+            existing_attr["governance"] = incoming_attr.get("governance")
             changed = True
 
         is_enum_attr = existing_attr.get("attr_type") == "enum" or incoming_attr.get("attr_type") == "enum"
