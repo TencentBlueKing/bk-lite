@@ -370,9 +370,16 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
         all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
 
+        # 对象级权限收口：非超管仅可读取自身有权访问的组织，未授权 group_id 直接跳过。
+        # 与单组织接口 get_group_detail_with_roles 的 _validate_group_permission 同一套校验，
+        # 避免批量入口绕过对象级权限泄露跨组织角色配置。superuser 返回 None 表示放行全部。
+        authorized_group_ids = self._get_user_group_ids(request.user)
+
         results = []
         for gid in group_ids:
             gid = int(gid)
+            if authorized_group_ids is not None and gid not in authorized_group_ids:
+                continue
             group = all_groups.get(gid)
             if not group:
                 continue
