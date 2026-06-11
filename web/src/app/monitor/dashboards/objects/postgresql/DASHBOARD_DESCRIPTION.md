@@ -155,7 +155,7 @@
 ## 注意事项
 
 - **单位映射**: metrics.json 中 `postgresql_numbackends` 的 unit 为 `short`，不在合法 unit_id 列表中，已映射为 `counts`
-- **维度字段**: 多数指标包含 `dbname` 维度，表示数据库名称，查询时可能需按数据库维度聚合
+- **维度字段**: 多数指标包含 `db` 维度（Telegraf postgresql input 原生标签），表示数据库名称，查询时可能需按数据库维度聚合
 - **无运行时长指标**: PostgreSQL 的 metrics.json 中未包含 uptime 类指标，无法直接展示运行时长
 - **缓存命中率需计算**: 如需展示缓存命中率百分比，需通过派生公式计算：`100 * blks_hit / (blks_hit + blks_read)`
-- **检查点指标无维度**: `Checkpoint`、`Buffer`、`WriteActivity` 组的指标无 `dbname` 维度，是实例级别的指标
+- **检查点指标无维度**: `Checkpoint`、`Buffer`、`WriteActivity` 组的指标无 `db` 维度，是实例级别的指标
