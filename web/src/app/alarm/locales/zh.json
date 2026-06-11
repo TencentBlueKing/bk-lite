@@ -518,7 +518,19 @@
             "frequencyMsg": "告警分派时默认通知一次",
             "notRespondMsg": "告警未响应时，",
             "notifyEvery": "每隔",
-            "frequencyUnit": "分钟"
+            "frequencyUnit": "分钟",
+            "escalation": "告警升级",
+            "escalationEnable": "启用升级",
+            "escalationMode": "升级模式",
+            "escalationModeAppend": "累加",
+            "escalationModeReplace": "替换",
+            "escalationLayer": "升级层级",
+            "escalationAddLayer": "添加层级",
+            "escalationWaitMinutes": "未认领等待时长",
+            "escalationWaitTip": "上一棒责任人在该时长内未认领（第一层对应初始分派人员），则升级到本层并通知本层处理人；末层不再升级。计时以告警停留在「待处理」的时长为准，与提醒次数无关。",
+            "escalationLayerChannel": "通知渠道",
+            "escalationPersonnelTip": "请选择本层处理人",
+            "escalationLayerRequired": "启用升级时至少配置一层"
         },
         "globalConfig": {
             "title": "未分派告警通知策略",

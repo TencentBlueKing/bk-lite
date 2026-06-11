@@ -171,30 +171,32 @@ class CollectModelViewSet(AuthViewSet):
         if not permission_key:
             return base_queryset
 
-        if not include_children:
-            app_name = self._get_app_name()
-            current_team = request.COOKIES.get("current_team", "0")
-            permission_data = get_permission_rules(request.user, current_team, app_name, permission_key, include_children)
-            if not isinstance(permission_data, dict) or not permission_data:
-                return base_queryset
-            instance_ids = [i["id"] for i in permission_data.get("instance", []) if isinstance(i, dict) and "id" in i]
-            team_entries = permission_data.get("team", [])
-            allowed_teams = set()
-            for team_entry in team_entries:
-                if isinstance(team_entry, dict) and "id" in team_entry:
-                    allowed_teams.add(team_entry["id"])
-                elif isinstance(team_entry, int):
-                    allowed_teams.add(team_entry)
-            allowed_teams &= set(query_groups)
-            allowed_team_query = Q()
-            for team_id in allowed_teams:
-                allowed_team_query = allowed_team_query | Q(team__contains=[team_id]) | Q(team__contains=[str(team_id)])
-            if instance_ids:
-                if allowed_teams:
-                    return base_queryset.filter(Q(id__in=instance_ids) | allowed_team_query)
-                return base_queryset.filter(id__in=instance_ids)
+        # 实例级/团队级任务裁剪在 include_children 时同样必须执行：
+        # 否则勾选"包含子组织"会跳过裁剪、直接返回子树全部任务，造成子组织采集任务越权
+        # 查看/执行（issue #3037）。allowed_teams 已与 query_groups（子树）取交，天然按授权收口。
+        app_name = self._get_app_name()
+        current_team = request.COOKIES.get("current_team", "0")
+        permission_data = get_permission_rules(request.user, current_team, app_name, permission_key, include_children)
+        if not isinstance(permission_data, dict) or not permission_data:
+            return base_queryset
+        instance_ids = [i["id"] for i in permission_data.get("instance", []) if isinstance(i, dict) and "id" in i]
+        team_entries = permission_data.get("team", [])
+        allowed_teams = set()
+        for team_entry in team_entries:
+            if isinstance(team_entry, dict) and "id" in team_entry:
+                allowed_teams.add(team_entry["id"])
+            elif isinstance(team_entry, int):
+                allowed_teams.add(team_entry)
+        allowed_teams &= set(query_groups)
+        allowed_team_query = Q()
+        for team_id in allowed_teams:
+            allowed_team_query = allowed_team_query | Q(team__contains=[team_id]) | Q(team__contains=[str(team_id)])
+        if instance_ids:
             if allowed_teams:
-                return base_queryset.filter(allowed_team_query)
+                return base_queryset.filter(Q(id__in=instance_ids) | allowed_team_query)
+            return base_queryset.filter(id__in=instance_ids)
+        if allowed_teams:
+            return base_queryset.filter(allowed_team_query)
         return base_queryset
 
     @HasPermission("auto_collection-Add")

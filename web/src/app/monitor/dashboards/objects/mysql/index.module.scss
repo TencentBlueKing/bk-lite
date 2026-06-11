@@ -1,4 +1,24 @@
-@import '../common/simple-dashboard.module.scss';
+@use '../common/simple-dashboard.module.scss';
+
+// 区块小标题:给长滚动页面分组,提升可扫读性(镶 k8s-cluster)
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
 
 .modeContent {
   width: 100%;
@@ -223,23 +243,11 @@
   margin-bottom: 12px;
 
   > * {
-    // 基准 = 整行 1/5（扣除 4 个 gap）→ 宽屏每行 5 张；收窄到 min-width 以下自动换行并撑满。
-    flex: 1 1 calc((100% - 4 * 12px) / 5);
-    min-width: 200px;
+    // 基准 = 整行 1/6（扣除 5 个 gap）→ 宽屏每行 6 张(采集状态 + 运行时长 + 4 KPI,含 QPS)；
+    // 卡片相应变窄，收窄到 min-width 以下自动换行并撑满。
+    flex: 1 1 calc((100% - 5 * 12px) / 6);
+    min-width: 168px;
   }
-}
-
-.mainTrendGrid,
-.structureGrid,
-.detailGrid {
-  display: grid;
-  grid-template-columns: repeat(12, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.mainTrendGrid,
-.structureGrid {
-  margin-bottom: 12px;
 }
 
 .sectionTitle {
@@ -250,8 +258,8 @@
 }
 
 .statCard {
-  padding: 16px 16px 14px;
-  min-height: 168px;
+  padding: 13px 14px 11px;
+  min-height: 122px;
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -287,11 +295,11 @@
 }
 
 .statBody {
-  margin-top: 10px;
+  margin-top: 7px;
   min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 6px;
 }
 
 .statBodyRelaxed {
@@ -592,426 +600,8 @@
   box-shadow: inset 0 0 0 1px rgba(19, 33, 56, 0.04);
 }
 
-.chartPanel {
-  grid-column: span 6;
-}
-
-.thirdChartPanel {
-  grid-column: span 4;
-}
-
-.quarterPanel {
-  grid-column: span 3;
-}
-
-.halfPanel {
-  grid-column: span 4;
-}
-
-.widePanel {
-  grid-column: span 8;
-}
-
 .fullPanel {
   grid-column: span 12;
-}
-
-.dataFlowPanel {
-  margin-bottom: 12px;
-  overflow-x: auto;
-  scroll-snap-type: x proximity;
-}
-
-.mysqlFlowModel {
-  display: grid;
-  grid-template-columns: 0.95fr 1.05fr;
-  gap: 18px;
-  align-items: stretch;
-  min-width: 1100px;
-}
-
-.mysqlFlowScene {
-  position: relative;
-  min-width: 0;
-  align-self: stretch;
-  padding: 8px 4px;
-  border-radius: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.mysqlInnoScene {
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.mysqlInnoScene::before {
-  content: none;
-}
-
-.mysqlRequestScene {
-  display: flex;
-  align-items: center;
-  min-height: 290px;
-  padding-top: 10px;
-  padding-bottom: 10px;
-}
-
-.mysqlRequestPath {
-  position: relative;
-  display: grid;
-  grid-template-columns: minmax(120px, 1fr) 34px minmax(120px, 1fr) 34px minmax(120px, 1fr) 34px minmax(120px, 1fr);
-  gap: 12px;
-  align-items: center;
-  width: 100%;
-  height: 100%;
-  padding: 14px 16px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(249, 251, 255, 0.92) 0%, rgba(245, 248, 253, 0.9) 100%);
-  box-shadow: inset 0 0 0 1px rgba(226, 234, 244, 0.88);
-}
-
-.mysqlPathNode {
-  position: relative;
-  z-index: 1;
-  display: flex;
-  flex-direction: column;
-  justify-content: flex-start;
-  min-width: 0;
-  min-height: 252px;
-  padding: 18px 18px 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(235, 240, 246, 0.82);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.56) 0%, rgba(255, 255, 255, 0.34) 100%);
-  backdrop-filter: blur(8px);
-  box-shadow:
-    0 6px 16px rgba(30, 52, 88, 0.022),
-    0 1px 0 rgba(255, 255, 255, 0.62) inset;
-}
-
-.mysqlPathNode.flowNodeBlue,
-.mysqlPathNode.flowNodeIndigo,
-.mysqlPathNode.flowNodeGreen,
-.mysqlPathNode.flowNodeOrange,
-.mysqlPathNode.flowNodeRed {
-  border-color: rgba(229, 236, 244, 0.84);
-}
-
-.mysqlPathNodeEngine {
-  border-color: rgba(216, 228, 247, 0.9);
-  background: linear-gradient(180deg, rgba(248, 252, 255, 0.72) 0%, rgba(241, 248, 255, 0.56) 100%);
-  box-shadow:
-    0 8px 18px rgba(47, 107, 255, 0.04),
-    0 1px 0 rgba(255, 255, 255, 0.66) inset;
-}
-
-.mysqlNodeEyebrow {
-  margin-bottom: 10px;
-  color: #91a2b7;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.2;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  text-align: center;
-}
-
-.mysqlFlowConnector {
-  position: relative;
-  display: flex;
-  align-items: center;
-  min-width: 0;
-  height: 100%;
-  z-index: 2;
-}
-
-.mysqlFlowConnector span {
-  position: relative;
-  display: block;
-  width: 100%;
-  height: 2px;
-  border-radius: 999px;
-  background: #7fa6ed;
-}
-
-.mysqlFlowConnector span::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  border-top: 2px solid #7fa6ed;
-  border-right: 2px solid #7fa6ed;
-  transform: translateY(-50%) rotate(45deg);
-}
-
-.mysqlNodeTitle {
-  color: #1e3048;
-  font-size: 15px;
-  font-weight: 850;
-  line-height: 1.2;
-  text-align: center;
-  margin-bottom: 18px;
-}
-
-.mysqlNodeIcon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 50px;
-  height: 50px;
-  margin: 0 auto;
-  border-radius: 14px;
-  background: rgba(238, 244, 255, 0.72);
-  color: #2f6bff;
-  font-size: 24px;
-  box-shadow: inset 0 0 0 1px rgba(223, 233, 248, 0.72);
-}
-
-.mysqlPathNode .mysqlNodeIcon {
-  background: rgba(238, 244, 255, 0.72);
-  color: #2f6bff;
-}
-
-.mysqlNodeMetrics,
-.innodbMetricRows {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.mysqlPathNode .mysqlNodeMetrics {
-  margin-top: 34px;
-}
-
-.mysqlNodeMetric {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  color: #667b96;
-  font-size: 13px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.mysqlNodeMetric span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.mysqlNodeMetric strong {
-  color: #1f3047;
-  font-size: 14px;
-  font-weight: 850;
-  line-height: 1.2;
-  white-space: nowrap;
-}
-
-.mysqlPathNode .mysqlNodeMetric {
-  align-items: flex-start;
-}
-
-.mysqlPathNode .mysqlNodeMetric span {
-  flex: 1;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  line-height: 1.35;
-}
-
-.mysqlPathNode .mysqlNodeMetric strong {
-  flex-shrink: 0;
-  text-align: right;
-  padding-top: 1px;
-}
-
-.mysqlPathArrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 0;
-  color: #7b8da6;
-  position: relative;
-}
-
-.mysqlPathArrow span {
-  position: absolute;
-  left: -2px;
-  right: -2px;
-  height: 0;
-  border-top: 2px solid #7fa6ed;
-  border-radius: 999px;
-}
-
-.mysqlPathArrow :global(.anticon) {
-  position: relative;
-  z-index: 1;
-  width: 18px;
-  height: 18px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: #ffffff;
-  border: 0;
-  color: #4f7edb;
-  font-size: 17px;
-}
-
-.innodbBox {
-  position: relative;
-  min-width: 0;
-  min-height: 220px;
-  padding: 10px 2px 10px;
-  border-radius: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.innodbBoxTitle {
-  color: #1e3048;
-  font-size: 16px;
-  font-weight: 850;
-  line-height: 1.2;
-  text-align: center;
-  margin-bottom: 12px;
-}
-
-.innodbInner {
-  display: grid;
-  grid-template-columns: minmax(156px, 0.9fr) 38px minmax(156px, 0.85fr) 38px minmax(170px, 1fr);
-  gap: 12px;
-  align-items: stretch;
-  padding: 8px 0 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.innodbStage {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-  min-width: 0;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  box-shadow: none;
-}
-
-.innodbStageBuffer {
-  background: transparent;
-}
-
-.innodbStageLogs {
-  background: transparent;
-}
-
-.innodbStageDisk {
-  background: transparent;
-}
-
-.innodbBufferCard,
-.innodbLogCard,
-.innodbDiskCard {
-  position: relative;
-  min-width: 0;
-  overflow: hidden;
-  padding: 16px;
-  border-radius: 16px;
-  border: 1px solid rgba(226, 233, 242, 0.96);
-  background: rgba(255, 255, 255, 0.72);
-  box-shadow:
-    0 8px 20px rgba(30, 52, 88, 0.035),
-    inset 0 1px 0 rgba(255, 255, 255, 0.82);
-}
-
-.innodbBufferCard {
-  display: flex;
-  flex-direction: column;
-  min-height: 186px;
-  padding: 14px 14px 18px;
-  background:
-    radial-gradient(circle at 50% 18%, rgba(76, 141, 255, 0.06), transparent 32%),
-    linear-gradient(180deg, rgba(248, 251, 255, 0.76) 0%, rgba(255, 255, 255, 0.64) 100%);
-  border-color: rgba(220, 231, 245, 0.88);
-  box-shadow:
-    0 6px 16px rgba(47, 107, 255, 0.028),
-    0 1px 0 rgba(255, 255, 255, 0.74) inset;
-}
-
-.innodbBufferCard::before,
-.innodbLogCard::before,
-.innodbDiskCard::before {
-  content: '';
-  position: absolute;
-  inset: 0 0 auto 0;
-  height: 4px;
-  pointer-events: none;
-}
-
-.innodbBufferCard::before {
-  background: linear-gradient(90deg, #4c8dff 0%, #82b1ff 100%);
-}
-
-.innodbLogCard {
-  background: linear-gradient(180deg, rgba(255, 250, 244, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
-  border-color: rgba(245, 224, 198, 0.96);
-}
-
-.innodbLogCard::before {
-  background: linear-gradient(90deg, #ff9f43 0%, #ffd08a 100%);
-}
-
-.innodbDiskCard {
-  background: linear-gradient(180deg, rgba(247, 250, 255, 0.98) 0%, rgba(255, 255, 255, 0.92) 100%);
-  border-color: rgba(216, 226, 240, 0.94);
-}
-
-.innodbDiskCard::before {
-  background: linear-gradient(90deg, #5b8ff9 0%, #8fb5ff 100%);
-}
-
-.innodbBufferCard::after,
-.innodbLogCard::after,
-.innodbDiskCard::after {
-  content: none;
-}
-
-
-.innodbColumnTitle {
-  margin: 0 0 6px;
-  padding: 0 2px;
-  border: 0;
-  background: transparent;
-  color: #8a9bb0;
-  font-size: 10px;
-  font-weight: 800;
-  line-height: 1.2;
-  text-align: center;
-  letter-spacing: 0.12em;
-  text-transform: uppercase;
-  opacity: 0.9;
-}
-
-.innodbCardTitle {
-  margin: 0 0 14px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  box-shadow: none;
-  color: #1e3048;
-  font-size: 15px;
-  font-weight: 850;
-  text-align: center;
-  line-height: 1.2;
 }
 
 .metricGuideTooltip {
@@ -1074,828 +664,6 @@
   min-width: 0;
 }
 
-.innodbCardHint {
-  margin: -6px 0 12px;
-  color: #7b8da6;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.35;
-  text-align: center;
-}
-
-.innodbBufferGrid {
-  display: grid;
-  grid-template-columns: repeat(5, 13px);
-  justify-content: center;
-  gap: 7px;
-  width: fit-content;
-  margin: 8px auto 18px;
-  padding: 0;
-  border-radius: 0;
-  background: transparent;
-  border: 0;
-  box-shadow: none;
-}
-
-.innodbBufferLegend {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-wrap: wrap;
-  gap: 8px 14px;
-  margin: -2px 0 8px;
-  color: #7387a2;
-  font-size: 11px;
-  font-weight: 800;
-  line-height: 1.2;
-}
-
-.innodbBufferLegend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.bufferLegendSwatch {
-  width: 10px;
-  height: 10px;
-  border-radius: 3px;
-  flex-shrink: 0;
-}
-
-.bufferLegendUsed {
-  background: #69a8ff;
-  border: 1px solid #2f7dff;
-  box-shadow: 0 0 0 1px rgba(92, 148, 255, 0.1);
-}
-
-.bufferLegendDirty {
-  background: #ffbf73;
-  border: 1px solid #ff9f43;
-  box-shadow: 0 0 0 1px rgba(255, 159, 67, 0.08);
-}
-
-.bufferLegendFree {
-  background: #eef3f8;
-  border: 1px solid #cad7e6;
-}
-
-.innodbBufferCard .innodbMetricRows {
-  margin-top: 12px;
-  padding-top: 12px;
-  border-top: 1px solid rgba(225, 234, 244, 0.76);
-}
-
-.innodbFork {
-  position: relative;
-  align-self: stretch;
-  min-height: 112px;
-}
-
-.innodbForkMain {
-  display: none;
-}
-
-.innodbForkMain::after {
-  content: none;
-}
-
-.innodbForkTop,
-.innodbForkBottom,
-.innodbForkBottomDashed {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  border-radius: 999px;
-}
-
-.innodbForkTop::after,
-.innodbForkBottom::after,
-.innodbForkBottomDashed::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 8px;
-  height: 8px;
-  border-top: 2px solid currentColor;
-  border-right: 2px solid currentColor;
-  transform: translateY(-50%) rotate(45deg);
-}
-
-.innodbForkTop {
-  top: 35%;
-  background: currentColor;
-}
-
-.innodbForkBottom {
-  top: 74%;
-  background: currentColor;
-}
-
-.innodbForkBottomDashed {
-  top: 74%;
-  background: currentColor;
-}
-
-.innodbForkWrite .innodbForkTop {
-  color: #22b86f;
-}
-
-.innodbForkWrite .innodbForkBottom {
-  color: #f59e0b;
-}
-
-.innodbForkPersist .innodbForkTop {
-  color: #2f6bff;
-}
-
-.innodbForkPersist .innodbForkBottom,
-.innodbForkPersist .innodbForkBottomDashed {
-  color: #f59e0b;
-}
-
-.innodbLogCards,
-.innodbDiskStack {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  min-width: 0;
-}
-
-.innodbLogCard,
-.innodbDiskCard {
-  min-height: 82px;
-  text-align: left;
-}
-
-.innodbCardPrimary {
-  min-height: 118px;
-  padding-top: 18px;
-  padding-bottom: 18px;
-}
-
-.innodbCardSecondary {
-  min-height: 92px;
-  padding-top: 14px;
-  padding-bottom: 14px;
-  background: rgba(255, 255, 255, 0.66);
-  box-shadow:
-    0 5px 14px rgba(30, 52, 88, 0.026),
-    inset 0 1px 0 rgba(255, 255, 255, 0.78);
-}
-
-.innodbLogCards,
-.innodbDiskStack {
-  gap: 8px;
-}
-
-.innodbCardTitleRow {
-  display: flex;
-  align-items: center;
-  min-height: 22px;
-  margin-bottom: 12px;
-}
-
-.innodbCardSecondary .innodbCardTitleRow {
-  margin-bottom: 10px;
-}
-
-.innodbCardTitleWithGuide {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  color: #1e3048;
-  font-size: 12px;
-  font-weight: 850;
-  line-height: 1.25;
-  white-space: nowrap;
-}
-
-.innodbCardTitleWithGuide > span:first-child {
-  display: inline-flex;
-  align-items: center;
-}
-
-.innodbLogCard > .innodbCardTitleRow,
-.innodbDiskCard > .innodbCardTitleRow {
-  display: flex;
-  align-items: center;
-}
-
-.innodbLogCard > .innodbCardHint {
-  margin: -4px 0 14px;
-  text-align: left;
-}
-
-.innodbCardPrimary > .innodbCardHint {
-  max-width: 250px;
-}
-
-.innodbLogCard strong {
-  color: #1f3047;
-  display: block;
-  margin-bottom: 0;
-  font-size: 22px;
-  font-weight: 850;
-  line-height: 1.05;
-  letter-spacing: -0.01em;
-}
-
-.innodbLogCard .mysqlNodeMetric,
-.innodbDiskCard .mysqlNodeMetric {
-  padding: 10px 0 0;
-  border-top: 1px solid rgba(213, 223, 237, 0.72);
-}
-
-.innodbCardSecondary .mysqlNodeMetric {
-  padding-top: 8px;
-}
-
-.innodbLogCard .mysqlNodeMetric:first-of-type {
-  padding-top: 0;
-  border-top: 0;
-}
-
-.innodbLogCard .mysqlNodeMetric + .mysqlNodeMetric {
-  margin-top: 10px;
-}
-
-.innodbLogCard .mysqlNodeMetric span,
-.innodbDiskCard .mysqlNodeMetric span {
-  color: #70839b;
-  font-size: 12px;
-  font-weight: 800;
-  margin-bottom: 0;
-}
-
-.innodbLogCard .mysqlNodeMetric strong,
-.innodbDiskCard .mysqlNodeMetric strong {
-  font-size: 15px;
-  margin-bottom: 0;
-}
-
-
-.mysqlFlowLegend {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 14px 18px;
-  margin-top: 12px;
-  color: #6f8199;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1;
-}
-
-.mysqlFlowLegendInno {
-  justify-content: flex-end;
-  margin: -22px 4px 20px 0;
-}
-
-.mysqlFlowLegend span {
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
-  gap: 8px;
-}
-
-.mysqlFlowLegend i {
-  display: inline-block;
-  position: relative;
-  width: 30px;
-  height: 14px;
-  color: #7fa6ed;
-  border-top: 0;
-  border-radius: 999px;
-}
-
-.mysqlFlowLegend i::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 1px;
-  top: 50%;
-  height: 2px;
-  border-radius: 999px;
-  background: currentColor;
-  transform: translateY(-50%);
-}
-
-.mysqlFlowLegend i::after {
-  content: '';
-  position: absolute;
-  right: -1px;
-  top: 50%;
-  width: 7px;
-  height: 7px;
-  transform: translateY(-50%) rotate(45deg);
-  border-top: 2px solid currentColor;
-  border-right: 2px solid currentColor;
-}
-
-.mysqlFlowLegend i.mysqlLegendRequest {
-  color: #7fa6ed;
-}
-
-.mysqlFlowLegend i.mysqlLegendWrite {
-  color: #22b86f;
-}
-
-.mysqlFlowLegend i.mysqlLegendBackground {
-  color: #f59e0b;
-}
-
-.mysqlFlowLegend i.mysqlLegendPersist {
-  color: #2f6bff;
-}
-
-.dataFlow {
-  display: grid;
-  grid-template-columns: repeat(6, minmax(0, 1fr));
-  gap: 10px;
-  align-items: stretch;
-}
-
-.flowCanvas {
-  position: relative;
-  min-height: 388px;
-  padding: 18px;
-  border-radius: 14px;
-  background:
-    linear-gradient(90deg, rgba(47, 107, 255, 0.045) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(47, 107, 255, 0.04) 1px, transparent 1px),
-    radial-gradient(circle at 18% 18%, rgba(47, 107, 255, 0.09), transparent 28%),
-    linear-gradient(180deg, #fbfdff 0%, #ffffff 100%);
-  background-size: 44px 44px, 44px 44px, 100% 100%, 100% 100%;
-  border: 1px solid #e5edf7;
-  overflow: hidden;
-}
-
-.flowMainRail {
-  position: absolute;
-  left: 52px;
-  right: 52px;
-  top: 99px;
-  height: 3px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(47, 107, 255, 0.18), rgba(32, 166, 90, 0.22), rgba(250, 140, 22, 0.28));
-}
-
-.flowPulse {
-  position: absolute;
-  top: -5px;
-  left: 0;
-  width: 13px;
-  height: 13px;
-  border-radius: 999px;
-  background: #2f6bff;
-  box-shadow: 0 0 0 6px rgba(47, 107, 255, 0.12), 0 0 18px rgba(47, 107, 255, 0.42);
-  animation: mysqlFlowPulse 5.8s linear infinite;
-}
-
-.flowPulseDelay {
-  animation-delay: -2.9s;
-  background: #20a65a;
-  box-shadow: 0 0 0 6px rgba(32, 166, 90, 0.12), 0 0 18px rgba(32, 166, 90, 0.36);
-}
-
-.flowPipeline {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 26px;
-  margin-bottom: 22px;
-}
-
-.flowStage,
-.flowEngineBox {
-  position: relative;
-  min-width: 0;
-  padding: 14px;
-  border-radius: 13px;
-  border: 1px solid #dce6f3;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 10px 24px rgba(30, 52, 88, 0.06);
-  backdrop-filter: blur(8px);
-}
-
-.flowStage {
-  min-height: 164px;
-}
-
-.flowStageHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  margin-bottom: 13px;
-}
-
-.flowStageArrow {
-  position: absolute;
-  z-index: 3;
-  top: 62px;
-  right: -25px;
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  color: #6f95d8;
-  background: #ffffff;
-  border: 1px solid #d8e5f6;
-  box-shadow: 0 5px 14px rgba(27, 55, 99, 0.1);
-}
-
-.flowEngineLayer {
-  position: relative;
-  z-index: 1;
-  display: grid;
-  grid-template-columns: minmax(260px, 1.15fr) minmax(90px, 0.35fr) minmax(190px, 0.75fr) minmax(260px, 1fr);
-  gap: 16px;
-  align-items: stretch;
-}
-
-.flowEngineBox {
-  min-height: 168px;
-}
-
-.flowBufferBox {
-  border-color: #ccefdc;
-}
-
-.flowDiskBox {
-  border-color: #ffd0d0;
-}
-
-.bufferCellGrid {
-  display: grid;
-  grid-template-columns: repeat(5, 12px);
-  gap: 7px;
-  margin: 5px 0 14px;
-}
-
-.bufferCell {
-  width: 12px;
-  height: 12px;
-  border-radius: 3px;
-  background: #e8eef7;
-  border: 1px solid #cbd8e9;
-}
-
-.bufferCellUsed {
-  background: #71b7ff;
-  border-color: #3d8dff;
-  box-shadow: 0 0 0 3px rgba(61, 141, 255, 0.08);
-}
-
-.bufferCellDirty {
-  background: #ffb86b;
-  border-color: #fa8c16;
-  box-shadow: 0 0 0 3px rgba(250, 140, 22, 0.1);
-}
-
-.flowBranch {
-  position: relative;
-  min-height: 168px;
-}
-
-.flowBranchLine {
-  position: absolute;
-  top: 54px;
-  left: 8px;
-  right: 8px;
-  height: 70px;
-  border-top: 2px solid rgba(47, 107, 255, 0.34);
-  border-right: 2px solid rgba(47, 107, 255, 0.34);
-  border-bottom: 2px dashed rgba(250, 140, 22, 0.42);
-  border-radius: 0 14px 14px 0;
-}
-
-.flowBranchDot {
-  position: absolute;
-  top: 48px;
-  left: 8px;
-  width: 10px;
-  height: 10px;
-  border-radius: 999px;
-  background: #2f6bff;
-  box-shadow: 0 0 0 5px rgba(47, 107, 255, 0.12);
-  animation: mysqlBranchPulse 3.6s ease-in-out infinite;
-}
-
-.flowBranchDotDelay {
-  top: 118px;
-  background: #fa8c16;
-  box-shadow: 0 0 0 5px rgba(250, 140, 22, 0.12);
-  animation-delay: -1.8s;
-}
-
-.flowLogStack {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 12px;
-  min-width: 0;
-}
-
-.flowLogCard {
-  min-height: 64px;
-  padding: 12px 14px;
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.9);
-  border: 1px solid #dbe6f3;
-  box-shadow: 0 8px 20px rgba(30, 52, 88, 0.05);
-}
-
-.flowLogCard span {
-  display: block;
-  color: #6c8099;
-  font-size: 12px;
-  font-weight: 800;
-  line-height: 1.2;
-  margin-bottom: 8px;
-}
-
-.flowLogCard strong {
-  color: #1f3047;
-  font-size: 15px;
-  font-weight: 850;
-  line-height: 1.2;
-}
-
-.flowNode {
-  position: relative;
-  min-width: 0;
-  min-height: 178px;
-  padding: 14px;
-  border-radius: 12px;
-  border: 1px solid #dce6f3;
-  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
-  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.55);
-}
-
-.flowNodeLinked {
-  overflow: visible;
-}
-
-.flowNodeHeader {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-width: 0;
-  margin-bottom: 14px;
-}
-
-.flowNodeIcon {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 34px;
-  height: 34px;
-  border-radius: 10px;
-  flex-shrink: 0;
-  font-size: 17px;
-  background: #eef4ff;
-  color: #2f6bff;
-}
-
-.flowNodeText {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  min-width: 0;
-}
-
-.flowNodeTitle {
-  color: #1e3048;
-  font-size: 14px;
-  font-weight: 800;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.flowNodeSubTitle {
-  color: #8091a8;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-.flowMetricList {
-  display: flex;
-  flex-direction: column;
-  gap: 9px;
-}
-
-.flowMetric {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-  min-width: 0;
-  color: #6b7f99;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.flowMetric span {
-  min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.flowMetric strong {
-  color: #1f3047;
-  font-size: 13px;
-  font-weight: 850;
-  line-height: 1.2;
-  text-align: right;
-  white-space: nowrap;
-}
-
-.flowNodeArrow {
-  position: absolute;
-  z-index: 3;
-  top: 50%;
-  right: -18px;
-  transform: translateY(-50%);
-  width: 24px;
-  height: 24px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid #dce6f3;
-  color: #6f95d8;
-  box-shadow: 0 5px 14px rgba(27, 55, 99, 0.1);
-  pointer-events: none;
-}
-
-.flowArrow {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: #8aa4c8;
-  min-width: 0;
-  position: relative;
-}
-
-.flowArrow span {
-  position: absolute;
-  left: 0;
-  right: 0;
-  height: 2px;
-  border-radius: 999px;
-  background: linear-gradient(90deg, rgba(47, 107, 255, 0.15), rgba(47, 107, 255, 0.55));
-}
-
-.flowArrow :global(.anticon) {
-  position: relative;
-  z-index: 1;
-  width: 22px;
-  height: 22px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 999px;
-  background: #ffffff;
-  border: 1px solid #dce6f3;
-  box-shadow: 0 4px 12px rgba(27, 55, 99, 0.08);
-}
-
-.flowNodeBlue {
-  border-color: #cfe0ff;
-}
-
-.flowNodeBlue .flowNodeIcon {
-  background: #eef4ff;
-  color: #2f6bff;
-}
-
-.flowNodeIndigo {
-  border-color: #dcdcff;
-}
-
-.flowNodeIndigo .flowNodeIcon {
-  background: #f0f0ff;
-  color: #5b5bd6;
-}
-
-.flowNodeGreen {
-  border-color: #ccefdc;
-}
-
-.flowNodeGreen .flowNodeIcon {
-  background: #ecfbf2;
-  color: #20a65a;
-}
-
-.flowNodeOrange {
-  border-color: #ffe1ba;
-}
-
-.flowNodeOrange .flowNodeIcon {
-  background: #fff6e8;
-  color: #fa8c16;
-}
-
-.flowNodeRed {
-  border-color: #ffd0d0;
-}
-
-.flowNodeRed .flowNodeIcon {
-  background: #fff0f0;
-  color: #ff4d4f;
-}
-
-.dataFlowLegend {
-  display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 18px;
-  margin-top: 14px;
-  color: #6f8199;
-  font-size: 12px;
-  font-weight: 700;
-  line-height: 1.2;
-}
-
-.dataFlowLegend span {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.dataFlowLegend i {
-  display: inline-block;
-  width: 30px;
-  height: 0;
-  border-radius: 999px;
-}
-
-.flowLegendRequest {
-  border-top: 2px solid #2f6bff;
-}
-
-.flowLegendWrite {
-  border-top: 2px solid #20a65a;
-}
-
-.flowLegendBackground {
-  border-top: 2px dashed #8aa0bc;
-}
-
-.flowLegendPersist {
-  border-top: 2px solid #667b96;
-}
-
-@keyframes mysqlFlowPulse {
-  0% {
-    left: 0;
-    transform: scale(0.86);
-    opacity: 0;
-  }
-
-  8% {
-    opacity: 1;
-  }
-
-  92% {
-    opacity: 1;
-  }
-
-  100% {
-    left: calc(100% - 13px);
-    transform: scale(1);
-    opacity: 0;
-  }
-}
-
-@keyframes mysqlBranchPulse {
-  0%, 100% {
-    transform: translateX(0);
-    opacity: 0.32;
-  }
-
-  50% {
-    transform: translateX(56px);
-    opacity: 1;
-  }
-}
-
 .panelHeader {
   display: flex;
   align-items: flex-start;
@@ -1927,7 +695,7 @@
 .fillPanel {
   display: flex;
   flex-direction: column;
-  min-height: 280px;
+  min-height: 224px;
 }
 
 .fillBody {
@@ -2029,7 +797,7 @@
 }
 
 .chartWrap {
-  height: 206px;
+  height: 164px;
   border-radius: 12px;
   overflow: hidden;
 }
@@ -2131,10 +899,6 @@
   line-height: 1.2;
   white-space: nowrap;
   font-variant-numeric: tabular-nums;
-}
-
-.replicationSummary {
-  display: block;
 }
 
 .replicationCard {
@@ -2291,6 +1055,44 @@
   font-size: 13px;
   font-weight: 700;
   line-height: 1.3;
+}
+
+// 复制线程与配置:紧凑的「标签 → 值」清单,5 行均分卡片高度,左右铺满,消除空白。
+.replicationKvList {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  min-height: 0;
+}
+
+.replicationKvRow {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 2px;
+  border-bottom: 1px solid #eef2f7;
+}
+
+.replicationKvRow:last-child {
+  border-bottom: none;
+}
+
+.replicationKvLabel {
+  color: #5a6b82;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+:global(html.dark) .replicationKvRow {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .replicationKvLabel {
+  color: rgba(255, 255, 255, 0.6);
 }
 
 .replicationChartWrap {
@@ -2634,12 +1436,6 @@
   white-space: nowrap;
 }
 
-.replicationHint {
-  color: #a7b5c4;
-  font-size: 12px;
-  line-height: 1.4;
-}
-
 .errorList {
   display: flex;
   flex-direction: column;
@@ -2690,20 +1486,6 @@
   line-height: 1.3;
 }
 
-.errorStackBar {
-  display: flex;
-  width: 100%;
-  height: 10px;
-  overflow: hidden;
-  border-radius: 999px;
-  background: #edf3fb;
-}
-
-.errorStackSegment {
-  height: 100%;
-  transition: width 0.2s ease;
-}
-
 .errorRow {
   display: flex;
   align-items: center;
@@ -2747,13 +1529,6 @@
   white-space: nowrap;
 }
 
-.metricSections {
-  display: flex;
-  flex-direction: column;
-  gap: 22px;
-  width: 100%;
-}
-
 .metricSection {
   display: flex;
   flex-direction: column;
@@ -2767,13 +1542,6 @@
   padding-left: 12px;
   border-left: 3px solid #2f6bff;
   line-height: 1.3;
-}
-
-.allMetricsGrid {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 16px;
-  align-items: stretch;
 }
 
 .miniMetricCard {
@@ -2892,7 +1660,6 @@
 :global(html.dark) .statUnit,
 :global(html.dark) .ringCaption,
 :global(html.dark) .metricCount,
-:global(html.dark) .replicationHint,
 :global(html.dark) .errorOverviewLabel,
 :global(html.dark) .errorOverviewHint,
 :global(html.dark) .instanceMetaMuted,
@@ -3026,137 +1793,6 @@
   color: #9abfff;
 }
 
-:global(html.dark) .flowNode {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-}
-
-:global(html.dark) .flowCanvas {
-  background:
-    linear-gradient(90deg, rgba(127, 176, 255, 0.055) 1px, transparent 1px),
-    linear-gradient(180deg, rgba(127, 176, 255, 0.045) 1px, transparent 1px),
-    radial-gradient(circle at 18% 18%, rgba(47, 107, 255, 0.15), transparent 28%),
-    linear-gradient(180deg, rgba(15, 25, 38, 0.86) 0%, rgba(10, 17, 27, 0.86) 100%);
-  border-color: rgba(255, 255, 255, 0.08);
-}
-
-:global(html.dark) .mysqlPathNode,
-:global(html.dark) .innodbBox,
-:global(html.dark) .mysqlFlowScene {
-  background: rgba(255, 255, 255, 0.055);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-}
-
-:global(html.dark) .innodbBufferCard {
-  background:
-    radial-gradient(circle at 14% 16%, rgba(47, 107, 255, 0.2), transparent 32%),
-    linear-gradient(180deg, rgba(16, 28, 44, 0.98) 0%, rgba(12, 22, 35, 0.98) 40%, rgba(10, 20, 32, 0.98) 100%);
-  border-color: rgba(92, 144, 255, 0.22);
-}
-
-:global(html.dark) .innodbLogCard {
-  background:
-    linear-gradient(180deg, rgba(31, 42, 56, 0.92) 0%, rgba(17, 28, 42, 0.94) 100%),
-    radial-gradient(circle at 14% 12%, rgba(245, 158, 11, 0.14), transparent 42%);
-  border-color: rgba(245, 158, 11, 0.28);
-}
-
-:global(html.dark) .innodbDiskCard {
-  background:
-    linear-gradient(180deg, rgba(29, 40, 55, 0.92) 0%, rgba(17, 27, 40, 0.94) 100%),
-    radial-gradient(circle at 14% 12%, rgba(47, 107, 255, 0.12), transparent 44%);
-  border-color: rgba(80, 134, 255, 0.24);
-}
-
-:global(html.dark) .innodbCardSecondary {
-  background:
-    linear-gradient(180deg, rgba(24, 35, 49, 0.9) 0%, rgba(16, 26, 38, 0.92) 100%);
-  box-shadow: none;
-}
-
-:global(html.dark) .innodbBufferCard::before,
-:global(html.dark) .innodbLogCard::before,
-:global(html.dark) .innodbDiskCard::before {
-  border-bottom-color: rgba(255, 255, 255, 0.08);
-}
-
-:global(html.dark) .mysqlNodeTitle,
-:global(html.dark) .innodbBoxTitle,
-:global(html.dark) .innodbCardTitle,
-:global(html.dark) .innodbCardTitleWithGuide,
-:global(html.dark) .mysqlNodeMetric strong,
-:global(html.dark) .innodbLogCard strong,
-:global(html.dark) .innodbCardTitleRow {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-:global(html.dark) .innodbLogCard .mysqlNodeMetric,
-:global(html.dark) .innodbDiskCard .mysqlNodeMetric {
-  border-top-color: rgba(255, 255, 255, 0.08);
-}
-
-:global(html.dark) .mysqlNodeMetric,
-:global(html.dark) .innodbColumnTitle,
-:global(html.dark) .mysqlFlowLegend {
-  color: rgba(255, 255, 255, 0.56);
-}
-
-:global(html.dark) .innodbColumnTitle {
-  background: transparent;
-  border-color: transparent;
-  color: rgba(220, 232, 248, 0.7);
-}
-
-:global(html.dark) .innodbCardTitle,
-:global(html.dark) .innodbCardTitleRow,
-:global(html.dark) .innodbCardTitleWithGuide,
-:global(html.dark) .innodbMetricRows {
-  background: transparent;
-  border-color: transparent;
-  box-shadow: none;
-}
-
-:global(html.dark) .innodbBufferCard::after {
-  content: none;
-}
-
-:global(html.dark) .innodbLogCard::after {
-  content: none;
-}
-
-:global(html.dark) .innodbDiskCard::after {
-  content: none;
-}
-
-:global(html.dark) .flowStage,
-:global(html.dark) .flowEngineBox,
-:global(html.dark) .flowLogCard {
-  background: rgba(255, 255, 255, 0.055);
-  border-color: rgba(255, 255, 255, 0.1);
-  box-shadow: none;
-}
-
-:global(html.dark) .flowNodeTitle,
-:global(html.dark) .flowMetric strong,
-:global(html.dark) .flowLogCard strong {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-:global(html.dark) .flowNodeSubTitle,
-:global(html.dark) .flowMetric,
-:global(html.dark) .dataFlowLegend,
-:global(html.dark) .flowLogCard span {
-  color: rgba(255, 255, 255, 0.54);
-}
-
-:global(html.dark) .flowArrow :global(.anticon),
-:global(html.dark) .flowNodeArrow {
-  background: #142033;
-  border-color: rgba(255, 255, 255, 0.12);
-}
-
 :global(html.dark) .metricBadge {
   background: rgba(47, 107, 255, 0.12);
   border-color: rgba(80, 134, 255, 0.2);
@@ -3164,7 +1800,6 @@
 }
 
 :global(html.dark) .barTrack,
-:global(html.dark) .errorStackBar,
 :global(html.dark) .collectionStatusSegmentEmpty {
   background: rgba(255, 255, 255, 0.08);
 }
@@ -3254,76 +1889,11 @@
   border-color: rgba(255, 255, 255, 0.08);
 }
 
-.fullMetricChart {
-  height: 138px;
-  min-height: 138px;
-  margin-top: 4px;
-  border-radius: 14px;
-  overflow: hidden;
-  flex: 1;
-}
-
 .empty {
   padding: 60px 0;
 }
 
 @media (max-width: 1600px) {
-  .thirdChartPanel {
-    grid-column: span 12;
-  }
-
-  .quarterPanel {
-    grid-column: span 6;
-  }
-
-  .halfPanel {
-    grid-column: span 4;
-  }
-
-  .widePanel {
-    grid-column: span 8;
-  }
-
-  .allMetricsGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dataFlow {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .mysqlFlowModel {
-    grid-template-columns: 1fr;
-  }
-
-  .mysqlRequestPath {
-    grid-template-columns: minmax(150px, 1fr) 34px minmax(150px, 1fr) 34px minmax(150px, 1fr) 34px minmax(150px, 1fr);
-  }
-
-  .innodbInner {
-    grid-template-columns: minmax(0, 0.9fr) 38px minmax(0, 0.85fr) 38px minmax(0, 1fr);
-  }
-
-  .mysqlPathNode {
-    min-height: 252px;
-  }
-
-  .flowPipeline {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .flowStageArrow {
-    display: none;
-  }
-
-  .flowEngineLayer {
-    grid-template-columns: minmax(260px, 1fr) minmax(80px, 0.32fr) minmax(190px, 0.8fr) minmax(260px, 1fr);
-  }
-
-  .flowNodeArrow {
-    display: none;
-  }
-
   .panelTitle {
     font-size: 15px;
   }
@@ -3331,93 +1901,8 @@
 }
 
 @media (max-width: 1200px) {
-  .chartPanel,
-  .thirdChartPanel,
-  .quarterPanel,
-  .halfPanel,
-  .widePanel,
   .fullPanel {
     grid-column: span 12;
-  }
-
-  .allMetricsGrid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .dataFlow {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-snap-type: x proximity;
-  }
-
-  .mysqlRequestPath,
-  .innodbInner {
-    display: flex;
-    overflow-x: auto;
-    width: 100%;
-    padding-bottom: 4px;
-    scroll-snap-type: x proximity;
-  }
-
-  .mysqlRequestPath {
-    min-width: 1100px;
-  }
-
-  .mysqlPathNode,
-  .innodbBufferCard,
-  .innodbLogCards,
-  .innodbDiskStack {
-    flex: 0 0 220px;
-    scroll-snap-align: start;
-  }
-
-  .mysqlPathArrow,
-  .innodbFork {
-    flex: 0 0 34px;
-  }
-
-  .flowCanvas {
-    min-height: auto;
-  }
-
-  .flowMainRail {
-    display: none;
-  }
-
-  .flowPipeline,
-  .flowEngineLayer {
-    display: flex;
-    overflow-x: auto;
-    padding-bottom: 4px;
-    scroll-snap-type: x proximity;
-  }
-
-  .flowStage,
-  .flowEngineBox {
-    flex: 0 0 240px;
-    scroll-snap-align: start;
-  }
-
-  .flowBranch {
-    flex: 0 0 84px;
-  }
-
-  .flowLogStack {
-    flex: 0 0 210px;
-  }
-
-  .flowNode {
-    flex: 0 0 220px;
-    scroll-snap-align: start;
-  }
-
-  .flowNodeArrow {
-    display: inline-flex;
-  }
-
-  .flowArrow {
-    flex: 0 0 34px;
   }
 
   .inlineStats {
@@ -3588,17 +2073,9 @@
   .instanceMetaDivider {
     display: none;
   }
-
-  .dataFlowLegend {
-    gap: 10px;
-  }
 }
 
 @media (max-width: 480px) {
-  .allMetricsGrid {
-    grid-template-columns: 1fr;
-  }
-
   .chartWrap,
   .compactChartWrap,
   .replicationChartWrap {

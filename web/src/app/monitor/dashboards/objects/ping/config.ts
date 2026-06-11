@@ -105,6 +105,16 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [],
       footer: [{ label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }],
+    },
+    {
+      title: '平均 TTL',
+      metric: 'ping_ttl_avg',
+      unit: 'counts',
+      color: '#597ef7',
+      icon: 'api',
+      compare: true,
+      guide: [{ label: '平均 TTL', detail: '回包剩余 TTL(路由跳数计数);数值突变常意味路由路径改变。' }],
+      footer: [{ label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }]
     }
   ],
   charts: [
@@ -151,11 +161,11 @@ export const PING_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   barPanels: [],
   details: [
     {
-      title: '网络探测详情',
-      subtitle: 'TTL 与丢包',
+      title: '探测质量细节',
+      subtitle: '延迟下界与失败结果码',
       rows: [
-        { label: '平均丢包率', metric: 'ping_packet_loss_avg', unit: 'percent', tone: 'warning' },
-        { label: '平均 TTL', metric: 'ping_ttl_avg', unit: 'counts' }
+        { label: '最小延迟', metric: 'ping_latency_min', unit: 'ms' },
+        { label: '最差结果码', metric: 'ping_result_code_max', unit: 'none' }
       ]
     }
   ]

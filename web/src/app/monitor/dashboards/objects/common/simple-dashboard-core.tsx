@@ -22,7 +22,8 @@ import {
   toMetricSeries,
   buildMetricItem,
   getCollectionStatus,
-  buildCollectionStatusTimeline
+  buildCollectionStatusTimeline,
+  useLoadSequence
 } from '../../shared/utils';
 import {
   CompareFavorableDirection,
@@ -242,7 +243,7 @@ export interface PreparedDetailPanel {
 
 const METRIC_QUERY_CONCURRENCY = 4;
 
-const countRestartsInRange = (data: ChartData[] = []): number => {
+export const countRestartsInRange = (data: ChartData[] = []): number => {
   const points = data
     .map((point) => ({ time: Number(point.time), value: Number(point.value1 ?? 0) }))
     .filter((p) => Number.isFinite(p.time) && Number.isFinite(p.value) && p.value >= 0)
@@ -326,7 +327,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
   const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
-  const loadSeqRef = useRef(0);
+  // 每次 loadMetrics(含静默自动刷新)递增,供 bespoke 取数面板(如 ES/PG 的 TopN)
+  // 与核心盘同步刷新——核心盘重载即 bespoke 面板重载,而非各自维护定时器。
+  const [loadTick, setLoadTick] = useState(0);
+  const loadSequence = useLoadSequence();
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || config.objectFallbackName;
@@ -438,8 +442,8 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   );
 
   const loadMetrics = useCallback(async (silent = false) => {
-    const loadSeq = loadSeqRef.current + 1;
-    loadSeqRef.current = loadSeq;
+    const loadSeq = loadSequence.begin();
+    setLoadTick((value) => value + 1);
 
     if (!silent) setLoading(true);
     try {
@@ -502,7 +506,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         }
 
         previousMetricResultsPromise.then((previousResults) => {
-          if (loadSeqRef.current !== loadSeq) return;
+          if (!loadSequence.isCurrent(loadSeq)) return;
           setPreviousSeries(Object.fromEntries(previousResults));
         });
 
@@ -512,7 +516,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           collectionStatusPromise
         ]);
 
-        if (loadSeqRef.current !== loadSeq) return;
+        if (!loadSequence.isCurrent(loadSeq)) return;
 
         setSeries((prev) => (silent ? { ...prev, ...Object.fromEntries(summaryResults) } : Object.fromEntries(summaryResults)));
         setCollectionStatusMetric(collectionStatus);
@@ -522,7 +526,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         if (trendMetrics.length > 0) {
           runWithConcurrency(trendMetrics, METRIC_QUERY_CONCURRENCY, (metric) => loadSingleMetric(metric, timeValues))
             .then((trendResults) => {
-              if (loadSeqRef.current !== loadSeq) return;
+              if (!loadSequence.isCurrent(loadSeq)) return;
               setSeries((prev) => ({ ...prev, ...Object.fromEntries(trendResults) }));
             });
         }
@@ -533,9 +537,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         if (!silent) setLoading(false);
       }
     } catch {
-      if (loadSeqRef.current === loadSeq && !silent) setLoading(false);
+      if (loadSequence.isCurrent(loadSeq) && !silent) setLoading(false);
     }
-  }, [config, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues]);
+  }, [config, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSequence, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues]);
 
   useEffect(() => {
     if (displayMode === 'dashboard') {
@@ -745,12 +749,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           const statusColor = row.enumMap && hasMetricData(row.metric) ? formatMappedEnum(latest, row.enumMap).color : undefined;
           // sparkline 语义色:取该指标 config.color,使详情行缩略图与 KPI/趋势/异常信号条配色一致。
           const color = config.metrics.find((m) => m.name === row.metric)?.color;
+          // barValue 是「满度条」填充百分比,仅对 percent 单位有意义。其他单位(bytes/counts/rate 等)
+          // 的原始量级裁到 0–100 会得到误导性的满格条,故非百分比一律给 0。
+          const barValue =
+            row.unit === 'percent' && Number.isFinite(latest) ? Math.max(0, Math.min(100, latest)) : 0;
           return {
             label: row.label,
             value,
             viz,
             trend: series,
-            barValue: Number.isFinite(latest) ? Math.max(0, Math.min(100, latest)) : 0,
+            barValue,
             tone: row.tone ?? 'normal',
             statusColor,
             color
@@ -811,6 +819,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     frequence,
     setFrequence,
     metricsRefreshSignal,
+    loadTick,
     monitorObjectId,
     monitorObjectName,
     instanceId,

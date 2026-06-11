@@ -261,6 +261,148 @@ def test_effective_plugins_service_deduplicates_configured_reported_plugin(db, m
     assert by_name["HostRemote"]["collect_mode"] == "auto"
 
 
+def test_primary_object_plugin_list_keeps_builtin_plugins_distinct_by_plugin_id(db, monkeypatch):
+    from apps.monitor.constants.plugin import PluginConstants
+    from apps.monitor.services import monitor_instance
+
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object=monitor_object,
+    )
+    remote_plugin = MonitorPlugin.objects.create(
+        name="Host Remote",
+        display_name="Host Remote",
+        template_id="host",
+        template_type="builtin",
+        collector="Telegraf",
+        collect_type="http",
+        status_query="any({config_type='host'}) by (instance_id)",
+        is_pre=True,
+    )
+    remote_plugin.monitor_object.add(monitor_object)
+    windows_plugin = MonitorPlugin.objects.create(
+        name="Windows WMI",
+        display_name="Windows WMI",
+        template_id="windows_wmi",
+        template_type="builtin",
+        collector="Telegraf",
+        collect_type="http",
+        status_query="any({config_type='windows_wmi'}) by (instance_id)",
+        is_pre=True,
+    )
+    windows_plugin.monitor_object.add(monitor_object)
+    CollectConfig.objects.create(
+        id="windows-wmi-cfg",
+        monitor_instance=instance,
+        monitor_plugin=windows_plugin,
+        collector="Telegraf",
+        collect_type="http",
+        config_type="windows_wmi",
+        file_type="toml",
+        is_child=True,
+    )
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            if "config_type='host'" in query:
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = monitor_instance.InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 10},
+        qs=MonitorInstance.objects.all(),
+        locale="zh-Hans",
+    ).search_by_primary_object()
+
+    plugins = result["results"][0]["plugins"]
+    by_name = {item["name"]: item for item in plugins}
+
+    assert set(by_name) == {"Host Remote", "Windows WMI"}
+    assert by_name["Host Remote"]["status"] == PluginConstants.STATUS_NORMAL
+    assert by_name["Host Remote"]["collect_mode"] == PluginConstants.COLLECT_MODE_MANUAL
+    assert by_name["Windows WMI"]["status"] == PluginConstants.STATUS_OFFLINE
+    assert by_name["Windows WMI"]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
+
+
+def test_primary_object_plugin_list_shows_configured_host_remote_not_wmi(db, monkeypatch):
+    from apps.monitor.constants.plugin import PluginConstants
+    from apps.monitor.services import monitor_instance
+
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object=monitor_object,
+    )
+    remote_plugin = MonitorPlugin.objects.create(
+        name="Host Remote",
+        display_name="Host Remote",
+        template_id="host",
+        template_type="builtin",
+        collector="Telegraf",
+        collect_type="http",
+        status_query="any({config_type='host'}) by (instance_id)",
+        is_pre=True,
+    )
+    remote_plugin.monitor_object.add(monitor_object)
+    windows_plugin = MonitorPlugin.objects.create(
+        name="Windows WMI",
+        display_name="Windows WMI",
+        template_id="windows_wmi",
+        template_type="builtin",
+        collector="Telegraf",
+        collect_type="http",
+        status_query="any({config_type='windows_wmi'}) by (instance_id)",
+        is_pre=True,
+    )
+    windows_plugin.monitor_object.add(monitor_object)
+    CollectConfig.objects.create(
+        id="host-remote-cfg",
+        monitor_instance=instance,
+        monitor_plugin=remote_plugin,
+        collector="Telegraf",
+        collect_type="http",
+        config_type="host",
+        file_type="toml",
+        is_child=True,
+    )
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            if "config_type='host'" in query:
+                return {"data": {"result": [{"metric": {"instance_id": "host-a"}, "value": [100, "1"]}]}}
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = monitor_instance.InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 10},
+        qs=MonitorInstance.objects.all(),
+        locale="zh-Hans",
+    ).search_by_primary_object()
+
+    plugins = result["results"][0]["plugins"]
+
+    assert len(plugins) == 1
+    assert plugins[0]["name"] == "Host Remote"
+    assert plugins[0]["status"] == PluginConstants.STATUS_NORMAL
+    assert plugins[0]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
+
+
 def test_effective_plugins_action_returns_service_data(monkeypatch):
     service_calls = {}
     expected = [{"id": 12, "name": "HostRemote"}]

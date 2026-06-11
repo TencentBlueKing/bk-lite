@@ -3,6 +3,7 @@ import datetime
 import hashlib
 import json
 import logging
+import os
 import time
 import uuid
 
@@ -43,6 +44,40 @@ from common.cmp.cloud_apis.resource_apis.utils import check_required_params, fai
 from common.cmp.models import AccountConfig
 
 logger = logging.getLogger("root")
+
+
+def _resolve_verify_ssl():
+    """解析 FusionCompute 请求的 TLS 校验配置（BL-NEW-004）。
+
+    默认开启证书校验（安全默认）。私有化 FusionCompute 常使用自签名证书，可通过：
+    - ``FUSIONCOMPUTE_CA_BUNDLE``：指定可信 CA 证书包路径（推荐，仍校验证书链/主机名）；
+    - ``FUSIONCOMPUTE_VERIFY_SSL=false``：显式关闭校验（仅限受控内网，应急用）。
+    """
+    ca_bundle = os.getenv("FUSIONCOMPUTE_CA_BUNDLE")
+    if ca_bundle:
+        return ca_bundle
+    flag = os.getenv("FUSIONCOMPUTE_VERIFY_SSL", "true").strip().lower()
+    return flag not in ("false", "0", "no", "off")
+
+
+# 统一的 TLS 校验取值，替换历史上散落的「不校验证书」写法，消除中间人篡改/凭据窃取风险。
+VERIFY_SSL = _resolve_verify_ssl()
+
+
+def _safe_error_desc(resp):
+    """安全解析 FusionCompute 错误响应体的 errorDes 字段（BL-NEW-004）。
+
+    历史实现用 ``eval(resp.content)`` 解析网络响应体，攻击者控制接口或实施中间人
+    即可注入 Python 表达式实现远程代码执行。这里改用 JSON 安全解析，绝不 eval 网络数据。
+    """
+    try:
+        data = resp.json()
+    except Exception:
+        return ""
+    if isinstance(data, dict):
+        desc = data.get("errorDes", "")
+        return desc if isinstance(desc, str) else str(desc)
+    return ""
 
 
 def urn_transform_uri(urn):
@@ -241,12 +276,12 @@ class CwFusionCompute(object):
                 # "X-ENCRIPT-ALGORITHM": "1"
             }
             headers.update(self.cw_headers)
-            resp = requests.post(url=url, headers=headers, json=None, verify=False)
+            resp = requests.post(url=url, headers=headers, json=None, verify=VERIFY_SSL)
             auth_token = ""
             if resp.status_code < 300:
                 auth_token = resp.headers.get("X-Auth-Token", "")
             else:
-                logger.exception(eval(resp.content)["errorDes"])
+                logger.error("FusionCompute 请求失败: %s", _safe_error_desc(resp))
             return auth_token
         except Exception as e:
             logger.exception(e)
@@ -267,7 +302,7 @@ class CwFusionCompute(object):
                     "scope": {"project": {"id": self.project_id, "domain": {"name": self.account}}},
                 }
             }
-            resp = requests.post(url=url, headers=self.cw_headers, json=json_params, verify=False)
+            resp = requests.post(url=url, headers=self.cw_headers, json=json_params, verify=VERIFY_SSL)
             auth_token = ""
             user_id = ""
             if resp.status_code < 300:
@@ -337,7 +372,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         site_list = []
         site_uri = get_resource_uri(self.basic_url)["site_uri"]
-        resp = requests.get(url=site_uri, headers=self.cw_headers, params=None, verify=False)
+        resp = requests.get(url=site_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if resp.status_code < 300:
             for i in resp.json().get("sites", ""):
                 site_list.append(self.__site_format(i))
@@ -521,7 +556,7 @@ class FusionComputeTest(PrivateCloudManage):
         :return: vm detail dict.
         """
         vm_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["resource_uri"]
-        resp = requests.get(url=vm_uri, headers=self.cw_headers, params=None, verify=False)
+        resp = requests.get(url=vm_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if resp.status_code < 300:
             return resp.json()
         else:
@@ -559,7 +594,7 @@ class FusionComputeTest(PrivateCloudManage):
         }
         vm_list = []
         while True:
-            site_vm_rs = requests.get(url=vms_uri, headers=self.cw_headers, params=params, verify=False)
+            site_vm_rs = requests.get(url=vms_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
             if site_vm_rs.status_code == 200:
                 site_vm_dict = site_vm_rs.json()
                 vm_number = site_vm_dict["total"]
@@ -578,7 +613,7 @@ class FusionComputeTest(PrivateCloudManage):
 
     def get_os_versions(self, site_urn):
         os_uri = get_resource_uri(self.basic_url, urn_transform_uri(site_urn))["os_version"]
-        resp = requests.get(url=os_uri, headers=self.cw_headers, params=None, verify=False)
+        resp = requests.get(url=os_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if resp.status_code == 200:
             return resp.json()
         else:
@@ -742,7 +777,7 @@ class FusionComputeTest(PrivateCloudManage):
             "location": kwargs.get("location"),
             "vmCustomization": kwargs.get("vmCustomization"),
         }
-        res = requests.post(url=vms_uri, headers=self.cw_headers, json=body, verify=False)
+        res = requests.post(url=vms_uri, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.content}
         else:
@@ -755,7 +790,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         vm_start_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_id))["vm_start_uri"]
-        res = requests.post(url=vm_start_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.post(url=vm_start_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True}
         else:
@@ -776,7 +811,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         vm_stop_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_id))["vm_stop_uri"]
         param = {"mode": kwargs.get("mode", "safe")}
-        res = requests.post(url=vm_stop_uri, headers=self.cw_headers, json=param, verify=False)
+        res = requests.post(url=vm_stop_uri, headers=self.cw_headers, json=param, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True}
         else:
@@ -797,7 +832,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         vm_reboot_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["vm_reboot_uri"]
         param = {"mode": kwargs.get("mode", "safe")}
-        res = requests.post(url=vm_reboot_uri, headers=self.cw_headers, json=param, verify=False)
+        res = requests.post(url=vm_reboot_uri, headers=self.cw_headers, json=param, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True}
         else:
@@ -864,7 +899,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         vm_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["resource_uri"]
-        res = requests.put(url=vm_uri, headers=self.cw_headers, json=kwargs, verify=False)
+        res = requests.put(url=vm_uri, headers=self.cw_headers, json=kwargs, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True}
         else:
@@ -877,7 +912,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         vm_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_id))["resource_uri"]
-        res = requests.delete(url=vm_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.delete(url=vm_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True}
         else:
@@ -923,7 +958,7 @@ class FusionComputeTest(PrivateCloudManage):
             "isThin": kwargs.get("isThin", False),
             "type": kwargs.get("type", "normal"),
         }
-        res = requests.post(url=vm_add_disk_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=vm_add_disk_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1037,7 +1072,7 @@ class FusionComputeTest(PrivateCloudManage):
             "type": kwargs.get("type", "normal"),
         }
         vm_snapshot_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["vm_snapshot_uri"]
-        res = requests.post(url=vm_snapshot_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=vm_snapshot_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()["urn"]}
         else:
@@ -1050,7 +1085,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         vm_snapshot_uri = get_resource_uri(self.basic_url, urn_transform_uri(snapshot_id))["resource_uri"]
-        res = requests.delete(url=vm_snapshot_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.delete(url=vm_snapshot_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1071,7 +1106,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         vm_snapshot_uri = get_resource_uri(self.basic_url, urn_transform_uri(ids[0]))["vm_snapshot_uri"]
-        res = requests.get(url=vm_snapshot_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=vm_snapshot_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": self.__snapshot_format(res.json()["rootSnapshots"])}
         else:
@@ -1092,7 +1127,7 @@ class FusionComputeTest(PrivateCloudManage):
         refresh_flag = kwargs.get("refresh_flag", False)
         params = {"refreshflag": refresh_flag}
         snapshot_uri = get_resource_uri(self.basic_url, urn_transform_uri(snapshot_urn))["resource_uri"]
-        res = requests.get(url=snapshot_uri, headers=self.cw_headers, params=params, verify=False)
+        res = requests.get(url=snapshot_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
         if res.status_code == 200:
             return res.json()
         else:
@@ -1107,7 +1142,7 @@ class FusionComputeTest(PrivateCloudManage):
         vm_snapshot_resume_uri = get_resource_uri(self.basic_url, urn_transform_uri(snapshot_id))[
             "vm_snapshot_resume_uri"
         ]
-        res = requests.post(url=vm_snapshot_resume_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.post(url=vm_snapshot_resume_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1177,7 +1212,7 @@ class FusionComputeTest(PrivateCloudManage):
         disk_list_total = []
         disk_num_total = 0
         while True:
-            res = requests.get(url=disk_uri, headers=self.cw_headers, params=params, verify=False)
+            res = requests.get(url=disk_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
             if res.status_code == 200:
                 disk_obj = res.json()
                 disk_number = disk_obj["total"]
@@ -1270,7 +1305,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         params = {"refreshflag": kwargs.get("refreshflag", False)}
         disk_uri = get_resource_uri(self.basic_url, urn_transform_uri(disk_urn))["resource_uri"]
-        res = requests.get(url=disk_uri, headers=self.cw_headers, params=params, verify=False)
+        res = requests.get(url=disk_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
         if res.status_code == 200:
             return res.json()
         else:
@@ -1364,7 +1399,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         json_obj = kwargs
         disk_uri = get_resource_uri(self.basic_url, urn_transform_uri(kwargs["site_urn"]))["disk_uri"]
-        res = requests.post(url=disk_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=disk_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()["urn"]}
         else:
@@ -1394,7 +1429,7 @@ class FusionComputeTest(PrivateCloudManage):
         vm_attach_disk_uri = get_resource_uri(self.basic_url, urn_transform_uri(kwargs.get("vm_urn")))[
             "vm_attach_disk_uri"
         ]
-        res = requests.post(url=vm_attach_disk_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=vm_attach_disk_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1418,7 +1453,7 @@ class FusionComputeTest(PrivateCloudManage):
         vm_urn = kwargs.get("vm_urn")
         json_obj = {"volUrn": kwargs.get("disk_urn"), "isFormat": kwargs.get("is_format", False)}
         vm_detach_disk_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["vm_detach_disk_uri"]
-        res = requests.post(url=vm_detach_disk_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=vm_detach_disk_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1431,7 +1466,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         disk_delete_uri = get_resource_uri(self.basic_url, urn_transform_uri(disk_id))["resource_uri"]
-        res = requests.delete(url=disk_delete_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.delete(url=disk_delete_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1450,7 +1485,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         json_obj = {"size": int(kwargs.get("size")) * 1024}
         disk_extend__uri = get_resource_uri(self.basic_url, urn_transform_uri(disk_urn))["disk_expand_uri"]
-        res = requests.post(url=disk_extend__uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=disk_extend__uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1558,7 +1593,7 @@ class FusionComputeTest(PrivateCloudManage):
         :return: list
         """
         security_group_uri = get_resource_uri(self.basic_url, urn_transform_uri(site_urn))["security_group_uri"]
-        res = requests.get(url=security_group_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=security_group_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return res.json()["securityGroups"]
         else:
@@ -1663,7 +1698,7 @@ class FusionComputeTest(PrivateCloudManage):
         :return: dvswitch list
         """
         dvswitch_uri = get_resource_uri(self.basic_url, urn_transform_uri(site_urn))["dvswitch_uri"]
-        res = requests.get(url=dvswitch_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=dvswitch_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return res.json()["dvSwitchs"]
         else:
@@ -1744,7 +1779,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         site_urn = kwargs.pop("site_urn")
         dvswitch_uri = get_resource_uri(self.basic_url, urn_transform_uri(site_urn))["dvswitch_uri"]
-        res = requests.post(url=dvswitch_uri, headers=self.cw_headers, json=kwargs, verify=False)
+        res = requests.post(url=dvswitch_uri, headers=self.cw_headers, json=kwargs, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()["urn"]}
         else:
@@ -1757,7 +1792,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         dvswitch_uri = get_resource_uri(self.basic_url, urn_transform_uri(vpc_id))["resource_uri"]
-        res = requests.delete(url=dvswitch_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.delete(url=dvswitch_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True}
         else:
@@ -1779,7 +1814,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         dvswitch_uri = get_resource_uri(self.basic_url, urn_transform_uri(vpc_urn))["resource_uri"]
-        res = requests.put(url=dvswitch_uri, headers=self.cw_headers, json=kwargs, verify=False)
+        res = requests.put(url=dvswitch_uri, headers=self.cw_headers, json=kwargs, verify=VERIFY_SSL)
         if res.status_code == 200:
             return {"result": True, "data": res.json()}
         else:
@@ -1792,7 +1827,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         dvswitch_uri = get_resource_uri(self.basic_url, urn_transform_uri(vpc_urn))["resource_uri"]
-        res = requests.get(url=dvswitch_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=dvswitch_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code == 200:
             return res.json()
         else:
@@ -1832,7 +1867,7 @@ class FusionComputeTest(PrivateCloudManage):
         port_group_uri = get_resource_uri(self.basic_url, urn_transform_uri(dvswitch_urn))["port_group_uri"]
         params = {"limit": 20, "offset": 0}
         while True:
-            res = requests.get(url=port_group_uri, headers=self.cw_headers, params=params, verify=False)
+            res = requests.get(url=port_group_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
             if res.status_code == 200:
                 port_group_obj = res.json()
                 port_group_number = port_group_obj["total"]
@@ -1887,7 +1922,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         port_group_uri = get_resource_uri(self.basic_url, urn_transform_uri(subnet_urn))["resource_uri"]
-        res = requests.get(url=port_group_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=port_group_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -1927,7 +1962,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         vpc_urn = kwargs.pop("vpc_urn")
         port_group_uri = get_resource_uri(self.basic_url, urn_transform_uri(vpc_urn))["port_group_uri"]
-        res = requests.post(url=port_group_uri, headers=self.cw_headers, json=kwargs, verify=False)
+        res = requests.post(url=port_group_uri, headers=self.cw_headers, json=kwargs, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()["urn"]}
         else:
@@ -1940,7 +1975,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         port_group_uri = get_resource_uri(self.basic_url, urn_transform_uri(subnet_id))["resource_uri"]
-        res = requests.delete(url=port_group_uri, headers=self.cw_headers, json=None, verify=False)
+        res = requests.delete(url=port_group_uri, headers=self.cw_headers, json=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True}
         else:
@@ -1978,7 +2013,7 @@ class FusionComputeTest(PrivateCloudManage):
         * ......
         """
         port_group_uri = get_resource_uri(self.basic_url, urn_transform_uri(port_group_urn))["port_group_uri"]
-        res = requests.put(url=port_group_uri, headers=self.cw_headers, json=kwargs, verify=False)
+        res = requests.put(url=port_group_uri, headers=self.cw_headers, json=kwargs, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2033,7 +2068,7 @@ class FusionComputeTest(PrivateCloudManage):
                                 "interval": interval,
                             }
                         )
-                    resp = requests.post(url=monitor_url, headers=self.cw_headers, json=args, verify=False)
+                    resp = requests.post(url=monitor_url, headers=self.cw_headers, json=args, verify=VERIFY_SSL)
                     if resp.status_code < 300:
                         items = resp.json()["items"]
                         break
@@ -2085,7 +2120,7 @@ class FusionComputeTest(PrivateCloudManage):
         params = None
         if kwargs.get("scope"):
             params = {"scope": kwargs.get("scope")}
-        res = requests.get(url=host_uri, headers=self.cw_headers, params=params, verify=False)
+        res = requests.get(url=host_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
         if res.status_code < 300:
             host_obj = res.json()
             host_list = host_obj["hosts"]
@@ -2130,7 +2165,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         host_uri = get_resource_uri(self.basic_url, urn_transform_uri(host_urn))["resource_uri"]
-        res = requests.get(url=host_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=host_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2143,7 +2178,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: list
         """
         cluster_uri = get_resource_uri(self.basic_url, urn_transform_uri(site_urn))["cluster_uri"]
-        res = requests.get(url=cluster_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=cluster_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return res.json()["clusters"]
         else:
@@ -2177,7 +2212,7 @@ class FusionComputeTest(PrivateCloudManage):
         :rtype: dict
         """
         cluster_uri = get_resource_uri(self.basic_url, urn_transform_uri(cluster_urn))["resource_uri"]
-        res = requests.get(url=cluster_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=cluster_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2215,7 +2250,7 @@ class FusionComputeTest(PrivateCloudManage):
             params.update({"scope": kwargs.get("scope")})
         storage_list = []
         while True:
-            site_storage_rs = requests.get(url=storages_uri, headers=self.cw_headers, params=params, verify=False)
+            site_storage_rs = requests.get(url=storages_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
             if site_storage_rs.status_code < 300:
                 site_storage_dict = site_storage_rs.json()
                 storage_number = site_storage_dict["total"]
@@ -2315,7 +2350,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         json_obj = {"volUrn": kwargs.get("disk_urn")}
         vm_disk_delete_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["vm_disk_delete_uri"]
-        res = requests.post(url=vm_disk_delete_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=vm_disk_delete_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2336,7 +2371,7 @@ class FusionComputeTest(PrivateCloudManage):
         """
         json_obj = {"volUrn": kwargs.get("disk_urn"), "size": int(kwargs.get("size")) * 1024}
         vm_disk_extend_uri = get_resource_uri(self.basic_url, urn_transform_uri(vm_urn))["vm_disk_expand_uri"]
-        res = requests.post(url=vm_disk_extend_uri, headers=self.cw_headers, json=json_obj, verify=False)
+        res = requests.post(url=vm_disk_extend_uri, headers=self.cw_headers, json=json_obj, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2358,7 +2393,7 @@ class FusionComputeTest(PrivateCloudManage):
         if kwargs.get("scope"):
             params = {"scope": kwargs.get("scope")}
         host_statistics_uri = get_resource_uri(self.basic_url, urn_transform_uri(site_urn))["host_statistics_uri"]
-        res = requests.get(url=host_statistics_uri, headers=self.cw_headers, params=params, verify=False)
+        res = requests.get(url=host_statistics_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2373,7 +2408,7 @@ class FusionComputeTest(PrivateCloudManage):
         cluster_compute_resource_uri = get_resource_uri(self.basic_url, urn_transform_uri(cluster_urn))[
             "cluster_compute_resource_uri"
         ]
-        res = requests.get(url=cluster_compute_resource_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=cluster_compute_resource_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2388,7 +2423,7 @@ class FusionComputeTest(PrivateCloudManage):
         cluster_all_vm_compute_resource_uri = get_resource_uri(self.basic_url, urn_transform_uri(cluster_urn))[
             "cluster_all_vm_compute_resource_uri"
         ]
-        res = requests.get(url=cluster_all_vm_compute_resource_uri, headers=self.cw_headers, params=None, verify=False)
+        res = requests.get(url=cluster_all_vm_compute_resource_uri, headers=self.cw_headers, params=None, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()}
         else:
@@ -2403,14 +2438,15 @@ class FusionComputeTest(PrivateCloudManage):
         site_uri = urn_transform_uri(site)
         folder_uri = "{}{}/folder".format(self.basic_url, site_uri)
         params = {"type": 1}
-        resp = requests.get(url=folder_uri, headers=self.cw_headers, params=params, verify=False)
+        resp = requests.get(url=folder_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
         if resp.status_code < 300:
             folders = resp.json()["folders"]
             folder_list = self.format_folder_list(folders, folder_uri, params)
             return {"result": True, "data": folder_list}
         else:
-            logger.exception(eval(resp.content)["errorDes"])
-            return {"result": False, "message": eval(resp.content)["errorDes"]}
+            error_desc = _safe_error_desc(resp)
+            logger.error("FusionCompute 请求失败: %s", error_desc)
+            return {"result": False, "message": error_desc}
 
     def format_folder_list(self, folders, folder_uri, params):
         """
@@ -2423,7 +2459,7 @@ class FusionComputeTest(PrivateCloudManage):
         return_data = []
         for i in folders:
             params["parentObjUrn"] = i["urn"]
-            resp = requests.get(url=folder_uri, headers=self.cw_headers, params=params, verify=False)
+            resp = requests.get(url=folder_uri, headers=self.cw_headers, params=params, verify=VERIFY_SSL)
             if resp.status_code < 300:
                 i = dict(i, **{"id": i["urn"]})
                 i["children"] = self.format_folder_list(resp.json()["folders"], folder_uri, params)
@@ -2525,7 +2561,7 @@ class FusionComputeNew(PrivateCloudManage):
     def list_regions(self, *args, **kwargs):
         """查询区域列表"""
         url_par = f"https://sc.{self.host}/silvan/rest/v1.0/regions"
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_list_result(res, "region", "list_regions")
 
     def list_zones(self, *args, **kwargs):
@@ -2534,13 +2570,13 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcserviceaccess/available-zones"
             f"?cloud_infra_id={self.pool_id}"
         )
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_list_result(res, "zone", "list_ones")
 
     def list_pools(self, *args, **kwargs):
         # 逻辑
         url_par = f"https://sc.{self.host}/rest/serviceaccess/v3.0/cloud-infras"
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         # 返回
         data = []
         if res.status_code < 300:
@@ -2567,7 +2603,7 @@ class FusionComputeNew(PrivateCloudManage):
     def list_order_resource(self, order_id, resource_name):
         """查询订单中的资源列表(都是走的单个)"""
         par_url = f"https://sc.{self.host}/rest/order/v3.0/orders/{order_id}/resources"
-        res = requests.get(url=par_url, headers=self.cw_headers, verify=False)
+        res = requests.get(url=par_url, headers=self.cw_headers, verify=VERIFY_SSL)
         if res.status_code < 300:
             resource = res.json()
             if resource:
@@ -2584,7 +2620,7 @@ class FusionComputeNew(PrivateCloudManage):
         :rtype: dict
         """
         get_resource_pools_url = get_resource_uri(f"https://sc.{self.host}")["get_resource_pools_url"]
-        vm_res = requests.get(url=get_resource_pools_url, headers=self.cw_headers, verify=False)
+        vm_res = requests.get(url=get_resource_pools_url, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_result(vm_res, "get_resource_pools")
 
     def list_vms(self, ids=None, **kwargs):
@@ -2611,7 +2647,7 @@ class FusionComputeNew(PrivateCloudManage):
                     f"&limit={limit}&start={start}"
                 )
                 try:
-                    vm_res = requests.get(url=vm_url, headers=self.cw_headers, verify=False)
+                    vm_res = requests.get(url=vm_url, headers=self.cw_headers, verify=VERIFY_SSL)
                 except Exception as e:
                     return fail(f"请求异常, {e}")
                 if vm_res.status_code < 300:
@@ -2642,7 +2678,7 @@ class FusionComputeNew(PrivateCloudManage):
         vm_action_url = "{}/{}".format(
             get_resource_uri(f"https://sc.{self.host}")["vm_server_url"], kwargs.get("vm_id")
         )
-        vm_res = requests.get(url=vm_action_url, headers=self.cw_headers, params=get_params, verify=False)
+        vm_res = requests.get(url=vm_action_url, headers=self.cw_headers, params=get_params, verify=VERIFY_SSL)
         if vm_res.status_code < 300:
             if kwargs.get("flag"):
                 return {"result": True, "data": [vm_res.json().get("server", {})]}
@@ -2724,7 +2760,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -2754,7 +2790,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -2774,7 +2810,7 @@ class FusionComputeNew(PrivateCloudManage):
         """
         json_params = {"cloud_infra_id": cloud_infra_id, "vmIds": [vm_ids], "type": action_type, "mode": action_mode}
         vm_action_url = get_resource_uri(f"https://sc.{self.host}")["vm_action_url"]
-        res = requests.post(url=vm_action_url, headers=self.cw_headers, json=json_params, verify=False)
+        res = requests.post(url=vm_action_url, headers=self.cw_headers, json=json_params, verify=VERIFY_SSL)
         return res
 
     def start_vm(self, vm_id, **kwargs):
@@ -2851,7 +2887,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         return self._handle_result(res, "renew_vm")
 
@@ -2884,7 +2920,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -2897,7 +2933,7 @@ class FusionComputeNew(PrivateCloudManage):
         server_id = kwargs.get("server_id")
         body = {"reset-password": {"new_password": kwargs.get("new_password")}}
         url_par = f"{self.basic_url}/v1/{self.project_id}/cloudservers/{server_id}/os-reset-password"
-        res = requests.put(url=url_par, headers=self.cw_headers, json=body, verify=False)
+        res = requests.put(url=url_par, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
         return self._handle_result(res, "reset_instances_password")
 
     # ------------------***** 镜像 *****-------------------
@@ -2920,7 +2956,7 @@ class FusionComputeNew(PrivateCloudManage):
             "is_template": kwargs.get("is_template"),
         }
         image_url = get_resource_uri(f"https://sc.{self.host}")["image_action_url"]
-        creat_res = requests.post(url=image_url, headers=self.cw_headers, json=json_params, verify=False)
+        creat_res = requests.post(url=image_url, headers=self.cw_headers, json=json_params, verify=VERIFY_SSL)
         return self._handle_result(creat_res, "create_image")
 
     def image_create_object(self, **kwargs):
@@ -2938,7 +2974,7 @@ class FusionComputeNew(PrivateCloudManage):
         """
         json_params = {"cloud_infra_id": self.pool_id, "template_id": kwargs.get("template_id"), "is_template": False}
         image_url = get_resource_uri(self.basic_url)["image_action_url"]
-        creat_res = requests.post(url=image_url, headers=self.cw_headers, json=json_params, verify=False)
+        creat_res = requests.post(url=image_url, headers=self.cw_headers, json=json_params, verify=VERIFY_SSL)
         return self._handle_result(creat_res, "image_create_object")
 
     def list_images(self, ids=None, **kwargs):
@@ -2951,7 +2987,7 @@ class FusionComputeNew(PrivateCloudManage):
         image_res_list = []
         if ids:
             image_url = f"{image_url}&id={ids[0]}"
-            get_res = requests.get(url=image_url, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=image_url, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 image_res_list = data_dict.get("templates", [])
@@ -2964,7 +3000,7 @@ class FusionComputeNew(PrivateCloudManage):
                 limit = 50
                 image_url_new = f"{image_url}&limit={limit}&start={start}"
                 try:
-                    get_res = requests.get(url=image_url_new, headers=self.cw_headers, verify=False)
+                    get_res = requests.get(url=image_url_new, headers=self.cw_headers, verify=VERIFY_SSL)
                 except Exception as e:
                     logger.exception(e)
                     return fail(f"请求异常: {str(e)}")
@@ -2992,7 +3028,7 @@ class FusionComputeNew(PrivateCloudManage):
         body = {}
         set_par = ["template_id", "cloud_infra_id", "is_template"]
         set_optional_params(set_par, kwargs, body)
-        res = requests.post(url=url_par, headers=request_headers, json=body, verify=False)
+        res = requests.post(url=url_par, headers=request_headers, json=body, verify=VERIFY_SSL)
         return self._handle_result(res, "image_create_instance")
 
     @staticmethod
@@ -3016,7 +3052,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcecs/templates/"
             f"{template_id}?cloud_infra_id={cloud_infra_id}"
         )
-        get_res = requests.delete(url=delete_url, headers=self.cw_headers, verify=False)
+        get_res = requests.delete(url=delete_url, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_result(get_res, "delete_image")
 
     # ------------------***** 快照 *****-------------------
@@ -3051,7 +3087,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3075,7 +3111,7 @@ class FusionComputeNew(PrivateCloudManage):
                 f"https://sc.{self.host}/rest/orchestration/v3.0/fcecs/servers/{server_id}"
                 f"/snapshots?cloud_infra_id={self.pool_id}"
             )
-            get_res = requests.get(url=image_url, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=image_url, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 snapshot_res = data_dict.get("snapshots", [])
@@ -3117,7 +3153,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcecs/servers/{server_id}"
             f"/snapshots/{snapshot_id}?cloud_infra_id={cloud_infra_id}"
         )
-        get_res = requests.get(url=image_url, headers=self.cw_headers, verify=False)
+        get_res = requests.get(url=image_url, headers=self.cw_headers, verify=VERIFY_SSL)
         if get_res.status_code < 300:
             data_dict = get_res.json()
             snapshot_res = data_dict.get("current", {})
@@ -3145,7 +3181,7 @@ class FusionComputeNew(PrivateCloudManage):
         )
         request_headers = self.cw_headers.copy()
         request_headers.update({"region": self.region})
-        creat_res = requests.post(url=image_url, headers=request_headers, verify=False)
+        creat_res = requests.post(url=image_url, headers=request_headers, verify=VERIFY_SSL)
         return self._handle_result(creat_res, "snapshot_rollback_to_ecs")
 
     def delete_snapshot(self, snapshot_id, *args, **kwargs):
@@ -3171,7 +3207,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3222,7 +3258,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3255,7 +3291,7 @@ class FusionComputeNew(PrivateCloudManage):
                 "limit": limit,
             }
             try:
-                post_res = requests.post(url=disk_url, headers=self.cw_headers, json=body, verify=False)
+                post_res = requests.post(url=disk_url, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
             except Exception as e:
                 logger.exception(e)
                 return fail(f"请求异常: {str(e)}")
@@ -3281,7 +3317,7 @@ class FusionComputeNew(PrivateCloudManage):
         get_url = "{}/{}?cloud_infra_id={}".format(
             get_resource_uri(f"https://sc.{self.host}")["block_storages_url"], kwargs.get("volume_id"), self.pool_id
         )
-        get_res = requests.get(url=get_url, headers=self.cw_headers, verify=False)
+        get_res = requests.get(url=get_url, headers=self.cw_headers, verify=VERIFY_SSL)
         data_dict = get_res.json()
         return {"result": True, "data": [self.disk_format(data_dict)]}
 
@@ -3306,7 +3342,7 @@ class FusionComputeNew(PrivateCloudManage):
             kwargs.get("volume_id"),
         )
         try:
-            post_res = requests.post(url=post_url, headers=self.cw_headers, json=post_params, verify=False)
+            post_res = requests.post(url=post_url, headers=self.cw_headers, json=post_params, verify=VERIFY_SSL)
             if post_res.status_code < 300:
                 return {"result": True, "data": post_res.json()}
         except Exception:
@@ -3334,7 +3370,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3362,7 +3398,7 @@ class FusionComputeNew(PrivateCloudManage):
         security_group_list = []
         while tag:
             url_par_new = f"{url_par}&limit={limit}&start={start}"
-            get_res = requests.get(url=url_par_new, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=url_par_new, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 security_group_res_list = data_dict.get("securityGroups", [])
@@ -3389,7 +3425,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcvpc/security-groups/{security_group_id}"
             f"?cloud_infra_id={self.pool_id}"
         )
-        get_res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        get_res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         if get_res.status_code < 300:
             return {"result": True, "data": [self.security_group_format(get_res.json().get("security_group", {}))]}
         return {"result": False, "message": "get_security_group_detail failed"}
@@ -3411,7 +3447,7 @@ class FusionComputeNew(PrivateCloudManage):
             "sgName": kwargs.get("name"),
             "sgDescription": kwargs.get("description"),
         }
-        get_res = requests.post(url=url_par, headers=self.cw_headers, json=post_params, verify=False)
+        get_res = requests.post(url=url_par, headers=self.cw_headers, json=post_params, verify=VERIFY_SSL)
         if get_res.status_code < 300:
             return {"result": True, "data": get_res.json().get("sgId")}
         return {"result": False, "message": "create_security_group failed"}
@@ -3421,7 +3457,7 @@ class FusionComputeNew(PrivateCloudManage):
         get_res = requests.get(
             url="{}/v2/{}/servers/{}/os-interface".format(self.basic_url, self.project_id, server_id),
             headers=self.cw_headers,
-            verify=False,
+            verify=VERIFY_SSL,
         )
         return self._handle_result(get_res, "get_security_group_detail")
 
@@ -3429,7 +3465,7 @@ class FusionComputeNew(PrivateCloudManage):
         """获取虚拟机网卡ID"""
         get_params = {"cloud_infra_id": self.pool_id}
         vm_action_url = "{}/{}".format(get_resource_uri(f"https://sc.{self.host}")["vm_server_url"], server_id)
-        vm_res = requests.get(url=vm_action_url, headers=self.cw_headers, params=get_params, verify=False)
+        vm_res = requests.get(url=vm_action_url, headers=self.cw_headers, params=get_params, verify=VERIFY_SSL)
         return vm_res.json()
 
     def instance_security_group_action(self, **kwargs):
@@ -3453,7 +3489,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcecs/servers/" f"{server_id}/nics/{nic_id}/securitygroup"
         )
         try:
-            get_res = requests.put(url=action_url, headers=self.cw_headers, json=post_params, verify=False)
+            get_res = requests.put(url=action_url, headers=self.cw_headers, json=post_params, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 return {"result": True}
         except Exception:
@@ -3474,7 +3510,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcvpc/security-groups/{security_group_id}?"
             f"cloud_infra_id={self.pool_id}"
         )
-        get_res = requests.delete(url=url_par, headers=self.cw_headers, verify=False)
+        get_res = requests.delete(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         if get_res.status_code < 300:
             return {"result": True}
 
@@ -3510,7 +3546,7 @@ class FusionComputeNew(PrivateCloudManage):
         sgr_res_list = []
         while tag:
             url_par_new = f"{url_par}&limit={limit}&start={start}"
-            get_res = requests.get(url=url_par_new, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=url_par_new, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 total_num = len(data_dict.get("security_group_rules", []))
@@ -3536,7 +3572,7 @@ class FusionComputeNew(PrivateCloudManage):
         params = {"cloud_infra_id": self.pool_id, "security_group_rule": kwargs.get("security_group_rule", [])}
         # list_params = ["ip_protocol", "ip_ranges", "allowed_sg_id", "from_port", "to_port", "direction"]
         # set_optional_params(list_params, kwargs, params["security_group_rule"])
-        res = requests.post(url=url_par, headers=self.cw_headers, json=params, verify=False)
+        res = requests.post(url=url_par, headers=self.cw_headers, json=params, verify=VERIFY_SSL)
         return self._handle_result(res, "create_security_group_rule")
 
     def delete_security_group_rule(self, rule_ids, **kwargs):
@@ -3547,7 +3583,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"/security-group-rules/delete"
         )
         body = {"cloud_infra_id": self.pool_id, "rule_ids": rule_ids}
-        res = requests.post(url=url_par, headers=self.cw_headers, json=body, verify=False)
+        res = requests.post(url=url_par, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
         return self._handle_result(res, "delete_security_group_rule")
 
     # ------------------***** VPC *****-------------------
@@ -3565,7 +3601,7 @@ class FusionComputeNew(PrivateCloudManage):
         while tag:
             url_par_new = f"{url_par}&limit={limit}&start={start}"
             try:
-                get_res = requests.get(url=url_par_new, headers=self.cw_headers, verify=False)
+                get_res = requests.get(url=url_par_new, headers=self.cw_headers, verify=VERIFY_SSL)
             except Exception as e:
                 logger.exception(e)
                 return fail(f"请求异常: {str(e)}")
@@ -3589,7 +3625,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcvpc/vpcs/{kwargs['vpc_id']}"
             f"?cloud_infra_id={self.pool_id}"
         )
-        res = requests.get(url=vpc_url, headers=self.cw_headers, verify=False)
+        res = requests.get(url=vpc_url, headers=self.cw_headers, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": [self.vpc_format(res.json())]}
         else:
@@ -3627,7 +3663,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3656,7 +3692,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(f"https://sc.{self.host}")["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3681,7 +3717,7 @@ class FusionComputeNew(PrivateCloudManage):
         while tag:
             new_url = f"{url}&limit={limit}&start={start}"
             try:
-                res = requests.get(new_url, headers=self.cw_headers, verify=False)
+                res = requests.get(new_url, headers=self.cw_headers, verify=VERIFY_SSL)
             except Exception as e:
                 logger.exception(e)
                 return fail(f"请求异常: {str(e)}")
@@ -3703,7 +3739,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcvpc/networks/{kwargs['subnet_id']}"
             f"?cloud_infra_id={self.pool_id}&vpc_id={kwargs['vpc_id']}"
         )
-        res = requests.get(url=url, headers=self.cw_headers, params=kwargs, verify=False)
+        res = requests.get(url=url, headers=self.cw_headers, params=kwargs, verify=VERIFY_SSL)
         return {"result": True, "data": [self.subnet_format(res.json())]}
 
     def create_subnet(self, **kwargs):
@@ -3717,7 +3753,7 @@ class FusionComputeNew(PrivateCloudManage):
             url=get_resource_uri(f"https://sc.{self.host}")["dvswitch_url"],
             headers=request_headers,
             json=kwargs,
-            verify=False,
+            verify=VERIFY_SSL,
         )
         return self._handle_result(res, "create_subnet")
 
@@ -3736,7 +3772,7 @@ class FusionComputeNew(PrivateCloudManage):
                     kwargs.get("vpc_id"),
                 ),
                 headers=request_headers,
-                verify=False,
+                verify=VERIFY_SSL,
             )
             return {"result": res.status_code == 200, "message": res.json()}
         except Exception as e:
@@ -3753,11 +3789,11 @@ class FusionComputeNew(PrivateCloudManage):
                 url="{}/{}/{}".format(get_resource_uri(self.basic_url)["route_table_url"], cur_page, page_size),
                 headers=self.cw_headers,
                 json={"name": route_table_name},
-                verify=False,
+                verify=VERIFY_SSL,
             )
         else:
             res = requests.get(
-                url=f"https://sc.{self.host}/silvan/rest/v1.0/routes", headers=self.cw_headers, verify=False
+                url=f"https://sc.{self.host}/silvan/rest/v1.0/routes", headers=self.cw_headers, verify=VERIFY_SSL
             )
         if res.status_code < 300:
             data_dict = res.json()
@@ -3776,7 +3812,7 @@ class FusionComputeNew(PrivateCloudManage):
             url_par = "{}/{}".format(get_resource_uri(self.basic_url)["route_entry_url"], ids[0])
         else:
             url_par = get_resource_uri(self.basic_url)["route_entry_url"]
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_list_result(res, "route_entry", "list_route_entry")
 
     def create_route_entry(self, **kwargs):
@@ -3784,7 +3820,7 @@ class FusionComputeNew(PrivateCloudManage):
         list_required_params = ["destination", "nexthop", "type", "vpc_id"]
         check_required_params(list_required_params, kwargs)
         url_par = get_resource_uri(self.basic_url)["route_entry_url"]
-        res = requests.post(url=url_par, headers=self.cw_headers, json=kwargs, verify=False)
+        res = requests.post(url=url_par, headers=self.cw_headers, json=kwargs, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()["router"]}
         return {"result": False, "message": "create_route_entry failed"}
@@ -3792,7 +3828,7 @@ class FusionComputeNew(PrivateCloudManage):
     def delete_route_entry(self, route_id, **kwargs):
         """删除路由策略"""
         url_par = "{}/{}".format(get_resource_uri(self.basic_url)["route_entry_url"], route_id)
-        res = requests.delete(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.delete(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_result(res, "delete_route_entry")
 
     # ------------------***** 弹性公网IP *****-------------
@@ -3801,7 +3837,7 @@ class FusionComputeNew(PrivateCloudManage):
         url_par = f"https://vpc.hnxc-region-1.{self.host}/v2.0/floatingips"
         if ids:
             url_par = f"{url_par}/{ids[0]}"
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_list_result(res, "floatingips", "list_eips")
 
     def create_eip(self, **kwargs):
@@ -3830,7 +3866,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3861,7 +3897,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             return {"result": True, "data": json.loads(res.text)}
@@ -3877,13 +3913,13 @@ class FusionComputeNew(PrivateCloudManage):
                 "port_id": kwargs.get("port_id"),
             }
         }
-        res = requests.post(url=url_par, headers=self.cw_headers, json=post_params, verify=False)
+        res = requests.post(url=url_par, headers=self.cw_headers, json=post_params, verify=VERIFY_SSL)
         return self._handle_result(res, "associate_address")
 
     def disassociate_address(self, floatingip_id, **kwargs):
         """云服务器解绑弹性公网"""
         url_par = "{}/{}".format(get_resource_uri(self.basic_url)["eip_url"], floatingip_id)
-        res = requests.put(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.put(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_result(res, "disassociate_address")
 
     # ------------------***** 负载均衡 *****---------------
@@ -3892,7 +3928,7 @@ class FusionComputeNew(PrivateCloudManage):
         url_par = get_resource_uri(f"https://vpc.hnxc-region-1.{self.host}")["load_balancer_url"]
         if ids:
             url_par = "{}/{}".format(url_par, ids[0])
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         if res.status_code < 300:
             data_dict = res.json()
             load_balancer_list = data_dict.get("loadbalancers", [])
@@ -3929,7 +3965,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             order_id = res.json()["purchases"][0]["subscription_id"]
@@ -3957,7 +3993,7 @@ class FusionComputeNew(PrivateCloudManage):
             ]
         }
         res = requests.post(
-            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=False
+            url=get_resource_uri(self.basic_url)["order"], headers=self.cw_headers, json=body, verify=VERIFY_SSL
         )
         if res.status_code < 300:
             return {"result": True, "data": json.loads(res.text)}
@@ -3988,7 +4024,7 @@ class FusionComputeNew(PrivateCloudManage):
             url=get_resource_uri(self.basic_url, project_id)["listener_url"],
             headers=self.cw_headers,
             json=body,
-            verify=False,
+            verify=VERIFY_SSL,
         )
         if res.status_code < 300:
             return {"result": True, "data": res.json()["listener"]["id"]}
@@ -4000,7 +4036,7 @@ class FusionComputeNew(PrivateCloudManage):
         url_par = "{}/v2.0/lbaas/listeners".format(self.basic_url)
         if ids:
             url_par = "{}/{}".format(url_par, ids[0])
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         if res.status_code < 300:
             data_dict = res.json()
             load_balancer_listen_list = data_dict.get("listeners", [])
@@ -4032,14 +4068,14 @@ class FusionComputeNew(PrivateCloudManage):
         body = {"listener": {}}
         set_params = ["connection_limit", "description", "name"]
         set_optional_params(set_params, kwargs, body["listener"])
-        res = requests.put(url=url_par, headers=self.cw_headers, json=body, verify=False)
+        res = requests.put(url=url_par, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
         return self._handle_result(res, "modify_load_balancer_listen")
 
     def delete_load_balancer_listen(self, **kwargs):
         """删除监听"""
         listener_id = kwargs.get("listener_id")
         url_par = f"{self.basic_url}/v2.0/lbaas/listeners/{listener_id}"
-        res = requests.delete(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.delete(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_result(res, "delete_load_balancer_listen")
 
     def list_rules(self, ids=None, **kwargs):
@@ -4047,7 +4083,7 @@ class FusionComputeNew(PrivateCloudManage):
         url_par = f"{self.basic_url}/v2.0/lbaas/l7policies"
         if ids:
             url_par = f"{url_par}/{ids[0]}"
-        res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_list_result(res, "rule", "list_rules")
 
     def create_rule(self, **kwargs):
@@ -4068,7 +4104,7 @@ class FusionComputeNew(PrivateCloudManage):
             "redirect_url",
         ]
         set_optional_params(set_params, kwargs, body["l7policy"])
-        res = requests.put(url=url_par, headers=self.cw_headers, json=body, verify=False)
+        res = requests.put(url=url_par, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()["l7policy"]["id"]}
         return {"result": False, "message": "create_rule failed"}
@@ -4076,7 +4112,7 @@ class FusionComputeNew(PrivateCloudManage):
     def delete_rule(self, rule_id, **kwargs):
         """删除转发策略"""
         url_par = f"{self.basic_url}/v2.0/lbaas/l7policies/{rule_id}"
-        res = requests.delete(url=url_par, headers=self.cw_headers, verify=False)
+        res = requests.delete(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
         return self._handle_result(res, "delete_rule")
 
     # ------------------***** backend_server *****---------------
@@ -4102,7 +4138,7 @@ class FusionComputeNew(PrivateCloudManage):
         body = {"member": {"tenant_id": self.project_id}}
         set_params = ["address", "admin_state_up", "name", "protocol_port", "subnet_cidr_id", "weight"]
         set_optional_params(set_params, kwargs, body["member"])
-        res = requests.post(url=url_par, headers=self.cw_headers, json=body, verify=False)
+        res = requests.post(url=url_par, headers=self.cw_headers, json=body, verify=VERIFY_SSL)
         if res.status_code < 300:
             return {"result": True, "data": res.json()["member"]["id"]}
         return {"result": False, "message": "add_backend_servers failed"}
@@ -4235,7 +4271,7 @@ class FusionComputeNew(PrivateCloudManage):
         """获取分布式交换机"""
         url_par = f"https://sc.{self.host}/rest/orchestration/v3.0/fcvpc/dvswitchs?cloud_infra_id={self.pool_id}"
         try:
-            get_res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 dv_switch_list = data_dict.get("dvSwitchs", [])
@@ -4249,7 +4285,7 @@ class FusionComputeNew(PrivateCloudManage):
         """获取存储列表"""
         url_par = f"https://sc.{self.host}/rest/orchestration/v3.0/fcevs/datastores?cloud_infra_id={self.pool_id}"
         try:
-            get_res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 datastore_list = data_dict.get("datastores", [])
@@ -4264,7 +4300,7 @@ class FusionComputeNew(PrivateCloudManage):
             f"https://sc.{self.host}/rest/orchestration/v3.0/fcserviceaccess/clusters" f"?cloud_infra_id={self.pool_id}"
         )
         try:
-            get_res = requests.get(url=url_par, headers=self.cw_headers, verify=False)
+            get_res = requests.get(url=url_par, headers=self.cw_headers, verify=VERIFY_SSL)
             if get_res.status_code < 300:
                 data_dict = get_res.json()
                 datastore_list = data_dict.get("clusters", [])

@@ -461,7 +461,13 @@ def test_resolve_request_tools_falls_back_to_skill_tools():
         {"name": "kubernetes_data_collection", "kwargs": []}
     ]
     assert resolve_request_tools([], [{"name": "kubernetes_data_collection", "kwargs": []}]) == [{"name": "kubernetes_data_collection", "kwargs": []}]
-    assert resolve_request_tools([{"name": "override", "kwargs": []}], [{"name": "default", "kwargs": []}]) == [{"name": "override", "kwargs": []}]
+    # BL-NEW-001：请求工具必须在 Skill 授权范围内，未授权的 name 会被丢弃（不再原样覆盖）。
+    assert resolve_request_tools([{"name": "override", "kwargs": []}], [{"name": "default", "kwargs": []}]) == []
+    # 请求携带 Skill 已授权的同名工具（含运行时参数）则保留。
+    assert resolve_request_tools(
+        [{"name": "kubernetes_data_collection", "kwargs": [{"key": "kubeconfig_data", "value": "x"}]}],
+        [{"name": "kubernetes_data_collection", "kwargs": []}],
+    ) == [{"name": "kubernetes_data_collection", "kwargs": [{"key": "kubeconfig_data", "value": "x"}]}]
 
 
 def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker):

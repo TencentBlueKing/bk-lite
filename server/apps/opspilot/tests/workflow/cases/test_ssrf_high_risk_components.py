@@ -469,23 +469,66 @@ class TestFetchToolSSRFProtection:
             _http_patch_impl("http://169.254.169.254/latest/meta-data/")
 
     @patch("socket.getaddrinfo")
-    @patch("requests.get")
-    def test_http_get_allows_public_url(self, mock_get, mock_getaddrinfo):
-        """Public URL is allowed in HTTP GET."""
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_http_get_allows_public_url(self, mock_request, mock_getaddrinfo):
+        """Public URL is allowed in HTTP GET（经 safe_requests 安全客户端）。"""
         from apps.opspilot.metis.llm.tools.fetch.http import _http_get_impl
 
         mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
         mock_response = MagicMock()
+        mock_response.is_redirect = False
         mock_response.status_code = 200
         mock_response.text = "<html>Example</html>"
         mock_response.headers = {"Content-Type": "text/html"}
         mock_response.encoding = "utf-8"
         mock_response.url = "https://example.com/"
         mock_response.raise_for_status = MagicMock()
-        mock_get.return_value = mock_response
+        mock_request.return_value = mock_response
 
         result = _http_get_impl("https://example.com/")
         assert result.get("success") is True
+
+    @patch("socket.getaddrinfo")
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_http_get_blocks_redirect_to_metadata(self, mock_request, mock_getaddrinfo):
+        """BL-NEW-003: 公网 URL 302 跳转到云元数据地址被逐跳 SSRF 校验拦截。
+
+        初始 URL 解析为公网 IP 通过校验；服务端返回 302，Location 指向 AWS 元数据。
+        safe_requests 在跟随前对 Location 做 SSRF 校验 → 抛 SSRFError → Fetch 工具
+        返回失败而非内网内容。
+        """
+        from apps.opspilot.metis.llm.tools.fetch.http import _http_get_impl
+
+        # 初始 example.com 解析为公网 IP（通过初始校验）
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("93.184.216.34", 443))]
+        redirect_resp = MagicMock()
+        redirect_resp.is_redirect = True
+        redirect_resp.headers = {"Location": "http://169.254.169.254/latest/meta-data/"}
+        mock_request.return_value = redirect_resp
+
+        result = _http_get_impl("https://example.com/redirect")
+        assert result.get("success") is False
+
+    @patch("socket.getaddrinfo")
+    @patch("apps.core.utils.safe_requests.requests.request")
+    def test_http_get_blocks_redirect_to_private_ip(self, mock_request, mock_getaddrinfo):
+        """BL-NEW-003: 公网 URL 302 跳转到内网私有地址被拦截。"""
+        from apps.opspilot.metis.llm.tools.fetch.http import _http_get_impl
+
+        # 初始 URL 公网；Location 主机解析到内网（DNS 解析后 IP 校验拦截）
+        def _resolve(host, *args, **kwargs):
+            if host == "example.com":
+                return [(2, 1, 6, "", ("93.184.216.34", 443))]
+            return [(2, 1, 6, "", ("10.0.0.5", 80))]
+
+        mock_getaddrinfo.side_effect = _resolve
+        redirect_resp = MagicMock()
+        redirect_resp.is_redirect = True
+        redirect_resp.headers = {"Location": "http://internal.attacker-controlled.com/"}
+        mock_request.return_value = redirect_resp
+
+        result = _http_get_impl("https://example.com/redirect")
+        assert result.get("success") is False
 
 
 # ===========================================================================

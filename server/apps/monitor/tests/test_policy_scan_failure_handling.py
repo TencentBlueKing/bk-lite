@@ -764,6 +764,53 @@ def test_last_over_time_uses_policy_window_in_range_selector(monkeypatch):
     assert result["data"]["result"][0]["values"] == [[200, "7"]]
 
 
+@pytest.mark.parametrize(
+    "method_name",
+    ["sum_over_time", "max_over_time", "min_over_time", "avg_over_time"],
+)
+def test_over_time_methods_use_policy_window_in_range_selector(monkeypatch, method_name):
+    query_calls = []
+
+    class VictoriaMetricsAPI:
+        def query_range(self, query, start, end, step):
+            query_calls.append((query, start, end, step))
+            return {"data": {"result": [{"values": [[200, "7"]]}]}}
+
+    _install_module(
+        monkeypatch,
+        "apps.core.exceptions.base_app_exception",
+        BaseAppException=Exception,
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.victoriametrics_api",
+        VictoriaMetricsAPI=VictoriaMetricsAPI,
+    )
+
+    module = _load_module(
+        f"monitor_policy_methods_{method_name}_test_module",
+        Path(__file__).resolve().parents[1] / "tasks" / "utils" / "policy_methods.py",
+    )
+
+    result = getattr(module, method_name)(
+        "node_cpu_seconds_total",
+        start=100,
+        end=200,
+        step="5m",
+        group_by="instance_id",
+    )
+
+    assert query_calls == [
+        (
+            f"any({method_name}(node_cpu_seconds_total[5m])) by (instance_id)",
+            100,
+            200,
+            "5m",
+        )
+    ]
+    assert result["data"]["result"][0]["values"] == [[200, "7"]]
+
+
 def test_last_over_time_uses_policy_window_for_bare_metric_selector(monkeypatch):
     query_calls = []
 

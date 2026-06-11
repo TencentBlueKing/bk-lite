@@ -85,7 +85,7 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '块设备读取速率',
       description: '容器块设备读取字节速率。',
       unit: 'byteps',
-      query: 'docker_container_blkio_io_service_bytes_recursive_read_rate{__$labels__}',
+      query: 'rate(docker_container_blkio_io_service_bytes_recursive_read{__$labels__}[5m])',
       color: '#13c2c2'
     },
     {
@@ -93,7 +93,7 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '块设备写入速率',
       description: '容器块设备写入字节速率。',
       unit: 'byteps',
-      query: 'docker_container_blkio_io_service_bytes_recursive_write_rate{__$labels__}',
+      query: 'rate(docker_container_blkio_io_service_bytes_recursive_write{__$labels__}[5m])',
       color: '#ff8a1f'
     },
     {
@@ -101,7 +101,7 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络接收速率',
       description: '容器网络接收字节速率。',
       unit: 'byteps',
-      query: 'docker_container_net_rx_bytes_rate{__$labels__}',
+      query: 'rate(docker_container_net_rx_bytes{__$labels__}[5m])',
       color: '#2f6bff'
     },
     {
@@ -109,7 +109,7 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络发送速率',
       description: '容器网络发送字节速率。',
       unit: 'byteps',
-      query: 'docker_container_net_tx_bytes_rate{__$labels__}',
+      query: 'rate(docker_container_net_tx_bytes{__$labels__}[5m])',
       color: '#27c274'
     },
     {
@@ -117,7 +117,7 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络接收错误速率',
       description: '容器网络接收错误速率。',
       unit: 'cps',
-      query: 'docker_container_net_rx_errors_rate{__$labels__}',
+      query: 'rate(docker_container_net_rx_errors{__$labels__}[5m])',
       color: '#ff4d4f'
     },
     {
@@ -125,7 +125,7 @@ export const DOCKER_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络发送错误速率',
       description: '容器网络发送错误速率。',
       unit: 'cps',
-      query: 'docker_container_net_tx_errors_rate{__$labels__}',
+      query: 'rate(docker_container_net_tx_errors{__$labels__}[5m])',
       color: '#faad14'
     },
   ],

@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from datetime import timedelta
 from io import BytesIO
-from typing import Optional
 from uuid import uuid4
 
 from django.conf import settings
@@ -35,16 +34,18 @@ def build_signed_attachment_download_url(asset: WorkflowAttachmentAsset) -> str:
 
     令牌绑定附件主键 id 与 execution_id，使用 TimestampSigner 机制(signing.dumps)
     携带时间戳，下载时按 max_age 校验过期并核对绑定关系，防止令牌被猜测或越权复用。
-    URL 仍为 path 形式，保证聊天中的锚点链接无需额外请求头即可工作。
+
+    URL 使用 /api/proxy/... 前缀，以便浏览器端通过 Next.js 代理路由
+    转发到后台 /api/v1/... 接口，而不是被 Next.js 当作页面路由处理。
     """
     token = signing.dumps(
         {"aid": asset.id, "eid": asset.execution_id},
         salt=WORKFLOW_ATTACHMENT_DOWNLOAD_SALT,
     )
-    return f"/api/v1/opspilot/bot_mgmt/workflow_attachment/download/{token}/"
+    return f"/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/{token}/"
 
 
-def resolve_signed_attachment_token(download_token: str) -> Optional[WorkflowAttachmentAsset]:
+def resolve_signed_attachment_token(download_token: str) -> WorkflowAttachmentAsset | None:
     """校验签名下载令牌并返回绑定的附件，过期/非法/不匹配时抛出 BadSignature。"""
     payload = signing.loads(
         download_token,
@@ -58,6 +59,7 @@ def resolve_signed_attachment_token(download_token: str) -> Optional[WorkflowAtt
     if not asset or asset.execution_id != payload.get("eid"):
         return None
     return asset
+
 
 ATTACHMENT_FILE_TYPE_CONFIG = {
     "md": {

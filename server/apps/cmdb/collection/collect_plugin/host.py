@@ -224,7 +224,10 @@ class HostCollectMetrics(CollectBase):
         cpu_arch = data.get("cpu_architecture", "")
         if not cpu_arch:
             return "other"
-        for arch in self.cup_arch_list:
+        # 必须用 server_cpuarch_list（原始 uname -m 名称 → 业务编码），
+        # 不能用展示用的 cup_arch_list：后者含 "x86" 条目，会因子串匹配把
+        # "x86_64" 误判成 "x86"。
+        for arch in self.server_cpuarch_list:
             if arch["name"].lower() in cpu_arch.lower():
                 return arch["id"]
         return "other"

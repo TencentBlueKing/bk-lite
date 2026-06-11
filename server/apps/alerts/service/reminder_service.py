@@ -395,14 +395,17 @@ class ReminderService:
                 )
                 return False
 
-            username_list = assignment.personnel
+            from apps.alerts.service.escalation_service import EscalationService
+
+            roster, layer_channels = EscalationService.active_roster_for_reminder(alert)
+            username_list = roster if roster is not None else assignment.personnel
             if not username_list:
                 logger.warning(
                     f"提醒任务 {assignment.id} 没有配置接收人员，无法发送通知"
                 )
                 return False
 
-            channel_list = assignment.notify_channels
+            channel_list = layer_channels if layer_channels else assignment.notify_channels
             if isinstance(channel_list, str):
                 try:
                     channel_list = json.loads(channel_list)

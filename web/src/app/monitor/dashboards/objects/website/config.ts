@@ -111,6 +111,27 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
+    },
+    {
+      title: '可用节点(2xx)',
+      guide: [{ label: '可用节点(2xx)', detail: '当前返回 2xx 状态码的探测节点数,反映正常服务的探测覆盖面。' }],
+      metric: 'website_status_code_2xx_count',
+      unit: 'counts',
+      color: '#27c274',
+      icon: 'api',
+      compare: true,
+      compareFavorableDirection: 'up',
+      footer: [{ label: '3xx 节点', metric: 'website_status_code_3xx_count', unit: 'counts' }]
+    },
+    {
+      title: '平均内容长度',
+      guide: [{ label: '平均内容长度', detail: '网站返回内容平均字节数;骤增减常意味页面改版、错误页或被劫持,需核对页面内容。' }],
+      metric: 'website_content_length_avg',
+      unit: 'bytes',
+      color: '#597ef7',
+      icon: 'database',
+      compare: true,
+      footer: [{ label: '探测成功率', metric: 'website_success_rate_avg', unit: 'percent' }]
     }
   ],
   charts: [

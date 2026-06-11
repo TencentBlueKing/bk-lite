@@ -2,7 +2,6 @@ import asyncio
 import hashlib
 import inspect
 import json
-import sys
 import time
 import uuid
 from collections import Counter
@@ -84,7 +83,10 @@ from apps.opspilot.utils.verification import get_verification_spec, run_verifica
 
 def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
-    安全地截取日志预览内容，过滤无法被控制台编码（如 Windows GBK）表示的字符。
+    安全地截取日志预览内容。
+
+    使用 UTF-8（由日志 handler 负责编码），保留 emoji 与全部 Unicode 字符，
+    仅做长度截断。
 
     Args:
         content: 原始内容
@@ -95,9 +97,7 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     """
     if not content:
         return ""
-    preview = str(content)[:max_len]
-    encoding = getattr(sys.stdout, "encoding", None) or "utf-8"
-    return preview.encode(encoding, errors="replace").decode(encoding)
+    return str(content)[:max_len]
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -2065,12 +2065,12 @@ class ToolsNodes(BasicNode):
                 current_tools = []
                 logger.info(f"[{trace_id}] agent_node: 寒暄模式，清空工具列表")
 
-            # logger.info(
-            #     f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
-            #     f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
-            #     f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
-            #     f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
-            # )
+            logger.info(
+                f"[{trace_id}] ReAct agent_node 准备调用 LLM, model={graph_request.model!r}, "
+                f"bound_tool_count={len(current_tools)}, bound_tool_names={[tool.name for tool in current_tools]}, "
+                f"message_count={len(messages)}, message_types={[type(m).__name__ for m in messages]}, "
+                f"last_message_preview={str(getattr(messages[-1], 'content', ''))[:200]!r}"
+            )
 
             extra_system_prompt_override = None
 
@@ -2326,29 +2326,30 @@ class ToolsNodes(BasicNode):
                             bind_kwargs["tool_choice"] = "any"
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
+                # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
+                if _has_pending_choice and "tool_choice" not in bind_kwargs:
+                    bind_kwargs["tool_choice"] = "any"
+                    logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
+
                 if "tool_choice" in bind_kwargs:
                     capabilities = build_anthropic_runtime_capabilities(
                         getattr(graph_request, "vendor_type", ""),
                         getattr(graph_request, "protocol_type", "openai"),
                     )
                     bind_kwargs["tool_choice"] = normalize_tool_choice_for_capabilities(bind_kwargs["tool_choice"], capabilities)
-                # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
-                # if _has_pending_choice and "tool_choice" not in bind_kwargs:
-                #     bind_kwargs["tool_choice"] = "any"
-                #     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
 
-                # Thinking 模式兼容性处理：
-                # DeepSeek V4 和 Qwen 在 thinking 模式下只支持 tool_choice="auto" 或 "none"，
-                # 不支持 "any"/"required"/specific tool。检测 thinking 模式并转换。
-                if bind_kwargs.get("tool_choice") in ("any", "required"):
-                    extra_body = getattr(llm, "extra_body", None) or {}
-                    # DeepSeek: extra_body.thinking.type == "enabled"
-                    # Qwen: extra_body.enable_thinking == True
-                    deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
-                    qwen_thinking = extra_body.get("enable_thinking") is True
-                    is_thinking_enabled = deepseek_thinking or qwen_thinking
-                    if is_thinking_enabled:
-                        bind_kwargs["tool_choice"] = "auto"
+                    # OpenAI 协议下的 thinking 兼容：
+                    # DeepSeek（extra_body.thinking.type == "enabled"）和
+                    # Qwen/Gemma（extra_body.enable_thinking == True 或 extra_body.chat_template_kwargs.enable_thinking == True）
+                    # 在 thinking 模式开启时仅支持 tool_choice="auto"/"none"，不支持 "any"/"required"。
+                    # normalize_tool_choice_for_capabilities 仅处理 anthropic 协议，这里补全 openai 协议路径。
+                    if bind_kwargs.get("tool_choice") in ("any", "required"):
+                        extra_body = getattr(llm, "extra_body", None) or {}
+                        deepseek_thinking = extra_body.get("thinking", {}).get("type") == "enabled"
+                        qwen_thinking = extra_body.get("enable_thinking") is True
+                        gemma_thinking = (extra_body.get("chat_template_kwargs") or {}).get("enable_thinking") is True
+                        if deepseek_thinking or qwen_thinking or gemma_thinking:
+                            bind_kwargs["tool_choice"] = "auto"
                 llm_with_tools = llm.bind_tools(current_tools, **bind_kwargs)
             else:
                 llm_with_tools = llm
@@ -2413,10 +2414,10 @@ class ToolsNodes(BasicNode):
             if isinstance(usage_metadata, dict):
                 token_counter["total"] += usage_metadata.get("total_tokens", 0)
 
-            # logger.info(
-            #     f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
-            #     f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
-            # )
+            logger.info(
+                f"[{trace_id}] ReAct agent_node 返回: message_type={type(response).__name__}, "
+                f"tool_call_count={len(tool_calls)}, content_preview={_safe_log_preview(str(getattr(response, 'content', '')))!r}"
+            )
 
             if tool_calls:
                 logger.info(f"[{trace_id}] ReAct agent_node tool_calls: {tool_calls}")
@@ -3143,6 +3144,11 @@ class ToolsNodes(BasicNode):
 
             # 如果 LLM 没有发起工具调用，自然结束
             if not (hasattr(last_message, "tool_calls") and last_message.tool_calls):
+                logger.info(
+                    "ReAct should_continue: 未检测到 tool_calls，结束循环, "
+                    f"last_message_type={type(last_message).__name__}, "
+                    f"content_preview={_safe_log_preview(str(getattr(last_message, 'content', '')))!r}"
+                )
                 return "end"
 
             # ========== stopWhen 条件链评估 ==========

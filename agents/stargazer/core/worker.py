@@ -119,6 +119,7 @@ async def collect_task(
         return result
 
     finally:
+        await _clear_dedupe_key(params, ctx.get("job_id"))
         # 清除运行标记，允许相同参数的任务再次入队
         if should_clear_running_flag:
             await _clear_running_flag(task_id)
@@ -159,6 +160,52 @@ async def _clear_running_flag(task_id: str):
         logger.warning(f"Failed to clear running flag for {task_id}: {e}")
     finally:
         # 正确关闭Redis连接池
+        if pool:
+            await pool.close()
+
+
+async def _clear_dedupe_key(params: Dict[str, Any], job_id: str | None = None):
+    pool = None
+    try:
+        from core.task_queue import generate_dedupe_key
+
+        redis_settings = RedisSettings(
+            host=REDIS_CONFIG["host"],
+            port=REDIS_CONFIG["port"],
+            password=REDIS_CONFIG["password"],
+            database=REDIS_CONFIG["database"],
+        )
+
+        pool = await create_pool(redis_settings)
+        dedupe_key = generate_dedupe_key(params or {})
+        redis_key = f"task:dedupe:{dedupe_key}"
+        existing_job_id = await pool.get(redis_key)
+        if existing_job_id and job_id:
+            existing_job_id = (
+                existing_job_id.decode()
+                if isinstance(existing_job_id, (bytes, bytearray))
+                else str(existing_job_id)
+            )
+            if existing_job_id != job_id:
+                logger.info(
+                    "event=task_dedupe_clear status=skipped reason=job_id_mismatch "
+                    "dedupe_key=%s job_id=%s existing_job_id=%s",
+                    dedupe_key,
+                    job_id,
+                    existing_job_id,
+                )
+                return
+
+        await pool.delete(redis_key)
+        logger.info(
+            "event=task_dedupe_clear status=success dedupe_key=%s job_id=%s",
+            dedupe_key,
+            job_id,
+        )
+
+    except Exception as e:
+        logger.warning("event=task_dedupe_clear status=failed error=%s", e)
+    finally:
         if pool:
             await pool.close()
 

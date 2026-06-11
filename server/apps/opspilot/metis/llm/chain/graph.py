@@ -388,13 +388,24 @@ class BasicGraph(ABC):
             (events_to_yield, updated_message_id, updated_message_started, updated_thinking_started)
         """
         events = []
-        if not (chunk and hasattr(chunk, "content") and chunk.content):
+        if not (chunk and hasattr(chunk, "content")):
             return events, current_message_id, message_started, thinking_started
 
         # 处理 Anthropic 格式的 content（可能是 list of content blocks）
         content_delta, thinking_delta = self._extract_content_from_chunk(chunk.content)
 
-        # 处理 thinking 内容（Anthropic 格式）
+        # 从 additional_kwargs 中提取 reasoning_content（DeepSeek/Gemma 等通过 vLLM
+        # reasoning-parser 暴露的推理内容，lc_patches.py 已统一归到此字段）
+        if not thinking_delta:
+            rc = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content", "")
+            if rc:
+                logger.info(f"[BasicGraph] reasoning_content detected in chunk.additional_kwargs: " f"{len(rc)} chars, show_think={show_think}")
+                thinking_delta = rc
+
+        if not chunk.content and not thinking_delta:
+            return events, current_message_id, message_started, thinking_started
+
+        # 处理 thinking 内容（Anthropic 格式 / vLLM reasoning-parser 格式）
         if thinking_delta and show_think:
             if not thinking_started:
                 thinking_started = True

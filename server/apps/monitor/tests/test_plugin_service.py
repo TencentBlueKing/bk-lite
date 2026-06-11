@@ -482,6 +482,17 @@ def test_render_template_supports_default_filter(monkeypatch):
     assert rendered == "none"
 
 
+def test_render_template_supports_lower_filter_for_toml_booleans(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+
+    rendered = plugin_controller_module.Controller({}).render_template(
+        "insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}",
+        {"insecure_skip_verify": False},
+    )
+
+    assert rendered == "insecure_skip_verify = false"
+
+
 def test_render_template_allows_business_default_variables(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
 
@@ -701,6 +712,21 @@ def test_windows_wmi_template_renders_headers(monkeypatch):
     assert 'namespace = "root\\cimv2"' in rendered
     assert 'metrics_modules = "cpu,mem"' in rendered
     assert 'config_type = "windows_wmi"' in rendered
+
+
+def test_host_remote_status_query_is_scoped_to_host_config_type():
+    metrics_path = (
+        Path(__file__).resolve().parents[1]
+        / "support-files"
+        / "plugins"
+        / "Telegraf"
+        / "http"
+        / "host"
+        / "metrics.json"
+    )
+    data = json.loads(metrics_path.read_text(encoding="utf-8"))
+
+    assert "config_type='host'" in data["status_query"]
 
 
 def test_host_remote_ui_exposes_selectable_metrics_and_credentials():

@@ -5,14 +5,14 @@ import tempfile
 from typing import List, Optional
 from urllib.parse import urljoin, urlparse
 
-import httpx
 from bs4 import BeautifulSoup
 from langchain_community.document_loaders import RecursiveUrlLoader
 from langchain_community.document_transformers import BeautifulSoupTransformer
 from langchain_core.documents import Document
 from loguru import logger
 
-from apps.core.utils.ssrf_validator import SSRFValidator
+from apps.core.utils.safe_requests import SafeRequestsError, safe_get
+from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
 
 
 class WebSiteLoader:
@@ -33,8 +33,16 @@ class WebSiteLoader:
         # SSRF 防护：验证起始 URL
         validated_url = SSRFValidator.validate(self.url)
 
-        # 加载网页文本内容
-        loader = RecursiveUrlLoader(validated_url, max_depth=self.max_depth)
+        # 加载网页文本内容。
+        # prevent_outside=True（显式声明）：递归抓取只跟随起始 URL 子路径内的链接，
+        # 公网页面里嵌入的内网/跨域链接不会被抓取，缓解递归爬取 SSRF（BL-NEW-003）。
+        # 注意：对「起始域内的页面再 302 跳到内网」这类场景，完整防护仍需在部署侧叠加
+        # 出站代理 / 网络 ACL（见修复建议）。
+        loader = RecursiveUrlLoader(
+            validated_url,
+            max_depth=self.max_depth,
+            prevent_outside=True,
+        )
         web_docs = loader.load()
 
         transformer = BeautifulSoupTransformer()
@@ -190,32 +198,31 @@ class WebSiteLoader:
             图片二进制数据，失败返回None
         """
         try:
-            # SSRF 防护：验证图片 URL
-            validated_url = SSRFValidator.validate(img_url)
+            # SSRF 防护：经统一安全客户端下载，禁用自动重定向并对每一跳 Location
+            # 做 SSRF 校验，杜绝「公网图片 URL 302 跳内网/云元数据」的绕过（BL-NEW-003）。
+            response = safe_get(img_url, timeout=timeout, allow_redirects=True)
 
-            with httpx.Client(timeout=timeout, follow_redirects=True) as client:
-                response = client.get(validated_url)
+            if response.status_code != 200:
+                logger.warning(f"下载图片失败 [{img_url}], 状态码: {response.status_code}")
+                return None
 
-                if response.status_code != 200:
-                    logger.warning(f"下载图片失败 [{img_url}], 状态码: {response.status_code}")
-                    return None
+            # 检查内容类型
+            content_type = response.headers.get("content-type", "")
+            if not content_type.startswith("image/"):
+                logger.warning(f"URL不是图片类型 [{img_url}], content-type: {content_type}")
+                return None
 
-                # 检查内容类型
-                content_type = response.headers.get("content-type", "")
-                if not content_type.startswith("image/"):
-                    logger.warning(f"URL不是图片类型 [{img_url}], content-type: {content_type}")
-                    return None
+            # 检查文件大小
+            content = response.content
+            if len(content) > max_size:
+                logger.warning(f"图片过大 [{img_url}], 大小: {len(content)} bytes, 超过限制: {max_size} bytes")
+                return None
 
-                # 检查文件大小
-                content = response.content
-                if len(content) > max_size:
-                    logger.warning(f"图片过大 [{img_url}], 大小: {len(content)} bytes, 超过限制: {max_size} bytes")
-                    return None
+            return content
 
-                return content
-
-        except httpx.TimeoutException:
-            logger.warning(f"下载图片超时 [{img_url}]")
+        except (SSRFError, SafeRequestsError) as e:
+            # 被 SSRF 校验拦截或请求失败：跳过该图片，不影响整体加载
+            logger.warning(f"下载图片被拦截或失败 [{img_url}]: {e}")
             return None
         except Exception as e:
             logger.error(f"下载图片异常 [{img_url}]: {e}")

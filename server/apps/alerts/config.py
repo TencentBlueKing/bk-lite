@@ -20,5 +20,9 @@ CELERY_BEAT_SCHEDULE = {
     "cleanup_reminder_tasks": {
         "task": "apps.alerts.tasks.tasks.cleanup_reminder_tasks",
         "schedule": crontab(minute="0", hour="*"),
-    }
+    },
+    "check_and_send_escalations": {
+        "task": "apps.alerts.tasks.tasks.check_and_send_escalations",
+        "schedule": crontab(minute="*"),
+    },
 }

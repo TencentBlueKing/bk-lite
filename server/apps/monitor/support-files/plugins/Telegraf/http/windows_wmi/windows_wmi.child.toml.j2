@@ -10,7 +10,7 @@
         username = "{{ username }}"
         password = "${PASSWORD__{{ config_id }}}"
         namespace = "{{ namespace | default('root\\cimv2', true) }}"
-        metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"
+        metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,diskio,net,processes,system', true) }}"
         timeout = "{{ timeout | default(60, true) }}"
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type | default('os', true) }}"

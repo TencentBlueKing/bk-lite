@@ -14,7 +14,7 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { CONSUL_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['整体健康状态', '通过率', '危险检查数'];
+const SUMMARY_TITLES = ['整体健康状态', '通过率', '通过检查数', '警告检查数', '危险检查数'];
 const CHART_TITLES = ['健康检查趋势'];
 const RING_TITLES = ['健康检查状态分布'];
 
@@ -33,7 +33,10 @@ export default function ConsulDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
-          <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>健康概览</div>
+          <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
+
+          <div className={styles.sectionLabel}>趋势与分布</div>
           <FlexiblePanelSection styles={styles}>
             {trendChart ? (
               <TrendChartPanel

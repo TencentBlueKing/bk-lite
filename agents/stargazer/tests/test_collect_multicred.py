@@ -98,6 +98,130 @@ def test_generate_task_id_distinguishes_credential_id():
     assert first_task_id != second_task_id
 
 
+def test_generate_dedupe_key_is_stable_for_host_remote_tasks():
+    from core.task_queue import TaskQueue
+
+    queue = TaskQueue()
+    params = {
+        "monitor_type": "host",
+        "host": "10.0.0.8",
+        "port": 22,
+        "tags": {"instance_id": "cmdb_host_1"},
+        "collect_type": "http",
+    }
+
+    assert queue._generate_dedupe_key(params) == queue._generate_dedupe_key(params)
+    assert queue._generate_dedupe_key(params).startswith("collect_host_")
+
+
+@pytest.mark.asyncio
+async def test_enqueue_collect_task_skips_when_dedupe_job_is_still_queued():
+    from core.task_queue import TaskQueue
+
+    class ExistingJobPool:
+        def __init__(self):
+            self.enqueued = []
+            self.values = {}
+
+        async def get(self, key):
+            return self.values.get(key)
+
+        async def zscore(self, key, value):
+            if key == "arq:queue" and value == "job-existing":
+                return 1
+            return None
+
+        async def exists(self, key):
+            return 0
+
+        async def ttl(self, key):
+            return 86399 if key.startswith("task:dedupe:") else -2
+
+        async def delete(self, key):
+            self.values.pop(key, None)
+
+        async def enqueue_job(self, *args, **kwargs):
+            self.enqueued.append((args, kwargs))
+            return types.SimpleNamespace(job_id="job-new")
+
+        async def set(self, key, value, ex=None):
+            self.values[key] = value
+
+    queue = TaskQueue()
+    queue.pool = ExistingJobPool()
+    queue._is_healthy = True
+    params = {
+        "monitor_type": "windows_wmi",
+        "host": "10.0.0.8",
+        "tags": {"instance_id": "cmdb_host_1"},
+        "collect_type": "http",
+    }
+    dedupe_key = queue._generate_dedupe_key(params)
+    queue.pool.values[f"task:dedupe:{dedupe_key}"] = "job-existing"
+
+    result = await queue.enqueue_collect_task(params)
+
+    assert result["status"] == "skipped"
+    assert result["reason"] == "Task already queued or running for dedupe key"
+    assert result["job_id"] == "job-existing"
+    assert queue.pool.enqueued == []
+
+
+@pytest.mark.asyncio
+async def test_enqueue_collect_task_clears_stale_dedupe_and_requeues():
+    from core.task_queue import TaskQueue
+
+    class StaleJobPool:
+        def __init__(self):
+            self.enqueued = []
+            self.values = {}
+            self.deleted = []
+
+        async def get(self, key):
+            return self.values.get(key)
+
+        async def zscore(self, key, value):
+            return None
+
+        async def exists(self, key):
+            return 0
+
+        async def ttl(self, key):
+            return 86399
+
+        async def delete(self, key):
+            self.deleted.append(key)
+            self.values.pop(key, None)
+
+        async def enqueue_job(self, *args, **kwargs):
+            self.enqueued.append((args, kwargs))
+            return types.SimpleNamespace(job_id="job-new")
+
+        async def set(self, key, value, ex=None):
+            self.values[key] = value
+
+    queue = TaskQueue()
+    queue.pool = StaleJobPool()
+    queue._is_healthy = True
+    params = {
+        "plugin_name": "vmware_info",
+        "model_id": "vmware_vc",
+        "host": "10.0.0.8",
+        "tags": {"instance_id": "cmdb_vc_1"},
+        "collect_task_id": "collect-1",
+    }
+    dedupe_key = queue._generate_dedupe_key(params)
+    queue.pool.values[f"task:dedupe:{dedupe_key}"] = "job-missing"
+
+    result = await queue.enqueue_collect_task(params)
+
+    assert result["status"] == "queued"
+    assert result["job_id"] == "job-new"
+    assert f"task:dedupe:{dedupe_key}" in queue.pool.deleted
+    assert queue.pool.values[f"task:dedupe:{dedupe_key}"] == "job-new"
+    assert len(queue.pool.enqueued) == 1
+
+
 def test_expand_collect_tasks_supports_credentials_pool_and_hosts():
     from api.collect import _build_collect_task_candidates, _expand_collect_tasks
 
@@ -832,6 +956,7 @@ def test_snmp_topo_format_result_preserves_raw_row_shape_after_registry_refactor
             "ifindex": "192.168.1.10",
             "ifindex_type": "ipaddr",
             "val": "7",
+            "group": "arp",
         },
         {
             "root": "1.3.6.1.2.1.2.2.1.2",
@@ -840,6 +965,7 @@ def test_snmp_topo_format_result_preserves_raw_row_shape_after_registry_refactor
             "ifindex": "7",
             "ifindex_type": "default",
             "val": "GigabitEthernet1/0/7",
+            "group": "interfaces",
         },
     ]
 
@@ -885,6 +1011,7 @@ def test_snmp_topo_format_result_prefers_longest_matching_eval_oid(monkeypatch):
             "ifindex": "5",
             "ifindex_type": "suffix",
             "val": "value",
+            "group": "interfaces",
         }
     ]
 
@@ -893,7 +1020,7 @@ def test_snmp_topo_build_topology_facts_builds_lldp_neighbor_evidence(monkeypatc
     SnmpTopo = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch).SnmpTopo
 
     snmp_rows = [
-        {"tag": "LLDP-LocalPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
+        {"tag": "LLDP-LocPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
         {"tag": "LLDP-RemSysName", "ifindex": "8457.101.1", "val": "dist-sw-1"},
         {"tag": "LLDP-RemPortId", "ifindex": "8457.101.1", "val": "GigabitEthernet1/0/24"},
     ]
@@ -930,8 +1057,8 @@ def test_snmp_topo_build_topology_facts_builds_cdp_neighbor_evidence(monkeypatch
 
     snmp_rows = [
         {"tag": "IFTable-IfDescr", "ifindex": "7", "val": "GigabitEthernet1/0/7"},
-        {"tag": "CDP-CacheDeviceId", "ifindex": "7.1", "val": "core-sw-1"},
-        {"tag": "CDP-CacheDevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
+        {"tag": "CDP-DeviceId", "ifindex": "7.1", "val": "core-sw-1"},
+        {"tag": "CDP-DevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
     ]
 
     facts = SnmpTopo.build_topology_facts(snmp_rows, enabled_protocols=("cdp",))
@@ -959,12 +1086,12 @@ def test_snmp_topo_build_topology_facts_returns_no_neighbor_facts_for_explicit_e
     SnmpTopo = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch).SnmpTopo
 
     snmp_rows = [
-        {"tag": "LLDP-LocalPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
+        {"tag": "LLDP-LocPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
         {"tag": "LLDP-RemSysName", "ifindex": "8457.101.1", "val": "dist-sw-1"},
         {"tag": "LLDP-RemPortId", "ifindex": "8457.101.1", "val": "GigabitEthernet1/0/24"},
         {"tag": "IFTable-IfDescr", "ifindex": "7", "val": "GigabitEthernet1/0/7"},
-        {"tag": "CDP-CacheDeviceId", "ifindex": "7.1", "val": "core-sw-1"},
-        {"tag": "CDP-CacheDevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
+        {"tag": "CDP-DeviceId", "ifindex": "7.1", "val": "core-sw-1"},
+        {"tag": "CDP-DevicePort", "ifindex": "7.1", "val": "GigabitEthernet1/0/48"},
     ]
 
     assert SnmpTopo.build_topology_facts(snmp_rows, enabled_protocols=()) == []
@@ -989,7 +1116,7 @@ def test_snmp_topo_build_topology_facts_builds_fdb_neighbor_when_bridge_port_map
     snmp_rows = [
         {"tag": "FDB-MacAddress", "ifindex": "0.17.34.51.68.85", "val": "00:11:22:33:44:55"},
         {"tag": "FDB-Port", "ifindex": "0.17.34.51.68.85", "val": "10"},
-        {"tag": "BRIDGE-MIB-BasePortIfIndex", "ifindex": "10", "val": "15"},
+        {"tag": "BRIDGE-BasePortIfIndex", "ifindex": "10", "val": "15"},
         {"tag": "IFTable-IfDescr", "ifindex": "15", "val": "GigabitEthernet1/0/15"},
         {"tag": "IFTable-IfAlias", "ifindex": "15", "val": "server-uplink"},
     ]
@@ -1079,7 +1206,7 @@ def test_snmp_facts_list_all_resources_uses_default_neighbor_protocols_when_topo
     snmp_topo_module = _import_snmp_topo_with_stubbed_sanic_log(monkeypatch)
 
     raw_topology_rows = [
-        {"tag": "LLDP-LocalPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
+        {"tag": "LLDP-LocPortId", "ifindex": "101", "val": "GigabitEthernet1/0/1"},
         {"tag": "LLDP-RemSysName", "ifindex": "8457.101.1", "val": "dist-sw-1"},
         {"tag": "LLDP-RemPortId", "ifindex": "8457.101.1", "val": "GigabitEthernet1/0/24"},
     ]
@@ -1140,7 +1267,7 @@ def test_snmp_facts_list_all_resources_uses_fdb_default_fallback_when_topology_p
     raw_topology_rows = [
         {"tag": "FDB-MacAddress", "ifindex": "0.17.34.51.68.85", "val": "00:11:22:33:44:55"},
         {"tag": "FDB-Port", "ifindex": "0.17.34.51.68.85", "val": "10"},
-        {"tag": "BRIDGE-MIB-BasePortIfIndex", "ifindex": "10", "val": "15"},
+        {"tag": "BRIDGE-BasePortIfIndex", "ifindex": "10", "val": "15"},
         {"tag": "IFTable-IfDescr", "ifindex": "15", "val": "GigabitEthernet1/0/15"},
         {"tag": "IFTable-IfAlias", "ifindex": "15", "val": "server-uplink"},
     ]

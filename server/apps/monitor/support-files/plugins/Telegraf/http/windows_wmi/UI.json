@@ -70,7 +70,7 @@
       "type": "checkbox_group",
       "required": true,
       "editable": false,
-      "default_value": ["cpu", "mem", "disk", "net"],
+      "default_value": ["cpu", "mem", "disk", "diskio", "net", "processes", "system"],
       "description": "选择需要通过 WMI 远程采集的 Windows 主机指标模块",
       "options": [
         {"label": "CPU", "value": "cpu"},
