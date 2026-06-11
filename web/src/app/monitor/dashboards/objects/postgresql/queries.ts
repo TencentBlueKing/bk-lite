@@ -10,7 +10,7 @@ export interface PgTopDbQuery {
   /** formatMetricValue 用的单位 */
   unit: string;
   color: string;
-  /** 按 db(库名,Telegraf postgresql input 的原生标签)聚合 + topk 的查询;__$labels__ 由 buildSearchParams 注入实例过滤 */
+  /** 按 db 聚合 + topk 的查询;__$labels__ 由 buildSearchParams 注入实例过滤 */
   query: string;
   guide: GuideItem[];
 }

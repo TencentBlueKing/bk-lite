@@ -42,8 +42,8 @@ export default function PostgresqlDashboardPage() {
   const secondaryCharts = useFilteredChartPanels(dashboard.chartPanels, SECONDARY_CHART_TITLES);
   const bars = useFilteredBarPanels(dashboard.barPanels, BAR_TITLES);
 
-  // 「数据库压力排行」为 bespoke 取数:config-driven 核心无法表达按 dbname 的动态 TopN,
-  // 故复用实例/时间上下文,自行发 topk(by dbname) 查询并解析为 BarList。
+  // 「数据库压力排行」为 bespoke 取数:config-driven 核心无法表达按 db 的动态 TopN,
+  // 故复用实例/时间上下文,自行发 topk(by db) 查询并解析为 BarList。
   const { idValues, timeValues, isDashboardMode, loadTick } = dashboard;
   const [topDb, setTopDb] = useState<Record<string, BarItem[]>>({});
   const idValuesKey = JSON.stringify(idValues);
@@ -56,7 +56,9 @@ export default function PostgresqlDashboardPage() {
     }
     let active = true;
     runWithConcurrency(PG_TOP_DB_QUERIES, TOP_DB_CONCURRENCY, async (q) =>
-      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues))
+      // autoConvert=false:禁用服务端单位自动换算,否则会与前端 formatMetricValue 双重换算
+      //(如 counts 被后端先 ÷1000 成 thousand,前端再按 counts 缩放,量级错乱)。见 k8s-node 同因。
+      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false))
         .then((res: any) => [q.key, topDbBars(res, q.unit, q.color)] as const)
         .catch(() => [q.key, [] as BarItem[]] as const)
     ).then((entries) => {
