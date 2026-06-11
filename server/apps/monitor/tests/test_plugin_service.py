@@ -714,6 +714,21 @@ def test_windows_wmi_template_renders_headers(monkeypatch):
     assert 'config_type = "windows_wmi"' in rendered
 
 
+def test_host_remote_status_query_is_scoped_to_host_config_type():
+    metrics_path = (
+        Path(__file__).resolve().parents[1]
+        / "support-files"
+        / "plugins"
+        / "Telegraf"
+        / "http"
+        / "host"
+        / "metrics.json"
+    )
+    data = json.loads(metrics_path.read_text(encoding="utf-8"))
+
+    assert "config_type='host'" in data["status_query"]
+
+
 def test_host_remote_ui_exposes_selectable_metrics_and_credentials():
     ui_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "UI.json"
     data = json.loads(ui_path.read_text(encoding="utf-8"))
