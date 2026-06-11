@@ -4,7 +4,8 @@ from datetime import datetime, timedelta, timezone
 import time
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.log.constants.alert_policy import AlertConstants
-from apps.log.models.policy import Policy
+from apps.log.constants.database import DatabaseConstants
+from apps.log.models.policy import Alert, Event, Policy
 from apps.core.logger import celery_logger as logger
 from apps.log.tasks.services.policy_scan import LogPolicyScan
 from apps.log.tasks.utils.policy import period_to_seconds
@@ -99,3 +100,81 @@ def scan_log_policy_task(policy_id):
         duration = time.time() - start_time
         logger.error(f"日志策略 [{policy_id}] 执行失败（系统异常），耗时: {duration:.2f}s，错误: {str(e)}", exc_info=True)
         raise
+
+
+@shared_task(base=Singleton, raise_on_duplicate=False)
+def compensate_log_notice_task():
+    """日志告警通知补偿（范围B）。
+
+    回扫近 NOTICE_COMPENSATE_WINDOW_SECONDS 内、发送未成功（notified=False）且重投未超限的事件并重发，
+    兜住瞬时通道故障导致的永久漏通知。仅处理 notice 开启、策略启用、非 info 级别的事件；
+    存量历史事件已在迁移中标记为 notified=True，不在补偿范围内（避免重发风暴）。
+    """
+    start_time = time.time()
+    now = datetime.now(timezone.utc)
+    window_start = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_WINDOW_SECONDS)
+    # 仅补偿落库已超 MIN_AGE 的事件：保证本轮扫描的同步 notice() 已完成，杜绝与首发并发双投
+    settle_before = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS)
+
+    pending = list(
+        Event.objects.filter(
+            notified=False,
+            notice_retry_count__lt=AlertConstants.NOTICE_COMPENSATE_MAX_RETRY,
+            event_time__gte=window_start,
+            created_at__lte=settle_before,
+            policy__notice=True,
+            policy__enable=True,
+        )
+        .exclude(level=AlertConstants.LEVEL_INFO)
+        .select_related("policy")
+        .order_by("event_time")[: AlertConstants.NOTICE_COMPENSATE_BATCH_SIZE]
+    )
+
+    if not pending:
+        duration = time.time() - start_time
+        logger.info(f"日志通知补偿：无待补偿事件，耗时: {duration:.2f}s")
+        return {"success": True, "scanned": 0, "compensated": 0, "duration": duration}
+
+    scanners = {}  # 按策略复用 scanner，避免重复构造
+    updated_events = []
+    success_alert_ids = set()
+
+    for event in pending:
+        policy = event.policy
+        # 无通知人 → 永远发不出，直接标记已处理避免无意义重投占用配额
+        if not policy.notice_users:
+            event.notified = True
+            updated_events.append(event)
+            continue
+
+        scanner = scanners.get(policy.id)
+        if scanner is None:
+            scanner = LogPolicyScan(policy)
+            scanners[policy.id] = scanner
+
+        # 单次发送：补偿任务的周期回扫本身即外层重试，避免在 worker 内叠加内联 sleep 阻塞
+        is_notice, notice_result = scanner.send_notice(event, max_attempts=1)
+        event.notice_result = notice_result
+        event.notified = is_notice
+        event.notice_retry_count = (event.notice_retry_count or 0) + 1
+        updated_events.append(event)
+        if is_notice:
+            success_alert_ids.add(event.alert_id)
+
+    if updated_events:
+        Event.objects.bulk_update(
+            updated_events,
+            ["notice_result", "notified", "notice_retry_count"],
+            batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+        )
+
+    if success_alert_ids:
+        Alert.objects.bulk_update(
+            [Alert(id=alert_id, notice=True) for alert_id in success_alert_ids],
+            ["notice"],
+            batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+        )
+
+    duration = time.time() - start_time
+    logger.info(f"日志通知补偿完成：扫描 {len(pending)} 个事件，成功补发 {len(success_alert_ids)} 个告警，耗时: {duration:.2f}s")
+    return {"success": True, "scanned": len(pending), "compensated": len(success_alert_ids), "duration": duration}
