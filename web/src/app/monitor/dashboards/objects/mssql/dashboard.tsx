@@ -49,7 +49,7 @@ export default function MssqlDashboardPage() {
 
   // 「数据库压力排行」为 bespoke 取数:config-driven 核心无法表达按 database 的动态 TopN,
   // 故复用实例/时间上下文,自行发 topk(by database) 查询并解析为 BarList。
-  const { idValues, timeValues, isDashboardMode } = dashboard;
+  const { idValues, timeValues, isDashboardMode, loadTick } = dashboard;
   const [topDb, setTopDb] = useState<Record<string, BarItem[]>>({});
   const idValuesKey = JSON.stringify(idValues);
   const timeKey = JSON.stringify(timeValues);
@@ -72,8 +72,9 @@ export default function MssqlDashboardPage() {
     return () => {
       active = false;
     };
+    // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery]);
+  }, [idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
   return (
     <DashboardShell
