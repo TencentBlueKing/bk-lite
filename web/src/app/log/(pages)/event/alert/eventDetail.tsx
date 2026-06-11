@@ -16,11 +16,11 @@ import {
   ModalConfig,
   TableDataItem,
   TimeLineItem,
-  ColumnItem
 } from '@/app/log/types';
 import useLogApi from '@/app/log/api/event';
 import CustomTable from '@/components/custom-table';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import { buildLogAlertRawColumns } from './rawLogColumns';
 
 const EventDetail = forwardRef<ModalRef, ModalConfig>(({}, ref) => {
   const { t } = useTranslation();
@@ -86,45 +86,13 @@ const EventDetail = forwardRef<ModalRef, ModalConfig>(({}, ref) => {
   );
 
   const activeColumns = useMemo(() => {
-    let columns: ColumnItem[] = [
-      {
-        title: 'timestamp',
-        dataIndex: '_time',
-        key: '_time',
-        width: 150,
-        fixed: 'left',
-        sorter: (a: any, b: any) => a.id - b.id,
-        render: (val, { _time }) => (
-          <>{val ? convertToLocalizedTime(_time) : '--'}</>
-        )
-      },
-      {
-        title: 'message',
-        dataIndex: '_msg',
-        key: '_msg',
-        width: 350,
-        render: (val) => <>{val || '--'}</>
-      }
-    ];
-    if (!isAggregate && formData.show_fields?.length) {
-      const displayColumns = formData.show_fields.map((item: string) => ({
-        title: item,
-        dataIndex: item,
-        key: item
-      }));
-      columns = [...columns, ...displayColumns];
-    }
-    if (isAggregate && tableData.length) {
-      columns = Object.keys(tableData[0] || {})
-        .filter((item) => item !== 'id')
-        .map((item) => ({
-          title: item,
-          dataIndex: item,
-          key: item
-        }));
-    }
-    return columns;
-  }, [formData, isAggregate, tableData]);
+    return buildLogAlertRawColumns({
+      isAggregate,
+      showFields: formData.show_fields,
+      rawData: tableData,
+      renderTime: convertToLocalizedTime
+    });
+  }, [convertToLocalizedTime, formData.show_fields, isAggregate, tableData]);
 
   const getTableData = async (row: TableDataItem) => {
     setTableLoading(true);
@@ -138,6 +106,8 @@ const EventDetail = forwardRef<ModalRef, ModalConfig>(({}, ref) => {
         id: index
       }));
       setTableData(rawData);
+    } catch {
+      setTableData([]);
     } finally {
       setTableLoading(false);
     }
