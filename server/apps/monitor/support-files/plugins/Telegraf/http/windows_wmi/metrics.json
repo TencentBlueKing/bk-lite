@@ -9,7 +9,7 @@
   "icon": "mm-host_主机",
   "type": "OS",
   "description": "Remote Windows host monitoring through WMI",
-  "default_metric": "any({instance_type='os', config_type='windows_wmi'}) by (instance_id)",
+  "default_metric": "any({instance_type='os'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["cpu_usage_total", "mem_used_percent", "disk_used_percent"],
   "display_fields": [
