@@ -23,7 +23,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 
 import {
   CYCLE_OPTIONS,
-  NETWORK_DEVICE_OPTIONS,
+  getNetworkDeviceOptions,
   createTaskValidationRules,
 } from '@/app/cmdb/constants/professCollection';
 
@@ -183,7 +183,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       total: 0,
     });
     const dropdownItems = {
-      items: NETWORK_DEVICE_OPTIONS,
+      items: getNetworkDeviceOptions(t),
     };
 
     const normalizeOrganizationValue = useCallback((value: any): number[] => {
@@ -317,13 +317,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const instColumns = [
       {
-        title: '实例名',
+        title: t('Collection.instanceName'),
         dataIndex: 'inst_name',
         key: 'inst_name',
         render: (text: any) => text || '--',
       },
       {
-        title: '管理IP',
+        title: t('Collection.manageIp'),
         dataIndex: 'ip_addr',
         key: 'ip_addr',
         render: (text: any) => text || '--',

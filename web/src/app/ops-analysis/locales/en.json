@@ -240,8 +240,16 @@
       "datetime": "Datetime"
     }
   },
+  "opsAnalysis": {
+    "architecture": {
+      "loadFailed": "Failed to load"
+    }
+  },
   "dashboard": {
     "endTime": "End Time",
+    "duplicateFieldKey": "Field key must be unique",
+    "selectDashboardFirst": "Please select a dashboard first",
+    "fetchDataFieldsFailed": "Failed to fetch data fields",
     "timeRange": "Time Range",
     "noData": "No data available",
     "dataSourceAttr": "Data Source Attribute",

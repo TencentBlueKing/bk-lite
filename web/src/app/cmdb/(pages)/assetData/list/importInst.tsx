@@ -111,14 +111,14 @@ const ImportInst = forwardRef<FieldModalRef, FieldModalProps>(
             'Content-Type': 'multipart/form-data',
           },
         });
-        message.success('导入成功');
+        message.success(t('common.importSuccess'));
         onSuccess();
         handleCancel();
       } catch (error: any) {
         // 后端校验失败返回的多行明细可能很长，用 Modal 展示比 message.error 更可读
-        const detail = error?.message || '导入失败';
+        const detail = error?.message || t('common.importFailed');
         Modal.error({
-          title: '导入失败',
+          title: t('common.importFailed'),
           width: 640,
           content: (
             <pre

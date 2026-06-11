@@ -55,7 +55,7 @@ class ManageOneCollectionPlugin(AutoRegisterCollectionPluginMixin, ManageOneColl
             "resource_id": "resource_id",
             "ip_addr": "ip_addr",
             "hypervisor_type": "hypervisor_type",
-            "memory_mb": (int, "memory_mb"),
+            "memory_mb": "memory_mb",
             "vcpus": (int, "vcpus"),
         },
         "manageone_ds": {

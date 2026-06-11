@@ -34,6 +34,7 @@ def _vm_vector():
                     "memory_mb": "4096",
                     "charge_type": "postPaid",
                     "create_time": "2025-01-01T00:00:00Z",
+                    "expired_time": "2026-12-31T23:59:59Z",
                 },
                 "value": [ts, "1"],
             },
@@ -62,6 +63,8 @@ def test_hwcloud_format_metrics_fields_and_assoc(monkeypatch):
     assert ecs["vcpus"] == 2
     assert ecs["memory_mb"] == 4096
     assert ecs["inst_name"] == "web-01_ecs-001"
+    assert ecs["create_time"] == "2025-01-01T00:00:00Z"
+    assert ecs["expired_time"] == "2026-12-31T23:59:59Z"
     assert ecs["assos"] == [
         {
             "model_id": "hwcloud",
@@ -93,3 +96,42 @@ def test_hwcloud_field_mappings_cover_model_attrs():
     missing = expected_ecs_fields - mapped
     assert not missing, f"hwcloud_ecs 缺失字段映射: {missing}"
     assert "endpoint" in HwCloudCollectionPlugin.field_mappings["hwcloud"]
+
+
+@pytest.mark.django_db
+def test_hwcloud_empty_tuple_field_is_omitted(monkeypatch):
+    """vcpus 为空字符串时，按设计应从实例 dict 中省略该字段（不报错、不落空值）。"""
+    import time
+    from apps.cmdb.collection.collect_plugin.hwcloud import HwCloudCollectMetrics
+    from apps.cmdb.collection.plugins.community.cloud.hwcloud import HwCloudCollectionPlugin
+
+    class _FakeInst:
+        model_id = "hwcloud"
+        instances = [{"inst_name": "华为云生产"}]
+
+    monkeypatch.setattr(HwCloudCollectMetrics, "get_collect_inst", lambda self: _FakeInst())
+
+    ts = int(time.time()) - 60
+    vector = {
+        "result": [
+            {
+                "metric": {
+                    "__name__": "hwcloud_ecs_info_gauge",
+                    "collect_status": "success",
+                    "resource_name": "web-02",
+                    "resource_id": "ecs-002",
+                    "vcpus": "",          # 空：应被省略
+                    "memory_mb": "8192",  # 有值：应保留并转 int
+                },
+                "value": [ts, "1"],
+            }
+        ]
+    }
+    runner = HwCloudCollectionPlugin(inst_name="华为云生产", inst_id=1, task_id=8002)
+    runner.format_data(vector)
+    runner.format_metrics()
+
+    ecs = runner.result["hwcloud_ecs"][0]
+    assert "vcpus" not in ecs            # 空 tuple 字段被省略
+    assert ecs["memory_mb"] == 8192      # 非空 tuple 字段保留并转 int
+    assert ecs["resource_id"] == "ecs-002"

@@ -160,7 +160,7 @@ def test_manageone_host_install_on_server(monkeypatch):
 
     host = runner.result["manageone_host"][0]
     assert host["vcpus"] == 64
-    assert host["memory_mb"] == 262144
+    assert host["memory_mb"] == "262144"
 
     # host belong cloud
     belong = [a for a in host["assos"] if a["asst_id"] == "belong"]

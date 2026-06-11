@@ -504,8 +504,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.add'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 140 },
-      { title: '实例名', dataIndex: 'inst_name', width: 250 },
+      { title: t('Collection.objectType'), dataIndex: 'model_id', width: 140 },
+      { title: t('Collection.instanceName'), dataIndex: 'inst_name', width: 250 },
     ],
   },
   update: {
@@ -513,8 +513,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.update'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 140 },
-      { title: '实例名', dataIndex: 'inst_name', width: 250 },
+      { title: t('Collection.objectType'), dataIndex: 'model_id', width: 140 },
+      { title: t('Collection.instanceName'), dataIndex: 'inst_name', width: 250 },
     ],
   },
   delete: {
@@ -522,27 +522,27 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.delete'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 140 },
-      { title: '实例名', dataIndex: 'inst_name', width: 250 },
+      { title: t('Collection.objectType'), dataIndex: 'model_id', width: 140 },
+      { title: t('Collection.instanceName'), dataIndex: 'inst_name', width: 250 },
     ],
   },
 });
 
-export const NETWORK_DEVICE_OPTIONS = [
+export const getNetworkDeviceOptions = (t: (key: string) => string) => [
   {
     key: 'switch',
-    label: '交换机',
+    label: t('Collection.networkDevice.switch'),
   },
   {
     key: 'router',
-    label: '路由器',
+    label: t('Collection.networkDevice.router'),
   },
   {
     key: 'firewall',
-    label: '防火墙',
+    label: t('Collection.networkDevice.firewall'),
   },
   {
     key: 'loadbalance',
-    label: '负载均衡',
+    label: t('Collection.networkDevice.loadbalance'),
   },
 ]

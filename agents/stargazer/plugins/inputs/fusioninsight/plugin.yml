@@ -1,0 +1,28 @@
+name: fusioninsight
+version: "1.0.0"
+category: cloud
+
+metadata:
+  display_name: "FusionInsight平台"
+  description: "FusionInsight 平台资源采集插件（集群/主机）"
+  author: "WeOps"
+  tags: [cloud, fusioninsight]
+  cloud_protocol: true
+  model_id: fusioninsight
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 120
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.fusioninsight.fusioninsight_info
+      class: FusionInsightManager
+
+# 默认执行器
+default_executor: protocol
