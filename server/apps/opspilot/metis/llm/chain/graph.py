@@ -124,7 +124,7 @@ async def _merge_async_streams(
             except asyncio.TimeoutError:
                 continue
             except Exception as e:
-                logger.debug(f"Browser event consumer error: {e}")
+                logger.exception(f"Browser event consumer error: {e}")
                 break
 
     # 启动两个并发消费者
@@ -207,7 +207,6 @@ def create_browser_step_callback(
         """
         try:
             # 构建 CustomEvent
-            logger.debug(f"Browser step callback triggered: step {step_info.get('step_number')}, goal: {step_info.get('next_goal')}")
             event = CustomEvent(
                 type=EventType.CUSTOM,
                 name="browser_step_progress",
@@ -399,7 +398,6 @@ class BasicGraph(ABC):
         if not thinking_delta:
             rc = (getattr(chunk, "additional_kwargs", None) or {}).get("reasoning_content", "")
             if rc:
-                logger.info(f"[BasicGraph] reasoning_content detected in chunk.additional_kwargs: " f"{len(rc)} chars, show_think={show_think}")
                 thinking_delta = rc
 
         if not chunk.content and not thinking_delta:
@@ -726,6 +724,7 @@ class BasicGraph(ABC):
         encoder: EventEncoder,
         current_message_id: Optional[str],
         current_tool_calls: Dict[str, Dict],
+        message_started: bool = False,
     ) -> list[str]:
         """处理 on_chat_model_end 事件：补充文本输出（非流式 adapter）和工具调用"""
         events = []
@@ -734,11 +733,12 @@ class BasicGraph(ABC):
             return events
 
         # 非流式 adapter（如 AnthropicCompatibleChatClient）不产生 on_chat_model_stream，
-        # 文本内容只出现在 on_chat_model_end。若 message_started 为 False 说明还没推送过文本。
+        # 文本内容只出现在 on_chat_model_end。必须确认 message_started 为 False，
+        # 否则流式 adapter 已经推送过文本，重复 emit 会导致前端显示两遍内容。
         text_content = getattr(output, "content", "") or ""
         tool_calls_list = getattr(output, "tool_calls", None) or []
-        if text_content and not tool_calls_list:
-            # 纯文本响应：发 TEXT_MESSAGE_START + CONTENT + END
+        if text_content and not tool_calls_list and not message_started:
+            # 纯文本响应（非流式）：发 TEXT_MESSAGE_START + CONTENT + END
             msg_id = current_message_id or str(uuid.uuid4())
             events.append(
                 encoder.encode(
@@ -833,8 +833,6 @@ class BasicGraph(ABC):
         thinking_started = False
         suppress_text_after_tool_call = False
         show_think = bool((request.extra_config or {}).get("show_think", True))
-        # 只输出 key 列表，避免日志中包含 emoji 导致 Windows GBK 编码错误，同时避免泄露敏感信息（如 SSH 密码）
-        logger.info(f"[BasicGraph] stream_events - extra_config_keys={list((request.extra_config or {}).keys())}, show_think={show_think}")
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         # 创建浏览器步骤事件队列和回调
         browser_event_queue: asyncio.Queue[str] = asyncio.Queue(maxsize=100)
@@ -931,7 +929,7 @@ class BasicGraph(ABC):
                         yield ev
 
                 elif event_type == "on_chat_model_end":
-                    for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls):
+                    for ev in self._handle_chat_model_end_event(event_data, encoder, current_message_id, current_tool_calls, message_started):
                         yield ev
                     suppress_text_after_tool_call = False
 
@@ -1116,7 +1114,7 @@ class BasicGraph(ABC):
                     sub_errors = [str(ex) for ex in e.exceptions]
                     error_msg = f"TaskGroup errors: {', '.join(sub_errors)}"
 
-            logger.error(f"Graph execute 执行失败: {error_msg}", exc_info=True)
+            logger.exception(f"Graph execute 执行失败: {error_msg}")
 
             # 重新抛出异常，让上层处理
             raise RuntimeError(f"Agent execution failed: {error_msg}") from e
