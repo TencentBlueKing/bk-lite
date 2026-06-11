@@ -13,6 +13,7 @@
     "clean": "rm -rf .next",
     "test:flow-asset-existing-selection": "pnpm exec tsx scripts/flow-asset-existing-selection-test.ts",
     "test:installer-progress": "pnpm exec tsx scripts/installer-progress-test.ts",
+    "test:log-alert-raw-columns": "pnpm exec tsx scripts/log-alert-raw-columns-test.ts",
     "test:log-policy-form": "pnpm exec tsx scripts/log-policy-form-state-test.ts",
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",

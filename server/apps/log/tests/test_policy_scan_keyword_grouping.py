@@ -262,6 +262,70 @@ def test_keyword_group_sample_query_inserts_group_filter_before_pipeline(monkeyp
     assert fake_api.calls[1]["query"] == 'error | unpack_json | filter log.service.name:="api\\"v1"'
 
 
+def test_keyword_group_sample_query_uses_stream_selector_for_stream_group(monkeypatch):
+    policy_scan_module = _load_policy_scan_module(monkeypatch)
+    stream_value = '{instance_id="1761206c-e547-40f0-91f1-a4d62c3c7db8",source_type="docker_logs"}'
+    fake_api = FakeVictoriaLogs(
+        responses=[
+            [{"_stream": stream_value, "total_count": "42"}],
+            [{"_time": "2026-06-11T06:30:00Z", "_msg": "ERROR example", "_stream": stream_value}],
+        ]
+    )
+    policy = make_policy(
+        {"query": "ERROR", "limit": 5, "group_by": ["_stream"]},
+        alert_name="错误日志",
+    )
+    scan = make_scan(policy_scan_module, policy, fake_api)
+
+    events = scan.keyword_alert_detection()
+
+    assert fake_api.calls[1]["query"] == f"ERROR | filter _stream:{stream_value}"
+    assert events[0]["value"] == 42
+    assert events[0]["raw_data"] == [{"_time": "2026-06-11T06:30:00Z", "_msg": "ERROR example", "_stream": stream_value}]
+
+
+def test_aggregate_alert_detection_returns_raw_query_result_for_matching_group(monkeypatch):
+    policy_scan_module = _load_policy_scan_module(monkeypatch)
+    fake_api = FakeVictoriaLogs(
+        responses=[
+            [{"log.service.name": "api", "count__msg": "12"}],
+        ]
+    )
+    policy = make_policy(
+        {
+            "query": "ERROR",
+            "group_by": ["log.service.name"],
+            "rule": {
+                "mode": "and",
+                "conditions": [{"field": "_msg", "func": "count", "op": ">", "value": 10}],
+            },
+        },
+        alert_name="${level}:${log.service.name}",
+    )
+    policy.alert_type = "aggregate"
+    scan = make_scan(policy_scan_module, policy, fake_api)
+
+    events = scan.aggregate_alert_detection()
+
+    assert fake_api.calls[0]["query"] == "ERROR | stats by (log.service.name) count() as count__msg"
+    assert events == [
+        {
+            "source_id": "policy_7_log.service.name=api",
+            "level": "error",
+            "content": "error:api",
+            "value": 12,
+            "raw_data": {
+                "aggregate_result": {"count__msg": 12, "count": 12},
+                "rule": {
+                    "mode": "and",
+                    "conditions": [{"field": "_msg", "func": "count", "op": ">", "value": 10}],
+                },
+                "query_result": {"log.service.name": "api", "count__msg": "12"},
+            },
+        }
+    ]
+
+
 def test_keyword_grouped_source_id_is_bounded_for_long_group_values(monkeypatch):
     policy_scan_module = _load_policy_scan_module(monkeypatch)
     long_service_name = "api-" + ("x" * 200)

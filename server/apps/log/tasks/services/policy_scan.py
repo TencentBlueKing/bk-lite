@@ -68,6 +68,8 @@ class LogPolicyScan:
         return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
     def _build_exact_field_filter(self, field, value):
+        if field == "_stream" and isinstance(value, str) and value.startswith("{") and value.endswith("}"):
+            return f"{field}:{value}"
         escaped_value = self._escape_log_query_value(value)
         return f'{field}:="{escaped_value}"'
 
@@ -263,6 +265,8 @@ class LogPolicyScan:
                             },
                         }
                     )
+
+            return events
 
         except Exception as e:
             logger.error(f"aggregate alert detection failed for policy {self.policy.id}: {e}")
