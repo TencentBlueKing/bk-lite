@@ -33,7 +33,7 @@ class PrometheusAdapter(AlertSourceAdapter):
             response.raise_for_status()
             return response.json().get('data', {}).get('alerts', [])
         except Exception as e:
-            logger.error(f"Failed to fetch alerts from Prometheus: {e}")
+            logger.error("[AlertSource] 从 Prometheus 拉取告警失败: %s", e, exc_info=True)
             return []
 
     def normalize_payload(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:

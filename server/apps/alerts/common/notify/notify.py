@@ -45,5 +45,5 @@ class Notify:
             content=self.content,
             receivers=[user["id"] for user in self.user_list]
         )
-        logger.info(f"Enterprise WeChat notification sent: {send_result}")
+        logger.info("[AlertNotify] 企业微信通知已发送: %s", send_result)
         return send_result

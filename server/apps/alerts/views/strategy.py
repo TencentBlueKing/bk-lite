@@ -150,8 +150,8 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
                 instance.id
             )
             logger.info(
-                f"策略修改关闭会话窗口: strategy_id={instance.id}, "
-                f"策略名={instance.name}, 确认观察中告警数={confirmed_count}"
+                "[AlertView] 策略修改关闭会话窗口: strategy_id=%s, 策略名=%s, 确认观察中告警数=%s",
+                instance.id, instance.name, confirmed_count,
             )
 
         log_data = {
@@ -187,8 +187,8 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
                 instance_id
             )
             logger.info(
-                f"删除会话策略关闭观察中告警: strategy_id={instance_id}, "
-                f"策略名={rule_name}, 关闭告警数={closed_count}"
+                "[AlertView] 删除会话策略关闭观察中告警: strategy_id=%s, 策略名=%s, 关闭告警数=%s",
+                instance_id, rule_name, closed_count,
             )
 
         self.perform_destroy(instance)

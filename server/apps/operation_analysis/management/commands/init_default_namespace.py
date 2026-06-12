@@ -82,7 +82,7 @@ class Command(BaseCommand):
                 )
 
                 if created:
-                    logger.info(f"创建默认命名空间成功: {namespace.name} (TLS: {enable_tls})")
+                    logger.info("[NamespaceInit] 创建默认命名空间成功：%s (TLS: %s)", namespace.name, enable_tls)
                     self.stdout.write(
                         self.style.SUCCESS(f"创建默认命名空间成功: {namespace.name} (TLS: {enable_tls})")
                     )
@@ -105,18 +105,18 @@ class Command(BaseCommand):
                     
                     if updated:
                         namespace.save()
-                        logger.info(f"更新默认命名空间成功: {namespace.name} (TLS: {enable_tls})")
+                        logger.info("[NamespaceInit] 更新默认命名空间成功：%s (TLS: %s)", namespace.name, enable_tls)
                         self.stdout.write(
                             self.style.SUCCESS(f"更新默认命名空间成功: {namespace.name} (TLS: {enable_tls})")
                         )
                     else:
-                        logger.info(f"默认命名空间配置未变化: {namespace.name}")
+                        logger.info("[NamespaceInit] 默认命名空间配置未变化：%s", namespace.name)
                         self.stdout.write(
                             self.style.WARNING(f"默认命名空间配置未变化: {namespace.name}")
                         )
 
         except Exception as e:
-            logger.error(f"初始化默认命名空间失败: {e}")
+            logger.error("[NamespaceInit] 初始化默认命名空间失败：%s", e, exc_info=True)
             self.stdout.write(
                 self.style.ERROR(f"初始化默认命名空间失败: {e}")
             )

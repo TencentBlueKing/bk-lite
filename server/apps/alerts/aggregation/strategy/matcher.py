@@ -77,23 +77,27 @@ class StrategyMatcher:
         最终逻辑: (组1的AND条件) OR (组2的AND条件)
         """
         if not match_rules:
-            logger.debug("无match_rules，返回全部事件")
+            logger.debug("[AlertMatch] 无match_rules，返回全部事件")
             return events_queryset
 
         try:
             q_filter = StrategyMatcher._build_q_filter(match_rules)
             if q_filter is None:
-                logger.warning("match_rules 非空但没有有效条件，返回空结果集")
+                logger.warning("[AlertMatch] match_rules 非空但没有有效条件，返回空结果集")
                 return events_queryset.none()
 
-            logger.debug(f"match_rules过滤: {len(match_rules)}组条件, 首组示例: {match_rules[0][:2] if match_rules and match_rules[0] else 'empty'}")
+            logger.debug(
+                "[AlertMatch] match_rules过滤: %s组条件, 首组示例: %s",
+                len(match_rules),
+                match_rules[0][:2] if match_rules and match_rules[0] else "empty",
+            )
 
             filtered_events = events_queryset.filter(q_filter)
 
             return filtered_events
 
         except Exception as e:  # noqa
-            logger.exception("match_rules过滤失败")
+            logger.exception("[AlertMatch] match_rules过滤失败")
             return events_queryset.none()
 
     @staticmethod
@@ -120,7 +124,7 @@ class StrategyMatcher:
                 q_obj = StrategyMatcher._build_condition_q(condition)
                 if q_obj is None:
                     invalid_group = True
-                    logger.warning(f"match_rules条件无效，整组失效: {condition}")
+                    logger.warning("[AlertMatch] match_rules条件无效，整组失效: %s", condition)
                     break
                 and_conditions.append(q_obj)
 
@@ -137,7 +141,7 @@ class StrategyMatcher:
 
         # 如果没有任何有效的OR条件组，说明规则为空组或包含无效条件，需失败关闭。
         if not or_conditions:
-            logger.warning("所有match_rules条件都无效")
+            logger.warning("[AlertMatch] 所有match_rules条件都无效")
             return None
 
         # 将多个OR条件组合并
@@ -168,44 +172,44 @@ class StrategyMatcher:
 
         # 验证必填字段
         if not key or operator is None:
-            logger.warning(f"无效条件（缺少key或operator）: {condition}")
+            logger.warning("[AlertMatch] 无效条件（缺少key或operator）: %s", condition)
             return None
 
         # value为None时，只有特定操作符才合法
         if value is None and operator not in ["ne", "不等于"]:
-            logger.warning(f"无效条件（value为None但operator不支持）: {condition}")
+            logger.warning("[AlertMatch] 无效条件（value为None但operator不支持）: %s", condition)
             return None
 
         field_name = StrategyMatcher.FIELD_MAP.get(key, key)
         django_operator = StrategyMatcher.OPERATOR_MAP.get(operator)
         if django_operator is None:
-            logger.warning(f"未知操作符: {condition}")
+            logger.warning("[AlertMatch] 未知操作符: %s", condition)
             return None
 
         # 处理取反操作符
         if django_operator == "not_contains":
             if value is None or value == "":
-                logger.warning(f"not_contains操作符的value不能为空: {condition}")
+                logger.warning("[AlertMatch] not_contains操作符的value不能为空: %s", condition)
                 return None
             return ~Q(**{f"{field_name}__icontains": value})
         elif django_operator == "ne":
             return ~Q(**{f"{field_name}__exact": value})
         elif django_operator == "not_in":
             if not isinstance(value, (list, tuple)):
-                logger.warning(f"not_in操作符需要列表类型的value: {condition}")
+                logger.warning("[AlertMatch] not_in操作符需要列表类型的value: %s", condition)
                 return None
             return ~Q(**{f"{field_name}__in": value})
 
         # 处理正则表达式
         elif django_operator == "iregex":
             if not value:
-                logger.warning(f"正则表达式不能为空: {condition}")
+                logger.warning("[AlertMatch] 正则表达式不能为空: %s", condition)
                 return None
             # 验证正则表达式语法（注意：PostgreSQL使用POSIX正则，可能与Python re模块略有差异）
             try:
                 re.compile(value)
             except re.error as e:
-                logger.error(f"无效的正则表达式 '{value}': {e}")
+                logger.error("[AlertMatch] 无效的正则表达式 '%s': %s", value, e)
                 # 返回None让调用方跳过该条件，而非返回空结果集
                 return None
             # PostgreSQL使用 ~* 操作符进行不区分大小写的正则匹配
@@ -214,7 +218,7 @@ class StrategyMatcher:
         # 处理in操作符
         elif django_operator == "in":
             if not isinstance(value, (list, tuple)):
-                logger.warning(f"in操作符需要列表类型的value: {condition}")
+                logger.warning("[AlertMatch] in操作符需要列表类型的value: %s", condition)
                 return None
             return Q(**{f"{field_name}__in": value})
 

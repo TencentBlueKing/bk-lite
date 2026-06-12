@@ -124,7 +124,7 @@ class Command(BaseCommand):
             doc = YAMLDocument(**data)
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"内置画布 YAML 解析失败: {e}"))
-            logger.error(f"内置画布 YAML 解析失败: {e}")
+            logger.error("[BuiltinCanvas] 内置画布 YAML 解析失败：%s", e, exc_info=True)
             return
 
         total_canvases = len(doc.dashboards) + len(doc.topologies) + len(doc.architectures)
@@ -180,7 +180,7 @@ class Command(BaseCommand):
                             obj_key = item_result.get("object_key", "unknown")
                             error = item_result.get("error", "未知错误")
                             self.stdout.write(self.style.ERROR(f"  失败对象: [{obj_type}] {obj_key} - {error}"))
-                    logger.error(f"内置画布导入失败: {result['summary']}")
+                    logger.error("[BuiltinCanvas] 内置画布导入失败：%s", result["summary"])
                     raise RuntimeError("内置画布导入失败，回滚事务")
 
                 # 7. 将导入成功的画布对象标记为内置
@@ -217,4 +217,4 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(self.style.SUCCESS(f"内置画布导入完成: {result['summary']}, 标记 {marked_count} 个内置对象"))
-        logger.info(f"内置画布导入完成: {result['summary']}, 标记 {marked_count} 个内置对象")
+        logger.info("[BuiltinCanvas] 内置画布导入完成：%s，标记 %s 个内置对象", result["summary"], marked_count)
