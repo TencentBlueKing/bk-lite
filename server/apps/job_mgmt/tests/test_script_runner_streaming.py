@@ -36,6 +36,25 @@ def test_ssh_branch_calls_execute_ssh_stream_with_topic():
     assert result["status"] == ExecutionStatus.SUCCESS
 
 
+def test_local_branch_calls_execute_local_stream_with_topic():
+    runner = _runner()
+    target = {"node_id": "node-7", "name": "h1", "ip": "1.2.3.4"}
+    fake_exec = MagicMock()
+    fake_exec.execute_local_stream.return_value = {"stdout": "hi", "stderr": "", "exit_code": 0}
+
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
+         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False):
+        result = runner.execute_script_on_target(
+            target, TargetSource.NODE_MGMT, "echo hi", ScriptType.SHELL, 60, 99
+        )
+
+    assert fake_exec.execute_local_stream.called
+    kwargs = fake_exec.execute_local_stream.call_args.kwargs
+    assert kwargs["stream_log_topic"] == "job.stream.99.node-7"
+    assert kwargs["execution_id"] == "99"
+    assert result["status"] == ExecutionStatus.SUCCESS
+
+
 def test_sidecar_publishes_done_sentinel_per_target():
     runner = _runner()
     execution = MagicMock()

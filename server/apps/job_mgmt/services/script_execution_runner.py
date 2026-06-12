@@ -190,7 +190,13 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             if target_source in (TargetSource.NODE_MGMT, TargetSource.SYNC):
                 node_id = target_info.get("node_id")
                 executor = Executor(node_id)
-                exec_result = executor.execute_local(script_content, timeout=timeout, shell=shell)
+                exec_result = executor.execute_local_stream(
+                    script_content,
+                    timeout=timeout,
+                    shell=shell,
+                    execution_id=str(execution_id),
+                    stream_log_topic=build_stream_topic(execution_id, target_key),
+                )
             else:
                 target_id = target_info.get("target_id")
                 ssh_creds = self.get_ssh_credentials(target_id)
