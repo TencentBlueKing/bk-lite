@@ -176,6 +176,26 @@ class SystemMgmt(object):
         )
         return return_data
 
+    def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):
+        """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。
+        :param bot_id: Bot ID
+        :param bot_name: Bot 名称
+        :param team: 通道归属组织 ID 列表
+        :param nodes: [{"node_id": "xxx", "name": "节点label"}, ...]
+        """
+        return self.client.run(
+            "sync_opspilot_nats_channels",
+            bot_id=bot_id,
+            bot_name=bot_name,
+            team=team,
+            nodes=nodes,
+            timeout=timeout,
+        )
+
+    def delete_opspilot_nats_channels(self, bot_id):
+        """删除某个 bot 名下所有 OpsPilot 托管的 NATS 通道。"""
+        return self.client.run("delete_opspilot_nats_channels", bot_id=bot_id)
+
     def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):
         """
         通过指定通道发送消息

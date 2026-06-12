@@ -1,7 +1,7 @@
 "use client";
 import React, { useState, useEffect } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
-import { Input, message, Button, Spin, Popconfirm } from "antd";
+import { Input, message, Button, Spin, Popconfirm, Tooltip } from "antd";
 import { ArrowLeftOutlined } from "@ant-design/icons";
 import { ColumnsType } from "antd/es/table";
 import { useTranslation } from "@/utils/i18n";
@@ -27,7 +27,11 @@ interface ChannelRow {
   name: string;
   description: string;
   channel_type?: string;
+  config?: Record<string, any>;
 }
+
+// OpsPilot 工作流自动托管的 NATS 通道：禁止编辑/删除（靠 config.source 标识）
+const isOpspilotManaged = (record: ChannelRow): boolean => record.config?.source === 'opspilot';
 
 const ChannelSettingsPage: React.FC = () => {
   const { t } = useTranslation();
@@ -73,27 +77,39 @@ const ChannelSettingsPage: React.FC = () => {
       dataIndex: "key",
       width: 160,
       fixed: "right",
-      render: (key: string) => (
-        <>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button type="link" className="mr-[8px]" onClick={() => openChannelModal("edit", key)}>
-              {t("common.edit")}
-            </Button>
-          </PermissionWrapper>
-          <PermissionWrapper requiredPermissions={['Delete']}>
-            <Popconfirm
-              title={t("common.delConfirm")}
-              okText={t("common.confirm")}
-              cancelText={t("common.cancel")}
-              onConfirm={() => handleDeleteChannel(key)}
-            >
-              <Button type="link">
-                {t("common.delete")}
+      render: (key: string, record: ChannelRow) => {
+        // OpsPilot 自动托管的通道不可编辑/删除
+        if (isOpspilotManaged(record)) {
+          return (
+            <Tooltip title={t("system.channel.settings.opspilotManagedTip")}>
+              <span className="text-[var(--color-text-secondary)] text-xs">
+                {t("system.channel.settings.opspilotManaged")}
+              </span>
+            </Tooltip>
+          );
+        }
+        return (
+          <>
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button type="link" className="mr-[8px]" onClick={() => openChannelModal("edit", key)}>
+                {t("common.edit")}
               </Button>
-            </Popconfirm>
-          </PermissionWrapper>
-        </>
-      ),
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Delete']}>
+              <Popconfirm
+                title={t("common.delConfirm")}
+                okText={t("common.confirm")}
+                cancelText={t("common.cancel")}
+                onConfirm={() => handleDeleteChannel(key)}
+              >
+                <Button type="link">
+                  {t("common.delete")}
+                </Button>
+              </Popconfirm>
+            </PermissionWrapper>
+          </>
+        );
+      },
     },
   ];
 
@@ -107,10 +123,11 @@ const ChannelSettingsPage: React.FC = () => {
         typesToQuery.map((ct) => getChannelData({ channel_type: ct }))
       );
       const merged = results.flat();
-      const channels: ChannelRow[] = merged.map((item: { id: string; name: string; description: string; channel_type?: string }) => ({
+      const channels: ChannelRow[] = merged.map((item: { id: string; name: string; description: string; channel_type?: string; config?: Record<string, any> }) => ({
         key: item.id,
         name: item.name,
         description: item.description,
+        config: item.config,
         ...(isWebhookChannel ? { channel_type: item.channel_type } : {}),
       }));
       setAllTableData(channels);

@@ -46,6 +46,18 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
             return None  # superuser 返回 None 表示有权限访问所有组
         return {g["id"] for g in getattr(user, "group_list", [])}
 
+    def _reject_if_opspilot_managed(self, request, channel):
+        """OpsPilot 工作流自动托管的 NATS 通道禁止编辑/删除（防 API 绕过前端）。"""
+        config = channel.config or {}
+        if channel.channel_type == ChannelChoices.NATS and config.get("source") == "opspilot":
+            loader = self._get_loader(request)
+            message = loader.get(
+                "error.opspilot_channel_readonly",
+                "OpsPilot 工作流自动创建的通道不可编辑或删除",
+            )
+            return JsonResponse({"result": False, "message": message}, status=403)
+        return None
+
     def _validate_channel_permission(self, request, channel):
         """校验用户是否有权限访问指定渠道
 
@@ -134,6 +146,9 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         is_valid, error_response = self._validate_channel_permission(request, obj)
         if not is_valid:
             return error_response
+        readonly_response = self._reject_if_opspilot_managed(request, obj)
+        if readonly_response:
+            return readonly_response
 
         response = super().update(request, *args, **kwargs)
 
@@ -152,6 +167,9 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         is_valid, error_response = self._validate_channel_permission(request, obj)
         if not is_valid:
             return error_response
+        readonly_response = self._reject_if_opspilot_managed(request, obj)
+        if readonly_response:
+            return readonly_response
 
         channel_name = obj.name
         channel_type = obj.channel_type
@@ -172,6 +190,9 @@ class ChannelViewSet(viewsets.ModelViewSet, GenericViewSetFun):
         is_valid, error_response = self._validate_channel_permission(request, obj)
         if not is_valid:
             return error_response
+        readonly_response = self._reject_if_opspilot_managed(request, obj)
+        if readonly_response:
+            return readonly_response
 
         config = request.data["config"]
         if obj.channel_type == "email":

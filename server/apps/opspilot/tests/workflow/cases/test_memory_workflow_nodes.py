@@ -1929,7 +1929,7 @@ def create_vm_with_flow_input(flow_input: dict, flow_id: str = ""):
 
 @pytest.mark.django_db
 class TestMemoryWriteUserIdsFanout:
-    """Personal write fans out to all flow_input.user_ids; team uses flow_input.team[0]."""
+    """Personal write fans out to all flow_input.user_ids; team uses flow_input.team."""
 
     def test_personal_write_fans_out_to_all_user_ids(self, memory_space_personal):
         """When flow_input.user_ids is present, write is called once per user."""
@@ -1959,8 +1959,8 @@ class TestMemoryWriteUserIdsFanout:
         assert mock_task.delay.call_args.kwargs["owner_username"] == "alice"
 
     def test_team_write_prefers_flow_input_team_over_memory_space_team(self, memory_space_team):
-        """Team write uses flow_input.team[0] (99) instead of memory_space.team[0] (1)."""
-        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": [99]})
+        """Team write uses flow_input.team (99) instead of memory_space.team[0] (1)."""
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": 99})
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Team Override")
 
@@ -1988,7 +1988,7 @@ class TestMemoryWriteUserIdsFanout:
 
 @pytest.mark.django_db
 class TestMemoryReadUserIdsFanout:
-    """Personal read aggregates contexts for all flow_input.user_ids; team uses flow_input.team[0]."""
+    """Personal read aggregates contexts for all flow_input.user_ids; team uses flow_input.team."""
 
     def test_personal_read_aggregates_for_all_user_ids(self, memory_space_personal):
         """When flow_input.user_ids is present, contexts from all users are merged."""
@@ -2035,7 +2035,7 @@ class TestMemoryReadUserIdsFanout:
         assert "I prefer dark mode" in result.get("memory_context", "")
 
     def test_team_read_prefers_flow_input_team_over_memory_space_team(self, db):
-        """Team read uses flow_input.team[0] (99) instead of memory_space.team[0] (1)."""
+        """Team read uses flow_input.team (99) instead of memory_space.team[0] (1)."""
         from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 
         team_space = MemorySpace.objects.create(
@@ -2056,7 +2056,7 @@ class TestMemoryReadUserIdsFanout:
             domain="test.com",
         )
 
-        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": [99]})
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": 99})
         node = MemoryReadNode(vm)
         node_config = build_node_config(memory_space_id=team_space.id)
 
