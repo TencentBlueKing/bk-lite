@@ -2093,3 +2093,53 @@ class TestMemoryReadUserIdsFanout:
         result = node.execute("mem_read_1", node_config, {"last_message": "query"})
 
         assert "content for org seven" in result.get("memory_context", "")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_memory_write_cache_flush_timing_and_org(mocker):
+    """实证：batch=2 时第2次触发即落库（>=），且 team-scope 的 organization_id 正确落库。"""
+    from apps.opspilot.models import Memory
+    from apps.opspilot.models.bot_mgmt import Bot, BotWorkFlow
+    from apps.opspilot.models.memory_mgmt import MemorySpace
+    from apps.opspilot.tasks import process_memory_write_cache
+
+    mocker.patch(
+        "apps.opspilot.models.bot_mgmt.ChatApplication.sync_applications_from_workflow",
+        return_value=(0, 0, 0),
+    )
+
+    space = MemorySpace.objects.create(
+        name="TeamSpace5",
+        team=[5],
+        scope=MemorySpace.SCOPE_TEAM,
+        write_rule="",
+        default_model="",
+        created_by="admin",
+        domain="test.com",
+    )
+    bot = Bot.objects.create(name="b-mem", team=[5], created_by="admin")
+    wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+
+    def call(content):
+        process_memory_write_cache(
+            memory_space_id=space.id,
+            title="t",
+            content=content,
+            owner_username="组织-5",
+            owner_domain="",
+            organization_id=5,
+            model_id=None,
+            workflow_id=wf.id,
+            node_id="n1",
+            write_batch_size=2,
+        )
+
+    call("c1")
+    assert Memory.objects.filter(memory_space=space).count() == 0, "第1次触发不应写入"
+
+    call("c2")
+    mems = list(Memory.objects.filter(memory_space=space))
+    assert len(mems) == 1, f"第2次触发应写入，实际 {len(mems)}"
+    assert mems[0].organization_id == 5, f"organization_id 应为 5，实际 {mems[0].organization_id}"
+    # 团队记忆 owner_username 不应为空（前端“管理组织”列读它）；无 Group 时回退“组织-{id}”
+    assert mems[0].owner_username == "组织-5", f"owner_username 应为 组织-5，实际 {mems[0].owner_username!r}"
