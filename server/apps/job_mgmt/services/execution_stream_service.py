@@ -3,7 +3,8 @@
 
 import json
 
-from nats_client.clients import publish_raw_sync
+from apps.core.logger import job_logger as logger
+from nats_client.clients import iter_jetstream_subject, publish_raw_sync
 
 # JetStream 回放缓冲配置
 JOB_LOG_STREAM_NAME = "JOB_LOG_STREAM"
@@ -73,4 +74,30 @@ async def snapshot_sse_from_results(results):
             yield format_sse_event(
                 {"target_key": target_key, "stream": "stderr", "line": r.get("stderr", ""), "type": "history"}
             )
+    yield "data: [DONE]\n\n"
+
+
+async def _default_message_source(execution_id):  # pragma: no cover
+    """默认数据源：JetStream 有序消费者，把主题里的 target_key 注入 payload。"""
+    filter_subject = f"job.stream.{execution_id}.>"
+    async for subject, payload in iter_jetstream_subject(filter_subject):
+        tk = parse_target_key(subject, execution_id)
+        if "target_key" not in payload and tk:
+            payload["target_key"] = tk
+        yield payload
+
+
+async def stream_execution_events(execution_id, target_keys, message_source=None):
+    """SSE 主生成器：回放历史 + 实时 tail，所有目标 done（或源耗尽/出错）即收尾。"""
+    aggregator = ExecutionStreamAggregator(target_keys)
+    if message_source is None:
+        message_source = _default_message_source(execution_id)
+    try:
+        async for payload in message_source:
+            yield aggregator.process(payload)
+            if aggregator.is_complete():
+                break
+    except Exception as e:  # 源异常不应让连接 500，转一条 error 事件后正常收尾
+        logger.warning(f"[stream_execution_events] 数据源异常 execution_id={execution_id}: {e}")
+        yield format_sse_event({"type": "error", "message": str(e)})
     yield "data: [DONE]\n\n"
