@@ -53,6 +53,87 @@ var (
 	subscribeHealthCheckFn     = subscribeHealthCheck
 )
 
+// --- 流式行输出（job_mgmt 脚本执行实时日志） ---
+// localStreamPublisher 在 SubscribeLocalExecutor 时被设为本进程的 NATS 连接；
+// Execute 在 req.StreamLogs 为真时用它按行 publish stdout/stderr。设值一次（启动订阅时），
+// 之后只读，无并发写。
+var localStreamPublisher eventPublisher
+
+type eventPublisher interface {
+	Publish(subject string, data []byte) error
+}
+
+type streamEvent struct {
+	ExecutionID string `json:"execution_id"`
+	Stream      string `json:"stream"`
+	Line        string `json:"line"`
+	Timestamp   string `json:"timestamp"`
+}
+
+type streamLogWriter struct {
+	publisher   eventPublisher
+	topic       string
+	executionID string
+	stream      string
+	buffer      bytes.Buffer
+}
+
+func newStreamLogWriter(publisher eventPublisher, topic, executionID, stream string) *streamLogWriter {
+	return &streamLogWriter{publisher: publisher, topic: topic, executionID: executionID, stream: stream}
+}
+
+func (w *streamLogWriter) Write(p []byte) (int, error) {
+	if len(p) == 0 {
+		return 0, nil
+	}
+	_, _ = w.buffer.Write(p)
+
+	var remaining bytes.Buffer
+	for {
+		line, err := w.buffer.ReadString('\n')
+		if err == io.EOF {
+			remaining.WriteString(line)
+			break
+		}
+		if err != nil {
+			return len(p), err
+		}
+		w.publish(strings.TrimRight(line, "\r\n"))
+	}
+	if remaining.Len() > 0 {
+		w.buffer.Reset()
+		_, _ = remaining.WriteTo(&w.buffer)
+	}
+	return len(p), nil
+}
+
+func (w *streamLogWriter) Flush() {
+	if w.buffer.Len() == 0 {
+		return
+	}
+	w.publish(strings.TrimRight(w.buffer.String(), "\r\n"))
+	w.buffer.Reset()
+}
+
+func (w *streamLogWriter) publish(line string) {
+	if w.publisher == nil || w.topic == "" || line == "" {
+		return
+	}
+	payload, err := json.Marshal(streamEvent{
+		ExecutionID: w.executionID,
+		Stream:      w.stream,
+		Line:        line,
+		Timestamp:   time.Now().UTC().Format(time.RFC3339),
+	})
+	if err != nil {
+		logger.Warnf("[Local Execute] stream marshal failed: %v", err)
+		return
+	}
+	if err := w.publisher.Publish(w.topic, payload); err != nil {
+		logger.Warnf("[Local Execute] stream publish failed: %v", err)
+	}
+}
+
 type incomingMessage struct {
 	Args   []json.RawMessage `json:"args"`
 	Kwargs map[string]any    `json:"kwargs"`
@@ -331,6 +412,15 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 		stdoutWriter = io.MultiWriter(outputCapture.StdoutWriter(), stdoutStreamWriter)
 		stderrWriter = io.MultiWriter(outputCapture.StderrWriter(), stderrStreamWriter)
 	}
+	// 流式：按行 publish stdout/stderr 到 NATS 主题（与 outputCapture 并存，最终全量结果不变）
+	var stdoutNatsWriter *streamLogWriter
+	var stderrNatsWriter *streamLogWriter
+	if req.StreamLogs && req.StreamLogTopic != "" && localStreamPublisher != nil {
+		stdoutNatsWriter = newStreamLogWriter(localStreamPublisher, req.StreamLogTopic, req.ExecutionID, "stdout")
+		stderrNatsWriter = newStreamLogWriter(localStreamPublisher, req.StreamLogTopic, req.ExecutionID, "stderr")
+		stdoutWriter = io.MultiWriter(stdoutWriter, stdoutNatsWriter)
+		stderrWriter = io.MultiWriter(stderrWriter, stderrNatsWriter)
+	}
 	cmd.Stdout = stdoutWriter
 	cmd.Stderr = stderrWriter
 
@@ -391,6 +481,12 @@ commandFinished:
 	}
 	if stderrStreamWriter != nil {
 		stderrStreamWriter.Flush()
+	}
+	if stdoutNatsWriter != nil {
+		stdoutNatsWriter.Flush()
+	}
+	if stderrNatsWriter != nil {
+		stderrNatsWriter.Flush()
 	}
 
 	duration := time.Since(startTime)
@@ -769,6 +865,11 @@ func subscribeLocalExecutor(sub subscriber, instanceId *string) error {
 }
 
 func SubscribeLocalExecutor(nc *nats.Conn, instanceId *string) {
+	// 记录本进程 NATS 连接，供 Execute 在 StreamLogs 时按行 publish。
+	// 守卫 nil，避免把 nil *nats.Conn 装进非 nil 接口造成误判/空指针。
+	if nc != nil {
+		localStreamPublisher = nc
+	}
 	if err := subscribeLocalExecutorFn(nc, instanceId); err != nil {
 		logger.Errorf("[Local Subscribe] Instance: %s, Failed to subscribe: %v", *instanceId, err)
 	}
