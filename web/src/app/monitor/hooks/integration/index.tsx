@@ -13,6 +13,7 @@ import { useActiveMQConfig } from './objects/middleware/activeMQ';
 import { useWebLogicConfig } from './objects/middleware/webLogic';
 import { useNginxConfig } from './objects/middleware/nginx';
 import { useApacheConfig } from './objects/middleware/apache';
+import { useHaproxyConfig } from './objects/middleware/haproxy';
 import { useConsulConfig } from './objects/middleware/consul';
 import { useEtcdBkpullConfig } from './objects/middleware/etcd';
 import { useClickHouseConfig } from './objects/database/clickHouse';
@@ -78,6 +79,7 @@ export const useMonitorConfig = () => {
   const webLogicConfig = useWebLogicConfig();
   const nginxConfig = useNginxConfig();
   const apacheConfig = useApacheConfig();
+  const haproxyConfig = useHaproxyConfig();
   const consulConfig = useConsulConfig();
   const etcdConfig = useEtcdBkpullConfig();
   const clickHouseConfig = useClickHouseConfig();
@@ -133,6 +135,7 @@ export const useMonitorConfig = () => {
       WebLogic: webLogicConfig,
       Nginx: nginxConfig,
       Apache: apacheConfig,
+      Haproxy: haproxyConfig,
       Consul: consulConfig,
       Etcd: etcdConfig,
       ClickHouse: clickHouseConfig,
