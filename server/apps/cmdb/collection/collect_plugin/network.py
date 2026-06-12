@@ -141,6 +141,13 @@ class CollectNetworkMetrics(CollectBase):
                 **index_data["metric"],
             )
 
+            # agent 给同一任务所有设备盖的是任务级 instance_id（cmdb_{task_id}），
+            # 仅靠每行 host 区分设备。改用 host 作为设备身份键，避免多台设备因共享
+            # instance_id 被合并成一台（否则跨设备拓扑关联无法建立）。
+            host = index_dict.get("host")
+            if host:
+                index_dict["instance_id"] = host
+
             if "sysobjectid" in index_dict:
                 self.instance_id_map[index_dict["instance_id"]] = index_dict
 
