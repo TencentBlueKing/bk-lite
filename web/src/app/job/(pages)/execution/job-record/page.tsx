@@ -564,17 +564,21 @@ const JobRecordPage = () => {
     },
   });
 
-  // 用实时输出覆盖选中目标的内容（执行中实时优先；终态回落到权威 execution_results）
+  // 用实时输出覆盖选中目标的内容：
+  // - 仅执行中（pending/running）覆盖；终态回落到权威 execution_results。
+  // - 优先该目标自己的流（SSH/本地按 target_key）；无则回退 ansible 合并流（key='ansible'）。
   const selectedTarget = useMemo(() => {
     if (!rawSelectedTarget) return null;
-    const live = rawSelectedTarget.target_key ? liveOutput[rawSelectedTarget.target_key] : undefined;
+    if (!isExecuting) return rawSelectedTarget;
+    const perTarget = rawSelectedTarget.target_key ? liveOutput[rawSelectedTarget.target_key] : undefined;
+    const live = perTarget && (perTarget.stdout || perTarget.stderr) ? perTarget : liveOutput['ansible'];
     if (!live || (!live.stdout && !live.stderr)) return rawSelectedTarget;
     return {
       ...rawSelectedTarget,
       stdout: live.stdout || rawSelectedTarget.stdout,
       stderr: live.stderr || rawSelectedTarget.stderr,
     };
-  }, [rawSelectedTarget, liveOutput]);
+  }, [rawSelectedTarget, liveOutput, isExecuting]);
 
   // Auto-select first target when detail loads
   useEffect(() => {
