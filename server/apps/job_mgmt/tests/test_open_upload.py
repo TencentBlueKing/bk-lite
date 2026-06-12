@@ -1,9 +1,11 @@
 """文件上传开放接口单元测试"""
 
+from datetime import timedelta
 from unittest.mock import MagicMock, patch
 
 import pytest
 from django.core.files.uploadedfile import SimpleUploadedFile
+from django.utils import timezone
 from rest_framework.test import APIClient
 
 from apps.base.models import User, UserAPISecret
@@ -95,36 +97,13 @@ class TestOpenFileUploadView:
         assert "file_key" in data["data"]
         assert data["data"]["file_key"].endswith(".rpm")
 
-    def test_upload_permanent_file(self):
-        """上传永久保存文件（permanent=true）"""
-        from apps.job_mgmt.models import DistributionFile
-
-        file = SimpleUploadedFile("permanent-patch.rpm", b"binary content")
-
-        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
-            mock_async.return_value = MagicMock()
-            response = self.client.post(
-                self.url,
-                {"file": file, "permanent": "true"},
-                format="multipart",
-                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
-            )
-
-        assert response.status_code == 201
-        data = response.json()
-        file_id = data["data"]["file_id"]
-
-        # 验证数据库记录的 is_permanent 字段和 team 字段
-        df = DistributionFile.objects.get(id=file_id)
-        assert df.is_permanent is True
-        assert df.team == self.api_secret.team
-
-    def test_upload_temporary_file_default(self):
-        """上传临时文件（不传 permanent 参数，默认 false）"""
+    def test_upload_default_expire_days(self):
+        """不传 expire_days 时默认 7 天后过期"""
         from apps.job_mgmt.models import DistributionFile
 
         file = SimpleUploadedFile("temp-patch.rpm", b"binary content")
 
+        before = timezone.now()
         with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
             mock_async.return_value = MagicMock()
             response = self.client.post(
@@ -138,21 +117,23 @@ class TestOpenFileUploadView:
         data = response.json()
         file_id = data["data"]["file_id"]
 
-        # 验证数据库记录的 is_permanent 字段为 False
+        # 默认 7 天后过期
         df = DistributionFile.objects.get(id=file_id)
-        assert df.is_permanent is False
+        assert df.team == self.api_secret.team
+        assert before + timedelta(days=7) <= df.expire_at <= timezone.now() + timedelta(days=7)
 
-    def test_upload_temporary_file_explicit(self):
-        """显式上传临时文件（permanent=false）"""
+    def test_upload_explicit_expire_days(self):
+        """显式传 expire_days=30 时 30 天后过期"""
         from apps.job_mgmt.models import DistributionFile
 
         file = SimpleUploadedFile("explicit-temp.rpm", b"binary content")
 
+        before = timezone.now()
         with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
             mock_async.return_value = MagicMock()
             response = self.client.post(
                 self.url,
-                {"file": file, "permanent": "false"},
+                {"file": file, "expire_days": "30"},
                 format="multipart",
                 HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
             )
@@ -162,7 +143,22 @@ class TestOpenFileUploadView:
         file_id = data["data"]["file_id"]
 
         df = DistributionFile.objects.get(id=file_id)
-        assert df.is_permanent is False
+        assert before + timedelta(days=30) <= df.expire_at <= timezone.now() + timedelta(days=30)
+
+    def test_upload_invalid_expire_days_returns_400(self):
+        """非法 expire_days（0 / 负数 / 超过上限 / 非整数）返回 400"""
+        for bad in ("0", "-1", "366", "abc"):
+            file = SimpleUploadedFile("bad.rpm", b"binary content")
+            with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+                mock_async.return_value = MagicMock()
+                response = self.client.post(
+                    self.url,
+                    {"file": file, "expire_days": bad},
+                    format="multipart",
+                    HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+                )
+            assert response.status_code == 400, f"expire_days={bad} 应返回 400"
+            assert response.json()["result"] is False
 
 
 @pytest.mark.unit
@@ -216,6 +212,7 @@ class TestOpenFileDeleteView:
             original_name="patch.rpm",
             file_key="job-files/2026/05/06/abc123.rpm",
             team=self.api_secret.team,
+            expire_at=timezone.now() + timedelta(days=7),
         )
 
         response = self.client.delete(
@@ -238,6 +235,7 @@ class TestOpenFileDeleteView:
             original_name="patch.rpm",
             file_key="job-files/2026/05/06/abc123.rpm",
             team=self.api_secret.team,  # 同组
+            expire_at=timezone.now() + timedelta(days=7),
         )
 
         with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
@@ -261,6 +259,7 @@ class TestOpenFileDeleteView:
             original_name="other-team-patch.rpm",
             file_key="job-files/2026/05/06/other123.rpm",
             team=999,  # 不同组
+            expire_at=timezone.now() + timedelta(days=7),
         )
 
         response = self.client.delete(
@@ -287,6 +286,7 @@ class TestOpenFileDeleteView:
             original_name="legacy-patch.rpm",
             file_key="job-files/2026/05/06/legacy123.rpm",
             team=None,  # 历史数据无 team
+            expire_at=timezone.now() + timedelta(days=7),
         )
 
         response = self.client.delete(
@@ -302,3 +302,36 @@ class TestOpenFileDeleteView:
         assert "no_permission" in data
         # 文件仍然存在
         assert DistributionFile.objects.filter(id=df.id).exists()
+
+
+@pytest.mark.unit
+@pytest.mark.django_db
+class TestCleanupExpiredDistributionFiles:
+    """过期文件清理任务测试"""
+
+    def test_deletes_only_expired_files(self):
+        """已到期文件被删除，未到期文件保留"""
+        from apps.job_mgmt.models import DistributionFile
+        from apps.job_mgmt.tasks import cleanup_expired_distribution_files_task
+
+        expired = DistributionFile.objects.create(
+            original_name="expired.rpm",
+            file_key="job-files/2026/01/01/expired.rpm",
+            team=1,
+            expire_at=timezone.now() - timedelta(minutes=1),
+        )
+        not_expired = DistributionFile.objects.create(
+            original_name="alive.rpm",
+            file_key="job-files/2026/01/01/alive.rpm",
+            team=1,
+            expire_at=timezone.now() + timedelta(days=1),
+        )
+
+        with patch("apps.job_mgmt.tasks.async_to_sync") as mock_async:
+            mock_async.return_value = MagicMock()
+            cleanup_expired_distribution_files_task()
+            # 已到期文件触发了 S3 删除
+            mock_async.assert_called()
+
+        assert not DistributionFile.objects.filter(id=expired.id).exists()
+        assert DistributionFile.objects.filter(id=not_expired.id).exists()
