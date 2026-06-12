@@ -9,5 +9,9 @@ CELERY_BEAT_SCHEDULE = {
         'task': 'apps.monitor.tasks.grouping_rule.sync_instance_and_group',
         'schedule': crontab(minute='*/10'),  # 每10分钟执行一次
     },
+    'retry_alert_center_lifecycle_notify': {
+        'task': 'apps.monitor.tasks.monitor_policy.retry_alert_center_lifecycle_notify_task',
+        'schedule': crontab(minute='*/5'),  # 每5分钟执行一次
+    },
 }
 
