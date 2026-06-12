@@ -114,7 +114,7 @@ class RuleMatcher:
             rule_q = self.build_single_rule_q(rule)
             if rule_q is None:
                 invalid_group = True
-                logger.warning(f"Rule group invalidated by rule: {rule}")
+                logger.warning("[AlertUtil] 规则组因规则失效: %s", rule)
                 break
 
             group_has_valid_rules = True
@@ -147,7 +147,7 @@ class RuleMatcher:
         model_field = self.field_mapping.get(key)
 
         if not model_field:
-            logger.warning(f"Unknown field key: {key}")
+            logger.warning("[AlertUtil] 未知字段键: %s", key)
             return None
 
         try:
@@ -164,15 +164,15 @@ class RuleMatcher:
                 try:
                     regex_module.compile(value)
                 except regex_module.error as e:
-                    logger.error(f"Invalid regex pattern '{value}': {e}")
+                    logger.error("[AlertUtil] 无效的正则表达式 '%s': %s", value, e)
                     return None
                 return Q(**{f"{model_field}__iregex": value})
             else:
-                logger.warning(f"Unknown operator: {operator}")
+                logger.warning("[AlertUtil] 未知操作符: %s", operator)
                 return None
 
         except Exception as e:
-            logger.error(f"Error building Q object for rule: {str(e)}")
+            logger.error("[AlertUtil] 构建规则 Q 对象失败: %s", e, exc_info=True)
             return None
 
 

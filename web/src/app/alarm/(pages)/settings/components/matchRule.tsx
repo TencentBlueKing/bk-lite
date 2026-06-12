@@ -133,13 +133,13 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
     <div className="pl-[2px] border-l border-[#c4c6cc] w-full ml-[10px] mb-[2px]">
       {policyList.map?.((orItem, index) => (
         <div key={index} className="relative -left-[15px] pb-[10px]">
-          <div className={`absolute text-center ${styles.ruleOr}`}>或</div>
+          <div className={`absolute text-center ${styles.ruleOr}`}>{t('common.or')}</div>
           <div className="bg-[var(--color-bg-4)] ml-[33px] relative top-[15px]">
             <div className="px-[12px] py-[12px] space-y-3">
               {orItem.map((i, ind) => (
                 <div key={ind} className="relative">
                   <div className={`ml-[8px] flex items-center`}>
-                    <div className={styles.ruleAnd}>且</div>
+                    <div className={styles.ruleAnd}>{t('common.and')}</div>
                     <div className={`${styles.ruleItem} mr-[4px]`}>
                       <div className={styles.keySelect}>
                         <Select
@@ -221,14 +221,14 @@ const RulesMatch: React.FC<MatchRuleProps> = ({
                       </div>
                       <span className={styles.action}>
                         <PlusCircleOutlined
-                          title="新增"
+                          title={t('common.addNew')}
                           onClick={() => addAnd(index)}
                         />
                       </span>
                       <span className={styles.action}>
                         {orItem.length > 1 && (
                           <MinusCircleOutlined
-                            title="删除"
+                            title={t('common.delete')}
                             onClick={() => deleteAnd(index, ind)}
                           />
                         )}

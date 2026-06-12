@@ -44,7 +44,7 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.ERROR(f"获取默认组织失败: {e}")
             )
-            logger.error(f"获取默认组织失败: {e}")
+            logger.error("[GroupInit] 获取默认组织失败：%s", e, exc_info=True)
             return
 
         # 定义需要初始化的模型列表
@@ -73,10 +73,10 @@ class Command(BaseCommand):
                     f"\n初始化完成! 共更新 {total_updated} 条记录，跳过 {total_skipped} 条记录"
                 )
             )
-            logger.info(f"初始化组织数据完成! 共更新 {total_updated} 条记录，跳过 {total_skipped} 条记录")
+            logger.info("[GroupInit] 初始化组织数据完成，共更新 %s 条，跳过 %s 条", total_updated, total_skipped)
 
         except Exception as e:
-            logger.error(f"初始化组织数据失败: {e}", exc_info=True)
+            logger.error("[GroupInit] 初始化组织数据失败：%s", e, exc_info=True)
             self.stdout.write(
                 self.style.ERROR(f"初始化组织数据失败: {e}")
             )
@@ -126,6 +126,6 @@ class Command(BaseCommand):
                 f"  [{model_name}] 更新 {updated_count} 条，跳过 {skipped_count} 条"
             )
         )
-        logger.info(f"[{model_name}] 更新 {updated_count} 条，跳过 {skipped_count} 条")
+        logger.info("[GroupInit] [%s] 更新 %s 条，跳过 %s 条", model_name, updated_count, skipped_count)
 
         return updated_count, skipped_count

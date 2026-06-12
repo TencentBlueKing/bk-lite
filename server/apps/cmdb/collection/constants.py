@@ -163,6 +163,7 @@ MIDDLEWARE_METRIC_MAP = {
     "jboss": ["jboss_info_gauge"],
     "weblogic": ["weblogic_info_gauge"],
     "keepalived": ["keepalived_info_gauge"],
+    "keepalive": ["keepalived_info_gauge"],
     "memcached": ["memcached_info_gauge"],
     "openresty": ["openresty_info_gauge"],
     "rocketmq": ["rocketmq_info_gauge"],

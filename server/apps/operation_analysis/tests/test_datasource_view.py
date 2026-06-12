@@ -24,6 +24,8 @@ def _build_request(user, data=None):
 
 def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
     return SimpleNamespace(
+        id=1,
+        name="test-datasource",
         groups=list(groups),
         rest_api=rest_api,
         params=[
@@ -313,6 +315,8 @@ def test_get_source_data_rejects_unassociated_namespace(authenticated_user, monk
         datasource_view.DataSourceAPIModelViewSet,
         "get_object",
         lambda self: SimpleNamespace(
+            id=1,
+            name="test-datasource",
             groups=[1],
             rest_api="monitor/query_latest_active_alerts",
             params=[

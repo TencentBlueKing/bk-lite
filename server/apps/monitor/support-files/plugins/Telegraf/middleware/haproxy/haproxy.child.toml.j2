@@ -1,0 +1,10 @@
+[[inputs.haproxy]]
+    startup_error_behavior = "retry"
+    servers = ["{% if username %}{{ url | replace('://', '://' ~ (username | urlencode) ~ ':${PASSWORD__' ~ config_id ~ '}@', 1) }}{% else %}{{ url }}{% endif %}"]
+    keep_field_names = true
+    interval = "{{ interval }}s"
+    [inputs.haproxy.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "middleware"
+        config_type = "haproxy"

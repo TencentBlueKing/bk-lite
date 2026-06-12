@@ -7,5 +7,5 @@ from apps.cmdb.node_configs.ssh.base import SSHNodeParamsMixin
 
 
 class KeepalivedNodeParams(SSHNodeParamsMixin, BaseNodeParams):
-    supported_model_id = "keepalived"
+    supported_model_id = "keepalive"
     plugin_name = "keepalived_info"

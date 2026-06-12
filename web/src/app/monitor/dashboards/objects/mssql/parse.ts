@@ -15,9 +15,10 @@ export const topDbBars = (raw: any, unit: string, color: string): BarItem[] => {
   const series: RawSeries[] = raw?.data?.result || [];
   const rows = series
     .map((s) => {
-      // 仅用真实的 database 标签;缺失或空串说明该数据没有按库维度,
-      // 不再伪造「未知库」(否则会把实例级聚合值误展示成某个库的排行)。
-      const label = (s.metric?.database || '').trim();
+      // 仅用真实的 database_name 标签(Telegraf sqlserver 输出的库维度即此名);
+      // 缺失或空串说明该数据没有按库维度,不再伪造「未知库」
+      //(否则会把实例级聚合值误展示成某个库的排行)。
+      const label = (s.metric?.database_name || '').trim();
       const nums = (s.values || [])
         .map(([, v]) => Number(v))
         .filter((n) => Number.isFinite(n));

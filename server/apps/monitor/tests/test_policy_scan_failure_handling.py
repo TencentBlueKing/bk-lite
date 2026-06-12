@@ -600,6 +600,7 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
         end_event_time=None,
         operator="",
         operation_logs=[],
+        alert_center_notified=True,
     )
     recovered_no_data_alert = types.SimpleNamespace(
         status="recovered",
@@ -677,7 +678,7 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
     assert active_no_data_alert.operation_logs[-1]["reason"] == "no_data_disabled"
     assert recovered_no_data_alert.status == "recovered"
     assert active_threshold_alert.status == "new"
-    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs"])]
+    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"])]
     assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled", "all_configured")]
     assert baseline_calls == [("clear", policy.id)]
 
@@ -1455,3 +1456,201 @@ def test_policy_baseline_refresh_clears_baselines_when_query_succeeds_but_is_emp
 
     assert clear_calls == [True]
     assert replace_calls == []
+
+
+def _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect):
+    """Helper: install minimal mocks to load alert_lifecycle_notify.py"""
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.system_mgmt_api",
+        SystemMgmtUtils=types.SimpleNamespace(send_msg_with_channel=send_side_effect),
+    )
+    _install_module(monkeypatch, "apps.system_mgmt.models", Channel=object)
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+    return _load_module(
+        f"monitor_alert_lifecycle_retry_{id(send_side_effect)}",
+        Path(__file__).resolve().parents[1] / "services" / "alert_lifecycle_notify.py",
+    )
+
+
+def test_push_to_alert_center_returns_failure_on_first_failed_attempt(monkeypatch):
+    """_push_to_alert_center 单次尝试失败时应返回 success=False，不重试"""
+    call_count = []
+
+    def always_fail(*args, **kwargs):
+        call_count.append(1)
+        return {"result": False, "message": "transient error"}
+
+    sleep_calls = []
+    monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_fail)
+
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = None
+
+    alert = types.SimpleNamespace(
+        id=1,
+        policy_id=10,
+        content="test",
+        level="warning",
+        value=50.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-1",
+        monitor_instance_name="Host 1",
+        dimensions={},
+        metric_instance_id="",
+        status="recovered",
+    )
+
+    results = notifier._push_to_alert_center(9, "alert-center", [alert], "recovered", "", "")
+
+    assert len(call_count) == 1
+    assert sleep_calls == []
+    assert len(results) == 1
+    log_alert, log_entry = results[0]
+    assert log_entry["success"] is False
+    assert log_entry.get("is_alert_center") is True
+
+
+def test_push_to_alert_center_returns_success_on_first_successful_attempt(monkeypatch):
+    """_push_to_alert_center 单次尝试成功时应返回 success=True"""
+    call_count = []
+
+    def always_succeed(*args, **kwargs):
+        call_count.append(1)
+        return {"result": True}
+
+    sleep_calls = []
+    monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_succeed)
+
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = None
+
+    alert = types.SimpleNamespace(
+        id=2,
+        policy_id=10,
+        content="test",
+        level="critical",
+        value=99.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-2",
+        monitor_instance_name="Host 2",
+        dimensions={},
+        metric_instance_id="",
+        status="closed",
+    )
+
+    results = notifier._push_to_alert_center(9, "alert-center", [alert], "closed", "", "")
+
+    assert len(call_count) == 1
+    assert sleep_calls == []
+    log_alert, log_entry = results[0]
+    assert log_entry["success"] is True
+    # 成功路径不应携带 error 字段（仅失败时记录）
+    assert "error" not in log_entry
+
+
+def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_failures(monkeypatch):
+    """补偿任务：成功的告警标记 notified=True，失败的递增 retry_count"""
+    recovered_alert = types.SimpleNamespace(
+        id=10,
+        status="recovered",
+        alert_center_notified=False,
+        alert_center_retry_count=0,
+    )
+    closed_alert = types.SimpleNamespace(
+        id=20,
+        status="closed",
+        alert_center_notified=False,
+        alert_center_retry_count=2,
+    )
+    update_calls = []  # 记录 (filter_kwargs, update_kwargs)，验证失败路径的 F() 原子递增
+
+    class _UpdateQS:
+        def __init__(self, filter_kwargs):
+            self.filter_kwargs = filter_kwargs
+
+        def update(self, **kwargs):
+            update_calls.append((self.filter_kwargs, kwargs))
+            return len(self.filter_kwargs.get("id__in", []))
+
+    class _AlertQS:
+        def filter(self, **kwargs):
+            # 失败递增走 filter(id__in=...).update()；补偿查询走 order_by/__getitem__
+            if "id__in" in kwargs and "status__in" not in kwargs:
+                return _UpdateQS(kwargs)
+            return self
+
+        def order_by(self, *args):
+            return self
+
+        def __getitem__(self, sl):
+            return [recovered_alert, closed_alert]
+
+    class _MonitorAlert:
+        objects = _AlertQS()
+
+    def shared_task(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    # recovered → push succeeds, closed → push fails
+    push_results = {
+        "recovered": [(recovered_alert, True)],
+        "closed": [(closed_alert, False)],
+    }
+
+    marked_success = []
+
+    class _FakeNotifier:
+        def __init__(self, policy=None):
+            pass
+
+        def push_to_alert_center_only(self, alerts, action, **kwargs):
+            return push_results[action]
+
+        def _mark_alert_center_notified(self, alert_ids):
+            marked_success.extend(list(alert_ids))
+
+    _install_module(monkeypatch, "celery", shared_task=shared_task)
+    _install_module(monkeypatch, "celery_singleton", Singleton=object)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
+    _install_module(monkeypatch, "apps.monitor.models", MonitorPolicy=object, MonitorAlert=_MonitorAlert)
+    _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
+    _install_module(monkeypatch, "apps.monitor.tasks.services.policy_scan", MonitorPolicyScan=object)
+    _install_module(monkeypatch, "apps.monitor.tasks.utils.policy_methods", period_to_seconds=lambda p: 60)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.alert_policy",
+        AlertConstants=types.SimpleNamespace(MAX_BACKFILL_SECONDS=3600, MAX_BACKFILL_COUNT=10),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.alert_lifecycle_notify",
+        AlertLifecycleNotifier=_FakeNotifier,
+    )
+
+    module = _load_module(
+        "monitor_policy_retry_task_test_module",
+        Path(__file__).resolve().parents[1] / "tasks" / "monitor_policy.py",
+    )
+
+    result = module.retry_alert_center_lifecycle_notify_task()
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert result["total"] == 2
+
+    # 成功路径：复用 _mark_alert_center_notified，传入成功告警 id
+    assert marked_success == [10]
+
+    # 失败路径：filter(id__in=[20]).update() 做 F() 原子递增
+    fail_update = next((c for c in update_calls if c[0].get("id__in") == [20]), None)
+    assert fail_update is not None
+    assert "alert_center_retry_count" in fail_update[1]

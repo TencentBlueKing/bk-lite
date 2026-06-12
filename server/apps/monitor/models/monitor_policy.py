@@ -162,10 +162,17 @@ class MonitorAlert(TimeInfo):
     notice_type_ids = models.JSONField(default=list, verbose_name="通知方式ID列表")
     notice_users = models.JSONField(default=list, verbose_name="通知人")
     notice_logs = models.JSONField(default=list, verbose_name="通知记录")
+    alert_center_notified = models.BooleanField(default=True, verbose_name="告警中心已同步")
+    alert_center_retry_count = models.IntegerField(default=0, verbose_name="告警中心通知重试次数")
 
     class Meta:
         verbose_name = "监控告警"
         verbose_name_plural = "监控告警"
+        indexes = [
+            # 支撑补偿任务查询（alert_center_notified=False + status__in）；
+            # notified=False 行稀少（default=True），该索引选择性极高
+            models.Index(fields=["alert_center_notified", "status"], name="idx_alert_center_notified"),
+        ]
 
 
 class MonitorAlertMetricSnapshot(TimeInfo):

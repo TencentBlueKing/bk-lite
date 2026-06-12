@@ -644,7 +644,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const handleSave = async () => {
       if (!selectedDashboard) {
-        message.warning('请先选择一个仪表盘');
+        message.warning(t('dashboard.selectDashboardFirst'));
         return;
       }
 

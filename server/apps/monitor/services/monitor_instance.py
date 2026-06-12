@@ -337,7 +337,38 @@ class InstanceSearch:
                     )
                     item["plugins"].append(info)
 
+            # 同一物理插件可能同时以 plugin.id 与 legacy (obj, collector, collect_type)
+            # 元组两种键出现在 vm_confs 中，导致「集成模板」列同一模板渲染两次（一条
+            # 自动正常、一条幻影手动）。按模板身份去重，仅保留状态优先级最高的一条。
+            item["plugins"] = self._dedupe_instance_plugins(item["plugins"])
+
         return data
+
+    @staticmethod
+    def _dedupe_instance_plugins(plugins):
+        """按模板身份 (collector, collect_type, name) 去重实例插件徽标。
+
+        一个物理插件模板可能因 plugin.id 与 legacy 元组双键而重复出现；本方法在
+        保留不同模板（如 exporter 与 database）的前提下，折叠同一模板的重复条目，
+        并保留采集状态优先级最高的一条：自动正常 > 自动失联 > 手动正常。返回新列表，
+        不修改入参。
+        """
+        status_priority = {
+            (PluginConstants.COLLECT_MODE_AUTO, PluginConstants.STATUS_NORMAL): 0,
+            (PluginConstants.COLLECT_MODE_AUTO, PluginConstants.STATUS_OFFLINE): 1,
+            (PluginConstants.COLLECT_MODE_MANUAL, PluginConstants.STATUS_NORMAL): 2,
+        }
+        best = {}
+        order = []
+        for plugin in plugins:
+            key = (plugin.get("collector"), plugin.get("collect_type"), plugin.get("name"))
+            rank = status_priority.get((plugin.get("collect_mode"), plugin.get("status")), 99)
+            if key not in best:
+                best[key] = (rank, plugin)
+                order.append(key)
+            elif rank < best[key][0]:
+                best[key] = (rank, plugin)
+        return [best[key][1] for key in order]
 
     def get_objs(self):
         qs = self.qs.filter(monitor_object_id=self.monitor_obj.id, is_deleted=False)

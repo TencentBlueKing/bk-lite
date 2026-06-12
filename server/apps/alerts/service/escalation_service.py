@@ -1,5 +1,4 @@
 # -- coding: utf-8 --
-import logging
 from datetime import timedelta
 from typing import Any, Dict, List, Optional
 
@@ -13,8 +12,7 @@ from apps.alerts.models.alert_operator import (
     AlertReminderTask,
 )
 from apps.alerts.models.models import Alert
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import alert_logger as logger
 
 VALID_MODES = ("append", "replace")
 
