@@ -1164,7 +1164,8 @@ def test_push_to_alert_center_returns_success_on_first_successful_attempt(monkey
     assert sleep_calls == []
     log_alert, log_entry = results[0]
     assert log_entry["success"] is True
-    assert "error" in log_entry
+    # 成功路径不应携带 error 字段（仅失败时记录）
+    assert "error" not in log_entry
 
 
 def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_failures(monkeypatch):
