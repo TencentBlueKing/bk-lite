@@ -97,6 +97,20 @@ class TestOpenFileUploadView:
         assert "file_key" in data["data"]
         assert data["data"]["file_key"].endswith(".rpm")
 
+    def test_oversized_file_rejected(self, monkeypatch):
+        """单文件超过大小上限 → 400（#3154：开放上传须有服务端资源上界）"""
+        monkeypatch.setattr("apps.job_mgmt.views.open_api.MAX_UPLOAD_FILE_SIZE_MB", 1)
+        file = SimpleUploadedFile("big.rpm", b"x" * (2 * 1024 * 1024))  # 2MB > 1MB 上限
+        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+            mock_async.return_value = MagicMock()
+            response = self.client.post(
+                self.url,
+                {"file": file},
+                format="multipart",
+                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            )
+        assert response.status_code == 400
+
     def test_upload_default_expire_days(self):
         """不传 expire_days 时默认 7 天后过期"""
         from apps.job_mgmt.models import DistributionFile
