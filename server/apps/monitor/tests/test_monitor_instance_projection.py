@@ -1,6 +1,6 @@
 import types
 
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
 
@@ -94,3 +94,70 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }
+
+
+def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promql(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="Switch",
+        display_name="Switch",
+        default_metric="any({instance_type='switch'}) by (instance_id)",
+        instance_id_keys=["instance_id"],
+        supplementary_indicators=["device_total_incoming_netflow_traffic"],
+    )
+    metric_group = MetricGroup.objects.create(monitor_object=monitor_object, name="Traffic")
+    Metric.objects.create(
+        monitor_object=monitor_object,
+        metric_group=metric_group,
+        name="device_total_incoming_netflow_traffic",
+        query=(
+            "sum(flow_bytes_in{instance_type='switch', collect_type='netflow', __$labels__}) "
+            "by (instance_id)"
+        ),
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('flow:15:1:10.10.41.149',)",
+        name="NetFlow-10.10.41.149",
+        monitor_object_id=monitor_object.id,
+        cloud_region_id=1,
+        ip="10.10.41.149",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow"],
+    )
+    captured_queries = []
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="20m"):
+            captured_queries.append(query)
+            if query == monitor_object.default_metric:
+                return {
+                    "data": {
+                        "result": [
+                            {
+                                "metric": {
+                                    "instance_id": "flow:15:1:10.10.41.149",
+                                    "agent_id": "172.18.0.19-1",
+                                },
+                                "value": [1781234567, "1"],
+                            }
+                        ]
+                    }
+                }
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    data = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=20,
+        name=None,
+        qs=MonitorInstance.objects.filter(id=instance.id),
+        add_metrics=True,
+    )
+
+    assert data["count"] == 1
+    assert captured_queries[1] == (
+        "sum(flow_bytes_in{instance_type='switch', collect_type='netflow', "
+        'instance_id=~"flow:15:1:10\\\\.10\\\\.41\\\\.149"}) by (instance_id)'
+    )

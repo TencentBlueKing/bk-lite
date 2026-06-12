@@ -276,6 +276,7 @@ class InstanceSearch:
             # 添加组织信息
             item["organization"] = list(org_map.get(item["instance_id"], []))
             item["plugins"] = []
+            appended_plugin_ids = set()
 
             db_confs = confs_map.get(item["instance_id"], set())
             vm_confs = instance_plugin_status_map.get(item["instance_id"], set())
@@ -318,6 +319,11 @@ class InstanceSearch:
 
                     # 为了避免修改原对象，复制一份
                     info = dict(plugin_info)
+                    plugin_id = info.get("plugin_id")
+                    if plugin_id in appended_plugin_ids:
+                        continue
+                    appended_plugin_ids.add(plugin_id)
+
                     info.update(status=status, collect_mode=collect_mode)
                     item["plugins"].append(info)
 

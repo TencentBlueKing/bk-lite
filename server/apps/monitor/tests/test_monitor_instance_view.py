@@ -403,6 +403,75 @@ def test_primary_object_plugin_list_shows_configured_host_remote_not_wmi(db, mon
     assert plugins[0]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
 
 
+def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_plugin(db, monkeypatch):
+    from apps.monitor.constants.plugin import PluginConstants
+    from apps.monitor.services import monitor_instance
+
+    monitor_object = MonitorObject.objects.create(
+        name="Switch",
+        display_name="Switch",
+        default_metric="any({instance_type='switch'}) by (instance_id)",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('flow:15:1:10.10.41.149',)",
+        name="NetFlow-10.10.41.149",
+        monitor_object=monitor_object,
+        cloud_region_id=1,
+        ip="10.10.41.149",
+        enabled_protocols=["netflow"],
+    )
+    plugin = MonitorPlugin.objects.create(
+        name="Switch Flow NetFlow",
+        display_name="Switch Flow NetFlow",
+        template_type="builtin",
+        collector="Telegraf",
+        collect_type="netflow",
+        status_query="any({instance_type='switch', collect_type='netflow'}) by (instance_id)",
+        is_pre=True,
+    )
+    plugin.monitor_object.add(monitor_object)
+    CollectConfig.objects.create(
+        id="switch-netflow-cfg",
+        monitor_instance=instance,
+        monitor_plugin=plugin,
+        collector="Telegraf",
+        collect_type="netflow",
+        config_type="flow",
+        file_type="toml",
+        is_child=True,
+    )
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {"instance_id": "flow:15:1:10.10.41.149"},
+                            "value": [1781234567, "1"],
+                        }
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(monitor_instance, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = monitor_instance.InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 10},
+        qs=MonitorInstance.objects.all(),
+        locale="zh-Hans",
+    ).search_by_primary_object()
+
+    plugins = result["results"][0]["plugins"]
+
+    assert len(plugins) == 1
+    assert plugins[0]["plugin_id"] == plugin.id
+    assert plugins[0]["status"] == PluginConstants.STATUS_NORMAL
+    assert plugins[0]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
+
+
 def test_effective_plugins_action_returns_service_data(monkeypatch):
     service_calls = {}
     expected = [{"id": 12, "name": "HostRemote"}]
