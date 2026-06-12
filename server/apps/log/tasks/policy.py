@@ -113,7 +113,8 @@ def compensate_log_notice_task():
     start_time = time.time()
     now = datetime.now(timezone.utc)
     window_start = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_WINDOW_SECONDS)
-    # 仅补偿落库已超 MIN_AGE 的事件：保证本轮扫描的同步 notice() 已完成，杜绝与首发并发双投
+    # 仅补偿落库已超 MIN_AGE 的事件：等待本轮扫描的同步 notice() 完成，降低与首发并发双投的概率
+    # （门槛取值须大于 notice() 最坏耗时量级，见 AlertConstants 说明；通知语义为 at-least-once）
     settle_before = now - timedelta(seconds=AlertConstants.NOTICE_COMPENSATE_MIN_AGE_SECONDS)
 
     pending = list(

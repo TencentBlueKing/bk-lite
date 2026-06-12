@@ -35,6 +35,7 @@ def _fake_alert_constants():
         NOTICE_COMPENSATE_MAX_RETRY=5,
         NOTICE_COMPENSATE_WINDOW_SECONDS=24 * 3600,
         NOTICE_COMPENSATE_BATCH_SIZE=200,
+        NOTICE_COMPENSATE_MIN_AGE_SECONDS=60,  # fresh 用例依赖 age 门槛过滤刚落库事件
     )
 
 
