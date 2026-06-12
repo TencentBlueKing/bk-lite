@@ -3,39 +3,69 @@ export const useSwitchConfig = () => {
     instance_type: 'switch',
     dashboardDisplay: [
       {
-        indexId: 'device_total_outgoing_traffic',
+        indexId: 'device_cpu_usage',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '15%'
+          width: '24%'
+        }
+      },
+      {
+        indexId: 'device_memory_usage',
+        displayType: 'single',
+        sortIndex: 1,
+        displayDimension: [],
+        style: {
+          height: '200px',
+          width: '24%'
+        }
+      },
+      {
+        indexId: 'device_total_incoming_traffic',
+        displayType: 'single',
+        sortIndex: 2,
+        displayDimension: [],
+        style: {
+          height: '200px',
+          width: '24%'
+        }
+      },
+      {
+        indexId: 'device_total_outgoing_traffic',
+        displayType: 'single',
+        sortIndex: 3,
+        displayDimension: [],
+        style: {
+          height: '200px',
+          width: '24%'
         }
       },
       {
         indexId: 'snmp_uptime',
         displayType: 'lineChart',
-        sortIndex: 1,
+        sortIndex: 4,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '40%'
+          width: '49%'
         }
       },
       {
-        indexId: 'device_total_incoming_traffic',
+        indexId: 'device_temperature_celsius',
         displayType: 'lineChart',
-        sortIndex: 2,
-        displayDimension: [],
+        sortIndex: 5,
+        displayDimension: ['descr'],
         style: {
           height: '200px',
-          width: '40%'
+          width: '49%'
         }
       },
       {
         indexId: 'interfaces',
         displayType: 'multipleIndexsTable',
-        sortIndex: 3,
+        sortIndex: 6,
         displayDimension: [
           'ifOperStatus',
           'ifHighSpeed',
@@ -50,6 +80,26 @@ export const useSwitchConfig = () => {
           height: '400px',
           width: '100%'
         }
+      },
+      {
+        indexId: 'device_fan_state',
+        displayType: 'lineChart',
+        sortIndex: 7,
+        displayDimension: ['descr'],
+        style: {
+          height: '200px',
+          width: '49%'
+        }
+      },
+      {
+        indexId: 'device_psu_state',
+        displayType: 'lineChart',
+        sortIndex: 8,
+        displayDimension: ['descr'],
+        style: {
+          height: '200px',
+          width: '49%'
+        }
       }
     ],
     groupIds: {
@@ -58,6 +108,7 @@ export const useSwitchConfig = () => {
     },
     collectTypes: {
       'Switch SNMP General': 'snmp',
+      'Switch Cisco SNMP': 'snmp_cisco',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }

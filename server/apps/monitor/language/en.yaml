@@ -2023,6 +2023,27 @@ monitor_object_metric:
     device_total_outgoing_sflow_traffic:
       name: Device Total Outgoing sFlow Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the device control plane (typically the 5-minute average), as a percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays. Sourced from vendor-specific SNMP OIDs and normalized to a 0-100 percentage.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports overall memory utilization of the device, computed as used / (used + free) * 100 across all memory pools. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations.
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports the number of bytes currently in use for each memory pool of the device. It helps administrators understand the absolute memory consumption per pool (for example Processor or I/O pools) and identify which pool is under pressure.
+    device_memory_free:
+      name: Memory Free
+      desc: This metric reports the number of free bytes available in each memory pool of the device. Together with the used bytes it determines overall memory utilization; a persistently low free value indicates memory pressure on that pool.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the temperature reading of each hardware sensor on the device, in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed.
+    device_fan_state:
+      name: Fan Status
+      desc: This metric reports the operational state of each cooling fan on the device. A non-normal state (warning, critical, shutdown, or notFunctioning) indicates a cooling fault that can quickly lead to overheating and should be investigated immediately.
+    device_psu_state:
+      name: Power Supply Status
+      desc: This metric reports the operational state of each power supply unit on the device. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly.
   Router:
     snmp_uptime:
       name: System Uptime
@@ -3331,6 +3352,10 @@ monitor_object_metric_group:
     Packet Loss: Packet Loss
     Bandwidth: Bandwidth
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   ElasticSearch:
     Base: Base
     Node: Node
@@ -3486,6 +3511,12 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
       key IF-MIB metrics from switch interfaces, including traffic volume, packet
       loss, and error counts.
+  Switch Cisco SNMP:
+    name: Cisco (Telegraf)
+    desc: Cisco-specific SNMP collection template for switches. In addition to standard
+      IF-MIB interface metrics, it collects Cisco private OIDs for device health
+      including CPU utilization, memory pools, temperature sensors, fan and
+      power-supply status.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
