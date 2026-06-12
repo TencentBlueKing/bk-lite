@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import {
   ViewConfigProps,
   ViewConfigItem,
@@ -97,7 +98,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   builtinNamespaceId,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
+  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const [chartType, setChartType] = useState<string>('');
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
   const [actions, setActions] = useState<DashboardActionConfig[]>([]);
@@ -742,13 +745,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       placement="right"
       width={700}
       open={open}
-      onClose={onClose}
+      maskClosable={false}
+      onClose={handleClose}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Button type="primary" onClick={handleConfirm}>
             {t('common.confirm')}
           </Button>
-          <Button style={{ marginLeft: 8 }} onClick={onClose}>
+          <Button style={{ marginLeft: 8 }} onClick={handleClose}>
             {t('common.cancel')}
           </Button>
         </div>

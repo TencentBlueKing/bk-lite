@@ -12,6 +12,7 @@ NETWORK_DEVICE_MAPPING = {
     "port": "port",
     "model": "model",
     "brand": "brand",
+    "sys_desc": "sysdescr",
     "model_id": "model_id",
 }
 

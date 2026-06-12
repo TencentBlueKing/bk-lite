@@ -1361,3 +1361,126 @@ def test_snmp_facts_list_all_resources_preserves_raw_topology_when_fact_building
     assert result["success"] is True
     assert result["result"]["network_topo"] == raw_topology_rows
     assert result["result"]["network_topology_facts"] == []
+
+
+# ============================================================================
+# 多凭据池轮询：任何失败都换下一个凭据（修复 SNMP v3 设备卡在 v2c 不前进）
+# ============================================================================
+class _FakeCredCache:
+    """记录 mark_failure/mark_success/clear_success/enqueue 调用的假缓存。"""
+
+    def __init__(self, cooled=None):
+        self.events = []
+        self.failures = []        # mark_failure 调用
+        self.successes = []
+        self.cleared = []
+        self._cooled = set(cooled or set())  # 已冷却的 (task,host,cred_id)
+
+    async def append_result_event(self, ev):
+        self.events.append(ev)
+
+    async def mark_success(self, t, h, c):
+        self.successes.append((str(t), h, c))
+
+    async def clear_success(self, t, h):
+        self.cleared.append((str(t), h))
+
+    async def mark_failure(self, t, h, c, err, level, consecutive, next_retry):
+        self.failures.append({"host": h, "cred": c, "level": level, "consecutive": consecutive})
+        self._cooled.add((str(t), h, c))
+
+    async def get_failure_state(self, t, h, c):
+        return {"is_cooled": True} if (str(t), h, c) in self._cooled else {}
+
+
+class _FakeQueue:
+    def __init__(self):
+        self.enqueued = []
+
+    async def enqueue_collect_task(self, task):
+        self.enqueued.append(task)
+        return {"task_id": "t", "status": "queued"}
+
+
+def _exec_result(failure_kind, error_message, success=False):
+    return {
+        "collect_task_id": 293, "host": "10.10.69.246", "credential_id": "cred-v2c",
+        "credential_index": 0, "model_id": "network", "plugin_name": "snmp_facts",
+        "success": success, "failure_kind": failure_kind, "error_message": error_message,
+        "finished_at": "2026-06-12T00:00:00Z", "snapshot": {},
+    }
+
+
+def _mc_params(pool):
+    return {
+        "collect_task_id": 293, "host": "10.10.69.246",
+        "credential_id": "cred-v2c", "credential_index": 0, "credentials_pool": pool,
+        "model_id": "network", "plugin_name": "snmp_facts",
+    }
+
+
+_POOL = [
+    {"credential_id": "cred-v2c", "version": "v2c", "community": "x"},
+    {"credential_id": "cred-v3", "version": "v3", "username": "u"},
+]
+
+
+@pytest.mark.asyncio
+async def test_multicred_snmp_timeout_cools_and_rotates_to_v3():
+    """246 场景：v2c 在 v3 设备上静默超时（failure_kind=task）→ 多凭据池下应冷却 v2c 并换到 v3。"""
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+    cache = _FakeCredCache()
+    queue = _FakeQueue()
+    er = _exec_result("task", "No SNMP response received before timeout")
+    await _handle_multicred_post_execute(_mc_params(_POOL), "t", er, cache, lambda: queue)
+    assert [f["cred"] for f in cache.failures] == ["cred-v2c"]          # v2c 被冷却
+    assert len(queue.enqueued) == 1                                      # 换下一个
+    assert queue.enqueued[0]["credential_id"] == "cred-v3"
+
+
+@pytest.mark.asyncio
+async def test_multicred_generic_task_failure_rotates_without_cooldown():
+    """非 SNMP 的瞬时 task 失败：多凭据池下仍换下一个，但不冷却当前凭据（下一轮仍可重试）。"""
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+    cache = _FakeCredCache()
+    queue = _FakeQueue()
+    er = _exec_result("task", "docker command not found")
+    await _handle_multicred_post_execute(_mc_params(_POOL), "t", er, cache, lambda: queue)
+    assert cache.failures == []                                          # 不冷却
+    assert len(queue.enqueued) == 1                                      # 仍换下一个
+    assert queue.enqueued[0]["credential_id"] == "cred-v3"
+
+
+@pytest.mark.asyncio
+async def test_single_credential_snmp_timeout_unchanged():
+    """单凭据 SNMP 超时：保持原行为——不冷却、不换（下一轮重试），零回归。"""
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+    cache = _FakeCredCache()
+    queue = _FakeQueue()
+    er = _exec_result("task", "No SNMP response received before timeout")
+    await _handle_multicred_post_execute(_mc_params([]), "t", er, cache, lambda: queue)
+    assert cache.failures == []                                          # 单凭据不冷却
+    assert queue.enqueued == []                                          # 无可换
+
+
+@pytest.mark.asyncio
+async def test_multicred_credential_failure_still_cools_and_rotates():
+    """既有行为：明确 credential 失败仍冷却 + 换下一个（不回归）。"""
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+    cache = _FakeCredCache()
+    queue = _FakeQueue()
+    er = _exec_result("credential", "SSH authentication failed")
+    await _handle_multicred_post_execute(_mc_params(_POOL), "t", er, cache, lambda: queue)
+    assert [f["cred"] for f in cache.failures] == ["cred-v2c"]
+    assert queue.enqueued[0]["credential_id"] == "cred-v3"
+
+
+@pytest.mark.asyncio
+async def test_multicred_no_next_when_remaining_cooled():
+    """下一个凭据已冷却 → 不再 enqueue（避免空转）。"""
+    from tasks.handlers.plugin_handler import _handle_multicred_post_execute
+    cache = _FakeCredCache(cooled={("293", "10.10.69.246", "cred-v3")})
+    queue = _FakeQueue()
+    er = _exec_result("task", "No SNMP response received before timeout")
+    await _handle_multicred_post_execute(_mc_params(_POOL), "t", er, cache, lambda: queue)
+    assert queue.enqueued == []                                         # v3 已冷却，无可换

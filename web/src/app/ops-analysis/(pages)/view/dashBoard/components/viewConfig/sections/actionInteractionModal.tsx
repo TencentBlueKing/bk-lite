@@ -1,4 +1,5 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import {
   AutoComplete,
   Button,
@@ -66,6 +67,10 @@ const isBlankMapping = (mapping: DashboardActionParamMapping) => {
 const sanitizeMappings = (mappings?: DashboardActionParamMapping[]) =>
   (mappings || []).filter((mapping) => !isBlankMapping(mapping));
 
+// 生成动作配置快照（忽略随机 id），用于关闭时的脏检查
+const snapshotActions = (list: LocalDashboardAction[]) =>
+  JSON.stringify(list.map((action) => ({ ...action, id: undefined })));
+
 export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
   open,
   column,
@@ -76,6 +81,8 @@ export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
   onConfirm,
 }) => {
   const [localActions, setLocalActions] = useState<LocalDashboardAction[]>([]);
+  const guardClose = useUnsavedConfirm();
+  const initialSnapshotRef = useRef<string>('');
   const columnActionKey = getColumnActionKey(column);
 
   const columnActions = useMemo(() => {
@@ -97,15 +104,19 @@ export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
       return;
     }
 
-    setLocalActions(
+    const nextActions =
       columnActions.length > 0
         ? columnActions.map((action) => ({
           ...action,
           id: createActionId(),
         }))
-        : [createDefaultAction(columnActionKey)],
-    );
+        : [createDefaultAction(columnActionKey)];
+    setLocalActions(nextActions);
+    initialSnapshotRef.current = snapshotActions(nextActions);
   }, [open, columnActionKey, columnActions]);
+
+  const handleCancel = () =>
+    guardClose(snapshotActions(localActions) !== initialSnapshotRef.current, onCancel);
 
   const replaceLocalAction = (
     actionId: string,
@@ -402,7 +413,8 @@ export const ActionInteractionModal: React.FC<ActionInteractionModalProps> = ({
       width={820}
       open={open}
       centered
-      onCancel={onCancel}
+      maskClosable={false}
+      onCancel={handleCancel}
       onOk={handleConfirm}
       destroyOnClose
       styles={{
