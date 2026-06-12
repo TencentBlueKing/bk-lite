@@ -1,5 +1,7 @@
 {
   "common": {
+    "expand": "Expand",
+    "collapse": "Collapse",
     "edit": "Edit",
     "builtIn": "Built-in",
     "delete": "Delete",

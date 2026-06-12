@@ -1,5 +1,7 @@
 {
   "common": {
+    "expand": "展开",
+    "collapse": "收起",
     "edit": "编辑",
     "builtIn": "内置",
     "delete": "删除",

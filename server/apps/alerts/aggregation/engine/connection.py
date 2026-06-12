@@ -78,6 +78,14 @@ class DuckDBConnection:
 
         # 4. 使用 pandas DataFrame 批量加载数据到 DuckDB
         events_df = pd.DataFrame(events_data)
+        # pandas 3.0（或 future.infer_string=True）会把字符串列建成扩展 string dtype
+        # （'str' / 'string' / 'string[pyarrow]'），而 duckdb<1.2 不识别它们，register 会抛
+        # NotImplementedException("Data type 'str' not recognized")，导致整条聚合失败。
+        # 统一把扩展 string 列降级为 object，保证跨 pandas/duckdb 版本兼容；
+        # object / datetime / 数值列不受影响（duckdb 本就支持）。
+        for col, dtype in events_df.dtypes.items():
+            if dtype != object and pd.api.types.is_string_dtype(dtype):
+                events_df[col] = events_df[col].astype(object)
         conn.execute("DROP TABLE IF EXISTS events_table")
         conn.register("events_df", events_df)
         conn.execute("CREATE TABLE events_table AS SELECT * FROM events_df")

@@ -1,7 +1,19 @@
 'use client';
 
 import React, { useState, useEffect, useMemo, useCallback } from 'react';
-import { Tabs, Spin, Descriptions, Empty, Card, Input, Space, Tag } from 'antd';
+import {
+  Tabs,
+  Spin,
+  Descriptions,
+  Empty,
+  Card,
+  Input,
+  Tag,
+  Tooltip,
+  Pagination,
+  Button,
+} from 'antd';
+import { DownOutlined, UpOutlined } from '@ant-design/icons';
 import {
   buildTopologyFactRowKey,
   CREATE_TASK_DETAIL_CONFIG,
@@ -42,7 +54,17 @@ interface TopologyFactRow {
   [key: string]: any;
 }
 
-const TOPOLOGY_FACT_METRIC = 'network_topology_facts_info_gauge';
+// 拓扑链路快照里 inst_name 形如 `${device}-${端口名}`，展示时剥掉设备前缀只留端口名
+const stripDevicePrefix = (
+  instName?: string,
+  device?: string
+): string | undefined => {
+  if (!instName) return instName;
+  if (device && instName.startsWith(`${device}-`)) {
+    return instName.slice(device.length + 1);
+  }
+  return instName;
+};
 
 const StatisticCard: React.FC<StatisticCardConfig> = ({
   title,
@@ -145,11 +167,41 @@ const TaskTable: React.FC<TaskTableProps> = ({ columns, data }) => {
   );
 };
 
+// 拓扑摘要概览单元：label + 值，值区不换行，超出省略，鼠标移上去 tooltip 显示全文
+const OverviewCell: React.FC<{
+  label: string;
+  tooltip?: React.ReactNode;
+  labelWidth?: number;
+  fullWidth?: boolean;
+  children: React.ReactNode;
+}> = ({ label, tooltip, labelWidth = 92, fullWidth, children }) => (
+  <div
+    className={`flex items-stretch border-b border-r border-[var(--color-border-1)] ${
+      fullWidth ? 'md:col-span-2' : ''
+    }`}
+  >
+    <div
+      className="shrink-0 flex items-center px-3 py-2 text-xs text-[var(--color-text-3)] bg-[var(--color-fill-1)] border-r border-[var(--color-border-1)]"
+      style={{ width: labelWidth }}
+    >
+      {label}
+    </div>
+    <div className="flex-1 min-w-0 px-3 py-2">
+      <Tooltip title={tooltip}>
+        <div className="truncate text-sm">{children}</div>
+      </Tooltip>
+    </div>
+  </div>
+);
+
 const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
   const collectApi = useCollectApi();
   const modelApi = useModelApi();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
+  const [topologyCollapsed, setTopologyCollapsed] = useState(false);
+  const [rawDataPage, setRawDataPage] = useState(1);
+  const [rawDataPageSize, setRawDataPageSize] = useState(20);
   const [associationMap, setAssociationMap] = useState<Record<string, string>>(
     {}
   );
@@ -230,16 +282,25 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     [t]
   );
 
-  const topologyFacts = useMemo(() => {
-    const rawData = detailData.raw_data?.data || [];
-    return rawData.filter(
-      (item): item is TopologyFactRow =>
-        Boolean(item) &&
-        typeof item === 'object' &&
-        !Array.isArray(item) &&
-        item.__name__ === TOPOLOGY_FACT_METRIC
-    );
-  }, [detailData.raw_data?.data]);
+  // 拓扑事实来自后端新流水线快照（detailData.topology.links），把链路映射成表格行结构。
+  // 旧的 network_topology_facts_info_gauge 指标已废弃，不再从 raw_data 取。
+  const topologyFacts = useMemo<TopologyFactRow[]>(() => {
+    const links = detailData.topology?.links || [];
+    return links.map((link) => ({
+      source_protocol: link.evidence_source,
+      confidence: link.confidence,
+      instance_id: link.source_device,
+      local_device_id: link.source_device,
+      local_port_name:
+        stripDevicePrefix(link.source_inst_name, link.source_device) ||
+        link.source_port_id,
+      remote_device_id: link.target_device || link.remote_device_name,
+      remote_port_name:
+        link.remote_port_name ||
+        stripDevicePrefix(link.target_inst_name, link.target_device) ||
+        link.target_port_id,
+    }));
+  }, [detailData.topology?.links]);
 
   const topologyProtocolSummary = useMemo(() => {
     const configuredProtocols = topologyDisplayConfig?.topologyProtocols || [];
@@ -320,39 +381,57 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
 
   const renderRawDataTab = () => {
     const rawData = detailData.raw_data?.data || [];
-    const hasData = rawData.length > 0;
+    const total = rawData.length;
+    const hasData = total > 0;
+    // 原始数据量可能上千条，一次性渲染会卡。改为前端分页，只渲染当前页。
+    const startIndex = (rawDataPage - 1) * rawDataPageSize;
+    const pageData = rawData.slice(startIndex, startIndex + rawDataPageSize);
+
+    if (!hasData) {
+      return (
+        <Empty
+          image={Empty.PRESENTED_IMAGE_SIMPLE}
+          description={t('Collection.taskDetail.noRawData')}
+        />
+      );
+    }
 
     return (
-      <div
-        className="overflow-y-auto"
-        style={{ height: 'calc(100vh - 280px)' }}
-      >
-        <div className="pr-2">
-          {hasData ? (
-            rawData.map((item: any, index: number) => (
-              <div key={index} className="mb-6">
-                <Descriptions
-                  bordered
-                  size="small"
-                  column={1}
-                  labelStyle={{ width: 120 }}
-                >
-                  {Object.entries(item).map(([key, value]: [string, any]) => (
-                    <Descriptions.Item key={key} label={key}>
-                      {typeof value === 'object' && value !== null
-                        ? JSON.stringify(value)
-                        : String(value || '--')}
-                    </Descriptions.Item>
-                  ))}
-                </Descriptions>
-              </div>
-            ))
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t('Collection.taskDetail.noRawData')}
-            />
-          )}
+      <div className="flex flex-col" style={{ height: 'calc(100vh - 280px)' }}>
+        <div className="flex-1 overflow-y-auto pr-2">
+          {pageData.map((item: any, index: number) => (
+            <div key={startIndex + index} className="mb-6">
+              <Descriptions
+                bordered
+                size="small"
+                column={1}
+                labelStyle={{ width: 120 }}
+              >
+                {Object.entries(item).map(([key, value]: [string, any]) => (
+                  <Descriptions.Item key={key} label={key}>
+                    {typeof value === 'object' && value !== null
+                      ? JSON.stringify(value)
+                      : String(value || '--')}
+                  </Descriptions.Item>
+                ))}
+              </Descriptions>
+            </div>
+          ))}
+        </div>
+        <div className="flex justify-end pt-3 pr-2 border-t border-[var(--color-border-1)]">
+          <Pagination
+            size="small"
+            current={rawDataPage}
+            pageSize={rawDataPageSize}
+            total={total}
+            showSizeChanger
+            pageSizeOptions={['10', '20', '50', '100']}
+            showTotal={(count) => `共 ${count} 条`}
+            onChange={(page, size) => {
+              setRawDataPage(size !== rawDataPageSize ? 1 : page);
+              setRawDataPageSize(size);
+            }}
+          />
         </div>
       </div>
     );
@@ -367,52 +446,88 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
     const fallbackStrategy = topologyDisplayConfig?.topologyFallbackStrategy;
     const minConfidence = topologyDisplayConfig?.minConfidence;
 
+    const protocolsText = configuredProtocols.length
+      ? configuredProtocols
+        .map((protocol) => protocolLabelMap[protocol] || String(protocol).toUpperCase())
+        .join(' / ')
+      : t('Collection.taskDetail.noTopologyProtocols');
+    const fallbackText = fallbackStrategy
+      ? fallbackStrategyLabelMap[fallbackStrategy] || fallbackStrategy
+      : '--';
+    const contributionText = topologyProtocolSummary.length
+      ? topologyProtocolSummary.map((item) => `${item.label}: ${item.count}`).join('   ')
+      : '--';
+
     return (
       <Card
         size="small"
         className="mb-4 border-[var(--color-border-1)] bg-[var(--color-bg-1)]"
         title={t('Collection.taskDetail.topologySummary')}
+        extra={
+          <Button
+            type="text"
+            size="small"
+            icon={topologyCollapsed ? <DownOutlined /> : <UpOutlined />}
+            onClick={() => setTopologyCollapsed((prev) => !prev)}
+          >
+            {topologyCollapsed ? t('common.expand') : t('common.collapse')}
+          </Button>
+        }
+        styles={{ body: { display: topologyCollapsed ? 'none' : undefined } }}
       >
-        <Descriptions bordered size="small" column={{ xs: 1, md: 2 }}>
-          <Descriptions.Item label={t('Collection.taskDetail.topologyProtocols')}>
+        <div className="grid grid-cols-1 md:grid-cols-2 border-t border-l border-[var(--color-border-1)] rounded overflow-hidden">
+          <OverviewCell
+            label={t('Collection.taskDetail.topologyProtocols')}
+            tooltip={protocolsText}
+          >
             {configuredProtocols.length ? (
-              <Space size={[8, 8]} wrap>
+              <span className="inline-flex items-center gap-2 align-middle">
                 {configuredProtocols.map((protocol) => (
-                  <Tag key={protocol}>{protocolLabelMap[protocol] || String(protocol).toUpperCase()}</Tag>
+                  <Tag key={protocol} className="m-0">
+                    {protocolLabelMap[protocol] || String(protocol).toUpperCase()}
+                  </Tag>
                 ))}
-              </Space>
+              </span>
             ) : (
               t('Collection.taskDetail.noTopologyProtocols')
             )}
-          </Descriptions.Item>
-          <Descriptions.Item label={t('Collection.taskDetail.topologyFallbackStrategy')}>
-            {fallbackStrategy
-              ? fallbackStrategyLabelMap[fallbackStrategy] || fallbackStrategy
-              : '--'}
-          </Descriptions.Item>
-          <Descriptions.Item label={t('Collection.taskDetail.minConfidence')}>
+          </OverviewCell>
+          <OverviewCell
+            label={t('Collection.taskDetail.topologyFallbackStrategy')}
+            tooltip={fallbackText}
+          >
+            {fallbackText}
+          </OverviewCell>
+          <OverviewCell
+            label={t('Collection.taskDetail.minConfidence')}
+            tooltip={minConfidence ?? '--'}
+          >
             {minConfidence ?? '--'}
-          </Descriptions.Item>
-          <Descriptions.Item label={t('Collection.taskDetail.topologyFactCount')}>
+          </OverviewCell>
+          <OverviewCell
+            label={t('Collection.taskDetail.topologyFactCount')}
+            tooltip={topologyFacts.length}
+          >
             {topologyFacts.length}
-          </Descriptions.Item>
-          <Descriptions.Item
+          </OverviewCell>
+          <OverviewCell
             label={t('Collection.taskDetail.protocolContribution')}
-            span={2}
+            tooltip={contributionText}
+            fullWidth
           >
             {topologyProtocolSummary.length ? (
-              <Space size={[8, 8]} wrap>
+              <span className="inline-flex items-center gap-2 align-middle">
                 {topologyProtocolSummary.map((item) => (
-                  <Tag key={item.protocol}>
+                  <Tag key={item.protocol} className="m-0">
                     {item.label}: {item.count}
                   </Tag>
                 ))}
-              </Space>
+              </span>
             ) : (
               '--'
             )}
-          </Descriptions.Item>
-        </Descriptions>
+          </OverviewCell>
+        </div>
         <div className="mt-4">
           {topologyFacts.length ? (
             <CustomTable
