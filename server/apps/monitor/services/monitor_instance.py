@@ -1,4 +1,5 @@
 import re
+from collections import Counter
 from datetime import datetime, timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -220,21 +221,21 @@ class InstanceSearch:
                 confs_map[conf.monitor_instance_id] = set()
             plugin_key = (
                 conf.monitor_plugin_id
-                if conf.monitor_plugin and conf.monitor_plugin.template_type == "pull"
+                if conf.monitor_plugin_id
                 else (self.monitor_obj.id, conf.collector, conf.collect_type)
             )
             confs_map[conf.monitor_instance_id].add(plugin_key)
 
         plugin_map, plugin_status_map = {}, {}
-        plugins = MonitorPlugin.objects.filter(monitor_object=self.monitor_obj)
+        plugins = list(MonitorPlugin.objects.filter(monitor_object=self.monitor_obj))
+        legacy_plugin_key_counts = Counter((self.monitor_obj.id, plugin.collector, plugin.collect_type) for plugin in plugins)
 
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
 
         for plugin in plugins:
-            plugin_key = plugin.id if plugin.template_type == "pull" else (self.monitor_obj.id, plugin.collector, plugin.collect_type)
             # 添加翻译属性
             plugin_key_name = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
-            plugin_map[plugin_key] = dict(
+            plugin_info = dict(
                 name=plugin.name,
                 plugin_id=plugin.id,
                 collector=plugin.collector,
@@ -242,7 +243,15 @@ class InstanceSearch:
                 display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
                 display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description,
             )
-            plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
+            plugin_map[plugin.id] = plugin_info
+
+            legacy_plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
+            plugin_map.setdefault(legacy_plugin_key, plugin_info)
+
+            status_map = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
+            plugin_status_map[plugin.id] = status_map
+            if legacy_plugin_key_counts[legacy_plugin_key] == 1:
+                plugin_status_map[legacy_plugin_key] = status_map
 
         # 反转插件状态映射，方便后续查询
         instance_plugin_status_map = {}

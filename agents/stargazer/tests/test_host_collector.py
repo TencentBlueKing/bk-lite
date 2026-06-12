@@ -606,6 +606,18 @@ class TestParseMetricsToPrometheus:
         ]:
             assert metric in result
 
+        for metric in [
+            "net_packets_recv",
+            "net_packets_sent",
+            "net_bytes_recv",
+            "net_bytes_sent",
+            "net_err_in",
+            "net_err_out",
+            "net_drop_in",
+            "net_drop_out",
+        ]:
+            assert f"\n{metric}{{" in f"\n{result}"
+
     def test_network_metrics_escape_prometheus_label_values(self):
         data = {
             "net": [

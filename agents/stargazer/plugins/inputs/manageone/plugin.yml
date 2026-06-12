@@ -1,0 +1,28 @@
+name: manageone
+version: "1.0.0"
+category: cloud
+
+metadata:
+  display_name: "ManageOne平台"
+  description: "ManageOne 云平台资源采集插件（平台 + 云/云服务器/宿主机/数据存储/负载均衡）"
+  author: "WeOps"
+  tags: [cloud, manageone, huawei]
+  cloud_protocol: true
+  model_id: manageone
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 120
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.manageone.manageone_info
+      class: ManageOneManager
+
+# 默认执行器
+default_executor: protocol

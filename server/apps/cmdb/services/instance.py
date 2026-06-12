@@ -1196,7 +1196,7 @@ class InstanceManage(object):
         if _import.validation_errors:
             error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
             error_details = "\n".join(_import.validation_errors)
-            logger.warning(f"模型 {model_id} 数据导入验证失败，错误数量: {len(_import.validation_errors)}")
+            logger.warning("[InstanceImport] 数据导入验证失败 model_id=%s, error_count=%s", model_id, len(_import.validation_errors))
             success_count = len([i for i in add_results if i.get("success", False)])
             error_summary += f"已成功导入 {success_count} 条数据，失败 {len(_import.inst_list) - success_count} 条数据。\n 错误信息: {error_summary + error_details}"
             return {"success": False, "message": error_summary}
@@ -1236,7 +1236,7 @@ class InstanceManage(object):
         )
 
         res_status, result_message = self.format_result_message(_import.import_result_message)
-        logger.info(f"模型 {model_id} 数据导入成功")
+        logger.info("[InstanceImport] 数据导入成功 model_id=%s", model_id)
 
         return {"success": res_status, "message": result_message}
 

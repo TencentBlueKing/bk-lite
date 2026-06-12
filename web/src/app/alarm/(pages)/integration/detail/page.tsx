@@ -348,32 +348,32 @@ const IntegrationDetail: FC = () => {
     {
       key: 'network-connectivity',
       index: '1.',
-      label: '网络连通性',
-      status: '可访问',
+      label: t('integration.precheck.networkLabel'),
+      status: t('integration.precheck.networkStatus'),
     },
     {
       key: 'push-endpoint',
       index: '2.',
-      label: '推送地址有效性',
-      status: '有效',
+      label: t('integration.precheck.pushEndpointLabel'),
+      status: t('integration.precheck.pushEndpointStatus'),
     },
     {
       key: 'yaml-download',
       index: '3.',
-      label: 'YAML 文件下载',
-      status: '可下载',
+      label: t('integration.precheck.yamlDownloadLabel'),
+      status: t('integration.precheck.yamlDownloadStatus'),
     },
     {
       key: 'image-access',
       index: '4.',
-      label: '镜像可访问',
-      status: '可拉取',
+      label: t('integration.precheck.imageAccessLabel'),
+      status: t('integration.precheck.imageAccessStatus'),
     },
     {
       key: 'rbac',
       index: '5.',
-      label: 'RBAC 权限（可选）',
-      status: '已配置',
+      label: t('integration.precheck.rbacLabel'),
+      status: t('integration.precheck.rbacStatus'),
     },
   ];
 
@@ -481,8 +481,8 @@ const IntegrationDetail: FC = () => {
                 className="inline-flex h-8 w-8 cursor-pointer items-center justify-center rounded-full border border-[var(--color-border-1)] bg-[var(--color-bg-1)] text-[13px] text-[var(--color-primary)] transition hover:border-[var(--color-primary)] hover:bg-[var(--color-fill-1)] disabled:cursor-not-allowed disabled:opacity-60"
                 onClick={() => fetchEventList()}
                 disabled={eventLoading}
-                aria-label="刷新事件"
-                title="刷新事件"
+                aria-label={t('integration.refreshEvents')}
+                title={t('integration.refreshEvents')}
               >
                 <ReloadOutlined className={eventLoading ? 'animate-spin' : ''} />
               </button>

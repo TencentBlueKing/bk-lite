@@ -1,6 +1,8 @@
 {
     "FilterBar": {
         "fuzzy": "模糊",
+        "saveFailed": "保存失败",
+        "deleteFailed": "删除失败",
         "exact": "精确",
         "pleaseSelectValidTimeRange": "请选择有效的时间范围",
         "pleaseSelectValue": "请选择值",
@@ -92,6 +94,7 @@
     },
     "Model": {
         "addModel": "新增模型",
+        "fieldUnavailable": "字段不可用",
         "editModel": "编辑模型",
         "copyModel": "复制模型",
         "copy": "复制",
@@ -319,6 +322,21 @@
         "professionalMessage": "您可以根据通过创建采集任务，自动采集不同对象的配置信息和关联信息。",
         "inputTaskPlaceholder": "请输入任务名称",
         "addTaskTitle": "新增任务",
+        "taskName": "任务名称",
+        "executeStatus": "执行状态",
+        "collectSummary": "采集摘要",
+        "creator": "创建者",
+        "executeTime": "执行时间",
+        "executeNow": "立即执行",
+        "instanceName": "实例名",
+        "manageIp": "管理IP",
+        "objectType": "对象类型",
+        "networkDevice": {
+            "switch": "交换机",
+            "router": "路由器",
+            "firewall": "防火墙",
+            "loadbalance": "负载均衡"
+        },
         "editTaskTitle": "编辑任务",
         "viewDoc": "查看说明",
         "closeDoc": "关闭说明",
@@ -364,6 +382,9 @@
         "chooseIp": "选择IP",
         "chooseAsset": "选择资产",
         "chooseHost": "选择主机",
+        "credentialPoolTip": "最多配置 3 个凭据，系统按顺序试探，命中后优先复用。",
+        "configFilePath": "配置文件绝对路径",
+        "configFilePathPlaceholder": "/etc/nginx/nginx.conf 或 C:\\Windows\\System32\\drivers\\etc\\hosts",
         "hostAssetSelectionNeedsProxy": "主机模型实例模式需先选择接入点后再选择资产",
         "proxyCloudUnavailable": "当前接入点未绑定云区域，无法筛选主机模型实例",
         "everyMinute": "每",
@@ -393,6 +414,8 @@
             "timeoutRequired": "请输入超时时间",
             "accessConfig": "接入配置",
             "collectorInstall": "采集器安装",
+            "generateCmdFailed": "生成安装命令失败",
+            "copyFailedManual": "复制失败，请手动选择复制。",
             "accessComplete": "接入完成",
             "collectorClusterId": "集群标识",
             "collectorClusterIdDesc": "重要：该标识是采集器上报数据的唯一凭证，创建后请勿随意修改，否则会导致已部署的采集器数据无法匹配。仅支持英文字母、数字、下划线和短横线。",
@@ -427,6 +450,8 @@
             "version": "SNMP版本",
             "communityString": "团体字",
             "securityLevel": "安全级别",
+            "authNoPriv": "认证不加密",
+            "authPriv": "认证加密",
             "userName": "用户名",
             "authPassword": "认证密钥",
             "hashAlgorithm": "散列算法",
@@ -758,6 +783,16 @@
         "statusNotText": "非文本",
         "statusError": "异常",
         "textFormatHint": "支持粘贴 YAML、JSON、Shell 等纯文本配置"
+    },
+    "AttributeGovernance": {
+        "title": "治理标记",
+        "keyAttribute": "关键属性",
+        "freshness": "时效性",
+        "notSet": "未设置",
+        "freshnessTimely": "需要及时更新（7天）",
+        "freshnessOccasional": "不频繁更新（90天）",
+        "freshnessStable": "基本不变（不参与判定）",
+        "selectFreshness": "请选择时效性"
     },
     "CustomReporting": {
         "title": "自定义上报",

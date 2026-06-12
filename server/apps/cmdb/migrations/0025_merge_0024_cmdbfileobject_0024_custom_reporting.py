@@ -5,9 +5,13 @@ from django.db import migrations
 
 class Migration(migrations.Migration):
 
+    # 该 merge 节点在两类历史库中均已应用（旧版经 0024_cmdbfileobject /
+    # 0024_custom_reporting，新版经 0024_alter_changerecord_scenario），而两条
+    # 0024 祖先互不重叠。为同时满足两类库的迁移历史一致性检查，依赖必须收敛到
+    # 两边共有的祖先 0023，由后续的 0027_merge_reconcile_history 负责把各 0024
+    # 分叉重新汇聚为单一 head。
     dependencies = [
-        ('cmdb', '0024_cmdbfileobject'),
-        ('cmdb', '0024_custom_reporting'),
+        ('cmdb', '0023_collecttaskcredentialhit_and_more'),
     ]
 
     operations = [

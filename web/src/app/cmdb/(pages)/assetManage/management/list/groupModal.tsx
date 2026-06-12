@@ -124,7 +124,7 @@ const GroupMoadal = forwardRef<GroupModalRef, GroupModalProps>(
               />
             </Form.Item>
             <Form.Item<GroupFieldType>
-              label="Name"
+              label={t('common.name')}
               name="classification_name"
               rules={[{ required: true, message: t('required') }]}
             >

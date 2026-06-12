@@ -20,7 +20,7 @@
       "unit": "short",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -36,7 +36,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -52,7 +52,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -68,7 +68,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -84,7 +84,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -100,7 +100,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -116,7 +116,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -132,7 +132,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -148,7 +148,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -164,7 +164,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -180,7 +180,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -196,7 +196,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -212,7 +212,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -228,7 +228,7 @@
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],

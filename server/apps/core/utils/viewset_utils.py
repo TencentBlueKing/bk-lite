@@ -58,8 +58,11 @@ class GenericViewSetFun(object):
             if int(current_team) in permission_rules["team"]:
                 return True
             if include_children:
+                # 仅当用户在子树范围内确有 team 级授权才放行；不得无条件把 current_team
+                # 加入 allowed_teams——否则与子树 user_groups 必然相交，对象级校验退化成
+                # "对象属于当前组织树即放行"，造成子组织任务越权（issue #3037）。
+                # current_team 自身已授权的情况已由上方 current_team in permission_rules["team"] 覆盖。
                 allowed_teams = {i for i in permission_rules.get("team", [])}
-                allowed_teams.add(current_team)
                 if allowed_teams & set(user_groups):
                     return True
 

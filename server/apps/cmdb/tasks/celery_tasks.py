@@ -39,9 +39,10 @@ def sync_collect_task(instance_id):
     """
     同步采集任务
     """
-    logger.info("开始采集任务 task_id={}".format(instance_id))
+    logger.info("[CollectTask] 开始采集任务 task_id=%s", instance_id)
     instance = CollectModels._default_manager.filter(id=instance_id).first()
     if not instance:
+        logger.warning("[CollectTask] 采集任务不存在，跳过执行 task_id=%s", instance_id)
         return
     from apps.cmdb.services.collect_service import CollectModelService
 
@@ -86,8 +87,14 @@ def sync_collect_task(instance_id):
     except Exception as err:
         import traceback
 
-        logger.error("同步数据失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
-        exec_error_message = "同步数据失败, error={}".format(_build_safe_error_message(err))
+        logger.error(
+            "[CollectTask] 同步采集数据失败 task_id=%s, error=%s",
+            instance_id,
+            traceback.format_exc(),
+        )
+        exec_error_message = "采集任务执行失败（task_id={}）：{}".format(
+            instance_id, _build_safe_error_message(err)
+        )
         result = {}
         format_data = {}
         instance.exec_status = CollectRunStatusType.ERROR
@@ -118,7 +125,7 @@ def sync_collect_task(instance_id):
         elif config_file_pending:
             collect_digest["message"] = "配置文件采集已触发，等待回传中"
         elif format_data.get("__raw_data__", []).__len__() == 0:
-            collect_digest["message"] = "没有发现任何有效数据!"
+            collect_digest["message"] = "未发现任何有效数据，请检查采集目标连通性、凭据与采集范围配置"
             instance.exec_status = CollectRunStatusType.ERROR
         else:
             # 计算最后数据的最后上报时间
@@ -156,7 +163,10 @@ def sync_collect_task(instance_id):
                 updated_at=now(),
             )
             if not updated:
-                logger.info("配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s", instance_id)
+                logger.info(
+                    "[CollectTask] 配置文件采集结果已由回调更新，跳过本地 pending 覆盖 task_id=%s",
+                    instance_id,
+                )
         else:
             # topology_snapshot 由采集插件在运行中途直接 update，刷新避免被本次 save 覆盖
             instance.refresh_from_db(fields=["topology_snapshot"])
@@ -164,13 +174,21 @@ def sync_collect_task(instance_id):
     except Exception as err:
         import traceback
 
-        logger.error("保存采集结果失败 task_id={}, error={}".format(instance_id, traceback.format_exc()))
+        logger.error(
+            "[CollectTask] 保存采集结果失败 task_id=%s, error=%s",
+            instance_id,
+            traceback.format_exc(),
+        )
         CollectModels._default_manager.filter(id=instance_id).update(
             exec_status=CollectRunStatusType.ERROR,
-            collect_digest={"message": "保存采集结果失败: {}".format(err)},
+            collect_digest={
+                "message": "采集结果写入失败（task_id={}）：{}".format(
+                    instance_id, _build_safe_error_message(err)
+                )
+            },
         )
 
-    logger.info("采集任务执行结束 task_id={}".format(instance_id))
+    logger.info("[CollectTask] 采集任务执行结束 task_id=%s", instance_id)
 
 
 @shared_task
@@ -180,7 +198,7 @@ def sync_periodic_update_task_status():
     :param :
     :return:
     """
-    logger.info("==开始周期执行修改采集状态==")
+    logger.info("[CollectTask] 开始周期巡检超时采集任务，将运行超过 5 分钟未回传的任务置为失败")
     five_minutes_ago = now() - timedelta(minutes=5)
     config_file_rows = CollectModels._default_manager.filter(
         task_type=CollectPluginTypes.CONFIG_FILE,
@@ -196,7 +214,11 @@ def sync_periodic_update_task_status():
     ).exclude(task_type=CollectPluginTypes.CONFIG_FILE).update(
         exec_status=CollectRunStatusType.ERROR
     )
-    logger.info("开始周期执行修改采集状态完成, rows={}, config_file_rows={}".format(rows, config_file_rows))
+    logger.info(
+        "[CollectTask] 周期巡检超时采集任务完成，超时置失败任务数 rows=%s, 配置文件超时任务数 config_file_rows=%s",
+        rows,
+        config_file_rows,
+    )
 
 
 @shared_task
@@ -296,7 +318,7 @@ def send_subscription_notifications(
 def daily_data_cleanup_task() -> dict:
     from apps.cmdb.services.data_cleanup_service import DataCleanupService
 
-    logger.info("Starting daily data cleanup task")
+    logger.info("[DataCleanup] 启动每日过期数据清理任务")
     return DataCleanupService.run_daily_cleanup()
 
 
@@ -318,15 +340,23 @@ def full_sync_auto_association_rule_task(model_asst_id: str) -> dict:
 
 @shared_task
 def sync_node_mgmt_hosts() -> dict:
-    logger.info("==开始同步节点管理主机信息==")
-    data =  NodeMgmtSyncService.trigger_sync()
-    logger.info("==同步节点管理主机信息完成==")
+    logger.info("[NodeMgmtSync] 开始同步节点管理主机信息")
+    try:
+        data = NodeMgmtSyncService.trigger_sync()
+    except Exception:
+        logger.exception("[NodeMgmtSync] 同步节点管理主机信息失败")
+        raise
+    logger.info("[NodeMgmtSync] 同步节点管理主机信息完成")
     return data
 
 
 @shared_task
 def collect_node_mgmt_hosts():
-    logger.info("==开始采集节点管理主机信息==")
-    NodeMgmtSyncService.trigger_collect()
-    logger.info("==采集采集节点管理主机信息结束==")
+    logger.info("[NodeMgmtSync] 开始采集节点管理主机信息")
+    try:
+        NodeMgmtSyncService.trigger_collect()
+    except Exception:
+        logger.exception("[NodeMgmtSync] 采集节点管理主机信息失败")
+        raise
+    logger.info("[NodeMgmtSync] 采集节点管理主机信息结束")
 

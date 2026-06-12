@@ -62,15 +62,21 @@ def _supports_explicit_range_selector(metric_query: str) -> bool:
     return bool(query) and bool(SIMPLE_SELECTOR_PATTERN.fullmatch(query))
 
 
+def _format_over_time_query(function_name, metric_query, step, group_by):
+    if _supports_explicit_range_selector(metric_query):
+        metric_query = f"{metric_query}[{step}]"
+    return f"any({function_name}({metric_query})) by ({group_by})"
+
+
 def last_over_time(metric_query, start, end, step, group_by):
     # 仅对简单 selector（裸指标、label-only、metric{labels}）显式补 range selector。
     # 对复杂表达式保持原样，继续沿用 step + instant query 的兼容路径，避免在无法可靠
     # 重写 PromQL/MetricsQL 时引入新的语义漂移。
     if _supports_explicit_range_selector(metric_query):
-        query = f"any(last_over_time({metric_query}[{step}])) by ({group_by})"
+        query = _format_over_time_query("last_over_time", metric_query, step, group_by)
         metrics = VictoriaMetricsAPI().query(query, None, end)
     else:
-        query = f"any(last_over_time({metric_query})) by ({group_by})"
+        query = _format_over_time_query("last_over_time", metric_query, step, group_by)
         metrics = VictoriaMetricsAPI().query(query, step, end)
     for data in metrics.get("data", {}).get("result", []):
         data["values"] = [data["value"]]
@@ -78,25 +84,25 @@ def last_over_time(metric_query, start, end, step, group_by):
 
 
 def max_over_time(metric_query, start, end, step, group_by):
-    query = f"any(max_over_time({metric_query})) by ({group_by})"
+    query = _format_over_time_query("max_over_time", metric_query, step, group_by)
     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
     return metrics
 
 
 def min_over_time(metric_query, start, end, step, group_by):
-    query = f"any(min_over_time({metric_query})) by ({group_by})"
+    query = _format_over_time_query("min_over_time", metric_query, step, group_by)
     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
     return metrics
 
 
 def avg_over_time(metric_query, start, end, step, group_by):
-    query = f"any(avg_over_time({metric_query})) by ({group_by})"
+    query = _format_over_time_query("avg_over_time", metric_query, step, group_by)
     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
     return metrics
 
 
 def sum_over_time(metric_query, start, end, step, group_by):
-    query = f"any(sum_over_time({metric_query})) by ({group_by})"
+    query = _format_over_time_query("sum_over_time", metric_query, step, group_by)
     metrics = VictoriaMetricsAPI().query_range(query, start, end, step)
     return metrics
 

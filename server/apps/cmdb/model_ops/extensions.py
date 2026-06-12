@@ -33,6 +33,22 @@ class ModelEnterpriseExtension:
         """不参与自动关联匹配的企业字段类型增量。默认空集。"""
         return set()
 
+    def normalize_import_attr(self, attr: dict) -> dict:
+        """模型配置导入时的企业版字段规范化。默认原样返回。"""
+        return attr
+
+    def extra_export_attr_headers(self) -> tuple[list[str], list[str]]:
+        """模型配置导出时的企业版字段列增量。默认不追加列。"""
+        return [], []
+
+    def extend_export_attr_row(self, attr: dict) -> dict:
+        """模型配置导出时的企业版字段行数据增量。默认不追加数据。"""
+        return {}
+
+    def build_attr_change_message(self, before_attr: dict, after_attr: dict) -> str:
+        """模型字段变更记录中的企业版字段差异文案。默认无差异。"""
+        return ""
+
 
 _EMPTY_MODEL_EXTENSION = ModelEnterpriseExtension()
 
