@@ -14,6 +14,7 @@ class MonitorObjConstants:
                 "RabbitMQ",
                 "Nginx",
                 "Apache",
+                "Haproxy",
                 "ClickHouse",
                 "Consul",
                 "Etcd",
