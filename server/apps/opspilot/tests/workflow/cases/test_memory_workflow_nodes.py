@@ -2143,3 +2143,42 @@ def test_memory_write_cache_flush_timing_and_org(mocker):
     assert mems[0].organization_id == 5, f"organization_id 应为 5，实际 {mems[0].organization_id}"
     # 团队记忆 owner_username 不应为空（前端“管理组织”列读它）；无 Group 时回退“组织-{id}”
     assert mems[0].owner_username == "组织-5", f"owner_username 应为 组织-5，实际 {mems[0].owner_username!r}"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_personal_memory_writes_separate_record_per_user_e2e(mocker):
+    """端到端：个人记忆按 flow_input.user_ids 分别落库，每个干系人各一条独立记忆。"""
+    from apps.opspilot import tasks as opspilot_tasks
+    from apps.opspilot.models import Memory
+    from apps.opspilot.models.memory_mgmt import MemorySpace
+    from apps.opspilot.utils.chat_flow_utils.nodes.memory.memory_write import MemoryWriteNode
+
+    space = MemorySpace.objects.create(
+        name="PersonalE2E",
+        team=[1],
+        scope=MemorySpace.SCOPE_PERSONAL,
+        write_rule="",
+        default_model="",
+        created_by="admin",
+        domain="test.com",
+    )
+
+    # 让 .delay 同步执行真实任务，端到端落库
+    mocker.patch.object(
+        opspilot_tasks.process_memory_write,
+        "delay",
+        side_effect=lambda **kw: opspilot_tasks.process_memory_write(**kw),
+    )
+
+    # flow_id="" → 走非批量直接写入路径
+    vm = create_vm_with_flow_input({"user_ids": ["alice", "bob", "carol"], "user_id": "alice"}, flow_id="")
+    node = MemoryWriteNode(vm)
+    node_config = build_node_config(memory_space_id=space.id, title="干系人记忆")
+
+    node.execute("mem_write_1", node_config, {"last_message": "支付网关 OOMKilled 已恢复"})
+
+    mems = list(Memory.objects.filter(memory_space=space))
+    assert len(mems) == 3, f"应为每个干系人各落一条，实际 {len(mems)}"
+    assert {m.owner_username for m in mems} == {"alice", "bob", "carol"}
+    assert all(m.organization_id is None for m in mems), "个人记忆 organization_id 应为空"
+    assert all(m.owner_domain == "" for m in mems)
