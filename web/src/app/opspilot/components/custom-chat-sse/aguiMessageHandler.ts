@@ -71,14 +71,14 @@ const normalizeConfigAnalysisIssues = (
   return [];
 };
 
-const normalizeConfigAnalysisSection = (
+export const normalizeConfigAnalysisSection = (
   section: ConfigAnalysisSeveritySectionValue
 ): ConfigAnalysisSeveritySectionValue => ({
   ...section,
   issues: normalizeConfigAnalysisIssues(section),
 });
 
-const normalizeConfigAnalysisRecommendations = (
+export const normalizeConfigAnalysisRecommendations = (
   recommendations: ConfigAnalysisRecommendationValue[] | undefined
 ): ConfigAnalysisRecommendation[] => {
   if (!Array.isArray(recommendations)) {
@@ -112,7 +112,7 @@ const normalizeConfigAnalysisRecommendations = (
     .filter((recommendation): recommendation is ConfigAnalysisRecommendation => Boolean(recommendation));
 };
 
-const isStructuredConfigAnalysisReport = (
+export const isStructuredConfigAnalysisReport = (
   value: ConfigAnalysisReportValue
 ): value is StructuredConfigAnalysisReportValue => (
   Boolean(value.report_id) &&
