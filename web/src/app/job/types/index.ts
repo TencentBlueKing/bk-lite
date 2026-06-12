@@ -360,6 +360,7 @@ export type JobRecordSource = 'manual' | 'scheduled' | 'api';
 export interface ExecutionTarget {
   id: number;
   target: number;
+  target_key?: string;
   target_name: string;
   target_ip: string;
   status: JobRecordStatus;
