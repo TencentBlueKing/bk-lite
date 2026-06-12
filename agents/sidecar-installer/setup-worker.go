@@ -295,8 +295,10 @@ func classifyDownloadError(err error) string {
 		return "auth"
 	case strings.Contains(message, "connect nats failed") || strings.Contains(message, "connection refused") || strings.Contains(message, "network is unreachable"):
 		return "connection"
+	// 服务端 installer_schema 仅识别 timeout/connection 等枚举值，
+	// i/o timeout 归类为 timeout 以保证 failure summary 与 retriable 标记正确
 	case strings.Contains(message, "read pipe") || strings.Contains(message, "i/o timeout"):
-		return "io_timeout"
+		return "timeout"
 	default:
 		return ""
 	}
