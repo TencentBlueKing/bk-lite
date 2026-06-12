@@ -38,17 +38,44 @@ class CollectCredentialPoolService:
             raise BaseAppException("采集凭据不能为空！")
         if len(pool) > cls.MAX_POOL_SIZE:
             raise BaseAppException("采集凭据最多支持3组！")
-
-        expected_keys = None
         for item in pool:
             if not isinstance(item, dict):
                 raise BaseAppException("采集凭据格式错误！")
+
+        # 仅 SNMP：凭据自带 version 字段（SSH/数据库/云等均不含），按各自版本校验必填项，
+        # 允许 v2/v2c/v3 在同一任务内混用；其他采集类型维持原"字段结构一致"约束不变。
+        if all(item.get("version") for item in pool):
+            for index, item in enumerate(pool):
+                cls._validate_snmp_credential(item, index)
+            return
+
+        expected_keys = None
+        for item in pool:
             item_keys = set(item.keys()) - {"credential_id"}
             if expected_keys is None:
                 expected_keys = item_keys
                 continue
             if item_keys != expected_keys:
                 raise BaseAppException("同一任务的采集凭据字段必须保持一致！")
+
+    @classmethod
+    def _validate_snmp_credential(cls, cred, index):
+        """按 SNMP 版本校验单条凭据必填项，规则与 agent 侧 SnmpAuth.validate 对齐。"""
+        label = f"第 {index + 1} 组凭据"
+        version = str(cred.get("version", "")).strip().lower()
+        if version in ("v2", "v2c"):
+            if not cred.get("community"):
+                raise BaseAppException(f"{label}（{version}）缺少团体字！")
+        elif version == "v3":
+            if not cred.get("username"):
+                raise BaseAppException(f"{label}（v3）缺少用户名！")
+            level = str(cred.get("level", "")).strip().lower()
+            if level in ("authnopriv", "authpriv") and (not cred.get("integrity") or not cred.get("authkey")):
+                raise BaseAppException(f"{label}（v3/{level}）缺少认证算法或认证密钥！")
+            if level == "authpriv" and (not cred.get("privacy") or not cred.get("privkey")):
+                raise BaseAppException(f"{label}（v3/authPriv）缺少加密算法或加密密钥！")
+        else:
+            raise BaseAppException(f"{label} 的 SNMP 版本 {version or '(空)'} 不支持！")
 
     @staticmethod
     def diff_pool(old_pool, new_pool):

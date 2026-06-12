@@ -2,6 +2,7 @@ from types import SimpleNamespace
 
 import pytest
 
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.models.collect_model import CollectModels
 from apps.cmdb.serializers.collect_serializer import CollectModelSerializer
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
@@ -112,6 +113,59 @@ def test_collect_credential_pool_service_diff_ignores_reorder_and_marks_edit():
     assert added_ids == []
     assert removed_ids == []
     assert edited_ids == ["cred-1"]
+
+
+def test_validate_pool_shape_allows_mixed_snmp_versions():
+    # SNMP 凭据池可混合 v2c 与 v3（每条自带 version，字段集合不同也放行）
+    pool = [
+        {"credential_id": "cred-1", "version": "v2c", "community": "public", "snmp_port": 161},
+        {
+            "credential_id": "cred-2", "version": "v3", "username": "ops", "level": "authPriv",
+            "integrity": "sha", "privacy": "aes", "authkey": "auth-key-1", "privkey": "priv-key-1",
+        },
+    ]
+    # 不抛异常即通过
+    CollectCredentialPoolService.validate_pool_shape(pool)
+
+
+def test_validate_pool_shape_rejects_v2c_missing_community():
+    pool = [{"credential_id": "cred-1", "version": "v2c", "snmp_port": 161}]
+    with pytest.raises(BaseAppException):
+        CollectCredentialPoolService.validate_pool_shape(pool)
+
+
+def test_validate_pool_shape_rejects_v3_missing_authkey():
+    pool = [
+        {"credential_id": "cred-1", "version": "v2c", "community": "public"},
+        {"credential_id": "cred-2", "version": "v3", "username": "ops", "level": "authPriv",
+         "integrity": "sha", "privacy": "aes", "privkey": "priv-key-1"},  # 缺 authkey
+    ]
+    with pytest.raises(BaseAppException):
+        CollectCredentialPoolService.validate_pool_shape(pool)
+
+
+def test_validate_pool_shape_rejects_unknown_snmp_version():
+    pool = [{"credential_id": "cred-1", "version": "v9", "community": "public"}]
+    with pytest.raises(BaseAppException):
+        CollectCredentialPoolService.validate_pool_shape(pool)
+
+
+def test_validate_pool_shape_keeps_field_consistency_for_non_snmp():
+    # 非 SNMP（无 version）凭据池：维持原"字段结构一致"约束，混合不同字段应被拒
+    pool = [
+        {"credential_id": "cred-1", "username": "admin", "password": "one"},
+        {"credential_id": "cred-2", "username": "ops", "password": "two", "port": 22},
+    ]
+    with pytest.raises(BaseAppException):
+        CollectCredentialPoolService.validate_pool_shape(pool)
+
+
+def test_validate_pool_shape_allows_consistent_non_snmp_pool():
+    pool = [
+        {"credential_id": "cred-1", "username": "admin", "password": "one"},
+        {"credential_id": "cred-2", "username": "ops", "password": "two"},
+    ]
+    CollectCredentialPoolService.validate_pool_shape(pool)
 
 
 @pytest.mark.django_db
