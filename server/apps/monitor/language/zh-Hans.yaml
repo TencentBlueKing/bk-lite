@@ -3166,6 +3166,9 @@ monitor_object_plugin:
   Switch Cisco SNMP:
     name: 思科（Telegraf）
     desc: 思科交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集思科私有 OID 的设备健康指标：CPU 使用率、内存池、温度传感器、风扇与电源状态。
+  Switch Huawei SNMP:
+    name: 华为（Telegraf）
+    desc: 华为交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集华为私有 OID（HUAWEI-ENTITY-EXTENT-MIB）的设备健康指标：CPU 使用率、内存使用率、温度传感器与风扇状态。华为以利用率百分比直接上报内存，且该模板未提供电源状态 OID。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

@@ -3526,6 +3526,13 @@ monitor_object_plugin:
       IF-MIB interface metrics, it collects Cisco private OIDs for device health
       including CPU utilization, memory pools, temperature sensors, fan and
       power-supply status.
+  Switch Huawei SNMP:
+    name: Huawei (Telegraf)
+    desc: Huawei-specific SNMP collection template for switches. In addition to standard
+      IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB)
+      for device health including CPU utilization, memory utilization, temperature
+      sensors and fan status. Huawei reports memory as a utilization percentage
+      directly and this template exposes no power-supply state OID.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
