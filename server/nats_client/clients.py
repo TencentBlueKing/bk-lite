@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import jsonpickle
 from django.conf import settings
 from nats.aio.client import Client
+from nats.js.api import DiscardPolicy, StreamConfig
 
 from apps.core.logger import nats_logger as logger
 from apps.rpc.sensitive import sanitize_sensitive_data
@@ -302,8 +303,6 @@ def publish_raw_sync(subject: str, payload: dict) -> None:
 
 async def ensure_stream(name: str, subjects, max_age: int, max_bytes: int) -> None:
     """幂等声明 JetStream 流：不存在则创建，存在则更新配置。"""
-    from nats.js.api import DiscardPolicy, StreamConfig
-
     nc = await get_nc_client()
     try:
         js = nc.jetstream()
