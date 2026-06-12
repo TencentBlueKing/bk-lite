@@ -194,12 +194,31 @@ const OverviewCell: React.FC<{
   </div>
 );
 
+// 拓扑摘要展开/收起状态持久化到浏览器，记住用户上一次的选择
+const TOPOLOGY_COLLAPSED_STORAGE_KEY = 'cmdb:topologySummaryCollapsed';
+
 const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
   const collectApi = useCollectApi();
   const modelApi = useModelApi();
   const { t } = useTranslation();
   const [loading, setLoading] = useState(false);
-  const [topologyCollapsed, setTopologyCollapsed] = useState(false);
+  const [topologyCollapsed, setTopologyCollapsed] = useState<boolean>(() => {
+    if (typeof window === 'undefined') return false;
+    return window.localStorage.getItem(TOPOLOGY_COLLAPSED_STORAGE_KEY) === '1';
+  });
+
+  const toggleTopologyCollapsed = useCallback(() => {
+    setTopologyCollapsed((prev) => {
+      const next = !prev;
+      if (typeof window !== 'undefined') {
+        window.localStorage.setItem(
+          TOPOLOGY_COLLAPSED_STORAGE_KEY,
+          next ? '1' : '0'
+        );
+      }
+      return next;
+    });
+  }, []);
   const [rawDataPage, setRawDataPage] = useState(1);
   const [rawDataPageSize, setRawDataPageSize] = useState(20);
   const [associationMap, setAssociationMap] = useState<Record<string, string>>(
@@ -468,7 +487,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
             type="text"
             size="small"
             icon={topologyCollapsed ? <DownOutlined /> : <UpOutlined />}
-            onClick={() => setTopologyCollapsed((prev) => !prev)}
+            onClick={toggleTopologyCollapsed}
           >
             {topologyCollapsed ? t('common.expand') : t('common.collapse')}
           </Button>
