@@ -250,6 +250,33 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def search_inst_batch(model_id: str, ids=None, inst_names=None) -> dict:
+        """按 id 或 inst_name 批量查询同一模型下的实例。返回 {str(key): instance}。
+        key 同时用 _id 和 inst_name 索引，便于调用方按任一回查。复用图查询 id[]/str[] 操作符。"""
+        ids = [int(i) for i in (ids or []) if str(i).strip()]
+        inst_names = [str(n) for n in (inst_names or []) if str(n).strip()]
+        if not ids and not inst_names:
+            return {}
+
+        result = {}
+
+        def _run(extra_param):
+            params = [{"field": "model_id", "type": "str=", "value": model_id}, extra_param]
+            with GraphClient() as ag:
+                inst_list, _ = ag.query_entity(INSTANCE, params)
+            for inst in inst_list:
+                if inst.get("_id") is not None:
+                    result[str(inst["_id"])] = inst
+                if inst.get("inst_name") is not None:
+                    result.setdefault(str(inst["inst_name"]), inst)
+
+        if ids:
+            _run({"field": "id", "type": "id[]", "value": sorted(set(ids))})
+        if inst_names:
+            _run({"field": "inst_name", "type": "str[]", "value": list(set(inst_names))})
+        return result
+
+    @staticmethod
     def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:
         if instance is None:
             return False

@@ -268,6 +268,8 @@
         "defaultValue": "默认值",
         "defaultValueHint": "仅在页面新增实例时，系统自动填写默认值。",
         "exportModelConfig": "导出配置",
+        "searchModelPlaceholder": "搜索模型名称",
+        "exportSelectAtLeastOne": "请至少选择一个模型",
         "importModelConfig": "导入配置",
         "importSuccess": "导入成功",
         "manageLayout": "排序与可见性",

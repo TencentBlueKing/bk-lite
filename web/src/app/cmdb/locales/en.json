@@ -269,6 +269,8 @@
         "defaultValue": "Default Value",
         "defaultValueHint": "The system auto-fills this default value only when creating a new instance from the page.",
         "exportModelConfig": "Export Config",
+        "searchModelPlaceholder": "Search model name",
+        "exportSelectAtLeastOne": "Please select at least one model",
         "importModelConfig": "Import Config",
         "importSuccess": "Import successful",
         "manageLayout": "Sort & Visibility",
