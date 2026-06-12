@@ -325,6 +325,12 @@ def _build_alert_for_notify_scope(notice_type_ids):
     )
 
 
+def _build_alert_for_notice_disabled_continuation(notice_type_ids, notice_logs):
+    alert = _build_alert_for_notify_scope(notice_type_ids)
+    alert.notice_logs = notice_logs
+    return alert
+
+
 def test_alert_lifecycle_notifier_alert_center_scope_only_sends_alert_center_channel(monkeypatch):
     send_calls = []
     channels_by_id = {
@@ -370,6 +376,121 @@ def test_alert_lifecycle_notifier_alert_center_scope_skips_when_only_normal_chan
 
     assert send_calls == []
     assert alert.notice_logs == []
+
+
+def test_alert_lifecycle_notifier_notice_disabled_created_sends_nothing(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation([2], [])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="created")
+
+    assert send_calls == []
+    assert alert.notice_logs == []
+
+
+def test_alert_lifecycle_notifier_notice_disabled_recovered_uses_successful_created_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [2],
+        [{"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": True}],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="recovered", operator="system", reason="auto_recovered")
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [2]
+    assert channel_send_calls[0]["notice_users"] == ["alice"]
+    assert alert.notice_logs[-1]["action"] == "recovered"
+
+
+def test_alert_lifecycle_notifier_notice_disabled_closed_skips_without_successful_created_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    created_log = {"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": False}
+    alert = _build_alert_for_notice_disabled_continuation([2], [created_log])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="closed", operator="alice", reason="policy_disabled")
+
+    assert send_calls == []
+    assert alert.notice_logs == [created_log]
+
+
+def test_alert_lifecycle_notifier_notice_disabled_upgraded_skips_normal_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [2],
+        [{"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": True}],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="upgraded")
+
+    assert send_calls == []
+
+
+def test_alert_lifecycle_notifier_notice_disabled_upgraded_sends_alert_center_with_successful_created(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        1: types.SimpleNamespace(id=1, name="alert-center", channel_type="nats", config={"method_name": "receive_alert_events"}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [1],
+        [{"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 1, "success": True}],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="upgraded")
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [1]
+    assert channel_send_calls[0]["title"] == ""
+
+
+def test_alert_lifecycle_notifier_notice_disabled_alert_center_scope_requires_successful_alert_center_created(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        1: types.SimpleNamespace(id=1, name="alert-center", channel_type="nats", config={"method_name": "receive_alert_events"}),
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [1, 2],
+        [
+            {"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 1, "success": True},
+            {"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": True},
+        ],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts(
+        [alert],
+        action="closed",
+        operator="alice",
+        reason="policy_scope_changed",
+        notify_scope="alert_center_only",
+    )
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [1]
 
 
 def test_monitor_policy_baseline_refreshes_when_grouping_contract_changes(monkeypatch):

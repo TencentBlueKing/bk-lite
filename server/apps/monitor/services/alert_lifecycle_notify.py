@@ -37,10 +37,6 @@ class AlertLifecycleNotifier:
         if notify_scope == NOTIFY_SCOPE_NONE:
             return
 
-        if self.policy and not self.policy.notice:
-            logger.info(f"Policy {self.policy.id} notice is disabled, skip lifecycle notify: action={action}")
-            return
-
         alert_log_entries = defaultdict(list)
 
         groups = defaultdict(list)
@@ -51,6 +47,9 @@ class AlertLifecycleNotifier:
                 logger.warning(f"Alert {alert.id} has no notice_type_ids configured, skip notification")
                 continue
             for channel_id in channel_ids:
+                channel = Channel.objects.filter(id=channel_id).first()
+                if not self._should_notify_channel(alert, channel, channel_id, action, notify_scope):
+                    continue
                 groups[(channel_id, tuple(notice_users) if notice_users else ())].append(alert)
 
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
@@ -107,6 +106,37 @@ class AlertLifecycleNotifier:
         if self.policy and self.policy.notice_users:
             return self.policy.notice_users
         return []
+
+    def _should_notify_channel(self, alert, channel, channel_id, action, notify_scope):
+        is_alert_center = self._is_alert_center_channel(channel)
+        if notify_scope == NOTIFY_SCOPE_ALERT_CENTER_ONLY and not is_alert_center:
+            return False
+
+        if not self.policy or self.policy.notice:
+            return True
+
+        if action == "created":
+            return False
+
+        if not channel or not self._has_successful_created_notice(alert, channel_id):
+            return False
+
+        if action == "upgraded":
+            return is_alert_center
+
+        return action in {"recovered", "closed"}
+
+    def _has_successful_created_notice(self, alert, channel_id):
+        for log_entry in alert.notice_logs or []:
+            if not isinstance(log_entry, dict):
+                continue
+            if log_entry.get("action") != "created":
+                continue
+            if str(log_entry.get("channel_id")) != str(channel_id):
+                continue
+            if log_entry.get("success") is True:
+                return True
+        return False
 
     def _send_to_channel(self, channel_id, notice_users, alerts, action, operator, reason, notify_scope):
         channel = Channel.objects.filter(id=channel_id).first()
