@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Button, Drawer, Input, Modal, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { useSubscriptionList, useSubscriptionMutation } from '@/app/cmdb/hooks/useSubscription';
 import SubscriptionRuleList from './subscriptionRuleList';
 import SubscriptionRuleForm, { type SubscriptionRuleFormRef } from './subscriptionRuleForm';
@@ -22,6 +23,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
   quickDefaults,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const { rules, loading, pagination, fetchRules, refresh } = useSubscriptionList();
   const { submitting, createRule, updateRule, deleteRule, toggleRule } = useSubscriptionMutation();
   const [search, setSearch] = useState('');
@@ -68,10 +70,19 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
     await refresh();
   };
 
+  const closeRuleForm = () => {
+    setFormOpen(false);
+    setEditingRule(undefined);
+  };
+
+  const handleRuleFormCancel = () =>
+    guardClose(!!formRef.current?.isDirty(), closeRuleForm);
+
   return (
     <Drawer
       open={open}
       width={830}
+      maskClosable={false}
       onClose={() => {
         setFormOpen(false);
         setEditingRule(undefined);
@@ -124,10 +135,8 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
         width={800}
         title={editingRule ? t('subscription.editRule') : t('subscription.createRule')}
         centered
-        onCancel={() => {
-          setFormOpen(false);
-          setEditingRule(undefined);
-        }}
+        maskClosable={false}
+        onCancel={handleRuleFormCancel}
         footer={(
           <Space style={{ width: '100%', justifyContent: 'flex-end' }}>
             <Button
@@ -143,12 +152,7 @@ const SubscriptionDrawer: React.FC<SubscriptionDrawerProps> = ({
             >
               {t('subscription.saveOnly')}
             </Button>
-            <Button
-              onClick={() => {
-                setFormOpen(false);
-                setEditingRule(undefined);
-              }}
-            >
+            <Button onClick={handleRuleFormCancel}>
               {t('subscription.cancel')}
             </Button>
           </Space>
