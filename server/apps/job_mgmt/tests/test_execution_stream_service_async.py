@@ -83,3 +83,12 @@ def test_stream_events_handles_source_error_gracefully():
     payloads = _payloads(chunks)
     assert any(p.get("type") == "error" for p in payloads)
     assert chunks[-1] == "data: [DONE]\n\n"
+
+
+def test_stream_events_uses_default_source_when_none(monkeypatch):
+    async def _fake_default(execution_id):
+        yield {"target_key": "a", "type": svc.DONE_TYPE, "status": "success"}
+
+    monkeypatch.setattr(svc, "_default_message_source", _fake_default)
+    chunks = _collect(svc.stream_execution_events(1, ["a"]))
+    assert chunks[-1] == "data: [DONE]\n\n"
