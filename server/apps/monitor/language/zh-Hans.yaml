@@ -699,6 +699,15 @@ monitor_object_metric:
     postgresql_maxwritten_clean_rate:
       name: 后台干净页写入速率
       desc: 表示写入压力过高导致的提前清理
+    postgresql_blk_write_time:
+      name: 磁盘块写入耗时速率
+      desc: 累计数据块写入耗时（pg_stat_database.blk_write_time）的速率，表示每秒累积的写入耗时（毫秒/秒）。数值偏高表明磁盘 I/O 写入压力大或存储存在瓶颈
+    postgresql_active_time:
+      name: SQL 活跃执行耗时速率
+      desc: 累计 SQL 语句执行耗时（pg_stat_database.active_time）的速率，表示每秒累积的活跃执行耗时（毫秒/秒）。持续偏高表明存在异常长事务或高并发语句执行
+    postgresql_sessions_killed:
+      name: 会话异常终止速率
+      desc: 因管理员命令、空闲会话超时、死锁处理等致命错误被终止的会话速率（pg_stat_database.sessions_killed，个/秒）。速率上升表明连接不稳定
   RabbitMQ:
     rabbitmq_node_uptime:
       name: 节点运行时间

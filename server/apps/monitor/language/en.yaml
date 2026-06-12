@@ -763,6 +763,15 @@ monitor_object_metric:
     postgresql_maxwritten_clean_rate:
       name: Background Clean Page Write Rate
       desc: Indicates high write pressure
+    postgresql_blk_write_time:
+      name: Disk Block Write Time Rate
+      desc: Rate of cumulative block write time (pg_stat_database.blk_write_time), in milliseconds of write time per second. High values indicate disk I/O write pressure or a storage bottleneck.
+    postgresql_active_time:
+      name: SQL Active Execution Time Rate
+      desc: Rate of cumulative SQL execution time (pg_stat_database.active_time), in milliseconds of active execution per second. Sustained high values indicate long-running or heavily concurrent statements.
+    postgresql_sessions_killed:
+      name: Abnormally Terminated Sessions Rate
+      desc: Rate of sessions terminated by fatal errors such as administrator commands, idle-session timeout, or deadlock resolution (pg_stat_database.sessions_killed), in sessions per second. A rising rate signals connection instability.
   RabbitMQ:
     rabbitmq_node_uptime:
       name: Node Uptime
