@@ -28,7 +28,7 @@ class TimeoutChecker:
             session_end_time__isnull=False,
         )
 
-        logger.info(f"开始检查会话超时，观察中的告警数={observing_alerts.count()}")
+        logger.info("[AlertRecovery] 开始检查会话超时，观察中的告警数=%s", observing_alerts.count())
 
         confirmed_count = 0
         for alert in observing_alerts:
@@ -36,7 +36,7 @@ class TimeoutChecker:
                 TimeoutChecker._confirm_session_alert(alert)
                 confirmed_count += 1
 
-        logger.info(f"会话超时检查完成，确认告警数={confirmed_count}")
+        logger.info("[AlertRecovery] 会话超时检查完成，确认告警数=%s", confirmed_count)
         return confirmed_count
 
     @staticmethod
@@ -52,9 +52,8 @@ class TimeoutChecker:
         TimeoutChecker._trigger_auto_assignment(alert)
 
         logger.info(
-            f"会话窗口超时确认: alert_id={alert.alert_id}, "
-            f"fingerprint={alert.fingerprint}, "
-            f"session_end_time={alert.session_end_time.isoformat()}"
+            "[AlertRecovery] 会话窗口超时确认: alert_id=%s, fingerprint=%s, session_end_time=%s",
+            alert.alert_id, alert.fingerprint, alert.session_end_time.isoformat(),
         )
 
     @staticmethod
@@ -65,13 +64,13 @@ class TimeoutChecker:
         try:
             async_auto_assignment_for_alerts.delay([alert.alert_id])
             logger.info(
-                "会话窗口告警触发自动分派: alert_id=%s, session_status=%s",
+                "[AlertRecovery] 会话窗口告警触发自动分派: alert_id=%s, session_status=%s",
                 alert.alert_id,
                 alert.session_status,
             )
         except Exception as exc:  # noqa: BLE001
             logger.exception(
-                "会话窗口告警触发自动分派失败 alert_id=%s, error=%s",
+                "[AlertRecovery] 会话窗口告警触发自动分派失败 alert_id=%s, error=%s",
                 alert.alert_id,
                 exc,
             )
@@ -90,12 +89,12 @@ class TimeoutChecker:
             try:
                 async_auto_assignment_for_alerts.delay(unique_alert_ids)
                 logger.info(
-                    "策略变更确认后触发自动分派: alert_ids=%s",
+                    "[AlertRecovery] 策略变更确认后触发自动分派: alert_ids=%s",
                     unique_alert_ids,
                 )
             except Exception as exc:  # noqa: BLE001
                 logger.exception(
-                    "策略变更确认后触发自动分派失败 alert_ids=%s, error=%s",
+                    "[AlertRecovery] 策略变更确认后触发自动分派失败 alert_ids=%s, error=%s",
                     unique_alert_ids,
                     exc,
                 )
@@ -131,14 +130,15 @@ class TimeoutChecker:
             confirmed_alert_ids.append(alert.alert_id)
 
             logger.info(
-                f"策略变更确认告警: strategy_id={strategy_id}, "
-                f"alert_id={alert.alert_id}, fingerprint={alert.fingerprint}"
+                "[AlertRecovery] 策略变更确认告警: strategy_id=%s, alert_id=%s, fingerprint=%s",
+                strategy_id, alert.alert_id, alert.fingerprint,
             )
 
         TimeoutChecker._trigger_auto_assignment_for_alert_ids(confirmed_alert_ids)
 
         logger.info(
-            f"策略变更确认完成: strategy_id={strategy_id}, 确认告警数={confirmed_count}"
+            "[AlertRecovery] 策略变更确认完成: strategy_id=%s, 确认告警数=%s",
+            strategy_id, confirmed_count,
         )
 
         return confirmed_count
@@ -172,14 +172,13 @@ class TimeoutChecker:
             closed_count += 1
 
             logger.info(
-                f"会话策略删除关闭告警: strategy_id={strategy_id}, "
-                f"alert_id={alert.alert_id}, fingerprint={alert.fingerprint}, "
-                f"原状态={original_status}, session_status=OBSERVING"
+                "[AlertRecovery] 会话策略删除关闭告警: strategy_id=%s, alert_id=%s, fingerprint=%s, 原状态=%s, session_status=OBSERVING",
+                strategy_id, alert.alert_id, alert.fingerprint, original_status,
             )
 
         logger.info(
-            f"会话策略删除关闭完成: strategy_id={strategy_id}, "
-            f"关闭观察中告警数={closed_count}"
+            "[AlertRecovery] 会话策略删除关闭完成: strategy_id=%s, 关闭观察中告警数=%s",
+            strategy_id, closed_count,
         )
 
         return closed_count

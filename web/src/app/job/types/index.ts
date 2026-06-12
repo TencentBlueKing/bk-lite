@@ -153,6 +153,7 @@ export interface ScriptParam {
   description?: string;
   default?: string;
   is_encrypted?: boolean;
+  is_required?: boolean;
 }
 
 export interface Script {

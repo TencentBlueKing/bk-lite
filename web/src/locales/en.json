@@ -55,7 +55,7 @@
     "addSuccess": "Added successfully",
     "saveSuccess": "save successfully",
     "publishSuccess": "publish successfully",
-    "saveFailed": "Failed to save them(s)",
+    "saveFailed": "Failed to save",
     "operationFailed": "Operation failed",
     "operateFailed": "Operation failed",
     "loadListFailed": "Failed to load list",

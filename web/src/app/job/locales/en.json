@@ -268,6 +268,7 @@
     "entryFile": "Entry File",
     "fileName": "File Name",
     "fileSize": "File Size",
+    "isRequired": "Required",
     "isEncrypted": "Encrypted",
     "paramDescription": "Description",
     "paramDescriptionPlaceholder": "Enter description",
@@ -391,6 +392,8 @@
     "scriptLanguage": "Script Language",
     "codeLines": "Code Lines",
     "lines": "lines",
+    "executeParams": "Execution Parameters",
+    "noExecuteParams": "No execution parameters",
 
     "version": "Version",
     "basicInfoTab": "Basic Info",

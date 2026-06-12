@@ -699,6 +699,15 @@ monitor_object_metric:
     postgresql_maxwritten_clean_rate:
       name: 后台干净页写入速率
       desc: 表示写入压力过高导致的提前清理
+    postgresql_blk_write_time:
+      name: 磁盘块写入耗时速率
+      desc: 累计数据块写入耗时（pg_stat_database.blk_write_time）的速率，表示每秒累积的写入耗时（毫秒/秒）。数值偏高表明磁盘 I/O 写入压力大或存储存在瓶颈
+    postgresql_active_time:
+      name: SQL 活跃执行耗时速率
+      desc: 累计 SQL 语句执行耗时（pg_stat_database.active_time）的速率，表示每秒累积的活跃执行耗时（毫秒/秒）。持续偏高表明存在异常长事务或高并发语句执行
+    postgresql_sessions_killed:
+      name: 会话异常终止速率
+      desc: 因管理员命令、空闲会话超时、死锁处理等致命错误被终止的会话速率（pg_stat_database.sessions_killed，个/秒）。速率上升表明连接不稳定
   RabbitMQ:
     rabbitmq_node_uptime:
       name: 节点运行时间
@@ -2065,6 +2074,106 @@ monitor_object_metric:
     apache_CacheRetrieveHitCount:
       name: 缓存命中次数
       desc: 缓存检索中成功命中的次数，高命中率表明缓存效率良好，减轻了后端负载
+  Haproxy:
+    haproxy_scur:
+      name: 当前会话数
+      desc: 该前端/后端/服务器当前正在处理的活跃会话数，反映实时并发量
+    haproxy_smax:
+      name: 最大会话数
+      desc: 启动以来观测到的最大并发会话数，可用于容量规划
+    haproxy_slim:
+      name: 会话上限
+      desc: 配置的会话上限；当前会话接近该值时存在拒绝新连接的风险
+    haproxy_stot:
+      name: 累计会话数
+      desc: 启动以来累计处理的会话总数，单调递增计数器，衡量总体负载
+    haproxy_rate:
+      name: 会话建立速率
+      desc: 最近1秒内每秒新建会话数，反映实时连接压力
+    haproxy_rate_max:
+      name: 最大会话速率
+      desc: 启动以来观测到的每秒最大会话建立速率，反映峰值负载
+    haproxy_qcur:
+      name: 当前排队请求数
+      desc: 当前等待空闲后端服务器的排队请求数，持续偏高表明后端饱和
+    haproxy_qmax:
+      name: 最大排队请求数
+      desc: 启动以来观测到的最大排队请求数，反映后端峰值压力
+    haproxy_bin:
+      name: 入站字节数
+      desc: 启动以来从客户端接收的累计字节数，衡量入站流量
+    haproxy_bout:
+      name: 出站字节数
+      desc: 启动以来发送给客户端的累计字节数，衡量出站流量
+    haproxy_req_rate:
+      name: HTTP请求速率
+      desc: 最近1秒内每秒接收的HTTP请求数，反映实时请求吞吐
+    haproxy_req_rate_max:
+      name: 最大HTTP请求速率
+      desc: 启动以来观测到的每秒最大HTTP请求速率，反映峰值请求压力
+    haproxy_req_tot:
+      name: 累计HTTP请求数
+      desc: 启动以来累计接收的HTTP请求总数，计数器，衡量总体请求负载
+    haproxy_hrsp_2xx:
+      name: 2xx响应数
+      desc: 累计返回的HTTP 2xx（成功）响应数，反映正常处理的请求
+    haproxy_hrsp_3xx:
+      name: 3xx响应数
+      desc: 累计返回的HTTP 3xx（重定向）响应数
+    haproxy_hrsp_4xx:
+      name: 4xx响应数
+      desc: 累计返回的HTTP 4xx（客户端错误）响应数，持续增长可能表明客户端或鉴权问题
+    haproxy_hrsp_5xx:
+      name: 5xx响应数
+      desc: 累计返回的HTTP 5xx（服务端错误）响应数，增长通常表明后端服务故障
+    haproxy_ereq:
+      name: 请求错误数
+      desc: 启动以来累计的请求错误数（如非法请求、请求前客户端超时）
+    haproxy_econ:
+      name: 连接错误数
+      desc: 启动以来连接后端服务器的累计错误数，增长表明后端连通性问题
+    haproxy_eresp:
+      name: 响应错误数
+      desc: 启动以来后端响应的累计错误数，包含中断和异常响应
+    haproxy_dreq:
+      name: 拒绝请求数
+      desc: 启动以来被安全ACL规则拒绝的累计请求数
+    haproxy_dresp:
+      name: 拒绝响应数
+      desc: 启动以来被安全ACL规则拒绝的累计响应数
+    haproxy_wretr:
+      name: 连接重试数
+      desc: 启动以来连接后端服务器的累计重试次数，偏高表明后端不稳定
+    haproxy_wredis:
+      name: 请求重分发数
+      desc: 启动以来请求被重新分发到其他后端服务器的累计次数
+    haproxy_act:
+      name: 活跃服务器数
+      desc: 该后端中当前在线的活跃（非备份）服务器数量，反映可用服务能力
+    haproxy_bck:
+      name: 备份服务器数
+      desc: 该后端中当前在线的备份服务器数量，用于故障切换
+    haproxy_chkfail:
+      name: 健康检查失败数
+      desc: 启动以来累计的健康检查失败次数，增长表明服务器不稳定或故障
+    haproxy_chkdown:
+      name: 下线切换次数
+      desc: 启动以来UP到DOWN的累计切换次数，反映服务器变为不可用的频率
+    haproxy_downtime:
+      name: 累计停机时长
+      desc: 启动以来累计的停机秒数，反映服务器累计不可用时长
+    haproxy_qtime:
+      name: 平均排队时间
+      desc: 最近1024个请求的平均排队等待时间（毫秒）
+    haproxy_ctime:
+      name: 平均连接时间
+      desc: 最近1024个请求建立后端连接的平均时间（毫秒）
+    haproxy_rtime:
+      name: 平均响应时间
+      desc: 最近1024个请求的后端平均响应时间（毫秒），偏高表明后端缓慢
+    haproxy_ttime:
+      name: 平均总时间
+      desc: 最近1024个请求端到端的平均会话总时间（毫秒）
   Node:
     node_status_condition:
       name: Node状态
@@ -2729,6 +2838,15 @@ monitor_object_metric_group:
     State: 状态
     Cache: 缓存
     Process: 进程
+  Haproxy:
+    Session: 会话
+    Queue: 队列
+    Traffic: 流量
+    Request: 请求
+    Response: 响应
+    Error: 错误
+    Server: 服务器
+    Latency: 延迟
   Postgres:
     Connection: 连接
     Query: 查询
@@ -3098,6 +3216,9 @@ monitor_object_plugin:
   Apache:
     name: Apache（Telegraf）
     desc: 通过Telegraf采集器定期收集Apache的运行时间、资源使用情况、请求处理效率及带宽数据。
+  Haproxy:
+    name: Haproxy（Telegraf）
+    desc: 基于Telegraf的haproxy采集器，定期采集HAProxy前端、后端及服务器的会话、队列、流量、HTTP响应、错误、服务器健康与延迟等运行数据。
   Hardware Server IPMI:
     name: 硬件服务器IPMI通用（Telegraf）
     desc: 通过Telegraf采集器利用IPMI协议定期收集硬件服务器的电源状态、风扇转速、温度等关键指标。
@@ -3149,6 +3270,7 @@ monitor_object_plugin:
 monitor_object:
   Dameng: 达梦数据库
   Apache: Apache
+  Haproxy: HAProxy
   Firewall: 防火墙
   Docker: Docker
   Scanning Device: 扫描设备

@@ -148,23 +148,44 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 sentineled.add(tk)
 
     def merge_script_with_params(self, script_content: str, params: str, script_type: str) -> str:
+        """将位置参数注入脚本，使脚本内可按顺序获取参数。
+
+        params 为 ScriptParamsService.params_to_string 生成的逐值 shell 引用字符串，
+        先 shlex.split 还原出有序 token（含空字符串占位），再按脚本类型注入：
+        - shell：set -- 设置位置参数（$1 $2 ...）
+        - python：注入 sys.argv（sys.argv[1] sys.argv[2] ...）
+        - powershell：注入 $args（$args[0] $args[1] ...）
+        - bat：当前执行机制下无法在脚本内重设 %1/%2，暂不支持，忽略参数
+        """
         if not params:
             return script_content
 
+        import json
+        import shlex
+
+        try:
+            tokens = shlex.split(params)
+        except ValueError:
+            tokens = params.split()
+        if not tokens:
+            return script_content
+
         if script_type == ScriptType.SHELL:
-            import shlex
-
-            try:
-                tokens = shlex.split(params)
-            except ValueError:
-                tokens = params.split()
-
             escaped_params = " ".join(shlex.quote(token) for token in tokens)
-            if not escaped_params:
-                return script_content
             return f"set -- {escaped_params}\n{script_content}"
 
-        return f"{script_content} {params}"
+        if script_type == ScriptType.PYTHON:
+            # json 数组同时是合法的 Python 列表字面量，可安全注入空值/特殊字符
+            argv_literal = json.dumps(["script", *tokens], ensure_ascii=False)
+            return f"import sys as _sys\n_sys.argv = {argv_literal}\n{script_content}"
+
+        if script_type == ScriptType.POWERSHELL:
+            # PowerShell 单引号字符串，内部单引号转义为两个单引号
+            ps_args = ", ".join("'" + token.replace("'", "''") + "'" for token in tokens)
+            return f"$args = @({ps_args})\n{script_content}"
+
+        # bat 等其它类型：本次不支持参数注入，原样返回脚本内容
+        return script_content
 
     def execute_script_on_target(
         self, target_info: dict, target_source: str, script_content: str, script_type: str, timeout: int, execution_id: int

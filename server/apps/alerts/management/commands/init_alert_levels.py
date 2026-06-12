@@ -28,10 +28,10 @@ class Command(BaseCommand):
             self.stdout.write(
                 self.style.SUCCESS(f'成功初始化 {created_count} 个告警级别')
             )
-            logger.info(f"===成功初始化 {created_count} 个告警级别===")
-            
+            logger.info("[AlertInit] 成功初始化 %s 个告警级别", created_count)
+
         except Exception as e:
             error_msg = f"初始化告警级别失败: {e}"
-            logger.error(error_msg)
+            logger.error("[AlertInit] 初始化告警级别失败: %s", e, exc_info=True)
             self.stdout.write(self.style.ERROR(error_msg))
             raise

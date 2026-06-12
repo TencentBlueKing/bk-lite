@@ -114,19 +114,20 @@ class AlertAssignmentModelViewSet(ModelViewSet):
                 if not level_config or level_config.get('interval_minutes', 0) <= 0:
                     # 停止该级别的提醒任务
                     ReminderService.stop_reminder_task(reminder.alert)
-                    logger.info(f"停止级别为 {alert_level} 的告警 {reminder.alert.alert_id} 的提醒任务")
+                    logger.info("[AlertView] 停止级别为 %s 的告警 %s 的提醒任务", alert_level, reminder.alert.alert_id)
                 else:
                     # 更新提醒配置
                     new_frequency = level_config.get('interval_minutes', 0)
                     new_max_count = level_config.get('max_count', 10)
                     ReminderService._update_reminder_task(reminder, new_frequency, new_max_count)
                     logger.info(
-                        f"更新级别为 {alert_level} 的告警 {reminder.alert.alert_id} 的提醒配置: 频率={new_frequency}分钟, 最大次数={new_max_count}")
+                        "[AlertView] 更新级别为 %s 的告警 %s 的提醒配置: 频率=%s分钟, 最大次数=%s",
+                        alert_level, reminder.alert.alert_id, new_frequency, new_max_count)
 
-            logger.info(f"分派策略 {assignment.name} 相关提醒任务配置更新完成")
+            logger.info("[AlertView] 分派策略 %s 相关提醒任务配置更新完成", assignment.name)
 
         except Exception as e:
-            logger.error(f"更新提醒任务配置失败: assignment_id={assignment.id}, error={str(e)}")
+            logger.error("[AlertView] 更新提醒任务配置失败: assignment_id=%s, error=%s", assignment.id, e, exc_info=True)
             raise
 
 

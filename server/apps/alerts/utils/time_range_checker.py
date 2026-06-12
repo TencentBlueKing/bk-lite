@@ -76,14 +76,14 @@ class TimeRangeChecker:
             elif time_type == "month":
                 return self._check_month_range()
             else:
-                logger.warning(f"Unknown time type: {time_type}")
+                logger.warning("[AlertUtil] 未知时间类型: %s", time_type)
                 return True
 
         except ValueError as e:
-            logger.error(f"Error parsing time format: {str(e)}")
+            logger.error("[AlertUtil] 解析时间格式失败: %s", e, exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"Error checking time range: {str(e)}")
+            logger.error("[AlertUtil] 检查时间范围失败: %s", e, exc_info=True)
             return False
 
     def _check_one_time_range(self) -> bool:

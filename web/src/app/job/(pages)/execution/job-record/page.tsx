@@ -29,6 +29,7 @@ import {
   CloseCircleFilled,
   FolderOutlined,
   FileOutlined,
+  ProfileOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
@@ -626,6 +627,18 @@ const JobRecordPage = () => {
     return detail.script_content.split('\n').length;
   }, [detail?.script_content]);
 
+  // Execution parameters text (脚本执行为按顺序拼接的位置参数字符串)
+  const executeParamsText = useMemo(() => {
+    const p = detail?.params as unknown;
+    if (p === null || p === undefined || p === '') return '';
+    if (typeof p === 'string') return p;
+    try {
+      return JSON.stringify(p);
+    } catch {
+      return String(p);
+    }
+  }, [detail?.params]);
+
   const handlePreviewPlaybookFile = useCallback(async (filePath: string, parentPaths: string[] = []) => {
     if (!viewingPlaybook) {
       return;
@@ -1140,12 +1153,20 @@ const JobRecordPage = () => {
         <Drawer
           title={t('job.scriptDetail')}
           placement="right"
-          width={480}
+          width={720}
           open={scriptDrawerOpen}
           onClose={() => setScriptDrawerOpen(false)}
+          styles={{
+            body: {
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              padding: 24,
+            },
+          }}
         >
           <div
-            className="rounded-lg mb-4"
+            className="rounded-lg mb-4 shrink-0"
             style={{
               background: 'var(--color-bg-1)',
               border: '1px solid var(--color-border-1)',
@@ -1187,14 +1208,14 @@ const JobRecordPage = () => {
           </div>
 
           <div
-            className="rounded-lg overflow-hidden"
+            className="rounded-lg overflow-hidden flex-1 min-h-0 flex flex-col"
             style={{
               background: 'var(--color-bg-1)',
               border: '1px solid var(--color-border-1)',
             }}
           >
             <div
-              className="px-4 py-3 flex items-center justify-between"
+              className="px-4 py-3 flex items-center justify-between shrink-0"
               style={{ borderBottom: '1px solid var(--color-border-1)' }}
             >
               <div className="flex items-center gap-2">
@@ -1213,10 +1234,9 @@ const JobRecordPage = () => {
               </Button>
             </div>
             <pre
-              className="p-0 text-sm overflow-auto font-mono m-0"
+              className="p-0 text-sm overflow-auto font-mono m-0 flex-1 min-h-0"
               style={{
                 background: '#1e1e1e',
-                maxHeight: 'calc(100vh - 380px)',
               }}
             >
               {detail.script_content?.split('\n').map((line, index) => (
@@ -1236,6 +1256,39 @@ const JobRecordPage = () => {
                 </div>
               ))}
             </pre>
+          </div>
+
+          {/* Execution Parameters */}
+          <div
+            className="rounded-lg overflow-hidden mt-4 shrink-0"
+            style={{
+              background: 'var(--color-bg-1)',
+              border: '1px solid var(--color-border-1)',
+            }}
+          >
+            <div
+              className="px-4 py-3 flex items-center gap-2"
+              style={{ borderBottom: '1px solid var(--color-border-1)' }}
+            >
+              <ProfileOutlined style={{ color: 'var(--color-primary)' }} />
+              <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+                {t('job.executeParams')}
+              </span>
+            </div>
+            <div className="p-4">
+              {executeParamsText ? (
+                <pre
+                  className="m-0 whitespace-pre-wrap break-all font-mono text-sm overflow-auto"
+                  style={{ color: 'var(--color-text-1)', maxHeight: '20vh' }}
+                >
+                  {executeParamsText}
+                </pre>
+              ) : (
+                <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
+                  {t('job.noExecuteParams')}
+                </span>
+              )}
+            </div>
           </div>
         </Drawer>
 

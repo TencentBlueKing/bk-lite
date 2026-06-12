@@ -45,16 +45,16 @@ class Command(BaseCommand):
         for data in tags_data:
             tag_id = data["tag_id"]
             if DataSourceTag.objects.filter(tag_id=tag_id).exists():
-                logger.info(f"标签 {tag_id} 已存在，跳过创建")
+                logger.info("[SourceApiInit] 标签 %s 已存在，跳过创建", tag_id)
                 self.stdout.write(self.style.WARNING(f"标签 {tag_id} 已存在，跳过创建"))
                 continue
 
             DataSourceTag.objects.create(**data)
             created_count += 1
-            logger.info(f"标签 {tag_id} 创建成功")
+            logger.info("[SourceApiInit] 标签 %s 创建成功", tag_id)
             self.stdout.write(self.style.SUCCESS(f"标签 {tag_id} 创建成功"))
 
-        logger.info(f"===数据源标签初始化完成 - 创建: {created_count}===")
+        logger.info("[SourceApiInit] 数据源标签初始化完成，创建 %s 个", created_count)
 
     def handle(self, *args, **options):
         logger.info("===开始初始化数据源标签和源API数据===")
@@ -100,7 +100,7 @@ class Command(BaseCommand):
                     if tag_instances.exists():
                         obj.tag.set(tag_instances)
                     created_count += 1
-                    logger.info(f"创建数据源: {api_data['name']}")
+                    logger.info("[SourceApiInit] 创建数据源：%s", api_data["name"])
                 elif force_update:
                     # 只有在强制更新模式下才更新现有数据源的配置
                     for key, value in api_data.items():
@@ -115,16 +115,16 @@ class Command(BaseCommand):
                         obj.tag.set(tag_instances)
                     
                     updated_count += 1
-                    logger.info(f"更新数据源: {api_data['name']}")
+                    logger.info("[SourceApiInit] 更新数据源：%s", api_data["name"])
                 else:
-                    logger.info(f"跳过已存在的数据源: {api_data['name']}")
+                    logger.info("[SourceApiInit] 跳过已存在的数据源：%s", api_data["name"])
 
             success_msg = f"源API数据初始化完成 - 创建: {created_count}, 更新: {updated_count}"
             self.stdout.write(self.style.SUCCESS(success_msg))
-            logger.info(f"==={success_msg}===")
+            logger.info("[SourceApiInit] %s", success_msg)
 
         except Exception as e:
             error_msg = f"初始化源API数据失败: {e}"
-            logger.error(error_msg)
+            logger.error("[SourceApiInit] 初始化源API数据失败：%s", e, exc_info=True)
             self.stdout.write(self.style.ERROR(error_msg))
             raise
