@@ -6,8 +6,17 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.execution_stream_service import (
+    JOB_LOG_MAX_AGE_SECONDS,
+    JOB_LOG_MAX_BYTES,
+    JOB_LOG_STREAM_NAME,
+    JOB_LOG_SUBJECTS,
+    build_stream_topic,
+    publish_done_sentinel,
+)
 from apps.job_mgmt.services.shell_utils import build_heredoc_command, parse_shebang
 from apps.rpc.executor import Executor
+from nats_client.clients import ensure_stream_sync
 
 
 class ScriptExecutionRunner(ExecutionTaskBaseService):
@@ -27,6 +36,11 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         if self._run_via_ansible_if_needed(execution, target_list, script_content):
             return
 
+        try:
+            ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
+        except Exception as e:
+            logger.warning(f"[{self.task_name}] JetStream 流声明失败(不阻断执行): {e}")
+
         results = self._run_via_sidecar(execution, target_list, script_content)
         self.finalize_execution(execution, self.task_name, results)
 
@@ -41,6 +55,9 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
         execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
         execution.save(update_fields=["execution_results", "updated_at"])
+        for t in target_list:
+            tk = t.get("node_id") or str(t.get("target_id", ""))
+            publish_done_sentinel(execution.id, tk, ExecutionStatus.FAILED)
         return True
 
     def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
@@ -88,9 +105,12 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     result = future.result()
                     results.append(result)
                     logger.info(f"[{self.task_name}] 目标 {target_info.get('name')} 执行完成: status={result['status']}")
+                    publish_done_sentinel(execution.id, result.get("target_key", ""), result.get("status", ExecutionStatus.FAILED))
                 except Exception as e:
                     logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
-                    results.append(self.build_target_failed_result(target_info, str(e)))
+                    failed_result = self.build_target_failed_result(target_info, str(e))
+                    results.append(failed_result)
+                    publish_done_sentinel(execution.id, failed_result.get("target_key", ""), ExecutionStatus.FAILED)
 
                 # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
                 if not cancelled and self.is_cancelled(execution.id):
@@ -160,7 +180,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
                 executor = Executor(ssh_creds["node_id"])
                 ssh_command = build_heredoc_command(shell, script_content)
-                exec_result = executor.execute_ssh(
+                exec_result = executor.execute_ssh_stream(
                     command=ssh_command,
                     host=ssh_creds["host"],
                     username=ssh_creds["username"],
@@ -168,6 +188,8 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     private_key=ssh_creds["private_key"],
                     timeout=timeout,
                     port=ssh_creds["port"],
+                    execution_id=str(execution_id),
+                    stream_log_topic=build_stream_topic(execution_id, target_key),
                     fast_fail=True,
                 )
 
