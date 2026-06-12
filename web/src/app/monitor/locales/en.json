@@ -507,6 +507,8 @@
       "pullTemplateHint": "PULL templates do not support joint collection of parent-child objects. If you need this, please use PUSH mode.",
       "templateDescription": "Template Description",
       "noConfigData": "No configuration data available, please check plugin settings",
+      "reportedOnlyConfigTip": "This plugin is reporting data, but this instance has no editable collection configuration.",
+      "missingConfigDataTip": "Collection configuration content was not found. Check whether the configuration was delivered successfully.",
       "searchRuleName": "Search Rule Name",
       "batchOperation": "Batch Operation",
       "exactMatch": "Exact match",

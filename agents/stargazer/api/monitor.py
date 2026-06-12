@@ -358,7 +358,7 @@ async def windows_wmi_metrics(request):
     username = request.headers.get("username")
     password = request.headers.get("password")
     namespace = request.headers.get("namespace", "root\\cimv2")
-    metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,net")
+    metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
     raw_timeout = request.headers.get("timeout", "60")
     instance_id = request.headers.get("instance_id")
     instance_type = request.headers.get("instance_type", "os")

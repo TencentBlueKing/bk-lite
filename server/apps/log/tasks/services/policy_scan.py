@@ -1,6 +1,7 @@
 import hashlib
 import json
 import re
+import time
 import uuid
 
 from django.db import transaction
@@ -68,6 +69,8 @@ class LogPolicyScan:
         return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
     def _build_exact_field_filter(self, field, value):
+        if field == "_stream" and isinstance(value, str) and value.startswith("{") and value.endswith("}"):
+            return f"{field}:{value}"
         escaped_value = self._escape_log_query_value(value)
         return f'{field}:="{escaped_value}"'
 
@@ -263,6 +266,8 @@ class LogPolicyScan:
                             },
                         }
                     )
+
+            return events
 
         except Exception as e:
             logger.error(f"aggregate alert detection failed for policy {self.policy.id}: {e}")
@@ -640,6 +645,9 @@ class LogPolicyScan:
                 if source_id in existing_alerts:
                     # 存在活跃告警，准备更新
                     alert_obj = existing_alerts[source_id]
+                    if alert_obj.level != event["level"]:
+                        # 级别变化属于显著变化，重置已通知标记以重新通知
+                        alert_obj.notice = False
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
                     alert_obj.level = event["level"]
@@ -693,7 +701,7 @@ class LogPolicyScan:
             if alerts_to_update:
                 Alert.objects.bulk_update(
                     alerts_to_update,
-                    ["value", "content", "level", "end_event_time"],
+                    ["value", "content", "level", "end_event_time", "notice"],
                     batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
                 )
                 logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
@@ -868,29 +876,44 @@ class LogPolicyScan:
 
         return title, content
 
-    def send_notice(self, event_obj):
-        """发送通知"""
+    def send_notice(self, event_obj, max_attempts=None):
+        """发送通知
+
+        内联重试（范围A）：单次发送遇瞬时通道故障时按 max_attempts 重试 + 线性退避，
+        兜住亚秒级通道抖动；仍失败则返回 (False, 最后一次结果)，由持久化补偿任务（范围B）后续重投。
+        补偿任务本身即外层重试循环，调用时传 max_attempts=1 做单次发送，避免在 worker 内叠加 sleep 阻塞。
+        """
         if not self.policy.notice_users:
             return False, []
 
         # 使用新的格式化方法
         title, content = self._format_notice_content(event_obj)
 
-        try:
-            result = SystemMgmtUtils.send_msg_with_channel(self.policy.notice_type_id, title, content, self.policy.notice_users)
-            # 检查发送结果
-            if result.get("result") is False:
-                msg = f"send notice failed for policy {self.policy.id}: {result.get('message', 'Unknown error')}"
-                logger.error(msg)
-                return False, result
-            else:
-                logger.info(f"send notice success for policy {self.policy.id}: {result}")
-                return True, result
-        except Exception as e:
-            msg = f"send notice exception for policy {self.policy.id}: {e}"
-            logger.error(msg, exc_info=True)
-            result = {"result": False, "message": msg}
-            return False, result
+        if max_attempts is None:
+            max_attempts = AlertConstants.NOTICE_SEND_MAX_ATTEMPTS
+        max_attempts = max(max_attempts, 1)
+        last_result = None
+        for attempt in range(1, max_attempts + 1):
+            try:
+                result = SystemMgmtUtils.send_msg_with_channel(self.policy.notice_type_id, title, content, self.policy.notice_users)
+                # 检查发送结果
+                if result.get("result") is False:
+                    last_result = result
+                    msg = f"send notice failed for policy {self.policy.id} (attempt {attempt}/{max_attempts}): {result.get('message', 'Unknown error')}"
+                    logger.error(msg)
+                else:
+                    logger.info(f"send notice success for policy {self.policy.id} (attempt {attempt}/{max_attempts})")
+                    return True, result
+            except Exception as e:
+                msg = f"send notice exception for policy {self.policy.id} (attempt {attempt}/{max_attempts}): {e}"
+                logger.error(msg, exc_info=True)
+                last_result = {"result": False, "message": msg}
+
+            # 非末次尝试 → 线性退避后重试
+            if attempt < max_attempts:
+                time.sleep(AlertConstants.NOTICE_SEND_RETRY_BACKOFF_SECONDS * attempt)
+
+        return False, last_result if last_result is not None else {"result": False, "message": "Unknown error"}
 
     def notice(self, event_objs):
         """通知"""
@@ -904,16 +927,27 @@ class LogPolicyScan:
                 # info级别事件不通知
                 if event.level == "info":
                     continue
+                # 告警已成功通知过且未发生级别变化时不重复通知，避免持续命中导致每个扫描周期重复发送
+                if event.alert.notice:
+                    event.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
+                    # 去重跳过视为已结清：必须置 notified=True，否则补偿任务会把
+                    # 这些事件当作发送失败反复重投，去重就失效了（与 #3312 的语义对齐）
+                    event.notified = True
+                    continue
                 is_notice, notice_result = self.send_notice(event)
                 event.notice_result = notice_result
+                # 记录发送是否成功 + 累计尝试次数，供补偿任务（范围B）回扫 notified=False 的失败事件
+                event.notified = is_notice
+                event.notice_retry_count = (event.notice_retry_count or 0) + 1
 
                 if is_notice:
+                    event.alert.notice = True
                     alerts.append((event.alert_id, is_notice))
 
             # 批量更新通知结果
             Event.objects.bulk_update(
                 event_objs,
-                ["notice_result"],
+                ["notice_result", "notified", "notice_retry_count"],
                 batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
             )
             logger.info(f"Completed notification for {len(event_objs)} events")

@@ -1,8 +1,10 @@
 """作业管理开放接口（第三方 App 调用）"""
 
-from datetime import datetime
+import os
+from datetime import datetime, timedelta
 
 from asgiref.sync import async_to_sync
+from django.utils import timezone
 from nanoid import generate
 from rest_framework import status
 from rest_framework.parsers import MultiPartParser
@@ -12,6 +14,43 @@ from rest_framework.views import APIView
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.models import DistributionFile
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
+
+# 文件过期天数：默认值与上下限
+DEFAULT_EXPIRE_DAYS = 7
+MAX_EXPIRE_DAYS = 365
+
+
+def _parse_expire_days(raw):
+    """
+    解析 expire_days 参数。
+
+    Returns:
+        tuple: (expire_days, error_message)
+        - 合法时返回 (int, None)
+        - 非法时返回 (None, error_message)
+    """
+    if raw is None or raw == "":
+        return DEFAULT_EXPIRE_DAYS, None
+    try:
+        days = int(raw)
+    except (TypeError, ValueError):
+        return None, "expire_days 非法"
+    if days < 1 or days > MAX_EXPIRE_DAYS:
+        return None, "expire_days 非法"
+    return days, None
+
+
+def _int_env(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+# 单文件大小上界（env 可配、保守默认；负责人可按部署调整，无需改码）。
+# TTL 只兜住保存时长，不兜单次上传体量——防止持有 UserAPISecret 的调用方
+# 用超大文件在过期前打满对象存储（issue #3154 的"大小"维度）。
+MAX_UPLOAD_FILE_SIZE_MB = _int_env("JOB_MAX_UPLOAD_FILE_SIZE_MB", 1024)
 
 
 def _get_user_team_from_request(request):
@@ -74,13 +113,13 @@ class OpenFileUploadView(APIView):
     请求:
         POST /api/v1/job_mgmt/api/open/upload_file
         Header: Api-Authorization: <api_secret>
-        Body: multipart/form-data { file: <binary>, permanent: <bool> }
+        Body: multipart/form-data { file: <binary>, expire_days: <int> }
 
     参数:
-        file: 必填，上传的文件
-        permanent: 可选，是否永久保存（默认 false）
-            - true: 文件永久保存，不会被定时清理
-            - false: 文件在 7 天后自动清理
+        file: 必填，上传的文件（单文件大小上限默认 1024MB，
+            可由环境变量 JOB_MAX_UPLOAD_FILE_SIZE_MB 调整）
+        expire_days: 可选，过期天数（默认 7，范围 1-365）
+            文件在 expire_days 天后由定时任务自动清理；不存在永久保存选项。
 
     返回:
         {"result": true, "data": {"file_id": 1, "file_key": "job-files/2026/05/06/xxx.rpm"}}
@@ -109,9 +148,21 @@ class OpenFileUploadView(APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 解析 permanent 参数（仅对外 API 支持）
-        permanent_str = request.data.get("permanent", "false")
-        is_permanent = str(permanent_str).lower() in ("true", "1", "yes")
+        # 单文件大小上界（防超大单文件在过期前占满存储）
+        if getattr(file, "size", 0) and file.size > MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024:
+            return Response(
+                {"detail": f"文件大小超过上限（{MAX_UPLOAD_FILE_SIZE_MB}MB）"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 解析 expire_days 参数（默认 7 天，范围 1-365）
+        expire_days, expire_error = _parse_expire_days(request.data.get("expire_days"))
+        if expire_error:
+            return Response(
+                {"detail": expire_error},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        expire_at = timezone.now() + timedelta(days=expire_days)
 
         original_name = file.name
 
@@ -137,7 +188,7 @@ class OpenFileUploadView(APIView):
         distribution_file = DistributionFile.objects.create(
             original_name=original_name,
             file_key=file_key,
-            is_permanent=is_permanent,
+            expire_at=expire_at,
             team=user_team,
         )
 

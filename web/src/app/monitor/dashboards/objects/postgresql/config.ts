@@ -13,7 +13,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '活跃连接数',
       description: '活跃数据库会话数量。',
       unit: 'counts',
-      query: 'sum without (dbname) (postgresql_numbackends{__$labels__})',
+      query: 'sum without (db) (postgresql_numbackends{__$labels__})',
       color: '#2f6bff'
     },
     {
@@ -21,7 +21,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '事务提交速率',
       description: '已提交事务的速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_xact_commit{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_xact_commit{__$labels__}[5m]))',
       color: '#27c274'
     },
     {
@@ -29,7 +29,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '事务回滚速率',
       description: '回滚事务的速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_xact_rollback{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_xact_rollback{__$labels__}[5m]))',
       color: '#ff4d4f'
     },
     {
@@ -37,7 +37,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '查询返回行速率',
       description: '查询结果集中返回行的速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_tup_returned{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_tup_returned{__$labels__}[5m]))',
       color: '#2f6bff'
     },
     {
@@ -45,7 +45,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '查询提取行速率',
       description: '查询期间从存储中提取行的速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_tup_fetched{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_tup_fetched{__$labels__}[5m]))',
       color: '#13c2c2'
     },
     {
@@ -53,7 +53,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '行插入速率',
       description: '行插入操作速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_tup_inserted{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_tup_inserted{__$labels__}[5m]))',
       color: '#2f6bff'
     },
     {
@@ -61,7 +61,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '行更新速率',
       description: '行更新操作速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_tup_updated{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_tup_updated{__$labels__}[5m]))',
       color: '#ff8a1f'
     },
     {
@@ -69,7 +69,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '行删除速率',
       description: '行删除操作速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_tup_deleted{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_tup_deleted{__$labels__}[5m]))',
       color: '#ff4d4f'
     },
     {
@@ -77,7 +77,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '缓存命中速率',
       description: '共享缓冲区命中块速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_blks_hit{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_blks_hit{__$labels__}[5m]))',
       color: '#27c274'
     },
     {
@@ -85,7 +85,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘块读取速率',
       description: '需从磁盘读取块的速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_blks_read{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_blks_read{__$labels__}[5m]))',
       color: '#ff8a1f'
     },
     {
@@ -93,7 +93,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '缓存命中率',
       description: '共享缓冲区缓存命中比例。',
       unit: 'percent',
-      query: '100 * sum without (dbname) (rate(postgresql_blks_hit{__$labels__}[5m])) / clamp_min(sum without (dbname) (rate(postgresql_blks_hit{__$labels__}[5m])) + sum without (dbname) (rate(postgresql_blks_read{__$labels__}[5m])), 1e-6)',
+      query: '100 * sum without (db) (rate(postgresql_blks_hit{__$labels__}[5m])) / clamp_min(sum without (db) (rate(postgresql_blks_hit{__$labels__}[5m])) + sum without (db) (rate(postgresql_blks_read{__$labels__}[5m])), 1e-6)',
       color: '#27c274'
     },
     {
@@ -101,7 +101,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '死锁速率',
       description: '事务死锁发生速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_deadlocks{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_deadlocks{__$labels__}[5m]))',
       color: '#ff4d4f'
     },
     {
@@ -109,7 +109,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '并发冲突速率',
       description: '并发操作冲突速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_conflicts{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_conflicts{__$labels__}[5m]))',
       color: '#faad14'
     },
     {
@@ -117,7 +117,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '临时文件创建速率',
       description: '复杂查询创建临时文件的速率。',
       unit: 'cps',
-      query: 'sum without (dbname) (rate(postgresql_temp_files{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_temp_files{__$labels__}[5m]))',
       color: '#faad14'
     },
     {
@@ -125,7 +125,7 @@ export const POSTGRESQL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '临时文件写入吞吐',
       description: '临时文件写入数据速率。',
       unit: 'byteps',
-      query: 'sum without (dbname) (rate(postgresql_temp_bytes{__$labels__}[5m]))',
+      query: 'sum without (db) (rate(postgresql_temp_bytes{__$labels__}[5m]))',
       color: '#8a5cff'
     },
     {

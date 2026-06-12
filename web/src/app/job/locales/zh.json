@@ -269,6 +269,7 @@
     "entryFile": "入口文件",
     "fileName": "文件名",
     "fileSize": "文件大小",
+    "isRequired": "是否必须",
     "isEncrypted": "是否加密",
     "paramDescription": "提示信息",
     "paramDescriptionPlaceholder": "请输入提示信息",
@@ -390,6 +391,8 @@
     "scriptLanguage": "脚本语言",
     "codeLines": "代码行数",
     "lines": "行",
+    "executeParams": "执行参数",
+    "noExecuteParams": "无执行参数",
 
     "version": "版本",
     "basicInfoTab": "基本信息",

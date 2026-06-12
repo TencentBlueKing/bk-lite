@@ -20,7 +20,27 @@ def generate_attachment_file(
     title: str = "",
     config: RunnableConfig = None,
 ) -> dict:
-    """Generate a workflow attachment file and return its download link."""
+    """Generate a downloadable file attachment and return its download URL.
+
+    **IMPORTANT: You MUST call this tool whenever the user asks to generate, create, produce,
+    save, or export any file, document, report, or attachment — regardless of file format.**
+
+    Do NOT output file content as plain text in your response. Always use this tool so the
+    user receives a downloadable link. After calling this tool, briefly summarize what was
+    generated and present the returned download URL to the user.
+
+    When to call this tool:
+    - User says "generate a report / create a file / export data / save as PDF" etc.
+    - User wants any content delivered as a downloadable file rather than inline text.
+
+    Parameters:
+    - filename: Desired file name including extension (e.g. "report.md", "data.xlsx").
+    - content:  Complete file content to save. For xlsx/csv pass raw data; for md/txt/pdf
+                pass the full Markdown or plain-text body.
+    - file_type: File format — "md", "pdf", "xlsx", "docx", "txt", "csv", "html", etc.
+                 Defaults to "md" (Markdown).
+    - title:    Optional document title used as a header in PDF/Word output.
+    """
 
     configurable = (config or {}).get("configurable", {}) if isinstance(config, dict) else {}
     execution_id = str(configurable.get("execution_id", "") or "")

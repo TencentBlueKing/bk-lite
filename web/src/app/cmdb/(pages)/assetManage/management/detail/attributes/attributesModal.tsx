@@ -48,9 +48,12 @@ import {
   normalizeDefaultValue,
   sanitizeDefaultValue,
 } from '@/app/cmdb/utils/enumDefaultValue';
+import { loadAttributeEnterpriseExtension } from '@/app/cmdb/hooks/useAttributeEnterpriseExtension';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 const { Option } = Select;
+
+const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
 const TAG_VALUE_REGEX = /^[^\s:\n\r]+$/;
 
@@ -116,6 +119,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const [enumSelectMode, setEnumSelectMode] = useState<'single' | 'multiple'>('single');
     const formRef = useRef<FormInstance>(null);
     const searchParams = useSearchParams();
+    const attributeEnterpriseExtension = useAttributeEnterpriseExtension();
 
     const { createModelAttr, updateModelAttr, getPublicEnumLibraries } = useModelApi();
 
@@ -157,6 +161,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         const normalizedDefaultValue = normalizeDefaultValue(attrInfo.default_value);
         formRef.current?.setFieldsValue({
           ...attrInfo,
+          ...attributeEnterpriseExtension.getInitialValues(attrInfo),
           group_id: selectedGroup?.id,
           default_value:
             (attrInfo.enum_select_mode || 'single') === 'multiple'
@@ -334,7 +339,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         delete restValues.tag_mode;
         delete restValues.default_value;
 
-        const submitParams: Record<string, unknown> = {
+        let submitParams: Record<string, unknown> = {
           ...restValues,
           option,
           attr_group: selectedGroup?.group_name || '',
@@ -357,6 +362,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           submitParams.default_value = [];
         }
 
+        submitParams = attributeEnterpriseExtension.normalizeSubmitParams(submitParams, values);
         operateAttr(submitParams as AttrFieldType);
       });
     };
@@ -1330,6 +1336,10 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 ) : null
               }
             </Form.Item>
+            {attributeEnterpriseExtension.renderFormItems({
+              formRef,
+              ui: { Form, Radio, Select },
+            })}
             <div className="border-t border-[var(--color-border-1)] mt-2 mb-4" />
             <Form.Item
               noStyle

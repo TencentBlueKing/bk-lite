@@ -97,6 +97,8 @@ class Event(TimeInfo):
     level = models.CharField(max_length=20, verbose_name="事件级别")
     content = models.TextField(blank=True, verbose_name="事件内容")
     notice_result = models.JSONField(default=list, verbose_name="通知结果")
+    notified = models.BooleanField(default=False, db_index=True, verbose_name="通知是否已成功")
+    notice_retry_count = models.IntegerField(default=0, verbose_name="通知重试次数")
 
     class Meta:
         verbose_name = "事件记录"

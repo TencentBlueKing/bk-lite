@@ -117,6 +117,12 @@ class ScriptParamsService:
                     raise serializers.ValidationError({"params": f"临时脚本模式下第 {index + 1} 个参数不能使用默认值"})
                 # 临时脚本模式且允许：直接使用前端传的 value
 
+            # 必填校验：脚本库定义 is_required=true 的参数最终值不能为空
+            if has_script and index < len(default_params):
+                if default_params[index].get("is_required") and (value is None or str(value) == ""):
+                    display_name = name or default_params[index].get("name") or f"第 {index + 1} 个参数"
+                    raise serializers.ValidationError({"params": f"参数「{display_name}」为必填项，不能为空"})
+
             resolved_params.append(
                 {
                     "name": name,
@@ -132,17 +138,23 @@ class ScriptParamsService:
         """
         将参数列表按顺序转换为命令行位置参数字符串
 
+        对每个值做 shell 引用（shlex.quote），使空值以 '' 占位、含空格/特殊
+        字符的值保持完整。这样执行端再 shlex.split 还原时不会丢失空参数，
+        从而避免「中间空参数被吞掉导致后续参数位置前移」的问题。
+
         Args:
             params: 参数列表
 
         Returns:
-            str: 空格分隔的参数字符串，如 "value1 value2 value3"
+            str: 空格分隔且逐值引用的参数字符串，如 "value1 '' 'value 3'"
         """
         if not params:
             return ""
 
+        import shlex
+
         values = [str(param.get("value", "")) for param in params]
-        return " ".join(values)
+        return " ".join(shlex.quote(v) for v in values)
 
     @staticmethod
     def params_to_dict(params: list) -> dict:

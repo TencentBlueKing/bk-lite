@@ -10,19 +10,19 @@ export interface PgTopDbQuery {
   /** formatMetricValue 用的单位 */
   unit: string;
   color: string;
-  /** 按 dbname 聚合 + topk 的查询;__$labels__ 由 buildSearchParams 注入实例过滤 */
+  /** 按 db 聚合 + topk 的查询;__$labels__ 由 buildSearchParams 注入实例过滤 */
   query: string;
   guide: GuideItem[];
 }
 
-// 注:checkpoint / buffer 等实例级指标无 dbname 维度,不纳入按库排行(见 DASHBOARD_DESCRIPTION.md)。
+// 注:checkpoint / buffer 等实例级指标无 db 维度,不纳入按库排行(见 DASHBOARD_DESCRIPTION.md)。
 export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
   {
     key: 'numbackends',
     title: '连接数 Top',
     unit: 'counts',
     color: '#2f6bff',
-    query: `topk(${PG_TOP_N}, sum by (dbname) (postgresql_numbackends{__$labels__}))`,
+    query: `topk(${PG_TOP_N}, sum by (db) (postgresql_numbackends{__$labels__}))`,
     guide: [{ label: '连接数排行', detail: '各数据库当前活跃会话数,定位连接集中在哪个库。' }]
   },
   {
@@ -30,7 +30,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     title: '事务回滚 Top',
     unit: 'cps',
     color: '#ff4d4f',
-    query: `topk(${PG_TOP_N}, sum by (dbname) (rate(postgresql_xact_rollback{__$labels__}[5m])))`,
+    query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_xact_rollback{__$labels__}[5m])))`,
     guide: [{ label: '回滚排行', detail: '各数据库事务回滚速率,定位失败 / 冲突集中的库。' }]
   },
   {
@@ -38,7 +38,7 @@ export const PG_TOP_DB_QUERIES: PgTopDbQuery[] = [
     title: '临时文件 Top',
     unit: 'cps',
     color: '#faad14',
-    query: `topk(${PG_TOP_N}, sum by (dbname) (rate(postgresql_temp_files{__$labels__}[5m])))`,
+    query: `topk(${PG_TOP_N}, sum by (db) (rate(postgresql_temp_files{__$labels__}[5m])))`,
     guide: [{ label: '临时文件排行', detail: '各数据库临时文件创建速率,定位复杂查询 / work_mem 压力大的库。' }]
   }
 ];
