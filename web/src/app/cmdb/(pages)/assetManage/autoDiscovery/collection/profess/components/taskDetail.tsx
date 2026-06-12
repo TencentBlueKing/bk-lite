@@ -24,6 +24,7 @@ import {
 import { useCollectApi, useModelApi } from '@/app/cmdb/api';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import TopologyGraphModal from './topologyGraphModal';
 import styles from '../index.module.scss';
 import type {
   CollectTask,
@@ -219,6 +220,7 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       return next;
     });
   }, []);
+  const [topologyGraphOpen, setTopologyGraphOpen] = useState(false);
   const [rawDataPage, setRawDataPage] = useState(1);
   const [rawDataPageSize, setRawDataPageSize] = useState(20);
   const [associationMap, setAssociationMap] = useState<Record<string, string>>(
@@ -481,7 +483,21 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       <Card
         size="small"
         className="mb-4 border-[var(--color-border-1)] bg-[var(--color-bg-1)]"
-        title={t('Collection.taskDetail.topologySummary')}
+        title={
+          <span className="inline-flex items-center gap-3">
+            {t('Collection.taskDetail.topologySummary')}
+            {topologyFacts.length > 0 && (
+              <Button
+                type="link"
+                size="small"
+                className="px-0"
+                onClick={() => setTopologyGraphOpen(true)}
+              >
+                {t('Collection.taskDetail.viewTopologyGraph')}
+              </Button>
+            )}
+          </span>
+        }
         extra={
           <Button
             type="text"
@@ -789,6 +805,12 @@ const TaskDetail: React.FC<TaskDetailProps> = ({ task, modelId }) => {
       {renderTopologySummary()}
 
       <Tabs defaultActiveKey="add" items={tabItems} className="flex-1" />
+
+      <TopologyGraphModal
+        open={topologyGraphOpen}
+        onClose={() => setTopologyGraphOpen(false)}
+        links={detailData.topology?.links || []}
+      />
     </div>
   );
 };
