@@ -930,6 +930,9 @@ class LogPolicyScan:
                 # 告警已成功通知过且未发生级别变化时不重复通知，避免持续命中导致每个扫描周期重复发送
                 if event.alert.notice:
                     event.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
+                    # 去重跳过视为已结清：必须置 notified=True，否则补偿任务会把
+                    # 这些事件当作发送失败反复重投，去重就失效了（与 #3312 的语义对齐）
+                    event.notified = True
                     continue
                 is_notice, notice_result = self.send_notice(event)
                 event.notice_result = notice_result

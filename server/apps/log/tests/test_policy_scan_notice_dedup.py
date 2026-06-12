@@ -28,6 +28,9 @@ class FakeEvent:
     objects = None  # 由测试注入 FakeManager
 
     def __init__(self, **kwargs):
+        # 对齐 Event 模型默认值（#3312 引入），notice() 会读写这两个字段
+        self.notified = False
+        self.notice_retry_count = 0
         for key, value in kwargs.items():
             setattr(self, key, value)
         alert = kwargs.get("alert")
@@ -183,6 +186,8 @@ def test_continued_hit_same_level_skips_renotice(monkeypatch):
 
     # 同一活跃告警持续命中且级别未变：不得重复发送
     assert calls == []
+    # 跳过的事件必须视为已结清（notified=True），否则补偿任务会将其当作发送失败重投
+    assert event_objs[0].notified is True
 
 
 def test_level_change_resets_notice_and_renotifies(monkeypatch):
