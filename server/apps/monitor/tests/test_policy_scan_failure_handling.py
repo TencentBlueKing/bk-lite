@@ -248,11 +248,128 @@ def _install_monitor_policy_view_dependencies(monkeypatch):
     _install_module(monkeypatch, "apps.monitor.models", PolicyOrganization=object, MonitorAlert=object)
     _install_module(monkeypatch, "apps.monitor.models.monitor_policy", MonitorPolicy=_ImportMonitorPolicy)
     _install_module(monkeypatch, "apps.monitor.serializers.monitor_policy", MonitorPolicySerializer=object)
-    _install_module(monkeypatch, "apps.monitor.services.alert_lifecycle_notify", AlertLifecycleNotifier=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.alert_lifecycle_notify",
+        AlertLifecycleNotifier=object,
+        NOTIFY_SCOPE_ALERT_CENTER_ONLY="alert_center_only",
+        NOTIFY_SCOPE_ALL_CONFIGURED="all_configured",
+    )
     _install_module(monkeypatch, "apps.monitor.services.policy", PolicyService=object)
     _install_module(monkeypatch, "apps.monitor.services.policy_baseline", PolicyBaselineService=object)
     _install_module(monkeypatch, "apps.monitor.utils.pagination", parse_page_params=lambda *args, **kwargs: (1, 10))
     _install_module(monkeypatch, "config.drf.pagination", CustomPageNumberPagination=object)
+
+
+def _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls):
+    class _ChannelQuerySet:
+        def __init__(self, channel):
+            self.channel = channel
+
+        def first(self):
+            return self.channel
+
+    class Channel:
+        class objects:
+            @staticmethod
+            def filter(id):
+                return _ChannelQuerySet(channels_by_id.get(id))
+
+    class SystemMgmtUtils:
+        @staticmethod
+        def send_msg_with_channel(channel_id, title, content, notice_users):
+            send_calls.append(
+                {
+                    "channel_id": channel_id,
+                    "title": title,
+                    "content": content,
+                    "notice_users": notice_users,
+                }
+            )
+            return {"result": True}
+
+    class MonitorAlert:
+        class objects:
+            @staticmethod
+            def bulk_update(alerts, fields):
+                send_calls.append({"bulk_update": [alert.id for alert in alerts], "fields": fields})
+
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+    _install_module(monkeypatch, "apps.monitor.utils.system_mgmt_api", SystemMgmtUtils=SystemMgmtUtils)
+    _install_module(monkeypatch, "apps.system_mgmt.models", Channel=Channel)
+    _install_module(monkeypatch, "apps.monitor.models", MonitorAlert=MonitorAlert)
+
+    return _load_module(
+        "alert_lifecycle_notifier_scope_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "alert_lifecycle_notify.py",
+    )
+
+
+def _build_alert_for_notify_scope(notice_type_ids):
+    return types.SimpleNamespace(
+        id=9001,
+        policy_id=42,
+        notice_type_ids=notice_type_ids,
+        notice_users=["alice"],
+        notice_logs=[],
+        start_event_time=datetime(2026, 4, 21, 7, 59, tzinfo=timezone.utc),
+        end_event_time=_FrozenDateTime.fixed_now,
+        monitor_instance_id="('host-1',)",
+        monitor_instance_name="host-1",
+        metric_instance_id="('host-1', '/data')",
+        dimensions={"instance_id": "host-1", "mountpoint": "/data"},
+        level="warning",
+        value=91.2,
+        content="disk usage high",
+        status="closed",
+    )
+
+
+def test_alert_lifecycle_notifier_alert_center_scope_only_sends_alert_center_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        1: types.SimpleNamespace(id=1, name="alert-center", channel_type="nats", config={"method_name": "receive_alert_events"}),
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notify_scope([1, 2])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=True)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts(
+        [alert],
+        action="closed",
+        operator="alice",
+        reason="policy_scope_changed",
+        notify_scope="alert_center_only",
+    )
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [1]
+    assert channel_send_calls[0]["title"] == ""
+    assert channel_send_calls[0]["content"]["events"][0]["labels"]["reason"] == "policy_scope_changed"
+    assert alert.notice_logs[-1]["channel_id"] == 1
+    assert {"bulk_update": [alert.id], "fields": ["notice_logs"]} in send_calls
+
+
+def test_alert_lifecycle_notifier_alert_center_scope_skips_when_only_normal_channels_are_configured(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notify_scope([2])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=True)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts(
+        [alert],
+        action="closed",
+        operator="alice",
+        reason="policy_scope_changed",
+        notify_scope="alert_center_only",
+    )
+
+    assert send_calls == []
+    assert alert.notice_logs == []
 
 
 def test_monitor_policy_baseline_refreshes_when_grouping_contract_changes(monkeypatch):
@@ -417,8 +534,8 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
         def __init__(self, policy_obj):
             self.policy_obj = policy_obj
 
-        def notify_alerts(self, alerts, action, operator="", reason=""):
-            lifecycle_calls.append((alerts, action, operator, reason))
+        def notify_alerts(self, alerts, action, operator="", reason="", notify_scope="all_configured"):
+            lifecycle_calls.append((alerts, action, operator, reason, notify_scope))
 
     module.MonitorPolicy = MonitorPolicy
     module.MonitorAlert = MonitorAlert
@@ -440,8 +557,157 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
     assert recovered_no_data_alert.status == "recovered"
     assert active_threshold_alert.status == "new"
     assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs"])]
-    assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled")]
+    assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled", "all_configured")]
     assert baseline_calls == [("clear", policy.id)]
+
+
+class _AlertQuerySet(list):
+    pass
+
+
+def test_monitor_policy_source_change_closes_active_threshold_alerts_with_alert_center_only_scope(monkeypatch):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_scope_change_close_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    policy = types.SimpleNamespace(id=42)
+    active_threshold_alert = types.SimpleNamespace(
+        id=501,
+        status="new",
+        alert_type="alert",
+        end_event_time=None,
+        operator="",
+        operation_logs=[],
+    )
+    active_no_data_alert = types.SimpleNamespace(id=502, status="new", alert_type="no_data", operation_logs=[])
+    filter_calls = []
+    bulk_updates = []
+    lifecycle_calls = []
+
+    class MonitorAlert:
+        class objects:
+            @staticmethod
+            def filter(**kwargs):
+                filter_calls.append(kwargs)
+                return _AlertQuerySet([active_threshold_alert])
+
+            @staticmethod
+            def bulk_update(alerts, fields):
+                bulk_updates.append((alerts, fields))
+
+    class AlertLifecycleNotifier:
+        def __init__(self, policy_obj):
+            self.policy_obj = policy_obj
+
+        def notify_alerts(self, alerts, action, operator="", reason="", notify_scope="all_configured"):
+            lifecycle_calls.append((alerts, action, operator, reason, notify_scope))
+
+    module.MonitorAlert = MonitorAlert
+    module.AlertLifecycleNotifier = AlertLifecycleNotifier
+    module.datetime = _FrozenDateTime
+
+    old_state = {
+        "source": {"type": "instance", "values": ["('host-1',)"]},
+        "group_by": ["instance_id"],
+        "query_condition": {"metric_id": 10},
+        "monitor_object": 3,
+        "collect_type": "host",
+    }
+    updated_policy = types.SimpleNamespace(
+        id=42,
+        source={"type": "instance", "values": ["('host-2',)"]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10},
+        monitor_object_id=3,
+        collect_type="host",
+    )
+
+    module.MonitorPolicyViewSet().close_active_threshold_alerts_for_policy_config_change(
+        policy,
+        old_state,
+        updated_policy,
+        operator="alice",
+    )
+
+    assert filter_calls == [{"policy_id": policy.id, "alert_type": "alert", "status": "new"}]
+    assert active_threshold_alert.status == "closed"
+    assert active_threshold_alert.end_event_time == _FrozenDateTime.fixed_now
+    assert active_threshold_alert.operator == "alice"
+    assert active_threshold_alert.operation_logs[-1]["reason"] == "policy_scope_changed"
+    assert active_no_data_alert.status == "new"
+    assert bulk_updates == [([active_threshold_alert], ["status", "end_event_time", "operator", "operation_logs"])]
+    assert lifecycle_calls == [([active_threshold_alert], "closed", "alice", "policy_scope_changed", "alert_center_only")]
+
+
+@pytest.mark.parametrize(
+    ("old_state", "updated_policy", "expected_reason"),
+    [
+        (
+            {
+                "source": {"type": "instance", "values": ["('host-1',)"]},
+                "group_by": ["instance_id", "mountpoint"],
+                "query_condition": {"metric_id": 10},
+                "monitor_object": 3,
+                "collect_type": "host",
+            },
+            types.SimpleNamespace(
+                id=42,
+                source={"type": "instance", "values": ["('host-1',)"]},
+                group_by=["instance_id"],
+                query_condition={"metric_id": 10},
+                monitor_object_id=3,
+                collect_type="host",
+            ),
+            "policy_group_by_changed",
+        ),
+        (
+            {
+                "source": {"type": "instance", "values": ["('host-1',)"]},
+                "group_by": ["instance_id"],
+                "query_condition": {"metric_id": 10, "filter": [{"key": "mountpoint", "value": "/data"}]},
+                "monitor_object": 3,
+                "collect_type": "host",
+            },
+            types.SimpleNamespace(
+                id=42,
+                source={"type": "instance", "values": ["('host-1',)"]},
+                group_by=["instance_id"],
+                query_condition={"metric_id": 10, "filter": [{"key": "mountpoint", "value": "/"}]},
+                monitor_object_id=3,
+                collect_type="host",
+            ),
+            "policy_query_condition_changed",
+        ),
+        (
+            {
+                "source": {"type": "instance", "values": ["('host-1',)"]},
+                "group_by": ["instance_id"],
+                "query_condition": {"metric_id": 10},
+                "monitor_object": 3,
+                "collect_type": "host",
+            },
+            types.SimpleNamespace(
+                id=42,
+                source={"type": "instance", "values": ["('host-1',)"]},
+                group_by=["instance_id"],
+                query_condition={"metric_id": 10},
+                monitor_object_id=4,
+                collect_type="http",
+            ),
+            "policy_monitor_target_changed",
+        ),
+    ],
+)
+def test_monitor_policy_config_change_reason_priority(monkeypatch, old_state, updated_policy, expected_reason):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_change_reason_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    assert module.MonitorPolicyViewSet().get_policy_config_change_reason(old_state, updated_policy) == expected_reason
 
 
 def _install_scanner_dependencies(monkeypatch):

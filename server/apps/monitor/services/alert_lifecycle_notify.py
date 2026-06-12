@@ -21,13 +21,20 @@ LEVEL_TO_ALERT_CENTER = {
     "no_data": "2",
 }
 
+NOTIFY_SCOPE_NONE = "none"
+NOTIFY_SCOPE_ALERT_CENTER_ONLY = "alert_center_only"
+NOTIFY_SCOPE_ALL_CONFIGURED = "all_configured"
+
 
 class AlertLifecycleNotifier:
     def __init__(self, policy=None):
         self.policy = policy
 
-    def notify_alerts(self, alerts, action, operator="", reason=""):
+    def notify_alerts(self, alerts, action, operator="", reason="", notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts:
+            return
+
+        if notify_scope == NOTIFY_SCOPE_NONE:
             return
 
         if self.policy and not self.policy.notice:
@@ -49,7 +56,7 @@ class AlertLifecycleNotifier:
         for (channel_id, notice_users_tuple), group_alerts in groups.items():
             notice_users = list(notice_users_tuple)
             try:
-                results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason)
+                results = self._send_to_channel(channel_id, notice_users, group_alerts, action, operator, reason, notify_scope)
                 for alert, log_entry in results:
                     alert_log_entries[alert.id].append(log_entry)
             except Exception as e:
@@ -101,7 +108,7 @@ class AlertLifecycleNotifier:
             return self.policy.notice_users
         return []
 
-    def _send_to_channel(self, channel_id, notice_users, alerts, action, operator, reason):
+    def _send_to_channel(self, channel_id, notice_users, alerts, action, operator, reason, notify_scope):
         channel = Channel.objects.filter(id=channel_id).first()
         if not channel:
             logger.warning(f"Channel {channel_id} not found, skip notification for {len(alerts)} alerts")
@@ -110,13 +117,20 @@ class AlertLifecycleNotifier:
                 (alert, {"time": now, "action": action, "channel_id": channel_id, "success": False, "error": "channel_not_found"}) for alert in alerts
             ]
 
-        is_alert_center = channel.channel_type == "nats" and channel.config.get("method_name") == "receive_alert_events"
+        is_alert_center = self._is_alert_center_channel(channel)
+        if notify_scope == NOTIFY_SCOPE_ALERT_CENTER_ONLY and not is_alert_center:
+            logger.info(f"Skip non-alert-center channel {channel_id} for alert-center-only lifecycle notify")
+            return []
+
         channel_name = channel.name or str(channel_id)
 
         if is_alert_center:
             return self._push_to_alert_center(channel_id, channel_name, alerts, action, operator, reason)
         else:
             return self._send_normal_notice(channel_id, channel_name, notice_users, alerts, action, operator, reason)
+
+    def _is_alert_center_channel(self, channel):
+        return bool(channel and channel.channel_type == "nats" and channel.config.get("method_name") == "receive_alert_events")
 
     @staticmethod
     def _parse_channel_result(send_result):
