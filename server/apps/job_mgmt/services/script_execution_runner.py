@@ -193,6 +193,10 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             result["finished_at"] = timezone.now().isoformat()
             return result
 
+        logger.info(
+            "[%s] 目标 %s(%s) 开始流式执行: source=%s topic=%s",
+            self.task_name, target_name, target_ip, target_source, build_stream_topic(execution_id, target_key),
+        )
         try:
             shell = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
             if target_source in (TargetSource.NODE_MGMT, TargetSource.SYNC):

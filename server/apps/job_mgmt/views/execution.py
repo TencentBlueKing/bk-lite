@@ -336,8 +336,16 @@ class JobExecutionViewSet(AuthViewSet):
         ]
 
         if execution.status in ExecutionStatus.TERMINAL_STATES:
+            logger.info(
+                "[stream] SSE 连接(终态快照): execution_id=%s status=%s targets=%s",
+                execution.id, execution.status, target_keys,
+            )
             generator = snapshot_sse_from_results(execution.execution_results or [])
         else:
+            logger.info(
+                "[stream] SSE 连接(实时): execution_id=%s status=%s targets=%s",
+                execution.id, execution.status, target_keys,
+            )
             try:
                 ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
             except Exception as e:

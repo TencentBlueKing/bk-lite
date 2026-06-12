@@ -95,6 +95,7 @@ export function useExecutionStream({
 
     const run = async () => {
       setStreaming(true);
+      console.log(`[exec-stream] 连接 SSE: execution_id=${executionId}`);
       try {
         const response = await fetch(
           `/api/proxy/job_mgmt/api/execution/${executionId}/stream/`,
@@ -105,6 +106,7 @@ export function useExecutionStream({
           }
         );
         if (!response.ok || !response.body) {
+          console.warn(`[exec-stream] 连接失败: status=${response.status}`);
           return;
         }
         const reader = response.body.getReader();
@@ -127,6 +129,7 @@ export function useExecutionStream({
             if (!payloadStr) continue;
             if (payloadStr === '[DONE]') {
               done = true;
+              console.log(`[exec-stream] 收到 [DONE]，关闭: execution_id=${executionId}`);
               break;
             }
             try {
@@ -139,8 +142,11 @@ export function useExecutionStream({
         if (!cancelled) {
           onAllDoneRef.current?.();
         }
-      } catch {
-        // AbortError 等：静默；轮询会兜底最终结果
+      } catch (err) {
+        // AbortError 属正常断开（卸载/切换），其它错误打印便于排查
+        if ((err as Error)?.name !== 'AbortError') {
+          console.warn(`[exec-stream] 流异常: execution_id=${executionId}`, err);
+        }
       } finally {
         if (!cancelled) {
           setStreaming(false);

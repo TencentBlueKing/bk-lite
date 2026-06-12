@@ -416,6 +416,7 @@ func Execute(req ExecuteRequest, instanceId string) ExecuteResponse {
 	var stdoutNatsWriter *streamLogWriter
 	var stderrNatsWriter *streamLogWriter
 	if req.StreamLogs && req.StreamLogTopic != "" && localStreamPublisher != nil {
+		logger.Infof("[Local Execute] Instance: %s, 流式输出已启用 topic=%s execution_id=%s", instanceId, req.StreamLogTopic, req.ExecutionID)
 		stdoutNatsWriter = newStreamLogWriter(localStreamPublisher, req.StreamLogTopic, req.ExecutionID, "stdout")
 		stderrNatsWriter = newStreamLogWriter(localStreamPublisher, req.StreamLogTopic, req.ExecutionID, "stderr")
 		stdoutWriter = io.MultiWriter(stdoutWriter, stdoutNatsWriter)

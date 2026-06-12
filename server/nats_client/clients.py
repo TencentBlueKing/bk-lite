@@ -317,6 +317,7 @@ async def ensure_stream(name: str, subjects, max_age: int, max_bytes: int) -> No
         )
         try:
             await js.add_stream(cfg)
+            logger.info("[jetstream] 流已创建: name=%s, subjects=%s, max_age=%ss", name, list(subjects), max_age)
         except Exception as e:
             # 多为「流已存在」→ 更新配置即可；记一条 warning 避免掩盖真实错误。
             logger.warning("ensure_stream add_stream failed, fallback to update: name=%s, error=%s", name, str(e))
@@ -337,19 +338,25 @@ async def iter_jetstream_subject(filter_subject: str, idle_timeout: float = 300)
     """
     nc = await get_nc_client()
     sub = None
+    delivered = 0
     try:
         js = nc.jetstream()
         sub = await js.subscribe(filter_subject, ordered_consumer=True)
+        logger.info("[jetstream] 有序消费者已创建, filter=%s, idle_timeout=%ss", filter_subject, idle_timeout)
         while True:
             try:
                 msg = await sub.next_msg(timeout=idle_timeout)
-            except Exception:
+            except Exception as e:
+                logger.info("[jetstream] 流结束/空闲超时, filter=%s, 已投递=%s, 原因=%s", filter_subject, delivered, e)
                 break
             try:
                 payload = json.loads(msg.data.decode())
             except json.JSONDecodeError:
                 payload = {"line": msg.data.decode(errors="ignore")}
+            delivered += 1
             yield msg.subject, payload
+    except Exception as e:
+        logger.warning("[jetstream] 订阅失败(降级), filter=%s, error=%s", filter_subject, e)
     finally:
         if sub is not None:
             try:

@@ -80,6 +80,7 @@ async def snapshot_sse_from_results(results):
 async def _default_message_source(execution_id):  # pragma: no cover
     """默认数据源：JetStream 有序消费者，把主题里的 target_key 注入 payload。"""
     filter_subject = f"job.stream.{execution_id}.>"
+    logger.info("[stream] 订阅 JetStream 回放主题: %s", filter_subject)
     async for subject, payload in iter_jetstream_subject(filter_subject):
         tk = parse_target_key(subject, execution_id)
         if "target_key" not in payload and tk:
@@ -92,12 +93,20 @@ async def stream_execution_events(execution_id, target_keys, message_source=None
     aggregator = ExecutionStreamAggregator(target_keys)
     if message_source is None:
         message_source = _default_message_source(execution_id)
+    logger.info("[stream] 开始流式输出: execution_id=%s targets=%s", execution_id, list(target_keys))
+    count = 0
+    completed = False
     try:
         async for payload in message_source:
+            count += 1
             yield aggregator.process(payload)
             if aggregator.is_complete():
+                completed = True
                 break
     except Exception as e:  # 源异常不应让连接 500，转一条 error 事件后正常收尾
         logger.warning(f"[stream_execution_events] 数据源异常 execution_id={execution_id}: {e}")
         yield format_sse_event({"type": "error", "message": str(e)})
+    logger.info(
+        "[stream] 结束流式输出: execution_id=%s 转发事件数=%s 全部目标完成=%s", execution_id, count, completed
+    )
     yield "data: [DONE]\n\n"
