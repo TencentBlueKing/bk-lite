@@ -49,14 +49,14 @@ class AggregationProcessor:
         validated = []
         for dim in raw_dimensions:
             if not isinstance(dim, str):
-                logger.warning(f"策略 {strategy_name}: 维度名非字符串，已跳过: {dim}")
+                logger.warning("[AlertAggregation] 策略 %s: 维度名非字符串，已跳过: %s", strategy_name, dim)
                 continue
             dim = dim.strip()
             if not DIMENSION_NAME_PATTERN.match(dim):
-                logger.warning(f"策略 {strategy_name}: 维度名格式非法，已跳过: {dim}")
+                logger.warning("[AlertAggregation] 策略 %s: 维度名格式非法，已跳过: %s", strategy_name, dim)
                 continue
             if dim not in ALLOWED_DIMENSIONS:
-                logger.warning(f"策略 {strategy_name}: 不支持的维度名，已跳过: {dim}")
+                logger.warning("[AlertAggregation] 策略 %s: 不支持的维度名，已跳过: %s", strategy_name, dim)
                 continue
             validated.append(dim)
 
@@ -66,25 +66,25 @@ class AggregationProcessor:
         try:
             active_strategies = self._get_active_strategies()
             if not active_strategies:
-                logger.info("无活跃告警策略，跳过聚合处理")
+                logger.info("[AlertAggregation] 无活跃告警策略，跳过聚合处理")
                 return
 
-            logger.info("缺失检查任务开始")
-            logger.info(f"开始处理 {len(active_strategies)} 个活跃策略")
+            logger.info("[AlertAggregation] 缺失检查任务开始")
+            logger.info("[AlertAggregation] 开始处理 %s 个活跃策略", len(active_strategies))
             logger.info(
-                "活跃 missing_detection 策略数量=%s",
+                "[AlertAggregation] 活跃 missing_detection 策略数量=%s",
                 sum(1 for strategy in active_strategies if strategy.strategy_type == AlarmStrategyType.MISSING_DETECTION),
             )
 
             for strategy in active_strategies:
-                logger.info(f"处理策略: {strategy.name} (ID: {strategy.id})")
+                logger.info("[AlertAggregation] 处理策略: %s (ID: %s)", strategy.name, strategy.id)
                 self._process_strategy(strategy, timezone.now())
 
-            logger.info("所有策略处理完成")
-            logger.info("缺失检查任务结束")
+            logger.info("[AlertAggregation] 所有策略处理完成")
+            logger.info("[AlertAggregation] 缺失检查任务结束")
 
         except Exception as e:
-            logger.exception(f"聚合处理失败: {e}")
+            logger.exception("[AlertAggregation] 聚合处理失败: %s", e)
             raise
         finally:
             AlertBuilder.clear_event_cache()
@@ -115,7 +115,7 @@ class AggregationProcessor:
 
         if normalization_reason is not None:
             logger.warning(
-                "策略 %s: window_size=%s 非法或超限，已兜底为 %s 分钟",
+                "[AlertAggregation] 策略 %s: window_size=%s 非法或超限，已兜底为 %s 分钟",
                 strategy.name,
                 raw_window_size,
                 window_size,
@@ -123,13 +123,16 @@ class AggregationProcessor:
 
         cutoff_time = now - timedelta(minutes=window_size)
 
-        logger.info(f"策略 {strategy.name}: 查询时间窗口={window_size}分钟, 起始时间={cutoff_time.isoformat()}")
+        logger.info(
+            "[AlertAggregation] 策略 %s: 查询时间窗口=%s分钟, 起始时间=%s",
+            strategy.name, window_size, cutoff_time.isoformat(),
+        )
 
         events = Event.objects.filter(
             received_at__gte=cutoff_time,
             action=EventAction.CREATED,
         )
-        logger.debug(f"策略 {strategy.name}: 时间范围内事件总数={events.count()}")
+        logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())
 
         return events
 
@@ -148,27 +151,27 @@ class AggregationProcessor:
             events = self.get_events_for_strategy(strategy, now)
 
             if not events.exists():
-                logger.info(f"策略 {strategy.name}: 无事件需要处理")
+                logger.info("[AlertAggregation] 策略 %s: 无事件需要处理", strategy.name)
                 self._mark_strategy_executed(strategy, now)
                 return
 
             matched_events = StrategyMatcher.match_events_to_strategy(events, cast(List[List[Dict]], strategy.match_rules or []))
 
             if not matched_events.exists():
-                logger.info(f"策略 {strategy.name}: 无匹配规则的事件")
+                logger.info("[AlertAggregation] 策略 %s: 无匹配规则的事件", strategy.name)
                 self._mark_strategy_executed(strategy, now)
                 return
 
             params = cast(Dict[str, Any], strategy.params or {})
             raw_dimensions = params.get("group_by", []) or ["event_id"]
             dimensions = self._validate_dimensions(raw_dimensions, strategy.name)
-            logger.info(f"策略 {strategy.name}: 聚合维度={dimensions}")
+            logger.info("[AlertAggregation] 策略 %s: 聚合维度=%s", strategy.name, dimensions)
 
             if self._aggregate_for_dimensions(strategy, matched_events, dimensions, now):
-                logger.info(f"策略 {strategy.name}: 维度 {dimensions} 聚合成功")
+                logger.info("[AlertAggregation] 策略 %s: 维度 %s 聚合成功", strategy.name, dimensions)
 
         except Exception as e:  # noqa
-            logger.exception(f"策略 {strategy.name} 处理失败")
+            logger.exception("[AlertAggregation] 策略 %s 处理失败", strategy.name)
 
     def _process_missing_detection_strategy(self, strategy: AlarmStrategy, now: datetime) -> None:
         logger.info(
@@ -497,13 +500,16 @@ class AggregationProcessor:
             # 优化：直接使用已过滤的 events QuerySet，避免重复查询
             load_success = self.db_conn.load_events_to_memory(events)
             if not load_success:
-                logger.info(f"策略 {strategy.name}过滤后无事件，跳过聚合")
+                logger.info("[AlertAggregation] 策略 %s 过滤后无事件，跳过聚合", strategy.name)
                 self._mark_strategy_executed(strategy, now)
                 return False
 
             window_config = WindowFactory.create_from_strategy(strategy)
 
-            logger.debug(f"策略 {strategy.name}: 窗口配置 type={window_config.window_type}, size={window_config.window_size_minutes}分钟")
+            logger.debug(
+                "[AlertAggregation] 策略 %s: 窗口配置 type=%s, size=%s分钟",
+                strategy.name, window_config.window_type, window_config.window_size_minutes,
+            )
 
             sql_query = self.sql_builder.build_aggregation_sql(
                 dimensions=dimensions,
@@ -511,16 +517,16 @@ class AggregationProcessor:
                 strategy_id=strategy.id,
             )
 
-            logger.debug(f"策略 {strategy.name}: 执行聚合SQL")
+            logger.debug("[AlertAggregation] 策略 %s: 执行聚合SQL", strategy.name)
 
             results = self.db_conn.execute_query(sql_query)
 
             if not results:
-                logger.info(f"策略 {strategy.name}: 聚合结果为空")
+                logger.info("[AlertAggregation] 策略 %s: 聚合结果为空", strategy.name)
                 self._mark_strategy_executed(strategy, now)
                 return False
 
-            logger.info(f"策略 {strategy.name}: 聚合完成, 生成 {len(results)} 个告警组")
+            logger.info("[AlertAggregation] 策略 %s: 聚合完成, 生成 %s 个告警组", strategy.name, len(results))
 
             success_count = self._create_or_update_alerts(results, strategy, dimensions)
             if success_count > 0:
@@ -528,7 +534,7 @@ class AggregationProcessor:
             return True
 
         except Exception as e:
-            logger.error(f"策略 {strategy.name}: 维度 {dimensions} 聚合失败: {e}", exc_info=True)
+            logger.error("[AlertAggregation] 策略 %s: 维度 %s 聚合失败: %s", strategy.name, dimensions, e, exc_info=True)
             return False
 
     def _create_or_update_alerts(
@@ -539,7 +545,7 @@ class AggregationProcessor:
     ) -> int:
         """创建或更新告警"""
 
-        logger.info(f"策略 {strategy.name}: 开始创建/更新告警, 结果数={len(aggregation_results)}")
+        logger.info("[AlertAggregation] 策略 %s: 开始创建/更新告警, 结果数=%s", strategy.name, len(aggregation_results))
         alert_levels = list(Level.objects.filter(level_type=LevelType.ALERT).values("level_id", "level_name", "level_display_name"))
         success_count = 0
         fail_count = 0
@@ -578,15 +584,22 @@ class AggregationProcessor:
                         recovered_count += 1
 
                     success_count += 1
-                    logger.debug(f"策略 {strategy.name}: 告警处理成功 fingerprint={result.get('fingerprint')}")
+                    logger.debug(
+                        "[AlertAggregation] 策略 %s: 告警处理成功 fingerprint=%s",
+                        strategy.name, result.get("fingerprint"),
+                    )
             except Exception as e:
                 fail_count += 1
                 logger.error(
-                    f"策略 {strategy.name}: 告警创建/更新失败 fingerprint={result.get('fingerprint')}: {e}",
+                    "[AlertAggregation] 策略 %s: 告警创建/更新失败 fingerprint=%s: %s",
+                    strategy.name, result.get("fingerprint"), e,
                     exc_info=True,
                 )
 
-        logger.info(f"策略 {strategy.name}: 告警处理完成, 成功={success_count}, 失败={fail_count}, 自动恢复={recovered_count}")
+        logger.info(
+            "[AlertAggregation] 策略 %s: 告警处理完成, 成功=%s, 失败=%s, 自动恢复=%s",
+            strategy.name, success_count, fail_count, recovered_count,
+        )
         # 异步执行新创建告警的自动分配（不阻塞聚合流程）
         if new_alert_ids:
             self._schedule_auto_assignment(new_alert_ids)
@@ -654,10 +667,10 @@ class AggregationProcessor:
         try:
             from apps.alerts.tasks import async_auto_assignment_for_alerts
 
-            logger.info(f"调度自动分配任务，告警数量: {len(alert_ids)}")
+            logger.info("[AlertAggregation] 调度自动分配任务，告警数量: %s", len(alert_ids))
             current_app.send_task(async_auto_assignment_for_alerts.name, args=[alert_ids])
-            logger.debug(f"自动分配任务已提交到队列")
+            logger.debug("[AlertAggregation] 自动分配任务已提交到队列")
 
         except Exception as e:  # noqa
-            logger.exception("调度自动分配任务失败")
+            logger.exception("[AlertAggregation] 调度自动分配任务失败")
             # 调度失败不影响聚合主流程

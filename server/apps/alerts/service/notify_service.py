@@ -35,8 +35,10 @@ class NotifyResultService(object):
             else:
                 return NotifyResultStatus.FAILED
         except Exception as e:
-            logger.warning("==== NotifyResultService format_notify_result error ===, result={}, error={}".format(
-                self.notify_result, e))
+            logger.warning(
+                "[AlertNotify] NotifyResultService format_notify_result 解析失败, result=%s, error=%s",
+                self.notify_result, e,
+            )
             return NotifyResultStatus.FAILED
 
     def save_notify_result(self):

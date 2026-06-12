@@ -28,4 +28,4 @@ class AutoCloser:
     def _close_alert(alert: Alert):
         alert.status = AlertStatus.AUTO_CLOSE
         alert.save(update_fields=["status", "updated_at"])
-        logger.info(f"自动关闭告警: {alert.alert_id}")
+        logger.info("[AlertRecovery] 自动关闭告警: %s", alert.alert_id)

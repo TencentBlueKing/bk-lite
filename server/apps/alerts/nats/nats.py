@@ -203,7 +203,7 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
             }
         }
     """
-    logger.info("=== get_alert_trend_data ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === get_alert_trend_data ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     queryset, error = _get_authorized_alert_queryset(user_info)
@@ -231,7 +231,7 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     alert_model_fields = set(Alert.model_fields())
     for key, value in kwargs.items():
         if key not in alert_model_fields:
-            logger.warning(f"Invalid field '{key}' in filter conditions.")
+            logger.warning("[AlertNatsRPC] 过滤条件包含非法字段 '%s'，已忽略", key)
             continue
         alert_filter &= Q(**{key: value})
 
@@ -275,7 +275,7 @@ def get_alert_source_event_top(*args, **kwargs) -> Dict[str, Any]:
             "data": [["Zabbix", 42156], ["Prometheus", 31245], ...]
         }
     """
-    logger.info("=== get_alert_source_event_top ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === get_alert_source_event_top ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
     queryset, error = _get_authorized_alert_queryset(user_info)
     if error:
@@ -311,7 +311,7 @@ def get_alert_source_statistics(*args, **kwargs) -> Dict[str, Any]:
             }
         }
     """
-    logger.info("=== get_alert_source_statistics ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === get_alert_source_statistics ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
     if not _has_alerts_view_permission(user_info):
         return {"result": False, "data": {}, "message": "Insufficient permissions"}
@@ -365,7 +365,7 @@ def get_notification_statistics(*args, **kwargs) -> Dict[str, Any]:
             }
         }
     """
-    logger.info("=== get_notification_statistics ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === get_notification_statistics ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
     if not _has_alerts_view_permission(user_info):
         return {"result": False, "data": {}, "message": "Insufficient permissions"}
@@ -417,7 +417,7 @@ def get_notification_channel_stats(*args, **kwargs) -> Dict[str, Any]:
             ]
         }
     """
-    logger.info("=== get_notification_channel_stats ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === get_notification_channel_stats ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
     if not _has_alerts_view_permission(user_info):
         return {"result": False, "data": [], "message": "Insufficient permissions"}
@@ -473,7 +473,7 @@ def get_alert_data_quality(*args, **kwargs) -> Dict[str, Any]:
             }
         }
     """
-    logger.info("=== get_alert_data_quality ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === get_alert_data_quality ===, args=%s, kwargs=%s", args, kwargs)
     user_info = kwargs.pop("user_info", {})
     target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.pop("timezone", None))
     queryset, error = _get_authorized_alert_queryset(user_info)
@@ -585,7 +585,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
               }
             }
     """
-    logger.info(f"=== receive_alert_events via NATS ===, kwargs={kwargs}")
+    logger.info("[AlertEvent] === receive_alert_events via NATS ===, kwargs=%s", kwargs)
 
     try:
         # 提取参数
@@ -595,15 +595,15 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
 
         # 参数校验
         if not source_id:
-            logger.warning("Missing source_id in NATS alert event")
+            logger.warning("[AlertEvent] NATS 告警事件缺少 source_id")
             return {"result": False, "data": {}, "message": "Missing source_id."}
 
         if not events:
-            logger.warning(f"Missing events from source_id: {source_id}, pusher: {pusher}")
+            logger.warning("[AlertEvent] source_id=%s pusher=%s 未携带 events", source_id, pusher)
             return {"result": False, "data": {}, "message": "Missing events."}
 
         if not pusher:
-            logger.warning(f"Missing pusher identifier from source_id: {source_id}")
+            logger.warning("[AlertEvent] source_id=%s 缺少 pusher 标识", source_id)
             return {
                 "result": False,
                 "data": {},
@@ -617,7 +617,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             is_effective=True,
         ).first()
         if not event_source:
-            logger.error(f"Invalid NATS source_id: {source_id}, pusher: {pusher}")
+            logger.error("[AlertEvent] 无效的 NATS source_id=%s pusher=%s（未找到生效的告警源）", source_id, pusher)
             return {
                 "result": False,
                 "data": {},
@@ -636,12 +636,12 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         adapter = adapter_class(alert_source=event_source, secret="", events=normalized_events)
 
         # 记录推送来源信息
-        logger.info(f"Processing {len(events)} events from source_id: {source_id}, pusher: {pusher}")
+        logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
 
         # 处理告警事件
         adapter.main()
 
-        logger.info(f"Successfully processed {len(events)} events from {pusher} (source_id: {source_id})")
+        logger.info("[AlertEvent] 成功处理 %s 条事件 pusher=%s source_id=%s", len(events), pusher, source_id)
 
         return {
             "result": True,
@@ -656,8 +656,10 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
 
     except Exception as e:
         logger.error(
-            f"Error processing alert events via NATS from pusher: {kwargs.get('pusher', 'unknown')}, "
-            f"source_id: {kwargs.get('source_id', 'unknown')}, error: {e}",
+            "[AlertEvent] 处理 NATS 告警事件失败 pusher=%s source_id=%s：%s",
+            kwargs.get("pusher", "unknown"),
+            kwargs.get("source_id", "unknown"),
+            e,
             exc_info=True,
         )
         return {"result": False, "data": {}, "message": f"Error: {str(e)}"}
@@ -668,7 +670,7 @@ def alert_test(*args, **kwargs):
     """
     测试nats的告警接口
     """
-    logger.info("=== alert_test ===, args={}, kwargs={}".format(args, kwargs))
+    logger.info("[AlertNatsRPC] === alert_test ===, args=%s, kwargs=%s", args, kwargs)
     return {"result": True, "data": "alert_test success", "message": ""}
 
 

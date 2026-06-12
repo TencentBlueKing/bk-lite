@@ -2,6 +2,7 @@
 # @File: get_nats_source_data.py
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
+from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
 
 
@@ -124,6 +125,14 @@ class GetNatsData:
         else:
             fun = getattr(nats_client, self.path, None)
         if fun is None:
+            logger.warning(
+                "[DataSourceQuery] 未找到接口实现 namespace=%s nats_namespace=%s path=%s",
+                self.namespace, nats_namespace, self.path,
+            )
             raise RuntimeError(f"NamePaces({self.namespace}) Module not found func({self.path})!")
 
+        logger.debug(
+            "[DataSourceQuery] 调用 NATS 取数 namespace=%s(id=%s) nats_namespace=%s path=%s",
+            namespace.name, namespace.id, nats_namespace, self.path,
+        )
         return fun(**self.params)
