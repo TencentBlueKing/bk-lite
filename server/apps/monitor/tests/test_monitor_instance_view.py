@@ -329,8 +329,12 @@ def test_primary_object_plugin_list_keeps_builtin_plugins_distinct_by_plugin_id(
     assert set(by_name) == {"Host Remote", "Windows WMI"}
     assert by_name["Host Remote"]["status"] == PluginConstants.STATUS_NORMAL
     assert by_name["Host Remote"]["collect_mode"] == PluginConstants.COLLECT_MODE_MANUAL
+    assert by_name["Host Remote"]["configured"] is False
+    assert by_name["Host Remote"]["config_source"] == "reported_only"
     assert by_name["Windows WMI"]["status"] == PluginConstants.STATUS_OFFLINE
     assert by_name["Windows WMI"]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
+    assert by_name["Windows WMI"]["configured"] is True
+    assert by_name["Windows WMI"]["config_source"] == "configured"
 
 
 def test_primary_object_plugin_list_shows_configured_host_remote_not_wmi(db, monkeypatch):
@@ -401,6 +405,8 @@ def test_primary_object_plugin_list_shows_configured_host_remote_not_wmi(db, mon
     assert plugins[0]["name"] == "Host Remote"
     assert plugins[0]["status"] == PluginConstants.STATUS_NORMAL
     assert plugins[0]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
+    assert plugins[0]["configured"] is True
+    assert plugins[0]["config_source"] == "configured_reported"
 
 
 def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_plugin(db, monkeypatch):
@@ -470,6 +476,92 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
     assert plugins[0]["plugin_id"] == plugin.id
     assert plugins[0]["status"] == PluginConstants.STATUS_NORMAL
     assert plugins[0]["collect_mode"] == PluginConstants.COLLECT_MODE_AUTO
+    assert plugins[0]["configured"] is True
+    assert plugins[0]["config_source"] == "configured_reported"
+
+
+def test_get_instance_configs_uses_plugin_id_over_collector_for_child_configs(db, monkeypatch):
+    from apps.monitor.services import node_mgmt
+
+    monitor_object = MonitorObject.objects.create(
+        name="Oracle",
+        display_name="Oracle",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('oracle-a',)",
+        name="Oracle A",
+        monitor_object=monitor_object,
+    )
+    plugin = MonitorPlugin.objects.create(
+        name="Oracle-Exporter",
+        display_name="Oracle Exporter",
+        collector="Oracle-Exporter",
+        collect_type="exporter",
+    )
+    plugin.monitor_object.add(monitor_object)
+    config = CollectConfig.objects.create(
+        id="oracle-child-cfg",
+        monitor_instance=instance,
+        monitor_plugin=plugin,
+        collector="Telegraf",
+        collect_type="exporter",
+        config_type="oracle",
+        file_type="toml",
+        is_child=True,
+    )
+
+    monkeypatch.setattr(
+        node_mgmt.InstanceConfigService,
+        "get_config_content",
+        staticmethod(lambda ids, actor_context=None: {"child": {"id": ids[0], "env_config": {}}}),
+    )
+
+    result = node_mgmt.InstanceConfigService.get_instance_configs(
+        instance.id,
+        monitor_plugin_id=plugin.id,
+        collector="Oracle-Exporter",
+        collect_type="exporter",
+    )
+
+    assert len(result) == 1
+    assert result[0]["config_ids"] == [config.id]
+    assert result[0]["monitor_plugin_id"] == plugin.id
+
+
+def test_validate_expected_collect_configs_raises_when_metadata_missing(db):
+    from apps.core.exceptions.base_app_exception import BaseAppException
+    from apps.monitor.services import node_mgmt
+
+    monitor_object = MonitorObject.objects.create(
+        name="Oracle",
+        display_name="Oracle",
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('oracle-a',)",
+        name="Oracle A",
+        monitor_object=monitor_object,
+    )
+    plugin = MonitorPlugin.objects.create(
+        name="Oracle-Exporter",
+        display_name="Oracle Exporter",
+        collector="Oracle-Exporter",
+        collect_type="exporter",
+    )
+    plugin.monitor_object.add(monitor_object)
+
+    try:
+        node_mgmt.InstanceConfigService._validate_expected_collect_configs(
+            [{"instance_id": instance.id}],
+            [{"type": "oracle"}],
+            plugin.id,
+            "exporter",
+        )
+        assert False, "expected missing collect config metadata to fail"
+    except BaseAppException as error:
+        assert "采集配置元数据缺失" in str(error)
+        assert f"{instance.id}:oracle" in str(error)
 
 
 def test_effective_plugins_action_returns_service_data(monkeypatch):

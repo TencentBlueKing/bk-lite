@@ -288,25 +288,31 @@ class InstanceSearch:
                     db_confs & vm_confs,
                     PluginConstants.STATUS_NORMAL,
                     PluginConstants.COLLECT_MODE_AUTO,
+                    True,
+                    PluginConstants.CONFIG_SOURCE_CONFIGURED_REPORTED,
                 ),
                 # 自动失联
                 (
                     db_confs - vm_confs,
                     PluginConstants.STATUS_OFFLINE,
                     PluginConstants.COLLECT_MODE_AUTO,
+                    True,
+                    PluginConstants.CONFIG_SOURCE_CONFIGURED,
                 ),
                 # 手动正常
                 (
                     vm_confs - db_confs,
                     PluginConstants.STATUS_NORMAL,
                     PluginConstants.COLLECT_MODE_MANUAL,
+                    False,
+                    PluginConstants.CONFIG_SOURCE_REPORTED_ONLY,
                 ),
                 # 手动失联理应不存在，如果你想加也可以放这里
                 # (set(), PluginConstants.STATUS_OFFLINE, PluginConstants.COLLECT_MODE_MANUAL),
             ]
 
             # 统一处理插件信息
-            for conf_set, status, collect_mode in categories:
+            for conf_set, status, collect_mode, configured, config_source in categories:
                 for c_tuple in conf_set:
                     plugin_info = plugin_map.get(c_tuple)
                     if not plugin_info:
@@ -323,8 +329,12 @@ class InstanceSearch:
                     if plugin_id in appended_plugin_ids:
                         continue
                     appended_plugin_ids.add(plugin_id)
-
-                    info.update(status=status, collect_mode=collect_mode)
+                    info.update(
+                        status=status,
+                        collect_mode=collect_mode,
+                        configured=configured,
+                        config_source=config_source,
+                    )
                     item["plugins"].append(info)
 
         return data
