@@ -1273,7 +1273,7 @@ def test_send_msg_with_channel_email_accepts_username_receivers(monkeypatch):
 def test_sync_opspilot_nats_channels_create_update_delete():
     """OpsPilot 通道对账：新增、改名/换组、对账删除已移除节点。"""
     from apps.system_mgmt.models import Channel, ChannelChoices
-    from apps.system_mgmt.nats_api import sync_opspilot_nats_channels
+    from apps.system_mgmt.nats_api import OPSPILOT_NATS_NAMESPACE, sync_opspilot_nats_channels
 
     res = sync_opspilot_nats_channels(
         bot_id=7,
@@ -1297,7 +1297,7 @@ def test_sync_opspilot_nats_channels_create_update_delete():
     assert c1.name == "K8sBot - NATS触发"
     assert c1.config["source"] == "opspilot"
     assert c1.config["bot_id"] == 7
-    assert c1.config["namespace"] == "opspilot"
+    assert c1.config["namespace"] == OPSPILOT_NATS_NAMESPACE
     assert c1.config["method_name"] == "trigger_workflow_by_nats"
     assert c1.team == [2]
 

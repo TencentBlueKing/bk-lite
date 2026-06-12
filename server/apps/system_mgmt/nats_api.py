@@ -776,7 +776,9 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
 
 # OpsPilot 工作流自动托管的 NATS 触发通道：靠 config.source 标识，禁止用户在通道管理里编辑/删除
 OPSPILOT_CHANNEL_SOURCE = "opspilot"
-OPSPILOT_NATS_NAMESPACE = "opspilot"
+# 通道路由到 OpsPilot 的 NATS namespace，需与部署的 NATS_NAMESPACE 一致（默认 bklite），
+# 而非字符串 "opspilot"——所有 @nats_client.register 方法都经该 namespace 路由。
+OPSPILOT_NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
 OPSPILOT_NATS_METHOD = "trigger_workflow_by_nats"
 
 

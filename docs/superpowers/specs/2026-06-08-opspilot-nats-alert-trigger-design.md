@@ -9,7 +9,7 @@
 >    - 触发点：`bot_view.update`(is_publish) 与 `start_pilot`；删除 Bot 时清理其通道。
 >    - 实现：OpsPilot 扫描 `flow_json` 里 `type=='nats'` 的节点，经 RPC 调 system_mgmt 的 `sync_opspilot_nats_channels`（增/改/删对账）；Bot 删除调 `delete_opspilot_nats_channels`。
 >    - 通道命名：`{bot.name} - {节点 label}`（上限 100 字截断）；`team` 取 `bot.team`。
->    - config 写入 `namespace="opspilot"`、`method_name="trigger_workflow_by_nats"`、`bot_id`、`node_id`、`timeout`，并以 **`source="opspilot"`** 作为托管标识。
+>    - config 写入 `namespace`（取部署的 `NATS_NAMESPACE`，默认 `bklite`，**非** `"opspilot"`）、`method_name="trigger_workflow_by_nats"`、`bot_id`、`node_id`、`timeout`，并以 **`source="opspilot"`** 作为托管标识。
 > 3. **托管通道只读**：通道列表/详情前端隐藏「编辑/删除」并提示「OpsPilot 托管」；后端 `ChannelViewSet` 的 `update/destroy/update_settings` 对 `source=="opspilot"` 的 NATS 通道返回 403，防 API 绕过。
 > 4. **nats 触发节点多次拖出自动改名**（`NATS触发`、`NATS触发 1`…），保证派生的通道名不冲突。
 > 5. **前端不再有「是否 OpsPilot」开关**（曾短暂引入，已回退）；Studio 的 nats 节点也不承载任何路由配置。
