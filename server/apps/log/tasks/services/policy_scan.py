@@ -645,6 +645,9 @@ class LogPolicyScan:
                 if source_id in existing_alerts:
                     # 存在活跃告警，准备更新
                     alert_obj = existing_alerts[source_id]
+                    if alert_obj.level != event["level"]:
+                        # 级别变化属于显著变化，重置已通知标记以重新通知
+                        alert_obj.notice = False
                     alert_obj.value = event.get("value", alert_obj.value)
                     alert_obj.content = event["content"]
                     alert_obj.level = event["level"]
@@ -698,7 +701,7 @@ class LogPolicyScan:
             if alerts_to_update:
                 Alert.objects.bulk_update(
                     alerts_to_update,
-                    ["value", "content", "level", "end_event_time"],
+                    ["value", "content", "level", "end_event_time", "notice"],
                     batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
                 )
                 logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
@@ -924,6 +927,13 @@ class LogPolicyScan:
                 # info级别事件不通知
                 if event.level == "info":
                     continue
+                # 告警已成功通知过且未发生级别变化时不重复通知，避免持续命中导致每个扫描周期重复发送
+                if event.alert.notice:
+                    event.notice_result = [{"result": True, "message": "skipped: alert already notified"}]
+                    # 去重跳过视为已结清：必须置 notified=True，否则补偿任务会把
+                    # 这些事件当作发送失败反复重投，去重就失效了（与 #3312 的语义对齐）
+                    event.notified = True
+                    continue
                 is_notice, notice_result = self.send_notice(event)
                 event.notice_result = notice_result
                 # 记录发送是否成功 + 累计尝试次数，供补偿任务（范围B）回扫 notified=False 的失败事件
@@ -931,6 +941,7 @@ class LogPolicyScan:
                 event.notice_retry_count = (event.notice_retry_count or 0) + 1
 
                 if is_notice:
+                    event.alert.notice = True
                     alerts.append((event.alert_id, is_notice))
 
             # 批量更新通知结果
