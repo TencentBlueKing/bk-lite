@@ -20,6 +20,7 @@ _DEFAULT_JINJA_ENV = Environment()
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
     "lower",
+    "urlencode",
 )
 _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "agents",
