@@ -2,6 +2,7 @@ from apps.cmdb.constants.constants import (
     ENUM_SELECT_MODE_DEFAULT,
     INSTANCE,
     INSTANCE_ASSOCIATION,
+    NETWORK_TOPO_NODE_LIMIT,
     OPERATOR_INSTANCE,
     PERMISSION_INSTANCES,
     VIEW,
@@ -1362,6 +1363,112 @@ class InstanceManage(object):
         with GraphClient() as ag:
             result = ag.query_topo(INSTANCE, inst_id)
         return result
+
+    @staticmethod
+    def network_topology(
+        inst_id: int,
+        model_id: str,
+        depth: int = 1,
+        permission_map: dict = None,
+        user=None,
+        node_limit: int = NETWORK_TOPO_NODE_LIMIT,
+    ) -> dict:
+        """网络设备拓扑：以该设备为中心，按 depth 跳广度优先展开接口直连的对端设备。
+
+        - 复用单跳图查询 query_network_topo，逐层 BFS，每个节点带 hop（距中心跳数）与
+          expanded（其邻居是否已在本次结果中完整加载，供前端判断哪些节点可继续点开）。
+        - 节点数达 node_limit 时停止新增并置 truncated=True（截断并提示，不静默丢弃）。
+        - 按 permission_map 剔除无权限对端；按 relationship_id 去重。
+        返回 {center, nodes, links, truncated}。
+        """
+        depth = max(1, int(depth))
+        center_id = str(inst_id)
+        # 中心节点先占位，名称/模型在查询其行后用权威值回填；无任何连线时兜底查实例
+        nodes = {
+            center_id: {
+                "id": center_id, "name": None, "model_id": model_id,
+                "hop": 0, "expanded": False,
+            }
+        }
+        links = {}
+        truncated = False
+
+        frontier = [(center_id, model_id)]
+        # 单跳查询逐层 BFS：整轮复用一个图连接，避免每个设备各开/关一次连接
+        with GraphClient() as ag:
+            for hop in range(depth):
+                # 先查完本跳所有设备，收集行；再统一判权限/上限，决定哪些对端可加入与下探
+                hop_rows = []
+                for dev_id, dev_model in frontier:
+                    rows = ag.query_network_topo(int(dev_id), f"interface_belong_{dev_model}") or []
+                    nodes[dev_id]["expanded"] = True
+                    # 当前设备名称/模型用查询行的权威值回填一次即可
+                    if rows:
+                        nodes[dev_id]["name"] = rows[0]["dev_name"]
+                        nodes[dev_id]["model_id"] = rows[0]["dev_model"]
+                    hop_rows.extend(rows)
+
+                # 本跳新发现的对端：无权限的直接剪枝（不加节点、不加边、不再下探），
+                # 因此「仅经无权限设备可达」的更深设备不会变成孤点
+                new_peer_ids = {str(r["peer_id"]) for r in hop_rows if str(r["peer_id"]) not in nodes}
+                denied = set()
+                if permission_map and new_peer_ids:
+                    instances_map = InstanceManage._query_instance_map_by_ids(
+                        {int(i) for i in new_peer_ids}
+                    )
+                    for pid in new_peer_ids:
+                        if not InstanceManage._has_topology_view_permission(
+                            instances_map.get(int(pid)), permission_map, user=user
+                        ):
+                            denied.add(pid)
+
+                next_frontier = []
+                for row in hop_rows:
+                    peer_id = str(row["peer_id"])
+                    if peer_id in denied:
+                        continue
+                    if peer_id not in nodes:
+                        if len(nodes) >= node_limit:
+                            truncated = True
+                            continue
+                        nodes[peer_id] = {
+                            "id": peer_id, "name": row["peer_name"],
+                            "model_id": row["peer_model"], "hop": hop + 1, "expanded": False,
+                        }
+                        next_frontier.append((peer_id, row["peer_model"]))
+                    rel_id = str(row["rel_id"])
+                    if rel_id not in links:
+                        links[rel_id] = {
+                            "relationship_id": rel_id,
+                            "source_device": str(row["dev_id"]),
+                            "source_inst_name": row["local_if"],
+                            "target_device": peer_id,
+                            "target_inst_name": row["peer_if"],
+                            "asst_id": "connect",
+                        }
+                frontier = next_frontier
+                if not frontier:
+                    break
+
+        # 中心无任何连线：兜底查实例补全名称
+        if nodes[center_id]["name"] is None:
+            instance = InstanceManage.query_entity_by_id(int(inst_id)) or {}
+            nodes[center_id]["name"] = instance.get("inst_name", center_id)
+            nodes[center_id]["model_id"] = instance.get("model_id", model_id)
+            nodes[center_id]["expanded"] = True
+
+        # 权限已在 BFS 逐跳剪枝（无权限对端不加入）；此处仅清理因节点上限截断而悬空的连线
+        links = {
+            rid: l for rid, l in links.items()
+            if l["source_device"] in nodes and l["target_device"] in nodes
+        }
+
+        return {
+            "center": nodes[center_id],
+            "nodes": list(nodes.values()),
+            "links": list(links.values()),
+            "truncated": truncated,
+        }
 
 
     @staticmethod

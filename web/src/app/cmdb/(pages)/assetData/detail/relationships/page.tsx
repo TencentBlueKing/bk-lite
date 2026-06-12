@@ -1,5 +1,5 @@
 'use client';
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import Icon from '@/components/icon';
 import {
   UserItem,
@@ -11,6 +11,8 @@ import relationshipsStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import AssoList from './list';
 import Topo from './topo';
+import NetworkTopo from './networkTopo';
+import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useSearchParams } from 'next/navigation';
 import PermissionWrapper from '@/components/permission';
@@ -28,6 +30,33 @@ const Ralationships = () => {
   const [activeTab, setActiveTab] = useState<string>('list');
   const modelId: string = searchParams.get('model_id') || '';
   const instId: string = searchParams.get('inst_id') || '';
+
+  const { getTopoThemes } = useInstanceApi();
+  const [themes, setThemes] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (!modelId) return;
+    let cancelled = false;
+    getTopoThemes(modelId)
+      .then((res: { themes: string[] }) => {
+        if (!cancelled) setThemes(res?.themes || []);
+      })
+      .catch(() => {
+        if (!cancelled) setThemes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId]);
+
+  const segmentedOptions = [
+    { label: t('list'), value: 'list' },
+    { label: t('topo'), value: 'topo' },
+    ...(themes.includes('network')
+      ? [{ label: t('Model.networkTopo'), value: 'network' }]
+      : []),
+  ];
 
   const handleTabChange = (val: string) => {
     setActiveTab(val);
@@ -49,16 +78,7 @@ const Ralationships = () => {
         <Segmented
           className="mb-[10px]"
           value={activeTab}
-          options={[
-            {
-              label: t('list'),
-              value: 'list',
-            },
-            {
-              label: t('topo'),
-              value: 'topo',
-            },
-          ]}
+          options={segmentedOptions}
           onChange={handleTabChange}
         />
         {activeTab === 'list' && (
@@ -83,20 +103,24 @@ const Ralationships = () => {
           </div>
         )}
       </header>
-      {activeTab === 'list' ? (
+      {activeTab === 'list' && (
         <AssoList
           ref={assoListRef}
           userList={userList}
           modelList={modelList}
           assoTypeList={assoTypes}
         />
-      ) : (
+      )}
+      {activeTab === 'topo' && (
         <Topo
           assoTypeList={assoTypes}
           modelList={modelList}
           modelId={modelId}
           instId={instId}
         />
+      )}
+      {activeTab === 'network' && (
+        <NetworkTopo modelId={modelId} instId={instId} />
       )}
     </Spin>
   );

@@ -1342,6 +1342,46 @@ class FalkorDBClient:
             dst_result=self.format_topo_lite(inst_id, dst_objs, False, depth=depth, exclude_ids=exclude_ids),
         )
 
+    def query_network_topo(self, inst_id: int, belong_asst_id: str):
+        """网络拓扑：以设备为中心，查其接口直连的对端设备。返回扁平行列表。
+
+        仅按边属性过滤（实例关联边关系类型统一），跨 FalkorDB/Neo4j 用标量 RETURN 规避对象解析差异。
+        """
+        connect_asst = "interface_connect_interface"
+        # 与 query_topo_lite 一致：分支前统一校验，避免非参数化分支吞掉非法 inst_id
+        CQLValidator.validate_id(inst_id)
+        inst_id = int(inst_id)
+        ret = (
+            "RETURN ID(dev) AS dev_id, dev.inst_name AS dev_name, dev.model_id AS dev_model, "
+            "i.inst_name AS local_if, p.inst_name AS peer_if, "
+            "ID(dev2) AS peer_id, dev2.inst_name AS peer_name, dev2.model_id AS peer_model, "
+            "ID(e2) AS rel_id"
+        )
+        if self.ENABLE_PARAMETERIZATION:
+            match = (
+                "MATCH (i)-[e1]->(dev) WHERE ID(dev) = $inst_id AND e1.model_asst_id = $belong "
+                "MATCH (i)-[e2]-(p) WHERE e2.model_asst_id = $connect "
+                "MATCH (p)-[e3]->(dev2) WHERE e3.asst_id = 'belong' AND ID(dev2) <> $inst_id "
+            )
+            params = {"inst_id": inst_id, "belong": belong_asst_id, "connect": connect_asst}
+            objs = self._execute_query(match + ret, params=params)
+        else:
+            safe_belong = self.escape_cql_string(belong_asst_id)
+            safe_connect = self.escape_cql_string(connect_asst)
+            match = (
+                f"MATCH (i)-[e1]->(dev) WHERE ID(dev) = {int(inst_id)} AND e1.model_asst_id = '{safe_belong}' "
+                f"MATCH (i)-[e2]-(p) WHERE e2.model_asst_id = '{safe_connect}' "
+                f"MATCH (p)-[e3]->(dev2) WHERE e3.asst_id = 'belong' AND ID(dev2) <> {int(inst_id)} "
+            )
+            objs = self._execute_query(match + ret)
+
+        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if",
+                "peer_id", "peer_name", "peer_model", "rel_id"]
+        rows = []
+        for row in getattr(objs, "result_set", []) or []:
+            rows.append({k: row[idx] for idx, k in enumerate(keys)})
+        return rows
+
     def format_topo(self, start_id, objs, entity_is_src=True):
         """格式化拓扑数据"""
 

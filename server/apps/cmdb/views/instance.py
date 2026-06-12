@@ -2,7 +2,13 @@ from django.http import HttpResponse, JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
+from apps.cmdb.constants.constants import (
+    PERMISSION_INSTANCES,
+    OPERATE,
+    VIEW,
+    NETWORK_TOPO_DEFAULT_HOP,
+    NETWORK_TOPO_MAX_HOP,
+)
 from apps.cmdb.models.change_record import (
     INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
     ORDINARY_ATTRIBUTE_CHANGE,
@@ -15,6 +21,7 @@ from apps.cmdb.utils.base import (
     get_current_team_from_request,
     get_organization_and_children_ids,
 )
+from apps.cmdb.services.topology_theme import get_topo_themes
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -969,6 +976,54 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         result = InstanceManage.topo_search_test_config(int(inst_id), model_id)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"topo_themes/(?P<model_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def topo_themes(self, request, model_id: str):
+        """返回模型可用的拓扑主题（如 ["network"]），前端据此决定渲染哪些主题 tab。"""
+        return WebUtils.response_success({"themes": get_topo_themes(model_id)})
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"network_topo/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def network_topo(self, request, model_id: str, inst_id: int):
+        """网络设备拓扑：以该设备为中心按 depth 跳展开接口直连。
+
+        depth 查询参数控制展开层数（默认 2，钳制到 [1, NETWORK_TOPO_MAX_HOP]）；
+        前端首屏传 depth=2，点击对端增量展开传 depth=1。节点上限 100 由服务层兜底。
+        """
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        try:
+            depth = int(request.query_params.get("depth", NETWORK_TOPO_DEFAULT_HOP))
+        except (TypeError, ValueError):
+            depth = NETWORK_TOPO_DEFAULT_HOP
+        depth = max(1, min(depth, NETWORK_TOPO_MAX_HOP))
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = InstanceManage.network_topology(
+            int(inst_id),
+            instance["model_id"],
+            depth=depth,
+            permission_map=permissions_map,
+            user=request.user,
+        )
         return WebUtils.response_success(result)
 
     @action(
