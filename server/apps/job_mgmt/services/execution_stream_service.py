@@ -29,3 +29,19 @@ def parse_target_key(subject: str, execution_id) -> str:
     if subject.startswith(prefix):
         return subject[len(prefix):]
     return ""
+
+
+class ExecutionStreamAggregator:
+    """跟踪各目标是否已收到 done 哨兵；所有目标 done 即整体结束。"""
+
+    def __init__(self, target_keys):
+        self._pending = {str(k) for k in target_keys}
+
+    def process(self, payload: dict) -> str:
+        """处理一条事件：若为 done 哨兵则销账，始终返回其 SSE 文本。"""
+        if payload.get("type") == DONE_TYPE:
+            self._pending.discard(str(payload.get("target_key", "")))
+        return format_sse_event(payload)
+
+    def is_complete(self) -> bool:
+        return len(self._pending) == 0
