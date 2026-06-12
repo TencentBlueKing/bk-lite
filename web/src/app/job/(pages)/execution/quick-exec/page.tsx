@@ -652,7 +652,7 @@ const QuickExecPage = () => {
                       name={`param_${param.name}`}
                       initialValue={param.default || undefined}
                       tooltip={param.description || undefined}
-                      rules={[{ required: true, message: t('job.paramRequired', undefined, { name: param.name }) }]}
+                      rules={[{ required: !!param.is_required, message: t('job.paramRequired', undefined, { name: param.name }) }]}
                     >
                       {param.is_encrypted ? (
                         <Password
