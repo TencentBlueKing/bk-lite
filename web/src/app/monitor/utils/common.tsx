@@ -498,7 +498,8 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
 // icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
 const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
-  { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' }
+  { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
+  { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

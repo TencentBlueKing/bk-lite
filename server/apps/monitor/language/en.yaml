@@ -3533,6 +3533,14 @@ monitor_object_plugin:
       for device health including CPU utilization, memory utilization, temperature
       sensors and fan status. Huawei reports memory as a utilization percentage
       directly and this template exposes no power-supply state OID.
+  Switch Aruba SNMP:
+    name: Aruba (Telegraf)
+    desc: Aruba-specific SNMP collection template for switches (ArubaOS-CX). In addition
+      to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for
+      device health including per-module CPU and memory utilization, temperature
+      sensors, fan and power-supply status. Aruba reports memory as a utilization
+      percentage directly; fan/psu states are normalized to the unified 1=normal
+      convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
