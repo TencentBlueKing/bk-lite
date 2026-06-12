@@ -499,6 +499,43 @@ func TestCompatibilityProfiles(t *testing.T) {
 	}
 }
 
+func TestSCPOptionFlagsUseKnownHostsWhenConfigured(t *testing.T) {
+	t.Setenv("SSH_KNOWN_HOSTS_FILE", "/tmp/nats-executor-known-hosts")
+
+	modernFlags := scpOptionFlags(profileModern)
+	legacyFlags := scpOptionFlags(profileLegacy)
+
+	for profile, flags := range map[string]string{
+		"modern": modernFlags,
+		"legacy": legacyFlags,
+	} {
+		if strings.Contains(flags, "StrictHostKeyChecking=no") {
+			t.Fatalf("%s flags should not disable host key checking when known_hosts is configured: %s", profile, flags)
+		}
+		if !strings.Contains(flags, "StrictHostKeyChecking=yes") {
+			t.Fatalf("%s flags should enable strict host key checking: %s", profile, flags)
+		}
+		if !strings.Contains(flags, "UserKnownHostsFile=/tmp/nats-executor-known-hosts") {
+			t.Fatalf("%s flags should point scp at the configured known_hosts file: %s", profile, flags)
+		}
+	}
+	if !strings.Contains(legacyFlags, "PubkeyAcceptedAlgorithms=+ssh-rsa") {
+		t.Fatalf("legacy flags should keep ssh-rsa compatibility options: %s", legacyFlags)
+	}
+}
+
+func TestSCPOptionFlagsKeepCompatibilityDefaultWhenKnownHostsUnset(t *testing.T) {
+	modernFlags := scpOptionFlags(profileModern)
+	legacyFlags := scpOptionFlags(profileLegacy)
+
+	if !strings.Contains(modernFlags, "StrictHostKeyChecking=no") {
+		t.Fatalf("modern flags should preserve compatibility default without known_hosts: %s", modernFlags)
+	}
+	if !strings.Contains(legacyFlags, "StrictHostKeyChecking=no") {
+		t.Fatalf("legacy flags should preserve compatibility default without known_hosts: %s", legacyFlags)
+	}
+}
+
 func TestShellQuote(t *testing.T) {
 	if got := shellQuote(""); got != "''" {
 		t.Fatalf("empty string should be shell quoted safely, got: %s", got)
@@ -644,6 +681,54 @@ func TestExecuteReturnsDependencyFailureCodeWhenDialFails(t *testing.T) {
 	}
 	if response.Code != utils.ErrorCodeDependencyFailure {
 		t.Fatalf("unexpected code: %+v", response)
+	}
+}
+
+func TestExecuteUsesKnownHostsCallbackWhenConfigured(t *testing.T) {
+	knownHostsFile := filepath.Join(t.TempDir(), "known_hosts")
+	if err := os.WriteFile(knownHostsFile, []byte{}, 0o600); err != nil {
+		t.Fatalf("failed to create known_hosts file: %v", err)
+	}
+	t.Setenv("SSH_KNOWN_HOSTS_FILE", knownHostsFile)
+
+	privateKey, err := rsa.GenerateKey(rand.Reader, 2048)
+	if err != nil {
+		t.Fatalf("failed to generate host key: %v", err)
+	}
+	signer, err := gossh.NewSignerFromSigner(privateKey)
+	if err != nil {
+		t.Fatalf("failed to create host key signer: %v", err)
+	}
+
+	originalDial := sshDialFn
+	dialCalls := 0
+	sshDialFn = func(network, addr string, config *gossh.ClientConfig) (sshClient, error) {
+		dialCalls++
+		err := config.HostKeyCallback("10.0.0.1:22", &net.TCPAddr{IP: net.ParseIP("10.0.0.1"), Port: 22}, signer.PublicKey())
+		if err == nil {
+			t.Fatalf("dial call %d should reject a host key that is not present in known_hosts", dialCalls)
+		}
+		if dialCalls == 1 {
+			return nil, errors.New("no matching host key type found")
+		}
+		return nil, errors.New("dial failed")
+	}
+	defer func() { sshDialFn = originalDial }()
+
+	response := Execute(ExecuteRequest{
+		Command:        "uptime",
+		ExecuteTimeout: 5,
+		Host:           "10.0.0.1",
+		Port:           22,
+		User:           "root",
+		Password:       "secret",
+	}, "instance-1")
+
+	if response.Success {
+		t.Fatal("expected dial failure")
+	}
+	if dialCalls != 2 {
+		t.Fatalf("expected modern and legacy dial attempts, got %d", dialCalls)
 	}
 }
 

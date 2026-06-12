@@ -1,5 +1,9 @@
 #!/bin/bash
 
+# Optional SSH/SCP host key verification:
+# set SSH_KNOWN_HOSTS_FILE to a mounted known_hosts file path.
+# The Go process reads this environment variable directly; it is not written to config.yml.
+
 # 检查NATS_URLS协议头，是tls时启用TLS
 if [[ "$NATS_URLS" == tls:* ]]; then
     cat > /opt/config.yml << EOF

@@ -162,7 +162,8 @@ class MonitorObjectService:
                     values_set = {re.escape(str(item[i])) for item in instance_ids if len(item) > i and item[i] is not None}
                     if not values_set:
                         continue
-                    values = "|".join(values_set)  # 去重并拼接
+                    values = "|".join(sorted(values_set))
+                    values = MonitorObjectService._escape_promql_label_value(values)
                     query_parts.append(f'{key}=~"{values}"')
 
                 query = metric_obj.query
@@ -200,6 +201,11 @@ class MonitorObjectService:
             "fallback_sampling_rate": obj.fallback_sampling_rate,
             "organizations": list(org_map.get(obj.id, [])),
         }
+
+    @staticmethod
+    def _escape_promql_label_value(value):
+        value_str = str(value)
+        return value_str.replace("\\", "\\\\").replace('"', '\\"')
 
     @staticmethod
     def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):

@@ -16,7 +16,11 @@ from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
 from apps.monitor.models import PolicyOrganization, MonitorAlert
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
-from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+from apps.monitor.services.alert_lifecycle_notify import (
+    AlertLifecycleNotifier,
+    NOTIFY_SCOPE_ALERT_CENTER_ONLY,
+    NOTIFY_SCOPE_ALL_CONFIGURED,
+)
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.pagination import parse_page_params
@@ -115,6 +119,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
             )
 
+        self.close_active_threshold_alerts_for_policy_config_change(
+            policy,
+            old_baseline_state,
+            updated_policy,
+            request.user.username,
+        )
+
         # 处理 enable 字段变更
         if "enable" in request.data and policy and updated_policy:
             new_enable = updated_policy.enable
@@ -148,6 +159,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
             )
 
+        self.close_active_threshold_alerts_for_policy_config_change(
+            policy,
+            old_baseline_state,
+            updated_policy,
+            request.user.username,
+        )
+
         # 处理 enable 字段变更
         if "enable" in request.data and policy and updated_policy:
             new_enable = updated_policy.enable
@@ -160,31 +178,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         policy = MonitorPolicy.objects.filter(id=policy_id).first()
         if policy:
             PolicyBaselineService(policy).clear()
-            now = datetime.now(timezone.utc)
             alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
-            if alerts_to_close:
-                operation_log = {
-                    "action": "closed",
-                    "reason": "policy_deleted",
-                    "operator": request.user.username,
-                    "time": now.isoformat(),
-                }
-                for alert in alerts_to_close:
-                    alert.status = "closed"
-                    alert.end_event_time = now
-                    alert.operator = request.user.username
-                    alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-                    alert.alert_center_notified = False
-                MonitorAlert.objects.bulk_update(
-                    alerts_to_close,
-                    fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-                )
-                AlertLifecycleNotifier(policy).notify_alerts(
-                    alerts_to_close,
-                    action="closed",
-                    operator=request.user.username,
-                    reason="policy_deleted",
-                )
+            self.close_alerts(policy, alerts_to_close, request.user.username, "policy_deleted")
         PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
         return super().destroy(request, *args, **kwargs)
@@ -234,6 +229,41 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             return True
         return self.baseline_state_changed(old_state, policy)
 
+    def get_policy_config_change_reason(self, old_state, policy):
+        if not old_state or not policy:
+            return ""
+
+        new_state = self.get_baseline_state(policy)
+        if old_state.get("source") != new_state.get("source"):
+            return "policy_scope_changed"
+        if old_state.get("group_by") != new_state.get("group_by"):
+            return "policy_group_by_changed"
+        if old_state.get("query_condition") != new_state.get("query_condition"):
+            return "policy_query_condition_changed"
+        if old_state.get("monitor_object") != new_state.get("monitor_object") or old_state.get("collect_type") != new_state.get("collect_type"):
+            return "policy_monitor_target_changed"
+        return ""
+
+    def close_active_threshold_alerts_for_policy_config_change(self, old_policy, old_state, policy, operator):
+        reason = self.get_policy_config_change_reason(old_state, policy)
+        if not reason or not old_policy or not policy:
+            return
+
+        alerts_to_close = list(
+            MonitorAlert.objects.filter(
+                policy_id=old_policy.id,
+                alert_type="alert",
+                status="new",
+            )
+        )
+        self.close_alerts(
+            policy,
+            alerts_to_close,
+            operator,
+            reason,
+            notify_scope=NOTIFY_SCOPE_ALERT_CENTER_ONLY,
+        )
+
     def update_policy_baselines(
         self,
         policy_id,
@@ -254,18 +284,11 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self.close_active_no_data_alerts(policy, operator, "no_data_disabled")
             baseline_service.clear()
 
-    def close_active_no_data_alerts(self, policy, operator, reason):
-        now = datetime.now(timezone.utc)
-        alerts_to_close = list(
-            MonitorAlert.objects.filter(
-                policy_id=policy.id,
-                alert_type="no_data",
-                status="new",
-            )
-        )
+    def close_alerts(self, policy, alerts_to_close, operator, reason, notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts_to_close:
             return
 
+        now = datetime.now(timezone.utc)
         operation_log = {
             "action": "closed",
             "reason": reason,
@@ -282,45 +305,33 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             alerts_to_close,
             fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
         )
-        AlertLifecycleNotifier(policy).notify_alerts(
-            alerts_to_close,
-            action="closed",
-            operator=operator,
-            reason=reason,
+        if policy and notify_scope:
+            AlertLifecycleNotifier(policy).notify_alerts(
+                alerts_to_close,
+                action="closed",
+                operator=operator,
+                reason=reason,
+                notify_scope=notify_scope,
+            )
+
+    def close_active_no_data_alerts(self, policy, operator, reason):
+        alerts_to_close = list(
+            MonitorAlert.objects.filter(
+                policy_id=policy.id,
+                alert_type="no_data",
+                status="new",
+            )
         )
+        self.close_alerts(policy, alerts_to_close, operator, reason)
 
     def handle_policy_enable_change(self, policy_id, old_enable, new_enable):
         if old_enable == new_enable:
             return
 
         if old_enable and not new_enable:
-            now = datetime.now(timezone.utc)
             policy = MonitorPolicy.objects.filter(id=policy_id).first()
             alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
-            if alerts_to_close:
-                operation_log = {
-                    "action": "closed",
-                    "reason": "policy_disabled",
-                    "operator": "system",
-                    "time": now.isoformat(),
-                }
-                for alert in alerts_to_close:
-                    alert.status = "closed"
-                    alert.end_event_time = now
-                    alert.operator = "system"
-                    alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-                    alert.alert_center_notified = False
-                MonitorAlert.objects.bulk_update(
-                    alerts_to_close,
-                    fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
-                )
-                if policy:
-                    AlertLifecycleNotifier(policy).notify_alerts(
-                        alerts_to_close,
-                        action="closed",
-                        operator="system",
-                        reason="policy_disabled",
-                    )
+            self.close_alerts(policy, alerts_to_close, "system", "policy_disabled")
         elif not old_enable and new_enable:
             MonitorPolicy.objects.filter(id=policy_id).update(last_run_time=datetime.now(timezone.utc))
 
