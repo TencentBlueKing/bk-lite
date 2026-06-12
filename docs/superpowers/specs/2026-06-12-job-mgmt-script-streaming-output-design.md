@@ -144,18 +144,47 @@ job.stream.{execution_id}.{target_key}
 
 ## 9. 测试
 
-统一使用虚拟环境 `D:\app\venv\bkliteserver` 跑后端测试，遵循 `server/docs/testing-guide.md` 分层。
+### 9.0 方法与覆盖率要求（硬性约束）
 
-- **后端 `_views`**：SSE 端点
-  - 鉴权拒绝（无权用户 403）。
-  - 终态执行 → 直接返回历史、不建消费者。
-  - mock JetStream 消费者：验证「先回放历史行 → 再实时行 → 收到全部 done 后关闭」。
-  - JetStream 不可用 → 降级返回快照。
-- **后端 `_service`**：runner 接线
-  - SSH 分支以正确的 `stream_log_topic` / `execution_id` 调用 `execute_ssh_stream`。
-  - finalize 为每个 target 发出 `done` 哨兵。
-- **Go**：`local` executor 的 `streamLogWriter` 单测（照搬 `ssh/stream_writer_test.go`），验证按行切分、Flush 残留、空行不发。
-- 回归：确认 `execution_results` 落库与现有行为一致（流式为纯增量，不改变最终结果）。
+- **严格 TDD**：每个新增/改动的函数都遵循 Red-Green-Refactor——先写失败测试、亲眼看它因「功能缺失」而失败、再写最小实现转绿、最后重构保持绿色。**禁止先写生产代码再补测试。**
+- **覆盖率目标：新增/改动的 Python 模块行覆盖率 ≥ 90%**，用 `pytest-cov` 度量。范围限定为本功能新增/改动的模块（SSE 端点视图、runner 流式接线、`done` 哨兵、降级逻辑、`execute_local_stream` 等），不把真实 NATS/ASGI 端到端链路计入「单元」覆盖。
+- **测量命令**（虚拟环境 `D:\app\venv\bkliteserver`）：
+  ```
+  uv run pytest apps/job_mgmt/tests/ \
+    --cov=apps.job_mgmt.services.script_execution_runner \
+    --cov=apps.job_mgmt.views.execution \
+    --cov-report=term-missing
+  ```
+  （随实现补齐 `--cov` 目标模块；CI 阈值可加 `--cov-fail-under=90` 守门。）
+- **Go 侧独立统计**：`local` executor 的流式代码用 `go test -cover` 覆盖，不计入上面的 Python 90%。
+- 统一遵循 `server/docs/testing-guide.md` 分层（`_pure` / `_service` / `_views`）。
+
+### 9.1 后端 `_views`：SSE 端点
+
+- 鉴权拒绝（无权用户 403），在进入流式前返回。
+- 终态执行 → 直接返回历史、不建消费者。
+- mock JetStream 消费者：验证「先回放历史行 → 再实时行 → 收到全部 done 后关闭」。
+- 部分 target 完成、其余进行中 → 不提前关闭。
+- 客户端断开 → `finally` 正确清理（unsubscribe + close）。
+- JetStream 不可用 / 建消费者抛错 → 降级返回 `execution_results` 快照、不抛 500。
+- SSE 事件格式正确（`data:` + 按 `target_key` 分组 + stdout/stderr 区分）。
+
+### 9.2 后端 `_service`：runner 接线
+
+- SSH 分支以正确的 `stream_log_topic`（`job.stream.{id}.{target_key}`）/ `execution_id` 调用 `execute_ssh_stream`。
+- 本地分支以正确参数调用 `execute_local_stream`。
+- `execute_*_stream` 返回值仍正确映射到 `result`（success/failed/timeout 分支全覆盖）。
+- finalize 为每个 target 发出 `done` 哨兵；取消的 target 发 `done{status:cancelled}`。
+- 高危命令拦截、Windows 手动目标走 Ansible 等既有分支不回归。
+
+### 9.3 Go：`local` executor `streamLogWriter`
+
+- 照搬 `ssh/stream_writer_test.go`：按 `\n` 切分逐行 publish、Flush 残留、空行不发、`StreamLogs=false` 时零副作用。
+
+### 9.4 回归
+
+- 确认 `execution_results` 落库与现有行为一致（流式为纯增量，不改变最终结果）。
+- 既有 job_mgmt 测试全绿。
 
 ## 10. 交付与验证流程
 
