@@ -36,6 +36,14 @@ from apps.system_mgmt.models import (
     UserRule,
 )
 from apps.system_mgmt.models.system_settings import SystemSettings
+from apps.system_mgmt.otp_challenge import (
+    check_rate_limit,
+    create_challenge,
+    invalidate_challenge,
+    record_failed_attempt,
+    reset_rate_limit,
+    verify_challenge,
+)
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
 from apps.system_mgmt.utils.channel_utils import (
@@ -1437,8 +1445,6 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     Returns:
         Dict with login result and JWT token if successful
     """
-    from apps.system_mgmt.otp_challenge import check_rate_limit, invalidate_challenge, record_failed_attempt, reset_rate_limit, verify_challenge
-
     # Verify challenge exists and is valid
     challenge_data = verify_challenge(challenge_id)
     if not challenge_data:
@@ -1563,8 +1569,6 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
 
     # If OTP is enabled and we should use two-phase authentication
     if skip_token_for_otp and enable_otp:
-        from apps.system_mgmt.otp_challenge import create_challenge
-
         # Generate QR code for first-time OTP binding if user hasn't configured OTP yet
         qr_code_base64 = None
         if not user_has_otp:
