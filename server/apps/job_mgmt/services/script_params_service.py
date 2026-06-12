@@ -9,7 +9,11 @@
 执行时仅使用 value，并严格按列表顺序拼接为位置参数。
 """
 
+import shlex
+
 from rest_framework import serializers
+
+from apps.job_mgmt.services.param_crypto import ParamCrypto
 
 
 class ScriptParamsService:
@@ -95,8 +99,6 @@ class ScriptParamsService:
         has_script = script is not None
         if has_script and default_params:
             # 执行时使用真实默认值：对 is_encrypted=true 的 default 做临时解密
-            from apps.job_mgmt.services.param_crypto import ParamCrypto
-
             default_params = [param_def.copy() for param_def in default_params]
             ParamCrypto.decrypt_param_defaults(default_params)
 
@@ -150,8 +152,6 @@ class ScriptParamsService:
         """
         if not params:
             return ""
-
-        import shlex
 
         values = [str(param.get("value", "")) for param in params]
         return " ".join(shlex.quote(v) for v in values)

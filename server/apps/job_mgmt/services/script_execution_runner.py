@@ -1,3 +1,5 @@
+import json
+import shlex
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.utils import timezone
@@ -160,9 +162,6 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         if not params:
             return script_content
 
-        import json
-        import shlex
-
         try:
             tokens = shlex.split(params)
         except ValueError:
@@ -216,7 +215,11 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
         logger.info(
             "[%s] 目标 %s(%s) 开始流式执行: source=%s topic=%s",
-            self.task_name, target_name, target_ip, target_source, build_stream_topic(execution_id, target_key),
+            self.task_name,
+            target_name,
+            target_ip,
+            target_source,
+            build_stream_topic(execution_id, target_key),
         )
         try:
             shell = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
