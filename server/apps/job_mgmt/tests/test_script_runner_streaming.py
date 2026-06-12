@@ -98,6 +98,43 @@ def test_dangerous_command_publishes_done_for_all_targets():
         assert c.args[2] == ExecutionStatus.FAILED
 
 
+def test_ansible_windows_reject_publishes_done_for_all_targets():
+    runner = _runner()
+    execution = MagicMock()
+    execution.id = 99
+    execution.target_source = TargetSource.MANUAL
+    target_list = [
+        {"target_id": 5, "name": "h1", "ip": "1.1.1.1"},
+        {"target_id": 6, "name": "h2", "ip": "2.2.2.2"},
+    ]
+    with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=True), \
+         patch.object(ScriptExecutionRunner, "_should_use_ansible", return_value=False), \
+         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+        handled = runner._run_via_ansible_if_needed(execution, target_list, "echo hi")
+
+    assert handled is True
+    done_targets = {c.args[1] for c in mock_done.call_args_list}
+    assert done_targets == {"5", "6"}
+    assert all(c.args[2] == ExecutionStatus.FAILED for c in mock_done.call_args_list)
+
+
+def test_ansible_submit_failure_publishes_done_for_all_targets():
+    runner = _runner()
+    execution = MagicMock()
+    execution.id = 99
+    execution.target_source = TargetSource.MANUAL
+    execution.script_type = ScriptType.SHELL
+    target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
+    with patch.object(ScriptExecutionRunner, "_contains_windows_manual_target", return_value=False), \
+         patch.object(ScriptExecutionRunner, "_should_use_ansible", return_value=True), \
+         patch.object(ScriptExecutionRunner, "_execute_script_via_ansible", side_effect=RuntimeError("boom")), \
+         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+        handled = runner._run_via_ansible_if_needed(execution, target_list, "echo hi")
+
+    assert handled is True
+    mock_done.assert_called_once_with(99, "5", ExecutionStatus.FAILED)
+
+
 def test_publish_cancelled_sentinels_only_for_unsentineled():
     """已发过哨兵的目标跳过；未发过的补发 CANCELLED（spec §8）。"""
     runner = _runner()

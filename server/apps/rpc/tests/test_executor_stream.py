@@ -4,8 +4,34 @@ from unittest.mock import patch
 import pytest
 
 from apps.rpc.executor import Executor
+from apps.rpc.ansible import AnsibleExecutor
 
 pytestmark = pytest.mark.unit
+
+
+def test_ansible_adhoc_forwards_stream_fields():
+    ex = AnsibleExecutor("inst-1")
+    with patch.object(ex.adhoc_client, "run", return_value={"accepted": True}) as mock_run:
+        ex.adhoc(
+            host_credentials=[{"host": "1.1.1.1", "user": "root"}],
+            module="shell",
+            module_args="echo hi",
+            task_id="99",
+            stream_log_topic="job.stream.99.ansible",
+            execution_id="99",
+        )
+    request_data = mock_run.call_args.args[1]
+    assert request_data["stream_log_topic"] == "job.stream.99.ansible"
+    assert request_data["execution_id"] == "99"
+
+
+def test_ansible_adhoc_omits_stream_fields_when_absent():
+    ex = AnsibleExecutor("inst-1")
+    with patch.object(ex.adhoc_client, "run", return_value={"accepted": True}) as mock_run:
+        ex.adhoc(host_credentials=[{"host": "1.1.1.1", "user": "root"}], module="ping")
+    request_data = mock_run.call_args.args[1]
+    assert "stream_log_topic" not in request_data
+    assert "execution_id" not in request_data
 
 
 def test_execute_local_stream_sets_stream_fields():

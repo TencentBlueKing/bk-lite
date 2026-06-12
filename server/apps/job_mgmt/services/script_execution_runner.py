@@ -29,17 +29,18 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         if not execution:
             return
 
+        # 尽早声明 JetStream 流，保证后续所有路径（ansible 提交前、sidecar 首行前）发的流事件可被回放
+        try:
+            ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
+        except Exception as e:
+            logger.warning(f"[{self.task_name}] JetStream 流声明失败(不阻断执行): {e}")
+
         if self._handle_dangerous_command(execution, target_list):
             return
 
         script_content = self.merge_script_with_params(execution.script_content, execution.params, execution.script_type)
         if self._run_via_ansible_if_needed(execution, target_list, script_content):
             return
-
-        try:
-            ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
-        except Exception as e:
-            logger.warning(f"[{self.task_name}] JetStream 流声明失败(不阻断执行): {e}")
 
         results = self._run_via_sidecar(execution, target_list, script_content)
         self.finalize_execution(execution, self.task_name, results)
@@ -55,10 +56,15 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
         execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
         execution.save(update_fields=["execution_results", "updated_at"])
+        self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
+        return True
+
+    @staticmethod
+    def _publish_done_for_targets(execution_id, target_list: list, status: str) -> None:
+        """为所有目标各发一条 done 哨兵（用于同步早退/拦截路径，避免 SSE 空等到 idle 超时）。"""
         for t in target_list:
             tk = t.get("node_id") or str(t.get("target_id", ""))
-            publish_done_sentinel(execution.id, tk, ExecutionStatus.FAILED)
-        return True
+            publish_done_sentinel(execution_id, tk, status)
 
     def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
         if execution.target_source == TargetSource.MANUAL and self._contains_windows_manual_target(target_list):
@@ -68,6 +74,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
                 execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
                 execution.save(update_fields=["execution_results", "updated_at"])
+                self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
                 return True
         if not self._should_use_ansible(execution.target_source, target_list):
             return False
@@ -81,6 +88,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
             execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
             execution.save(update_fields=["execution_results", "updated_at"])
+            self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
             return True
 
     def _run_via_sidecar(self, execution, target_list: list, script_content: str) -> list:

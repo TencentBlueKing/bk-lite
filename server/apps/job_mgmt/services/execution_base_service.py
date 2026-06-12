@@ -8,6 +8,7 @@ from apps.core.mixinx import EncryptMixin
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
+from apps.job_mgmt.services.execution_stream_service import build_stream_topic
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
@@ -241,6 +242,8 @@ class ExecutionTaskBaseService(object):
             task_id=str(execution.id),
             timeout=execution.timeout,
             extra_vars=extra_vars if extra_vars else None,
+            stream_log_topic=build_stream_topic(execution.id, "ansible"),
+            execution_id=str(execution.id),
         )
 
         logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
