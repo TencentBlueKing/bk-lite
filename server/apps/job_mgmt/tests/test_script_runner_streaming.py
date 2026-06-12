@@ -77,3 +77,42 @@ def test_dangerous_command_publishes_done_for_all_targets():
     assert done_targets == {"5", "n7"}
     for c in mock_done.call_args_list:
         assert c.args[2] == ExecutionStatus.FAILED
+
+
+def test_publish_cancelled_sentinels_only_for_unsentineled():
+    """已发过哨兵的目标跳过；未发过的补发 CANCELLED（spec §8）。"""
+    runner = _runner()
+    target_list = [
+        {"target_id": 5, "name": "h1"},
+        {"node_id": "n7", "name": "h2"},
+    ]
+    sentineled = {"5"}
+    with patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel") as mock_done:
+        runner._publish_cancelled_sentinels(99, target_list, sentineled)
+
+    mock_done.assert_called_once_with(99, "n7", ExecutionStatus.CANCELLED)
+    assert sentineled == {"5", "n7"}
+
+
+def test_sidecar_invokes_cancelled_sweep_when_cancelled():
+    """取消时，_run_via_sidecar 在收尾对未产出结果的目标补发 CANCELLED。"""
+    runner = _runner()
+    execution = MagicMock()
+    execution.id = 99
+    execution.target_source = TargetSource.MANUAL
+    execution.script_type = ScriptType.SHELL
+    execution.timeout = 60
+    target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
+
+    with patch.object(ScriptExecutionRunner, "execute_script_on_target", return_value={
+            "target_key": "5", "name": "h1", "status": ExecutionStatus.SUCCESS}), \
+         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=True), \
+         patch("apps.job_mgmt.services.script_execution_runner.publish_done_sentinel"), \
+         patch.object(ScriptExecutionRunner, "_publish_cancelled_sentinels") as mock_sweep:
+        runner._run_via_sidecar(execution, target_list, "echo hi")
+
+    mock_sweep.assert_called_once()
+    args = mock_sweep.call_args.args
+    assert args[0] == 99
+    assert args[1] == target_list
+    assert "5" in args[2]

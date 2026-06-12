@@ -290,7 +290,7 @@ async def publish_raw(subject: str, payload: dict) -> None:
     """向原始 subject 发布一条扁平 JSON（不走 RPC 的 args/kwargs 包装）。"""
     nc = await get_nc_client()
     try:
-        await nc.publish(subject, json.dumps(payload).encode())
+        await nc.publish(subject, json.dumps(payload, ensure_ascii=False).encode())
         await nc.flush()
     finally:
         await nc.close()
@@ -307,8 +307,7 @@ async def ensure_stream(name: str, subjects, max_age: int, max_bytes: int) -> No
     nc = await get_nc_client()
     try:
         js = nc.jetstream()
-        # 注意：nats-py StreamConfig.max_age 单位以安装版本为准（秒/纳秒），
-        # 仅影响保留时长，不影响功能正确性；本地集成时核对一次。
+        # nats-py StreamConfig.max_age 单位为秒，as_dict() 会自动转纳秒下发。
         cfg = StreamConfig(
             name=name,
             subjects=list(subjects),
@@ -318,7 +317,9 @@ async def ensure_stream(name: str, subjects, max_age: int, max_bytes: int) -> No
         )
         try:
             await js.add_stream(cfg)
-        except Exception:
+        except Exception as e:
+            # 多为「流已存在」→ 更新配置即可；记一条 warning 避免掩盖真实错误。
+            logger.warning("ensure_stream add_stream failed, fallback to update: name=%s, error=%s", name, str(e))
             await js.update_stream(cfg)
     finally:
         await nc.close()

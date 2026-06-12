@@ -86,6 +86,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
     def _run_via_sidecar(self, execution, target_list: list, script_content: str) -> list:
         results = []
         cancelled = False
+        sentineled = set()
         with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(target_list))) as pool:
             futures = {
                 pool.submit(
@@ -105,12 +106,16 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     result = future.result()
                     results.append(result)
                     logger.info(f"[{self.task_name}] 目标 {target_info.get('name')} 执行完成: status={result['status']}")
-                    publish_done_sentinel(execution.id, result.get("target_key", ""), result.get("status", ExecutionStatus.FAILED))
+                    tk = result.get("target_key", "")
+                    publish_done_sentinel(execution.id, tk, result.get("status", ExecutionStatus.FAILED))
+                    sentineled.add(tk)
                 except Exception as e:
                     logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
                     failed_result = self.build_target_failed_result(target_info, str(e))
                     results.append(failed_result)
-                    publish_done_sentinel(execution.id, failed_result.get("target_key", ""), ExecutionStatus.FAILED)
+                    tk = failed_result.get("target_key", "")
+                    publish_done_sentinel(execution.id, tk, ExecutionStatus.FAILED)
+                    sentineled.add(tk)
 
                 # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
                 if not cancelled and self.is_cancelled(execution.id):
@@ -118,7 +123,21 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     logger.info(f"[{self.task_name}] 检测到取消，停止剩余目标: execution_id={execution.id}")
                     for pending_future in futures:
                         pending_future.cancel()
+
+        # 取消导致被 cancel 的目标不会产出结果、也就不会发哨兵；收尾补发 CANCELLED，
+        # 避免前端 SSE 面板空等到 idle 超时（spec §8）。
+        if cancelled:
+            self._publish_cancelled_sentinels(execution.id, target_list, sentineled)
         return results
+
+    @staticmethod
+    def _publish_cancelled_sentinels(execution_id, target_list: list, sentineled: set) -> None:
+        """为尚未发过 done 哨兵的目标补发一条 CANCELLED 哨兵。"""
+        for t in target_list:
+            tk = t.get("node_id") or str(t.get("target_id", ""))
+            if tk not in sentineled:
+                publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
+                sentineled.add(tk)
 
     def merge_script_with_params(self, script_content: str, params: str, script_type: str) -> str:
         if not params:
