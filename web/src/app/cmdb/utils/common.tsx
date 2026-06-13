@@ -364,16 +364,25 @@ export const OrganizationField: React.FC<{ value: any; hideUserAvatar?: boolean 
 };
 
 export const iconList = getSvgIcon();
+// 图标套切换点：'/assets/icons'（扁平蓝块） | '/assets/icons-realistic'（写实立体）
+const CMDB_ICON_DIR = '/assets/icons-realistic';
 export function getIconUrl(tex: ModelIconItem) {
   try {
-    const icon = tex.icn?.split('icon-')[1];
+    const icn = tex.icn || '';
 
-    // 查找显示的图标
-    const showIcon = iconList.find((item) => item.key === icon);
+    // 查找显示的图标：
+    // 1) icn 直接是完整文件名（后端配置形如 cc-switch2_交换机）
+    // 2) 兼容历史 'icon-xxx' 前缀，并按图标 key（文件名首个下划线前的部分）匹配
+    let showIcon = icn ? iconList.find((item) => item.url === icn) : undefined;
+    if (!showIcon && icn) {
+      const raw = icn.includes('icon-') ? icn.split('icon-')[1] : icn;
+      const key = raw?.split('_')[0];
+      showIcon = iconList.find((item) => item.key === key);
+    }
 
     // 如果显示图标存在，直接返回相应的图标路径
     if (showIcon) {
-      return `/assets/icons/${showIcon.url}.svg`;
+      return `${CMDB_ICON_DIR}/${showIcon.url}.svg`;
     }
 
     // 查找内置模型和对应图标
@@ -386,11 +395,11 @@ export function getIconUrl(tex: ModelIconItem) {
     const iconUrl = builtIcon?.url || 'cc-default_默认';
 
     // 返回图标路径
-    return `/assets/icons/${iconUrl}.svg`;
+    return `${CMDB_ICON_DIR}/${iconUrl}.svg`;
   } catch (e) {
     // 记录错误日志并返回默认图标
     console.error('Error in getIconUrl:', e);
-    return '/assets/icons/cc-default_默认.svg';
+    return `${CMDB_ICON_DIR}/cc-default_默认.svg`;
   }
 }
 

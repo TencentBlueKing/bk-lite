@@ -636,6 +636,7 @@
       "ordinary_attribute_change": "Ordinary Attribute Change",
       "collect_automation_change": "Collect Automation",
       "model_management_change": "Model Management Change"
+    },
     "AttributeGovernance": {
         "title": "Governance Tags",
         "keyAttribute": "Key Attribute",
