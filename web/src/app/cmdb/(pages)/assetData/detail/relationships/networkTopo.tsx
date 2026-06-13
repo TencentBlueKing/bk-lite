@@ -263,7 +263,6 @@ const buildGraphData = (
   nameOf: (id: string) => string,
   positions: PosMap
 ): BuiltGraph => {
-  const deviceIcon = getIconUrl({ icn: '', model_id: 'network' });
   const ids = Array.from(merged.nodes.keys());
   const centers: Record<string, { x: number; y: number }> = {};
 
@@ -280,7 +279,12 @@ const buildGraphData = (
       shape: DEVICE_NODE_SHAPE,
       attrs: {
         body: id === centerId ? ACTIVE_BODY_ATTRS : {},
-        img: { 'xlink:href': deviceIcon },
+        img: {
+          'xlink:href': getIconUrl({
+            icn: '',
+            model_id: merged.nodes.get(id)?.model_id || '',
+          }),
+        },
         tt: { text: label },
         lbl: { text: label, title: label },
       },
