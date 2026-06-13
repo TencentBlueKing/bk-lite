@@ -588,6 +588,7 @@
       "never": "暂无",
       "expand": "展开概览",
       "collapse": "收起概览"
+    },
     "AttributeGovernance": {
         "title": "治理标记",
         "keyAttribute": "关键属性",
