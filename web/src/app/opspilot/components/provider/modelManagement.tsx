@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import { Button, Empty, Input, Popconfirm, Spin, Switch, message } from 'antd';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import { useProviderApi } from '@/app/opspilot/api/provider';
+import { isSilentRequestError } from '@/utils/request';
 import ModelItemModal from '@/app/opspilot/components/provider/modelItemModal';
 import { CONFIG_MAP, MODEL_TABS } from '@/app/opspilot/constants/provider';
 import type { Model, ModelVendor, ProviderResourceType } from '@/app/opspilot/types/provider';
@@ -180,8 +181,13 @@ const ProviderModelManagement: React.FC<ProviderModelManagementProps> = ({ vendo
       await deleteProvider(type, model.id);
       removeLocalModel(type, model.id);
       message.success(t('common.delSuccess'));
-    } catch {
-      message.error(t('common.delFailed'));
+    } catch (error) {
+      // Backend may reject with 400 when the model is still in use; the request
+      // interceptor already surfaces that message, so only show the generic
+      // fallback for unhandled errors.
+      if (!isSilentRequestError(error)) {
+        message.error(t('common.delFailed'));
+      }
     }
   };
 

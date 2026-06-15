@@ -38,7 +38,7 @@ def adapters():
         AlertSourceAdapterFactory.register_adapter("prometheus", PrometheusAdapter)
         AlertSourceAdapterFactory.register_adapter("zabbix", ZabbixAdapter)
     except Exception as e:
-        logger.error(f"Failed to register alert source adapter: {e}", exc_info=True)
+        logger.error("[AlertInit] 注册告警源适配器失败: %s", e, exc_info=True)
         raise
 
 
@@ -58,4 +58,4 @@ def _register_instant_cache_signals():
         post_save.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_save")
         post_delete.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_delete")
     except Exception as e:  # noqa
-        logger.error(f"Failed to register instant cache signals: {e}", exc_info=True)
+        logger.error("[AlertInit] 注册即时告警缓存信号失败: %s", e, exc_info=True)

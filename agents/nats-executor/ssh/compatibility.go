@@ -1,10 +1,13 @@
 package ssh
 
 import (
+	"os"
 	"strings"
 
 	"golang.org/x/crypto/ssh"
 )
+
+const sshKnownHostsFileEnv = "SSH_KNOWN_HOSTS_FILE"
 
 type sshCompatibilityProfile string
 
@@ -49,10 +52,26 @@ func rsaSignerAlgorithmsForProfile(profile sshCompatibilityProfile) []string {
 	return []string{ssh.KeyAlgoRSASHA512, ssh.KeyAlgoRSASHA256}
 }
 
+func configuredKnownHostsFile() string {
+	return strings.TrimSpace(os.Getenv(sshKnownHostsFileEnv))
+}
+
+func shellQuoteSSHOptionValue(value string) string {
+	if strings.ContainsAny(value, " \t\n\r'\"\\$`;&|<>()*?![]{}") {
+		return shellQuote(value)
+	}
+	return value
+}
+
 func scpOptionFlags(profile sshCompatibilityProfile) string {
-	if profile == profileLegacy {
-		return "-o StrictHostKeyChecking=no -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
+	hostKeyOptions := "-o StrictHostKeyChecking=no"
+	if knownHostsFile := configuredKnownHostsFile(); knownHostsFile != "" {
+		hostKeyOptions = "-o StrictHostKeyChecking=yes -o UserKnownHostsFile=" + shellQuoteSSHOptionValue(knownHostsFile)
 	}
 
-	return "-o StrictHostKeyChecking=no"
+	if profile == profileLegacy {
+		return hostKeyOptions + " -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa"
+	}
+
+	return hostKeyOptions
 }

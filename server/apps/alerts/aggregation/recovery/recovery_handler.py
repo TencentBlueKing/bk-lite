@@ -58,11 +58,8 @@ class RecoveryHandler:
                 recovered_count += 1
 
         logger.info(
-            f"恢复事件批量处理完成: "
-            f"处理 {total_events} 个恢复事件, "
-            f"新增关联 {total_added} 个, "
-            f"跳过重复 {total_skipped} 个, "
-            f"推进恢复 {recovered_count} 个"
+            "[AlertRecovery] 恢复事件批量处理完成: 处理 %s 个恢复事件, 新增关联 %s 个, 跳过重复 %s 个, 推进恢复 %s 个",
+            total_events, total_added, total_skipped, recovered_count,
         )
 
     @staticmethod
@@ -95,10 +92,10 @@ class RecoveryHandler:
                 if RecoveryHandler._supports_unique_fallback(recovery_event) and fallback_key:
                     fallback_keys.add(fallback_key)
             else:
-                logger.warning(f"恢复事件 {recovery_event.event_id} 缺少 external_id，跳过")
+                logger.warning("[AlertRecovery] 恢复事件 %s 缺少 external_id，跳过", recovery_event.event_id)
 
         if not external_ids and not fallback_keys:
-            logger.debug("所有恢复事件都缺少 external_id，跳过处理")
+            logger.debug("[AlertRecovery] 所有恢复事件都缺少 external_id，跳过处理")
             return
 
         # 2. 批量查询所有相关 Alert（优化：仅收敛到本批恢复事件可能命中的候选集）
@@ -123,7 +120,7 @@ class RecoveryHandler:
         )
 
         if not affected_alerts.exists():
-            logger.debug(f"未找到包含 external_ids={list(external_ids)[:5]}... 的活跃 Alert")
+            logger.debug("[AlertRecovery] 未找到包含 external_ids=%s... 的活跃 Alert", list(external_ids)[:5])
             return
 
         # 3. 构建索引：external_id -> [Alert]
@@ -172,19 +169,19 @@ class RecoveryHandler:
                     if len(unique_alerts) == 1:
                         matching_alerts = unique_alerts
                         logger.info(
-                            "恢复事件 %s 通过唯一回退键关联到 Alert %s",
+                            "[AlertRecovery] 恢复事件 %s 通过唯一回退键关联到 Alert %s",
                             recovery_event.event_id,
                             unique_alerts[0].alert_id,
                         )
                     elif len(unique_alerts) > 1:
                         logger.warning(
-                            "恢复事件 %s 回退匹配到多个 Alert，跳过: fallback_key=%s",
+                            "[AlertRecovery] 恢复事件 %s 回退匹配到多个 Alert，跳过: fallback_key=%s",
                             recovery_event.event_id,
                             fallback_key,
                         )
 
             if not matching_alerts:
-                logger.debug(f"恢复事件 {recovery_event.event_id} 未找到匹配的 Alert (external_id={external_id})")
+                logger.debug("[AlertRecovery] 恢复事件 %s 未找到匹配的 Alert (external_id=%s)", recovery_event.event_id, external_id)
                 continue
 
             unique_matching_alerts = []
@@ -203,14 +200,15 @@ class RecoveryHandler:
                     alert.events.add(recovery_event)
                     alert_existing_events[alert.pk].add(recovery_event.event_id)
                     total_added += 1
-                    logger.debug(f"恢复事件 {recovery_event.event_id} 已关联到 Alert {alert.alert_id}")
+                    logger.debug("[AlertRecovery] 恢复事件 %s 已关联到 Alert %s", recovery_event.event_id, alert.alert_id)
                 else:
                     total_skipped += 1
 
         # 5. 汇总日志
         if not touched_alerts:
             logger.info(
-                f"恢复事件批量处理完成: 处理 {len(recovery_events)} 个恢复事件, 新增关联 {total_added} 个, 跳过重复 {total_skipped} 个, 推进恢复 0 个"
+                "[AlertRecovery] 恢复事件批量处理完成: 处理 %s 个恢复事件, 新增关联 %s 个, 跳过重复 %s 个, 推进恢复 0 个",
+                len(recovery_events), total_added, total_skipped,
             )
             return
 

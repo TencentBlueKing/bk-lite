@@ -6,7 +6,6 @@ import tempfile
 import threading
 import time
 from typing import Any, Awaitable, Callable, Dict, Optional, TypedDict
-from urllib.parse import urlparse
 
 from browser_use import Agent as BrowserAgent
 from browser_use import Browser
@@ -17,13 +16,30 @@ from django.conf import settings
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from loguru import logger
-from tenacity import retry, retry_if_not_exception_type, stop_after_attempt, wait_exponential
+from tenacity import retry, retry_if_exception_type, stop_after_attempt, wait_exponential
 
+from apps.opspilot.metis.llm.tools.common.browser_security import (
+    browser_user_data_dir,
+    build_sensitive_data,
+    collect_sensitive_values,
+    redact_secrets,
+    validate_browser_url,
+)
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # 安全配置
 MAX_RETRIES = 2
 MAX_LOGIN_FAILURES = 2  # 登录失败最大重试次数
+
+# F037: 浏览器自动化包含点击 / 表单提交 / 导航等"有副作用"的操作，
+# 在通用 Exception 上重试会导致重复执行这些动作。
+# 因此只对"瞬时"的连接 / 超时类错误重试，其余异常一律不重试。
+TRANSIENT_RETRY_EXCEPTIONS: tuple = (
+    asyncio.TimeoutError,
+    ConnectionError,  # 含 ConnectionResetError/ConnectionRefusedError 等
+    TimeoutError,
+    OSError,  # socket 层瞬时网络错误（getaddrinfo 失败等）
+)
 
 # 浏览器超时配置（秒），可通过环境变量调整
 BROWSER_LLM_TIMEOUT = int(os.getenv("BROWSER_LLM_TIMEOUT", "30"))  # LLM 调用超时
@@ -244,77 +260,68 @@ def _cleanup_expired_sessions() -> None:
             del _SESSION_CACHE[key]
 
 
-def _get_or_create_user_data_dir(config: Optional[RunnableConfig] = None) -> str:
+def _get_persistent_user_data_dir(config: Optional[RunnableConfig] = None) -> Optional[str]:
     """
-    获取或创建浏览器用户数据目录
+    获取持久化浏览器用户数据目录（仅当存在会话标识时）。
 
     用于在同一个请求周期内的多次浏览器调用之间共享会话状态（cookies、localStorage等）。
-    使用基于 thread_id 或 run_id 的缓存机制，确保同一个 Agent 运行周期内共享同一个目录。
+    基于 thread_id / run_id / trace_id 缓存目录，由 TTL 机制负责回收。
+
+    F065: 当没有任何会话标识（trace_id/thread_id/run_id）时，返回 None。
+    调用方应通过 ``browser_user_data_dir`` 上下文管理器创建临时目录并在 finally
+    中清理，避免进程频繁创建 / 缺失 trace_id 时临时 Chrome profile 泄漏。
 
     Args:
-        config: 工具配置，包含 thread_id 或 run_id 用于标识会话
+        config: 工具配置，包含 thread_id / run_id / trace_id 用于标识会话
 
     Returns:
-        str: 用户数据目录路径
+        Optional[str]: 持久化用户数据目录路径；无会话标识时返回 None
     """
     # 定期清理过期缓存
     _cleanup_expired_sessions()
 
-    # 尝试从缓存获取
     session_key = _get_session_key(config)
-    if session_key:
-        with _SESSION_CACHE_LOCK:
-            cached = _SESSION_CACHE.get(session_key)
-            if cached:
-                user_data_dir = cached.get("user_data_dir")
-                if user_data_dir and os.path.isdir(user_data_dir):
-                    logger.info(f"复用已有的浏览器用户数据目录: {user_data_dir} (session_key={session_key})")
-                    return user_data_dir
+    if not session_key:
+        # 无持久会话标识：交由调用方使用临时目录并在 finally 中清理
+        logger.info("无会话标识，使用一次性临时浏览器用户数据目录（退出时清理）")
+        return None
 
-    # 创建新的临时目录
-    user_data_dir = tempfile.mkdtemp(prefix="browser_use_session_")
-    logger.info(f"创建新的浏览器用户数据目录: {user_data_dir} (session_key={session_key})")
+    with _SESSION_CACHE_LOCK:
+        cached = _SESSION_CACHE.get(session_key)
+        if cached:
+            user_data_dir = cached.get("user_data_dir")
+            if user_data_dir and os.path.isdir(user_data_dir):
+                logger.info(f"复用已有的浏览器用户数据目录: {user_data_dir} (session_key={session_key})")
+                return user_data_dir
 
-    # 存入缓存
-    if session_key:
-        with _SESSION_CACHE_LOCK:
-            _SESSION_CACHE[session_key] = {
-                "user_data_dir": user_data_dir,
-                "created_at": time.time(),
-            }
-            logger.debug(f"浏览器会话已缓存: {session_key} -> {user_data_dir}")
-
-    return user_data_dir
+        # 为该会话创建并缓存持久目录（由 TTL 清理负责回收）
+        user_data_dir = tempfile.mkdtemp(prefix="browser_use_session_")
+        _SESSION_CACHE[session_key] = {
+            "user_data_dir": user_data_dir,
+            "created_at": time.time(),
+        }
+        logger.info(f"创建新的浏览器用户数据目录: {user_data_dir} (session_key={session_key})")
+        return user_data_dir
 
 
-def _validate_url(url: str) -> bool:
+def _validate_url(url: str) -> str:
     """
-    验证URL的安全性
+    验证 URL 的安全性（含 SSRF 防护）。
+
+    复用与 fetch 工具相同的 ``SSRFValidator``：阻断私网 / 链路本地 / 回环 /
+    云元数据（169.254.169.254 等）地址，以及非 http(s) 协议（含 file://），
+    并在 DNS 解析后校验所有解析 IP（防 DNS rebinding）。
 
     Args:
-        url: 待验证的URL
+        url: 待验证的 URL
 
     Returns:
-        bool: URL是否安全
+        str: 规范化后的 URL
 
     Raises:
-        ValueError: URL不安全时抛出异常
+        ValueError: URL 不安全 / 非法时抛出（SSRFError 是 ValueError 子类）
     """
-    try:
-        parsed = urlparse(url)
-
-        # 检查协议
-        if parsed.scheme not in ["http", "https"]:
-            raise ValueError("仅支持HTTP/HTTPS协议")
-
-        # 检查是否有有效的netloc
-        if not parsed.netloc:
-            raise ValueError("无效的URL格式")
-
-        return True
-
-    except Exception as e:
-        raise ValueError(f"URL验证失败: {e}")
+    return validate_browser_url(url)
 
 
 def _build_sensitive_data(username: Optional[str] = None, password: Optional[str] = None) -> Optional[Dict[str, str]]:
@@ -339,16 +346,9 @@ def _build_sensitive_data(username: Optional[str] = None, password: Optional[str
         Dict mapping placeholder to actual value, e.g., {"x_password": "123456", "x_username": "admin"}
         如果没有凭据则返回 None
     """
-    if not username and not password:
-        return None
-
-    sensitive_data: Dict[str, str] = {}
-    if username:
-        sensitive_data["x_username"] = username
-    if password:
-        sensitive_data["x_password"] = password
-
-    return sensitive_data
+    # F064: 仅接受足够长的敏感值（过短/常见值如 'admin'、'123' 会被跳过），
+    # 注入完全交由结构化 sensitive_data 映射完成，不做盲目字符串替换。
+    return build_sensitive_data(username=username, password=password)
 
 
 def _build_browser_task_event_payload(tool_name: str, url: str, final_task: str) -> Dict[str, Any]:
@@ -405,18 +405,17 @@ def _build_forced_browser_task(base_task: Optional[str], user_message: Optional[
 {delta_text}"""
 
 
-def _apply_secret_placeholders(task: Optional[str], sensitive_data: Optional[Dict[str, str]]) -> Optional[str]:
+def _redact_task_for_log(task: Optional[str], sensitive_data: Optional[Dict[str, str]]) -> Optional[str]:
+    """仅用于日志输出的任务文本脱敏。
+
+    F064: 不再用 str.replace(value, placeholder) 做"盲目字符串替换"来构造交给
+    browser-use 执行的任务文本——短/常见值会过度替换或静默失效。凭据注入完全
+    交由结构化 sensitive_data 映射（browser-use 的 <secret> 机制）完成。
+    这里仅在记录日志前把可能出现的敏感值替换为 ``***``，避免凭据落盘。
+    """
     if not task or not sensitive_data:
         return task
-
-    replaced_task = task
-    for secret_key, actual_value in sensitive_data.items():
-        if not actual_value:
-            continue
-        placeholder = f"<secret>{secret_key}</secret>"
-        replaced_task = replaced_task.replace(actual_value, placeholder)
-
-    return replaced_task
+    return redact_secrets(task, collect_sensitive_values(*sensitive_data.values()))
 
 
 def _create_smart_wait_hook() -> tuple[Callable, dict]:
@@ -1009,7 +1008,9 @@ def _create_step_callback_adapter(
 @retry(
     stop=stop_after_attempt(MAX_RETRIES),
     wait=wait_exponential(multiplier=1, min=4, max=10),
-    retry=retry_if_not_exception_type(LoginFailureError),  # 登录失败异常不重试
+    # F037: 仅对瞬时连接/超时错误重试，避免重复执行点击/提交/导航等副作用操作；
+    # 登录失败（LoginFailureError）及其它业务异常均不在重试范围内。
+    retry=retry_if_exception_type(TRANSIENT_RETRY_EXCEPTIONS),
     reraise=True,
 )
 async def _browse_website_async(
@@ -1569,39 +1570,42 @@ def browse_website(
             )
 
         # 从独立参数构建 sensitive_data（凭据应通过 username/password 参数传递）
+        # F064: 凭据注入完全交由结构化 sensitive_data 映射完成，不在 task 文本里
+        # 做盲目字符串替换。
         sensitive_data = _build_sensitive_data(username=username, password=password)
-        task = _apply_secret_placeholders(task, sensitive_data)
 
         # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
-        masked_task = task
         if sensitive_data and task:
             credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
             if "x_password" in sensitive_data:
                 credential_hint += ", 密码: <secret>x_password</secret>"
-            masked_task = f"{credential_hint}。{task}"
+            task = f"{credential_hint}。{task}"
             logger.info("凭据已通过 username/password 参数传递: x_username=***, x_password=***")
 
-        # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
-        user_data_dir = _get_or_create_user_data_dir(config)
+        # F077: 仅用于日志/事件展示的脱敏任务文本（绝不把原始凭据写入日志）
+        masked_task = _redact_task_for_log(task, sensitive_data)
 
         # 获取用户语言设置，用于控制 browser-use 输出语言
         locale = getattr(llm_config, "locale", "en") if llm_config else "en"
 
-        result = _run_async_task(
-            _browse_website_async(
-                url=url,
-                task=masked_task,
-                llm=llm,
-                step_callback=step_callback,
-                custom_event_callback=custom_event_callback,
-                sensitive_data=sensitive_data,
-                masked_task=masked_task,
-                user_data_dir=user_data_dir,
-                locale=locale,
-                tool_name="browse_website",
-                execution_id=execution_id,
+        # F065: 无持久会话标识时使用临时目录并在 finally 中清理，防止泄漏
+        persistent_dir = _get_persistent_user_data_dir(config)
+        with browser_user_data_dir(persistent_dir) as user_data_dir:
+            result = _run_async_task(
+                _browse_website_async(
+                    url=url,
+                    task=task,
+                    llm=llm,
+                    step_callback=step_callback,
+                    custom_event_callback=custom_event_callback,
+                    sensitive_data=sensitive_data,
+                    masked_task=masked_task,
+                    user_data_dir=user_data_dir,
+                    locale=locale,
+                    tool_name="browse_website",
+                    execution_id=execution_id,
+                )
             )
-        )
         if force_browser_task and isinstance(result, dict):
             result["task_source"] = "forced_from_skill_prompt"
             result["llm_task_original"] = original_llm_task
@@ -1704,35 +1708,37 @@ def extract_webpage_info(
         sensitive_data = _build_sensitive_data(username=username, password=password)
 
         # 如果有凭据，在 task 开头添加提示，让浏览器 agent 知道有凭据可用
-        masked_task = task
         if sensitive_data and task:
             credential_hint = "【凭据已提供】用户名: <secret>x_username</secret>"
             if "x_password" in sensitive_data:
                 credential_hint += ", 密码: <secret>x_password</secret>"
-            masked_task = f"{credential_hint}。{task}"
+            task = f"{credential_hint}。{task}"
             logger.info("凭据已通过 username/password 参数传递: x_username=***, x_password=***")
 
-        # 获取或创建共享的浏览器用户数据目录（基于 thread_id/run_id 缓存，用于保持会话状态）
-        user_data_dir = _get_or_create_user_data_dir(config)
+        # F077: 仅用于日志/事件展示的脱敏任务文本
+        masked_task = _redact_task_for_log(task, sensitive_data)
 
         # 获取用户语言设置，用于控制 browser-use 输出语言
         locale = getattr(llm_config, "locale", "en") if llm_config else "en"
 
-        result = _run_async_task(
-            _browse_website_async(
-                url=url,
-                task=masked_task,
-                llm=llm,
-                step_callback=step_callback,
-                custom_event_callback=custom_event_callback,
-                sensitive_data=sensitive_data,
-                masked_task=masked_task,
-                user_data_dir=user_data_dir,
-                locale=locale,
-                tool_name="extract_webpage_info",
-                execution_id=execution_id,
+        # F065: 无持久会话标识时使用临时目录并在 finally 中清理，防止泄漏
+        persistent_dir = _get_persistent_user_data_dir(config)
+        with browser_user_data_dir(persistent_dir) as user_data_dir:
+            result = _run_async_task(
+                _browse_website_async(
+                    url=url,
+                    task=task,
+                    llm=llm,
+                    step_callback=step_callback,
+                    custom_event_callback=custom_event_callback,
+                    sensitive_data=sensitive_data,
+                    masked_task=masked_task,
+                    user_data_dir=user_data_dir,
+                    locale=locale,
+                    tool_name="extract_webpage_info",
+                    execution_id=execution_id,
+                )
             )
-        )
 
         if result.get("success"):
             return {

@@ -359,6 +359,32 @@ class NodeMgmtSyncService:
             started_at=now(),
         )
 
+    @classmethod
+    def _mark_run_failed(cls, run: NodeMgmtSyncRun, error: Exception) -> None:
+        """把运行记录标记为失败并写入结束时间/错误信息。
+
+        编排过程中任意步骤抛异常时调用，避免运行记录永久停留在 RUNNING、
+        被前端展示为「运行中」从而掩盖失败。
+        """
+        run_type = getattr(run, "run_type", "")
+        action_label = "采集" if run_type == NodeMgmtSyncRun.RUN_TYPE_COLLECT else "同步"
+        # 透传到页面的错误信息：带上动作语义，去掉裸异常类名噪声，便于运维定位
+        page_message = "节点管理{}失败：{}".format(action_label, str(error).strip() or error.__class__.__name__)
+        logger.error(
+            "[NodeMgmtSync] 运行记录标记失败 run_id=%s, run_type=%s, error=%s",
+            getattr(run, "id", None),
+            run_type,
+            str(error),
+            exc_info=True,
+        )
+        try:
+            run.status = NodeMgmtSyncRun.STATUS_FAILED
+            run.error_message = page_message
+            run.finished_at = now()
+            run.save(update_fields=["status", "error_message", "finished_at", "updated_at"])
+        except Exception:  # pragma: no cover - 兜底：标记失败本身不应再抛
+            logger.exception("[NodeMgmtSync] 标记运行记录失败状态时出错, run_id=%s", getattr(run, "id", None))
+
     @staticmethod
     def _normalize_org_ids(org_ids: list[Any] | None) -> list[int]:
         result = []
@@ -936,6 +962,15 @@ class NodeMgmtSyncService:
         run = cls._build_sync_run(task=task_config)
         logger.debug("[NodeMgmtSync] 创建同步运行记录, run_id=%d", run.id)
 
+        try:
+            return cls._do_sync_hosts(run, task_config)
+        except Exception as exc:
+            cls._mark_run_failed(run, exc)
+            logger.error("[NodeMgmtSync] 同步失败, run_id=%s, error=%s", run.id, exc, exc_info=True)
+            raise
+
+    @classmethod
+    def _do_sync_hosts(cls, run: NodeMgmtSyncRun, task_config: NodeMgmtSyncConfig) -> dict[str, Any]:
         logger.info("[NodeMgmtSync] 开始获取节点管理主机数据")
         nodes = cls._fetch_non_container_nodes()
         logger.info("[NodeMgmtSync] 获取节点完成, total_nodes=%d", len(nodes))
@@ -966,25 +1001,35 @@ class NodeMgmtSyncService:
             add_count = 0
             update_count = 0
             for node in region_nodes:
-                payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
-                detail["raw_data"]["data"].append(payload)
-                key = (payload["ip_addr"], cloud_region_id)
-                existing = existing_map.get(key)
-                if existing:
-                    detail["update"]["data"].append(existing)
-                    message["update"] += 1
-                    update_count += 1
+                try:
+                    payload = cls._build_host_instance_payload(node=node, collect_task_id=0)
+                    detail["raw_data"]["data"].append(payload)
+                    key = (payload["ip_addr"], cloud_region_id)
+                    existing = existing_map.get(key)
+                    if existing:
+                        detail["update"]["data"].append(existing)
+                        message["update"] += 1
+                        update_count += 1
+                        continue
+                    created = InstanceManage.instance_create(
+                        "host",
+                        payload,
+                        operator="system",
+                        allowed_org_ids=payload.get("organization", []),
+                    )
+                    detail["add"]["data"].append(created if isinstance(created, dict) else payload)
+                    message["add"] += 1
+                    add_count += 1
+                    existing_map[key] = created if isinstance(created, dict) else payload
+                except Exception as node_exc:
+                    # 单节点失败不中断整批同步：计入失败数并继续下一个节点。
+                    message["add_error"] += 1
+                    node_ip = node.get("ip") or node.get("ip_addr") or ""
+                    logger.error(
+                        "[NodeMgmtSync] 单节点同步失败, cloud_region_id=%s, node=%s, error=%s",
+                        cloud_region_id, node_ip, node_exc, exc_info=True,
+                    )
                     continue
-                created = InstanceManage.instance_create(
-                    "host",
-                    payload,
-                    operator="system",
-                    allowed_org_ids=payload.get("organization", []),
-                )
-                detail["add"]["data"].append(created if isinstance(created, dict) else payload)
-                message["add"] += 1
-                add_count += 1
-                existing_map[key] = created if isinstance(created, dict) else payload
 
             logger.info("[NodeMgmtSync] 云区域主机同步完成: cloud_region_id=%d, add=%d, update=%d",
                         cloud_region_id, add_count, update_count)
@@ -1025,7 +1070,13 @@ class NodeMgmtSyncService:
         message["association"] = detail["relation"]["count"]
         message["association_success"] = message["association"]
 
-        run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS if detail["todo"] else NodeMgmtSyncRun.STATUS_SUCCESS
+        has_errors = any(
+            message.get(key) for key in ("add_error", "update_error", "delete_error", "association_error")
+        )
+        if detail["todo"] or has_errors:
+            run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS
+        else:
+            run.status = NodeMgmtSyncRun.STATUS_SUCCESS
         run.summary_json = message
         run.detail_json = detail
         run.finished_at = now()
@@ -1047,7 +1098,16 @@ class NodeMgmtSyncService:
         run = cls._build_collect_run(task=task_config)
         logger.debug("[NodeMgmtSync] 创建采集运行记录, run_id=%d", run.id)
 
-        detail = {"todo": [], "executed": []}
+        try:
+            return cls._do_collect_hosts(run, task_config)
+        except Exception as exc:
+            cls._mark_run_failed(run, exc)
+            logger.error("[NodeMgmtSync] 采集失败, run_id=%s, error=%s", run.id, exc, exc_info=True)
+            raise
+
+    @classmethod
+    def _do_collect_hosts(cls, run: NodeMgmtSyncRun, task_config: NodeMgmtSyncConfig) -> dict[str, Any]:
+        detail = {"todo": [], "executed": [], "failed": []}
         message = cls._empty_display_message()
 
         collect_tasks = cls._list_region_collect_tasks()
@@ -1069,11 +1129,20 @@ class NodeMgmtSyncService:
                 )
                 continue
             logger.info("[NodeMgmtSync] 开始执行采集任务: task_id=%d, task_name=%s", collect_task.id, collect_task.name)
-            cls._execute_collect_task(collect_task)
+            try:
+                cls._execute_collect_task(collect_task)
+            except Exception as task_exc:
+                # 单个采集任务下发失败不中断其余任务。
+                detail["failed"].append({"task_id": collect_task.id, "message": str(task_exc)})
+                logger.error(
+                    "[NodeMgmtSync] 采集任务下发失败, task_id=%s, error=%s",
+                    collect_task.id, task_exc, exc_info=True,
+                )
+                continue
             detail["executed"].append({"task_id": collect_task.id, "name": collect_task.name})
             logger.info("[NodeMgmtSync] 采集任务已提交: task_id=%d", collect_task.id)
 
-        run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS if detail["todo"] else NodeMgmtSyncRun.STATUS_SUCCESS
+        run.status = NodeMgmtSyncRun.STATUS_PARTIAL_SUCCESS if (detail["todo"] or detail["failed"]) else NodeMgmtSyncRun.STATUS_SUCCESS
         run.summary_json = message
         run.detail_json = detail
         run.finished_at = now()

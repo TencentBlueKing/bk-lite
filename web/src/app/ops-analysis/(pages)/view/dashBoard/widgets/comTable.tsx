@@ -4,8 +4,8 @@ import React, {
   useMemo,
   useCallback,
 } from 'react';
-import { Input, Select, DatePicker, Tooltip } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Input, Select, DatePicker, Tooltip, message } from 'antd';
+import { MoreOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
@@ -21,7 +21,12 @@ import type {
   ValueConfig,
   TableColumnConfigItem,
   TableFilterFieldConfig,
+  DashboardActionConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import {
+  buildDashboardActionUrl,
+  resolveDashboardActionParams,
+} from '@/app/ops-analysis/utils/dashboardActions';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -111,27 +116,107 @@ const ComTable: React.FC<ComTableProps> = ({
     }).filter((col) => col.visible);
   }, [config?.tableConfig?.columns, dataSource?.field_schema, tableData]);
 
+  const handleActionClick = useCallback(
+    (action: DashboardActionConfig, record: TableDataItem) => {
+      const params = resolveDashboardActionParams(action.params, record);
+      const url = buildDashboardActionUrl(action.url, params);
+      if (!url) {
+        message.warning(t('dashboard.actionUrlUnavailable'));
+        return;
+      }
+
+      if (action.openMode === 'newTab') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      window.location.href = url;
+    },
+    [t],
+  );
+
+  const renderActionButtons = useCallback(
+    (actions: DashboardActionConfig[], record: TableDataItem) => {
+      if (actions.length === 0) {
+        return '-';
+      }
+
+      const visibleActions = actions.slice(0, 2);
+      const dropdownActions = actions.slice(2);
+
+      return (
+        <div className="flex items-center gap-1">
+          {visibleActions.map((action, index) => (
+            <Button
+              key={`${action.columnKey}_${index}_${action.text}`}
+              type="link"
+              size="small"
+              className="p-0"
+              onClick={() => handleActionClick(action, record)}
+            >
+              {action.text}
+            </Button>
+          ))}
+          {dropdownActions.length > 0 && (
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: dropdownActions.map((action, index) => ({
+                  key: String(index),
+                  label: action.text,
+                })),
+                onClick: ({ key }) => {
+                  const action = dropdownActions[Number(key)];
+                  if (action) {
+                    handleActionClick(action, record);
+                  }
+                },
+              }}
+            >
+              <Button type="link" size="small" className="p-0">
+                {t('common.more')}
+                <MoreOutlined />
+              </Button>
+            </Dropdown>
+          )}
+        </div>
+      );
+    },
+    [handleActionClick, t],
+  );
+
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
     return columnConfigs.map((col) => {
+      const columnActions = (config?.actions || []).filter(
+        (action) => action.columnKey === col.key,
+      );
       const column: any = {
         title: col.title,
         dataIndex: col.key,
         key: col.key,
         ellipsis: { showTitle: false },
-        render: (text: any) => (
-          <Tooltip placement="topLeft" title={text?.toString()}>
-            <div
-              style={{
-                maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {text?.toString() ?? '-'}
-            </div>
-          </Tooltip>
-        ),
+        render: (text: any, record: TableDataItem) => {
+          if (col.columnType === 'actions') {
+            return renderActionButtons(columnActions, record);
+          }
+
+          const displayText = text?.toString() ?? '-';
+
+          return (
+            <Tooltip placement="topLeft" title={displayText}>
+              <div
+                style={{
+                  maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                }}
+              >
+                {displayText}
+              </div>
+            </Tooltip>
+          );
+        },
       };
 
       if (col.width) {
@@ -140,7 +225,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
       return column;
     });
-  }, [columnConfigs]);
+  }, [columnConfigs, config?.actions, handleActionClick, renderActionButtons]);
 
   useEffect(() => {
     if (!onQueryChange) return;

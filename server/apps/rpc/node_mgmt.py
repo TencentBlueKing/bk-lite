@@ -192,6 +192,13 @@ class NodeMgmt(object):
         return_data = self.client.run("get_cloud_region_envconfig", cloud_region_id)
         return return_data
 
+    def install_collector(self, collector_package: int, nodes: list[str]):
+        """通过 NATS 触发采集器安装"""
+        return self.client.run(
+            "install_collector",
+            {"collector_package": collector_package, "nodes": nodes},
+        )
+
     def install_managed_component(self, collector_package: int, nodes: list[str]):
         """通过 NATS 触发托管组件安装"""
         return self.client.run(

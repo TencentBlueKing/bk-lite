@@ -7,6 +7,7 @@
 处理各种插件（MySQL、Redis、Nginx等）的数据采集任务
 """
 
+import re
 import time
 import traceback
 import ntpath
@@ -212,7 +213,9 @@ async def _handle_multicred_post_execute(params, task_id, execution_result, cach
     host = params.get("host")
     credential_id = params.get("credential_id")
     credential_index = int(params.get("credential_index") or 0)
-    if not credentials_pool or collect_task_id in (None, "") or not host or not credential_id:
+    # 单凭据(无 credentials_pool)与多凭据一律走冷却：只需 task/host/credential 即可记录状态。
+    # credentials_pool 仅用于失败后"换下一个凭据"的链式逻辑(见末尾)。
+    if collect_task_id in (None, "") or not host or not credential_id:
         return
 
     await cache_cls.append_result_event(execution_result)
@@ -221,25 +224,44 @@ async def _handle_multicred_post_execute(params, task_id, execution_result, cach
         await cache_cls.mark_success(collect_task_id, host, credential_id)
         return
 
-    if execution_result["failure_kind"] != "credential":
-        await cache_cls.clear_success(collect_task_id, host)
-        return
-
     await cache_cls.clear_success(collect_task_id, host)
 
-    consecutive_failures = int(params.get("credential_failures", 0)) + 1
-    cooldown_level = 1 if consecutive_failures == 1 else 2 if consecutive_failures == 2 else 3
-    cooldown_hours = _cooldown_hours_for_failure(consecutive_failures)
-    next_retry_at = (datetime.now(timezone.utc) + timedelta(hours=cooldown_hours)).isoformat()
-    await cache_cls.mark_failure(
-        collect_task_id,
-        host,
-        credential_id,
-        execution_result["error_message"],
-        cooldown_level,
-        consecutive_failures,
-        next_retry_at,
-    )
+    has_pool = len(credentials_pool) > 1
+    failure_kind = execution_result["failure_kind"]
+    # 是否冷却当前凭据（让下一轮跳过它）：
+    #  - credential（认证失败）/unreachable（连接不可达）：持久失败，冷却。
+    #  - SNMP 无响应/超时：对 SNMP 而言“错误凭据/版本”就是静默无响应，等价持久失败；
+    #    仅在多凭据池下据此冷却（单凭据保持原“不冷却、下一轮重试”行为，避免误伤瞬时抖动）。
+    #  - 其它 task 类失败：疑似瞬时，不冷却。
+    persistent = failure_kind in ("credential", "unreachable")
+    if has_pool and _is_snmp_no_response(execution_result["error_message"]):
+        persistent = True
+
+    consecutive_failures = int(params.get("credential_failures", 0))
+    if persistent:
+        consecutive_failures += 1
+        cooldown_level = 1 if consecutive_failures == 1 else 2 if consecutive_failures == 2 else 3
+        cooldown_hours = _cooldown_hours_for_failure(consecutive_failures)
+        next_retry_at = (datetime.now(timezone.utc) + timedelta(hours=cooldown_hours)).isoformat()
+        await cache_cls.mark_failure(
+            collect_task_id,
+            host,
+            credential_id,
+            execution_result["error_message"],
+            cooldown_level,
+            consecutive_failures,
+            next_retry_at,
+        )
+        logger.info(
+            f"[Cooldown] host={host} credential={credential_id} kind={failure_kind} "
+            f"cooled {cooldown_hours}h (consecutive={consecutive_failures}) "
+            f"err={str(execution_result['error_message'])[:80]}"
+        )
+
+    # 轮询：多凭据池的语义是“挨个试到一个能用为止”，因此当前凭据任何失败都尝试换下一个
+    # 未冷却的凭据；持久失败的凭据已被上面冷却，下一轮会被跳过。单凭据无可换，结束。
+    if not has_pool:
+        return
     next_task = await _build_next_credential_task(params, credential_index, consecutive_failures, cache_cls)
     if not next_task:
         return
@@ -275,15 +297,32 @@ def _is_failed_metrics_payload(metrics_data: Any) -> bool:
     if metrics_data is None:
         return True
     if isinstance(metrics_data, dict):
-        return str(metrics_data.get("status") or "").lower() == "error"
+        status = str(metrics_data.get("status") or metrics_data.get("collect_status") or "").lower()
+        return status in ("error", "failed")
     text = str(metrics_data)
-    return 'status="error"' in text or "cmdb_collect_error" in text
+    # 采集失败的指标形态为 ..._info{...collect_status="failed",collect_error="..."}，
+    # 历史判定只认 status="error"/cmdb_collect_error，会漏判，需一并识别。
+    return (
+        'status="error"' in text
+        or 'collect_status="failed"' in text
+        or 'collect_status="error"' in text
+        or "cmdb_collect_error" in text
+    )
 
 
 def _extract_metrics_error(metrics_data: Any) -> str:
     if isinstance(metrics_data, dict):
-        return str(metrics_data.get("error") or metrics_data.get("cmdb_collect_error") or "")
+        return str(
+            metrics_data.get("error")
+            or metrics_data.get("cmdb_collect_error")
+            or metrics_data.get("collect_error")
+            or ""
+        )
     text = str(metrics_data or "")
+    # 从 prometheus/influx 文本里抽取 collect_error="..." 的真实错误信息
+    match = re.search(r'collect_error="((?:[^"\\]|\\.)*)"', text)
+    if match:
+        return match.group(1).replace('\\"', '"').replace("\\\\", "\\")
     if "cmdb_collect_error" in text:
         return text
     return "collection failed"
@@ -294,7 +333,35 @@ def _classify_failure_kind(error_message: str) -> str:
     credential_keywords = ("auth", "password", "credential", "denied", "unauthorized", "community", "authkey", "privkey")
     if any(keyword in text for keyword in credential_keywords):
         return "credential"
+    # 连接不可达类失败（假 IP：TCP 连不上 / SSH 拨号失败 / 拒绝 / 路由不可达）：
+    # 纳入冷却，避免每轮都对死 IP 重复探测，拖垮串行执行端。
+    # 注意：仅限“连接建立阶段”的失败。刻意不含：
+    #   - "nats: timeout" / "no responders"（executor 侧无响应，非目标主机不可达，避免误伤一批正常 host）
+    #   - "SSH execution timed out"（已连上、只是命令跑得久，属于慢主机而非不可达）
+    unreachable_keywords = (
+        "tcp connect", "connect timed out", "connect failed",
+        "dial timed out", "connection refused", "no route",
+        "host is down", "unreachable",
+    )
+    if any(keyword in text for keyword in unreachable_keywords):
+        return "unreachable"
     return "task"
+
+
+def _is_snmp_no_response(error_message: str) -> bool:
+    """SNMP 无响应/超时。对 SNMP 而言“错误的团体字/版本”不会报认证错误，而是设备静默丢包、
+    重试耗尽后超时——所以多凭据轮询要把它当作“此凭据对该设备不可用”的持久信号。
+    刻意只匹配 SNMP 专有措辞，不误伤 SSH/NATS 等的 timeout（那些保持 task 语义）。"""
+    text = str(error_message or "").lower()
+    return any(
+        keyword in text
+        for keyword in (
+            "no snmp response",
+            "empty snmp response",
+            "requesttimedout",
+            "no response received before timeout",
+        )
+    )
 
 
 def _cooldown_hours_for_failure(consecutive_failures: int) -> int:

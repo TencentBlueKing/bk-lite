@@ -9,6 +9,14 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   metaItems: ['Telegraf', 'middleware'],
   metrics: [
     {
+      name: 'apache_ServerUptimeSeconds',
+      display_name: '运行时长',
+      description: 'Apache 实例自上次启动后的持续运行时间(秒)。',
+      unit: 's',
+      query: 'apache_ServerUptimeSeconds{__$labels__}',
+      color: '#597ef7'
+    },
+    {
       name: 'apache_ReqPerSec',
       display_name: '请求处理速率',
       description: 'Apache 每秒处理请求数量。',
@@ -77,7 +85,7 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '请求变化速率',
       description: 'Apache 总访问次数变化速率。',
       unit: 'cps',
-      query: 'apache_TotalAccesses_rate{__$labels__}',
+      query: 'rate(apache_TotalAccesses{__$labels__}[5m])',
       color: '#27c274'
     },
     {
@@ -117,7 +125,7 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'Open 连接变化速率',
       description: 'Apache scoreboard open 状态连接变化速率。',
       unit: 'cps',
-      query: 'apache_scboard_open_rate{__$labels__}',
+      query: 'rate(apache_scboard_open{__$labels__}[5m])',
       color: '#9aa9bf'
     },
     {
@@ -138,6 +146,17 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
     }
   ],
   summaryCards: [
+    {
+      title: '运行时长',
+      metric: 'apache_ServerUptimeSeconds',
+      unit: 's',
+      formatter: 'duration',
+      isUptimeCard: true,
+      icon: 'clock',
+      color: '#597ef7',
+      guide: [{ label: '运行时长', detail: '实例自上次启动后的持续运行时间；期间发生重启会重新计时。' }],
+      footer: [{ label: '启动', metric: 'apache_ServerUptimeSeconds', formatter: 'startedAt' }]
+    },
     {
       title: '请求处理速率',
       metric: 'apache_ReqPerSec',
@@ -164,6 +183,14 @@ export const APACHE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       compareFavorableDirection: 'down',
       guide: [{ label: 'Worker 饱和度', detail: '忙碌 Worker 占总 Worker 比例。逼近 100% 说明处理容量即将耗尽，新请求将排队等待。' }],
       footer: [{ label: '空闲 Worker', metric: 'apache_IdleWorkers', unit: 'counts' }]
+    },
+    {
+      title: '请求变化速率',
+      metric: 'apache_TotalAccesses_rate',
+      unit: 'cps',
+      color: '#27c274',
+      icon: 'thunder',
+      guide: [{ label: '请求变化速率', detail: 'Apache 总访问次数的每秒变化速率，反映请求增长趋势。' }]
     }
   ],
   charts: [

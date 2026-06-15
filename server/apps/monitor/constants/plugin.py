@@ -21,3 +21,8 @@ class PluginConstants:
         COLLECT_MODE_AUTO: "自动",
         COLLECT_MODE_MANUAL: "手动",
     }
+
+    # 插件配置来源：用于区分可编辑配置、仅上报状态和两者都有的状态
+    CONFIG_SOURCE_CONFIGURED = "configured"
+    CONFIG_SOURCE_REPORTED_ONLY = "reported_only"
+    CONFIG_SOURCE_CONFIGURED_REPORTED = "configured_reported"

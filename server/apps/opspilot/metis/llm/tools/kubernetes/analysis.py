@@ -5,6 +5,7 @@ from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 from kubernetes import client
 from apps.opspilot.metis.llm.tools.kubernetes.utils import prepare_context, parse_resource_quantity, get_current_cluster_name
+from apps.core.logger import opspilot_logger as logger
 
 
 @tool()
@@ -48,7 +49,7 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
                         if hard_value > 0:
                             quota_info["usage_percentage"][resource] = round(
                                 (used_value / hard_value) * 100, 2)
-                    except Exception:
+                    except (ValueError, TypeError):
                         # For non-numeric resources like count/integer
                         try:
                             hard_int = int(hard_limit)
@@ -56,7 +57,10 @@ def check_kubernetes_resource_quotas(namespace=None, config: RunnableConfig = No
                             if hard_int > 0:
                                 quota_info["usage_percentage"][resource] = round(
                                     (used_int / hard_int) * 100, 2)
-                        except Exception:
+                        except (ValueError, TypeError):
+                            logger.debug(
+                                f"[k8s-analysis] 无法计算配额使用率 resource={resource} "
+                                f"hard={hard_limit} used={used_amount}")
                             quota_info["usage_percentage"][resource] = "无法计算"
 
             result.append(quota_info)
@@ -684,8 +688,9 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
                 if not has_pdb:
                     analysis["recommendations"].append(
                         "考虑配置PodDisruptionBudget以控制自愿中断")
-            except Exception:
-                pass  # PDB API可能不可用
+            except Exception as e:
+                # PDB API 可能不可用；不再静默吞掉，至少记录原因（F097）
+                logger.warning(f"[k8s-analysis] PDB 检查跳过（PodDisruptionBudget API 不可用）: {e}")
 
             analysis_results.append(analysis)
 

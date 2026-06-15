@@ -57,6 +57,7 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGridStack';
 import {
   buildDashboardGroupStorageKey,
+  bumpDashboardGroupWidgetReloadVersions,
   getDashboardGroupWidgetIds,
   insertDashboardWidgetIntoGroup,
   isDashboardGroupItem,
@@ -446,6 +447,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
     ]);
 
     const toggleCollapsedGroup = useCallback((groupId: string) => {
+      const isExpanding = Boolean(collapsedGroups[groupId]);
+
       setCollapsedGroups((previous) => {
         if (previous[groupId]) {
           const next = { ...previous };
@@ -455,7 +458,13 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
         return { ...previous, [groupId]: true };
       });
-    }, []);
+
+      if (isExpanding) {
+        setWidgetReloadVersions((versions) =>
+          bumpDashboardGroupWidgetReloadVersions(layout, groupId, versions),
+        );
+      }
+    }, [collapsedGroups, layout]);
 
     const openAddModal = (groupId?: string) => {
       setIsEditMode(true);
@@ -577,6 +586,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
           gaugeMax: config.gaugeMax,
           gaugeShape: config.gaugeShape,
           compare: config.compare,
+          actions: config.actions,
         },
       };
       const nextLayout = pendingNewWidgetGroupId
@@ -634,7 +644,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const handleSave = async () => {
       if (!selectedDashboard) {
-        message.warning('请先选择一个仪表盘');
+        message.warning(t('dashboard.selectDashboardFirst'));
         return;
       }
 
@@ -940,6 +950,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 gaugeMax: values.gaugeMax,
                 gaugeShape: values.gaugeShape,
                 compare: values.compare,
+                actions: values.actions,
               },
             };
           }

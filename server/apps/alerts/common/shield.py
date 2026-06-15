@@ -125,13 +125,13 @@ class EventShieldOperator(object):
                         shielded_event_ids.add(result["event_id"])
 
             except Exception as e:
-                logger.error(f"Error processing shield {shield.id}: {str(e)}")
+                logger.error("[AlertShield] 处理屏蔽策略失败 shield_id=%s: %s", shield.id, e, exc_info=True)
                 continue
 
         results["unshielded_events"] = (
             results["total_events"] - results["shielded_events"]
         )
-        logger.info(f"Shield check completed: {results}")
+        logger.info("[AlertShield] 屏蔽检查完成: %s", results)
         return results
 
     def _get_time_matched_shields(self) -> List[AlertShield]:
@@ -150,7 +150,7 @@ class EventShieldOperator(object):
             if checker.is_in_range():
                 time_matched_shields.append(shield)
             else:
-                logger.debug(f"Shield {shield.id} time range not matched, skipping")
+                logger.debug("[AlertShield] 屏蔽策略 %s 时间范围未匹配，跳过", shield.id)
 
         return time_matched_shields
 
@@ -219,7 +219,8 @@ class EventShieldOperator(object):
                 # 为每个成功屏蔽的事件记录结果
                 for event_info in events_to_shield:
                     logger.debug(
-                        f"Event {event_info['event_id']} shielded successfully by shield policy {shield.id}"
+                        "[AlertShield] 事件 %s 已被屏蔽策略 %s 成功屏蔽",
+                        event_info["event_id"], shield.id,
                     )
 
                     results.append(
@@ -232,11 +233,12 @@ class EventShieldOperator(object):
                     )
 
                 logger.info(
-                    f"Batch shield completed: {updated_count} events shielded by policy {shield.id}"
+                    "[AlertShield] 批量屏蔽完成: 策略 %s 共屏蔽 %s 个事件",
+                    shield.id, updated_count,
                 )
 
         except Exception as e:
-            logger.error(f"Error in batch shield: {str(e)}")
+            logger.error("[AlertShield] 批量屏蔽失败: %s", e, exc_info=True)
             # 如果批量操作失败，为所有事件添加失败记录
             for event_id in event_ids:
                 results.append(
@@ -324,5 +326,5 @@ def execute_shield_check_for_events(
             }
 
     result = operator.execute_shield_check()
-    logger.info(f"=== Shield check completed: {result} ===")
+    logger.info("[AlertShield] === 屏蔽检查完成: %s ===", result)
     return result

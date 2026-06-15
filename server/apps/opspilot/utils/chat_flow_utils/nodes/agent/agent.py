@@ -11,16 +11,13 @@ from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.chat_service import ChatService, chat_service
+from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
 
 class AgentNode(BaseNodeExecutor):
-    def __init__(self, variable_manager, workflow_instance=None):
-        super().__init__(variable_manager)
-        self.workflow_instance = workflow_instance
-
     def _get_skill(self, skill_id: str) -> LLMSkill:
         """获取技能对象
 
@@ -122,9 +119,7 @@ class AgentNode(BaseNodeExecutor):
         result = []
         current_length = 0
         for i, mem in enumerate(memories):
-            mem_with_prefix = f"## {mem}" if i > 0 or not memory_context.startswith("## ") else f"## {mem}"
-            if i == 0:
-                mem_with_prefix = f"## {mem}"
+            mem_with_prefix = f"## {mem}"
 
             if current_length + len(mem_with_prefix) + 4 > max_chars:  # +4 for "\n\n"
                 if result:
@@ -178,13 +173,14 @@ class AgentNode(BaseNodeExecutor):
                 break
         return message
 
-    def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any]) -> Dict[str, Any]:
+    def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "") -> Dict[str, Any]:
         """构建LLM调用参数
 
         Args:
             skill: 技能对象
             final_message: 最终消息
             flow_input: 流程输入
+            node_id: 当前执行的节点ID（优先级高于 flow_input["node_id"]）
 
         Returns:
             LLM参数字典
@@ -193,6 +189,9 @@ class AgentNode(BaseNodeExecutor):
         is_third_party = flow_input.get("is_third_party", False)
         enable_rag_knowledge_source = False if is_third_party else skill.enable_rag_knowledge_source
         logger.info(f"is_third_party：{is_third_party}")
+        # 优先使用调用方传入的当前节点 ID；flow_input["node_id"] 存储的是入口节点 ID，
+        # 不是当前智能体节点的 ID，直接使用会导致附件 source_node_id 错误。
+        effective_node_id = node_id or self.variable_manager.get_variable("current_node_id", "")
         return {
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolve_skill_params(skill.skill_prompt, skill.skill_params),
@@ -215,7 +214,7 @@ class AgentNode(BaseNodeExecutor):
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化
             "thread_id": flow_input.get("execution_id", ""),
             "execution_id": flow_input.get("execution_id", ""),
-            "node_id": flow_input.get("node_id", "") or self.variable_manager.get_variable("current_node_id", ""),
+            "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
         }
@@ -237,13 +236,14 @@ class AgentNode(BaseNodeExecutor):
         if not asset:
             return {}
 
-        self.variable_manager.set_variable(normalized_node_id, asset.download_url)
+        download_url = build_signed_attachment_download_url(asset)
+        self.variable_manager.set_variable(normalized_node_id, download_url)
         return {
-            normalized_node_id: asset.download_url,
+            normalized_node_id: download_url,
             "generated_attachment": {
                 "attachment_id": asset.attachment_id,
                 "filename": asset.filename,
-                "file_url": asset.download_url,
+                "file_url": download_url,
                 "mime_type": asset.mime_type,
             },
         }
@@ -342,7 +342,7 @@ class AgentNode(BaseNodeExecutor):
         final_message = self._build_final_message(message, node_prompt, uploaded_files, node_id)
 
         # 构建LLM参数
-        llm_params = self._build_llm_params(skill, final_message, flow_input)
+        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id)
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 

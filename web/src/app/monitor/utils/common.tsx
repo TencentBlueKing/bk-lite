@@ -312,9 +312,16 @@ export const mergeViewQueryKeyValues = (
     });
   });
 
+  // 值会被拼进 PromQL 正则匹配器 key=~"v1|v2",必须逐个转义正则元字符与引号/反斜杠,
+  // 否则含 . + ( ) 等字符的实例标识(如 IP/主机名)会被当作正则,匹配到错误/多余的序列,
+  // 含 " 的值还会直接破坏查询语法。
+  const escapeRegexValue = (v: string): string => v.replace(/[\\^$.*+?()[\]{}|"]/g, '\\$&');
+
   const resultArray: string[] = [];
   for (const key in mergedObject) {
-    const values = Array.from(mergedObject[key]).join('|');
+    const values = Array.from(mergedObject[key])
+      .map((v) => escapeRegexValue(String(v ?? '')))
+      .join('|');
     resultArray.push(`${key}=~"${values}"`);
   }
 
@@ -486,6 +493,19 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
     OBJECT_DEFAULT_ICON
   );
 };
+
+// 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌 logo 图标与品牌标签。
+const BRANDS: { match: RegExp; label: string; icon: string }[] = [
+  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' }
+];
+
+// 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。
+export const getPluginBrandIcon = (pluginName = ''): string | undefined =>
+  BRANDS.find((brand) => brand.match.test(pluginName))?.icon;
+
+// 按名称（实例名/插件名）取品牌标签（如 'Cisco'），用于在共享仪表盘头部标识当前品牌；未命中返回 undefined。
+export const getBrandLabel = (text = ''): string | undefined =>
+  BRANDS.find((brand) => brand.match.test(text))?.label;
 
 export const getRecentTimeRange = (timeValues: TimeValuesProps) => {
   if (timeValues.originValue) {

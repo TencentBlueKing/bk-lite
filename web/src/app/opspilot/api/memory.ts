@@ -19,6 +19,13 @@ export interface MemorySpace {
   updated_at: string;
 }
 
+export interface WorkflowMemorySpaceOption {
+  id: number;
+  name: string;
+  scope: 'personal' | 'team';
+  default_model: string;
+}
+
 export interface Memory {
   id: number;
   memory_space: number;
@@ -67,6 +74,11 @@ export const useMemoryApi = () => {
 
   const fetchMemorySpaces = async (): Promise<MemorySpace[]> => {
     return await get('/opspilot/memory_mgmt/memory_space/');
+  };
+
+  const fetchWorkflowMemorySpaces = async (): Promise<WorkflowMemorySpaceOption[]> => {
+    const res = await get('/opspilot/memory_mgmt/memory_space/workflow_options/');
+    return res.data || res;
   };
 
   const fetchMemorySpace = async (id: number): Promise<MemorySpace> => {
@@ -130,6 +142,7 @@ export const useMemoryApi = () => {
 
   return {
     fetchMemorySpaces,
+    fetchWorkflowMemorySpaces,
     fetchMemorySpace,
     createMemorySpace,
     updateMemorySpace,

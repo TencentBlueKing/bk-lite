@@ -42,9 +42,11 @@ export default function ZookeeperDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
 
           {/* Row 1: packet rate (span6) + latency (span6) = 12 */}
+          <div className={styles.sectionLabel}>性能趋势</div>
           <FlexiblePanelSection styles={styles}>
             {[packetChart, latencyChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -66,6 +68,7 @@ export default function ZookeeperDashboardPage() {
           </FlexiblePanelSection>
 
           {/* Row 2: connection trend (span4) + outstanding trend (span4) + data-object trend (span4) = 12 */}
+          <div className={styles.sectionLabel}>负载趋势</div>
           <FlexiblePanelSection styles={styles}>
             {[connectionChart, outstandingChart, objectChart].map((chart) => chart ? (
               <TrendChartPanel
@@ -87,6 +90,7 @@ export default function ZookeeperDashboardPage() {
           </FlexiblePanelSection>
 
           {/* Row 3: FD ring (span4) + Fsync bar (span4) + detail (span4) = 12 */}
+          <div className={styles.sectionLabel}>分布与详情</div>
           <FlexiblePanelSection styles={styles}>
             {fdRing ? (
               <RingChartPanel

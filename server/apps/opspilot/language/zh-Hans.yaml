@@ -103,6 +103,8 @@ base_constant:
 error:
   no_group_id: 无组 ID
   no_view_permission: 你没有权限查看此实例
+  model_in_use: 无法删除，仍被 {count} 个知识图谱引用。
+  vendor_in_use: 无法删除，仍被 {count} 个模型引用。
   delete_failed: 删除失败
   knowledge_graph_not_completed: 知识图谱未完成
   llm_model_name_exists: 组 {validate_msg} 中已存在同名 LLM 模型。
@@ -814,3 +816,45 @@ tools:
         description: 访问网站并执行指定任务，支持AI驱动的智能网页操作，包括点击、填表、滚动等交互
       extract_webpage_info:
         description: 从网页中提取特定信息，支持动态加载的JavaScript内容，返回结构化数据
+  redis:
+    name: Redis
+    description: |
+      Redis 操作工具模块
+
+      提供 Redis 连接管理、键值查询与数据库诊断能力，便于 Agent 查看和操作 Redis 实例。
+  mysql:
+    name: MySQL
+    description: |
+      MySQL 操作工具模块
+
+      提供 MySQL 连接管理、结构查看、安全查询与性能诊断能力，便于 Agent 查看和操作 MySQL 数据库。
+  oracle:
+    name: Oracle
+    description: |
+      Oracle 操作工具模块
+
+      提供 Oracle 连接管理、结构查看、安全查询与诊断能力，便于 Agent 查看和操作 Oracle 数据库。
+  mssql:
+    name: SQL Server
+    description: |
+      SQL Server 操作工具模块
+
+      提供 Microsoft SQL Server 连接管理、结构查看、安全查询与诊断能力，便于 Agent 查看和操作 SQL Server 数据库。
+  elasticsearch:
+    name: Elasticsearch
+    description: |
+      Elasticsearch 操作工具模块
+
+      提供 Elasticsearch 连接管理、索引查看与检索查询能力，便于 Agent 查看和操作 Elasticsearch 集群。
+  kubernetes_data_collection:
+    name: Kubernetes 数据采集
+    description: |
+      Kubernetes 数据采集工具模块
+
+      采集 Kubernetes 集群资源、指标与事件，用于巡检、可观测性与分析场景。
+  agent_browser:
+    name: 智能浏览器
+    description: |
+      智能浏览器工具模块
+
+      提供 Agent 驱动的浏览器自动化能力，用于访问网页并提取信息。

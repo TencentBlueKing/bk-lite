@@ -105,6 +105,8 @@ base_constant:
 error:
   no_group_id: No Group ID
   no_view_permission: User does not have permission to view this instance
+  model_in_use: Cannot delete because it is still in use by {count} knowledge graph(s).
+  vendor_in_use: Cannot delete because it is still in use by {count} model(s).
   delete_failed: delete failed
   knowledge_graph_not_completed: Knowledge graph is not completed
   llm_model_name_exists: A LLM Model with the same name already exists in group {validate_msg}.
@@ -819,3 +821,45 @@ tools:
         description: Visit website and execute specified tasks, supports AI-driven intelligent web operations including clicking, form filling, scrolling and other interactions
       extract_webpage_info:
         description: Extract specific information from web pages, supports dynamically loaded JavaScript content, returns structured data
+  redis:
+    name: Redis
+    description: |
+      Redis Operations Tool Module
+
+      Provides Redis connection management, key-value queries, and database diagnostics for Agent to inspect and operate Redis instances.
+  mysql:
+    name: MySQL
+    description: |
+      MySQL Operations Tool Module
+
+      Provides MySQL connection management, schema inspection, safe queries, and performance diagnostics for Agent to inspect and operate MySQL databases.
+  oracle:
+    name: Oracle
+    description: |
+      Oracle Operations Tool Module
+
+      Provides Oracle connection management, schema inspection, safe queries, and diagnostics for Agent to inspect and operate Oracle databases.
+  mssql:
+    name: SQL Server
+    description: |
+      SQL Server Operations Tool Module
+
+      Provides Microsoft SQL Server connection management, schema inspection, safe queries, and diagnostics for Agent to inspect and operate SQL Server databases.
+  elasticsearch:
+    name: Elasticsearch
+    description: |
+      Elasticsearch Operations Tool Module
+
+      Provides Elasticsearch connection management, index inspection, and search/query capabilities for Agent to inspect and operate Elasticsearch clusters.
+  kubernetes_data_collection:
+    name: Kubernetes Data Collection
+    description: |
+      Kubernetes Data Collection Tool Module
+
+      Collects Kubernetes cluster resources, metrics, and events for inspection, observability, and analysis scenarios.
+  agent_browser:
+    name: Agent Browser
+    description: |
+      Agent Browser Tool Module
+
+      Provides agent-driven browser automation capabilities for visiting web pages and extracting information.

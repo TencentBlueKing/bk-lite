@@ -367,7 +367,10 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         try:
             result = _normalize_downstream_result(client.get_data())
         except Exception as e:
-            logger.error("获取数据源数据失败: {}".format(e))
+            logger.error(
+                "[DataSourceQuery] 取数失败 datasource_id=%s name=%s namespace=%s path=%s：%s",
+                instance.id, instance.name, namespace, path, e, exc_info=True,
+            )
             error_status, error_message = _classify_runtime_exception(e)
             return _build_error_response(error_message, error_status)
 

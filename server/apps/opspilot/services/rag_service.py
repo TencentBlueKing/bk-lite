@@ -23,7 +23,9 @@ class RAGService:
         base_ids = list(score_threshold_map.keys())
 
         # 获取知识库和文档
-        knowledge_base_list = KnowledgeBase.objects.filter(id__in=base_ids)
+        # select_related 预取 embed_model / rerank_model，避免 set_default_naive_rag_kwargs
+        # 在循环中对每个知识库触发 EmbedProvider / RerankProvider 的额外查询（N+1）。
+        knowledge_base_list = KnowledgeBase.objects.filter(id__in=base_ids).select_related("embed_model", "rerank_model")
         doc_list = list(
             KnowledgeDocument.objects.filter(knowledge_base_id__in=base_ids).values("id", "knowledge_source_type", "name", "knowledge_base_id")
         )

@@ -1,7 +1,5 @@
 """作业执行 Celery 任务入口"""
 
-from datetime import timedelta
-
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.utils import timezone
@@ -157,9 +155,8 @@ def execute_scheduled_task(scheduled_task_id: int):
 
 @shared_task(max_retries=0)
 def cleanup_expired_distribution_files_task():
-    threshold = timezone.now() - timedelta(days=7)
-    # 仅清理临时文件（is_permanent=False），永久文件不清理
-    expired_files = DistributionFile.objects.filter(created_at__lt=threshold, is_permanent=False)
+    # 清理所有已到期文件（expire_at <= 当前时间）
+    expired_files = DistributionFile.objects.filter(expire_at__lte=timezone.now())
     total_count = expired_files.count()
     if total_count == 0:
         logger.info("[cleanup_expired_distribution_files_task] 没有过期文件需要清理")

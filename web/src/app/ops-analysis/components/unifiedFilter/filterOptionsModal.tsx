@@ -21,6 +21,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import type { FilterOption } from '@/app/ops-analysis/types/dashBoard';
 
 interface FilterOptionsModalProps {
@@ -105,8 +106,24 @@ const FilterOptionsModal: React.FC<FilterOptionsModalProps> = ({
   onConfirm,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [options, setOptions] = useState<EditableOption[]>([]);
   const hasInitializedRef = useRef(false);
+
+  const isDirty = () => {
+    const normalize = (list: FilterOption[]) =>
+      JSON.stringify(
+        list
+          .map(({ label, value }) => ({
+            label: (label || '').trim(),
+            value: (value || '').trim(),
+          }))
+          .filter((item) => item.label || item.value),
+      );
+    return normalize(options) !== normalize(initialOptions);
+  };
+
+  const handleCancel = () => guardClose(isDirty(), onCancel);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -190,11 +207,12 @@ const FilterOptionsModal: React.FC<FilterOptionsModalProps> = ({
     <Modal
       title={t('dashboard.configOptions')}
       open={open}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
       width={560}
+      maskClosable={false}
       centered
       destroyOnHidden
     >

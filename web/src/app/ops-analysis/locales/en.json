@@ -240,8 +240,16 @@
       "datetime": "Datetime"
     }
   },
+  "opsAnalysis": {
+    "architecture": {
+      "loadFailed": "Failed to load"
+    }
+  },
   "dashboard": {
     "endTime": "End Time",
+    "duplicateFieldKey": "Field key must be unique",
+    "selectDashboardFirst": "Please select a dashboard first",
+    "fetchDataFieldsFailed": "Failed to fetch data fields",
     "timeRange": "Time Range",
     "noData": "No data available",
     "dataSourceAttr": "Data Source Attribute",
@@ -294,6 +302,29 @@
     "atLeastOneVisibleColumn": "Please keep at least one visible column",
     "invalidConfiguredFieldsTip": "Some configured fields are not in the current available field set and may be unavailable: {{fields}}",
     "columnVisible": "Visible",
+    "addDataColumn": "Add Data Column",
+    "addOperationColumn": "Add Operation Column",
+    "operationColumn": "Operation Column",
+    "operationColumnTitle": "Actions",
+    "interactionConfig": "Interaction Config",
+    "targetUrl": "Target URL",
+    "targetUrlPlaceholder": "Relative path or full URL",
+    "openMode": "Open Mode",
+    "sameTab": "Current Tab",
+    "newTab": "New Tab",
+    "targetParam": "URL Param",
+    "selectOrInputUrlParam": "Select or enter URL param",
+    "selectOrInputField": "Select or enter field",
+    "sourceType": "Source Type",
+    "sourceValue": "Source Value",
+    "paramMapping": "Parameter Mapping",
+    "rowField": "Row Field",
+    "fixedValue": "Fixed Value",
+    "addParamMapping": "Add Param Mapping",
+    "noParamMappings": "No parameter mappings",
+    "actionText": "Button Text",
+    "addActionItem": "Add Action Item",
+    "actionUrlUnavailable": "Target page is unavailable",
     "noSchemaFields": "No available fields. Please configure table fields first",
     "noFilterFields": "No search fields configured",
     "string": "String",

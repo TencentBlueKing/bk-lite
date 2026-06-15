@@ -34,7 +34,7 @@ class AlertBuilder:
                     "level_id", flat=True
                 )
             )
-            logger.info(f"加载ALERT类型有效级别: {sorted(cls._valid_alert_levels)}")
+            logger.info("[AlertBuild] 加载ALERT类型有效级别: %s", sorted(cls._valid_alert_levels))
         return cls._valid_alert_levels
 
     @classmethod
@@ -54,13 +54,13 @@ class AlertBuilder:
         try:
             level_id = int(event_level)
         except (ValueError, TypeError):
-            logger.warning(f"无效的event_level: {event_level}, 使用默认值0(致命)")
+            logger.warning("[AlertBuild] 无效的event_level: %s, 使用默认值0(致命)", event_level)
             return "0"
 
         valid_levels = cls._get_valid_alert_levels()
 
         if not valid_levels:
-            logger.error("未找到ALERT类型的级别配置，使用默认值0(致命)")
+            logger.error("[AlertBuild] 未找到ALERT类型的级别配置，使用默认值0(致命)")
             return "0"
 
         # 如果在有效范围内，直接返回
@@ -74,19 +74,22 @@ class AlertBuilder:
             # Event比ALERT最严重的级别还要严重，保持最严重级别
             mapped_level = sorted_levels[0]
             logger.debug(
-                f"Event级别{level_id}比ALERT最严重级别还严重，映射到{mapped_level}(最严重)"
+                "[AlertBuild] Event级别%s比ALERT最严重级别还严重，映射到%s(最严重)",
+                level_id, mapped_level,
             )
         elif level_id > sorted_levels[-1]:
             # Event比ALERT最轻微的级别还要轻微，映射到ALERT最轻微级别
             mapped_level = sorted_levels[-1]
             logger.warning(
-                f"Event级别{level_id}(更轻微)超出ALERT范围，映射到{mapped_level}(ALERT最轻微级别)"
+                "[AlertBuild] Event级别%s(更轻微)超出ALERT范围，映射到%s(ALERT最轻微级别)",
+                level_id, mapped_level,
             )
         else:
             # 在范围内但不存在，向更严重方向取最接近的有效值
             mapped_level = max(lvl for lvl in sorted_levels if lvl < level_id)
             logger.debug(
-                f"Event级别{level_id}不存在于ALERT，向严重方向映射到{mapped_level}"
+                "[AlertBuild] Event级别%s不存在于ALERT，向严重方向映射到%s",
+                level_id, mapped_level,
             )
 
         return str(mapped_level)
@@ -97,7 +100,7 @@ class AlertBuilder:
             dispatch_team = normalize_team_ids(strategy.dispatch_team)
         except ValueError:
             logger.warning(
-                "告警策略 dispatch_team 非法，回退为空列表: strategy_id=%s dispatch_team=%s",
+                "[AlertBuild] 告警策略 dispatch_team 非法，回退为空列表: strategy_id=%s dispatch_team=%s",
                 strategy.id,
                 strategy.dispatch_team,
             )
@@ -220,8 +223,8 @@ class AlertBuilder:
             alert_count = existing_alerts.count()
             if alert_count > 1:
                 logger.warning(
-                    f"发现 {alert_count} 个相同fingerprint的活跃Alert: {fingerprint}, "
-                    f"使用最新的Alert"
+                    "[AlertBuild] 发现 %s 个相同fingerprint的活跃Alert: %s, 使用最新的Alert",
+                    alert_count, fingerprint,
                 )
 
             alert = existing_alerts.order_by("-updated_at").first()

@@ -20,7 +20,22 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
 
     class Meta:
         model = LLMModel
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "enabled",
+            "team",
+            "is_build_in",
+            "is_demo",
+            "vendor",
+            "model",
+            "label",
+            # 只读派生字段（保持现有读取输出不变）
+            "permissions",
+            "team_name",
+            "vendor_name",
+            "vendor_type",
+        ]
 
 
 class LLMSerializer(TeamSerializer, AuthSerializer):
@@ -49,7 +64,56 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
 
     class Meta:
         model = LLMSkill
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "name",
+            "llm_model",
+            "skill_id",
+            "skill_prompt",
+            "enable_conversation_history",
+            "conversation_window_size",
+            "enable_rag",
+            "enable_rag_knowledge_source",
+            "knowledge_base",
+            "rag_score_threshold_map",
+            "introduction",
+            "team",
+            "show_think",
+            "tools",
+            "skill_params",
+            "temperature",
+            "skill_type",
+            "enable_rag_strict_mode",
+            "is_template",
+            "enable_km_route",
+            "km_llm_model",
+            "guide",
+            "enable_suggest",
+            "enable_query_rewrite",
+            "instance_id",
+            "is_builtin",
+            # 只读派生字段（保持现有读取输出不变）
+            "permissions",
+            "team_name",
+            "rag_score_threshold",
+            "llm_model_name",
+            "is_pinned",
+        ]
+        # F017: 系统/审计字段标记为只读，防止通过 create/update 的请求体
+        # 被客户端篡改（mass-assignment）。这些字段由服务端在 perform_create/
+        # perform_update 中显式写入，输出表现不变。
+        read_only_fields = [
+            "id",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "is_builtin",
+        ]
 
     @staticmethod
     def get_rag_score_threshold(instance: LLMSkill):
@@ -78,18 +142,48 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
 class SkillRequestLogSerializer(serializers.ModelSerializer):
     class Meta:
         model = SkillRequestLog
-        fields = "__all__"
+        fields = [
+            "id",
+            "skill",
+            "created_at",
+            "current_ip",
+            "state",
+            "request_detail",
+            "response_detail",
+            "user_message",
+        ]
 
 
 class SkillToolsSerializer(AuthSerializer):
     permission_key = "tools"
 
     description_tr = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
     tools = serializers.SerializerMethodField()
 
     class Meta:
         model = SkillTools
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "name",
+            "params",
+            "team",
+            "description",
+            "tags",
+            "icon",
+            "is_build_in",
+            "tools",
+            # 只读派生字段（保持现有读取输出不变）
+            "permissions",
+            "description_tr",
+            "display_name",
+        ]
 
     def _get_language_loader(self):
         """获取语言加载器，根据请求的用户语言设置"""
@@ -110,6 +204,21 @@ class SkillToolsSerializer(AuthSerializer):
 
         # fallback 到原始描述
         return instance.description
+
+    def get_display_name(self, instance: SkillTools):
+        """获取翻译后的工具集展示名称。
+
+        内置工具的 ``name`` 字段被当作 ID 使用（如 ``current_time``、``mysql``），
+        前端展示需要一个可读且支持中英文切换的名称。这里复用 language 目录下的
+        yaml 翻译映射（``tools.{name}.name``），未配置翻译时回退到 ``name``。
+        """
+        loader = self._get_language_loader()
+        translated = loader.get(f"tools.{instance.name}.name")
+        if translated:
+            return translated
+
+        # fallback 到原始 name（自定义 MCP 工具通常没有翻译映射）
+        return instance.name
 
     def get_tools(self, instance: SkillTools):
         """获取翻译后的子工具列表（覆盖原始 tools 字段）"""

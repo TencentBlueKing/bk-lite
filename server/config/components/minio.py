@@ -8,8 +8,11 @@ from typing import List, Tuple
 MINIO_BUCKET_CHECK_ON_SAVE = True
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
 MINIO_USE_HTTPS = os.getenv("MINIO_USE_HTTPS", "0") == "1"
-MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "minioadmin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "minioadmin")
+# BL-NEW-006：移除内置的默认对象存储凭据（默认凭据可导致对象存储未授权访问）。
+# 仅从环境变量读取，未配置时为空，连接将因凭据无效而失败，而非以众所周知的
+# 默认账户访问对象存储。
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
 MINIO_URL_EXPIRY_HOURS = timedelta(days=7)
 MINIO_CONSISTENCY_CHECK_ON_START = False
 

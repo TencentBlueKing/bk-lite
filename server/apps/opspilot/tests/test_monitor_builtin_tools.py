@@ -22,6 +22,68 @@ def test_monitor_language_keys_exist_in_en_and_zh():
     assert zh_loader.get("tools.monitor.tools.monitor_list_objects.description")
 
 
+def test_builtin_tool_display_name_keys_exist_in_en_and_zh():
+    """所有写入 SkillTools 的内置工具都应在中英文 yaml 中配置 display_name(tools.{name}.name)。"""
+    en_loader = LanguageLoader(app="opspilot", default_lang="en")
+    zh_loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
+
+    tool_names = [
+        "monitor",
+        "attachment_file",
+        "current_time",
+        "duckduckgo",
+        "fetch",
+        "github",
+        "jenkins",
+        "kubernetes",
+        "kubernetes_data_collection",
+        "postgres",
+        "mysql",
+        "oracle",
+        "mssql",
+        "redis",
+        "elasticsearch",
+        "python",
+        "shell",
+        "ssh",
+        "browser_use",
+        "agent_browser",
+    ]
+    for name in tool_names:
+        assert en_loader.get(f"tools.{name}.name"), f"missing en display name for {name}"
+        assert zh_loader.get(f"tools.{name}.name"), f"missing zh display name for {name}"
+
+    # 内置工具的展示名不应等于 ID 式的 name（至少中文要有可读名称）
+    assert zh_loader.get("tools.current_time.name") != "current_time"
+    assert zh_loader.get("tools.monitor.name") != "monitor"
+
+
+def test_build_builtin_monitor_tool_display_name_uses_translation(mocker):
+    mocker.patch.object(
+        LanguageLoader,
+        "get",
+        side_effect=lambda key: {
+            f"tools.{builtin_tools.BUILTIN_MONITOR_TOOL_NAME}.name": "监控",
+        }.get(key, ""),
+    )
+    loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
+
+    data = builtin_tools.build_builtin_monitor_tool(loader)
+
+    # name 仍作为 ID，display_name 走翻译
+    assert data["name"] == "monitor"
+    assert data["display_name"] == "监控"
+
+
+def test_build_builtin_monitor_tool_display_name_falls_back_when_untranslated(mocker):
+    mocker.patch.object(LanguageLoader, "get", side_effect=lambda key: "")
+    loader = LanguageLoader(app="opspilot", default_lang="en")
+
+    data = builtin_tools.build_builtin_monitor_tool(loader)
+
+    assert data["display_name"] == "Monitor"
+
+
 def test_build_builtin_monitor_tool_exposes_constructor_and_subtools(mocker):
     mocker.patch.object(
         LanguageLoader,
@@ -80,6 +142,8 @@ def test_generate_attachment_file_creates_workflow_asset():
         },
     )
 
+    from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
+
     asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-1", attachment_id="daily_report")
     asset.file_knowledge.file.open("rb")
     try:
@@ -87,18 +151,37 @@ def test_generate_attachment_file_creates_workflow_asset():
     finally:
         asset.file_knowledge.file.close()
 
-    assert result["file_url"] == asset.download_url
+    assert result["file_url"].startswith("/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/")
+    assert result["file_url"] == build_signed_attachment_download_url(asset)
     assert result["filename"] == "report.md"
     assert content == b"# report"
 
 
 @pytest.mark.django_db
-def test_workflow_attachment_download_url_uses_relative_path(settings):
-    settings.OPSPILOT_WEB_URL = "https://ops-pilot.canway.net"
+def test_build_signed_attachment_download_url_uses_proxy_path():
+    """build_signed_attachment_download_url must return a /api/proxy/... path so browsers
+    route the download request through the Next.js proxy rather than treating it as a page route."""
+    from django.core.files.base import ContentFile
 
-    asset = WorkflowAttachmentAsset(download_token="token-123")
+    from apps.opspilot.models import FileKnowledge
+    from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url, resolve_signed_attachment_token
 
-    assert asset.download_url == "/api/v1/opspilot/bot_mgmt/workflow_attachment/download/token-123/"
+    fk = FileKnowledge.objects.create(file=ContentFile(b"data", name="f.md"))
+    asset = WorkflowAttachmentAsset.objects.create(
+        execution_id="exec-url-test",
+        attachment_id="att-url-test",
+        filename="test.md",
+        mime_type="text/markdown",
+        file_knowledge=fk,
+    )
+
+    url = build_signed_attachment_download_url(asset)
+
+    assert url.startswith("/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/")
+    # The signed token must be decodable back to the same asset
+    resolved = resolve_signed_attachment_token(url.rsplit("/download/", 1)[1].rstrip("/"))
+    assert resolved is not None
+    assert resolved.id == asset.id
 
 
 @pytest.mark.django_db

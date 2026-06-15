@@ -19,12 +19,15 @@ import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
 import { useModelApi } from '@/app/cmdb/api';
 import { useModelDetail } from '../context';
+import { loadAttributeEnterpriseExtension } from '@/app/cmdb/hooks/useAttributeEnterpriseExtension';
 import type {
   AttrGroup,
   AttrItem,
   FullInfoUniqueRuleItem,
   UniqueDisplayType,
 } from '@/app/cmdb/types/assetManage';
+
+const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
 const getUniqueTagMeta = (uniqueType?: string, isOnly?: boolean) => {
   if (uniqueType === 'joint') {
@@ -65,6 +68,7 @@ const Attributes: React.FC = () => {
   const { confirm } = Modal;
   const { t } = useTranslation();
   const modelDetail = useModelDetail();
+  const attributeEnterpriseExtension = useAttributeEnterpriseExtension();
 
   const {
     deleteModelAttr,
@@ -95,7 +99,7 @@ const attrRef = useRef<any>(null);
     sourceGroupId: string;
   } | null>(null);
 
-  const columns: ColumnItem[] = [
+  const baseColumns: ColumnItem[] = [
     {
       title: 'ID',
       dataIndex: 'attr_id',
@@ -191,6 +195,9 @@ const attrRef = useRef<any>(null);
       ),
     },
   ];
+  const columns = attributeEnterpriseExtension.extendColumns(baseColumns, {
+    ui: { Tag },
+  });
 
   useEffect(() => {
     if (modelId) {

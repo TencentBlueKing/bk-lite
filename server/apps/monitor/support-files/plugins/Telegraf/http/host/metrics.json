@@ -1,7 +1,7 @@
 {
   "plugin": "Host Remote",
   "plugin_desc": "Remote host metrics collection via SSH/WinRM through Ansible Executor. Supports CPU, memory, disk, and network metrics without agent installation on target hosts.",
-  "status_query": "any({instance_type='os', collect_type='http'}) by (instance_id)",
+  "status_query": "any({instance_type='os', collect_type='http', config_type='host'}) by (instance_id)",
   "node_selector": {
     "is_container": true
   },
@@ -211,6 +211,94 @@
       "dimensions": ["interface"],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmit errors per interface"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_packets_recv_rate",
+      "query": "rate(net_packets_recv_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Receive Packet Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network received packet rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_packets_sent_rate",
+      "query": "rate(net_packets_sent_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Transmit Packet Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network transmitted packet rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_bytes_recv_rate",
+      "query": "rate(net_bytes_recv_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Receive Byte Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network received byte rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_bytes_sent_rate",
+      "query": "rate(net_bytes_sent_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Transmit Byte Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network transmitted byte rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_err_in_rate",
+      "query": "rate(net_err_in_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Receive Error Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network receive error rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_err_out_rate",
+      "query": "rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Transmit Error Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network transmit error rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_drop_in_rate",
+      "query": "rate(net_drop_in_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Receive Drop Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network receive drop rate over the past 5 minutes"
+    },
+    {
+      "metric_group": "Network",
+      "name": "net_drop_out_rate",
+      "query": "rate(net_drop_out_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "display_name": "Network Transmit Drop Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": ["interface"],
+      "instance_id_keys": ["instance_id"],
+      "description": "Network transmit drop rate over the past 5 minutes"
     },
     {
       "metric_group": "CPU",

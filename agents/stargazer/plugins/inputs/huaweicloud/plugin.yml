@@ -1,0 +1,28 @@
+name: huaweicloud
+version: "1.0.0"
+category: cloud
+
+metadata:
+  display_name: "华为云平台"
+  description: "华为云平台资源采集插件（平台 + ECS）"
+  author: "WeOps"
+  tags: [cloud, huaweicloud, huawei]
+  cloud_protocol: true
+  model_id: hwcloud
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 120
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.huaweicloud.huaweicloud_info
+      class: HuaweiCloudManager
+
+# 默认执行器
+default_executor: protocol

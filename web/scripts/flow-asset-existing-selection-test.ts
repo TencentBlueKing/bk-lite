@@ -1,6 +1,8 @@
 import * as assert from 'node:assert/strict';
 import {
+  buildFlowExistingAssetOptions,
   buildExistingFlowAssetFormPatch,
+  filterFlowExistingAssetsByCloudRegion,
   normalizeFlowFallbackSamplingRate
 } from '../src/app/monitor/utils/flowAsset';
 
@@ -49,5 +51,41 @@ assert.deepEqual(currentShapePatch, {
 
 assert.equal(normalizeFlowFallbackSamplingRate('invalid'), 1000);
 assert.equal(normalizeFlowFallbackSamplingRate(null), 1000);
+
+const assets = [
+  {
+    instance_id: "('switch-1',)",
+    instance_name: 'Core Switch',
+    cloud_region_id: '1',
+    ip: '10.0.0.12'
+  },
+  {
+    instance_id: "('router-1',)",
+    instance_name: 'Core Router',
+    cloud_region_id: 2,
+    ip: '10.0.0.13'
+  }
+];
+
+assert.deepEqual(
+  filterFlowExistingAssetsByCloudRegion(assets, 1).map((item) => item.instance_id),
+  ["('switch-1',)"]
+);
+assert.deepEqual(
+  filterFlowExistingAssetsByCloudRegion(assets, '2').map((item) => item.instance_id),
+  ["('router-1',)"]
+);
+assert.deepEqual(filterFlowExistingAssetsByCloudRegion(assets, undefined), assets);
+
+assert.deepEqual(buildFlowExistingAssetOptions(assets), [
+  {
+    value: "('switch-1',)",
+    label: 'Core Switch / 10.0.0.12'
+  },
+  {
+    value: "('router-1',)",
+    label: 'Core Router / 10.0.0.13'
+  }
+]);
 
 console.log('flow asset existing selection tests passed');

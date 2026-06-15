@@ -9,6 +9,7 @@ import { Model, ModelConfig, ProviderResourceType } from '@/app/opspilot/types/p
 import PermissionWrapper from '@/components/permission';
 import ConfigModal from '@/app/opspilot/components/provider/configModal';
 import { useProviderApi } from '@/app/opspilot/api/provider';
+import { isSilentRequestError } from '@/utils/request';
 import { CONFIG_MAP, MODEL_CATEGORY_MAPPING } from '@/app/opspilot/constants/provider';
 
 interface ProviderGridProps {
@@ -121,8 +122,13 @@ const ProviderGrid: React.FC<ProviderGridProps> = ({ models, filterType, loading
           message.success(t('common.delSuccess'));
           setModels(prevModels => prevModels.filter(item => item.id !== model.id));
           onRefreshData && onRefreshData();
-        } catch {
-          message.error(t('common.delFailed'));
+        } catch (error) {
+          // Backend may reject with 400 when the model is still in use; the request
+          // interceptor already surfaces that message, so only show the generic
+          // fallback for unhandled errors.
+          if (!isSilentRequestError(error)) {
+            message.error(t('common.delFailed'));
+          }
         }
       },
     });

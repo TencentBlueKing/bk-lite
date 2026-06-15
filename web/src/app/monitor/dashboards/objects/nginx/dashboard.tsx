@@ -20,7 +20,7 @@ import {
 import { NGINX_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率'];
+const SUMMARY_TITLES = ['活跃连接数', '请求速率', '繁忙连接占比', '连接处理完成率', '连接接受速率'];
 const CHART_TITLES = ['连接状态趋势', '连接接受/处理速率', '连接占比趋势'];
 const RING_TITLES = ['连接状态分布'];
 const BAR_TITLES = ['连接压力'];
@@ -42,7 +42,9 @@ export default function NginxDashboardPage() {
       styles={styles}
       dashboardContent={
         <>
+          <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} styles={styles} />
+          <div className={styles.sectionLabel}>性能趋势与分布</div>
           <FlexiblePanelSection styles={styles}>
             {/* R1: 速率折线 span8 + 连接分布环 span4 = 12 */}
             {rateTrendChart ? (

@@ -182,7 +182,7 @@ class AlertSourceAdapter(ABC):
                 self.add_base_fields(event, add_event)
                 events.append(event)
             except Exception as e:
-                logger.error(f"Failed to transform alert: {add_event}, error: {e}")
+                logger.error("[AlertSource] 事件转换失败: %s, error: %s", add_event, e, exc_info=True)
         bulk_events = self.bulk_save_events(events)
         return bulk_events
 
@@ -286,7 +286,7 @@ class AlertSourceAdapter(ABC):
                 event.resource_type,
                 self.alert_source.source_id,
             )
-            logger.debug(f"Generated external_id for event: {event.event_id}")
+            logger.debug("[AlertSource] 已生成 external_id for event: %s", event.event_id)
 
     @staticmethod
     def build_ingress_dedup_key(event: Event) -> Optional[str]:
@@ -398,7 +398,7 @@ class AlertSourceAdapter(ABC):
             # 收集所有 event_id 用于后续查询
             all_event_ids.extend([e.event_id for e in event_batch])
 
-        logger.info(f"Bulk saved {len(events_to_create)} events.")
+        logger.info("[AlertSource] 批量写入 %s 条事件", len(events_to_create))
 
         # 2. 优化：立即查询返回带 pk 的对象（1 次查询）
         # 避免后续 event_operator 需要用 event_id 再查一遍
@@ -408,7 +408,7 @@ class AlertSourceAdapter(ABC):
         created_events_list = list(created_events)
         result = split_list(created_events_list, 100)
 
-        logger.debug(f"Reloaded {len(created_events_list)} events with pk")
+        logger.debug("[AlertSource] 重新加载 %s 条带 pk 的事件", len(created_events_list))
         return result
 
     def rich_event(self, event: dict):
@@ -418,7 +418,7 @@ class AlertSourceAdapter(ABC):
         try:
             self.enrich_event(event)
         except Exception as e:
-            logger.error(f"Failed to enrich events: {e}")
+            logger.error("[AlertSource] 事件富化失败: %s", e, exc_info=True)
 
     @staticmethod
     def enrich_event(event):
@@ -445,9 +445,7 @@ class AlertSourceAdapter(ABC):
             # 将cmdb实例信息添加到事件中
             event["labels"].update(cmdb_instance)
         except Exception as err:
-            import traceback
-
-            logger.error(f"CMDB search_instances failed: {traceback.format_exc()}")
+            logger.error("[AlertSource] CMDB search_instances 调用失败", exc_info=True)
 
     def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Event:
         """将单个告警数据转换为Event对象"""
@@ -465,7 +463,7 @@ class AlertSourceAdapter(ABC):
             # 转为 aware datetime（带时区）
             return timezone.make_aware(dt, timezone.get_current_timezone())
         except Exception as e:
-            logger.error(f"Failed to convert timestamp {timestamp} to datetime: {e}")
+            logger.error("[AlertSource] 时间戳转换失败 timestamp=%s: %s", timestamp, e)
             return timezone.now()
 
     @staticmethod
@@ -481,11 +479,11 @@ class AlertSourceAdapter(ABC):
 
             shields = AlertShield.objects.filter(is_active=True)
             if shields.exists():
-                logger.debug(f"加载了 {shields.count()} 个活跃屏蔽策略")
+                logger.debug("[AlertSource] 加载了 %s 个活跃屏蔽策略", shields.count())
                 return shields
             return None
         except Exception as e:
-            logger.error(f"查询活跃屏蔽策略失败: {e}")
+            logger.error("[AlertSource] 查询活跃屏蔽策略失败: %s", e, exc_info=True)
             return None
 
     def event_operator(self, events_list):
@@ -503,9 +501,7 @@ class AlertSourceAdapter(ABC):
             try:
                 execute_shield_check_for_events([i.event_id for i in event_list], active_shields=active_shields)
             except Exception as err:  # noqa
-                import traceback
-
-                logger.error(f"Shield check failed for events:{traceback.format_exc()}")
+                logger.error("[AlertSource] 事件屏蔽检查失败", exc_info=True)
 
     def main(self, events=None):
         """使适配器实例可调用"""
@@ -545,11 +541,9 @@ class AlertSourceAdapter(ABC):
             if recovery_events:
                 try:
                     RecoveryHandler.handle_recovery_events(recovery_events)
-                    logger.info(f"处理了 {len(recovery_events)} 个恢复事件 (RECOVERY/CLOSED)")
+                    logger.info("[AlertSource] 处理了 %s 个恢复事件 (RECOVERY/CLOSED)", len(recovery_events))
                 except Exception as err:
-                    import traceback
-
-                    logger.error(f"Recovery handler failed: {traceback.format_exc()}")
+                    logger.error("[AlertSource] 恢复事件处理失败", exc_info=True)
 
 
 class AlertSourceAdapterFactory:
@@ -561,7 +555,7 @@ class AlertSourceAdapterFactory:
     def register_adapter(cls, source_type: str, adapter_class):
         """注册适配器"""
         cls._adapters[source_type] = adapter_class
-        logger.info(f"Adapter registered for source type: {source_type}")
+        logger.info("[AlertSource] 适配器已注册 source type: %s", source_type)
 
     @classmethod
     def get_adapter(cls, alert_source: AlertSource):

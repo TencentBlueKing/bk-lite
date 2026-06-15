@@ -66,6 +66,12 @@ class APISecretMiddleware(MiddlewareMixin):
         if not request.session.session_key:
             request.session.cycle_key()
 
+        # API Key 调用不携带 current_team cookie，用 API Key 绑定的组织自动填充
+        if not request.COOKIES.get("current_team"):
+            group_list = getattr(user, "group_list", [])
+            if group_list:
+                request.COOKIES["current_team"] = str(group_list[0])
+
         return None
 
     def _handle_failed_auth(self, request):

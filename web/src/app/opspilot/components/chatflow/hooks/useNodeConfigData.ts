@@ -4,7 +4,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import { useChannelApi } from '@/app/system-manager/api/channel';
 import { useStudioApi } from '@/app/opspilot/api/studio';
-import { useMemoryApi, type MemorySpace } from '@/app/opspilot/api/memory';
+import { useMemoryApi, type WorkflowMemorySpaceOption } from '@/app/opspilot/api/memory';
 import type { LlmModel } from '@/app/opspilot/types/skill';
 
 export const useNodeConfigData = () => {
@@ -12,7 +12,7 @@ export const useNodeConfigData = () => {
   const { fetchSkill, fetchLlmModels } = useSkillApi();
   const { getChannelData } = useChannelApi();
   const { getAllUsers } = useStudioApi();
-  const { fetchMemorySpaces } = useMemoryApi();
+  const { fetchWorkflowMemorySpaces } = useMemoryApi();
 
   const [skills, setSkills] = useState<any[]>([]);
   const [loadingSkills, setLoadingSkills] = useState(false);
@@ -25,7 +25,7 @@ export const useNodeConfigData = () => {
   const [allUsers, setAllUsers] = useState<any[]>([]);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [usersLoaded, setUsersLoaded] = useState(false);
-  const [memorySpaces, setMemorySpaces] = useState<MemorySpace[]>([]);
+  const [memorySpaces, setMemorySpaces] = useState<WorkflowMemorySpaceOption[]>([]);
   const [loadingMemorySpaces, setLoadingMemorySpaces] = useState(false);
   const [memorySpacesLoaded, setMemorySpacesLoaded] = useState(false);
 
@@ -96,7 +96,7 @@ export const useNodeConfigData = () => {
     if (memorySpacesLoaded) return;
     try {
       setLoadingMemorySpaces(true);
-      const data = await fetchMemorySpaces();
+      const data = await fetchWorkflowMemorySpaces();
       setMemorySpaces(data || []);
       setMemorySpacesLoaded(true);
     } catch (error) {
@@ -106,7 +106,7 @@ export const useNodeConfigData = () => {
     } finally {
       setLoadingMemorySpaces(false);
     }
-  }, [fetchMemorySpaces, memorySpacesLoaded, t]);
+  }, [fetchWorkflowMemorySpaces, memorySpacesLoaded, t]);
 
   return {
     skills,

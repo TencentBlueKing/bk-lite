@@ -318,7 +318,7 @@ class InstanceConfigService:
         filter_kwargs = {"monitor_instance_id": collect_instance_id}
         if monitor_plugin_id not in (None, ""):
             filter_kwargs["monitor_plugin_id"] = monitor_plugin_id
-        if collector not in (None, ""):
+        elif collector not in (None, ""):
             filter_kwargs["collector"] = collector
         if collect_type not in (None, ""):
             filter_kwargs["collect_type"] = collect_type
@@ -670,6 +670,35 @@ class InstanceConfigService:
         return prepared
 
     @staticmethod
+    def _validate_expected_collect_configs(instances, configs, monitor_plugin_id, collect_type):
+        expected_types = {config.get("type") for config in configs if config.get("type")}
+        if not instances or not expected_types:
+            return
+
+        instance_ids = [instance.get("instance_id") for instance in instances if instance.get("instance_id")]
+        if not instance_ids:
+            return
+
+        filter_kwargs = {
+            "monitor_instance_id__in": instance_ids,
+            "collect_type": collect_type,
+            "config_type__in": expected_types,
+        }
+        if monitor_plugin_id not in (None, ""):
+            filter_kwargs["monitor_plugin_id"] = monitor_plugin_id
+
+        rows = CollectConfig.objects.filter(**filter_kwargs).values_list("monitor_instance_id", "config_type")
+        actual = {(instance_id, config_type) for instance_id, config_type in rows}
+        missing = [
+            f"{instance_id}:{config_type}"
+            for instance_id in instance_ids
+            for config_type in expected_types
+            if (instance_id, config_type) not in actual
+        ]
+        if missing:
+            raise BaseAppException(f"采集配置元数据缺失: {', '.join(missing)}")
+
+    @staticmethod
     def create_monitor_instance_by_node_mgmt(data, actor_context=None):
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
@@ -744,6 +773,12 @@ class InstanceConfigService:
                 sanitized_data["instances"] = new_instances + existing_instances
                 sanitized_data["monitor_plugin_id"] = monitor_plugin_id
                 Controller(sanitized_data).controller()
+                InstanceConfigService._validate_expected_collect_configs(
+                    sanitized_data["instances"],
+                    sanitized_data.get("configs", []),
+                    monitor_plugin_id,
+                    collect_type,
+                )
                 logger.info("采集配置创建成功")
 
                 # ✅ 所有操作成功，事务自动提交

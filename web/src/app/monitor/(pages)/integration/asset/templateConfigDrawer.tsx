@@ -6,7 +6,7 @@ import React, {
   useImperativeHandle,
   useRef,
 } from 'react';
-import { Tag, Button, Badge } from 'antd';
+import { Tag, Button, Badge, Empty } from 'antd';
 import {
   RightOutlined,
   CheckCircleOutlined,
@@ -28,6 +28,12 @@ import {
   ShowModalParams,
   TemplateDrawerRef,
 } from '@/app/monitor/types/integration';
+import {
+  getPluginConfigContentState,
+  getPluginConfigFetchDecision,
+  isPluginConfigurable,
+  isSameTemplatePlugin,
+} from './templateConfigDrawerLogic';
 
 const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
   ({ onSuccess }, ref) => {
@@ -55,7 +61,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     }) => {
       const targetPlugin = params?.plugin || selectedPlugin;
       const targetInstanceId = params?.instanceId || instanceId;
-      if (!targetPlugin || targetPlugin.collect_mode === 'manual') {
+      if (!targetPlugin || !isPluginConfigurable(targetPlugin)) {
         setConfigList([]);
         return;
       }
@@ -166,15 +172,16 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
       setShowTemplateList(true);
     };
 
-    const handlePluginClick = (plugin: PluginItem) => {
-      if (
-        selectedPlugin?.name === plugin.name &&
-        selectedPlugin?.collect_type === plugin.collect_type
-      ) {
+    const handlePluginClick = async (plugin: PluginItem) => {
+      const decision = getPluginConfigFetchDecision(selectedPlugin, plugin);
+      if (!decision.shouldChangeSelection) {
         return;
       }
       setSelectedPlugin(plugin);
       setConfigList([]);
+      if (decision.shouldFetchConfig) {
+        await fetchConfigList({ plugin });
+      }
     };
 
     const getCollectType = (row: ConfigItem) => {
@@ -247,6 +254,9 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
     const isManualAccess = (plugin: PluginItem) => {
       return plugin.collect_mode === 'manual';
     };
+
+    const getContentState = () =>
+      getPluginConfigContentState(selectedPlugin, configList);
 
     const getGroupedPlugins = () => {
       const grouped = plugins.reduce((groups, plugin) => {
@@ -349,10 +359,10 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
                             const pluginStatusInfo = getStatusInfo(
                               plugin.status
                             );
-                            const isSelected =
-                              selectedPlugin?.name === plugin.name &&
-                              selectedPlugin?.collect_type ===
-                                plugin.collect_type;
+                            const isSelected = isSameTemplatePlugin(
+                              selectedPlugin,
+                              plugin
+                            );
                             return (
                               <div
                                 key={`${plugin.name}-${idx}`}
@@ -459,18 +469,22 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
 
                   {/* 配置列表 */}
                   <div className="bg-[var(--color-fill-2)] rounded">
-                    {isManualAccess(selectedPlugin) ? (
+                    {getContentState() === 'reportedOnly' ? (
                       <div className="flex flex-col items-center justify-center py-8 px-4">
                         <span className="text-4xl mb-3 text-[var(--color-text-3)]">
-                          {isManualAccess(selectedPlugin) ? (
-                            <ToolOutlined />
-                          ) : (
-                            <ApiOutlined />
-                          )}
+                          <ToolOutlined />
                         </span>
                         <span className="text-[12px] text-[var(--color-text-3)]">
-                          {t('monitor.integrations.manualAccessTip')}
+                          {t('monitor.integrations.reportedOnlyConfigTip')}
                         </span>
+                      </div>
+                    ) : getContentState() === 'missingConfig' && !loading ? (
+                      <div className="py-8 px-4">
+                        <Empty
+                          description={t(
+                            'monitor.integrations.missingConfigDataTip'
+                          )}
+                        />
                       </div>
                     ) : (
                       <div>

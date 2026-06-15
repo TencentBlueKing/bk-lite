@@ -38,6 +38,42 @@
       "@/app/system-manager/(enterprise)/*": [
         "./src/app/system-manager/(enterprise)/*",
         "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/alarm/(enterprise)/*": [
+        "./src/app/alarm/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/cmdb/(enterprise)/*": [
+        "./src/app/cmdb/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/job/(enterprise)/*": [
+        "./src/app/job/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/log/(enterprise)/*": [
+        "./src/app/log/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/mlops/(enterprise)/*": [
+        "./src/app/mlops/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/node-manager/(enterprise)/*": [
+        "./src/app/node-manager/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/ops-analysis/(enterprise)/*": [
+        "./src/app/ops-analysis/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/ops-console/(enterprise)/*": [
+        "./src/app/ops-console/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
+      ],
+      "@/app/opspilot/(enterprise)/*": [
+        "./src/app/opspilot/(enterprise)/*",
+        "./src/lib/enterpriseStub.ts"
       ]
     }
   },

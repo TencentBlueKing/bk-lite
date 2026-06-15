@@ -16,6 +16,10 @@ class CollectEnterpriseExtension:
     plugin_packages: tuple = ()
     node_param_packages: tuple = ()
 
+    def on_collect_instances_applied(self, *, management, result):
+        """采集实例变更应用完成后的企业版扩展点。"""
+        return None
+
 
 _EMPTY_COLLECT_EXTENSION = CollectEnterpriseExtension()
 

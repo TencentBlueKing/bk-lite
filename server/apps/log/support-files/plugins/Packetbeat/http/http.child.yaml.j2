@@ -3,7 +3,7 @@
 {% set _capture_body = capture_body | default(false) %}
 - type: http
   {% if _ports is string %}
-  ports: {{ _ports.split(',') | map('trim') | map('int') | list | to_json }}
+  ports: {{ _ports | split(',') | map('trim') | map('int') | list | to_json }}
   {% else %}
   ports: {{ _ports | to_json }}
   {% endif %}

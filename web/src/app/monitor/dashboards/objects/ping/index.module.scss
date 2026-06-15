@@ -1,4 +1,23 @@
-@import '../common/simple-dashboard.module.scss';
+@use '../common/simple-dashboard.module.scss';
+
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
 
 .chartLegendHeader {
   justify-content: flex-end;

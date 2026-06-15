@@ -129,6 +129,8 @@ export interface PluginItem {
   collect_type: string;
   status: string;
   collect_mode: string;
+  configured?: boolean;
+  config_source?: 'configured' | 'reported_only' | 'configured_reported';
   time: string;
   config_ids?: string[];
 }

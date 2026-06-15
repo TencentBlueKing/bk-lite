@@ -4,6 +4,8 @@ from datetime import timedelta
 from io import BytesIO
 from uuid import uuid4
 
+from django.conf import settings
+from django.core import signing
 from django.core.files.base import ContentFile
 from django.utils import timezone
 from docx import Document
@@ -16,6 +18,48 @@ from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.models import FileKnowledge, WorkflowAttachmentAsset
+
+# 工作流附件下载令牌的签名盐值与默认有效期(秒)。
+# 使用签名 + 过期时间替代原先可被猜测且永不失效的明文 token。
+WORKFLOW_ATTACHMENT_DOWNLOAD_SALT = "opspilot.workflow_attachment.download"
+
+
+def workflow_attachment_download_max_age() -> int:
+    """下载令牌最大有效期(秒)，默认 24 小时，可通过 settings 覆盖。"""
+    return int(getattr(settings, "WORKFLOW_ATTACHMENT_DOWNLOAD_MAX_AGE", 24 * 60 * 60))
+
+
+def build_signed_attachment_download_url(asset: WorkflowAttachmentAsset) -> str:
+    """为工作流附件生成带签名且会过期的下载 URL。
+
+    令牌绑定附件主键 id 与 execution_id，使用 TimestampSigner 机制(signing.dumps)
+    携带时间戳，下载时按 max_age 校验过期并核对绑定关系，防止令牌被猜测或越权复用。
+
+    URL 使用 /api/proxy/... 前缀，以便浏览器端通过 Next.js 代理路由
+    转发到后台 /api/v1/... 接口，而不是被 Next.js 当作页面路由处理。
+    """
+    token = signing.dumps(
+        {"aid": asset.id, "eid": asset.execution_id},
+        salt=WORKFLOW_ATTACHMENT_DOWNLOAD_SALT,
+    )
+    return f"/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/{token}/"
+
+
+def resolve_signed_attachment_token(download_token: str) -> WorkflowAttachmentAsset | None:
+    """校验签名下载令牌并返回绑定的附件，过期/非法/不匹配时抛出 BadSignature。"""
+    payload = signing.loads(
+        download_token,
+        salt=WORKFLOW_ATTACHMENT_DOWNLOAD_SALT,
+        max_age=workflow_attachment_download_max_age(),
+    )
+    if not isinstance(payload, dict):
+        raise signing.BadSignature("Malformed download token payload")
+    asset = WorkflowAttachmentAsset.objects.filter(id=payload.get("aid")).select_related("file_knowledge").first()
+    # 校验签名内绑定的 execution_id，防止令牌被篡改后指向其它附件
+    if not asset or asset.execution_id != payload.get("eid"):
+        return None
+    return asset
+
 
 ATTACHMENT_FILE_TYPE_CONFIG = {
     "md": {

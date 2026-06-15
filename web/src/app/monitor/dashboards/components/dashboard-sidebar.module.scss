@@ -216,7 +216,11 @@
 
 .layout {
   display: flex;
-  height: 100%;
+  // 绑定到视口可用高度,使 sidebar 与 content 各自独立滚动、整页 body 不滚动。
+  // 88px = 顶部 sticky 导航(~56px)+ 全局 <main> 的 p-4 上下内边距(32px)。
+  // 父级链(layout.tsx 是 min-h-screen + flex-1,非固定高)不提供有界高度,故这里显式绑定;
+  // 原先是 .page 用 calc(100vh-88px) 兜底,但那会与 .content 形成双层滚动 + 底部留白。
+  height: calc(100vh - 88px);
   width: 100%;
   overflow: hidden;
 }

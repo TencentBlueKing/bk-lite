@@ -8,6 +8,7 @@ from django.core.cache import cache
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import node_logger as logger
 from apps.core.utils.crypto.aes_crypto import AESCryptor
+from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.node_mgmt.models import SidecarEnv
 from apps.node_mgmt.models.cloud_region import CloudRegion
 from apps.node_mgmt.constants.cloudregion_service import CloudRegionServiceConstants
@@ -167,7 +168,7 @@ class RegionService:
                 json=webhook_params,
                 headers={"Content-Type": "application/json"},
                 timeout=CloudRegionServiceConstants.WEBHOOK_REQUEST_TIMEOUT,
-                verify=False,
+                verify=get_webhook_tls_verify(),
             )
 
             if response.status_code != 200:

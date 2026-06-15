@@ -1,10 +1,32 @@
 """Mixin for vendor-based model query in ViewSets."""
 
+from django.db.models import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.decorators.api_permission import HasPermission
+
+
+def protected_delete_response(loader, error, message_key="error.model_in_use", default="Cannot delete because it is still in use by {count} object(s)."):
+    """Build a clean DRF error envelope for a django.db.models.ProtectedError.
+
+    Returns HTTP 400 with body {"result": False, "message": <human-readable>} matching
+    the project's existing error envelope expected by web/src/utils/request.ts.
+    """
+    protected_objects = getattr(error, "protected_objects", None) or []
+    try:
+        count = len(protected_objects)
+    except TypeError:
+        count = sum(1 for _ in protected_objects)
+    message = loader.get(message_key) if loader else None
+    if not message:
+        message = default
+    try:
+        message = message.format(count=count)
+    except (KeyError, IndexError, ValueError):
+        pass
+    return JsonResponse({"result": False, "message": message}, status=400)
 
 
 class VendorModelMixin:
@@ -18,6 +40,14 @@ class VendorModelMixin:
     - self.filter_queryset(queryset): Method to apply filters
     - self.ORDERING_FIELD: Field for ordering results
     """
+
+    def destroy(self, request, *args, **kwargs):
+        """Delete the model, returning a clean 400 envelope when the row is
+        protected by an in-use ForeignKey (on_delete=PROTECT)."""
+        try:
+            return super().destroy(request, *args, **kwargs)
+        except ProtectedError as error:
+            return protected_delete_response(getattr(self, "loader", None), error)
 
     @action(methods=["GET"], detail=False)
     @HasPermission("provide_list-View")

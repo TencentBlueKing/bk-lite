@@ -39,7 +39,7 @@ const CollectorInstall: React.FC<Props> = ({
       });
       const cmd = data?.command;
       if (!cmd) {
-        message.error('Failed to generate install command');
+        message.error(t('Collection.k8sTask.generateCmdFailed'));
         return;
       }
       setCommand(cmd);
@@ -57,7 +57,7 @@ const CollectorInstall: React.FC<Props> = ({
       await navigator.clipboard.writeText(command);
       message.success(t('common.copySuccess') || 'Copied');
     } catch {
-      message.warning('Copy failed; please select manually.');
+      message.warning(t('Collection.k8sTask.copyFailedManual'));
     }
   };
 

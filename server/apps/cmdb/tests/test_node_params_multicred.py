@@ -233,9 +233,39 @@ def test_network_node_params_single_credential_carries_topology_contract():
     credential = node.set_credential()
 
     assert credential["has_network_topo"] is True
-    assert credential["topology_protocols"] == ["lldp", "fdb"]
+    # 下发给 agent 的拓扑协议必须是逗号串（agent 按逗号 split 解析），
+    # 不能是 Python 列表 repr（会被 custom_headers 的 str() 破坏成 "['lldp', 'fdb']"）
+    assert credential["topology_protocols"] == "lldp,fdb"
     assert credential["topology_fallback_strategy"] == "strict_neighbors_only"
     assert credential["min_confidence"] == 0.75
+
+
+def test_network_node_params_topology_protocols_header_is_agent_parseable():
+    """复现并防回归：topology_protocols 下发到 header 后必须能被 agent 的 split(',') 正确解析。
+    旧实现把列表 str() 成 "['lldp', 'cdp', 'fdb', 'arp']"，agent 解析为空 → 不采 LLDP/CDP/FDB。"""
+    from apps.cmdb.node_configs.network.network import NetworkNodeParams
+
+    instance = SimpleNamespace(
+        id=97,
+        model_id="network",
+        driver_type="protocol",
+        decrypt_credentials=[{"credential_id": "cred-1", "version": "v2c", "community": "public", "snmp_port": 161}],
+        params={"has_network_topo": True, "topology_protocols": ["lldp", "cdp", "fdb", "arp"]},
+        timeout=60,
+        access_point=[{"id": 3}],
+        instances=[{"ip_addr": "10.0.0.11"}],
+        ip_range="",
+    )
+
+    node = NetworkNodeParams(instance)
+    headers = node.custom_headers()
+
+    raw = headers["cmdbtopology_protocols"]
+    # 不能含列表 repr 的方括号/引号
+    assert "[" not in raw and "'" not in raw, f"topology_protocols 下发被破坏: {raw!r}"
+    # agent 解析（split 逗号）应还原出协议集合
+    parsed = [p.strip() for p in raw.split(",") if p.strip()]
+    assert parsed == ["lldp", "cdp", "fdb", "arp"]
 
 
 def test_network_node_params_multicred_pool_carries_topology_contract_defaults():
@@ -261,9 +291,9 @@ def test_network_node_params_multicred_pool_carries_topology_contract_defaults()
 
     assert len(credentials_pool) == 2
     assert credentials_pool[0]["has_network_topo"] is True
-    assert credentials_pool[0]["topology_protocols"] == ["lldp", "cdp", "fdb", "arp"]
+    assert credentials_pool[0]["topology_protocols"] == "lldp,cdp,fdb,arp"
     assert credentials_pool[0]["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
     assert credentials_pool[0]["min_confidence"] == 0.0
-    assert credentials_pool[1]["topology_protocols"] == ["lldp", "cdp", "fdb", "arp"]
+    assert credentials_pool[1]["topology_protocols"] == "lldp,cdp,fdb,arp"
     assert credentials_pool[1]["topology_fallback_strategy"] == "prefer_neighbors_then_fdb_then_arp"
     assert credentials_pool[1]["min_confidence"] == 0.0

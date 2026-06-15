@@ -142,6 +142,12 @@ const MonitorView: React.FC<ViewModalProps> = ({
     if (form?.instance_id_values.length) {
       const _activeTab = plugins[0]?.value || '';
       setActiveTab(_activeTab);
+      if (!_activeTab) {
+        setMetricData([]);
+        setOriginMetricData([]);
+        setLoading(false);
+        return;
+      }
       setNeedsRefreshOnExpand(true);
       getInitData(_activeTab);
     }

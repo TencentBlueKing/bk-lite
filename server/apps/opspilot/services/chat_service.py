@@ -23,6 +23,7 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_runtime_tool,
     build_builtin_redis_runtime_tool,
 )
+from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.rag_service import rag_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
@@ -63,11 +64,15 @@ class ChatService:
         Returns:
             包含回复内容和引用知识的字典
         """
+        # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
+        # 避免在方法体内零散地 kwargs[...] / kwargs.get(...) 读取导致 KeyError。
+        request = ChatRequest.from_kwargs(kwargs)
+
         citing_knowledge = []
         data, doc_map, title_map = ChatService.invoke_chat(kwargs)
 
         # 如果启用了知识源引用，构建引用信息
-        if kwargs["enable_rag_knowledge_source"]:
+        if request.enable_rag_knowledge_source:
             citing_knowledge = [
                 {
                     "knowledge_title": doc_map.get(k, {}).get("name"),
@@ -93,9 +98,15 @@ class ChatService:
         Returns:
             处理后的数据、文档映射和标题映射
         """
-        llm_model = LLMModel.objects.get(id=kwargs["llm_model"])
-        show_think = kwargs.pop("show_think", True)
-        skill_type = kwargs.get("skill_type")
+        # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
+        # 缺失的可选键使用其默认值，缺失的必需键给出清晰错误（仍为 KeyError 子类）。
+        request = ChatRequest.from_kwargs(kwargs)
+
+        llm_model = LLMModel.objects.get(id=request.llm_model)
+        show_think = request.show_think
+        skill_type = request.skill_type
+        # 与历史行为一致：在转发给 format_chat_server_kwargs 之前从原始 dict 中移除这些键。
+        kwargs.pop("show_think", True)
         kwargs.pop("group", 0)
 
         # 处理用户消息和图片
@@ -269,6 +280,20 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
+
+        # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
+        # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
+        if BUILTIN_ATTACHMENT_FILE_TOOL_NAME in selected_builtin_kwargs:
+            attachment_override = (
+                "\n\n【附件生成强制规则 - 最高优先级，不可违反】\n"
+                "当前工作流已配置文件生成工具 generate_attachment_file。\n"
+                "* 如果任务目标涉及生成、创建、导出任何文件、报告或文档，"
+                "必须调用 generate_attachment_file 工具，绝对不允许将文件内容以纯文字直接输出。\n"
+                "* 工具调用成功后，仅输出简短摘要与工具返回的下载链接，不要重复输出完整内容。\n"
+                "* 以上规则覆盖所有其他'直接输出'类指令。"
+            )
+            chat_kwargs["system_message_prompt"] = chat_kwargs.get("system_message_prompt", "") + attachment_override
+
         chat_kwargs.update({"tools_servers": tools})
         chat_kwargs.update({"extra_config": extra_config})
 
@@ -308,6 +333,7 @@ class ChatService:
             "openai_api_key": llm_model.openai_api_key,
             "model": llm_model.model_name,
             "protocol_type": llm_model.protocol_type,
+            "vendor_type": llm_model.vendor.vendor_type if llm_model.vendor_id else "",
             "system_message_prompt": resolved_prompt,
             "temperature": kwargs["temperature"],
             "user_message": user_message,

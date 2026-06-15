@@ -5,52 +5,6 @@ import { Input, Button, Table, Tag } from 'antd';
 import { SearchOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 
-const fullColumns = [
-  { title: '任务名称', dataIndex: 'name', key: 'name' },
-  {
-    title: '执行状态',
-    dataIndex: 'status',
-    key: 'status',
-    render: (text: string) => <Tag color="processing">{text}</Tag>,
-  },
-  {
-    title: '采集摘要',
-    dataIndex: 'summary',
-    key: 'summary',
-    render: (summaries: { count: number; type: string; color: string }[]) => (
-      <div className="flex gap-2">
-        {summaries.map((item, index) => (
-          <Tag key={index} color={item.color}>
-            {item.type}: {item.count}
-          </Tag>
-        ))}
-      </div>
-    ),
-  },
-  { title: '创建者', dataIndex: 'creator', key: 'creator' },
-  { title: '执行时间', dataIndex: 'executeTime', key: 'executeTime' },
-  {
-    title: '操作',
-    key: 'action',
-    render: () => (
-      <div className="flex gap-3">
-        <Button type="link" size="small">
-          详情
-        </Button>
-        <Button type="link" size="small">
-          立即执行
-        </Button>
-        <Button type="link" size="small">
-          修改
-        </Button>
-        <Button type="link" size="small">
-          删除
-        </Button>
-      </div>
-    ),
-  },
-];
-
 const fullData = [
   {
     key: '1',
@@ -69,6 +23,51 @@ const fullData = [
 
 const FullCollection: React.FC = () => {
   const { t } = useTranslation();
+  const fullColumns = [
+    { title: t('Collection.taskName'), dataIndex: 'name', key: 'name' },
+    {
+      title: t('Collection.executeStatus'),
+      dataIndex: 'status',
+      key: 'status',
+      render: (text: string) => <Tag color="processing">{text}</Tag>,
+    },
+    {
+      title: t('Collection.collectSummary'),
+      dataIndex: 'summary',
+      key: 'summary',
+      render: (summaries: { count: number; type: string; color: string }[]) => (
+        <div className="flex gap-2">
+          {summaries.map((item, index) => (
+            <Tag key={index} color={item.color}>
+              {item.type}: {item.count}
+            </Tag>
+          ))}
+        </div>
+      ),
+    },
+    { title: t('Collection.creator'), dataIndex: 'creator', key: 'creator' },
+    { title: t('Collection.executeTime'), dataIndex: 'executeTime', key: 'executeTime' },
+    {
+      title: t('common.actions'),
+      key: 'action',
+      render: () => (
+        <div className="flex gap-3">
+          <Button type="link" size="small">
+            {t('common.detail')}
+          </Button>
+          <Button type="link" size="small">
+            {t('Collection.executeNow')}
+          </Button>
+          <Button type="link" size="small">
+            {t('common.edit')}
+          </Button>
+          <Button type="link" size="small">
+            {t('common.delete')}
+          </Button>
+        </div>
+      ),
+    },
+  ];
   return (
     <div className="flex flex-1 overflow-hidden">
       <div className="flex-1 p-6 flex flex-col overflow-hidden">
@@ -90,7 +89,7 @@ const FullCollection: React.FC = () => {
               total: fullData.length,
               pageSize: 10,
               showSizeChanger: true,
-              showTotal: (total) => `共 ${total} 条`,
+              showTotal: (total) => t('Collection.taskDetail.paginationTotal', '', { total }),
             }}
           />
         </div>

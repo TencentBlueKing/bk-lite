@@ -37,6 +37,10 @@ class CMDB(object):
         return_data = self.client.run("search_instances", **kwargs)
         return return_data
 
+    def search_instances_batch(self, **kwargs):
+        """告警丰富批量查询 CMDB 实例。"""
+        return self.client.run("search_instances_batch", **kwargs)
+
     def sync_display_fields(self, **kwargs):
         """
         同步组织/用户的 _display 字段

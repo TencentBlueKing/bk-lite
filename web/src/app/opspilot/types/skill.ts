@@ -198,7 +198,10 @@ export interface SkillDetailPayload {
 export interface SkillTool {
   id: number;
   name: string;
+  /** 翻译后的展示名称（内置工具按当前语言返回，自定义工具回退为 name） */
+  display_name?: string;
   description?: string;
+  description_tr?: string;
   icon?: string;
   enabled: boolean;
 }

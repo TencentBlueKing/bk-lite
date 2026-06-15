@@ -56,6 +56,36 @@ def _resolve_running_flag_ttl(params: Dict[str, Any]) -> int:
     return max(base_ttl, callback_deadline, submit_accept_timeout)
 
 
+def _resolve_dedupe_ttl() -> int:
+    return int(os.getenv("TASK_DEDUPE_TTL", "86400"))
+
+
+def generate_dedupe_key(params: Dict[str, Any]) -> str:
+    key_params = {
+        "monitor_type": params.get("monitor_type"),
+        "plugin_name": params.get("plugin_name"),
+        "host": params.get("host"),
+        "port": params.get("port"),
+        "credential_id": params.get("credential_id"),
+        "instance_id": params.get("tags", {}).get("instance_id"),
+        "collect_type": params.get("collect_type"),
+    }
+
+    collect_task_id = params.get("collect_task_id")
+    if collect_task_id is not None:
+        key_params["collect_task_id"] = collect_task_id
+
+    config_file_path = str(params.get("config_file_path") or "").strip()
+    if config_file_path:
+        key_params["config_file_path"] = config_file_path
+
+    key_params = {key: value for key, value in key_params.items() if value is not None}
+    param_str = json.dumps(key_params, sort_keys=True)
+    param_hash = hashlib.md5(param_str.encode()).hexdigest()
+    task_type = params.get("monitor_type") or params.get("plugin_name", "unknown")
+    return f"collect_{task_type}_{param_hash}"
+
+
 class TaskQueue:
     """任务队列管理器 - 使用统一的 Redis 配置"""
 
@@ -165,38 +195,16 @@ class TaskQueue:
 
     def _generate_task_id(self, params: Dict[str, Any]) -> str:
         """根据采集参数生成唯一的任务ID"""
-        key_params = {
-            "monitor_type": params.get("monitor_type"),
-            "plugin_name": params.get("plugin_name"),
-            "host": params.get("host"),
-            "port": params.get("port"),
-            "credential_id": params.get("credential_id"),
-            "instance_id": params.get("tags", {}).get("instance_id"),
-            "collect_type": params.get("collect_type"),
-        }
+        return generate_dedupe_key(params)
 
-        # 配置文件采集任务需要按 CMDB 任务与文件路径维度区分，
-        # 否则同一主机上的不同文件采集会被错误去重。
-        collect_task_id = params.get("collect_task_id")
-        if collect_task_id is not None:
-            key_params["collect_task_id"] = collect_task_id
+    def _generate_dedupe_key(self, params: Dict[str, Any]) -> str:
+        """生成稳定去重键；host 远程任务 task_id 每次唯一，但 dedupe_key 必须稳定。"""
+        return generate_dedupe_key(params)
 
-        config_file_path = str(params.get("config_file_path") or "").strip()
-        if config_file_path:
-            key_params["config_file_path"] = config_file_path
-
-        # 移除空值
-        key_params = {k: v for k, v in key_params.items() if v is not None}
-
-        # 生成稳定的哈希值
-        param_str = json.dumps(key_params, sort_keys=True)
-        param_hash = hashlib.md5(param_str.encode()).hexdigest()
-
-        # 生成任务ID
-        task_type = params.get("monitor_type") or params.get("plugin_name", "unknown")
-        task_id = f"collect_{task_type}_{param_hash}"
-
-        return task_id
+    async def _is_job_active(self, job_id: str) -> bool:
+        in_queue = await self.pool.zscore("arq:queue", job_id) is not None
+        in_progress = await self.pool.exists(f"arq:in-progress:{job_id}")
+        return bool(in_queue or in_progress)
 
     async def enqueue_collect_task(
             self,
@@ -228,8 +236,43 @@ class TaskQueue:
                 task_id = f"collect_host_{uuid.uuid4().hex}"
             else:
                 task_id = self._generate_task_id(params)
+        dedupe_key = self._generate_dedupe_key(params)
+        dedupe_redis_key = f"task:dedupe:{dedupe_key}"
 
         try:
+            existing_dedupe_job_id = await self.pool.get(dedupe_redis_key)
+            if existing_dedupe_job_id:
+                existing_job_id = (
+                    existing_dedupe_job_id.decode()
+                    if isinstance(existing_dedupe_job_id, (bytes, bytearray))
+                    else str(existing_dedupe_job_id)
+                )
+                if await self._is_job_active(existing_job_id):
+                    self.metrics["tasks_skipped"] += 1
+                    remaining_ttl = await self.pool.ttl(dedupe_redis_key)
+                    logger.warning(
+                        "event=task_enqueue status=skipped reason=dedupe_job_active "
+                        f"task_id={task_id} job_id={existing_job_id} dedupe_key={dedupe_key} "
+                        f"ttl={remaining_ttl}s monitor_type={params.get('monitor_type')} "
+                        f"model_id={params.get('model_id')} plugin_name={params.get('plugin_name')} "
+                        f"host={params.get('host')} instance_id={params.get('tags', {}).get('instance_id')}"
+                    )
+                    return {
+                        "task_id": task_id,
+                        "job_id": existing_job_id,
+                        "status": "skipped",
+                        "reason": "Task already queued or running for dedupe key",
+                        "dedupe_key": dedupe_key,
+                        "dedupe_ttl": remaining_ttl,
+                        "timestamp": int(time.time() * 1000)
+                    }
+
+                logger.warning(
+                    "event=task_dedupe_stale action=clear "
+                    f"task_id={task_id} job_id={existing_job_id} dedupe_key={dedupe_key}"
+                )
+                await self.pool.delete(dedupe_redis_key)
+
             # ✅ 应用层去重：检查我们自己维护的任务状态键
             # 使用 Redis 键来跟踪正在执行的任务：task:running:{task_id}
             running_key = f"task:running:{task_id}"
@@ -239,16 +282,15 @@ class TaskQueue:
             if is_running:
                 existing_job_id = is_running.decode() if isinstance(is_running, (bytes, bytearray)) else str(is_running)
 
-                # running_key 可能因为异常退出残留；仅当 ARQ 队列或执行锁中仍存在该 job 才判定为活跃
-                in_queue = await self.pool.zscore("arq:queue", existing_job_id) is not None
-                in_progress = await self.pool.exists(f"arq:in-progress:{existing_job_id}")
-
-                if in_queue or in_progress:
+                if await self._is_job_active(existing_job_id):
                     self.metrics["tasks_skipped"] += 1
                     remaining_ttl = await self.pool.ttl(running_key)
                     logger.warning(
-                        f"Task {task_id} is already running or queued, skipping enqueue "
-                        f"(job_id={existing_job_id}, ttl={remaining_ttl}s)"
+                        "event=task_enqueue status=skipped reason=running_job_active "
+                        f"task_id={task_id} job_id={existing_job_id} dedupe_key={dedupe_key} "
+                        f"ttl={remaining_ttl}s monitor_type={params.get('monitor_type')} "
+                        f"model_id={params.get('model_id')} plugin_name={params.get('plugin_name')} "
+                        f"host={params.get('host')} instance_id={params.get('tags', {}).get('instance_id')}"
                     )
                     return {
                         "task_id": task_id,
@@ -283,8 +325,10 @@ class TaskQueue:
                 await self.pool.delete(running_key)
 
             # 将任务加入队列
-            logger.info(f"[Task Queue] Enqueuing task: {task_id}")
-            logger.info(f"[Task Queue] Function: 'collect_task', Params keys: {list(params.keys())}")
+            logger.info(
+                "event=task_enqueue_start function=collect_task "
+                f"task_id={task_id} dedupe_key={dedupe_key} params_keys={list(params.keys())}"
+            )
 
             # ⚠️ 关键：不使用 _job_id，让 ARQ 自动生成唯一的 job_id
             job = await self.pool.enqueue_job(
@@ -305,14 +349,22 @@ class TaskQueue:
             # TTL 设置为 job_timeout + 60 秒的缓冲时间；host remote 任务需覆盖 callback 等待窗口
             ttl = _resolve_running_flag_ttl(params)
             await self.pool.set(running_key, job.job_id, ex=ttl)
+            await self.pool.set(dedupe_redis_key, job.job_id, ex=_resolve_dedupe_ttl())
 
             self.metrics["tasks_enqueued"] += 1
-            logger.info(f"[Task Queue] ✅ Task enqueued successfully: {task_id}, ARQ job_id: {job.job_id}")
+            logger.info(
+                "event=task_enqueue status=queued "
+                f"task_id={task_id} job_id={job.job_id} dedupe_key={dedupe_key} "
+                f"monitor_type={params.get('monitor_type')} model_id={params.get('model_id')} "
+                f"plugin_name={params.get('plugin_name')} host={params.get('host')} "
+                f"instance_id={params.get('tags', {}).get('instance_id')}"
+            )
 
             return {
                 "task_id": task_id,
                 "job_id": job.job_id,
                 "status": "queued",
+                "dedupe_key": dedupe_key,
                 "enqueued_at": int(time.time() * 1000)
             }
         except Exception as e:

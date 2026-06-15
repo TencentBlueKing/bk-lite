@@ -3,7 +3,7 @@
   "plugin_desc": "Used for collecting and analyzing the status, resource usage (CPU, memory, network, IO), and performance metrics of Docker containers, helping to identify anomalies and optimize container operational efficiency.",
   "status_query": "any({instance_type='docker', collect_type='docker'}) by (instance_id)",
   "node_selector": {
-    "is_container": true
+    "is_container": false
   },
   "is_compound_object": true,
   "objects": [

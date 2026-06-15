@@ -1,7 +1,7 @@
 import type { Node } from '@xyflow/react';
 
 /** 节点类型定义 */
-export type NodeType = 'celery' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official' | 'intent_classification' | 'memory_read' | 'memory_write';
+export type NodeType = 'celery' | 'nats' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official' | 'intent_classification' | 'memory_read' | 'memory_write';
 
 /** 基础节点配置 */
 interface BaseNodeConfig {

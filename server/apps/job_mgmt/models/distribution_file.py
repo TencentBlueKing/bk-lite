@@ -8,14 +8,14 @@ class DistributionFile(models.Model):
     文件分发存储表
 
     用于存储待分发的文件信息，支持重新执行场景。
-    - is_permanent=False: 临时文件，通过定时任务在 7 天后自动清理
-    - is_permanent=True: 永久文件，不会被定时清理（仅对外 API 支持设置）
+    所有文件都有过期时间（expire_at），由定时任务在到期后自动清理，
+    不存在永久保存的文件。
     """
 
     original_name = models.CharField(max_length=255, verbose_name="原始文件名")
     file_key = models.CharField(max_length=512, verbose_name="存储路径")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="上传时间")
-    is_permanent = models.BooleanField(default=False, verbose_name="永久保存")
+    expire_at = models.DateTimeField(db_index=True, verbose_name="过期时间")
     team = models.IntegerField(null=True, blank=True, verbose_name="团队ID")
 
     class Meta:

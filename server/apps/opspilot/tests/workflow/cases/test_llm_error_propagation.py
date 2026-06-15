@@ -131,8 +131,8 @@ class TestAgentNodeErrorPropagation:
         mock_vm.get_variable.return_value = {}
         agent_node = AgentNode(mock_vm)
 
-        # Mock set_llm_params
-        mocker.patch.object(agent_node, "set_llm_params", return_value=({}, "test_skill"))
+        # Mock set_llm_params (returns (llm_params, skill_name, supports_attachment_generation))
+        mocker.patch.object(agent_node, "set_llm_params", return_value=({}, "test_skill", False))
 
         # Execute
         result = agent_node.execute(

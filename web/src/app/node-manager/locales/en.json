@@ -55,6 +55,7 @@
         "updataconfig": "Update Configuration",
         "installationMethod": "Installation Method",
         "cpuArchitecture": "CPU Architecture",
+        "collectorOperationUnknownArchitecture": "The selected node has no CPU architecture. Please wait for node reporting or backfill the architecture before operating components.",
         "noControllerVersionTitle": "No matching controller version",
         "noControllerVersionDesc": "No controller package is available for the selected operating system ({os}) and CPU architecture ({architecture}). Upload a matching package first.",
         "viewGuide": "View guidance",

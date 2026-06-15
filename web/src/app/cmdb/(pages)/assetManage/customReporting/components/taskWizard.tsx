@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Collapse, Drawer, Form, Input, InputNumber, Popover, Radio, Select, Space, Switch, Typography, message } from 'antd';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
 import { useModelApi } from '@/app/cmdb/api/model';
 import { useClassificationApi } from '@/app/cmdb/api/classification';
@@ -55,7 +56,9 @@ export default function TaskWizard({
   onSaved,
 }: TaskWizardProps) {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm<TaskWizardFormValues>();
+  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const { createTask, updateTask } = useCustomReportingApi();
   const { getModelList } = useModelApi();
   const { getClassificationList } = useClassificationApi();
@@ -202,7 +205,9 @@ export default function TaskWizard({
     <Drawer
       title={task ? t('CustomReporting.editTask') : t('CustomReporting.createTask')}
       open={open}
-      onClose={onClose}
+      onClose={handleClose}
+      maskClosable={false}
+      keyboard={false}
       width={640}
       destroyOnClose
       extra={
@@ -224,7 +229,7 @@ export default function TaskWizard({
           >
             <Typography.Link>{t('CustomReporting.viewGuide')}</Typography.Link>
           </Popover>
-          <Button onClick={onClose}>{t('common.cancel')}</Button>
+          <Button onClick={handleClose}>{t('common.cancel')}</Button>
           <Button type="primary" loading={submitting} onClick={handleSubmit}>
             {t('common.confirm')}
           </Button>
