@@ -1,5 +1,6 @@
 import React, { useEffect, useState, useMemo, useCallback } from 'react';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import {
   ViewConfigProps,
   ViewConfigItem,
@@ -9,6 +10,7 @@ import {
   ValueConfig,
   FilterValue,
   WidgetConfig,
+  DashboardActionConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import {
   Drawer,
@@ -76,6 +78,7 @@ interface FormValues {
   gaugeMin?: number;
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
+  actions?: DashboardActionConfig[];
 }
 
 interface ViewConfigPropsWithManager extends ViewConfigProps {
@@ -95,9 +98,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   builtinNamespaceId,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
+  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const [chartType, setChartType] = useState<string>('');
   const [filterBindings, setFilterBindings] = useState<FilterBindings>({});
+  const [actions, setActions] = useState<DashboardActionConfig[]>([]);
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
   const { getSourceDataByApiId } = useDataSourceApi();
 
@@ -216,6 +222,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       // 重置依赖字段
       setChartType('');
       setFilterBindings({});
+      setActions([]);
       tableConfig.resetTableConfig();
       singleValueConfig.resetSingleValueConfig();
 
@@ -353,7 +360,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       ...(showTableFilterFields
         ? tableConfig.filterFields.map((field) => (field.key || '').trim())
         : []),
-    ].filter(Boolean);
+    ]
+      .filter(Boolean)
+      .filter((key) => {
+        const column = tableConfig.displayColumns.find(
+          (col) => (col.key || '').trim() === key,
+        );
+        return column?.columnType !== 'actions';
+      });
 
     return Array.from(
       new Set(configuredKeys.filter((key) => !availableFieldKeySet.has(key))),
@@ -384,8 +398,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       dataSourceParams: valueConfig?.dataSourceParams || [],
       params: {},
       tableConfig: valueConfig?.tableConfig,
+      actions: valueConfig?.actions || [],
     };
     setChartType(formValues.chartType);
+    setActions(valueConfig?.actions || []);
 
     if (valueConfig?.tableConfig?.filterFields) {
       tableConfig.setFilterFields(
@@ -543,6 +559,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setSelectedDataSource(undefined);
     setChartType('');
     setFilterBindings({});
+    setActions([]);
     setDataSourceSelectorVisible(false);
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
@@ -645,6 +662,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             title: col.title,
             visible: col.visible,
             order: index,
+            columnType: col.columnType,
           }));
         }
 
@@ -657,6 +675,20 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
 
       let result: WidgetConfig = { ...values } as WidgetConfig;
+
+      if (chartType === 'table') {
+        const displayColumnKeys = new Set(
+          tableConfig.displayColumns
+            .map((col) => (col.key || '').trim())
+            .filter(Boolean),
+        );
+        const validActions = actions.filter((action) =>
+          displayColumnKeys.has(action.columnKey),
+        );
+        if (validActions.length > 0) {
+          result.actions = validActions;
+        }
+      }
 
       if (chartType === 'single') {
         result.selectedFields = singleValueConfig.selectedFields;
@@ -713,13 +745,14 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       placement="right"
       width={700}
       open={open}
-      onClose={onClose}
+      maskClosable={false}
+      onClose={handleClose}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Button type="primary" onClick={handleConfirm}>
             {t('common.confirm')}
           </Button>
-          <Button style={{ marginLeft: 8 }} onClick={onClose}>
+          <Button style={{ marginLeft: 8 }} onClick={handleClose}>
             {t('common.cancel')}
           </Button>
         </div>
@@ -820,6 +853,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             t={t}
             displayColumns={tableConfig.displayColumns}
             displayColumnOptions={displayColumnOptions}
+            actions={actions}
             filterFields={tableConfig.filterFields}
             filterFieldOptions={filterFieldOptions}
             showFilterFields={showTableFilterFields}
@@ -831,7 +865,20 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             onDeleteFilterField={tableConfig.handleDeleteFilterField}
             onFilterFieldChange={tableConfig.handleFilterFieldChange}
             onAddDisplayColumn={tableConfig.handleAddDisplayColumn}
-            onDeleteDisplayColumn={tableConfig.handleDeleteDisplayColumn}
+            onDeleteDisplayColumn={(id) => {
+              const deletingColumn = tableConfig.displayColumns.find(
+                (column) => column.id === id,
+              );
+              tableConfig.handleDeleteDisplayColumn(id);
+              if (deletingColumn?.columnType === 'actions') {
+                setActions((prev) =>
+                  prev.filter(
+                    (action) =>
+                      action.columnKey !== deletingColumn.key,
+                  ),
+                );
+              }
+            }}
             onDisplayColumnChange={tableConfig.handleDisplayColumnChange}
             onDisplayColumnKeyBlur={tableConfig.handleDisplayColumnKeyBlur}
             onDisplayColumnDragEnd={tableConfig.handleDisplayColumnDragEnd}
@@ -842,12 +889,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
                 tableConfig.createDefaultFilterField(),
               ])
             }
-            onAddNewDisplayColumn={() =>
+            onAddNewDisplayColumn={(columnType = 'data') =>
               tableConfig.setDisplayColumns([
                 ...tableConfig.displayColumns,
-                tableConfig.createDefaultDisplayColumn(),
+                columnType === 'actions'
+                  ? tableConfig.createDefaultOperationColumn()
+                  : tableConfig.createDefaultDisplayColumn(),
               ])
             }
+            onActionsChange={setActions}
           />
         )}
 

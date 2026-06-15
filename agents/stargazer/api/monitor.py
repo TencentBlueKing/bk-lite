@@ -9,6 +9,20 @@ from core.task_queue import get_task_queue
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
 
 
+def _monitor_error_response(monitor_type: str, error: str, status: int = 400):
+    current_timestamp = int(time.time() * 1000)
+    error_lines = [
+        "# HELP monitor_request_error Monitor request error",
+        "# TYPE monitor_request_error gauge",
+        f'monitor_request_error{{monitor_type="{monitor_type}",error="{error}"}} 1 {current_timestamp}',
+    ]
+    return response.raw(
+        "\n".join(error_lines) + "\n",
+        content_type="text/plain; version=0.0.4; charset=utf-8",
+        status=status,
+    )
+
+
 @monitor_router.get("/vmware/metrics")
 async def vmware_metrics(request):
     """
@@ -334,6 +348,76 @@ async def oceanstor_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             status=500,
         )
+
+
+@monitor_router.get("/windows/wmi/metrics")
+async def windows_wmi_metrics(request):
+    logger.info("event=wmi_request_received monitor_type=windows_wmi")
+
+    host = request.headers.get("host")
+    username = request.headers.get("username")
+    password = request.headers.get("password")
+    namespace = request.headers.get("namespace", "root\\cimv2")
+    metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
+    raw_timeout = request.headers.get("timeout", "60")
+    instance_id = request.headers.get("instance_id")
+    instance_type = request.headers.get("instance_type", "os")
+    collect_type = request.headers.get("collect_type", "http")
+    config_type = request.headers.get("config_type", "windows_wmi")
+
+    if not host or not username or not password:
+        return _monitor_error_response(
+            "windows_wmi",
+            "missing required headers: host, username, password",
+            status=400,
+        )
+
+    try:
+        timeout = int(raw_timeout)
+    except (TypeError, ValueError):
+        timeout = 60
+
+    task_params = {
+        "monitor_type": "windows_wmi",
+        "host": host,
+        "username": username,
+        "password": password,
+        "namespace": namespace,
+        "metrics_modules": metrics_modules,
+        "timeout": timeout,
+        "tags": {
+            "instance_id": instance_id,
+            "instance_type": instance_type,
+            "collect_type": collect_type,
+            "config_type": config_type,
+        },
+    }
+
+    task_queue = get_task_queue()
+    task_info = await task_queue.enqueue_collect_task(task_params)
+
+    logger.info(
+        "event=wmi_task_queued monitor_type=windows_wmi host=%s task_id=%s",
+        host,
+        task_info["task_id"],
+    )
+
+    current_timestamp = int(time.time() * 1000)
+    prometheus_lines = [
+        "# HELP monitor_request_accepted Indicates that monitor request was accepted",
+        "# TYPE monitor_request_accepted gauge",
+        f'monitor_request_accepted{{monitor_type="windows_wmi",host="{host}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+    ]
+
+    return response.raw(
+        "\n".join(prometheus_lines) + "\n",
+        content_type="text/plain; version=0.0.4; charset=utf-8",
+        headers={
+            "X-Task-ID": task_info["task_id"],
+            "X-Job-ID": task_info.get("job_id", ""),
+            "X-Monitor-Type": "windows_wmi",
+        },
+    )
 
 
 @monitor_router.get("/host/metrics")

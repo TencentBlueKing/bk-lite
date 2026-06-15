@@ -51,7 +51,9 @@ class NetworkNodeParams(BaseNodeParams):
             "authkey": "${" + _authkey + "}",
             "privkey": "${" + _privkey + "}",
             "has_network_topo": self.has_network_topo,
-            "topology_protocols": list(self.topology_contract["topology_protocols"]),
+            # 逗号串而非列表：下发经 custom_headers 的 str() 后 agent 才能正确 split 解析；
+            # 列表会被 str() 成 "['lldp', ...]" repr，导致 agent 解析为空、不采 LLDP/CDP/FDB。
+            "topology_protocols": ",".join(self.topology_contract["topology_protocols"]),
             "topology_fallback_strategy": self.topology_contract["topology_fallback_strategy"],
             "min_confidence": self.topology_contract["min_confidence"],
         }
@@ -90,7 +92,9 @@ class NetworkNodeParams(BaseNodeParams):
                 "authkey": "${" + self._secret_env_name("authkey", index) + "}",
                 "privkey": "${" + self._secret_env_name("privkey", index) + "}",
                 "has_network_topo": self.has_network_topo,
-                "topology_protocols": list(self.topology_contract["topology_protocols"]),
+                # 逗号串而非列表：下发经 custom_headers 的 str() 后 agent 才能正确 split 解析；
+            # 列表会被 str() 成 "['lldp', ...]" repr，导致 agent 解析为空、不采 LLDP/CDP/FDB。
+            "topology_protocols": ",".join(self.topology_contract["topology_protocols"]),
                 "topology_fallback_strategy": self.topology_contract["topology_fallback_strategy"],
                 "min_confidence": self.topology_contract["min_confidence"],
             }

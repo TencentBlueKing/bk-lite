@@ -33,7 +33,7 @@ class Bot(MaintainerInfo):
     node_port = models.IntegerField(verbose_name="端口映射", default=5005)
     online = models.BooleanField(verbose_name="是否上线", default=False)
     enable_ssl = models.BooleanField(verbose_name="启用SSL", default=False)
-    api_token = models.CharField(max_length=64, default="", blank=True, null=True, verbose_name="API Token")
+    api_token = models.CharField(max_length=64, default="", blank=True, verbose_name="API Token")
     replica_count = models.IntegerField(verbose_name="副本数量", default=1)
     bot_type = models.IntegerField(default=BotTypeChoice.PILOT, verbose_name="类型", choices=BotTypeChoice.choices)
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
@@ -320,10 +320,6 @@ class WorkflowAttachmentAsset(models.Model):
         indexes = [
             models.Index(fields=["execution_id", "created_at"]),
         ]
-
-    @property
-    def download_url(self) -> str:
-        return f"/api/v1/opspilot/bot_mgmt/workflow_attachment/download/{self.download_token}/"
 
 
 class WorkFlowTaskNodeResult(models.Model):

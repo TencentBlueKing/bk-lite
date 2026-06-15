@@ -43,7 +43,14 @@ import { useTranslation } from '@/utils/i18n';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'vm' | 'cloud';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'vm' | 'cloud' | 'ipmi';
+
+const IPMI_PRIVILEGE_OPTIONS = [
+  { label: 'callback', value: 'callback' },
+  { label: 'user', value: 'user' },
+  { label: 'operator', value: 'operator' },
+  { label: 'administrator', value: 'administrator' },
+];
 
 export interface CredentialPoolEditorProps {
   value?: CredentialPoolItem[];
@@ -86,6 +93,7 @@ const createEmptyCredential = (shape: CredentialShape, showDatabase?: boolean): 
     port: shape === 'sql' ? (showDatabase ? '1433' : '3306') : shape === 'vm' ? '443' : '22',
     ...(shape === 'vm' ? { ssl: false } : {}),
     ...(shape === 'cloud' ? { accessKey: '', accessSecret: '', regionId: '' } : {}),
+    ...(shape === 'ipmi' ? { port: '623', privilege: 'administrator' } : {}),
     ...(shape === 'sql' && showDatabase ? { database: 'master' } : {}),
   };
 };
@@ -144,7 +152,7 @@ function getPreviewFields(
       value: passwordVisible && item.password && item.password !== PASSWORD_PLACEHOLDER ? item.password : getMaskedSecret(item.password),
       isSecret: true,
     },
-    { label: t('Collection.port', '端口'), value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : '22')) },
+    { label: t('Collection.port', '端口'), value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : shape === 'ipmi' ? '623' : '22')) },
   ];
 }
 
@@ -290,8 +298,8 @@ function renderCredentialFields({
           <>
             <InputRow label={t('Collection.SNMPTask.securityLevel', '安全级别')}>
               <Select value={level} onChange={(nextValue) => updateItem(index, { level: nextValue })}>
-                <Select.Option value="authNoPriv">认证不加密</Select.Option>
-                <Select.Option value="authPriv">认证加密</Select.Option>
+                <Select.Option value="authNoPriv">{t('Collection.SNMPTask.authNoPriv', '认证不加密')}</Select.Option>
+                <Select.Option value="authPriv">{t('Collection.SNMPTask.authPriv', '认证加密')}</Select.Option>
               </Select>
             </InputRow>
             <InputRow label={t('Collection.SNMPTask.userName', '用户')}>
@@ -460,6 +468,16 @@ function renderCredentialFields({
           />
         </InputRow>
       )}
+      {shape === 'ipmi' && (
+        <InputRow label={t('Collection.IPMITask.privilege', '权限级别')}>
+          <Select
+            value={item.privilege || 'administrator'}
+            onChange={(nextValue) => updateItem(index, { privilege: nextValue })}
+            options={IPMI_PRIVILEGE_OPTIONS}
+            placeholder={t('common.selectTip', '请选择')}
+          />
+        </InputRow>
+      )}
     </div>
   );
 }
@@ -553,12 +571,87 @@ export default function CredentialPoolEditor({
     emitChange(arrayMove(normalizedValue, oldIndex, newIndex));
   };
 
+  const sortableEnabled = allowAdd && maxCount > 1;
+
+  const renderCredentialCard = (item: CredentialPoolItem, index: number) => {
+    const itemKey = getItemKey(item, index);
+    const expanded = activeKeys.includes(itemKey);
+    const passwordVisible = visibleSecretKeys.includes(itemKey);
+    const previewFields = getPreviewFields(item, credentialShape, t, passwordVisible);
+
+    return (
+      <>
+        <span className={styles.credentialOrderNumber}>{index + 1}</span>
+        <div className={`${styles.credentialCard} ${expanded ? styles.credentialCardExpanded : ''}`}>
+          <div className={styles.credentialCardHeader}>
+            <div className={styles.credentialCardSummary} onClick={() => toggleExpanded(itemKey)}>
+              <div className={styles.credentialTitleBlock}>
+                <div className={styles.credentialTitle}>{`${t('Collection.credential', '凭据')} ${index + 1}`}</div>
+              </div>
+              {!expanded && (
+                <div className={styles.credentialMetaList}>
+                  {previewFields.map((field) => (
+                    <CredentialMetaField
+                      key={field.label}
+                      field={field}
+                      passwordVisible={passwordVisible}
+                      onToggleSecret={(event) => {
+                        event.stopPropagation();
+                        toggleSecretVisible(itemKey);
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className={styles.credentialActions}>
+              {allowRemove && (
+                <Tooltip title={normalizedValue.length <= 1 ? '至少保留 1 个凭据' : '删除凭据'}>
+                  <Button
+                    type="text"
+                    danger
+                    icon={<DeleteOutlined />}
+                    disabled={normalizedValue.length <= 1}
+                    onClick={() => handleRemove(index)}
+                  />
+                </Tooltip>
+              )}
+              <Button
+                type="text"
+                className={styles.credentialExpandButton}
+                icon={expanded ? <DownOutlined /> : <RightOutlined />}
+                onClick={() => toggleExpanded(itemKey)}
+              />
+            </div>
+          </div>
+          {expanded && (
+            <div className={styles.credentialCardBody}>
+              {renderCredentialFields({
+                item,
+                index,
+                shape: credentialShape,
+                editMode,
+                showDatabase,
+                cloudRegionOptions,
+                cloudRegionLoading,
+                onCloudRegionRefresh,
+                onCredentialFieldChange,
+                t,
+                updateItem,
+              })}
+            </div>
+          )}
+        </div>
+      </>
+    );
+  };
+
   return (
     <div className={styles.credentialPoolEditor}>
       <div className={styles.credentialPoolHeader}>
         <div className={styles.credentialPoolTitle}>
           <span>{t('Collection.credential', '凭据')}</span>
-          <Tooltip title="最多配置 3 个凭据，系统按顺序试探，命中后优先复用。">
+          <Tooltip title={t('Collection.credentialPoolTip', '最多配置 3 个凭据，系统按顺序试探，命中后优先复用。')}>
             <QuestionCircleOutlined className={styles.credentialPoolHelpIcon} />
           </Tooltip>
         </div>
@@ -574,87 +667,31 @@ export default function CredentialPoolEditor({
         )}
         {!allowAdd && showCount && <div className={styles.credentialPoolCount}>{`${normalizedValue.length}/${maxCount}`}</div>}
       </div>
-      <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
-        <SortableContext
-          items={itemKeys}
-          strategy={verticalListSortingStrategy}
-        >
-          <ul className={styles.credentialPoolList}>
-            {normalizedValue.map((item, index) => {
-              const itemKey = getItemKey(item, index);
-              const expanded = activeKeys.includes(itemKey);
-              const passwordVisible = visibleSecretKeys.includes(itemKey);
-              const previewFields = getPreviewFields(item, credentialShape, t, passwordVisible);
-              return (
-                <SortableItem key={itemKey} id={itemKey} index={index}>
+      {sortableEnabled ? (
+        <DndContext sensors={sensors} collisionDetection={closestCenter} onDragEnd={onDragEnd}>
+          <SortableContext
+            items={itemKeys}
+            strategy={verticalListSortingStrategy}
+          >
+            <ul className={styles.credentialPoolList}>
+              {normalizedValue.map((item, index) => (
+                <SortableItem key={getItemKey(item, index)} id={getItemKey(item, index)} index={index}>
                   <HolderOutlined className={styles.credentialDragHandle} />
-                  <span className={styles.credentialOrderNumber}>{index + 1}</span>
-                  <div className={`${styles.credentialCard} ${expanded ? styles.credentialCardExpanded : ''}`}>
-                    <div className={styles.credentialCardHeader}>
-                      <div className={styles.credentialCardSummary} onClick={() => toggleExpanded(itemKey)}>
-                        <div className={styles.credentialTitleBlock}>
-                          <div className={styles.credentialTitle}>{`${t('Collection.credential', '凭据')} ${index + 1}`}</div>
-                        </div>
-                        {!expanded && (
-                          <div className={styles.credentialMetaList}>
-                            {previewFields.map((field) => (
-                              <CredentialMetaField
-                                key={field.label}
-                                field={field}
-                                passwordVisible={passwordVisible}
-                                onToggleSecret={(event) => {
-                                  event.stopPropagation();
-                                  toggleSecretVisible(itemKey);
-                                }}
-                              />
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                      <div className={styles.credentialActions}>
-                        {allowRemove && (
-                          <Tooltip title={normalizedValue.length <= 1 ? '至少保留 1 个凭据' : '删除凭据'}>
-                            <Button
-                              type="text"
-                              danger
-                              icon={<DeleteOutlined />}
-                              disabled={normalizedValue.length <= 1}
-                              onClick={() => handleRemove(index)}
-                            />
-                          </Tooltip>
-                        )}
-                        <Button
-                          type="text"
-                          className={styles.credentialExpandButton}
-                          icon={expanded ? <DownOutlined /> : <RightOutlined />}
-                          onClick={() => toggleExpanded(itemKey)}
-                        />
-                      </div>
-                    </div>
-                    {expanded && (
-                      <div className={styles.credentialCardBody}>
-                        {renderCredentialFields({
-                          item,
-                          index,
-                          shape: credentialShape,
-                          editMode,
-                          showDatabase,
-                          cloudRegionOptions,
-                          cloudRegionLoading,
-                          onCloudRegionRefresh,
-                          onCredentialFieldChange,
-                          t,
-                          updateItem,
-                        })}
-                      </div>
-                    )}
-                  </div>
+                  {renderCredentialCard(item, index)}
                 </SortableItem>
-              );
-            })}
-          </ul>
-        </SortableContext>
-      </DndContext>
+              ))}
+            </ul>
+          </SortableContext>
+        </DndContext>
+      ) : (
+        <ul className={styles.credentialPoolList}>
+          {normalizedValue.map((item, index) => (
+            <li key={getItemKey(item, index)} className={styles.credentialStaticItem}>
+              {renderCredentialCard(item, index)}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }

@@ -1,0 +1,174 @@
+{
+  "object": "Host",
+  "plugin": "Windows WMI",
+  "templates": [
+    {
+      "name": "CPU使用率过高",
+      "alert_name": "Windows主机${instance_id} CPU使用率过高",
+      "description": "监控 Windows 主机 CPU 使用率，当超出设定阈值时触发告警。",
+      "metric_name": "cpu_usage_total",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "内存使用率过高",
+      "alert_name": "Windows主机${instance_id} 内存使用率过高",
+      "description": "监控 Windows 主机内存使用率，当超出设定阈值时触发告警。",
+      "metric_name": "mem_used_percent",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "磁盘使用率过高",
+      "alert_name": "Windows主机${instance_id} 磁盘${metric_device}使用率过高",
+      "description": "监控 Windows 主机逻辑磁盘使用率，当超出设定阈值时触发告警。",
+      "metric_name": "disk_used_percent",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "网卡入流量过高",
+      "alert_name": "Windows主机${instance_id}接口${metric_interface} 网卡入流量过高",
+      "description": "监控 Windows 主机网卡入流量速率，当超出设定阈值时触发告警。",
+      "metric_name": "net_bytes_recv_rate",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 104857600,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 52428800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10485760,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "网卡出流量过高",
+      "alert_name": "Windows主机${instance_id}接口${metric_interface} 网卡出流量过高",
+      "description": "监控 Windows 主机网卡出流量速率，当超出设定阈值时触发告警。",
+      "metric_name": "net_bytes_sent_rate",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 104857600,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 52428800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10485760,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "进程数过高",
+      "alert_name": "Windows主机${instance_id} 进程数过高",
+      "description": "监控 Windows 主机运行进程数量，当超出设定阈值时触发告警。",
+      "metric_name": "processes_running",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1000,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 600,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "系统重启",
+      "alert_name": "Windows主机${instance_id} 系统运行时间过短",
+      "description": "监控 Windows 主机系统运行时间，当运行时间过短时触发告警。",
+      "metric_name": "system_uptime",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 300,
+          "method": "<"
+        },
+        {
+          "level": "error",
+          "value": 600,
+          "method": "<"
+        },
+        {
+          "level": "warning",
+          "value": 900,
+          "method": "<"
+        }
+      ]
+    }
+  ]
+}

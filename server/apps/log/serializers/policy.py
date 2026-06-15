@@ -72,7 +72,7 @@ class AlertSerializer(serializers.ModelSerializer):
 
     # 告警类型返回
     alert_type = serializers.CharField(source="policy.alert_type", read_only=True)
-    alert_name = serializers.CharField(source="policy.alert_name", read_only=True)
+    alert_name = serializers.SerializerMethodField()
 
     # 新增字段 - 改为使用SerializerMethodField
     organizations = serializers.SerializerMethodField()
@@ -89,6 +89,9 @@ class AlertSerializer(serializers.ModelSerializer):
         if not obj.collect_type:
             return None
         return obj.collect_type.name
+
+    def get_alert_name(self, obj):
+        return obj.content or obj.policy.alert_name
 
     class Meta:
         model = Alert

@@ -27,7 +27,6 @@ import {
   formatMetricValue,
   buildSearchParams,
   getLatestChartValue,
-  getChartPointSeriesTotal,
   buildSeriesTotalByTime,
   buildPreviousPeriodTimeValues,
   runWithConcurrency,
@@ -42,7 +41,8 @@ import {
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
-  getCollectionStatus
+  getCollectionStatus,
+  useLoadSequence
 } from '../../shared/utils';
 import {
   StatCard,
@@ -55,6 +55,7 @@ import {
   RingChartPanel,
   HorizontalBarPanel
 } from '../../shared/widgets';
+import { countRestartsInRange } from '../common/simple-dashboard-core';
 
 interface MysqlInstanceOption {
   label: string;
@@ -68,17 +69,14 @@ const RAW_VALUE_METRICS = new Set([
   'mysql_uptime',
   'mysql_innodb_buffer_pool_pages_total',
   'mysql_innodb_buffer_pool_pages_free',
-  'mysql_innodb_buffer_pool_pages_dirty'
+  'mysql_innodb_buffer_pool_pages_dirty',
+  // 字节速率(byteps)与字节配置项(bytes):禁用服务端自动换算,避免与前端双重换算
+  'mysql_bytes_received',
+  'mysql_bytes_sent',
+  'mysql_variables_innodb_buffer_pool_size',
+  'mysql_variables_tmp_table_size',
+  'mysql_variables_max_heap_table_size'
 ]);
-const CONNECTION_ERROR_LABELS: Record<string, string> = {
-  mysql_aborted_connects: '连接尝试失败数',
-  mysql_aborted_clients: '客户端异常断开数',
-  mysql_connection_errors_internal: '内部连接错误数',
-  mysql_connection_errors_max_connections: '连接数上限错误数',
-  mysql_connection_errors_peer_address: '对端地址连接错误数',
-  mysql_connection_errors_select: '轮询连接错误数',
-  mysql_connection_errors_tcpwrap: '访问控制连接错误数'
-};
 const METRIC_QUERY_CONCURRENCY = 4;
 const MYSQL_METRIC_GROUPS = [
   {
@@ -129,7 +127,9 @@ const MYSQL_METRIC_GROUPS = [
       'mysql_innodb_row_lock_time_avg',
       'mysql_com_insert_rate',
       'mysql_com_update_rate',
-      'mysql_com_delete_rate'
+      'mysql_com_delete_rate',
+      'mysql_bytes_received_rate',
+      'mysql_bytes_sent_rate'
     ]
   },
   {
@@ -231,77 +231,26 @@ const getUptimeInsight = (uptimeSeconds: number) => {
   };
 };
 
-const countRestartsInRange = (data: ChartData[] = []) => {
-  const points = [...data]
-    .map((point) => ({
-      time: Number(point.time),
-      value: getChartPointSeriesTotal(point)
-    }))
-    .filter((point) => Number.isFinite(point.time) && Number.isFinite(point.value) && point.value >= 0)
-    .sort((a, b) => a.time - b.time);
-
-  if (points.length < 2) {
-    return 0;
-  }
-
-  let restartCount = 0;
-
-  for (let index = 1; index < points.length; index += 1) {
-    const previous = points[index - 1];
-    const current = points[index];
-    const drop = previous.value - current.value;
-    const gapSeconds = Math.max((current.time - previous.time) / 1000, 0);
-    const tolerance = Math.max(30, gapSeconds * 0.2);
-
-    if (drop > tolerance && current.value < previous.value * 0.98) {
-      restartCount += 1;
-    }
-  }
-
-  return restartCount;
-};
-
 const inferMysqlIdentity = (roleSignals: {
   instanceName: string;
   hasReplicationMetrics: boolean;
-  hasReplicaRuntime: boolean;
-  replicationDelay: number;
-  replicationIoRunning: number;
-  replicationSqlRunning: number;
-  readOnly: number;
-  superReadOnly: number;
-  logBin: number;
   logSlaveUpdates: number;
 }) => {
-  const {
-    instanceName,
-    hasReplicationMetrics,
-    hasReplicaRuntime,
-    replicationDelay,
-    replicationIoRunning,
-    replicationSqlRunning,
-    readOnly,
-    superReadOnly,
-    logBin,
-    logSlaveUpdates
-  } =
-    roleSignals;
+  const { instanceName, hasReplicationMetrics, logSlaveUpdates } = roleSignals;
   const normalizedName = instanceName.toLowerCase();
   const nameSaysStandalone = /单点|单节点|独立|standalone|single/.test(normalizedName);
   const nameSaysReplica = /从库|从节点|slave|replica|secondary/.test(normalizedName);
   const nameSaysPrimary = /主库|主节点|master|primary/.test(normalizedName);
 
-  const hasReplicaSignals = replicationIoRunning > 0 || replicationSqlRunning > 0 || replicationDelay > 0;
-  const isReadonlyReplica = readOnly > 0 || superReadOnly > 0;
-  const hasReplicaIdentity = nameSaysReplica || hasReplicaSignals || isReadonlyReplica || hasReplicaRuntime;
-  const hasPrimaryIdentity = nameSaysPrimary || (logBin > 0 && (hasReplicationMetrics || logSlaveUpdates > 0));
-  const deployment = nameSaysStandalone
-    ? '单节点'
-    : hasReplicaIdentity || hasPrimaryIdentity || logSlaveUpdates > 0
-      ? '主从复制'
-      : '单节点';
-  const role = hasReplicaIdentity ? '从库' : deployment === '主从复制' && hasPrimaryIdentity ? '主库' : '独立实例';
-  const replication = deployment === '单节点' ? '不适用' : role === '从库' ? '从库复制' : '源端复制';
+  // 从库判据的 ground truth:SHOW SLAVE STATUS 有行(hasReplicationMetrics),名称作兜底。
+  // 刻意不把 read_only / super_read_only 单独当作从库信号 —— 主库也可能被临时设为只读,
+  // 据此会把只读主库误判成从库、进而误报"复制已停止"。运行中的从库本就有 slave 状态行,已被覆盖。
+  const hasReplicaIdentity = hasReplicationMetrics || nameSaysReplica;
+  // 是否处于主从拓扑:本身是从库,或名称/配置(回放写日志 log_slave_updates)表明它是拓扑中的主库。
+  const inReplicationTopology = hasReplicaIdentity || nameSaysPrimary || logSlaveUpdates > 0;
+  const deployment = nameSaysStandalone || !inReplicationTopology ? '单节点' : '主从复制';
+  const role = hasReplicaIdentity ? '从库' : deployment === '主从复制' ? '主库' : '独立实例';
+  const replication = role === '从库' ? '从库复制' : role === '主库' ? '源端复制' : '不适用';
 
   return { deployment, role, replication };
 };
@@ -319,7 +268,7 @@ export default function MysqlDashboardPage() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
-  const loadSeqRef = useRef(0);
+  const loadSequence = useLoadSequence();
   const [, setLoading] = useState(true);
   const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({
@@ -446,8 +395,7 @@ export default function MysqlDashboardPage() {
   };
 
   const loadMetrics = async (silent = false) => {
-    const loadSeq = loadSeqRef.current + 1;
-    loadSeqRef.current = loadSeq;
+    const loadSeq = loadSequence.begin();
 
     if (!silent) {
       setLoading(true);
@@ -509,7 +457,7 @@ export default function MysqlDashboardPage() {
         }
 
         previousMetricResultsPromise.then((previousResults) => {
-          if (loadSeqRef.current !== loadSeq) {
+          if (!loadSequence.isCurrent(loadSeq)) {
             return;
           }
           setPreviousSeries(Object.fromEntries(previousResults));
@@ -520,7 +468,7 @@ export default function MysqlDashboardPage() {
           collectionStatusPromise
         ]);
 
-        if (loadSeqRef.current !== loadSeq) {
+        if (!loadSequence.isCurrent(loadSeq)) {
           return;
         }
 
@@ -533,7 +481,7 @@ export default function MysqlDashboardPage() {
 
         MYSQL_METRIC_GROUPS.slice(1).forEach((group) => {
           loadMetricGroup(group.names, timeValues).then((results) => {
-            if (loadSeqRef.current !== loadSeq) {
+            if (!loadSequence.isCurrent(loadSeq)) {
               return;
             }
 
@@ -546,7 +494,7 @@ export default function MysqlDashboardPage() {
         setCollectionStatusMetric(null);
       }
     } finally {
-      if (loadSeqRef.current === loadSeq) {
+      if (loadSequence.isCurrent(loadSeq)) {
         setLoading(false);
       }
     }
@@ -610,12 +558,10 @@ export default function MysqlDashboardPage() {
   });
 
   const renderMetricValue = (name: string, value: string) => (hasMetricData(name) ? value : '--');
-  const getMetricValue = (name: string, value: number) => (hasMetricData(name) ? value : 0);
 
   const qpsValue = getLatest('mysql_queries_rate');
   const connValue = getLatest('mysql_connection_utilization');
   const slowValue = getLatest('mysql_slow_queries_rate');
-  const hitValue = getLatest('mysql_buffer_pool_hit_ratio');
   const uptimeValue = getLatest('mysql_uptime');
   const threadsConnectedValue = getLatest('mysql_threads_connected');
   const maxConnectionsValue = getLatest('mysql_variables_max_connections');
@@ -629,27 +575,18 @@ export default function MysqlDashboardPage() {
   const updateValue = getLatest('mysql_com_update_rate');
   const deleteValue = getLatest('mysql_com_delete_rate');
   const tmpDiskRate = getLatest('mysql_created_tmp_disk_tables_rate');
-  const tmpMemoryRate = getLatest('mysql_created_tmp_memory_tables_rate');
   const tmpTotalRate = getLatest('mysql_created_tmp_tables_rate');
   const lockWait = getLatest('mysql_innodb_row_lock_time_avg');
   const lockWaitRate = getLatest('mysql_innodb_row_lock_waits_rate');
   const openedTablesRate = getLatest('mysql_opened_tables_rate');
   const tableCacheMissRate = getLatest('mysql_table_open_cache_misses_rate');
-  const abortedConnects = getLatest('mysql_aborted_connects');
   const abortedConnectsRate = getLatest('mysql_aborted_connects_rate');
-  const abortedClients = getLatest('mysql_aborted_clients');
   const abortedClientsRate = getLatest('mysql_aborted_clients_rate');
   const internalConnectionErrors = getLatest('mysql_connection_errors_internal');
-  const maxConnectionErrors = getLatest('mysql_connection_errors_max_connections');
   const maxConnectionErrorsRate = getLatest('mysql_connection_errors_max_connections_rate');
-  const peerAddressConnectionErrors = getLatest('mysql_connection_errors_peer_address');
-  const selectConnectionErrors = getLatest('mysql_connection_errors_select');
-  const tcpwrapConnectionErrors = getLatest('mysql_connection_errors_tcpwrap');
   const replicationDelay = getLatest('mysql_slave_seconds_behind_master');
   const replicationIoRunning = getLatest('mysql_slave_io_running');
   const replicationSqlRunning = getLatest('mysql_slave_sql_running');
-  const readOnlyValue = getLatest('mysql_variables_read_only');
-  const superReadOnlyValue = getLatest('mysql_variables_super_read_only');
   const logBinValue = getLatest('mysql_variables_log_bin');
   const logSlaveUpdatesValue = getLatest('mysql_variables_log_slave_updates');
   const statusInfo = getCollectionStatus(collectionStatusMetric);
@@ -674,25 +611,18 @@ export default function MysqlDashboardPage() {
       mergeChartSeries([
         {
           key: 'mysql_queries_rate',
-          label: 'QPS（每秒查询数）',
+          label: 'QPS',
           displayName: 'QPS',
           data: metricMap.mysql_queries_rate?.viewData || []
-        }
-      ]),
-    [metricMap.mysql_queries_rate?.viewData]
-  );
-
-  const slowQueryTrendData = useMemo(
-    () =>
-      mergeChartSeries([
+        },
         {
           key: 'mysql_slow_queries_rate',
-          label: '慢查询速率（次/秒）',
+          label: '慢查询速率',
           displayName: '慢查询速率',
           data: metricMap.mysql_slow_queries_rate?.viewData || []
         }
       ]),
-    [metricMap.mysql_slow_queries_rate?.viewData]
+    [metricMap.mysql_queries_rate?.viewData, metricMap.mysql_slow_queries_rate?.viewData]
   );
 
   const lockWaitTrendData = useMemo(
@@ -750,6 +680,44 @@ export default function MysqlDashboardPage() {
     [metricMap.mysql_slave_seconds_behind_master?.viewData]
   );
 
+  const connTrendData = useMemo(
+    () =>
+      mergeChartSeries([
+        {
+          key: 'mysql_threads_connected',
+          label: '当前连接数',
+          displayName: '当前连接数',
+          data: metricMap.mysql_threads_connected?.viewData || []
+        },
+        {
+          key: 'mysql_process_list_threads_executing',
+          label: '执行线程数',
+          displayName: '执行线程数',
+          data: metricMap.mysql_process_list_threads_executing?.viewData || []
+        }
+      ]),
+    [metricMap.mysql_threads_connected?.viewData, metricMap.mysql_process_list_threads_executing?.viewData]
+  );
+
+  const netTrafficTrendData = useMemo(
+    () =>
+      mergeChartSeries([
+        {
+          key: 'mysql_bytes_received_rate',
+          label: '接收速率',
+          displayName: '接收速率',
+          data: metricMap.mysql_bytes_received_rate?.viewData || []
+        },
+        {
+          key: 'mysql_bytes_sent_rate',
+          label: '发送速率',
+          displayName: '发送速率',
+          data: metricMap.mysql_bytes_sent_rate?.viewData || []
+        }
+      ]),
+    [metricMap.mysql_bytes_received_rate?.viewData, metricMap.mysql_bytes_sent_rate?.viewData]
+  );
+
   const threadSnapshot = getLatestThreadSnapshot(metricMap);
   const threadConnectedCount = hasMetricData('mysql_threads_connected') ? Math.max(threadSnapshot.connected, 0) : 0;
   const threadSleepCount = hasMetricData('mysql_process_list_threads_idle') ? Math.max(threadSnapshot.sleep, 0) : 0;
@@ -791,7 +759,6 @@ export default function MysqlDashboardPage() {
   ];
   const threadShareChartData = threadShare.filter((item) => item.value > 0);
   const bufferPoolUsedValue = Math.min(Math.max(bpUsedValue, 0), 100);
-  const bufferPoolHitRatio = Math.min(Math.max(hitValue, 0), 100);
   const bufferPoolDirtyRatio = Math.min(Math.max(bpDirtyValue, 0), bufferPoolUsedValue);
   const bufferPoolCleanUsedRatio = Math.max(bufferPoolUsedValue - bufferPoolDirtyRatio, 0);
   const bufferPoolShareChartData = [
@@ -827,18 +794,12 @@ export default function MysqlDashboardPage() {
 
 
   const uptimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.uptimeText : '--';
-  const startupTimeDisplay = hasMetricData('mysql_uptime') ? uptimeInsight.startupTimeText : metricEmptyText;
-  const uptimeRestarts = countRestartsInRange(metricMap.mysql_uptime?.viewData || []);
-  const uptimeState = !hasMetricData('mysql_uptime')
-    ? { label: '状态未知', detail: metricEmptyText, tone: 'empty' }
-    : uptimeRestarts > 0
-      ? { label: '期间有重启', detail: '', tone: 'warning' }
-      : { label: '运行正常', detail: '', tone: 'success' };
-  const uptimeStateGuide = [
-    { label: '状态未知', detail: '当前观察范围内未获取到 mysql_uptime 指标，无法判断是否发生过重启。' },
-    { label: '运行正常', detail: `当前所选时段（${collectionStatusWindowLabel}）内 mysql_uptime 未出现明显回退。该状态仅表示未观察到重启，不代表实例整体健康度。` },
-    { label: '期间有重启', detail: `当前所选时段（${collectionStatusWindowLabel}）内 mysql_uptime 出现回退，说明实例在该时间段内发生过重启。以上状态仅描述重启观察结果，不代表实例整体健康度。` }
-  ];
+  // 运行时长卡统一样式:不画折线,只判断所选时间范围内是否发生重启(运行正常 / 期间有重启 / 状态未知)。
+  const uptimeStatus = !hasMetricData('mysql_uptime')
+    ? { label: '状态未知', suffix: 'Empty' as const }
+    : countRestartsInRange(metricMap.mysql_uptime?.viewData || []) > 0
+      ? { label: '期间有重启', suffix: 'Warning' as const }
+      : { label: '运行正常', suffix: 'Success' as const };
   const connCardDisplay = getDisplayValue('mysql_connection_utilization', connDisplay);
   const qpsCardDisplay = getDisplayValue('mysql_queries_rate', qpsDisplay);
   const slowCardDisplay = getDisplayValue('mysql_slow_queries_rate', slowDisplay);
@@ -855,13 +816,6 @@ export default function MysqlDashboardPage() {
   const mysqlIdentity = inferMysqlIdentity({
     instanceName: resolvedInstanceName,
     hasReplicationMetrics: hasReplicationData,
-    hasReplicaRuntime: hasReplicationData && (replicationIoRunning > 0 || replicationSqlRunning > 0),
-    replicationDelay,
-    replicationIoRunning,
-    replicationSqlRunning,
-    readOnly: readOnlyValue,
-    superReadOnly: superReadOnlyValue,
-    logBin: logBinValue,
     logSlaveUpdates: logSlaveUpdatesValue
   });
   const instanceMetaItems = [
@@ -874,11 +828,10 @@ export default function MysqlDashboardPage() {
     </span>,
     <span key="timezone" className={styles.instanceMetaMuted}>时区 Asia/Shanghai</span>
   ].filter(Boolean) as React.ReactNode[];
-  const replicationApplicable = mysqlIdentity.role === '从库' || hasReplicationData;
-  const uptimeGuide = [
-    { label: '运行时长', detail: '基于 `mysql_uptime` 计算实例自上次启动以来持续运行的时间。' },
-    { label: '重启判断', detail: '如果当前观察窗口内 `mysql_uptime` 出现回退，说明期间发生过重启。' }
-  ];
+  // 展示复制区块的条件:存在 SHOW SLAVE STATUS 数据(运行中或已停止的真实从库 —— hasReplicationData 是
+  // 判定从库的 ground truth,主库永远没有这些行),或名称明确为从库。主库 / 独立实例两者皆不满足 → 显示"不适用"。
+  // 真主库即使被临时设为只读也不会落入此分支(inferMysqlIdentity 已不再把 read_only 单独当作从库信号)。
+  const replicationApplicable = hasReplicationData || mysqlIdentity.role === '从库';
   const connectionGuide = [
     { label: '连接使用率', detail: '表示当前连接数占最大连接数上限的比例。' },
     { label: '排查建议', detail: '当使用率持续升高时，需要结合连接趋势、慢查询和锁等待一起判断是否存在拥塞。' }
@@ -891,10 +844,6 @@ export default function MysqlDashboardPage() {
     { label: '慢查询速率', detail: '每秒慢 SQL 的新增速率。' },
     { label: '关联判断', detail: '如果慢查询升高，通常再结合锁等待、临时表和磁盘 I/O 进一步判断瓶颈位置。' }
   ];
-  const hitRatioGuide = [
-    { label: '缓冲池命中率', detail: '表示请求命中 Buffer Pool 的比例，越高通常表示随机读越少落到磁盘。' },
-    { label: '搭配指标', detail: '需要和缓冲池使用率、脏页比例、写 IOPS 一起看，单看命中率不够。' }
-  ];
   const lockWaitRateGuide = [
     { label: '行锁等待速率', detail: '每秒 InnoDB 行锁等待次数，过高通常表示并发写入争抢。' },
     { label: '关联判断', detail: '结合平均等待时间和慢查询一起看，判断是局部热点还是全局锁压。' }
@@ -903,10 +852,6 @@ export default function MysqlDashboardPage() {
     { label: 'QPS 趋势', detail: '查看查询吞吐在时间维度上的变化，用于识别波峰、波谷与突变。' },
     { label: '适用场景', detail: '适合判断业务流量波动，或与慢查询、连接数联动排查。' }
   ];
-  const slowTrendGuide = [
-    { label: '慢查询趋势', detail: '查看慢 SQL 是否持续出现、集中爆发，还是偶发抖动。' },
-    { label: '适用场景', detail: '如果曲线抬升，优先查看锁等待、临时表和 InnoDB 写入。' }
-  ];
   const lockTrendGuide = [
     { label: '锁等待趋势', detail: '行锁等待速率的时序变化，用于识别锁争用的爆发与持续。' },
     { label: '适用场景', detail: '如果行锁等待上升，优先排查高并发写入热点和事务持锁时间。' }
@@ -914,10 +859,6 @@ export default function MysqlDashboardPage() {
   const threadStateGuide = [
     { label: '线程状态分布', detail: '展示当前线程停留在哪类状态，例如 Query、Sleep、Sending data、Locked。' },
     { label: '适用场景', detail: '如果 Query、Sending data 或 Locked 占比上升，说明执行链路可能存在瓶颈。' }
-  ];
-  const lockGuide = [
-    { label: '诊断指标', detail: '聚焦磁盘临时表、表缓存未命中和连接异常，帮助判断是否存在额外开销或连接拥塞。' },
-    { label: '适用场景', detail: '磁盘临时表或连接错误持续升高时，结合慢查询和锁等待趋势进一步定位根因。' }
   ];
   const innodbTrendGuide = [
     { label: 'InnoDB 读写趋势', detail: '同时展示读 IOPS、写 IOPS 和 Redo 刷盘速率。' },
@@ -930,6 +871,26 @@ export default function MysqlDashboardPage() {
   const replicationGuide = [
     { label: '复制状态', detail: '展示从库复制延迟，以及 IO 线程和 SQL 线程是否正常运行。' },
     { label: '适用场景', detail: '复制延迟升高时，通常要结合 Redo 刷盘、写 IOPS 和从库线程状态一起看。' }
+  ];
+  const connTrendGuide = [
+    { label: '连接趋势', detail: '当前连接数与执行线程数的时序变化，用于识别连接堆积与执行拥塞。' },
+    { label: '关联判断', detail: '连接数贴近上限且执行线程同步抬升，通常意味着出现慢请求或锁等待。' }
+  ];
+  const connErrorGuide = [
+    { label: '连接异常', detail: '连接尝试失败、客户端异常断开、连接上限错误、内部错误的每秒速率。' },
+    { label: '适用场景', detail: '任一项非零或持续升高，优先核对 max_connections、网络与客户端行为。' }
+  ];
+  const statementMixGuide = [
+    { label: '读写语句构成', detail: 'SELECT / INSERT / UPDATE / DELETE 的每秒速率构成。' },
+    { label: '适用场景', detail: '用于判断当前负载偏读还是偏写，辅助容量与索引优化方向。' }
+  ];
+  const netTrafficGuide = [
+    { label: '网络流量', detail: 'MySQL 接收与发送字节速率。' },
+    { label: '适用场景', detail: '配合 QPS 判断单请求体量，识别大结果集或批量写入。' }
+  ];
+  const tempCacheGuide = [
+    { label: '临时表与缓存压力', detail: '磁盘临时表、表缓存未命中、打开表速率的每秒速率;非零或升高即额外开销信号。' },
+    { label: '适用场景', detail: '磁盘临时表升高优先优化 SQL/内存阈值;表缓存未命中升高考虑增大 table_open_cache。' }
   ];
   const metricsOverviewGuide = [
     { label: '监控指标全景', detail: '这里承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' },
@@ -1048,6 +1009,28 @@ export default function MysqlDashboardPage() {
                     />
                     <StatCard
                       styles={styles}
+                      title={<TitleWithGuide styles={styles} title="运行时长" items={[{ label: '运行时长', detail: 'MySQL 实例自上次启动后的持续运行时间，反映服务稳定性；期间发生重启会重新计时。' }]} />}
+                      value={uptimeDisplay}
+                      unit=""
+                      icon={<ClockCircleOutlined />}
+                      iconStyle={{ background: 'rgba(91, 143, 249, 0.12)', color: '#5b8ff9' }}
+                      color="#5b8ff9"
+                      footer={<span>{hasMetricData('mysql_uptime') ? `启动 ${uptimeInsight.startupTimeText}` : metricEmptyText}</span>}
+                      hideTrend
+                      className={styles.statCardRelaxed}
+                      bodyClassName={styles.statBodyRelaxed}
+                      extra={
+                        <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeStatus.suffix}`]}`}>
+                          <span className={styles.uptimeStatusDot} />
+                          <div className={styles.uptimeStatusMainWrap}>
+                            <span className={styles.uptimeStatusMain}>{uptimeStatus.label}</span>
+                          </div>
+                        </div>
+                      }
+                      noDataType={getNoDataType('mysql_uptime')}
+                    />
+                    <StatCard
+                      styles={styles}
                       title={<TitleWithGuide styles={styles} title="连接使用率" items={connectionGuide} />}
                       value={connCardDisplay.value}
                       unit={connCardDisplay.unit}
@@ -1100,398 +1083,254 @@ export default function MysqlDashboardPage() {
                     />
                   </div>
 
-                  {/* <div className={`${styles.panel} ${styles.dataFlowPanel}`}>
-                      <div className={styles.panelHeader}>
-                        <div className={styles.panelHeading}>
-                        <h3 className={styles.panelTitle}><TitleWithGuide styles={styles} title="请求链路与 InnoDB 数据流" items={flowGuide} className={styles.panelTitleWithGuide} /></h3>
-                        <div className={styles.panelSubTitle}>从请求入口到缓存、日志与落盘路径</div>
-                      </div>
-                    </div>
-                    <div className={styles.mysqlFlowModel}>
-                      <div className={`${styles.mysqlFlowScene} ${styles.mysqlRequestScene}`}>
-                        <div className={styles.mysqlRequestPath}>
-                          {requestFlowNodes.map((node, index) => (
-                            <React.Fragment key={node.title}>
-                              <div className={[styles.mysqlPathNode, node.className].filter(Boolean).join(' ')}>
-                                <div className={styles.mysqlNodeEyebrow}>{node.subTitle}</div>
-                                <div className={styles.mysqlNodeTitle}>{node.title}</div>
-                                <div className={styles.mysqlNodeIcon}>{node.icon}</div>
-                                <div className={styles.mysqlNodeMetrics}>
-                                  {node.metrics.map((item) => (
-                                    <div className={styles.mysqlNodeMetric} key={item.label}>
-                                      <span>{item.label}</span>
-                                      <strong>{item.value}</strong>
-                                    </div>
-                                  ))}
-                                </div>
-                              </div>
-                              {index < requestFlowNodes.length - 1 ? (
-                                <div className={styles.mysqlFlowConnector}>
-                                  <span />
-                                </div>
-                              ) : null}
-                            </React.Fragment>
-                          ))}
-                        </div>
-                      </div>
-
-                      <div className={`${styles.mysqlFlowScene} ${styles.mysqlInnoScene}`}>
-                        <div className={styles.innodbBox}>
-                        <div className={styles.innodbBoxTitle}>InnoDB 内部</div>
-                        <div className={`${styles.mysqlFlowLegend} ${styles.mysqlFlowLegendInno}`}>
-                          <span>
-                            <i className={styles.mysqlLegendWrite} />
-                            写入路径
-                          </span>
-                          <span>
-                            <i className={styles.mysqlLegendPersist} />
-                            数据落盘
-                          </span>
-                          <span>
-                            <i className={styles.mysqlLegendBackground} />
-                            临时表 / 后台路径
-                          </span>
-                        </div>
-                        <div className={styles.innodbInner}>
-                          <div className={`${styles.innodbStage} ${styles.innodbStageBuffer}`}>
-                            <div className={styles.innodbColumnTitle}>缓冲池</div>
-                            <div className={styles.innodbBufferCard}>
-                              <div className={styles.innodbCardTitle}>
-                                <TitleWithGuide styles={styles} title="缓冲池" items={bufferPoolGuide} className={styles.innodbCardTitleWithGuide} />
-                              </div>
-                              <div className={styles.innodbBufferGrid}>
-                                {Array.from({ length: bufferFlowCellCount }).map((_, index) => (
-                                  <span
-                                    className={`${styles.bufferCell} ${
-                                      index < bufferFlowDirtyCells
-                                        ? styles.bufferCellDirty
-                                        : index < bufferFlowUsedCells
-                                          ? styles.bufferCellUsed
-                                          : ''
-                                    }`}
-                                    key={index}
-                                  />
-                                ))}
-                              </div>
-                              <div className={styles.innodbBufferLegend}>
-                                <span>
-                                  <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendUsed}`} />
-                                  已使用
-                                </span>
-                                <span>
-                                  <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendDirty}`} />
-                                  脏页
-                                </span>
-                                <span>
-                                  <i className={`${styles.bufferLegendSwatch} ${styles.bufferLegendFree}`} />
-                                  空闲
-                                </span>
-                              </div>
-                              <div className={styles.innodbMetricRows}>
-                                {bufferFlowMetrics.map((item) => (
-                                  <div className={styles.mysqlNodeMetric} key={item.label}>
-                                    <span>{item.label}</span>
-                                    <strong>{item.value}</strong>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={`${styles.innodbFork} ${styles.innodbForkWrite}`}>
-                            <span className={styles.innodbForkMain} />
-                            <span className={styles.innodbForkTop} />
-                            <span className={styles.innodbForkBottom} />
-                          </div>
-
-                          <div className={`${styles.innodbStage} ${styles.innodbStageLogs}`}>
-                            <div className={styles.innodbColumnTitle}>日志与事务</div>
-                            <div className={styles.innodbLogCards}>
-                              <div className={`${styles.innodbLogCard} ${styles.innodbCardPrimary}`}>
-                                <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide styles={styles} title="Redo 日志" items={redoLogGuide} className={styles.innodbCardTitleWithGuide} />
-                                </div>
-                                <div className={styles.innodbCardHint}>
-                                  事务提交先写入 Redo 缓冲，
-                                  <br />
-                                  再由右侧日志文件展示最终刷盘结果。
-                                </div>
-                              </div>
-                              <div className={`${styles.innodbLogCard} ${styles.innodbCardSecondary}`}>
-                                <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide styles={styles} title="临时表" items={tempTableGuide} className={styles.innodbCardTitleWithGuide} />
-                                </div>
-                                <div className={styles.mysqlNodeMetric}>
-                                  <span>总临时表</span>
-                                  <strong>{renderFlowValue('mysql_created_tmp_tables_rate', (tmpTotalRate * 60).toFixed(tmpTotalRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
-                                </div>
-                                <div className={styles.mysqlNodeMetric}>
-                                  <span>磁盘临时表</span>
-                                  <strong>{renderFlowValue('mysql_created_tmp_disk_tables_rate', (tmpDiskRate * 60).toFixed(tmpDiskRate * 60 >= 10 ? 0 : 1), '/min')}</strong>
-                                </div>
-                              </div>
-                            </div>
-                          </div>
-
-                          <div className={`${styles.innodbFork} ${styles.innodbForkPersist}`}>
-                            <span className={styles.innodbForkMain} />
-                            <span className={styles.innodbForkTop} />
-                            <span className={styles.innodbForkBottom} />
-                          </div>
-
-                          <div className={`${styles.innodbStage} ${styles.innodbStageDisk}`}>
-                            <div className={styles.innodbColumnTitle}>磁盘持久化</div>
-                            <div className={styles.innodbDiskStack}>
-                              <div className={`${styles.innodbDiskCard} ${styles.innodbCardPrimary}`}>
-                                <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide styles={styles} title="数据文件" items={dataFileGuide} className={styles.innodbCardTitleWithGuide} />
-                                </div>
-                                <div className={styles.mysqlNodeMetric}><span>读 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_reads_rate', dataReadValue.toFixed(1), '/s')}</strong></div>
-                                <div className={styles.mysqlNodeMetric}><span>写 IOPS</span><strong>{renderFlowValue('mysql_innodb_data_writes_rate', dataWriteValue.toFixed(1), '/s')}</strong></div>
-                              </div>
-                              <div className={`${styles.innodbDiskCard} ${styles.innodbCardSecondary}`}>
-                                <div className={styles.innodbCardTitleRow}>
-                                  <TitleWithGuide styles={styles} title="Redo 日志文件" items={redoFileGuide} className={styles.innodbCardTitleWithGuide} />
-                                </div>
-                                <div className={styles.mysqlNodeMetric}><span>Redo 刷盘</span><strong>{renderFlowValue('mysql_innodb_os_log_fsyncs_rate', fsyncValue.toFixed(1), '/s')}</strong></div>
-                                <div className={styles.mysqlNodeMetric}><span>复制延迟</span><strong>{replicationApplicable ? renderFlowValue('mysql_slave_seconds_behind_master', replicationDelayDisplay.value, replicationDelayDisplay.unit || 's') : '不适用'}</strong></div>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                      </div>
-                    </div>
-                  </div> */}
-
-                  <div className={styles.mainTrendGrid}>
-                    <TrendChartPanel
-                      styles={styles}
-                      className={styles.halfPanel}
-                      title={<TitleWithGuide styles={styles} title="慢查询趋势" items={slowTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="慢 SQL 速率"
-                      legends={TREND_LEGENDS.qps.slice(1, 2)}
-                      data={slowQueryTrendData}
-                      metric={buildMetricItem(metricMap.mysql_slow_queries_rate || dashboardMetrics[0])}
-                      unit="cps"
-                      seriesStyles={TREND_LEGENDS.qps.slice(1, 2).map((item) => ({
-                        color: item.color,
-                        fillOpacity: 0.08,
-                        strokeOpacity: 1,
-                        strokeWidth: 2.8,
-                        unit: 'cps'
-                      }))}
-                      onXRangeChange={onXRangeChange}
-                    />
-
-                    <TrendChartPanel
-                      styles={styles}
-                      className={styles.halfPanel}
-                      title={<TitleWithGuide styles={styles} title="锁等待趋势" items={lockTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="行锁等待速率"
-                      legends={TREND_LEGENDS.lockWaits}
-                      data={lockWaitTrendData}
-                      metric={buildMetricItem(metricMap.mysql_innodb_row_lock_waits_rate || dashboardMetrics[0])}
-                      unit="cps"
-                      seriesStyles={TREND_LEGENDS.lockWaits.map((item) => ({
-                        color: item.color,
-                        fillOpacity: 0.08,
-                        strokeOpacity: 1,
-                        strokeWidth: 2.8,
-                        unit: 'cps'
-                      }))}
-                      onXRangeChange={onXRangeChange}
-                    />
-
-                    <TrendChartPanel
-                      styles={styles}
-                      className={styles.halfPanel}
-                      title={<TitleWithGuide styles={styles} title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="总查询吞吐"
-                      legends={TREND_LEGENDS.qps.slice(0, 1)}
-                      data={qpsTrendData}
-                      metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
-                      unit="cps"
-                      seriesStyles={TREND_LEGENDS.qps.slice(0, 1).map((item) => ({
-                        color: item.color,
-                        fillOpacity: 0.09,
-                        strokeOpacity: 1,
-                        strokeWidth: 2.8,
-                        unit: 'cps'
-                      }))}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-
-                  <div className={styles.structureGrid}>
-                    <RingChartPanel
-                      styles={styles}
-                      className={`${styles.halfPanel} ${styles.fillPanel}`}
-                      title={<TitleWithGuide styles={styles} title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="空闲、执行与等待占比"
-                      data={threadShareChartData}
-                      centerValue={threadDistributionTotal.toFixed(0)}
-                      centerCaption="当前总数"
-                      isEmpty={threadShareChartData.length === 0}
-                      emptyDescription="暂无线程状态数据"
-                    />
-
-                    <RingChartPanel
-                      styles={styles}
-                      className={`${styles.halfPanel} ${styles.fillPanel}`}
-                      ringCardClassName={`${styles.bufferPoolRingCard} ${styles.ringCardRelaxed}`}
-                      ringChartWrapClassName={styles.bufferPoolChartWrap}
-                      title={<TitleWithGuide styles={styles} title="缓冲池使用情况" items={bufferUsageGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="已用、脏页与空闲页"
-                      data={bufferPoolShareChartData}
-                      centerValue={bufferPoolUsedValue.toFixed(0)}
-                      centerCaption="使用率"
-                      isEmpty={!hasMetricData('mysql_buffer_pool_used_ratio')}
-                      emptyDescription="暂无缓冲池数据"
-                      infoRows={bufferPoolBreakdown.map((item) => ({
-                        name: item.name,
-                        color: item.color,
-                        primary: `${item.percent.toFixed(1)}%`,
-                        secondary: `(${item.count.toLocaleString()})`
-                      }))}
-                    />
-
-                    <TrendChartPanel
-                      styles={styles}
-                      className={`${styles.halfPanel} ${styles.fillPanel}`}
-                      title={<TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="读写与 Redo 刷盘"
-                      legends={TREND_LEGENDS.innodb}
-                      data={innodbTrendData}
-                      metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
-                      unit="cps"
-                      seriesStyles={TREND_LEGENDS.innodb.map((item) => ({
-                        color: item.color,
-                        fillOpacity: item.primary ? 0.08 : 0.03,
-                        strokeOpacity: item.primary ? 1 : 0.68,
-                        strokeWidth: item.primary ? 2.8 : 2.1
-                      }))}
-                      bodyBottom={(
-                        <div className={styles.inlineStats}>
-                          <div className={styles.inlineStat}><span>读 IOPS</span><strong>{dataReadValue.toFixed(1)}/s</strong></div>
-                          <div className={styles.inlineStat}><span>写 IOPS</span><strong>{dataWriteValue.toFixed(1)}/s</strong></div>
-                          <div className={styles.inlineStat}><span>Redo 刷盘</span><strong>{fsyncValue.toFixed(1)}/s</strong></div>
-                        </div>
-                      )}
-                      onXRangeChange={onXRangeChange}
-                    />
-                  </div>
-
-                  <div className={styles.detailGrid}>
-                    <HorizontalBarPanel
-                      styles={styles}
-                      className={styles.chartPanel}
-                      title={<TitleWithGuide styles={styles} title="诊断指标" items={lockGuide} className={styles.panelTitleWithGuide} />}
-                      subtitle="连接异常与缓存压力"
-                      items={[
-                        {
-                          label: '磁盘临时表速率',
-                          value: tmpDiskRate * 60,
-                          display: formatPerMinute(tmpDiskRate * 60),
-                          color: '#ff4d4f',
-                          max: Math.max(tmpTotalRate * 60, 1),
-                          trend: metricMap.mysql_created_tmp_disk_tables_rate?.viewData || []
-                        },
-                        {
-                          label: '表缓存未命中',
-                          value: tableCacheMissRate * 60,
-                          display: formatPerMinute(tableCacheMissRate * 60),
-                          color: '#faad14',
-                          max: Math.max((tableCacheMissRate + openedTablesRate) * 60, 1),
-                          trend: metricMap.mysql_table_open_cache_misses_rate?.viewData || []
-                        },
-                        {
-                          label: '连接尝试失败',
-                          value: abortedConnectsRate * 60,
-                          display: formatPerMinute(abortedConnectsRate * 60),
-                          color: '#a855f7',
-                          max: Math.max(abortedConnectsRate * 60, 1),
-                          trend: metricMap.mysql_aborted_connects_rate?.viewData || []
-                        },
-                        {
-                          label: '客户端异常断开',
-                          value: abortedClientsRate * 60,
-                          display: formatPerMinute(abortedClientsRate * 60),
-                          color: '#52c41a',
-                          max: Math.max(abortedClientsRate * 60, 1),
-                          trend: metricMap.mysql_aborted_clients_rate?.viewData || []
-                        }
-                      ]}
-                    />
-
-                    {replicationApplicable ? (
+                  {/* 分区 1 · 连接与线程压力 */}
+                  <div className={styles.sectionLabel}>连接与线程压力</div>
+                  <section className={styles.dashboardSection}>
+                    <div className={styles.sectionGrid}>
                       <TrendChartPanel
                         styles={styles}
-                        className={`${styles.chartPanel} ${styles.fillPanel} ${styles.replicationCardRelaxed}`}
-                        chartWrapClassName={styles.replicationChartWrap}
-                        title={<TitleWithGuide styles={styles} title="复制状态" items={replicationGuide} className={styles.panelTitleWithGuide} />}
-                        subtitle="复制延迟与线程状态"
-                        legends={TREND_LEGENDS.replication}
-                        data={replicationTrendData}
-                        metric={buildMetricItem(metricMap.mysql_slave_seconds_behind_master || dashboardMetrics[0])}
-                        unit="s"
-                        seriesStyles={TREND_LEGENDS.replication.map((item) => ({
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="连接趋势" items={connTrendGuide} className={styles.panelTitleWithGuide} />}
+                        legends={TREND_LEGENDS.connection}
+                        data={connTrendData}
+                        metric={buildMetricItem(metricMap.mysql_threads_connected || dashboardMetrics[0])}
+                        unit="counts"
+                        seriesStyles={TREND_LEGENDS.connection.map((item) => ({
                           color: item.color,
-                          fillOpacity: 0.08,
-                          strokeOpacity: 1,
-                          strokeWidth: 2.8,
-                          unit: 's'
+                          fillOpacity: item.primary ? 0.08 : 0.03,
+                          strokeOpacity: item.primary ? 1 : 0.7,
+                          strokeWidth: item.primary ? 2.8 : 2.1,
+                          unit: 'counts'
                         }))}
-                        bodyTop={(
-                          <div className={styles.replicationCard}>
-                            <div className={styles.replicationInfoBlock}>
-                              <div className={styles.replicationDelayBlock}>
-                                <div className={styles.replicationDelayLabel}>复制延迟</div>
-                                <div className={styles.replicationDelayValue}>
-                                  {hasReplicationData ? replicationDelayDisplay.value : '--'}
-                                  <span>{hasReplicationData ? replicationDelayDisplay.unit || 's' : ''}</span>
-                                </div>
-                              </div>
-                              <div className={styles.replicationStatusList}>
-                                <div className={styles.replicationStatusItem}>
-                                  <span className={styles.replicationStatusLabel}>IO 线程</span>
-                                  <Tag className={styles.replicationStatusTag} color={replicationIoRunning > 0 ? 'success' : 'error'}>
-                                    {replicationIoRunning > 0 ? '运行中' : '已停止'}
-                                  </Tag>
-                                </div>
-                                <div className={styles.replicationStatusItem}>
-                                  <span className={styles.replicationStatusLabel}>SQL 线程</span>
-                                  <Tag className={styles.replicationStatusTag} color={replicationSqlRunning > 0 ? 'success' : 'error'}>
-                                    {replicationSqlRunning > 0 ? '运行中' : '已停止'}
-                                  </Tag>
-                                </div>
-                              </div>
-                            </div>
+                        onXRangeChange={onXRangeChange}
+                      />
+                      <RingChartPanel
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="线程状态分布" items={threadStateGuide} className={styles.panelTitleWithGuide} />}
+                        data={threadShareChartData}
+                        centerValue={threadDistributionTotal.toFixed(0)}
+                        centerCaption="当前总数"
+                        isEmpty={threadShareChartData.length === 0}
+                        emptyDescription="暂无线程状态数据"
+                      />
+                      <HorizontalBarPanel
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="连接异常" items={connErrorGuide} className={styles.panelTitleWithGuide} />}
+                        items={[
+                          { label: '连接尝试失败', value: abortedConnectsRate * 60, display: formatPerMinute(abortedConnectsRate * 60), color: '#a855f7', max: Math.max(abortedConnectsRate * 60, 1), trend: metricMap.mysql_aborted_connects_rate?.viewData || [] },
+                          { label: '客户端异常断开', value: abortedClientsRate * 60, display: formatPerMinute(abortedClientsRate * 60), color: '#52c41a', max: Math.max(abortedClientsRate * 60, 1), trend: metricMap.mysql_aborted_clients_rate?.viewData || [] },
+                          { label: '连接上限错误', value: maxConnectionErrorsRate * 60, display: formatPerMinute(maxConnectionErrorsRate * 60), color: '#ff4d4f', max: Math.max(maxConnectionErrorsRate * 60, 1), trend: metricMap.mysql_connection_errors_max_connections_rate?.viewData || [] },
+                          { label: '内部连接错误', value: internalConnectionErrors, display: internalConnectionErrors.toFixed(0), color: '#faad14', max: Math.max(internalConnectionErrors, 1), trend: metricMap.mysql_connection_errors_internal?.viewData || [] }
+                        ]}
+                      />
+                    </div>
+                  </section>
+
+                  {/* 分区 2 · 查询吞吐 */}
+                  <div className={styles.sectionLabel}>查询吞吐</div>
+                  <section className={styles.dashboardSection}>
+                    <div className={styles.sectionGrid}>
+                      <TrendChartPanel
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="QPS 趋势" items={qpsTrendGuide} className={styles.panelTitleWithGuide} />}
+                        legends={TREND_LEGENDS.qps}
+                        data={qpsTrendData}
+                        metric={buildMetricItem(metricMap.mysql_queries_rate || dashboardMetrics[0])}
+                        unit="cps"
+                        seriesStyles={TREND_LEGENDS.qps.map((item) => ({ color: item.color, fillOpacity: item.primary ? 0.09 : 0.03, strokeOpacity: item.primary ? 1 : 0.72, strokeWidth: item.primary ? 2.8 : 2.1, unit: 'cps' }))}
+                        onXRangeChange={onXRangeChange}
+                      />
+                      <HorizontalBarPanel
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="读写语句构成" items={statementMixGuide} className={styles.panelTitleWithGuide} />}
+                        items={[
+                          { label: 'SELECT', value: selectValue, display: `${selectValue.toFixed(1)}/s`, color: '#2f6bff', max: Math.max(selectValue, insertValue, updateValue, deleteValue, 1), trend: metricMap.mysql_com_select_rate?.viewData || [] },
+                          { label: 'INSERT', value: insertValue, display: `${insertValue.toFixed(1)}/s`, color: '#ff9f43', max: Math.max(selectValue, insertValue, updateValue, deleteValue, 1), trend: metricMap.mysql_com_insert_rate?.viewData || [] },
+                          { label: 'UPDATE', value: updateValue, display: `${updateValue.toFixed(1)}/s`, color: '#faad14', max: Math.max(selectValue, insertValue, updateValue, deleteValue, 1), trend: metricMap.mysql_com_update_rate?.viewData || [] },
+                          { label: 'DELETE', value: deleteValue, display: `${deleteValue.toFixed(1)}/s`, color: '#ff7875', max: Math.max(selectValue, insertValue, updateValue, deleteValue, 1), trend: metricMap.mysql_com_delete_rate?.viewData || [] }
+                        ]}
+                      />
+                      <TrendChartPanel
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="网络流量" items={netTrafficGuide} className={styles.panelTitleWithGuide} />}
+                        legends={TREND_LEGENDS.network}
+                        data={netTrafficTrendData}
+                        metric={buildMetricItem(metricMap.mysql_bytes_received_rate || dashboardMetrics[0])}
+                        unit="byteps"
+                        seriesStyles={TREND_LEGENDS.network.map((item) => ({ color: item.color, fillOpacity: item.primary ? 0.08 : 0.03, strokeOpacity: item.primary ? 1 : 0.7, strokeWidth: item.primary ? 2.8 : 2.1, unit: 'byteps' }))}
+                        onXRangeChange={onXRangeChange}
+                      />
+                    </div>
+                  </section>
+
+                  {/* 分区 3 · 锁等待 */}
+                  <div className={styles.sectionLabel}>锁等待</div>
+                  <section className={styles.dashboardSection}>
+                    <div className={styles.sectionGrid}>
+                      <TrendChartPanel
+                        styles={styles}
+                        className={styles.span8}
+                        title={<TitleWithGuide styles={styles} title="锁等待趋势" items={lockTrendGuide} className={styles.panelTitleWithGuide} />}
+                        subtitle="行锁等待速率"
+                        legends={TREND_LEGENDS.lockWaits}
+                        data={lockWaitTrendData}
+                        metric={buildMetricItem(metricMap.mysql_innodb_row_lock_waits_rate || dashboardMetrics[0])}
+                        unit="cps"
+                        seriesStyles={TREND_LEGENDS.lockWaits.map((item) => ({ color: item.color, fillOpacity: 0.08, strokeOpacity: 1, strokeWidth: 2.8, unit: 'cps' }))}
+                        onXRangeChange={onXRangeChange}
+                      />
+                      <StatCard
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="平均行锁等待" items={lockWaitRateGuide} />}
+                        value={renderMetricValue('mysql_innodb_row_lock_time_avg', lockWait.toFixed(lockWait >= 10 ? 0 : 1))}
+                        unit={hasMetricData('mysql_innodb_row_lock_time_avg') ? 'ms' : ''}
+                        icon={<ClockCircleOutlined />}
+                        iconStyle={{ background: 'rgba(255, 77, 79, 0.08)', color: '#ff4d4f' }}
+                        color="#ff4d4f"
+                        compare={null}
+                        footer={<><span>{hasLockData ? `行锁等待 ${formatPerMinute(lockWaitRate * 60)}` : metricEmptyText}</span></>}
+                        trendData={metricMap.mysql_innodb_row_lock_time_avg?.viewData || []}
+                        noDataType={getNoDataType('mysql_innodb_row_lock_time_avg')}
+                      />
+                    </div>
+                  </section>
+
+                  {/* 分区 4 · InnoDB 缓冲池 */}
+                  <div className={styles.sectionLabel}>InnoDB 缓冲池</div>
+                  <section className={styles.dashboardSection}>
+                    <div className={styles.sectionGrid}>
+                      <RingChartPanel
+                        styles={styles}
+                        className={`${styles.span4} ${styles.fillPanel}`}
+                        ringCardClassName={`${styles.bufferPoolRingCard} ${styles.ringCardRelaxed}`}
+                        ringChartWrapClassName={styles.bufferPoolChartWrap}
+                        title={<TitleWithGuide styles={styles} title="缓冲池使用" items={bufferUsageGuide} className={styles.panelTitleWithGuide} />}
+                        subtitle="已用、脏页与空闲页"
+                        data={bufferPoolShareChartData}
+                        centerValue={bufferPoolUsedValue.toFixed(0)}
+                        centerCaption="使用率"
+                        isEmpty={!hasMetricData('mysql_buffer_pool_used_ratio')}
+                        emptyDescription="暂无缓冲池数据"
+                        infoRows={bufferPoolBreakdown.map((item) => ({
+                          name: item.name,
+                          color: item.color,
+                          primary: `${item.percent.toFixed(1)}%`,
+                          secondary: `(${item.count.toLocaleString()})`
+                        }))}
+                      />
+                      <TrendChartPanel
+                        styles={styles}
+                        className={`${styles.span8} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="InnoDB 读写趋势" items={innodbTrendGuide} className={styles.panelTitleWithGuide} />}
+                        subtitle="读写与 Redo 刷盘"
+                        legends={TREND_LEGENDS.innodb}
+                        data={innodbTrendData}
+                        metric={buildMetricItem(metricMap.mysql_innodb_data_reads_rate || dashboardMetrics[0])}
+                        unit="cps"
+                        seriesStyles={TREND_LEGENDS.innodb.map((item) => ({ color: item.color, fillOpacity: item.primary ? 0.08 : 0.03, strokeOpacity: item.primary ? 1 : 0.68, strokeWidth: item.primary ? 2.8 : 2.1 }))}
+                        bodyBottom={(
+                          <div className={styles.inlineStats}>
+                            <div className={styles.inlineStat}><span>读 IOPS</span><strong>{dataReadValue.toFixed(1)}/s</strong></div>
+                            <div className={styles.inlineStat}><span>写 IOPS</span><strong>{dataWriteValue.toFixed(1)}/s</strong></div>
+                            <div className={styles.inlineStat}><span>Redo 刷盘</span><strong>{fsyncValue.toFixed(1)}/s</strong></div>
                           </div>
                         )}
                         onXRangeChange={onXRangeChange}
                       />
-                    ) : (
-                      <DashboardPanel
+                    </div>
+                  </section>
+
+                  {/* 分区 5 · 临时表与复制状态(复制部分仅主从) */}
+                  <div className={styles.sectionLabel}>临时表与复制状态</div>
+                  <section className={styles.dashboardSection}>
+                    <div className={styles.sectionGrid}>
+                      <HorizontalBarPanel
                         styles={styles}
-                        className={`${styles.chartPanel} ${styles.fillPanel}`}
-                        bodyClassName={`${styles.replicationStandalone} ${styles.fillBody}`}
-                        title="复制状态"
-                        subtitle={`${mysqlIdentity.deployment}实例无需复制线程`}
-                        guide={replicationGuide}
-                      >
-                        <div className={styles.replicationRoleBadge}>{mysqlIdentity.role}</div>
-                        <div className={styles.replicationStandaloneTitle}>无需复制线程</div>
-                        <div className={styles.replicationStandaloneDesc}>
-                          当前实例为{mysqlIdentity.deployment}的{mysqlIdentity.role}，不需要展示从库复制延迟与 SQL/IO 线程状态。
-                        </div>
-                        <div className={styles.replicationStandaloneTags}>
-                          <Tag className={styles.replicationStatusTag}>IO 不适用</Tag>
-                          <Tag className={styles.replicationStatusTag}>SQL 不适用</Tag>
-                        </div>
-                      </DashboardPanel>
-                    )}
-                  </div>
+                        className={`${replicationApplicable ? styles.span4 : styles.span8} ${styles.fillPanel}`}
+                        title={<TitleWithGuide styles={styles} title="临时表与缓存压力" items={tempCacheGuide} className={styles.panelTitleWithGuide} />}
+                        items={[
+                          { label: '磁盘临时表速率', value: tmpDiskRate * 60, display: formatPerMinute(tmpDiskRate * 60), color: '#ff4d4f', max: Math.max(tmpTotalRate * 60, 1), trend: metricMap.mysql_created_tmp_disk_tables_rate?.viewData || [] },
+                          { label: '表缓存未命中', value: tableCacheMissRate * 60, display: formatPerMinute(tableCacheMissRate * 60), color: '#faad14', max: Math.max((tableCacheMissRate + openedTablesRate) * 60, 1), trend: metricMap.mysql_table_open_cache_misses_rate?.viewData || [] },
+                          { label: '打开表速率', value: openedTablesRate * 60, display: formatPerMinute(openedTablesRate * 60), color: '#2f6bff', max: Math.max(openedTablesRate * 60, 1), trend: metricMap.mysql_opened_tables_rate?.viewData || [] }
+                        ]}
+                      />
+                      {replicationApplicable ? (
+                        <>
+                          <TrendChartPanel
+                            styles={styles}
+                            className={`${styles.span4} ${styles.fillPanel}`}
+                            title={<TitleWithGuide styles={styles} title="复制延迟趋势" items={replicationGuide} className={styles.panelTitleWithGuide} />}
+                            subtitle="从库落后主库秒数"
+                            legends={TREND_LEGENDS.replication}
+                            data={replicationTrendData}
+                            metric={buildMetricItem(metricMap.mysql_slave_seconds_behind_master || dashboardMetrics[0])}
+                            unit="s"
+                            seriesStyles={TREND_LEGENDS.replication.map((item) => ({ color: item.color, fillOpacity: 0.08, strokeOpacity: 1, strokeWidth: 2.8, unit: 's' }))}
+                            onXRangeChange={onXRangeChange}
+                          />
+                          <DashboardPanel
+                            styles={styles}
+                            className={`${styles.span4} ${styles.fillPanel}`}
+                            bodyClassName={styles.fillBody}
+                            title="复制线程与配置"
+                            guide={replicationGuide}
+                          >
+                            <div className={styles.replicationKvList}>
+                              <div className={styles.replicationKvRow}>
+                                <span className={styles.replicationKvLabel}>IO 线程</span>
+                                <Tag className={styles.replicationStatusTag} color={replicationIoRunning > 0 ? 'success' : 'error'}>
+                                  {replicationIoRunning > 0 ? '运行中' : '已停止'}
+                                </Tag>
+                              </div>
+                              <div className={styles.replicationKvRow}>
+                                <span className={styles.replicationKvLabel}>SQL 线程</span>
+                                <Tag className={styles.replicationStatusTag} color={replicationSqlRunning > 0 ? 'success' : 'error'}>
+                                  {replicationSqlRunning > 0 ? '运行中' : '已停止'}
+                                </Tag>
+                              </div>
+                              <div className={styles.replicationKvRow}>
+                                <span className={styles.replicationKvLabel}>binlog</span>
+                                <Tag className={styles.replicationStatusTag} color={logBinValue > 0 ? 'success' : 'default'}>
+                                  {logBinValue > 0 ? '已开启' : '未开启'}
+                                </Tag>
+                              </div>
+                              <div className={styles.replicationKvRow}>
+                                <span className={styles.replicationKvLabel}>回放写日志</span>
+                                <Tag className={styles.replicationStatusTag} color={logSlaveUpdatesValue > 0 ? 'success' : 'default'}>
+                                  {logSlaveUpdatesValue > 0 ? '已记录' : '未记录'}
+                                </Tag>
+                              </div>
+                            </div>
+                          </DashboardPanel>
+                        </>
+                      ) : (
+                        <DashboardPanel
+                          styles={styles}
+                          className={`${styles.span4} ${styles.fillPanel}`}
+                          bodyClassName={`${styles.replicationStandalone} ${styles.fillBody}`}
+                          title="复制状态"
+                          subtitle={`${mysqlIdentity.deployment}实例无需复制线程`}
+                          guide={replicationGuide}
+                        >
+                          <div className={styles.replicationRoleBadge}>{mysqlIdentity.role}</div>
+                          <div className={styles.replicationStandaloneTitle}>无需复制线程</div>
+                          <div className={styles.replicationStandaloneDesc}>
+                            当前实例为{mysqlIdentity.deployment}的{mysqlIdentity.role}，不需要展示从库复制延迟与 SQL/IO 线程状态。
+                          </div>
+                          <div className={styles.replicationStandaloneTags}>
+                            <Tag className={styles.replicationStatusTag}>IO 不适用</Tag>
+                            <Tag className={styles.replicationStatusTag}>SQL 不适用</Tag>
+                          </div>
+                        </DashboardPanel>
+                      )}
+                    </div>
+                  </section>
                 </div>
               ) : (
                 <div className={`${styles.modeContent} ${styles.metricsMode}`}>

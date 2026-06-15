@@ -67,6 +67,7 @@ class WorkFlowExecuteType(models.TextChoices):
     WEB_CHAT = "web_chat", _("Web Chat")
     MOBILE = "mobile", _("Mobile")
     AGUI = "agui", _("AG-UI")
+    NATS = "nats", _("NATS")
 
 
 class WorkFlowTaskStatus(models.TextChoices):
@@ -77,3 +78,11 @@ class WorkFlowTaskStatus(models.TextChoices):
     INTERRUPTED = "interrupted", _("Interrupted")
     SUCCESS = "success", _("Success")
     FAIL = "fail", _("Fail")
+
+
+class KnowledgeTaskStatus(models.TextChoices):
+    """知识任务状态枚举"""
+
+    RUNNING = "running", _("Running")
+    SUCCESS = "success", _("Success")
+    FAILED = "failed", _("Failed")

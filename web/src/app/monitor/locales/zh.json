@@ -507,6 +507,8 @@
       "pullTemplateHint": "PULL 模板不支持父子对象联合采集，如有此类需求，请使用 PUSH 模式。",
       "templateDescription": "模版介绍",
       "noConfigData": "暂无配置数据，请检查插件配置",
+      "reportedOnlyConfigTip": "已检测到该插件上报数据，但当前实例没有可编辑的采集配置。",
+      "missingConfigDataTip": "未找到该插件的采集配置内容，请检查配置是否已成功下发。",
       "searchRuleName": "搜索规则名称",
       "batchOperation": "批量操作",
       "exactMatch": "完全匹配",

@@ -1,6 +1,7 @@
 from typing import Any
 
 from django.db import models
+from django.db.models import ProtectedError
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
@@ -10,6 +11,7 @@ from apps.opspilot.models import EmbedProvider, LLMModel, OCRProvider, RerankPro
 from apps.opspilot.models.model_provider_mgmt import ModelVendor
 from apps.opspilot.serializers.model_vendor_serializer import ModelVendorSerializer, ModelVendorTestConnectionSerializer
 from apps.opspilot.services.model_vendor_sync_service import ModelVendorSyncService
+from apps.opspilot.utils.vendor_model_mixin import protected_delete_response
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -71,7 +73,12 @@ class ModelVendorViewSet(AuthViewSet):
 
     @HasPermission("provide_list-Delete")
     def destroy(self, request, *args, **kwargs):
-        response = super().destroy(request, *args, **kwargs)
+        try:
+            response = super().destroy(request, *args, **kwargs)
+        except ProtectedError as error:
+            # Vendor still referenced by LLMModel/EmbedProvider/RerankProvider/OCRProvider
+            # (on_delete=PROTECT); return a clean 400 instead of an unhandled 500.
+            return protected_delete_response(getattr(self, "loader", None), error, message_key="error.vendor_in_use")
         if response.status_code >= 200 and response.status_code < 300:
             vendor_name = response.data.get("name") if isinstance(response.data, dict) else None
             if not vendor_name:

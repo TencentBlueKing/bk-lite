@@ -91,11 +91,11 @@ class Command(BaseCommand):
 
             success_msg = f"成功导出 {len(export_data)} 条数据源API数据到: {output_path}"
             self.stdout.write(self.style.SUCCESS(success_msg))
-            logger.info(f"==={success_msg}===")
+            logger.info("[SourceApiExport] %s", success_msg)
 
         except Exception as e:
             error_msg = f"导出数据源API数据失败: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.error("[SourceApiExport] 导出数据源API数据失败：%s", e, exc_info=True)
             self.stdout.write(self.style.ERROR(error_msg))
             raise
 

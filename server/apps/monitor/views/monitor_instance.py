@@ -19,7 +19,9 @@ from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.services.effective_plugins import MonitorEffectivePluginService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
 
@@ -238,6 +240,26 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         if request.data.get("add_metrics"):
             MetricsService.convert_instance_list_metrics(int(monitor_object_id), data["results"])
 
+        return WebUtils.response_success(data)
+
+    @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/effective_plugins")
+    def effective_plugins(self, request, monitor_object_id):
+        instance_id = request.GET.get("instance_id")
+        if not instance_id:
+            raise BaseAppException("instance_id is required")
+
+        # 前端下传的可能是干净标量(如 "mssql_1433"),而实例ID在库中以元组串形态存储
+        # (如 "('mssql_1433',)")。统一归一为存储键形态,兼容两种输入,既匹配存在性校验,
+        # 也保证 get_effective_plugins 内部按存储键比对上报数据,避免误报"监控实例不存在"。
+        instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
+
+        actor_context = _build_actor_context(request)
+        _ensure_operate_instances(request, [instance_id], actor_context)
+        data = MonitorEffectivePluginService.get_effective_plugins(
+            int(monitor_object_id),
+            instance_id,
+            getattr(request.user, "locale", "zh-Hans"),
+        )
         return WebUtils.response_success(data)
 
     @action(

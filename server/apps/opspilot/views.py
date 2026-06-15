@@ -5,29 +5,37 @@ import uuid
 from typing import Any
 
 from asgiref.sync import sync_to_async
-from django.db.models import Count
+from django.core import signing
+from django.db.models import Count, Q
 from django.db.models.functions import TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
 
 from apps.base.models import UserAPISecret
+from apps.core.decorators.api_permission import HasRole
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.opspilot.enum import WorkFlowTaskStatus
-from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, WorkflowAttachmentAsset, WorkFlowTaskResult
+from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, SkillRequestLog, WorkFlowTaskResult
+from apps.opspilot.serializers.request_serializers import (
+    InterruptChatFlowRequestSerializer,
+    SubmitApprovalRequestSerializer,
+    SubmitChoiceRequestSerializer,
+)
+from apps.opspilot.services.chat_completion_service import ChatCompletionService
 from apps.opspilot.services.chat_service import ChatService
+from apps.opspilot.services.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.services.skill_execute_service import SkillExecuteService
+from apps.opspilot.services.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
+from apps.opspilot.services.workflow_attachment_service import resolve_signed_attachment_token
 from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
-from apps.opspilot.utils.dingtalk_chat_flow_utils import DingTalkChatFlowUtils, start_dingtalk_stream_client
 from apps.opspilot.utils.execution_interrupt import request_interrupt
-from apps.opspilot.utils.sse_chat import generate_stream_error, stream_chat
+from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
-from apps.opspilot.utils.wechat_official_chat_flow_utils import WechatOfficialChatFlowUtils
-from apps.opspilot.viewsets.llm_view import LLMViewSet
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
 
@@ -101,7 +109,7 @@ def get_bot_detail(request, bot_id):
                 "id": i.id,
                 "name": i.name,
                 "channel_type": i.channel_type,
-                "channel_config": i.decrypted_channel_config,
+                "channel_config": i.format_channel_config(),
             }
             for i in channels
         ],
@@ -111,7 +119,12 @@ def get_bot_detail(request, bot_id):
 
 @api_exempt
 def download_workflow_attachment(request, download_token):
-    asset = WorkflowAttachmentAsset.objects.filter(download_token=download_token).select_related("file_knowledge").first()
+    try:
+        asset = resolve_signed_attachment_token(download_token)
+    except signing.SignatureExpired:
+        return JsonResponse({"result": False, "message": "Download link expired"}, status=403)
+    except signing.BadSignature:
+        return JsonResponse({"result": False, "message": "Invalid download token"}, status=403)
     if not asset:
         return JsonResponse({"result": False, "message": "Attachment not found"}, status=404)
 
@@ -143,8 +156,9 @@ def validate_openai_token(token, team=None, is_mobile=False):
             domain=user_info["domain"],
             team=int(team),
         )
-        # Token 认证：从 verify_token 结果获取 locale
+        # Token 认证：从 verify_token 结果获取 locale 和 group_list
         user.locale = user_info.get("locale", "en")
+        user.group_list = user_info.get("group_list", [])
     else:
         # UserAPISecret 认证：查询用户信息获取 locale
         user.locale = _get_user_locale(user.username, user.domain)
@@ -314,94 +328,43 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
     return return_data, content, False  # 第三个返回值表示是否失败
 
 
+def _build_chat_completion_service() -> ChatCompletionService:
+    """Wire the shared chat-completion service to the view-layer callables.
+
+    The dependencies are resolved lazily via module-level names so existing
+    test patches on ``apps.opspilot.views.*`` (e.g. ``validate_openai_token``,
+    ``get_skill_and_params``, ``insert_skill_log``) remain authoritative.
+    """
+    return ChatCompletionService(
+        parse_json_body=parse_json_body,
+        extract_api_token=extract_api_token,
+        get_client_ip=get_client_ip,
+        generate_stream_error=generate_stream_error,
+        insert_skill_log=insert_skill_log,
+        invoke_chat=invoke_chat,
+        stream_chat=stream_chat,
+    )
+
+
 @api_exempt
 def openai_completions(request):
     """Main entry point for OpenAI completions"""
-    kwargs, parse_error = parse_json_body(request)
-    if parse_error:
-        return JsonResponse(
-            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
-            status=400,
-        )
-    current_ip, _ = get_client_ip(request)
-
-    stream_mode = kwargs.get("stream", False)
-    token = extract_api_token(request)
-
-    is_valid, msg = validate_openai_token(token)
-    if not is_valid:
-        if stream_mode:
-            return generate_stream_error(msg["choices"][0]["message"]["content"])
-        else:
-            return JsonResponse(msg)
-    user = msg
-    try:
-        skill_obj, params, error = get_skill_and_params(kwargs, user.team)
-        if error:
-            if skill_obj:
-                user_message = params.get("user_message")
-                insert_skill_log(current_ip, skill_obj.id, error, kwargs, False, user_message)
-            if stream_mode:
-                return generate_stream_error(error["choices"][0]["message"]["content"])
-            else:
-                return JsonResponse(error)
-    except Exception as e:
-        if stream_mode:
-            return generate_stream_error(str(e))
-        else:
-            return JsonResponse({"choices": [{"message": {"role": "assistant", "content": str(e)}}]})
-    params["user_id"] = user.username
-    params["enable_km_route"] = skill_obj.enable_km_route
-    params["km_llm_model"] = skill_obj.km_llm_model
-    params["enable_suggest"] = skill_obj.enable_suggest
-    params["enable_query_rewrite"] = skill_obj.enable_query_rewrite
-    user_message = params.get("user_message")
-    if not stream_mode:
-        return invoke_chat(params, skill_obj, kwargs, current_ip, user_message)
-    return stream_chat(params, skill_obj.name, kwargs, current_ip, user_message)
+    service = _build_chat_completion_service()
+    return service.run(
+        request,
+        validate=lambda token, kwargs: validate_openai_token(token),
+        resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, user.team),
+        get_user_id=lambda user: user.username,
+    )
 
 
-@api_exempt
-def lobe_skill_execute(request):
-    kwargs, parse_error = parse_json_body(request)
-    if parse_error:
-        return JsonResponse(
-            {"choices": [{"message": {"role": "assistant", "content": parse_error}}]},
-            status=400,
-        )
-    current_ip, _ = get_client_ip(request)
+def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):
+    """Persist the inbound user turn and build the bot-side history log.
 
-    stream_mode = kwargs.get("stream", False)
-    # stream_mode = False
-    token = extract_api_token(request)
-    is_valid, msg = validate_header_token(token, int(kwargs["studio_id"]))
-    if not is_valid:
-        if stream_mode:
-            return generate_stream_error(msg["choices"][0]["message"]["content"])
-        else:
-            return JsonResponse(msg)
-    user = msg
-    try:
-        skill_obj, params, error = get_skill_and_params(kwargs, "", kwargs.get("studio_id"))
-        if error:
-            if skill_obj:
-                user_message = params.get("user_message")
-                insert_skill_log(current_ip, skill_obj.id, error, kwargs, False, user_message)
-            if stream_mode:
-                return generate_stream_error(error["choices"][0]["message"]["content"])
-            else:
-                return JsonResponse(error)
-    except Exception as e:
-        if stream_mode:
-            return generate_stream_error(str(e))
-        else:
-            return JsonResponse({"choices": [{"message": {"role": "assistant", "content": str(e)}}]})
-    params["user_id"] = user["username"]
-    params["enable_km_route"] = skill_obj.enable_km_route
-    params["km_llm_model"] = skill_obj.km_llm_model
-    params["enable_suggest"] = skill_obj.enable_suggest
-    params["enable_query_rewrite"] = skill_obj.enable_query_rewrite
-    user_message = params.get("user_message")
+    Mirrors the legacy ``lobe_skill_execute`` side effects exactly: it creates a
+    ``user`` conversation row and returns an unsaved ``bot`` conversation row to
+    be filled in once the assistant response is produced.
+    """
     bot = Bot.objects.get(id=kwargs["studio_id"])
     BotConversationHistory.objects.create(
         bot_id=kwargs.get("studio_id"),
@@ -412,7 +375,7 @@ def lobe_skill_execute(request):
         conversation=user_message,
         citing_knowledge=[],
     )
-    history_log = BotConversationHistory(
+    return BotConversationHistory(
         bot_id=kwargs.get("studio_id"),
         channel_user_id=user["username"],
         created_by=bot.created_by,
@@ -421,15 +384,17 @@ def lobe_skill_execute(request):
         conversation="",
         citing_knowledge=[],
     )
-    if not stream_mode:
-        return invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log)
-    return stream_chat(
-        params,
-        skill_obj.name,
-        kwargs,
-        current_ip,
-        user_message,
-        history_log=history_log,
+
+
+@api_exempt
+def lobe_skill_execute(request):
+    service = _build_chat_completion_service()
+    return service.run(
+        request,
+        validate=lambda token, kwargs: validate_header_token(token, int(kwargs["studio_id"])),
+        resolve_skill=lambda kwargs, user: get_skill_and_params(kwargs, "", kwargs.get("studio_id")),
+        get_user_id=lambda user: user["username"],
+        post_resolve_hook=_lobe_persist_history,
     )
 
 
@@ -489,25 +454,109 @@ def get_skill_execute_result(bot_id, channel, chat_history, kwargs, request, sen
     return result
 
 
-# @HasRole("admin")
+def _extract_token_usage(response_detail: Any) -> tuple[int, int, int]:
+    """从 SkillRequestLog.response_detail 中解析 OpenAI 风格的 usage 字段。
+
+    返回 (input_tokens, output_tokens, total_tokens)。
+    """
+    if not isinstance(response_detail, dict):
+        return 0, 0, 0
+    usage = response_detail.get("usage")
+    if not isinstance(usage, dict):
+        return 0, 0, 0
+
+    def _to_int(value: Any) -> int:
+        try:
+            return int(value or 0)
+        except (TypeError, ValueError):
+            return 0
+
+    prompt = _to_int(usage.get("prompt_tokens"))
+    completion = _to_int(usage.get("completion_tokens"))
+    total = _to_int(usage.get("total_tokens")) or (prompt + completion)
+    return prompt, completion, total
+
+
+def _user_team_ids(request) -> set[int]:
+    """返回调用者可访问的团队 id 集合(superuser 返回空集表示不限制)。"""
+    if getattr(request.user, "is_superuser", False):
+        return set()
+    return {g["id"] for g in getattr(request.user, "group_list", []) if isinstance(g, dict) and "id" in g}
+
+
+def _bot_in_user_team(request, bot_id) -> bool:
+    """校验 bot 属于调用者所在团队(superuser 不限制)。"""
+    bot = Bot.objects.filter(id=bot_id).first()
+    if not bot:
+        return False
+    if getattr(request.user, "is_superuser", False):
+        return True
+    team_ids = _user_team_ids(request)
+    return bool(set(bot.team or []) & team_ids)
+
+
+def _token_consumption_queryset(request):
+    """按 bot_id(经由其关联技能)与时间范围过滤 SkillRequestLog。
+
+    bot_id 必须属于调用者所在团队，否则返回空 queryset(配合 scope 校验)。
+    """
+    start_time_str = request.GET.get("start_time")
+    end_time_str = request.GET.get("end_time")
+    end_time, start_time = set_time_range(end_time_str, start_time_str)
+    queryset = SkillRequestLog.objects.filter(created_at__range=[start_time, end_time], state=True)
+    bot_id = request.GET.get("bot_id")
+    if bot_id:
+        if not _bot_in_user_team(request, bot_id):
+            return queryset.none(), start_time, end_time
+        skill_ids = LLMSkill.objects.filter(bot__id=bot_id).values_list("id", flat=True)
+        queryset = queryset.filter(skill_id__in=skill_ids)
+    return queryset, start_time, end_time
+
+
+@HasRole("admin")
 def get_total_token_consumption(request):
-    return JsonResponse({"result": True, "data": 0})
+    queryset, _start_time, _end_time = _token_consumption_queryset(request)
+    input_tokens = output_tokens = total_tokens = 0
+    for response_detail in queryset.values_list("response_detail", flat=True).iterator():
+        prompt, completion, total = _extract_token_usage(response_detail)
+        input_tokens += prompt
+        output_tokens += completion
+        total_tokens += total
+    data = {
+        "total_tokens": total_tokens,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+    }
+    return JsonResponse({"result": True, "data": data})
 
 
-# @HasRole("admin")
+@HasRole("admin")
 def get_token_consumption_overview(request):
-    return JsonResponse({"result": True, "data": []})
+    queryset, start_time, end_time = _token_consumption_queryset(request)
+    num_days = (end_time - start_time).days + 1
+    daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
+    for created_at, response_detail in queryset.values_list("created_at", "response_detail").iterator():
+        _prompt, _completion, total = _extract_token_usage(response_detail)
+        date_key = created_at.strftime("%Y-%m-%d")
+        if date_key not in daily_totals:
+            daily_totals[date_key] = 0
+        daily_totals[date_key] += total
+    items = [{"date": date, "tokens": tokens} for date, tokens in sorted(daily_totals.items())]
+    return JsonResponse({"result": True, "data": {"items": items}})
 
 
-# @HasRole("admin")
+@HasRole("admin")
 def get_conversations_line_data(request):
     start_time_str = request.GET.get("start_time")
     end_time_str = request.GET.get("end_time")
     end_time, start_time = set_time_range(end_time_str, start_time_str)
+    bot_id = request.GET.get("bot_id")
+    if bot_id and not _bot_in_user_team(request, bot_id):
+        return JsonResponse({"result": True, "data": set_channel_type_line(end_time, [], start_time)})
     queryset = (
         BotConversationHistory.objects.filter(
             created_at__range=[start_time, end_time],
-            bot_id=request.GET.get("bot_id"),
+            bot_id=bot_id,
             conversation_role="bot",
         )
         .annotate(date=TruncDate("created_at"))
@@ -519,13 +568,16 @@ def get_conversations_line_data(request):
     return JsonResponse({"result": True, "data": result})
 
 
-# @HasRole("admin")
+@HasRole("admin")
 def get_active_users_line_data(request):
     start_time_str = request.GET.get("start_time")
     end_time_str = request.GET.get("end_time")
     end_time, start_time = set_time_range(end_time_str, start_time_str)
+    bot_id = request.GET.get("bot_id")
+    if bot_id and not _bot_in_user_team(request, bot_id):
+        return JsonResponse({"result": True, "data": set_channel_type_line(end_time, [], start_time)})
     queryset = (
-        BotConversationHistory.objects.filter(created_at__range=[start_time, end_time], bot_id=request.GET.get("bot_id"), conversation_role="user")
+        BotConversationHistory.objects.filter(created_at__range=[start_time, end_time], bot_id=bot_id, conversation_role="user")
         .annotate(date=TruncDate("created_at"))
         .values("channel_user__channel_type", "date")
         .annotate(count=Count("channel_user", distinct=True))
@@ -580,28 +632,29 @@ async def execute_chat_flow(request, bot_id, node_id):
     session_id = kwargs.get("session_id", "")
     is_test = kwargs.get("is_test", False)
 
-    # 检测请求来源是否为移动端
-    user_agent = request.META.get("HTTP_USER_AGENT", "")
-    is_mobile = any(keyword in user_agent.lower() for keyword in ["android", "iphone", "ipad", "mobile", "windows phone", "tauri"])
-
     # 验证token
     token = extract_api_token(request)
-    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None, is_mobile)
+    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None)
     if not is_valid:
         return JsonResponse(msg)
 
-    # 验证Bot
+    # 验证Bot — 始终按已验证用户所属团队作用域解析 bot，所有客户端一致
+    # (此前移动端基于可伪造的 User-Agent 绕过 team 校验，构成跨租户越权，已移除)
     user = msg
-    if is_mobile:
-        # 移动端只筛选 bot_id，不校验 team
-        filter_dict = {"id": bot_id}
-    else:
-        # 非移动端保持原有逻辑，需要校验 team
-        filter_dict = {"id": bot_id, "team__contains": int(user.team)}
+    # 构建 team 过滤：用户所属团队 + OpsPilotGuest 顶级组（若有）
+    guest_group_ids = {
+        int(group["id"])
+        for group in getattr(user, "group_list", [])
+        if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
+    }
+    team_filter = Q(team__contains=[int(user.team)])
+    for gid in guest_group_ids:
+        team_filter |= Q(team__contains=[gid])
 
+    bot_query = Bot.objects.filter(Q(id=bot_id) & team_filter)
     if not is_test:
-        filter_dict["online"] = True
-    bot_obj = await sync_to_async(Bot.objects.filter(**filter_dict).first, thread_sensitive=False)()
+        bot_query = bot_query.filter(online=True)
+    bot_obj = await sync_to_async(bot_query.first, thread_sensitive=False)()
     if not bot_obj:
         return JsonResponse({"result": False, "message": loader.get("error.bot_not_online", "No bot online")})
 
@@ -669,7 +722,7 @@ async def execute_chat_flow(request, bot_id, node_id):
     except Exception as e:
         logger.exception("ChatFlow execution failed: bot_id=%s, node_id=%s", bot_id, node_id)
         # 流式错误响应，参考 llm_view.py
-        return LLMViewSet.create_error_stream_response(str(e))
+        return create_error_stream_response(str(e))
 
 
 def interrupt_chat_flow_execution(request):
@@ -679,18 +732,36 @@ def interrupt_chat_flow_execution(request):
     if parse_error:
         return JsonResponse({"result": False, "message": parse_error}, status=400)
 
-    execution_id = kwargs.get("execution_id", "")
-    if not execution_id:
+    serializer = InterruptChatFlowRequestSerializer(data=kwargs)
+    if not serializer.is_valid():
         return JsonResponse({"result": False, "message": loader.get("error.execution_id_required", "execution_id is required")}, status=400)
+    validated = serializer.validated_data
+    execution_id = validated["execution_id"]
 
     token = extract_api_token(request)
     is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
     if not is_valid:
         return JsonResponse(msg)
+    user = msg
 
-    request_interrupt(execution_id, reason=kwargs.get("reason", "user_manual"))
-    task_result = WorkFlowTaskResult.objects.filter(execution_id=execution_id).order_by("-id").first()
-    if task_result and task_result.status not in {WorkFlowTaskStatus.SUCCESS, WorkFlowTaskStatus.FAIL, WorkFlowTaskStatus.INTERRUPTED}:
+    # 将 execution_id 绑定到已验证 token 所属团队：仅当该执行实例归属于调用者团队的 bot 时才允许中断，
+    # 否则拒绝（404），防止跨租户中断他人工作流执行。
+    task_result = (
+        WorkFlowTaskResult.objects.filter(
+            execution_id=execution_id,
+            bot_work_flow__bot__team__contains=int(user.team),
+        )
+        .order_by("-id")
+        .first()
+    )
+    if not task_result:
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+            status=404,
+        )
+
+    request_interrupt(execution_id, reason=validated["reason"])
+    if task_result.status not in {WorkFlowTaskStatus.SUCCESS, WorkFlowTaskStatus.FAIL, WorkFlowTaskStatus.INTERRUPTED}:
         task_result.status = WorkFlowTaskStatus.INTERRUPTED
         task_result.finished_at = datetime.datetime.now(datetime.UTC)
         task_result.save(update_fields=["status", "finished_at"])
@@ -718,28 +789,29 @@ def submit_approval(request):
     except (json.JSONDecodeError, ValueError) as e:
         return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
 
-    execution_id = kwargs.get("execution_id", "")
-    node_id = kwargs.get("node_id", "")
-    tool_call_id = kwargs.get("tool_call_id", "")
-    decision = kwargs.get("decision", "")
+    serializer = SubmitApprovalRequestSerializer(data=kwargs)
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if "decision" in errors and all(k not in errors for k in ("execution_id", "node_id", "tool_call_id")):
+            message = "decision must be 'approve' or 'reject'"
+        else:
+            message = "execution_id, node_id, tool_call_id, decision are all required"
+        return JsonResponse({"result": False, "message": message}, status=400)
 
-    if not all([execution_id, node_id, tool_call_id, decision]):
-        return JsonResponse(
-            {"result": False, "message": "execution_id, node_id, tool_call_id, decision are all required"},
-            status=400,
-        )
+    validated = serializer.validated_data
+    execution_id = validated["execution_id"]
+    node_id = validated["node_id"]
+    tool_call_id = validated["tool_call_id"]
+    decision = validated["decision"]
 
-    if decision not in ("approve", "reject"):
-        return JsonResponse({"result": False, "message": "decision must be 'approve' or 'reject'"}, status=400)
-
-    from apps.opspilot.utils.approval import submit_approval_decision
+    from apps.opspilot.services.approval import submit_approval_decision
 
     submit_approval_decision(
         execution_id=execution_id,
         node_id=node_id,
         tool_call_id=tool_call_id,
         decision=decision,
-        reason=kwargs.get("reason", ""),
+        reason=validated["reason"],
         decided_by=kwargs.get("decided_by", getattr(request.user, "username", "")),
     )
 
@@ -757,19 +829,20 @@ def submit_choice(request):
     except (json.JSONDecodeError, ValueError) as e:
         return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
 
-    execution_id = kwargs.get("execution_id", "")
-    node_id = kwargs.get("node_id", "")
-    choice_id = kwargs.get("choice_id", "")
-    selected = kwargs.get("selected", [])
+    serializer = SubmitChoiceRequestSerializer(data=kwargs)
+    if not serializer.is_valid():
+        errors = serializer.errors
+        if "selected" in errors and all(k not in errors for k in ("execution_id", "node_id", "choice_id")):
+            message = "selected must be a non-empty list"
+        else:
+            message = "execution_id, node_id, choice_id are all required"
+        return JsonResponse({"result": False, "message": message}, status=400)
 
-    if not all([execution_id, node_id, choice_id]):
-        return JsonResponse(
-            {"result": False, "message": "execution_id, node_id, choice_id are all required"},
-            status=400,
-        )
-
-    if not isinstance(selected, list) or len(selected) == 0:
-        return JsonResponse({"result": False, "message": "selected must be a non-empty list"}, status=400)
+    validated = serializer.validated_data
+    execution_id = validated["execution_id"]
+    node_id = validated["node_id"]
+    choice_id = validated["choice_id"]
+    selected = validated["selected"]
 
     from apps.opspilot.utils.user_choice import submit_user_choice
 
@@ -846,8 +919,8 @@ def execute_chat_flow_wechat(request, bot_id):
     # 4. 创建加密对象
     try:
         crypto = WeChatCrypto(wechat_config["token"], wechat_config["aes_key"], wechat_config["corp_id"])
-    except Exception as e:
-        logger.error(f"企业微信ChatFlow执行失败：创建加密对象失败，错误: {str(e)}")
+    except Exception:
+        logger.exception("企业微信ChatFlow执行失败：创建加密对象失败")
         return HttpResponse("success")
 
     # 5. 处理GET请求（URL验证）

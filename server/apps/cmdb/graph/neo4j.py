@@ -613,6 +613,25 @@ class Neo4jClient:
             dst_result=self.format_topo_lite(inst_id, dst_objs, False, depth=depth, exclude_ids=exclude_ids),
         )
 
+    def query_network_topo(self, inst_id: int, belong_asst_id: str):
+        """网络拓扑：以设备为中心，查其接口直连的对端设备。返回扁平行列表。"""
+        connect_asst = "interface_connect_interface"
+        query = (
+            "MATCH (i)-[e1]->(dev) WHERE ID(dev) = $inst_id AND e1.model_asst_id = $belong "
+            "MATCH (i)-[e2]-(p) WHERE e2.model_asst_id = $connect "
+            "MATCH (p)-[e3]->(dev2) WHERE e3.asst_id = 'belong' AND ID(dev2) <> $inst_id "
+            "RETURN ID(dev) AS dev_id, dev.inst_name AS dev_name, dev.model_id AS dev_model, "
+            "i.inst_name AS local_if, p.inst_name AS peer_if, "
+            "ID(dev2) AS peer_id, dev2.inst_name AS peer_name, dev2.model_id AS peer_model, "
+            "ID(e2) AS rel_id"
+        )
+        objs = self.session.run(
+            query, inst_id=int(inst_id), belong=belong_asst_id, connect=connect_asst
+        )
+        keys = ["dev_id", "dev_name", "dev_model", "local_if", "peer_if",
+                "peer_id", "peer_name", "peer_model", "rel_id"]
+        return [{k: record[k] for k in keys} for record in objs]
+
     def format_topo_lite(self, start_id, objs, entity_is_src=True, depth: int = 3, exclude_ids=None):
         if objs.peek() is None:
             return {}

@@ -14,7 +14,7 @@ from functools import wraps
 from django.utils.crypto import get_random_string
 
 from apps.cmdb.utils.credential import Credential
-from apps.core.backends import logger
+from apps.core.logger import alert_logger as logger
 
 
 DEFAULT_AGGREGATION_WINDOW_SIZE_MINUTES = 10
@@ -74,8 +74,7 @@ def catch_exception(func):
         try:
             return func(*args, **kwargs)
         except Exception as e:
-            logger.exception(e)
-            logger.exception(f"[catch_exception] method name:{func.__name__} error")
+            logger.exception("[AlertUtil] [catch_exception] method name:%s error", func.__name__)
 
         return None
 
@@ -164,7 +163,7 @@ def generate_instance_fingerprint(event_data: Dict[str, Any], fields: List = [])
         else:
             # 为空值提供默认值，确保指纹的一致性
             fingerprint_data[field] = 'unknown'
-            logger.debug(f"Field '{field}' is empty or None, using 'unknown' as default")
+            logger.debug("[AlertUtil] 字段 '%s' 为空，使用 'unknown' 作为默认值", field)
 
     # 确保字段顺序一致
     sorted_data = json.dumps(fingerprint_data, sort_keys=True, ensure_ascii=False)

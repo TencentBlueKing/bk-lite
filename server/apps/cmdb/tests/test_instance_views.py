@@ -6,8 +6,10 @@
 
 import importlib
 import json
+import types
 
 import pytest
+from django.core.files.uploadedfile import SimpleUploadedFile
 from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
@@ -503,3 +505,102 @@ def test_instance_association_ok(superuser, monkeypatch):
     request = _req("get", superuser)
     response = _call({"get": "instance_association"}, request, model_id="host", inst_id="5")
     assert response.status_code == status.HTTP_200_OK
+
+
+# --------------------------------------------------------------------------
+# 附件/图片文件接口（upload_file / download_file / delete_file）— 视图接线
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_download_file_returns_presigned_url_after_permission(superuser, monkeypatch):
+    captured = {}
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        captured["file_id"] = file_id
+        captured["has_cb"] = callable(check_read_permission)
+        captured["as_attachment"] = as_attachment
+        return "https://minio/presigned-url"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    response = _call({"get": "download_file"}, _req("get", superuser), file_id="fid-1")
+    body = _body(response)
+    # 返回 JSON 预签名直链（前端经 axios 带令牌取，再直接用于 img/下载）
+    assert body["result"] is True
+    assert body["data"]["url"] == "https://minio/presigned-url"
+    assert captured["file_id"] == "fid-1"
+    # 下载校权回调被透传给企业实现（实例读权限）
+    assert captured["has_cb"] is True
+    # 默认内联（预览用），未要求附件下载
+    assert captured["as_attachment"] is False
+
+
+@pytest.mark.django_db
+def test_download_file_attachment_disposition_when_download_flag(superuser, monkeypatch):
+    """download=1 时透传 as_attachment=True，使企业实现生成附件 disposition 的预签名 URL。"""
+    captured = {}
+
+    def handle_download(*, request, file_id, check_read_permission=None, as_attachment=False):
+        captured["as_attachment"] = as_attachment
+        return "https://minio/presigned-url"
+
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(handle_download=handle_download),
+    )
+    factory = APIRequestFactory()
+    request = factory.get("/x/", data={"download": "1"})
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=superuser)
+    response = _call({"get": "download_file"}, request, file_id="fid-1")
+    assert _body(response)["result"] is True
+    assert captured["as_attachment"] is True
+
+
+@pytest.mark.django_db
+def test_upload_file_requires_model_and_attr(superuser):
+    response = _call({"post": "upload_file"}, _req("post", superuser, data={}))
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+
+
+@pytest.mark.django_db
+def test_upload_file_delegates_to_extension(superuser, monkeypatch):
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(
+            handle_upload=lambda *, request, model_id, attr_id, uploaded_file: {
+                "file_id": "x",
+                "file_name": uploaded_file.name,
+            }
+        ),
+    )
+    factory = APIRequestFactory()
+    upload = SimpleUploadedFile("a.pdf", b"data", content_type="application/pdf")
+    request = factory.post(
+        "/x/", data={"model_id": "host", "attr_id": "contract", "file": upload}, format="multipart"
+    )
+    request.COOKIES["current_team"] = "1"
+    force_authenticate(request, user=superuser)
+    response = _call({"post": "upload_file"}, request)
+    body = _body(response)
+    assert body["result"] is True
+    assert body["data"]["file_id"] == "x"
+    assert body["data"]["file_name"] == "a.pdf"
+
+
+@pytest.mark.django_db
+def test_delete_file_delegates_to_extension(superuser, monkeypatch):
+    captured = {}
+    monkeypatch.setattr(
+        f"{VIEWS}.get_instance_enterprise_extension",
+        lambda: types.SimpleNamespace(
+            handle_delete_temp=lambda *, request, file_id: captured.update(file_id=file_id)
+        ),
+    )
+    response = _call({"delete": "delete_file"}, _req("delete", superuser), file_id="fid-9")
+    body = _body(response)
+    assert body["result"] is True
+    assert captured["file_id"] == "fid-9"

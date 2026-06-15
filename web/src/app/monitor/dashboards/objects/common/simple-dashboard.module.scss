@@ -1,7 +1,10 @@
 .page {
-  height: calc(100vh - 88px);
+  // 仪表盘外壳填满 DashboardLayout 的 .content(已是 flex:1 + overflow:auto 的滚动容器)。
+  // 不再用 calc(100vh-88px) + 自身 overflow:auto —— 那会形成「.content 与 .page 两层嵌套滚动」,
+  // 且固定视口高比 .content 实际可用高更高,溢出后由 .content 再滚一层(外层滚动条),并在底部留白。
+  // min-height:100% 保证内容不足时背景铺满,内容超出时由 .content 单一滚动条接管。
+  min-height: 100%;
   width: 100%;
-  overflow-y: auto;
   background: linear-gradient(180deg, #f6f8fc 0%, #f5f7fb 100%);
   color: #22324a;
   font-family: Inter, 'PingFang SC', 'Microsoft YaHei', sans-serif;
@@ -950,6 +953,47 @@
   font-variant-numeric: tabular-nums;
 }
 
+// Top-N 强调行:前几名放大(更大字号 / 更高条 / 更大缩略图),拉开与其余名次的视觉层级。
+.barRowEmphasis {
+  .barLabel {
+    font-size: 16px;
+    color: #22324a;
+  }
+
+  .barValue {
+    font-size: 22px;
+  }
+
+  .barTrack {
+    height: 14px;
+  }
+
+  .barSpark {
+    height: 36px;
+  }
+}
+
+/* 分档榜单尾部(rank ≥4):缩小变淡,退为背景,让重点自然浮现。 */
+.barRowMuted {
+  opacity: 0.7;
+
+  .barLabel {
+    font-size: 13px;
+    font-weight: 600;
+    color: #8c95a8;
+  }
+
+  .barValue {
+    font-size: 14px;
+    font-weight: 700;
+    color: #6b7688;
+  }
+
+  .barTrack {
+    height: 7px;
+  }
+}
+
 /* ── Status board (boolean/flag signals: dot + state badge) ───── */
 .statusList {
   display: flex;
@@ -1239,7 +1283,8 @@
 .span8,
 .span6,
 .span4,
-.span3 {
+.span3,
+.span2 {
   min-width: 0;
 }
 
@@ -1263,6 +1308,10 @@
   grid-column: span 3;
 }
 
+.span2 {
+  grid-column: span 2;
+}
+
 .detailGridBalanced {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 420px));
@@ -1281,7 +1330,8 @@
   .span8,
   .span6,
   .span4,
-  .span3 {
+  .span3,
+  .span2 {
     grid-column: span 12;
   }
 

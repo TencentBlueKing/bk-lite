@@ -117,8 +117,10 @@ class SystemSettingModelViewSet(ModelViewSet):
         new_value = new_data.get("value", {})
         new_notify_every = new_value.get("notify_every", old_notify_every)
 
-        logger.info(f"更新未分派告警通知配置: old_activate={old_is_activate}, new_activate={new_is_activate}, "
-                    f"old_notify_every={old_notify_every}, new_notify_every={new_notify_every}")
+        logger.info(
+            "[AlertView] 更新未分派告警通知配置: old_activate=%s, new_activate=%s, old_notify_every=%s, new_notify_every=%s",
+            old_is_activate, new_is_activate, old_notify_every, new_notify_every,
+        )
 
         # 获取当前任务状态
         current_task_enabled = CeleryUtils.is_task_enabled(task_name)
@@ -136,7 +138,7 @@ class SystemSettingModelViewSet(ModelViewSet):
                         task=task,
                         enabled=True
                     )
-                    logger.info(f"创建未分派告警通知任务: {task_name}, crontab={crontab}")
+                    logger.info("[AlertView] 创建未分派告警通知任务: %s, crontab=%s", task_name, crontab)
                 else:
                     # 任务存在，启用任务并更新配置
                     crontab = self._convert_minutes_to_crontab(new_notify_every)
@@ -146,13 +148,13 @@ class SystemSettingModelViewSet(ModelViewSet):
                         task=task,
                         enabled=True
                     )
-                    logger.info(f"启用并更新未分派告警通知任务: {task_name}, crontab={crontab}")
+                    logger.info("[AlertView] 启用并更新未分派告警通知任务: %s, crontab=%s", task_name, crontab)
 
             elif not new_is_activate and old_is_activate:
                 # 从激活变为未激活，禁用任务而不删除
                 if current_task_enabled is not None:
                     CeleryUtils.disable_periodic_task(task_name)
-                    logger.info(f"禁用未分派告警通知任务: {task_name}")
+                    logger.info("[AlertView] 禁用未分派告警通知任务: %s", task_name)
 
             elif new_is_activate and old_is_activate:
                 # 保持激活状态，检查是否需要更新时间间隔
@@ -164,7 +166,7 @@ class SystemSettingModelViewSet(ModelViewSet):
                         task=task,
                         enabled=True
                     )
-                    logger.info(f"更新未分派告警通知任务时间间隔: {task_name}, crontab={crontab}")
+                    logger.info("[AlertView] 更新未分派告警通知任务时间间隔: %s, crontab=%s", task_name, crontab)
         else:
             # 如果is_activate没有变化，但仍然是激活状态且notify_every有变化
             if old_is_activate and new_notify_every != old_notify_every:
@@ -175,7 +177,7 @@ class SystemSettingModelViewSet(ModelViewSet):
                     task=task,
                     enabled=True
                 )
-                logger.info(f"更新未分派告警通知任务时间间隔: {task_name}, crontab={crontab}")
+                logger.info("[AlertView] 更新未分派告警通知任务时间间隔: %s, crontab=%s", task_name, crontab)
 
     @staticmethod
     def _convert_minutes_to_crontab(minutes):
@@ -187,11 +189,11 @@ class SystemSettingModelViewSet(ModelViewSet):
         try:
             minutes = int(minutes)
         except (ValueError, TypeError):
-            logger.warning(f"无效的分钟数: {minutes}, 使用默认值60分钟")
+            logger.warning("[AlertView] 无效的分钟数: %s, 使用默认值60分钟", minutes)
             raise Exception("无效的分钟数，必须是整数! ")
 
         if minutes <= 0:
-            logger.warning(f"分钟数不能小于等于0: {minutes}, 使用默认值60分钟")
+            logger.warning("[AlertView] 分钟数不能小于等于0: %s, 使用默认值60分钟", minutes)
             minutes = 60
 
         if minutes < 60:
@@ -212,7 +214,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             # 不能整除60的情况，转换为小时+分钟格式
             # 例如90分钟 = 1小时30分钟，可能需要复杂的crontab表达式
             # 简化处理：如果大于60分钟且不能整除，按每小时执行
-            logger.warning(f"复杂时间间隔{minutes}分钟，简化为每小时执行")
+            logger.warning("[AlertView] 复杂时间间隔 %s 分钟，简化为每小时执行", minutes)
             return "0 * * * *"
 
     # @HasPermission("global_config-View")

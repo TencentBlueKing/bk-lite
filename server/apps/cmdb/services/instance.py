@@ -2,6 +2,7 @@ from apps.cmdb.constants.constants import (
     ENUM_SELECT_MODE_DEFAULT,
     INSTANCE,
     INSTANCE_ASSOCIATION,
+    NETWORK_TOPO_NODE_LIMIT,
     OPERATOR_INSTANCE,
     PERMISSION_INSTANCES,
     VIEW,
@@ -17,8 +18,15 @@ from apps.cmdb.display_field.constants import (
     FIELD_TYPE_USER,
 )
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.graph.format_type import ParameterCollector
-from apps.cmdb.models.change_record import CREATE_INST, CREATE_INST_ASST, DELETE_INST, DELETE_INST_ASST, UPDATE_INST
+from apps.cmdb.models.change_record import (
+    CREATE_INST,
+    CREATE_INST_ASST,
+    DELETE_INST,
+    DELETE_INST_ASST,
+    UPDATE_INST, RELATION_CHANGE,
+)
 from apps.cmdb.models.show_field import ShowField
 from apps.cmdb.permissions.instance_permission import PermissionManage
 from apps.cmdb.services.model import ModelManage
@@ -68,10 +76,10 @@ def _normalize_allowed_org_ids(user_groups: list | None = None, allowed_org_ids:
 
 
 def validate_instance_organization_scope(
-    instance_data: dict,
-    *,
-    user_groups: list | None = None,
-    allowed_org_ids: list | None = None,
+        instance_data: dict,
+        *,
+        user_groups: list | None = None,
+        allowed_org_ids: list | None = None,
 ) -> None:
     if not isinstance(instance_data, dict) or "organization" not in instance_data:
         return
@@ -243,6 +251,33 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def search_inst_batch(model_id: str, ids=None, inst_names=None) -> dict:
+        """按 id 或 inst_name 批量查询同一模型下的实例。返回 {str(key): instance}。
+        key 同时用 _id 和 inst_name 索引，便于调用方按任一回查。复用图查询 id[]/str[] 操作符。"""
+        ids = [int(i) for i in (ids or []) if str(i).strip()]
+        inst_names = [str(n) for n in (inst_names or []) if str(n).strip()]
+        if not ids and not inst_names:
+            return {}
+
+        result = {}
+
+        def _run(extra_param):
+            params = [{"field": "model_id", "type": "str=", "value": model_id}, extra_param]
+            with GraphClient() as ag:
+                inst_list, _ = ag.query_entity(INSTANCE, params)
+            for inst in inst_list:
+                if inst.get("_id") is not None:
+                    result[str(inst["_id"])] = inst
+                if inst.get("inst_name") is not None:
+                    result.setdefault(str(inst["inst_name"]), inst)
+
+        if ids:
+            _run({"field": "id", "type": "id[]", "value": sorted(set(ids))})
+        if inst_names:
+            _run({"field": "inst_name", "type": "str[]", "value": list(set(inst_names))})
+        return result
+
+    @staticmethod
     def _has_topology_view_permission(instance: dict | None, permission_map: dict | None, user=None) -> bool:
         if instance is None:
             return False
@@ -318,11 +353,11 @@ class InstanceManage(object):
 
     @classmethod
     def _filter_topology_result(
-        cls,
-        result: dict,
-        center_id: int,
-        permission_map: dict | None = None,
-        user=None,
+            cls,
+            result: dict,
+            center_id: int,
+            permission_map: dict | None = None,
+            user=None,
     ) -> dict:
         if not isinstance(result, dict) or not permission_map:
             return result
@@ -435,10 +470,10 @@ class InstanceManage(object):
 
     @staticmethod
     def check_instances_permission(
-        instances: list,
-        model_id: str,
-        user_groups: list = None,
-        roles: list = None,
+            instances: list,
+            model_id: str,
+            user_groups: list = None,
+            roles: list = None,
     ):
         """实例权限校验，用于操作之前"""
         if not instances:
@@ -470,14 +505,14 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_list(
-        model_id: str,
-        params: list,
-        page: int,
-        page_size: int,
-        order: str,
-        permission_map: dict,
-        creator: str = None,
-        case_sensitive: bool = True,
+            model_id: str,
+            params: list,
+            page: int,
+            page_size: int,
+            order: str,
+            permission_map: dict,
+            creator: str = None,
+            case_sensitive: bool = True,
     ):
         """实例列表"""
 
@@ -502,12 +537,23 @@ class InstanceManage(object):
         return inst_list, count
 
     @staticmethod
-    def instance_create(model_id: str, instance_info: dict, operator: str, allowed_org_ids: list | None = None):
+    def instance_create(
+            model_id: str,
+            instance_info: dict,
+            operator: str,
+            allowed_org_ids: list | None = None,
+            scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
+            record_change: bool = True,
+    ):
         """创建实例"""
         instance_info.update(model_id=model_id)
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+        # 企业版附件/图片字段：校验并把值规范化为元数据 JSON
+        instance_info = get_instance_enterprise_extension().normalize_file_fields(
+            model_id, instance_info, attrs, operator=operator
+        )
         validate_instance_organization_scope(instance_info, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_id,
@@ -524,16 +570,23 @@ class InstanceManage(object):
             exist_items, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
             result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, operator, attrs)
 
-        create_change_record(
-            result["_id"],
-            result["model_id"],
-            INSTANCE,
-            CREATE_INST,
-            after_data=result,
-            operator=operator,
-            model_object=OPERATOR_INSTANCE,
-            message=f"创建模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name') or result.get('ip_addr', '')}",
+        # 企业版：实例创建后把引用文件落账（pending→committed 并补 inst_id）
+        get_instance_enterprise_extension().commit_instance_files(
+            model_id, result["_id"], result, attrs, operator=operator
         )
+
+        if record_change:
+            create_change_record(
+                result["_id"],
+                result["model_id"],
+                INSTANCE,
+                CREATE_INST,
+                after_data=result,
+                operator=operator,
+                model_object=OPERATOR_INSTANCE,
+                message=f"创建模型实例. 模型:{result['model_id']} 实例:{result.get('inst_name') or result.get('ip_addr', '')}",
+                scenario=scenario,
+            )
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
@@ -542,13 +595,15 @@ class InstanceManage(object):
 
     @staticmethod
     def instance_update(
-        user_groups: list,
-        roles: list,
-        inst_id: int,
-        update_attr: dict,
-        operator: str,
-        allowed_org_ids: list | None = None,
-        scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
+            user_groups: list,
+            roles: list,
+            inst_id: int,
+            update_attr: dict,
+            operator: str,
+            allowed_org_ids: list | None = None,
+            scenario: str = ORDINARY_ATTRIBUTE_CHANGE,
+            skip_permission_check: bool = False,
+            record_change: bool = True,
     ):
         """修改实例属性"""
         inst_info = InstanceManage.query_entity_by_id(inst_id)
@@ -558,16 +613,21 @@ class InstanceManage(object):
 
         model_info = ModelManage.search_model_info(inst_info["model_id"])
 
-        InstanceManage.check_instances_permission(
-            [inst_info],
-            inst_info["model_id"],
-            user_groups=user_groups,
-            roles=roles,
-        )
+        if not skip_permission_check:
+            InstanceManage.check_instances_permission(
+                [inst_info],
+                inst_info["model_id"],
+                user_groups=user_groups,
+                roles=roles,
+            )
 
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        # 企业版附件/图片字段：校验并规范化（old_instance 用于跨实例引用校验）
+        update_attr = get_instance_enterprise_extension().normalize_file_fields(
+            inst_info["model_id"], update_attr, attrs, operator=operator, old_instance=inst_info
+        )
         validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             inst_info["model_id"],
@@ -592,33 +652,40 @@ class InstanceManage(object):
                 attrs=attrs,
             )
 
-        create_change_record(
-            inst_info["_id"],
-            inst_info["model_id"],
-            INSTANCE,
-            UPDATE_INST,
-            before_data=inst_info,
-            after_data=result[0],
-            operator=operator,
-            model_object=OPERATOR_INSTANCE,
-            message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
-            scenario=scenario,
-        )
+            # 企业版：实例更新后落账（引用文件 committed、移除文件 orphaned）
+            get_instance_enterprise_extension().commit_instance_files(
+                inst_info["model_id"], result[0]["_id"], result[0], attrs, operator=operator
+            )
 
-        from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
+            if record_change:
+                create_change_record(
+                    inst_info["_id"],
+                    inst_info["model_id"],
+                    INSTANCE,
+                    UPDATE_INST,
+                    before_data=inst_info,
+                    after_data=result[0],
+                    operator=operator,
+                    model_object=OPERATOR_INSTANCE,
+                    message=f"修改模型实例属性. 模型:{model_info['model_name']} 实例:{result[0]['inst_name']}",
+                    scenario=scenario,
+                )
 
-        schedule_instance_auto_relation_reconcile([result[0]["_id"]])
+            from apps.cmdb.services.auto_relation_reconcile import schedule_instance_auto_relation_reconcile
 
-        return result[0]
+            schedule_instance_auto_relation_reconcile([result[0]["_id"]])
+
+            return result[0]
+
 
     @staticmethod
     def batch_instance_update(
-        user_groups: list,
-        roles: list,
-        inst_ids: list,
-        update_attr: dict,
-        operator: str,
-        allowed_org_ids: list | None = None,
+            user_groups: list,
+            roles: list,
+            inst_ids: list,
+            update_attr: dict,
+            operator: str,
+            allowed_org_ids: list | None = None,
     ):
         """批量修改实例属性"""
 
@@ -639,6 +706,15 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, model_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        # 企业版附件/图片字段：校验并规范化（与 instance_create/instance_update 一致）。
+        # 单实例编辑（前端 type='edit'）携带 old_instance 以支持保留已提交文件。
+        update_attr = get_instance_enterprise_extension().normalize_file_fields(
+            model_info["model_id"],
+            update_attr,
+            attrs,
+            operator=operator,
+            old_instance=inst_list[0] if len(inst_ids) == 1 else None,
+        )
         validate_instance_organization_scope(update_attr, user_groups=user_groups, allowed_org_ids=allowed_org_ids)
         check_attr_map = InstanceManage._build_unique_rule_check_attr_map(
             model_info["model_id"],
@@ -669,6 +745,11 @@ class InstanceManage(object):
                 attrs=attrs,
             )
 
+        # 企业版：实例更新后对每个实例提交文件落账（pending→committed、移除文件标 orphaned）
+        ext = get_instance_enterprise_extension()
+        for updated in result:
+            ext.commit_instance_files(model_info["model_id"], updated["_id"], updated, attrs, operator=operator)
+
         after_dict = {i["_id"]: i for i in result}
         change_records = [
             dict(
@@ -688,6 +769,7 @@ class InstanceManage(object):
         schedule_instance_auto_relation_reconcile([item["_id"] for item in result])
 
         return result
+
 
     @staticmethod
     def instance_batch_delete(user_groups: list, roles: list, inst_ids: list, operator: str):
@@ -709,6 +791,9 @@ class InstanceManage(object):
         with GraphClient() as ag:
             ag.batch_delete_entity(INSTANCE, inst_ids)
 
+        # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
+        get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
+
         change_records = [
             dict(
                 inst_id=i["_id"],
@@ -724,6 +809,7 @@ class InstanceManage(object):
         from apps.cmdb.services.auto_relation_reconcile import schedule_incoming_rule_full_sync_by_model_ids
 
         schedule_incoming_rule_full_sync_by_model_ids([item["model_id"] for item in inst_list])
+
 
     @staticmethod
     def instance_association_instance_list(model_id: str, inst_id: int):
@@ -761,6 +847,7 @@ class InstanceManage(object):
 
         return list(result.values())
 
+
     @staticmethod
     def instance_association(model_id: str, inst_id: int):
         """查询模型实例关联的实例列表"""
@@ -782,8 +869,10 @@ class InstanceManage(object):
 
         return src_edge + dst_edge
 
+
     @staticmethod
-    def instance_association_map(model_id: str, inst_ids: list[int], related_model: str | None = None) -> dict[int, list[int]]:
+    def instance_association_map(model_id: str, inst_ids: list[int], related_model: str | None = None) -> dict[
+        int, list[int]]:
         """批量查询实例关联映射，避免按实例逐条查询关系。"""
 
         normalized_ids: list[int] = []
@@ -833,6 +922,7 @@ class InstanceManage(object):
                 relation_map[dst_inst_id].add(int(src_inst_id))
 
         return {inst_id: sorted(related_ids) for inst_id, related_ids in relation_map.items()}
+
 
     @staticmethod
     def check_asso_mapping(data: dict):
@@ -925,8 +1015,9 @@ class InstanceManage(object):
         else:
             raise BaseAppException("association mapping error! mapping={}".format(asso_info["mapping"]))
 
+
     @staticmethod
-    def instance_association_create(data: dict, operator: str):
+    def instance_association_create(data: dict, operator: str, scenario: str = RELATION_CHANGE):
         """创建实例关联"""
 
         # 校验关联约束
@@ -959,9 +1050,26 @@ class InstanceManage(object):
             asso_info,
             message=message,
             operator=operator,
+            scenario=scenario,
         )
 
         return edge
+
+
+    @staticmethod
+    def instance_association_exists(*, src_inst_id: int, dst_inst_id: int, model_asst_id: str) -> bool:
+        with GraphClient() as ag:
+            return bool(
+                ag.query_edge(
+                    INSTANCE_ASSOCIATION,
+                    [
+                        {"field": "src_inst_id", "type": "int=", "value": src_inst_id},
+                        {"field": "dst_inst_id", "type": "int=", "value": dst_inst_id},
+                        {"field": "model_asst_id", "type": "str=", "value": model_asst_id},
+                    ],
+                )
+            )
+
 
     @staticmethod
     def instance_association_delete(asso_id: int, operator: str):
@@ -986,12 +1094,14 @@ class InstanceManage(object):
             operator=operator,
         )
 
+
     @staticmethod
     def instance_association_by_asso_id(asso_id: int):
         """根据关联ID查询实例关联"""
         with GraphClient() as ag:
             edge = ag.query_edge_by_id(asso_id, return_entity=True)
         return edge
+
 
     @staticmethod
     def query_entity_by_id(inst_id: int):
@@ -1000,6 +1110,7 @@ class InstanceManage(object):
             entity = ag.query_entity_by_id(inst_id)
         return entity
 
+
     @staticmethod
     def query_entity_by_ids(inst_ids: list):
         """根据实例ID查询实例详情"""
@@ -1007,12 +1118,58 @@ class InstanceManage(object):
             entity_list = ag.query_entity_by_ids(inst_ids)
         return entity_list
 
+
+    @staticmethod
+    def query_entity_by_identity(model_id: str, identity: dict) -> dict:
+        if not identity:
+            return {}
+
+        params = [{"field": "model_id", "type": "str=", "value": model_id}]
+        for field, value in (identity or {}).items():
+            if isinstance(value, bool):
+                value = str(value).lower()
+                field_type = "str="
+            elif isinstance(value, int):
+                field_type = "int="
+            else:
+                field_type = "str="
+            params.append({"field": field, "type": field_type, "value": value})
+
+        with GraphClient() as ag:
+            inst_list, _ = ag.query_entity(INSTANCE, params)
+        if len(inst_list) > 1:
+            raise BaseAppException("identity 查询结果不唯一")
+        return inst_list[0] if inst_list else {}
+
+
+    # @staticmethod
+    # def merge_custom_reporting_instances(
+    #         *,
+    #         model_id: str,
+    #         instances: list[dict],
+    #         relations: list[dict],
+    #         identity_keys: list[str],
+    #         operator: str,
+    #         allowed_org_ids: list | None = None,
+    # ) -> dict:
+    #
+    #     return CustomReportingMergeService.merge_instances(
+    #         model_id=model_id,
+    #         instances=instances,
+    #         relations=relations,
+    #         identity_keys=identity_keys,
+    #         operator=operator,
+    #         allowed_org_ids=allowed_org_ids,
+    #     )
+
+
     @staticmethod
     def download_import_template(model_id: str):
         """下载导入模板"""
         attrs = ModelManage.search_model_attr_v2(model_id)
         association = ModelManage.model_association_search(model_id)
         return Export(attrs, model_id=model_id, association=association).export_template()
+
 
     @staticmethod
     def inst_import(model_id: str, file_stream: bytes, operator: str):
@@ -1043,12 +1200,13 @@ class InstanceManage(object):
 
         return results
 
+
     def inst_import_support_edit(
-        self,
-        model_id: str,
-        file_stream: bytes,
-        operator: str,
-        allowed_org_ids: list = None,
+            self,
+            model_id: str,
+            file_stream: bytes,
+            operator: str,
+            allowed_org_ids: list = None,
     ):
         """实例导入-支持编辑"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -1066,7 +1224,7 @@ class InstanceManage(object):
         if _import.validation_errors:
             error_summary = f"数据导入失败：发现 {len(_import.validation_errors)} 个数据验证错误\n"
             error_details = "\n".join(_import.validation_errors)
-            logger.warning(f"模型 {model_id} 数据导入验证失败，错误数量: {len(_import.validation_errors)}")
+            logger.warning("[InstanceImport] 数据导入验证失败 model_id=%s, error_count=%s", model_id, len(_import.validation_errors))
             success_count = len([i for i in add_results if i.get("success", False)])
             error_summary += f"已成功导入 {success_count} 条数据，失败 {len(_import.inst_list) - success_count} 条数据。\n 错误信息: {error_summary + error_details}"
             return {"success": False, "message": error_summary}
@@ -1106,9 +1264,10 @@ class InstanceManage(object):
         )
 
         res_status, result_message = self.format_result_message(_import.import_result_message)
-        logger.info(f"模型 {model_id} 数据导入成功")
+        logger.info("[InstanceImport] 数据导入成功 model_id=%s", model_id)
 
         return {"success": res_status, "message": result_message}
+
 
     @staticmethod
     def format_result_message(result: dict):
@@ -1128,6 +1287,7 @@ class InstanceManage(object):
             add_mgs = ""
         return res_status, add_mgs
 
+
     @classmethod
     def topo_search_lite(cls, inst_id: int, depth: int = 3, permission_map: dict | None = None, user=None):
         """拓扑查询（轻量）：限制返回层级，避免一次返回全量树"""
@@ -1135,29 +1295,31 @@ class InstanceManage(object):
             result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth)
         return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
+
     @classmethod
     def topo_search_expand(
-        cls,
-        inst_id: int,
-        parent_ids: list,
-        depth: int = 2,
-        permission_map: dict | None = None,
-        user=None,
+            cls,
+            inst_id: int,
+            parent_ids: list,
+            depth: int = 2,
+            permission_map: dict | None = None,
+            user=None,
     ):
         """拓扑展开：从指定节点向后展开一层，并过滤父节点列表"""
         with GraphClient() as ag:
             result = ag.query_topo_lite(INSTANCE, inst_id, depth=depth, exclude_ids=parent_ids)
         return cls._filter_topology_result(result, int(inst_id), permission_map=permission_map, user=user)
 
+
     @staticmethod
     def inst_export(
-        model_id: str,
-        ids: list,
-        permissions_map: dict = {},
-        created: str = "",
-        creator: str = "",
-        attr_list: list = [],
-        association_list: list = [],
+            model_id: str,
+            ids: list,
+            permissions_map: dict = {},
+            created: str = "",
+            creator: str = "",
+            attr_list: list = [],
+            association_list: list = [],
     ):
         """实例导出"""
         attrs = ModelManage.search_model_attr_v2(model_id)
@@ -1194,6 +1356,7 @@ class InstanceManage(object):
 
         return Export(attrs, model_id=model_id, association=association).export_inst_list(inst_list)
 
+
     @staticmethod
     def topo_search(inst_id: int):
         """拓扑查询"""
@@ -1202,11 +1365,119 @@ class InstanceManage(object):
         return result
 
     @staticmethod
+    def network_topology(
+        inst_id: int,
+        model_id: str,
+        depth: int = 1,
+        permission_map: dict = None,
+        user=None,
+        node_limit: int = NETWORK_TOPO_NODE_LIMIT,
+    ) -> dict:
+        """网络设备拓扑：以该设备为中心，按 depth 跳广度优先展开接口直连的对端设备。
+
+        - 复用单跳图查询 query_network_topo，逐层 BFS，每个节点带 hop（距中心跳数）与
+          expanded（其邻居是否已在本次结果中完整加载，供前端判断哪些节点可继续点开）。
+        - 节点数达 node_limit 时停止新增并置 truncated=True（截断并提示，不静默丢弃）。
+        - 按 permission_map 剔除无权限对端；按 relationship_id 去重。
+        返回 {center, nodes, links, truncated}。
+        """
+        depth = max(1, int(depth))
+        center_id = str(inst_id)
+        # 中心节点先占位，名称/模型在查询其行后用权威值回填；无任何连线时兜底查实例
+        nodes = {
+            center_id: {
+                "id": center_id, "name": None, "model_id": model_id,
+                "hop": 0, "expanded": False,
+            }
+        }
+        links = {}
+        truncated = False
+
+        frontier = [(center_id, model_id)]
+        # 单跳查询逐层 BFS：整轮复用一个图连接，避免每个设备各开/关一次连接
+        with GraphClient() as ag:
+            for hop in range(depth):
+                # 先查完本跳所有设备，收集行；再统一判权限/上限，决定哪些对端可加入与下探
+                hop_rows = []
+                for dev_id, dev_model in frontier:
+                    rows = ag.query_network_topo(int(dev_id), f"interface_belong_{dev_model}") or []
+                    nodes[dev_id]["expanded"] = True
+                    # 当前设备名称/模型用查询行的权威值回填一次即可
+                    if rows:
+                        nodes[dev_id]["name"] = rows[0]["dev_name"]
+                        nodes[dev_id]["model_id"] = rows[0]["dev_model"]
+                    hop_rows.extend(rows)
+
+                # 本跳新发现的对端：无权限的直接剪枝（不加节点、不加边、不再下探），
+                # 因此「仅经无权限设备可达」的更深设备不会变成孤点
+                new_peer_ids = {str(r["peer_id"]) for r in hop_rows if str(r["peer_id"]) not in nodes}
+                denied = set()
+                if permission_map and new_peer_ids:
+                    instances_map = InstanceManage._query_instance_map_by_ids(
+                        {int(i) for i in new_peer_ids}
+                    )
+                    for pid in new_peer_ids:
+                        if not InstanceManage._has_topology_view_permission(
+                            instances_map.get(int(pid)), permission_map, user=user
+                        ):
+                            denied.add(pid)
+
+                next_frontier = []
+                for row in hop_rows:
+                    peer_id = str(row["peer_id"])
+                    if peer_id in denied:
+                        continue
+                    if peer_id not in nodes:
+                        if len(nodes) >= node_limit:
+                            truncated = True
+                            continue
+                        nodes[peer_id] = {
+                            "id": peer_id, "name": row["peer_name"],
+                            "model_id": row["peer_model"], "hop": hop + 1, "expanded": False,
+                        }
+                        next_frontier.append((peer_id, row["peer_model"]))
+                    rel_id = str(row["rel_id"])
+                    if rel_id not in links:
+                        links[rel_id] = {
+                            "relationship_id": rel_id,
+                            "source_device": str(row["dev_id"]),
+                            "source_inst_name": row["local_if"],
+                            "target_device": peer_id,
+                            "target_inst_name": row["peer_if"],
+                            "asst_id": "connect",
+                        }
+                frontier = next_frontier
+                if not frontier:
+                    break
+
+        # 中心无任何连线：兜底查实例补全名称
+        if nodes[center_id]["name"] is None:
+            instance = InstanceManage.query_entity_by_id(int(inst_id)) or {}
+            nodes[center_id]["name"] = instance.get("inst_name", center_id)
+            nodes[center_id]["model_id"] = instance.get("model_id", model_id)
+            nodes[center_id]["expanded"] = True
+
+        # 权限已在 BFS 逐跳剪枝（无权限对端不加入）；此处仅清理因节点上限截断而悬空的连线
+        links = {
+            rid: l for rid, l in links.items()
+            if l["source_device"] in nodes and l["target_device"] in nodes
+        }
+
+        return {
+            "center": nodes[center_id],
+            "nodes": list(nodes.values()),
+            "links": list(links.values()),
+            "truncated": truncated,
+        }
+
+
+    @staticmethod
     def topo_search_test_config(inst_id: int, model_id: str):
         """拓扑查询"""
         with GraphClient() as ag:
             result = ag.query_topo_test_config(INSTANCE, inst_id, model_id)
         return result
+
 
     @staticmethod
     def create_or_update(data: dict):
@@ -1219,11 +1490,13 @@ class InstanceManage(object):
         )
         return data
 
+
     @staticmethod
     def get_info(model_id: str, created_by: str):
         obj = ShowField.objects.filter(created_by=created_by, model_id=model_id).first()
         result = dict(model_id=obj.model_id, show_fields=obj.show_fields) if obj else None
         return result
+
 
     @staticmethod
     def format_instance_permission_data(rules):
@@ -1250,11 +1523,13 @@ class InstanceManage(object):
                     result.append({"model_id": model_id, "inst_names": specific_instance_names})
         return result
 
+
     @staticmethod
     def add_inst_name_permission(inst_names):
         if not inst_names:
             return ""
         return f"n.inst_name IN {inst_names}"
+
 
     @classmethod
     def group_inst_count(cls, group_by_attr: str, permissions_map: dict, params: list = None, creator: str = ""):
@@ -1269,9 +1544,11 @@ class InstanceManage(object):
             )
         return data
 
+
     @classmethod
     def model_inst_count(cls, permissions_map: dict, creator: str = ""):
         return cls.group_inst_count(group_by_attr="model_id", permissions_map=permissions_map, creator=creator)
+
 
     @classmethod
     def _build_permission_params(cls, permission_map: dict, creator: str = ""):
@@ -1330,13 +1607,14 @@ class InstanceManage(object):
             else:
                 return permission_params, {}
 
+
     @classmethod
     def fulltext_search(
-        cls,
-        search: str,
-        permission_map: dict,
-        creator: str = "",
-        case_sensitive: bool = False,
+            cls,
+            search: str,
+            permission_map: dict,
+            creator: str = "",
+            case_sensitive: bool = False,
     ):
         """
         全文检索（兼容旧接口）
@@ -1368,13 +1646,14 @@ class InstanceManage(object):
         logger.info(f"[InstanceManage.fulltext_search] 返回 {len(data)} 条结果")
         return data
 
+
     @classmethod
     def fulltext_search_stats(
-        cls,
-        search: str,
-        permission_map: dict,
-        creator: str = "",
-        case_sensitive: bool = False,
+            cls,
+            search: str,
+            permission_map: dict,
+            creator: str = "",
+            case_sensitive: bool = False,
     ):
         """
         全文检索 - 模型统计接口
@@ -1408,19 +1687,21 @@ class InstanceManage(object):
                 permission_params_dict=permission_params_dict,  # 传递参数字典
             )
 
-        logger.info(f"[InstanceManage.fulltext_search_stats] 返回统计: 总数={result.get('total', 0)}, 模型数={len(result.get('model_stats', []))}")
+        logger.info(
+            f"[InstanceManage.fulltext_search_stats] 返回统计: 总数={result.get('total', 0)}, 模型数={len(result.get('model_stats', []))}")
         return result
+
 
     @classmethod
     def fulltext_search_by_model(
-        cls,
-        search: str,
-        model_id: str,
-        permission_map: dict,
-        creator: str = "",
-        page: int = 1,
-        page_size: int = 10,
-        case_sensitive: bool = False,
+            cls,
+            search: str,
+            model_id: str,
+            permission_map: dict,
+            creator: str = "",
+            page: int = 1,
+            page_size: int = 10,
+            case_sensitive: bool = False,
     ):
         """
         全文检索 - 模型数据查询接口

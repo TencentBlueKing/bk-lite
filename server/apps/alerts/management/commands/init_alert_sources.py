@@ -29,7 +29,7 @@ class Command(BaseCommand):
                 changes[field] = {"old": old_val, "new": new_val}
         
         if changes:
-            logger.info(f"告警源 [{source_id}] 字段变更: {changes}")
+            logger.info("[AlertInit] 告警源 [%s] 字段变更: %s", source_id, changes)
             self.stdout.write(
                 self.style.WARNING(f"  更新 {source_id}: {list(changes.keys())}")
             )
@@ -77,7 +77,7 @@ class Command(BaseCommand):
                     except AlertSource.DoesNotExist:
                         # 创建新的告警源
                         AlertSource.all_objects.create(**src)
-                        logger.info(f"创建新告警源: {source_id}")
+                        logger.info("[AlertInit] 创建新告警源: %s", source_id)
                         self.stdout.write(
                             self.style.SUCCESS(f"  新建 {source_id}")
                         )
@@ -85,10 +85,10 @@ class Command(BaseCommand):
             
             summary = f"成功初始化内置告警源 (新建: {created_count}, 更新: {updated_count})"
             self.stdout.write(self.style.SUCCESS(summary))
-            logger.info(f"==={summary}===")
+            logger.info("[AlertInit] %s", summary)
 
         except Exception as e:
             error_msg = f"初始化内置告警源失败: {e}"
-            logger.error(error_msg, exc_info=True)
+            logger.error("[AlertInit] 初始化内置告警源失败: %s", e, exc_info=True)
             self.stdout.write(self.style.ERROR(error_msg))
             raise

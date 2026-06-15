@@ -55,6 +55,7 @@
         "updataconfig": "更新配置",
         "installationMethod": "安装方式",
         "cpuArchitecture": "CPU架构",
+        "collectorOperationUnknownArchitecture": "所选节点缺少 CPU 架构，请等待节点上报或先补齐节点架构后再操作组件。",
         "noControllerVersionTitle": "没有匹配的控制器版本",
         "noControllerVersionDesc": "当前所选操作系统（{os}）和 CPU 架构（{architecture}）暂无可用控制器安装包，请先上传匹配的安装包。",
         "viewGuide": "查看指引",

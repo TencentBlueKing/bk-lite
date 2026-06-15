@@ -13,10 +13,15 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.field_group import FieldGroup
+from apps.cmdb.services.model import ModelManage
 from apps.cmdb.views.model import ModelViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 VIEWS = "apps.cmdb.views.model"
+
+
+# custom_reporting 是商业版能力：其模型编排行为（bootstrap/sync）测试随实现迁到
+# apps/cmdb_enterprise/tests/test_custom_reporting_model_behavior.py（社区不再持有）。
 
 
 @pytest.fixture
@@ -560,10 +565,34 @@ def test_model_association_type(superuser):
 
 @pytest.mark.django_db
 def test_export_model_config(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", lambda language=None: io.BytesIO(b"xlsxdata"))
-    response = ModelViewSet.as_view({"get": "export_model_config"})(_req("get", superuser))
+    captured = {}
+
+    def fake_export(language=None, model_ids=None):
+        captured["language"] = language
+        captured["model_ids"] = model_ids
+        return io.BytesIO(b"xlsxdata")
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", fake_export)
+    response = ModelViewSet.as_view({"post": "export_model_config"})(
+        _req("post", superuser, data={"model_ids": ["host", "sw"]})
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response["Content-Disposition"].startswith("attachment")
+    assert captured["model_ids"] == ["host", "sw"]
+
+
+@pytest.mark.django_db
+def test_export_model_config_no_ids(superuser, monkeypatch):
+    captured = {}
+
+    def fake_export(language=None, model_ids=None):
+        captured["model_ids"] = model_ids
+        return io.BytesIO(b"xlsxdata")
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", fake_export)
+    response = ModelViewSet.as_view({"post": "export_model_config"})(_req("post", superuser, data={}))
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["model_ids"] == []
 
 
 @pytest.mark.django_db

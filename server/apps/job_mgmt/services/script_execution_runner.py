@@ -1,3 +1,5 @@
+import json
+import shlex
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from django.utils import timezone
@@ -6,8 +8,17 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.execution_stream_service import (
+    JOB_LOG_MAX_AGE_SECONDS,
+    JOB_LOG_MAX_BYTES,
+    JOB_LOG_STREAM_NAME,
+    JOB_LOG_SUBJECTS,
+    build_stream_topic,
+    publish_done_sentinel,
+)
 from apps.job_mgmt.services.shell_utils import build_heredoc_command, parse_shebang
 from apps.rpc.executor import Executor
+from nats_client.clients import ensure_stream_sync
 
 
 class ScriptExecutionRunner(ExecutionTaskBaseService):
@@ -19,6 +30,12 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         execution, target_list = self.prepare_execution()
         if not execution:
             return
+
+        # 尽早声明 JetStream 流，保证后续所有路径（ansible 提交前、sidecar 首行前）发的流事件可被回放
+        try:
+            ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
+        except Exception as e:
+            logger.warning(f"[{self.task_name}] JetStream 流声明失败(不阻断执行): {e}")
 
         if self._handle_dangerous_command(execution, target_list):
             return
@@ -41,7 +58,15 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
         self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
         execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
         execution.save(update_fields=["execution_results", "updated_at"])
+        self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
         return True
+
+    @staticmethod
+    def _publish_done_for_targets(execution_id, target_list: list, status: str) -> None:
+        """为所有目标各发一条 done 哨兵（用于同步早退/拦截路径，避免 SSE 空等到 idle 超时）。"""
+        for t in target_list:
+            tk = t.get("node_id") or str(t.get("target_id", ""))
+            publish_done_sentinel(execution_id, tk, status)
 
     def _run_via_ansible_if_needed(self, execution, target_list: list, script_content: str) -> bool:
         if execution.target_source == TargetSource.MANUAL and self._contains_windows_manual_target(target_list):
@@ -51,6 +76,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                 self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
                 execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
                 execution.save(update_fields=["execution_results", "updated_at"])
+                self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
                 return True
         if not self._should_use_ansible(execution.target_source, target_list):
             return False
@@ -64,11 +90,13 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             self.update_execution_status(execution, ExecutionStatus.FAILED, finished_at=timezone.now())
             execution.execution_results = [self.build_target_failed_result(t, error_msg) for t in target_list]
             execution.save(update_fields=["execution_results", "updated_at"])
+            self._publish_done_for_targets(execution.id, target_list, ExecutionStatus.FAILED)
             return True
 
     def _run_via_sidecar(self, execution, target_list: list, script_content: str) -> list:
         results = []
         cancelled = False
+        sentineled = set()
         with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(target_list))) as pool:
             futures = {
                 pool.submit(
@@ -88,9 +116,16 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     result = future.result()
                     results.append(result)
                     logger.info(f"[{self.task_name}] 目标 {target_info.get('name')} 执行完成: status={result['status']}")
+                    tk = result.get("target_key", "")
+                    publish_done_sentinel(execution.id, tk, result.get("status", ExecutionStatus.FAILED))
+                    sentineled.add(tk)
                 except Exception as e:
                     logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
-                    results.append(self.build_target_failed_result(target_info, str(e)))
+                    failed_result = self.build_target_failed_result(target_info, str(e))
+                    results.append(failed_result)
+                    tk = failed_result.get("target_key", "")
+                    publish_done_sentinel(execution.id, tk, ExecutionStatus.FAILED)
+                    sentineled.add(tk)
 
                 # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
                 if not cancelled and self.is_cancelled(execution.id):
@@ -98,26 +133,58 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     logger.info(f"[{self.task_name}] 检测到取消，停止剩余目标: execution_id={execution.id}")
                     for pending_future in futures:
                         pending_future.cancel()
+
+        # 取消导致被 cancel 的目标不会产出结果、也就不会发哨兵；收尾补发 CANCELLED，
+        # 避免前端 SSE 面板空等到 idle 超时（spec §8）。
+        if cancelled:
+            self._publish_cancelled_sentinels(execution.id, target_list, sentineled)
         return results
 
+    @staticmethod
+    def _publish_cancelled_sentinels(execution_id, target_list: list, sentineled: set) -> None:
+        """为尚未发过 done 哨兵的目标补发一条 CANCELLED 哨兵。"""
+        for t in target_list:
+            tk = t.get("node_id") or str(t.get("target_id", ""))
+            if tk not in sentineled:
+                publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
+                sentineled.add(tk)
+
     def merge_script_with_params(self, script_content: str, params: str, script_type: str) -> str:
+        """将位置参数注入脚本，使脚本内可按顺序获取参数。
+
+        params 为 ScriptParamsService.params_to_string 生成的逐值 shell 引用字符串，
+        先 shlex.split 还原出有序 token（含空字符串占位），再按脚本类型注入：
+        - shell：set -- 设置位置参数（$1 $2 ...）
+        - python：注入 sys.argv（sys.argv[1] sys.argv[2] ...）
+        - powershell：注入 $args（$args[0] $args[1] ...）
+        - bat：当前执行机制下无法在脚本内重设 %1/%2，暂不支持，忽略参数
+        """
         if not params:
             return script_content
 
+        try:
+            tokens = shlex.split(params)
+        except ValueError:
+            tokens = params.split()
+        if not tokens:
+            return script_content
+
         if script_type == ScriptType.SHELL:
-            import shlex
-
-            try:
-                tokens = shlex.split(params)
-            except ValueError:
-                tokens = params.split()
-
             escaped_params = " ".join(shlex.quote(token) for token in tokens)
-            if not escaped_params:
-                return script_content
             return f"set -- {escaped_params}\n{script_content}"
 
-        return f"{script_content} {params}"
+        if script_type == ScriptType.PYTHON:
+            # json 数组同时是合法的 Python 列表字面量，可安全注入空值/特殊字符
+            argv_literal = json.dumps(["script", *tokens], ensure_ascii=False)
+            return f"import sys as _sys\n_sys.argv = {argv_literal}\n{script_content}"
+
+        if script_type == ScriptType.POWERSHELL:
+            # PowerShell 单引号字符串，内部单引号转义为两个单引号
+            ps_args = ", ".join("'" + token.replace("'", "''") + "'" for token in tokens)
+            return f"$args = @({ps_args})\n{script_content}"
+
+        # bat 等其它类型：本次不支持参数注入，原样返回脚本内容
+        return script_content
 
     def execute_script_on_target(
         self, target_info: dict, target_source: str, script_content: str, script_type: str, timeout: int, execution_id: int
@@ -146,12 +213,26 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             result["finished_at"] = timezone.now().isoformat()
             return result
 
+        logger.info(
+            "[%s] 目标 %s(%s) 开始流式执行: source=%s topic=%s",
+            self.task_name,
+            target_name,
+            target_ip,
+            target_source,
+            build_stream_topic(execution_id, target_key),
+        )
         try:
             shell = parse_shebang(script_content) or ScriptType.SHELL_MAPPING.get(script_type, "bash")
             if target_source in (TargetSource.NODE_MGMT, TargetSource.SYNC):
                 node_id = target_info.get("node_id")
                 executor = Executor(node_id)
-                exec_result = executor.execute_local(script_content, timeout=timeout, shell=shell)
+                exec_result = executor.execute_local_stream(
+                    script_content,
+                    timeout=timeout,
+                    shell=shell,
+                    execution_id=str(execution_id),
+                    stream_log_topic=build_stream_topic(execution_id, target_key),
+                )
             else:
                 target_id = target_info.get("target_id")
                 ssh_creds = self.get_ssh_credentials(target_id)
@@ -160,7 +241,7 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
 
                 executor = Executor(ssh_creds["node_id"])
                 ssh_command = build_heredoc_command(shell, script_content)
-                exec_result = executor.execute_ssh(
+                exec_result = executor.execute_ssh_stream(
                     command=ssh_command,
                     host=ssh_creds["host"],
                     username=ssh_creds["username"],
@@ -168,6 +249,8 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
                     private_key=ssh_creds["private_key"],
                     timeout=timeout,
                     port=ssh_creds["port"],
+                    execution_id=str(execution_id),
+                    stream_log_topic=build_stream_topic(execution_id, target_key),
                     fast_fail=True,
                 )
 

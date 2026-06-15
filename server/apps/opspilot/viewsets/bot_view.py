@@ -14,6 +14,7 @@ from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType, WorkFlowTaskS
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory, WorkFlowTaskResult
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.services.memory_write_buffer_service import find_memory_write_nodes_to_flush
+from apps.opspilot.services.nats_channel_sync import cleanup_opspilot_nats_channels_for_bot, sync_opspilot_nats_channels_for_bot
 from apps.opspilot.tasks import flush_memory_write_cache_for_node
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
@@ -26,6 +27,8 @@ def _schedule_memory_write_cache_flush(workflow: BotWorkFlow, old_flow_json, new
     """当记忆写入节点切换或删除目标空间时，先冲刷旧缓存"""
     flush_nodes = find_memory_write_nodes_to_flush(old_flow_json, new_flow_json)
     for node_id, config in flush_nodes.items():
+        # 支持两种字段名：memorySpace（前端表单/工作流 JSON 的规范键）和 memory_space_id（旧格式）。
+        # 两种形式都存在于已持久化的工作流数据中，因此必须同时容忍以免破坏存量工作流。
         memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
         if not memory_space_id:
             continue
@@ -57,6 +60,22 @@ class BotViewSet(PinMixin, AuthViewSet):
     queryset = Bot.objects.all()
     permission_key = "bot"
     filterset_class = BotFilter
+
+    # update 接口允许通过请求体直接更新的字段白名单。
+    # 故意排除敏感/受控字段：created_by、updated_by、api_token、instance_id、is_builtin、id 等，
+    # 以及由专门逻辑单独处理的字段（channels、rasa_model、node_port、llm_skills、workflow_data 等）。
+    UPDATABLE_FIELDS = (
+        "name",
+        "introduction",
+        "team",
+        "enable_bot_domain",
+        "bot_domain",
+        "enable_node_port",
+        "enable_ssl",
+        "online",
+        "replica_count",
+        "bot_type",
+    )
 
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
@@ -134,8 +153,10 @@ class BotViewSet(PinMixin, AuthViewSet):
         if "team" in data:
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)
-        for key in data.keys():
-            setattr(obj, key, data[key])
+        # 仅允许更新明确白名单内的字段，避免恶意请求批量覆盖 team/created_by/api_token 等敏感字段（mass-assignment）
+        for key in self.UPDATABLE_FIELDS:
+            if key in data:
+                setattr(obj, key, data[key])
         if node_port:
             obj.node_port = node_port
         if rasa_model:
@@ -161,6 +182,8 @@ class BotViewSet(PinMixin, AuthViewSet):
             create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
             obj.save()
+            # 发布时同步 nats 触发节点对应的 system_mgmt 通道
+            sync_opspilot_nats_channels_for_bot(obj)
 
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
@@ -216,11 +239,15 @@ class BotViewSet(PinMixin, AuthViewSet):
     @HasPermission("bot_list-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
+        bot_id = obj.id
+        bot_name = obj.name
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
         delete_celery_task(obj.id)
         response = super().destroy(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:
-            log_operation(request, "delete", "opspilot", f"删除工作台: {obj.name}")
+            # 清理该 bot 名下 OpsPilot 托管的 NATS 通道
+            cleanup_opspilot_nats_channels_for_bot(bot_id)
+            log_operation(request, "delete", "opspilot", f"删除工作台: {bot_name}")
         return response
 
     @action(methods=["POST"], detail=False)
@@ -245,6 +272,8 @@ class BotViewSet(PinMixin, AuthViewSet):
                 create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
+            # 启动（发布）时同步 nats 触发节点对应的 system_mgmt 通道
+            sync_opspilot_nats_channels_for_bot(bot)
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
             bot_name = "、".join(bots.values_list("name", flat=True))

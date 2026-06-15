@@ -541,6 +541,25 @@ export const getDashboardGroupWidgetIds = (
   return targetSection ? targetSection.widgets.map((widget) => widget.i) : [];
 };
 
+export const bumpDashboardGroupWidgetReloadVersions = (
+  items: DashboardLayoutItem[],
+  groupId: string,
+  versions: Record<string, number>,
+): Record<string, number> => {
+  const widgetIds = getDashboardGroupWidgetIds(items, groupId);
+
+  if (widgetIds.length === 0) {
+    return versions;
+  }
+
+  const nextVersions = { ...versions };
+  widgetIds.forEach((widgetId) => {
+    nextVersions[widgetId] = (nextVersions[widgetId] || 0) + 1;
+  });
+
+  return nextVersions;
+};
+
 export const moveDashboardGroupBlock = (
   items: DashboardLayoutItem[],
   groupId: string,

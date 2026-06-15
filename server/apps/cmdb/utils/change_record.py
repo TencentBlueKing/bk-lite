@@ -1,6 +1,7 @@
 from apps.cmdb.constants.constants import OPERATOR_INSTANCE
 from apps.cmdb.models.change_record import (
     CREATE_INST_ASST,
+    CUSTOM_REPORTING_CHANGE,
     ORDINARY_ATTRIBUTE_CHANGE,
     RELATION_CHANGE,
     ChangeRecord,
@@ -31,10 +32,35 @@ def batch_create_change_record(label, _type, change_records, operator="", scenar
     ChangeRecord.objects.bulk_create(batch_change_data)
 
 
-def create_change_record_by_asso(label, _type, data, operator="", message=""):
+def create_custom_reporting_change_record(
+    inst_id,
+    model_id,
+    label,
+    _type,
+    before_data=None,
+    after_data=None,
+    operator="",
+    message="",
+    model_object="",
+):
+    return create_change_record(
+        inst_id=inst_id,
+        model_id=model_id,
+        label=label,
+        _type=_type,
+        before_data=before_data,
+        after_data=after_data,
+        operator=operator,
+        message=message,
+        model_object=model_object,
+        scenario=CUSTOM_REPORTING_CHANGE,
+    )
+
+
+def create_change_record_by_asso(label, _type, data, operator="", message="", scenario=RELATION_CHANGE):
     """创建关联关系变更记录"""
 
-    change_data = {"operator": operator, "scenario": RELATION_CHANGE}
+    change_data = {"operator": operator, "scenario": scenario}
 
     if _type == CREATE_INST_ASST:
         change_data["after_data"] = data

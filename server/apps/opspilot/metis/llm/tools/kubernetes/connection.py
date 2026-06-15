@@ -245,6 +245,6 @@ def get_kubernetes_instances_prompt(configurable: Dict[str, Any]) -> str:
         f"已配置 {len(instances)} 个 Kubernetes 实例，"
         f"可用实例: {available_instances}。"
         "当用户明确指定某个实例名称或 ID 时，只对该实例执行。"
-        "当用户未指定实例时，默认对全部实例执行采集或汇总。"
-        "仅当用户明确要求某个实例时，才在工具调用中传入 instance_name 或 instance_id 参数。"
+        "当用户未指定实例时，必须先让用户选择一个目标实例，再在工具调用中传入 instance_name 或 instance_id 参数。"
+        "用户说所有工作负载或全部工作负载时，只表示工作负载范围，不表示全部实例。"
     )

@@ -18,4 +18,17 @@ class EmbedProviderSerializer(AuthSerializer, CustomProviderSerializer):
 
     class Meta:
         model = EmbedProvider
-        fields = "__all__"
+        fields = [
+            "id",
+            "name",
+            "enabled",
+            "team",
+            "is_build_in",
+            "vendor",
+            "model",
+            # 只读派生字段（保持现有读取输出不变）
+            "permissions",
+            "team_name",
+            "vendor_name",
+            "vendor_type",
+        ]

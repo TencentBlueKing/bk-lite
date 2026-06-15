@@ -80,6 +80,8 @@ def test_generate_attachment_file_creates_workflow_asset():
         },
     )
 
+    from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
+
     asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-1", attachment_id="daily_report")
     asset.file_knowledge.file.open("rb")
     try:
@@ -87,18 +89,37 @@ def test_generate_attachment_file_creates_workflow_asset():
     finally:
         asset.file_knowledge.file.close()
 
-    assert result["file_url"] == asset.download_url
+    assert result["file_url"].startswith("/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/")
+    assert result["file_url"] == build_signed_attachment_download_url(asset)
     assert result["filename"] == "report.md"
     assert content == b"# report"
 
 
 @pytest.mark.django_db
-def test_workflow_attachment_download_url_uses_relative_path(settings):
-    settings.OPSPILOT_WEB_URL = "https://ops-pilot.canway.net"
+def test_build_signed_attachment_download_url_uses_proxy_path():
+    """build_signed_attachment_download_url must return a /api/proxy/... path so browsers
+    route the download request through the Next.js proxy rather than treating it as a page route."""
+    from django.core.files.base import ContentFile
 
-    asset = WorkflowAttachmentAsset(download_token="token-123")
+    from apps.opspilot.models import FileKnowledge
+    from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url, resolve_signed_attachment_token
 
-    assert asset.download_url == "/api/v1/opspilot/bot_mgmt/workflow_attachment/download/token-123/"
+    fk = FileKnowledge.objects.create(file=ContentFile(b"data", name="f.md"))
+    asset = WorkflowAttachmentAsset.objects.create(
+        execution_id="exec-url-test",
+        attachment_id="att-url-test",
+        filename="test.md",
+        mime_type="text/markdown",
+        file_knowledge=fk,
+    )
+
+    url = build_signed_attachment_download_url(asset)
+
+    assert url.startswith("/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/")
+    # The signed token must be decodable back to the same asset
+    resolved = resolve_signed_attachment_token(url.rsplit("/download/", 1)[1].rstrip("/"))
+    assert resolved is not None
+    assert resolved.id == asset.id
 
 
 @pytest.mark.django_db

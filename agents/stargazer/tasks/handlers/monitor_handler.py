@@ -324,3 +324,44 @@ async def collect_host_metrics_task(
             "monitor_type": "host",
             "completed_at": int(time.time() * 1000),
         }
+
+
+async def collect_windows_wmi_metrics_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    logger.info(f"[Windows WMI Task] Processing: {task_id}")
+
+    try:
+        from tasks.collectors.host_wmi_collector import WindowsWmiCollector
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+
+        collector = WindowsWmiCollector(params)
+        metrics_data = await collector.collect()
+        await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "success",
+            "monitor_type": "windows_wmi",
+            "data_size": len(metrics_data),
+            "completed_at": int(time.time() * 1000),
+        }
+
+    except Exception as e:
+        logger.error(
+            f"[Windows WMI Task] {task_id} failed: {str(e)}\n{traceback.format_exc()}"
+        )
+
+        from tasks.utils.nats_helper import publish_metrics_to_nats
+        from tasks.utils.metrics_helper import generate_monitor_error_metrics
+
+        error_metrics = generate_monitor_error_metrics(params, e)
+        await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
+
+        return {
+            "task_id": task_id,
+            "status": "failed",
+            "error": str(e),
+            "monitor_type": "windows_wmi",
+            "completed_at": int(time.time() * 1000),
+        }

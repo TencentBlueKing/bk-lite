@@ -36,6 +36,7 @@ import {
   TitleWithGuide,
   TrendChartPanel
 } from '../../shared/widgets';
+import { GuideItem } from '../../shared/types';
 import {
   PreparedSummaryCard,
   PreparedChartPanel,
@@ -214,9 +215,11 @@ export const KpiSection = ({
         styles={styles}
       />
       {extraCards}
-      {summaryCards.map(({ card, mainValue, valueColor, compare, footerItems, trendData, noDataType }) => {
+      {summaryCards.map(({ card, mainValue, valueColor, compare, footerItems, trendData, noDataType, uptimeState }) => {
         const isUptime = card.isUptimeCard;
-        const uptimeTone = noDataType === 'error' || mainValue.value === '--' ? 'empty' : 'success';
+        // 运行时长卡统一样式:不画折线,只显示「所选时间范围内是否发生重启」(运行正常 / 期间有重启 / 状态未知)。
+        const uptimeToneSuffix =
+          uptimeState?.tone === 'warning' ? 'Warning' : uptimeState?.tone === 'success' ? 'Success' : 'Empty';
 
         return (
           <StatCard
@@ -233,16 +236,16 @@ export const KpiSection = ({
             compare={compare}
             compareFavorableDirection={card.compareFavorableDirection}
             trendData={trendData}
-            hideTrend={card.hideTrend}
+            hideTrend={isUptime ? true : card.hideTrend}
             noDataType={noDataType}
             className={isUptime ? styles.statCardRelaxed : undefined}
             bodyClassName={isUptime ? styles.statBodyRelaxed : undefined}
             extra={isUptime ? (
-              <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeTone === 'success' ? 'Success' : 'Empty'}`]}`}>
+              <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeToneSuffix}`]}`}>
                 <span className={styles.uptimeStatusDot} />
                 <div className={styles.uptimeStatusMainWrap}>
                   <span className={styles.uptimeStatusMain}>
-                    {uptimeTone === 'success' ? '运行正常' : '暂无数据'}
+                    {uptimeState?.label ?? '状态未知'}
                   </span>
                 </div>
               </div>
@@ -405,6 +408,8 @@ export interface DetailMetricRowProps {
   statusColor?: string;
   /** sparkline 配色:取该指标语义色,与 KPI/趋势/异常信号条统一;缺省回退 tone 色 */
   color?: string;
+  /** 提供时在标签后渲染 (i) 帮助,悬停显示口径说明(术语行如「用户断言」「游标超时数」)。 */
+  guide?: GuideItem[];
   styles: DashboardStyles;
 }
 
@@ -421,6 +426,7 @@ export const DetailMetricRow = ({
   tone = 'normal',
   statusColor,
   color,
+  guide,
   styles
 }: DetailMetricRowProps) => {
   const toneColor = DETAIL_TONE_COLORS[tone];
@@ -430,7 +436,11 @@ export const DetailMetricRow = ({
   const valueColor = statusColor ?? (tone === 'normal' ? undefined : toneColor);
   return (
     <div className={styles.detailMetricRow}>
-      <span className={styles.detailMetricLabel}>{label}</span>
+      {guide && guide.length > 0 ? (
+        <TitleWithGuide title={label} items={guide} className={styles.detailMetricLabel} styles={styles} />
+      ) : (
+        <span className={styles.detailMetricLabel}>{label}</span>
+      )}
       {/* 缩略图列始终渲染(空行也占位),保证三列网格对齐:标签 · 缩略图 · 数值。 */}
       <span className={styles.detailRowViz}>
         {viz === 'spark' && <MiniTrendChart data={trend} color={vizColor} styles={styles} />}
@@ -562,6 +572,8 @@ export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
+  brandLabel?: string;
   styles: DashboardStyles;
 }
 
@@ -572,6 +584,7 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  brandLabel,
   styles
 }: DashboardShellProps) => (
   <div className={styles.page}>
@@ -591,9 +604,29 @@ export const DashboardShell = ({
         />
         <DashboardInstanceCard
           instanceName={dashboard.resolvedInstanceName}
-          metaItems={dashboard.objectMetaItems.map((item, index) => (
-            <span key={index} className={styles.instanceMetaInline}>{item}</span>
-          ))}
+          metaItems={[
+            ...(brandLabel
+              ? [
+                <span
+                  key="brand"
+                  style={{
+                    background: '#1ba0d7',
+                    color: '#fff',
+                    padding: '1px 10px',
+                    borderRadius: '10px',
+                    fontWeight: 600,
+                    fontSize: '12px',
+                    lineHeight: '18px'
+                  }}
+                >
+                  {brandLabel}
+                </span>
+              ]
+              : []),
+            ...dashboard.objectMetaItems.map((item, index) => (
+              <span key={index} className={styles.instanceMetaInline}>{item}</span>
+            ))
+          ]}
           icon={<DatabaseOutlined />}
           selectorValue={dashboard.instanceSelectValue}
           selectorLoading={dashboard.instanceLoading}

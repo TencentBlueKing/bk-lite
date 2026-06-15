@@ -53,7 +53,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '2xx 节点数',
       description: '当前返回 2xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count((http_response_http_response_code{__$labels__} >= 200) and (http_response_http_response_code{__$labels__} < 300))',
+      query: 'count((http_response_http_response_code{__$labels__} >= 200) and (http_response_http_response_code{__$labels__} < 300)) or on() vector(0)',
       color: '#27c274'
     },
     {
@@ -61,7 +61,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '3xx 节点数',
       description: '当前返回 3xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count((http_response_http_response_code{__$labels__} >= 300) and (http_response_http_response_code{__$labels__} < 400))',
+      query: 'count((http_response_http_response_code{__$labels__} >= 300) and (http_response_http_response_code{__$labels__} < 400)) or on() vector(0)',
       color: '#2f6bff'
     },
     {
@@ -69,7 +69,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '4xx 节点数',
       description: '当前返回 4xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count((http_response_http_response_code{__$labels__} >= 400) and (http_response_http_response_code{__$labels__} < 500))',
+      query: 'count((http_response_http_response_code{__$labels__} >= 400) and (http_response_http_response_code{__$labels__} < 500)) or on() vector(0)',
       color: '#ff8a1f'
     },
     {
@@ -77,7 +77,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '5xx 节点数',
       description: '当前返回 5xx 状态码的探测节点数。',
       unit: 'counts',
-      query: 'count(http_response_http_response_code{__$labels__} >= 500)',
+      query: 'count(http_response_http_response_code{__$labels__} >= 500) or on() vector(0)',
       color: '#ff4d4f'
     },
   ],
@@ -111,6 +111,27 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'clock',
       compare: true,
       footer: [{ label: '峰值响应', metric: 'website_response_time_max', unit: 's' }]
+    },
+    {
+      title: '可用节点(2xx)',
+      guide: [{ label: '可用节点(2xx)', detail: '当前返回 2xx 状态码的探测节点数,反映正常服务的探测覆盖面。' }],
+      metric: 'website_status_code_2xx_count',
+      unit: 'counts',
+      color: '#27c274',
+      icon: 'api',
+      compare: true,
+      compareFavorableDirection: 'up',
+      footer: [{ label: '3xx 节点', metric: 'website_status_code_3xx_count', unit: 'counts' }]
+    },
+    {
+      title: '平均内容长度',
+      guide: [{ label: '平均内容长度', detail: '网站返回内容平均字节数;骤增减常意味页面改版、错误页或被劫持,需核对页面内容。' }],
+      metric: 'website_content_length_avg',
+      unit: 'bytes',
+      color: '#597ef7',
+      icon: 'database',
+      compare: true,
+      footer: [{ label: '探测成功率', metric: 'website_success_rate_avg', unit: 'percent' }]
     }
   ],
   charts: [
@@ -135,7 +156,7 @@ export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: '内容长度趋势',
       subtitle: '返回内容大小',
       metric: 'website_content_length_avg',
-      guide: [{ label: '内容长度', detail: '观察网站返回内容长度变化，识别异常体积。' }],
+      guide: [{ label: '内容长度', detail: '单次响应正文字节数(bytes);骤增减常意味页面改版、错误页或被劫持,需核对页面内容。' }],
       series: [{ metric: 'website_content_length_avg', label: '平均内容长度', color: '#597ef7', unit: 'bytes' }]
     }
   ],

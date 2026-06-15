@@ -13,7 +13,35 @@ class KnowledgeDocumentSerializer(UsernameSerializer):
 
     class Meta:
         model = KnowledgeDocument
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "knowledge_base",
+            "name",
+            "chunk_size",
+            "train_status",
+            "train_progress",
+            "general_parse_chunk_size",
+            "general_parse_chunk_overlap",
+            "semantic_chunk_parse_embedding_model",
+            "enable_ocr_parse",
+            "ocr_model",
+            "mode",
+            "chunk_type",
+            "knowledge_source_type",
+            "instance_id",
+            "error_message",
+            # 只读派生字段（保持现有读取输出不变）
+            "train_status_display",
+            "sync_enabled",
+            "sync_time",
+            "last_run_time",
+        ]
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)

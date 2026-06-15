@@ -8,27 +8,38 @@ from django.utils import timezone
 from apps.cmdb.constants.constants import (
     CLASSIFICATION,
     CREATE_MODEL_CHECK_ATTR,
+    DISPLAY_FIELD_CONFIG,
+    ENUM_SELECT_MODE_DEFAULT,
     INST_NAME_INFOS,
     INSTANCE,
     MODEL,
     MODEL_ASSOCIATION,
+    OPERATOR_MODEL,
     ORGANIZATION,
     SUBORDINATE_MODEL,
     UPDATE_MODEL_CHECK_ATTR_MAP,
     USER,
-    OPERATOR_MODEL,
-    DISPLAY_FIELD_CONFIG,
-    ENUM_SELECT_MODE_DEFAULT,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID, TAG_MODE_FREE
-from apps.cmdb.validators.field_validator import (
-    normalize_tag_field_option as normalize_tag_field_option_config,
-)
-from apps.cmdb.validators import IdentifierValidator
+from apps.cmdb.custom_reporting.extensions import get_custom_reporting_extension
 from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES, DISPLAY_SUFFIX
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.language.service import SettingLanguage
-from apps.cmdb.models import UPDATE_INST, DELETE_INST, CREATE_INST, FieldGroup
+from apps.cmdb.model_ops.extensions import get_model_enterprise_extension, is_file_attr_type
+from apps.cmdb.models import CREATE_INST, DELETE_INST, UPDATE_INST, FieldGroup
+from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
+from apps.cmdb.services.auto_relation_rule import (
+    AUTO_RELATION_RULE_FIELD,
+    AutoRelationRule,
+    AutoRelationRuleSet,
+    build_auto_relation_rule_response,
+    canonicalize_auto_relation_rule_set_payload,
+    dump_auto_relation_rule_set,
+    dump_auto_relation_rule_set_compact,
+    parse_auto_relation_rule_set,
+    validate_auto_relation_rule_payload,
+    validate_auto_relation_rule_set_payload,
+)
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.unique_rule import (
     UniqueRulePayload,
@@ -42,29 +53,16 @@ from apps.cmdb.services.unique_rule import (
     guard_attr_change_against_unique_rules,
     list_unique_rule_candidate_fields,
     list_unique_rules,
-    validate_unique_rules_against_existing_instances,
     update_unique_rule,
+    validate_unique_rules_against_existing_instances,
 )
-from apps.cmdb.services.auto_relation_rule import (
-    AUTO_RELATION_RULE_FIELD,
-    AutoRelationRule,
-    AutoRelationRuleSet,
-    build_auto_relation_rule_response,
-    canonicalize_auto_relation_rule_set_payload,
-    dump_auto_relation_rule,
-    dump_auto_relation_rule_set,
-    dump_auto_relation_rule_set_compact,
-    parse_auto_relation_rule,
-    parse_auto_relation_rule_set,
-    validate_auto_relation_rule_payload,
-    validate_auto_relation_rule_set_payload,
-)
-from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
 from apps.cmdb.utils.change_record import create_change_record
+from apps.cmdb.validators import IdentifierValidator
+from apps.cmdb.validators.field_validator import normalize_tag_field_option as normalize_tag_field_option_config
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import cmdb_logger as logger
 from apps.core.services.user_group import UserGroup
 from apps.rpc.system_mgmt import SystemMgmt
-from apps.core.logger import cmdb_logger as logger
 
 FIELD_GROUP_MANAGER: Any = getattr(FieldGroup, "objects")
 
@@ -450,8 +448,6 @@ class ModelManage(object):
         Returns:
             tuple: (新的属性列表, 是否删除了 _display 字段)
         """
-        from apps.cmdb.display_field import DisplayFieldHandler
-
         display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
         original_count = len(attrs)
         new_attrs = [a for a in attrs if a["attr_id"] != display_field_id]
@@ -481,8 +477,6 @@ class ModelManage(object):
         Returns:
             list: 更新后的属性列表
         """
-        from apps.cmdb.display_field import DisplayFieldHandler
-
         display_field_id = f"{attr_id}{DISPLAY_SUFFIX}"
 
         # 情况1: 从非目标类型改为目标类型 -> 添加 _display 字段
@@ -560,6 +554,58 @@ class ModelManage(object):
             scenario=MODEL_MANAGEMENT_CHANGE,
         )
         return result
+
+    @staticmethod
+    def register_custom_reporting_model_fields(
+        model_id: str,
+        instances: list[dict],
+        username="admin",
+    ) -> list[str]:
+        return get_custom_reporting_extension().register_model_fields(
+            model_id,
+            instances,
+            username=username,
+        )
+
+    @staticmethod
+    def validate_custom_reporting_instance_fields(model_id: str, instances: list[dict]) -> None:
+        get_custom_reporting_extension().validate_instance_fields(model_id, instances)
+
+    @staticmethod
+    def _get_custom_reporting_declared_attr_ids(model_id: str) -> set[str]:
+        return get_custom_reporting_extension().get_declared_attr_ids(model_id)
+
+    @staticmethod
+    def validate_custom_reporting_relation_fields(
+        model_id: str,
+        relations: list[dict],
+        identity_keys: list[str] | None = None,
+    ) -> None:
+        get_custom_reporting_extension().validate_relation_fields(
+            model_id,
+            relations,
+            identity_keys=identity_keys,
+        )
+
+    @staticmethod
+    def normalize_custom_reporting_identity_keys(identity_keys) -> list[str]:
+        return get_custom_reporting_extension().normalize_identity_keys(identity_keys)
+
+    @staticmethod
+    def bootstrap_custom_reporting_model(quick_model: dict, team: list[int], username="admin"):
+        return get_custom_reporting_extension().bootstrap_model(
+            quick_model,
+            team=team,
+            username=username,
+        )
+
+    @staticmethod
+    def sync_custom_reporting_model_group(quick_model: dict, team: list[int], username="admin"):
+        return get_custom_reporting_extension().sync_model_group(
+            quick_model,
+            team=team,
+            username=username,
+        )
 
     @staticmethod
     def copy_model(
@@ -851,6 +897,10 @@ class ModelManage(object):
 
             attr_info = ModelManage.sanitize_attr_default_value(attr_info, log_context="create_model_attr")
 
+            # 企业版字段类型规则（附件/图片：强制可选、非唯一、无约束旋钮）
+            enterprise_ext = get_model_enterprise_extension()
+            attr_info = enterprise_ext.validate_attr(attr_info)
+
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
             models, _ = ag.query_entity(MODEL, [model_query])
@@ -882,12 +932,17 @@ class ModelManage(object):
                 continue
             attr = attr
 
+        change_message = f"创建模型属性. 模型名称: {model_info['model_name']}"
+        enterprise_message = enterprise_ext.build_attr_change_message({}, attr or attr_info)
+        if enterprise_message:
+            change_message = f"{change_message}. {enterprise_message}"
+
         create_change_record(
             operator=username,
             model_id=model_id,
             label="模型管理",
             _type=CREATE_INST,
-            message=f"创建模型属性. 模型名称: {model_info['model_name']}",
+            message=change_message,
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
             scenario=MODEL_MANAGEMENT_CHANGE,
@@ -917,6 +972,17 @@ class ModelManage(object):
             )
             if not current_attr:
                 raise BaseAppException("model attr not present")
+
+            # 附件/图片字段类型创建后不可切换
+            if current_attr.get("attr_type") != attr_info.get("attr_type") and (
+                is_file_attr_type(current_attr.get("attr_type")) or is_file_attr_type(attr_info.get("attr_type"))
+            ):
+                raise BaseAppException("附件/图片字段类型创建后不可切换")
+
+            # 企业版字段类型规则（附件/图片：强制可选、非唯一、无约束旋钮）
+            enterprise_ext = get_model_enterprise_extension()
+            attr_info = enterprise_ext.validate_attr(attr_info)
+            current_attr_snapshot = dict(current_attr)
 
             if current_attr.get("is_required") != attr_info.get("is_required"):
                 guard_attr_change_against_unique_rules(
@@ -965,6 +1031,8 @@ class ModelManage(object):
                     user_prompt=attr_info["user_prompt"],
                     default_value=attr_info.get("default_value", []),
                 )
+                if "governance" in attr_info:
+                    attr["governance"] = attr_info["governance"]
                 if is_enum_attr:
                     attr["enum_rule_type"] = attr_info.get("enum_rule_type", "custom")
                     attr["public_library_id"] = attr_info.get("public_library_id")
@@ -985,12 +1053,17 @@ class ModelManage(object):
                 attr = attr
                 break
 
+        change_message = f"修改模型属性. 模型名称: {model_info['model_name']}"
+        enterprise_message = enterprise_ext.build_attr_change_message(current_attr_snapshot, attr or attr_info)
+        if enterprise_message:
+            change_message = f"{change_message}. {enterprise_message}"
+
         create_change_record(
             operator=username,
             model_id=model_id,
             label="模型管理",
             _type=UPDATE_INST,
-            message=f"修改模型属性. 模型名称: {model_info['model_name']}",
+            message=change_message,
             inst_id=model_info["_id"],
             model_object=OPERATOR_MODEL,
             scenario=MODEL_MANAGEMENT_CHANGE,
@@ -1035,8 +1108,7 @@ class ModelManage(object):
 
                 if updated_count > 0:
                     logger.info(
-                        f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, "
-                        f"模型: {model_id}, 字段: {attr_id}"
+                        f"[update_enum_instances_display] 枚举选项变更，已更新 {updated_count} 个实例的 {display_field_id} 字段, " f"模型: {model_id}, 字段: {attr_id}"
                     )
 
         except Exception as e:
@@ -1067,9 +1139,6 @@ class ModelManage(object):
                 raise BaseAppException("model not present")
             model_info = models[0]
             attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
-
-            # 检查要删除的字段类型,如果是目标类型,也需要删除对应的 _display 字段
-            from apps.cmdb.display_field import DisplayFieldHandler
 
             fields_to_remove = [attr_id]
 
@@ -1567,10 +1636,7 @@ class ModelManage(object):
 
     @staticmethod
     def _is_empty_auto_rule_sheet_row(row: dict[str, Any]) -> bool:
-        return all(
-            str(row.get(key) or "").strip() == ""
-            for key in ("src_model_id", "dst_model_id", "asst_id", AUTO_RELATION_RULE_FIELD)
-        )
+        return all(str(row.get(key) or "").strip() == "" for key in ("src_model_id", "dst_model_id", "asst_id", AUTO_RELATION_RULE_FIELD))
 
     @staticmethod
     def _import_auto_relation_rule_sets_from_asso_sheets(model_config: dict[str, list[dict]]):
@@ -1602,9 +1668,7 @@ class ModelManage(object):
 
                 previous_context = seen_model_asst_ids.get(model_asst_id)
                 if previous_context:
-                    raise BaseAppException(
-                        f"定义了重复的关联规则：{context} 【{model_asst_id}】 与 【{previous_context}】"
-                    )
+                    raise BaseAppException(f"定义了重复的关联规则：{context} 【{model_asst_id}】 与 【{previous_context}】")
                 seen_model_asst_ids[model_asst_id] = context
 
                 payload = ModelManage._parse_auto_relation_rule_set_cell(raw_rule_set, context)
@@ -1641,9 +1705,7 @@ class ModelManage(object):
                         username="system",
                     )
             except Exception as err:
-                raise BaseAppException(
-                    f"{item['context']} ({item['model_asst_id']}) 导入自动关联规则失败: {getattr(err, 'message', str(err))}"
-                )
+                raise BaseAppException(f"{item['context']} ({item['model_asst_id']}) 导入自动关联规则失败: {getattr(err, 'message', str(err))}")
 
     @staticmethod
     def check_model_exist_association(model_id):
@@ -1724,9 +1786,17 @@ class ModelManage(object):
         return True
 
     @staticmethod
-    def export_model_config(language):
-        """导出模型配置为Excel (按model_config.xlsx模板格式)"""
+    def export_model_config(language, model_ids=None):
+        """导出模型配置为Excel (按model_config.xlsx模板格式)
+
+        :param model_ids: 勾选导出的模型ID列表。为空(None 或空列表)时不过滤,
+            导出全量模型配置(向后兼容)。有值时:models/attr 只保留选中模型;
+            classifications 只保留选中模型所属的分类;public_enum_libraries 全量不过滤;
+            asso 逐行过滤,只保留 src 和 dst 都在选中集合内的关联行,过滤后无行则不生成该 asso sheet。
+        """
         from io import BytesIO
+
+        selected_ids = set(model_ids) if model_ids else None
 
         from openpyxl import Workbook
 
@@ -1762,6 +1832,10 @@ class ModelManage(object):
             "unique_rule_order",
             "default_value",
         ]
+        enterprise_ext = get_model_enterprise_extension()
+        extra_attr_headers_cn, extra_attr_headers_en = enterprise_ext.extra_export_attr_headers()
+        ATTR_HEADERS_CN.extend(extra_attr_headers_cn)
+        ATTR_HEADERS_EN.extend(extra_attr_headers_en)
 
         ASSO_HEADERS_CN = ["源模型", "目标模型", "关联关系", "源-目标约束", "自动关联规则"]
         ASSO_HEADERS_EN = ["src_model_id", "dst_model_id", "asst_id", "mapping", "auto_relation_rule"]
@@ -1789,7 +1863,16 @@ class ModelManage(object):
         ws_classifications.append(CLASSIFICATION_HEADERS_EN)
 
         classifications = ClassificationManage.search_model_classification(language=language)
+
+        models = ModelManage.search_model(language=language)
+        if selected_ids is not None:
+            models = [m for m in models if m.get("model_id", "") in selected_ids]
+        selected_classification_ids = {m.get("classification_id", "") for m in models}
+
         for classification in classifications:
+            cls_id = classification.get("classification_id", "")
+            if selected_ids is not None and cls_id not in selected_classification_ids:
+                continue
             ws_classifications.append(
                 [
                     classification.get("classification_id", ""),
@@ -1817,7 +1900,6 @@ class ModelManage(object):
                 ]
             )
 
-        models = ModelManage.search_model(language=language)
         for model in models:
             ws_models.append(
                 [
@@ -1866,6 +1948,7 @@ class ModelManage(object):
                         "is_required": attr.get("is_required", False),
                         "user_prompt": attr.get("user_prompt", ""),
                         "default_value": json.dumps(attr.get("default_value", []), ensure_ascii=False) if attr.get("attr_type") == "enum" else "",
+                        **enterprise_ext.extend_export_attr_row(attr),
                     }
                 )
 
@@ -1877,41 +1960,34 @@ class ModelManage(object):
                 len(unique_rules),
             )
             for row in attr_rows:
-                ws_attr.append(
-                    [
-                        row.get("attr_id", ""),
-                        row.get("attr_name", ""),
-                        row.get("attr_type", ""),
-                        row.get("option", ""),
-                        row.get("attr_group", ""),
-                        row.get("is_only", False),
-                        row.get("editable", True),
-                        row.get("is_required", False),
-                        row.get("user_prompt", ""),
-                        row.get("unique_rule_order", ""),
-                        row.get("default_value", ""),
-                    ]
-                )
+                ws_attr.append([row.get(header, "") for header in ATTR_HEADERS_EN])
 
             associations = ModelManage.model_association_search(model_id)
             if associations:
-                ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
-                ws_asso.append(ASSO_HEADERS_CN)
-                ws_asso.append(ASSO_HEADERS_EN)
-                for asso in associations:
-                    rule_set_value = ""
-                    if asso.get("src_model_id") == model_id:
-                        rule_set = parse_auto_relation_rule_set(asso.get(AUTO_RELATION_RULE_FIELD))
-                        rule_set_value = dump_auto_relation_rule_set_compact(rule_set) if rule_set else ""
-                    ws_asso.append(
-                        [
-                            asso.get("src_model_id", ""),
-                            asso.get("dst_model_id", ""),
-                            asso.get("asst_id", ""),
-                            asso.get("mapping", ""),
-                            rule_set_value,
-                        ]
-                    )
+                if selected_ids is not None:
+                    associations = [
+                        a for a in associations
+                        if a.get("src_model_id", "") in selected_ids
+                        and a.get("dst_model_id", "") in selected_ids
+                    ]
+                if associations:
+                    ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
+                    ws_asso.append(ASSO_HEADERS_CN)
+                    ws_asso.append(ASSO_HEADERS_EN)
+                    for asso in associations:
+                        rule_set_value = ""
+                        if asso.get("src_model_id") == model_id:
+                            rule_set = parse_auto_relation_rule_set(asso.get(AUTO_RELATION_RULE_FIELD))
+                            rule_set_value = dump_auto_relation_rule_set_compact(rule_set) if rule_set else ""
+                        ws_asso.append(
+                            [
+                                asso.get("src_model_id", ""),
+                                asso.get("dst_model_id", ""),
+                                asso.get("asst_id", ""),
+                                asso.get("mapping", ""),
+                                rule_set_value,
+                            ]
+                        )
 
         file_stream = BytesIO()
         workbook.save(file_stream)

@@ -1,51 +1,34 @@
-import os
-
-from apps.rpc.base import AppClient, RpcClient
+from apps.rpc.base import AppClient
 
 
 class SystemMgmt(object):
     def __init__(self, is_local_client=True):
-        is_local_client = os.getenv("IS_LOCAL_RPC", "0") == "1" or is_local_client
-        self.client = AppClient("apps.system_mgmt.nats_api") if is_local_client else RpcClient()
+        self.client = AppClient("apps.system_mgmt.nats_api")
 
-    def login(self, username, password):
-        """
-        :param username: 用户名
-        :param password: 密码
-        """
-        return_data = self.client.run("login", username=username, password=password)
+    def bk_lite_user_login(self, username, domain):
+        return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
         return return_data
 
-    def verify_bk_token(self, bk_token):
-        return_data = self.client.run("verify_bk_token", bk_token=bk_token)
+    def create_default_rule(self, llm_model, ocr_model, embed_model, rerank_model):
+        return_data = self.client.run(
+            "create_default_rule",
+            llm_model=llm_model,
+            ocr_model=ocr_model,
+            embed_model=embed_model,
+            rerank_model=rerank_model,
+        )
         return return_data
 
-    def wechat_user_register(self, user_id, nick_name):
-        """
-        :param user_id: 用户ID
-        :param nick_name: 昵称
-        """
-        return_data = self.client.run("wechat_user_register", user_id=user_id, nick_name=nick_name)
+    def create_guest_role(self):
+        return_data = self.client.run("create_guest_role")
         return return_data
 
-    def get_wechat_settings(self):
-        return_data = self.client.run("get_wechat_settings")
-        return return_data
+    def delete_opspilot_nats_channels(self, bot_id):
+        """删除某个 bot 名下所有 OpsPilot 托管的 NATS 通道。"""
+        return self.client.run("delete_opspilot_nats_channels", bot_id=bot_id)
 
-    def verify_otp_code(self, username, otp_code):
-        return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code)
-        return return_data
-
-    def verify_otp_login(self, challenge_id, otp_code, client_ip=""):
-        """
-        Verify OTP code with challenge_id for two-factor authentication.
-
-        :param challenge_id: The challenge ID from password verification
-        :param otp_code: The OTP code from user's authenticator app
-        :param client_ip: Client IP for rate limiting
-        """
-        return_data = self.client.run("verify_otp_login", challenge_id=challenge_id, otp_code=otp_code, client_ip=client_ip)
-        return return_data
+    def delete_rules(self, group_ids, instance_id, app, module, child_module=""):
+        return self.client.run("delete_rules", group_ids, instance_id, app, module, child_module)
 
     def generate_qr_code(self, username):
         return_data = self.client.run("generate_qr_code", username=username)
@@ -60,23 +43,20 @@ class SystemMgmt(object):
         return_data = self.client.run("generate_qr_code_by_user_id", user_id=user_id)
         return return_data
 
-    def verify_otp_code_by_user_id(self, user_id, otp_code):
-        """
-        Verify OTP code for a user by user_id.
-
-        :param user_id: The user's database ID
-        :param otp_code: The OTP code from user's authenticator app
-        """
-        return_data = self.client.run("verify_otp_code_by_user_id", user_id=user_id, otp_code=otp_code)
+    def get_all_groups(self):
+        return_data = self.client.run("get_all_groups")
         return return_data
 
-    def reset_pwd(self, username, domain, password):
-        """
-        :param username: 用户名
-        :param domain: 用户名
-        :param password: 密码
-        """
-        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password)
+    def get_all_users(self):
+        return_data = self.client.run("get_all_users")
+        return return_data
+
+    def get_authorized_groups_scoped(self, actor_context, include_children=False):
+        return_data = self.client.run(
+            "get_authorized_groups_scoped",
+            actor_context=actor_context,
+            include_children=include_children,
+        )
         return return_data
 
     def get_client(self, client_id, username="", domain="domain.com"):
@@ -90,27 +70,11 @@ class SystemMgmt(object):
         return_data = self.client.run("get_client_detail", client_id)
         return return_data
 
-    def get_user_menus(self, client_id, roles, username, is_superuser):
+    def get_group_id(self, group_name):
         """
-        :param client_id: 客户端的ID
-        :param roles: 查询用户的角色ID列表
-        :param username: 查询用户的用户名
-        :param is_superuser: 是否超管
+        :param group_name: 组名
         """
-        return_data = self.client.run("get_user_menus", client_id=client_id, roles=roles, username=username, is_superuser=is_superuser)
-        return return_data
-
-    def verify_token(self, token):
-        """
-        :param token: 用户登录的token
-        :param client_id: 当前APP的ID
-        """
-        return_data = self.client.run("verify_token", token=token)
-        return return_data
-
-    def revoke_token(self, token):
-        """撤销 token，将其 jti 加入黑名单。"""
-        return_data = self.client.run("revoke_token", token=token)
+        return_data = self.client.run("get_group_id", group_name=group_name)
         return return_data
 
     def get_group_users(self, group, include_children=False):
@@ -130,83 +94,42 @@ class SystemMgmt(object):
         )
         return return_data
 
-    def get_authorized_groups_scoped(self, actor_context, include_children=False):
-        return_data = self.client.run(
-            "get_authorized_groups_scoped",
-            actor_context=actor_context,
-            include_children=include_children,
-        )
+    def get_login_module_domain_list(self):
+        return self.client.run("get_login_module_domain_list")
+
+    def get_namespace_by_domain(self, domain):
+        return_data = self.client.run("get_namespace_by_domain", domain=domain)
         return return_data
 
-    def get_all_users(self):
-        return_data = self.client.run("get_all_users")
+    def get_pilot_permission_by_token(self, token, bot_id, group_list):
+        return self.client.run("get_pilot_permission_by_token", token, bot_id, group_list)
+
+    def get_user_menus(self, client_id, roles, username, is_superuser):
+        """
+        :param client_id: 客户端的ID
+        :param roles: 查询用户的角色ID列表
+        :param username: 查询用户的用户名
+        :param is_superuser: 是否超管
+        """
+        return_data = self.client.run("get_user_menus", client_id=client_id, roles=roles, username=username, is_superuser=is_superuser)
         return return_data
 
-    def search_groups(self, query_params):
+    def get_user_rules(self, group_id, username):
         """
-        :param query_params: {"search": ""}
+        :param group_id: 组ID
+        :param username: 用户名
         """
-        return_data = self.client.run("search_groups", query_params=query_params)
+        return_data = self.client.run("get_user_rules", group_id=group_id, username=username)
         return return_data
 
-    def search_users(self, query_params):
-        """
-        :param query_params: {"page_size": 10, "page": 1, "search": ""}
-        """
-        return_data = self.client.run("search_users", query_params=query_params)
-        return return_data
+    def get_user_rules_by_app(self, group_id, username, app, module, child_module="", domain="domain.com", include_children=False):
+        return self.client.run("get_user_rules_by_app", group_id, username, domain, app, module, child_module, include_children)
 
-    def get_all_groups(self):
-        return_data = self.client.run("get_all_groups")
-        return return_data
+    def get_user_rules_by_module(self, group_id, username, app, module, domain="domain.com", include_children=False):
+        return self.client.run("get_user_rules_by_module", group_id, username, domain, app, module, include_children)
 
-    def search_channel_list(self, channel_type, teams, include_children):
-        """
-        :param channel_type: str， 目前只有email、enterprise_wechat
-        :param teams: list, [1,2,3]
-        :param include_children: bool , True、False
-        """
-        return_data = self.client.run("search_channel_list", channel_type=channel_type, teams=teams, include_children=include_children)
-        return return_data
-
-    def search_channel_list_scoped(self, actor_context, channel_type="", teams=None, include_children=False):
-        return_data = self.client.run(
-            "search_channel_list_scoped",
-            actor_context=actor_context,
-            channel_type=channel_type,
-            teams=teams,
-            include_children=include_children,
-        )
-        return return_data
-
-    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):
-        """
-        通过指定通道发送消息
-        :param channel_id: 1 通道id
-        :param title: 邮件主题  企微传空字符串即可
-        :param content: 正文，如果是nats类型的，传入json即可，会原样调用nats接口
-        :param receivers: [1,2,3,4] 用户的ID列表
-        :param attachments: 附件列表（仅email通道支持），格式为:
-            [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
-            注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
-        """
-        return_data = self.client.run(
-            "send_msg_with_channel",
-            channel_id=channel_id,
-            title=title,
-            content=content,
-            receivers=receivers,
-            attachments=attachments,
-        )
-        return return_data
-
-    def send_email_to_receiver(self, title, content, receiver):
-        """
-        :param title: 邮件主题  企微传空字符串即可
-        :param content: 正文
-        :param receiver: [1,2,3,4] 用户的ID列表
-        """
-        return_data = self.client.run("send_email_to_receiver", title=title, content=content, receiver=receiver)
+    def get_wechat_settings(self):
+        return_data = self.client.run("get_wechat_settings")
         return return_data
 
     def init_user_default_attributes(self, user_id, group_name, default_group_id):
@@ -218,57 +141,27 @@ class SystemMgmt(object):
         return_data = self.client.run("init_user_default_attributes", user_id=user_id, group_name=group_name, default_group_id=default_group_id)
         return return_data
 
-    def get_user_rules(self, group_id, username):
+    def login(self, username, password):
         """
-        :param group_id: 组ID
         :param username: 用户名
+        :param password: 密码
         """
-        return_data = self.client.run("get_user_rules", group_id=group_id, username=username)
+        return_data = self.client.run("login", username=username, password=password)
         return return_data
 
-    def get_group_id(self, group_name):
+    def reset_pwd(self, username, domain, password):
         """
-        :param group_name: 组名
+        :param username: 用户名
+        :param domain: 用户名
+        :param password: 密码
         """
-        return_data = self.client.run("get_group_id", group_name=group_name)
+        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password)
         return return_data
 
-    def create_default_rule(self, llm_model, ocr_model, embed_model, rerank_model):
-        return_data = self.client.run(
-            "create_default_rule",
-            llm_model=llm_model,
-            ocr_model=ocr_model,
-            embed_model=embed_model,
-            rerank_model=rerank_model,
-        )
+    def revoke_token(self, token):
+        """撤销 token，将其 jti 加入黑名单。"""
+        return_data = self.client.run("revoke_token", token=token)
         return return_data
-
-    def create_guest_role(self):
-        return_data = self.client.run("create_guest_role")
-        return return_data
-
-    def get_namespace_by_domain(self, domain):
-        return_data = self.client.run("get_namespace_by_domain", domain=domain)
-        return return_data
-
-    def bk_lite_user_login(self, username, domain):
-        return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
-        return return_data
-
-    def get_login_module_domain_list(self):
-        return self.client.run("get_login_module_domain_list")
-
-    def get_user_rules_by_app(self, group_id, username, app, module, child_module="", domain="domain.com", include_children=False):
-        return self.client.run("get_user_rules_by_app", group_id, username, domain, app, module, child_module, include_children)
-
-    def get_user_rules_by_module(self, group_id, username, app, module, domain="domain.com", include_children=False):
-        return self.client.run("get_user_rules_by_module", group_id, username, domain, app, module, include_children)
-
-    def get_pilot_permission_by_token(self, token, bot_id, group_list):
-        return self.client.run("get_pilot_permission_by_token", token, bot_id, group_list)
-
-    def delete_rules(self, group_ids, instance_id, app, module, child_module=""):
-        return self.client.run("delete_rules", group_ids, instance_id, app, module, child_module)
 
     def save_error_log(self, username, app, module, error_message, domain="domain.com"):
         """
@@ -294,3 +187,127 @@ class SystemMgmt(object):
         return self.client.run(
             "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type, summary=summary, domain=domain
         )
+
+    def search_channel_list(self, channel_type, teams, include_children):
+        """
+        :param channel_type: str， 目前只有email、enterprise_wechat
+        :param teams: list, [1,2,3]
+        :param include_children: bool , True、False
+        """
+        return_data = self.client.run("search_channel_list", channel_type=channel_type, teams=teams, include_children=include_children)
+        return return_data
+
+    def search_channel_list_scoped(self, actor_context, channel_type="", teams=None, include_children=False):
+        return_data = self.client.run(
+            "search_channel_list_scoped",
+            actor_context=actor_context,
+            channel_type=channel_type,
+            teams=teams,
+            include_children=include_children,
+        )
+        return return_data
+
+    def search_groups(self, query_params):
+        """
+        :param query_params: {"search": ""}
+        """
+        return_data = self.client.run("search_groups", query_params=query_params)
+        return return_data
+
+    def search_users(self, query_params):
+        """
+        :param query_params: {"page_size": 10, "page": 1, "search": ""}
+        """
+        return_data = self.client.run("search_users", query_params=query_params)
+        return return_data
+
+    def send_email_to_receiver(self, title, content, receiver):
+        """
+        :param title: 邮件主题  企微传空字符串即可
+        :param content: 正文
+        :param receiver: [1,2,3,4] 用户的ID列表
+        """
+        return_data = self.client.run("send_email_to_receiver", title=title, content=content, receiver=receiver)
+        return return_data
+
+    def send_msg_with_channel(self, channel_id, title, content, receivers, attachments=None):
+        """
+        通过指定通道发送消息
+        :param channel_id: 1 通道id
+        :param title: 邮件主题  企微传空字符串即可
+        :param content: 正文，如果是nats类型的，传入json即可，会原样调用nats接口
+        :param receivers: [1,2,3,4] 用户的ID列表
+        :param attachments: 附件列表（仅email通道支持），格式为:
+            [{"filename": "文件名.pdf", "content": "base64编码的文件内容"}, ...]
+            注意: 附件内容必须是base64编码的字符串，因为NATS使用JSON序列化传输
+        """
+        return_data = self.client.run(
+            "send_msg_with_channel",
+            channel_id=channel_id,
+            title=title,
+            content=content,
+            receivers=receivers,
+            attachments=attachments,
+        )
+        return return_data
+
+    def sync_opspilot_nats_channels(self, bot_id, bot_name, team, nodes, timeout=60):
+        """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。
+        :param bot_id: Bot ID
+        :param bot_name: Bot 名称
+        :param team: 通道归属组织 ID 列表
+        :param nodes: [{"node_id": "xxx", "name": "节点label"}, ...]
+        """
+        return self.client.run(
+            "sync_opspilot_nats_channels",
+            bot_id=bot_id,
+            bot_name=bot_name,
+            team=team,
+            nodes=nodes,
+            timeout=timeout,
+        )
+
+    def verify_bk_token(self, bk_token):
+        return_data = self.client.run("verify_bk_token", bk_token=bk_token)
+        return return_data
+
+    def verify_otp_code(self, username, otp_code):
+        return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code)
+        return return_data
+
+    def verify_otp_code_by_user_id(self, user_id, otp_code):
+        """
+        Verify OTP code for a user by user_id.
+
+        :param user_id: The user's database ID
+        :param otp_code: The OTP code from user's authenticator app
+        """
+        return_data = self.client.run("verify_otp_code_by_user_id", user_id=user_id, otp_code=otp_code)
+        return return_data
+
+    def verify_otp_login(self, challenge_id, otp_code, client_ip=""):
+        """
+        Verify OTP code with challenge_id for two-factor authentication.
+
+        :param challenge_id: The challenge ID from password verification
+        :param otp_code: The OTP code from user's authenticator app
+        :param client_ip: Client IP for rate limiting
+        """
+        return_data = self.client.run("verify_otp_login", challenge_id=challenge_id, otp_code=otp_code, client_ip=client_ip)
+        return return_data
+
+    def verify_token(self, token):
+        """
+        :param token: 用户登录的token
+        :param client_id: 当前APP的ID
+        """
+        return_data = self.client.run("verify_token", token=token)
+        return return_data
+
+    def wechat_user_register(self, user_id, nick_name):
+        """
+        :param user_id: 用户ID
+        :param nick_name: 昵称
+        """
+        return_data = self.client.run("wechat_user_register", user_id=user_id, nick_name=nick_name)
+        return return_data

@@ -6,6 +6,10 @@ export const TimeTriggerNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.celery.icon} color={nodeConfig.celery.color} hasOutput={true} />
 );
 
+export const NatsTriggerNode = (props: any) => (
+  <BaseNode {...props} icon={nodeConfig.nats.icon} color={nodeConfig.nats.color} hasOutput={true} />
+);
+
 export const RestfulApiNode = (props: any) => (
   <BaseNode {...props} icon={nodeConfig.restful.icon} color={nodeConfig.restful.color} hasOutput={true} />
 );

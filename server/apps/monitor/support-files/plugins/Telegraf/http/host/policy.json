@@ -6,8 +6,8 @@
       "name": "CPU使用率过高",
       "alert_name": "主机${instance_id} CPU使用率过高",
       "description": "监控主机CPU使用率，当超出设定阈值时触发告警。",
-      "metric_name": "host_cpu_usage_percent",
-      "algorithm": "last_over_time",
+      "metric_name": "cpu_usage_total",
+      "algorithm": "max",
       "threshold": [
         {
           "level": "critical",
@@ -29,33 +29,9 @@
     {
       "name": "内存使用率过高",
       "alert_name": "主机${instance_id} 内存使用率过高",
-      "description": "监控主机内存使用率，当可用内存低于阈值时触发告警。",
-      "metric_name": "host_mem_available_bytes",
-      "algorithm": "last_over_time",
-      "threshold": [
-        {
-          "level": "critical",
-          "value": 104857600,
-          "method": "<"
-        },
-        {
-          "level": "error",
-          "value": 524288000,
-          "method": "<"
-        },
-        {
-          "level": "warning",
-          "value": 1073741824,
-          "method": "<"
-        }
-      ]
-    },
-    {
-      "name": "磁盘使用率过高",
-      "alert_name": "主机${instance_id} 磁盘${mount}使用率过高",
-      "description": "监控主机磁盘使用率，当超出设定阈值时触发告警。",
-      "metric_name": "host_disk_used_percent",
-      "algorithm": "last_over_time",
+      "description": "监控主机内存使用率，当超出设定阈值时触发告警。",
+      "metric_name": "mem_used_percent",
+      "algorithm": "max",
       "threshold": [
         {
           "level": "critical",
@@ -70,6 +46,78 @@
         {
           "level": "warning",
           "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "磁盘使用率过高",
+      "alert_name": "主机${instance_id} 磁盘${mount}使用率过高",
+      "description": "监控主机磁盘使用率，当超出设定阈值时触发告警。",
+      "metric_name": "disk_used_percent",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "网卡入流量过高",
+      "alert_name": "主机${instance_id}接口${metric_interface} 网卡入流量过高",
+      "description": "监控主机网卡入流量速率，当超出设定阈值时触发告警。",
+      "metric_name": "net_bytes_recv_rate",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 104857600,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 52428800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10485760,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "网卡出流量过高",
+      "alert_name": "主机${instance_id}接口${metric_interface} 网卡出流量过高",
+      "description": "监控主机网卡出流量速率，当超出设定阈值时触发告警。",
+      "metric_name": "net_bytes_sent_rate",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 104857600,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 52428800,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 10485760,
           "method": ">"
         }
       ]

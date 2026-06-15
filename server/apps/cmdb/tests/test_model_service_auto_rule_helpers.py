@@ -285,3 +285,84 @@ def test_replace_auto_relation_ok(fake_graph, monkeypatch):
     }
     result = ModelManage.replace_model_auto_relation_rule_set("host", "x", payload, username="admin")
     assert len(result.rules) == 1
+
+
+# --------------------------------------------------------------------------
+# export_model_config 勾选过滤
+# --------------------------------------------------------------------------
+
+
+def _read_export(stream):
+    """把导出的 xlsx 字节流读回 {sheet_title: [rows...]}。"""
+    from io import BytesIO
+    from openpyxl import load_workbook
+
+    wb = load_workbook(BytesIO(stream.read()))
+    return {ws.title: [list(r) for r in ws.iter_rows(values_only=True)] for ws in wb.worksheets}
+
+
+def _setup_two_models(monkeypatch):
+    """两个模型 host(net 分类) / sw(net2 分类)，host->sw 关联一条。"""
+    classifications = [
+        {"classification_id": "net", "classification_name": "网络"},
+        {"classification_id": "net2", "classification_name": "网络2"},
+    ]
+    models = [
+        {"model_id": "host", "model_name": "主机", "icn": "i1",
+         "classification_id": "net", "attrs": "[]"},
+        {"model_id": "sw", "model_name": "交换机", "icn": "i2",
+         "classification_id": "net2", "attrs": "[]"},
+    ]
+    monkeypatch.setattr(
+        f"{MODULE}.ClassificationManage.search_model_classification",
+        lambda language="en": classifications,
+    )
+    monkeypatch.setattr(f"{MODULE}.ModelManage.search_model", lambda language="en": models)
+    monkeypatch.setattr(
+        f"{MODULE}.ModelManage.model_association_search",
+        lambda mid: [{"src_model_id": "host", "dst_model_id": "sw",
+                      "asst_id": "conn", "mapping": "1:n"}] if mid == "host" else [],
+    )
+    monkeypatch.setattr("apps.cmdb.services.public_enum_library.list_libraries",
+                        lambda: [{"library_id": "lib_1", "name": "库", "team": [1], "options": []}])
+    monkeypatch.setattr(
+        f"{MODULE}.ModelManage.search_model_info",
+        lambda mid: {"model_id": mid, "attrs": "[]", "unique_rules": "[]", "_id": 1},
+    )
+
+
+@pytest.mark.django_db
+def test_export_model_config_subset_filters_models_and_classifications(monkeypatch):
+    _setup_two_models(monkeypatch)
+    sheets = _read_export(ModelManage.export_model_config(language="zh-Hans", model_ids=["host"]))
+
+    model_data_rows = sheets["models"][2:]
+    assert [r[0] for r in model_data_rows] == ["host"]
+    assert "attr-host" in sheets and "attr-sw" not in sheets
+    cls_data_rows = sheets["classifications"][2:]
+    assert [r[0] for r in cls_data_rows] == ["net"]
+    assert sheets["public_enum_libraries"][2:][0][0] == "lib_1"
+
+
+@pytest.mark.django_db
+def test_export_model_config_subset_drops_cross_selection_assoc(monkeypatch):
+    _setup_two_models(monkeypatch)
+    sheets = _read_export(ModelManage.export_model_config(language="zh-Hans", model_ids=["host"]))
+    assert "asso-host" not in sheets
+
+
+@pytest.mark.django_db
+def test_export_model_config_keeps_assoc_when_both_selected(monkeypatch):
+    _setup_two_models(monkeypatch)
+    sheets = _read_export(ModelManage.export_model_config(language="zh-Hans", model_ids=["host", "sw"]))
+    assert "asso-host" in sheets
+    asso_rows = sheets["asso-host"][2:]
+    assert asso_rows[0][0] == "host" and asso_rows[0][1] == "sw"
+
+
+@pytest.mark.django_db
+def test_export_model_config_empty_model_ids_exports_all(monkeypatch):
+    _setup_two_models(monkeypatch)
+    sheets = _read_export(ModelManage.export_model_config(language="zh-Hans", model_ids=[]))
+    assert [r[0] for r in sheets["models"][2:]] == ["host", "sw"]
+    assert {r[0] for r in sheets["classifications"][2:]} == {"net", "net2"}

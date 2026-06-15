@@ -48,9 +48,12 @@ import {
   normalizeDefaultValue,
   sanitizeDefaultValue,
 } from '@/app/cmdb/utils/enumDefaultValue';
+import { loadAttributeEnterpriseExtension } from '@/app/cmdb/hooks/useAttributeEnterpriseExtension';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
 const { Option } = Select;
+
+const useAttributeEnterpriseExtension = loadAttributeEnterpriseExtension();
 
 const TAG_VALUE_REGEX = /^[^\s:\n\r]+$/;
 
@@ -116,6 +119,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
     const [enumSelectMode, setEnumSelectMode] = useState<'single' | 'multiple'>('single');
     const formRef = useRef<FormInstance>(null);
     const searchParams = useSearchParams();
+    const attributeEnterpriseExtension = useAttributeEnterpriseExtension();
 
     const { createModelAttr, updateModelAttr, getPublicEnumLibraries } = useModelApi();
 
@@ -157,6 +161,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         const normalizedDefaultValue = normalizeDefaultValue(attrInfo.default_value);
         formRef.current?.setFieldsValue({
           ...attrInfo,
+          ...attributeEnterpriseExtension.getInitialValues(attrInfo),
           group_id: selectedGroup?.id,
           default_value:
             (attrInfo.enum_select_mode || 'single') === 'multiple'
@@ -334,7 +339,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
         delete restValues.tag_mode;
         delete restValues.default_value;
 
-        const submitParams: Record<string, unknown> = {
+        let submitParams: Record<string, unknown> = {
           ...restValues,
           option,
           attr_group: selectedGroup?.group_name || '',
@@ -357,6 +362,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           submitParams.default_value = [];
         }
 
+        submitParams = attributeEnterpriseExtension.normalizeSubmitParams(submitParams, values);
         operateAttr(submitParams as AttrFieldType);
       });
     };
@@ -1330,6 +1336,10 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 ) : null
               }
             </Form.Item>
+            {attributeEnterpriseExtension.renderFormItems({
+              formRef,
+              ui: { Form, Radio, Select },
+            })}
             <div className="border-t border-[var(--color-border-1)] mt-2 mb-4" />
             <Form.Item
               noStyle
@@ -1337,30 +1347,38 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 prevValues.attr_type !== currentValues.attr_type
               }
             >
-              {({ getFieldValue }) => (
-                <Form.Item label=" " colon={false} className="ml-[-80px]">
-                  <div className="flex items-center gap-8">
-                    <Form.Item<AttrFieldType>
-                      name="is_required"
-                      valuePropName="checked"
-                      className="mb-0"
-                    >
-                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
-                        {t('required')}
-                      </Checkbox>
-                    </Form.Item>
-                    <Form.Item<AttrFieldType>
-                      name="editable"
-                      valuePropName="checked"
-                      className="mb-0"
-                    >
-                      <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
-                        {t('editable')}
-                      </Checkbox>
-                    </Form.Item>
-                  </div>
-                </Form.Item>
-              )}
+              {({ getFieldValue }) => {
+                // 附件/图片字段一律可选、不可设为必填 → 隐藏必填开关（约束由系统兜底）
+                const isFileType = ['attachment', 'image'].includes(
+                  getFieldValue('attr_type')
+                );
+                return (
+                  <Form.Item label=" " colon={false} className="ml-[-80px]">
+                    <div className="flex items-center gap-8">
+                      {!isFileType && (
+                        <Form.Item<AttrFieldType>
+                          name="is_required"
+                          valuePropName="checked"
+                          className="mb-0"
+                        >
+                          <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
+                            {t('required')}
+                          </Checkbox>
+                        </Form.Item>
+                      )}
+                      <Form.Item<AttrFieldType>
+                        name="editable"
+                        valuePropName="checked"
+                        className="mb-0"
+                      >
+                        <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
+                          {t('editable')}
+                        </Checkbox>
+                      </Form.Item>
+                    </div>
+                  </Form.Item>
+                );
+              }}
             </Form.Item>
             <Form.Item<AttrFieldType>
               label={t('Model.userPrompt')}

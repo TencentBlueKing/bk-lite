@@ -38,6 +38,7 @@ class NodeRegistry:
         self.register_node_class("web_chat", EntryNode)  # web_chat入口节点
         self.register_node_class("exit", ExitNode)
         self.register_node_class("celery", EntryNode)
+        self.register_node_class("nats", EntryNode)  # NATS入口节点
 
         # 智能体节点
         self.register_node_class("agents", AgentNode)

@@ -103,6 +103,8 @@ base_constant:
 error:
   no_group_id: 无组 ID
   no_view_permission: 你没有权限查看此实例
+  model_in_use: 无法删除，仍被 {count} 个知识图谱引用。
+  vendor_in_use: 无法删除，仍被 {count} 个模型引用。
   delete_failed: 删除失败
   knowledge_graph_not_completed: 知识图谱未完成
   llm_model_name_exists: 组 {validate_msg} 中已存在同名 LLM 模型。

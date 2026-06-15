@@ -4,11 +4,11 @@
   font-weight: bold;
   margin-bottom: 12px;
   padding-bottom: 8px;
+  padding-left: 16px;
 }
 
 .sectionTitle {
   @extend %titleBase;
-  margin-left: 10px;
 }
 
 .panelHeader {
@@ -25,7 +25,7 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 12px 16px 0;
+  padding: 12px 12px 16px 0;
   scrollbar-gutter: stable;
 }
 
@@ -85,12 +85,24 @@
   min-height: 0;
   overflow-x: hidden;
   overflow-y: auto;
-  padding: 0 12px 16px 0;
+  padding: 12px 12px 16px 0;
   scrollbar-gutter: stable;
 }
 
 .mainContent :global(.ant-collapse-content-box) {
   padding-left: 0 !important;
+}
+
+.mainContent :global(.ant-form-item:has(.credentialPoolEditor)) {
+  margin-bottom: 24px;
+
+  :global(.ant-form-item-control) {
+    margin-left: 0 !important;
+  }
+
+  :global(.ant-form-item-control-input) {
+    min-height: 0;
+  }
 }
 
 .status {
@@ -151,7 +163,7 @@
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 0 1px 4px;
+  padding: 0 12px 4px;
 }
 
 .credentialPoolTitle {
@@ -211,8 +223,13 @@
 
 .credentialPoolList {
   list-style: none;
-  padding: 0;
+  padding: 0 0 0 12px;
   margin: 0;
+}
+
+.credentialStaticItem {
+  display: flex;
+  width: 100%;
 }
 
 .credentialOrderNumber {

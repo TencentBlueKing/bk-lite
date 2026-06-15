@@ -32,6 +32,38 @@ class KnowledgeSearchService:
             }
         return graph_rag_request
 
+    @staticmethod
+    def _get_embed_provider(knowledge_base_folder, embed_model_id):
+        """获取 EmbedProvider，优先复用知识库已预取的关联对象以避免额外查询。
+
+        仅当请求的 embed_model_id 与知识库自身的外键一致、且关联对象已被
+        select_related 预取（即不会触发新查询）时复用；否则按原逻辑 .get()。
+        """
+        if (
+            str(getattr(knowledge_base_folder, "embed_model_id", "")) == str(embed_model_id)
+            and "embed_model" in getattr(knowledge_base_folder, "_state", type("", (), {"fields_cache": {}})).fields_cache
+        ):
+            cached = knowledge_base_folder._state.fields_cache["embed_model"]
+            if cached is not None:
+                return cached
+        return EmbedProvider.objects.get(id=embed_model_id)
+
+    @staticmethod
+    def _get_rerank_provider(knowledge_base_folder, rerank_model_id):
+        """获取 RerankProvider，优先复用知识库已预取的关联对象以避免额外查询。
+
+        仅当请求的 rerank_model_id 与知识库自身的外键一致、且关联对象已被
+        select_related 预取（即不会触发新查询）时复用；否则按原逻辑 .get()。
+        """
+        if (
+            str(getattr(knowledge_base_folder, "rerank_model_id", "")) == str(rerank_model_id)
+            and "rerank_model" in getattr(knowledge_base_folder, "_state", type("", (), {"fields_cache": {}})).fields_cache
+        ):
+            cached = knowledge_base_folder._state.fields_cache["rerank_model"]
+            if cached is not None:
+                return cached
+        return RerankProvider.objects.get(id=rerank_model_id)
+
     @classmethod
     def search(
         cls,
@@ -49,17 +81,28 @@ class KnowledgeSearchService:
             kwargs: 搜索配置参数
             score_threshold: 分数阈值，低于此分数的结果将被过滤
             is_qa: 是否为问答模式
+
+        Returns:
+            匹配的文档列表。
+
+        Note:
+            返回结构保持不变（仍为 list）。当底层检索服务异常时，除记录
+            ``logger.exception`` 外，还会在 ``kwargs`` 中写入一个附加的内部
+            错误标记 ``_search_exception``（异常实例），供调用方按需读取以
+            区分“后端故障”与“无结果”。该标记不影响既有返回契约。
         """
         docs = []
         rag_client = PgvectorRag()
 
         # 获取嵌入模型地址
-        embed_mode = EmbedProvider.objects.get(id=kwargs["embed_model"])
+        # 若请求中的 embed_model 与知识库自身预取的 embed_model 一致，则直接复用，
+        # 避免在热点调用路径上重复触发 EmbedProvider 查询（N+1）。
+        embed_mode = cls._get_embed_provider(knowledge_base_folder, kwargs["embed_model"])
 
         # 获取重排序模型地址
         rerank_model_address = rerank_model_api_key = rerank_model_name = ""
         if kwargs["enable_rerank"]:
-            rerank_model = RerankProvider.objects.get(id=kwargs["rerank_model"])
+            rerank_model = cls._get_rerank_provider(knowledge_base_folder, kwargs["rerank_model"])
             rerank_model_address = rerank_model.base_url
             rerank_model_api_key = rerank_model.api_key or " "
             rerank_model_name = rerank_model.model_name
@@ -90,7 +133,11 @@ class KnowledgeSearchService:
         try:
             results = rag_client.search(request)
         except Exception as e:
+            # 记录服务端异常，并写入附加的内部错误标记，使调用方能够区分
+            # “后端故障”与“无结果”。返回结构（list）保持不变。
             logger.exception(f"搜索失败: {e}")
+            if isinstance(kwargs, dict):
+                kwargs["_search_exception"] = e
             return []
 
         # 处理搜索结果

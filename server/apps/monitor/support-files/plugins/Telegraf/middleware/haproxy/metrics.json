@@ -1,0 +1,778 @@
+{
+  "plugin": "Haproxy",
+  "plugin_desc": "Real-time collection of HAProxy frontend, backend, and server runtime data based on the Telegraf haproxy input, including sessions, queues, traffic, HTTP responses, errors, server health, and latency, helping users diagnose load-balancing performance and availability issues.",
+  "status_query": "any({instance_type='haproxy', collect_type='middleware'}) by (instance_id)",
+  "name": "Haproxy",
+  "icon": "mm-middleware_中间件",
+  "type": "Middleware",
+  "description": "",
+  "default_metric": "any({instance_type='haproxy'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "haproxy_scur",
+    "haproxy_rtime",
+    "haproxy_hrsp_5xx"
+  ],
+  "display_fields": [
+    {
+      "name": "Current Sessions",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Haproxy",
+          "metric": "haproxy_scur"
+        }
+      ]
+    },
+    {
+      "name": "Average Response Time",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Haproxy",
+          "metric": "haproxy_rtime"
+        }
+      ]
+    },
+    {
+      "name": "5xx Responses",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Haproxy",
+          "metric": "haproxy_hrsp_5xx"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Session",
+      "name": "haproxy_scur",
+      "display_name": "Current Sessions",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Number of active sessions currently being processed by this frontend/backend/server, reflecting real-time concurrency",
+      "query": "haproxy_scur{__$labels__}"
+    },
+    {
+      "metric_group": "Session",
+      "name": "haproxy_smax",
+      "display_name": "Max Sessions",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Maximum number of concurrent sessions observed since startup, useful for capacity planning",
+      "query": "haproxy_smax{__$labels__}"
+    },
+    {
+      "metric_group": "Session",
+      "name": "haproxy_slim",
+      "display_name": "Session Limit",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Configured session limit; current sessions approaching this value indicates risk of new connections being rejected",
+      "query": "haproxy_slim{__$labels__}"
+    },
+    {
+      "metric_group": "Session",
+      "name": "haproxy_stot",
+      "display_name": "Total Sessions",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of sessions handled since startup, a monotonically increasing counter measuring overall workload",
+      "query": "haproxy_stot{__$labels__}"
+    },
+    {
+      "metric_group": "Session",
+      "name": "haproxy_rate",
+      "display_name": "Session Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Number of new sessions established per second over the last second, reflecting real-time connection pressure",
+      "query": "haproxy_rate{__$labels__}"
+    },
+    {
+      "metric_group": "Session",
+      "name": "haproxy_rate_max",
+      "display_name": "Max Session Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Highest per-second session establishment rate observed since startup, indicating peak load",
+      "query": "haproxy_rate_max{__$labels__}"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "haproxy_qcur",
+      "display_name": "Current Queued Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Number of requests currently queued waiting for an available backend server; sustained high values indicate backend saturation",
+      "query": "haproxy_qcur{__$labels__}"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "haproxy_qmax",
+      "display_name": "Max Queued Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Maximum number of queued requests observed since startup, reflecting peak backend pressure",
+      "query": "haproxy_qmax{__$labels__}"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "haproxy_bin",
+      "display_name": "Bytes In",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of bytes received from clients since startup, measuring inbound traffic volume",
+      "query": "haproxy_bin{__$labels__}"
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "haproxy_bout",
+      "display_name": "Bytes Out",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of bytes sent to clients since startup, measuring outbound traffic volume",
+      "query": "haproxy_bout{__$labels__}"
+    },
+    {
+      "metric_group": "Request",
+      "name": "haproxy_req_rate",
+      "display_name": "HTTP Request Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Number of HTTP requests received per second over the last second, reflecting real-time request throughput",
+      "query": "haproxy_req_rate{__$labels__}"
+    },
+    {
+      "metric_group": "Request",
+      "name": "haproxy_req_rate_max",
+      "display_name": "Max HTTP Request Rate",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Highest per-second HTTP request rate observed since startup, indicating peak request pressure",
+      "query": "haproxy_req_rate_max{__$labels__}"
+    },
+    {
+      "metric_group": "Request",
+      "name": "haproxy_req_tot",
+      "display_name": "Total HTTP Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of HTTP requests received since startup, a counter measuring overall request workload",
+      "query": "haproxy_req_tot{__$labels__}"
+    },
+    {
+      "metric_group": "Response",
+      "name": "haproxy_hrsp_2xx",
+      "display_name": "2xx Responses",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of HTTP 2xx (success) responses returned, reflecting normally served requests",
+      "query": "haproxy_hrsp_2xx{__$labels__}"
+    },
+    {
+      "metric_group": "Response",
+      "name": "haproxy_hrsp_3xx",
+      "display_name": "3xx Responses",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of HTTP 3xx (redirect) responses returned",
+      "query": "haproxy_hrsp_3xx{__$labels__}"
+    },
+    {
+      "metric_group": "Response",
+      "name": "haproxy_hrsp_4xx",
+      "display_name": "4xx Responses",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of HTTP 4xx (client error) responses returned; sustained growth may indicate client or auth issues",
+      "query": "haproxy_hrsp_4xx{__$labels__}"
+    },
+    {
+      "metric_group": "Response",
+      "name": "haproxy_hrsp_5xx",
+      "display_name": "5xx Responses",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of HTTP 5xx (server error) responses returned; growth usually indicates backend service faults",
+      "query": "haproxy_hrsp_5xx{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_ereq",
+      "display_name": "Request Errors",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of request errors (e.g. invalid requests, client timeouts before request) since startup",
+      "query": "haproxy_ereq{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_econ",
+      "display_name": "Connection Errors",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems",
+      "query": "haproxy_econ{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_eresp",
+      "display_name": "Response Errors",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of response errors from backend servers since startup, including aborts and bad responses",
+      "query": "haproxy_eresp{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_dreq",
+      "display_name": "Denied Requests",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of requests denied by security ACL rules since startup",
+      "query": "haproxy_dreq{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_dresp",
+      "display_name": "Denied Responses",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of responses denied by security ACL rules since startup",
+      "query": "haproxy_dresp{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_wretr",
+      "display_name": "Connection Retries",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of times a connection to a backend server was retried since startup; high values indicate backend instability",
+      "query": "haproxy_wretr{__$labels__}"
+    },
+    {
+      "metric_group": "Error",
+      "name": "haproxy_wredis",
+      "display_name": "Request Redispatches",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of times a request was redispatched to another backend server since startup",
+      "query": "haproxy_wredis{__$labels__}"
+    },
+    {
+      "metric_group": "Server",
+      "name": "haproxy_act",
+      "display_name": "Active Servers",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Number of active (non-backup) servers currently up in this backend, reflecting available serving capacity",
+      "query": "haproxy_act{__$labels__}"
+    },
+    {
+      "metric_group": "Server",
+      "name": "haproxy_bck",
+      "display_name": "Backup Servers",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Number of backup servers currently up in this backend, available for failover",
+      "query": "haproxy_bck{__$labels__}"
+    },
+    {
+      "metric_group": "Server",
+      "name": "haproxy_chkfail",
+      "display_name": "Failed Health Checks",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of failed health checks since startup; growth indicates an unstable or failing server",
+      "query": "haproxy_chkfail{__$labels__}"
+    },
+    {
+      "metric_group": "Server",
+      "name": "haproxy_chkdown",
+      "display_name": "Down Transitions",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative number of UP-to-DOWN transitions since startup, reflecting how often the server became unavailable",
+      "query": "haproxy_chkdown{__$labels__}"
+    },
+    {
+      "metric_group": "Server",
+      "name": "haproxy_downtime",
+      "display_name": "Total Downtime",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Cumulative total downtime in seconds since startup, reflecting accumulated unavailability of the server",
+      "query": "haproxy_downtime{__$labels__}"
+    },
+    {
+      "metric_group": "Latency",
+      "name": "haproxy_qtime",
+      "display_name": "Average Queue Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average time in milliseconds spent in the queue waiting for a free server, computed over the last 1024 requests",
+      "query": "haproxy_qtime{__$labels__}"
+    },
+    {
+      "metric_group": "Latency",
+      "name": "haproxy_ctime",
+      "display_name": "Average Connect Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average time in milliseconds to establish a connection to the backend server, computed over the last 1024 requests",
+      "query": "haproxy_ctime{__$labels__}"
+    },
+    {
+      "metric_group": "Latency",
+      "name": "haproxy_rtime",
+      "display_name": "Average Response Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average backend response time in milliseconds, computed over the last 1024 requests; high values indicate slow backends",
+      "query": "haproxy_rtime{__$labels__}"
+    },
+    {
+      "metric_group": "Latency",
+      "name": "haproxy_ttime",
+      "display_name": "Average Total Time",
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "pxname",
+          "description": "代理(前端/后端名)"
+        },
+        {
+          "name": "svname",
+          "description": "服务(FRONTEND/BACKEND/服务器名)"
+        }
+      ],
+      "description": "Average total session time in milliseconds end to end, computed over the last 1024 requests",
+      "query": "haproxy_ttime{__$labels__}"
+    }
+  ]
+}

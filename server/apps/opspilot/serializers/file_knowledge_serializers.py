@@ -6,4 +6,4 @@ from apps.opspilot.models import FileKnowledge
 class FileKnowledgeSerializer(serializers.ModelSerializer):
     class Meta:
         model = FileKnowledge
-        fields = "__all__"
+        fields = ["id", "file", "knowledge_document"]

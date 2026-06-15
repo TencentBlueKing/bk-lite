@@ -113,6 +113,7 @@ class CollectModels(MaintainerInfo, TimeInfo):
     collect_data = JSONField(default=dict, help_text="采集原数据")
     collect_digest = JSONField(default=dict, help_text="采集摘要数据")
     format_data = JSONField(default=dict, help_text="采集返回的分类后的数据")
+    topology_snapshot = models.JSONField(default=dict, blank=True, verbose_name="拓扑链路快照与过程数据")
     team = JSONField(default=list, help_text="关联组织")  # 把params里的组织单独抽出来，方便权限控制
 
     is_system = models.BooleanField(default=False, help_text="是否为系统内置任务")
@@ -132,12 +133,24 @@ class CollectModels(MaintainerInfo, TimeInfo):
         relation_data = self.format_data.get("association", [])
         raw_data = self.format_data.get("__raw_data__", [])
 
+        # 拓扑摘要数据源：新流水线把解析后的链路存进 topology_snapshot，
+        # 前端「拓扑摘要」面板据此渲染（旧的 network_topology_facts_info_gauge 指标已废弃，
+        # 不再出现在 raw_data 中，前端不能再以它为数据源）。
+        snapshot = self.topology_snapshot or {}
+
         return {
             "add": {"data": add_data, "count": len(add_data)},
             "update": {"data": update_data, "count": len(update_data)},
             "delete": {"data": delete_data, "count": len(delete_data)},
             "relation": {"data": relation_data, "count": len(relation_data)},
             "raw_data": {"data": raw_data, "count": len(raw_data)},
+            "topology": {
+                "summary": snapshot.get("summary", {}),
+                "links": snapshot.get("links", []),
+                "stale_links": snapshot.get("stale_links", []),
+                "unresolved_neighbors": snapshot.get("unresolved_neighbors", []),
+                "dropped": snapshot.get("dropped", []),
+            },
         }
 
     @property
