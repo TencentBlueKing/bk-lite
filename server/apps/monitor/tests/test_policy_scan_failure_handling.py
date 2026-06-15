@@ -998,6 +998,19 @@ def test_threshold_event_does_not_reuse_active_no_data_alert(monkeypatch):
     )
     _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
 
+    class _Atomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    _install_module(
+        monkeypatch,
+        "django.db",
+        transaction=types.SimpleNamespace(atomic=lambda *a, **k: _Atomic(), on_commit=lambda cb: cb()),
+    )
+
     module = _load_module(
         "monitor_policy_event_alert_manager_key_test_module",
         Path(__file__).resolve().parents[1] / "tasks" / "services" / "policy_scan" / "event_alert_manager.py",
@@ -1020,7 +1033,7 @@ def test_threshold_event_does_not_reuse_active_no_data_alert(monkeypatch):
     existing_updates = []
 
     manager = object.__new__(module.EventAlertManager)
-    manager.policy = types.SimpleNamespace(id=1006, name="mixed-policy")
+    manager.policy = types.SimpleNamespace(id=1006, name="mixed-policy", notice=True)
     manager.active_alerts = [active_no_data_alert]
     manager._create_alerts_from_events = lambda events: created_from_events.extend(events) or [created_alert]
     manager.create_events = lambda events: persisted_events.extend(events) or events
