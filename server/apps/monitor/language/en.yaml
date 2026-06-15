@@ -3601,6 +3601,22 @@ monitor_object_plugin:
       CPU and memory as utilization percentages directly; fan status is natively
       1=normal and power-supply status is normalized to the unified 1=normal
       convention.
+  Switch Netgear SNMP:
+    name: Netgear (Telegraf)
+    desc: Netgear (FASTPATH)-specific SNMP collection template for switches. In
+      addition to standard IF-MIB interface metrics, it collects FASTPATH-BOXSERVICES
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature sensors, fan and power-supply status. Memory
+      utilization is computed as (total - free) / total; fan and power-supply states
+      are natively 1=normal.
+  Switch TP-Link SNMP:
+    name: TP-Link (Telegraf)
+    desc: TP-Link (JetStream)-specific SNMP collection template for switches (TPLINK
+      private MIB, enterprise 11863). In addition to standard IF-MIB interface
+      metrics, it collects TP-Link private OIDs for device health including CPU and
+      memory utilization, both reported directly as percentages. TP-Link SMB switches
+      expose no temperature/fan/power-supply sensors, so those health items are not
+      collected (N/A).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

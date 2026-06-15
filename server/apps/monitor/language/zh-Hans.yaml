@@ -3199,6 +3199,12 @@ monitor_object_plugin:
   Switch D-Link SNMP:
     name: D-Link（Telegraf）
     desc: D-Link DES/DGS 交换机专用 SNMP 采集模板（EQUIPMENT-MIB，企业号 171）。在标准 IF-MIB 接口指标之外，额外采集 D-Link 私有 OID 的设备健康指标：CPU 使用率、内存使用率、温度传感器、风扇与电源状态。D-Link 以利用率百分比直接上报 CPU 与内存；风扇状态原生 1=正常，电源状态已归一化为统一的 1=正常 约定。
+  Switch Netgear SNMP:
+    name: Netgear（Telegraf）
+    desc: Netgear (FASTPATH) 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 FASTPATH-BOXSERVICES 私有 OID 的设备健康指标：CPU 使用率、系统内存（总量/空闲）、温度传感器、风扇与电源状态。内存使用率按 (总量-空闲)/总量 计算；风扇与电源状态原生 1=正常。
+  Switch TP-Link SNMP:
+    name: TP-Link（Telegraf）
+    desc: TP-Link (JetStream) 交换机专用 SNMP 采集模板（TPLINK 私有 MIB，企业号 11863）。在标准 IF-MIB 接口指标之外，额外采集 TP-Link 私有 OID 的设备健康指标：CPU 与内存使用率，均以利用率百分比直接上报。TP-Link 中小企业交换机无温度/风扇/电源传感器 OID，故此类健康项不采集（N/A）。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
