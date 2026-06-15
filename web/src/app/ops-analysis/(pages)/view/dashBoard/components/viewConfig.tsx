@@ -599,9 +599,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleConfirm = async () => {
     try {
       const values: FormValues = await form.validateFields();
-      if (values.params && selectedDataSource?.params) {
+      if (selectedDataSource?.params?.length) {
+        const formParams = values.params || form.getFieldValue('params') || {};
         values.dataSourceParams = processFormParamsForSubmit(
-          values.params,
+          formParams,
           selectedDataSource.params,
         );
         delete values.params;

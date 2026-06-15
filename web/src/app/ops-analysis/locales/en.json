@@ -340,6 +340,8 @@
     "inputMode": "Input Mode",
     "inputModeInput": "Text Input",
     "inputModeSelect": "Dropdown",
+    "inputModeRadio": "Radio",
+    "inputModeOrganization": "Organization",
     "configOptions": "Configure Options",
     "configOptionsFirst": "Configure options first",
     "optionLabel": "Option Label",

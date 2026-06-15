@@ -160,6 +160,8 @@ export const useDashboardLayoutSync = ({
             defaultValue,
             order: index,
             enabled: existing?.enabled ?? true,
+            inputMode: existing?.inputMode,
+            options: existing?.options,
           };
         },
       );

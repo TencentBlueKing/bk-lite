@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useState, useEffect } from 'react';
-import { Input, Button, ConfigProvider, Select } from 'antd';
+import { Input, Button, ConfigProvider, Select, Radio } from 'antd';
 import { SearchOutlined, ReloadOutlined } from '@ant-design/icons';
 import dayjs from 'dayjs';
 import TimeSelector from '@/components/time-selector';
+import GroupTreeSelect from '@/components/group-tree-select';
+import { normalizeUnifiedFilterInputMode } from '@/app/ops-analysis/utils/widgetDataTransform';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
@@ -23,6 +25,17 @@ interface UnifiedFilterBarProps {
   appearance?: 'default' | 'embedded';
   popupZIndex?: number;
 }
+
+const toSingleOrganizationValue = (value: FilterValue): number | undefined => {
+  if (typeof value !== 'string' && typeof value !== 'number') return undefined;
+  const normalized = Number(value);
+  return Number.isNaN(normalized) ? undefined : normalized;
+};
+
+const toFilterValue = (value: number | number[] | undefined): FilterValue => {
+  if (Array.isArray(value)) return value[0] ?? null;
+  return value ?? null;
+};
 
 const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   definitions,
@@ -52,6 +65,13 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   }
 
   const isEmbedded = appearance === 'embedded';
+  const popupTheme = popupZIndex
+    ? {
+      token: {
+        zIndexPopupBase: popupZIndex,
+      },
+    }
+    : undefined;
 
   const handleLocalValueChange = (filterId: string, value: FilterValue) => {
     setLocalValues((prev) => ({
@@ -140,10 +160,10 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
 
       case 'string':
       default:
-        if (definition.inputMode === 'select' && definition.options?.length) {
+        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'select') {
           return (
             <Select
-              value={(value as string) || undefined}
+              value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
               onChange={(val) =>
                 handleLocalValueChange(definition.id, val ?? null)
               }
@@ -155,9 +175,37 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
           );
         }
 
+        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'radio') {
+          return (
+            <Radio.Group
+              value={(typeof value === 'string' || typeof value === 'number') ? value : undefined}
+              onChange={(e) =>
+                handleLocalValueChange(definition.id, e.target.value ?? null)
+              }
+              options={definition.options}
+              optionType="button"
+              buttonStyle="outline"
+            />
+          );
+        }
+
+        if (normalizeUnifiedFilterInputMode(definition.inputMode) === 'organization') {
+          return (
+            <GroupTreeSelect
+              value={toSingleOrganizationValue(value)}
+              onChange={(val) => handleLocalValueChange(definition.id, toFilterValue(val))}
+              multiple={false}
+              mode="ownership"
+              allowClear
+              placeholder=" "
+              style={{ minWidth: 180 }}
+            />
+          );
+        }
+
         return (
           <Input
-            value={(value as string) || ''}
+            value={(typeof value === 'string' || typeof value === 'number') ? String(value) : ''}
             onChange={(e) =>
               handleLocalValueChange(definition.id, e.target.value)
             }
@@ -172,15 +220,7 @@ const UnifiedFilterBar: React.FC<UnifiedFilterBarProps> = ({
   return (
     <ConfigProvider
       getPopupContainer={() => document.body}
-      theme={
-        popupZIndex
-          ? {
-              token: {
-                zIndexPopupBase: popupZIndex,
-              },
-            }
-          : undefined
-      }
+      theme={popupTheme}
     >
       <div
         className={
