@@ -506,7 +506,9 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /alcatel/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
   { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
   { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
-  { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' }
+  { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },
+  { match: /tplink|tp-link/i, label: 'TP-Link', icon: 'mm-tplink_tplink' },
+  { match: /zyxel/i, label: 'Zyxel', icon: 'mm-zyxel_zyxel' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

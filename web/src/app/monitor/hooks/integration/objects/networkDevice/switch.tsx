@@ -118,6 +118,8 @@ export const useSwitchConfig = () => {
       'Switch MikroTik SNMP': 'snmp_mikrotik',
       'Switch D-Link SNMP': 'snmp_dlink',
       'Switch Netgear SNMP': 'snmp_netgear',
+      'Switch TP-Link SNMP': 'snmp_tplink',
+      'Switch Zyxel SNMP': 'snmp_zyxel',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }
