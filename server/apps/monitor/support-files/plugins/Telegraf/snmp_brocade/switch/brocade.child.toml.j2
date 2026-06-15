@@ -1,0 +1,114 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_brocade"
+        config_type = "brocade"
+        brand = "brocade"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- Brocade/Foundry CPU 1-min average utilization (FOUNDRY-SN-AGENT-MIB snAgGblCpuUtil1MinAvg, scalar %) ----
+    # 待现网核验：1.3.6.1.4.1.1991.1.1.2.1.52.0（已是 0-100%）。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.52.0"
+        name = "usage"
+    # ---- Brocade/Foundry dynamic memory utilization (FOUNDRY-SN-AGENT-MIB snAgGblDynMemUtil, scalar %) ----
+    # 待现网核验：1.3.6.1.4.1.1991.1.1.2.1.53.0（% 直报，无 used/free 字节）→ 统一 device_memory_usage(原始%)。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.53.0"
+        name = "usage"
+    # ---- Brocade/Foundry chassis temperature (FOUNDRY-SN-AGENT-MIB snChasActualTemperature) ----
+    # 待现网核验：1.3.6.1.4.1.1991.1.1.1.1.18 → device_temperature_celsius。
+    # ⚠ 原始单位是 0.5℃/单位（模版有 MULTIPLIER 0.5），telegraf inputs.snmp 不能做算术缩放 →
+    #   真机采到的是原始值（需 ×0.5 才是摄氏度），留「待现网核验」；mock 直接发摄氏度，验证不受影响。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.1.1.18"
+        name = "celsius"
+    # ---- Brocade/Foundry fans (FOUNDRY-SN-AGENT-MIB snChasFanTable) ----
+    # 待现网核验：风扇状态 snChasFanOperStatus 1.3.6.1.4.1.1991.1.1.1.3.1.1.3；descr=snChasFanDescription ...3.1.1.2。
+    # 枚举非 1=normal：1 other / 2 normal / 3 failure → 下方 processors.enum 归一(2→1，其余→2)。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.1.3.1.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.1.3.1.1.3"
+        name = "state"
+    # ---- Brocade/Foundry power supplies (FOUNDRY-SN-AGENT-MIB snChasPwrSupplyTable) ----
+    # 待现网核验：电源状态 snChasPwrSupplyOperStatus 1.3.6.1.4.1.1991.1.1.1.2.1.1.3；descr=snChasPwrSupplyDescription ...2.1.1.2。
+    # 枚举同风扇：1 other / 2 normal / 3 failure → 下方 processors.enum 归一(2→1，其余→2)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.1.2.1.1.2"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.1.2.1.1.3"
+        name = "state"
+
+# ---- 枚举归一：把 Brocade/Foundry snChas*OperStatus 映射到统一 1=normal/2=abnormal（偏离1即异常）----
+# 待现网核验：仅作用于本品牌(tagpass brand=brocade)，避免影响其它品牌同名字段。
+# 健康态 2 normal → 1；其余(1 other / 3 failure)→2。
+[[processors.enum]]
+    [processors.enum.tagpass]
+        brand = ["brocade"]
+    [[processors.enum.mapping]]
+        field = "device_fan_state"
+        dest = "device_fan_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1
+    [[processors.enum.mapping]]
+        field = "device_psu_state"
+        dest = "device_psu_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1

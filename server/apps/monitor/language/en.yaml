@@ -3560,6 +3560,15 @@ monitor_object_plugin:
       (total/free), temperature, fan and power-supply status. Memory utilization is
       computed as (total - free) / total; fan/psu states are normalized to the
       unified 1=normal convention.
+  Switch Brocade SNMP:
+    name: Brocade (Telegraf)
+    desc: Brocade/Foundry-specific SNMP collection template for switches
+      (FastIron/NetIron). In addition to standard IF-MIB interface metrics, it
+      collects FOUNDRY-SN-AGENT-MIB private OIDs for device health including
+      1-minute average CPU utilization, dynamic memory utilization, chassis
+      temperature sensors, fan and power-supply status. Brocade reports CPU and
+      memory as utilization percentages directly; fan/psu states are normalized to
+      the unified 1=normal convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
