@@ -40,6 +40,9 @@ class CustomReportingExtension:
     def list_tasks(self, request, params) -> dict:
         return {"count": 0, "next": None, "previous": None, "results": []}
 
+    def get_stats(self, request, params) -> dict:
+        return {"total": 0, "receiving": 0, "pending_review": 0}
+
     def get_task(self, request, task_id) -> dict:
         raise BaseAppException(_NOT_ENABLED)
 
@@ -54,6 +57,9 @@ class CustomReportingExtension:
 
     def get_batch_activity(self, request, task_id) -> dict:
         raise BaseAppException(_NOT_ENABLED)
+
+    def get_field_registrations(self, request, task_id) -> list:
+        return []
 
     def get_onboarding_document(self, request, task_id) -> dict:
         raise BaseAppException(_NOT_ENABLED)

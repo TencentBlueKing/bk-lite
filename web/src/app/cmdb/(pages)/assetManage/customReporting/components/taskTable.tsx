@@ -1,14 +1,14 @@
 'use client';
 
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Modal, Space, Switch, Tag, Tooltip, message } from 'antd';
+import { Button, Input, Modal, Space, Switch, Tag, Tooltip, Typography, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
 import { useUserInfoContext } from '@/context/userInfo';
-import type { CustomReportingTask } from '@/app/cmdb/types/customReporting';
+import type { CustomReportingStats, CustomReportingTask } from '@/app/cmdb/types/customReporting';
 
 interface TaskTableProps {
   refreshToken: number;
@@ -31,6 +31,32 @@ const flattenGroupNames = (
   return nameMap;
 };
 
+const renderSparkline = (data: number[] = []) => {
+  if (!data.length || data.every((n) => n === 0)) {
+    return <span className="text-[var(--color-text-3)]">--</span>;
+  }
+  const width = 88;
+  const height = 24;
+  const max = Math.max(...data, 1);
+  const step = data.length > 1 ? width / (data.length - 1) : width;
+  const points = data
+    .map(
+      (v, i) =>
+        `${(i * step).toFixed(1)},${(height - (v / max) * (height - 2) - 1).toFixed(1)}`,
+    )
+    .join(' ');
+  return (
+    <svg width={width} height={height} className="block">
+      <polyline
+        points={points}
+        fill="none"
+        stroke="var(--color-primary)"
+        strokeWidth="1.5"
+      />
+    </svg>
+  );
+};
+
 export default function TaskTable({
   refreshToken,
   onCreate,
@@ -40,9 +66,16 @@ export default function TaskTable({
 }: TaskTableProps) {
   const { t } = useTranslation();
   const { groupTree } = useUserInfoContext();
-  const { getTaskList, deleteTask, updateTask } = useCustomReportingApi();
+  const { getTaskList, getStats, deleteTask, updateTask, rotateCredential } =
+    useCustomReportingApi();
   const [loading, setLoading] = useState(false);
+  const [searchName, setSearchName] = useState('');
   const [dataSource, setDataSource] = useState<CustomReportingTask[]>([]);
+  const [stats, setStats] = useState<CustomReportingStats>({
+    total: 0,
+    receiving: 0,
+    pending_review: 0,
+  });
   const [pagination, setPagination] = useState({
     current: 1,
     pageSize: 20,
@@ -60,13 +93,26 @@ export default function TaskTable({
     [groupNameMap],
   );
 
+  const loadStats = useCallback(async () => {
+    try {
+      const data = await getStats();
+      setStats(
+        data || { total: 0, receiving: 0, pending_review: 0 },
+      );
+    } catch {
+      // 统计失败不阻塞列表
+    }
+  }, [getStats]);
+
   const loadTasks = useCallback(
-    async (nextPagination = pagination) => {
+    async (nextPagination = pagination, name = searchName) => {
       try {
         setLoading(true);
+        void loadStats();
         const data = await getTaskList({
           page: nextPagination.current,
           page_size: nextPagination.pageSize,
+          ...(name ? { name } : {}),
         });
         setDataSource(data?.results || []);
         setPagination((prev) => ({
@@ -79,7 +125,7 @@ export default function TaskTable({
         setLoading(false);
       }
     },
-    [getTaskList, pagination],
+    [getTaskList, loadStats, pagination, searchName],
   );
 
   useEffect(() => {
@@ -120,6 +166,35 @@ export default function TaskTable({
     });
     message.success(t('successfulSetted'));
     await loadTasks();
+  };
+
+  const handleRotateCredential = (task: CustomReportingTask) => {
+    const credentialId = task.credential?.id;
+    if (!credentialId) {
+      message.warning(t('CustomReporting.noCredential'));
+      return;
+    }
+    Modal.confirm({
+      title: t('CustomReporting.rotateCredential'),
+      content: t('CustomReporting.rotateConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      centered: true,
+      onOk: async () => {
+        const data = await rotateCredential(task.id, credentialId);
+        if (data?.token) {
+          Modal.success({
+            title: t('CustomReporting.rotateCredential'),
+            content: (
+              <Typography.Text copyable={{ text: data.token }}>
+                {data.token}
+              </Typography.Text>
+            ),
+          });
+        }
+        await loadTasks();
+      },
+    });
   };
 
   const columns: ColumnsType<CustomReportingTask> = [
@@ -177,6 +252,37 @@ export default function TaskTable({
       },
     },
     {
+      title: t('CustomReporting.lastReportedAt'),
+      dataIndex: 'last_reported_at',
+      key: 'last_reported_at',
+      width: 180,
+      render: (value: string) =>
+        value ? dayjs(value).format('YYYY-MM-DD HH:mm:ss') : '--',
+    },
+    {
+      title: t('CustomReporting.recentBatches24h'),
+      key: 'trend',
+      width: 140,
+      render: (_, task) => renderSparkline(task.recent_batch_trend),
+    },
+    {
+      title: t('CustomReporting.status'),
+      key: 'status',
+      width: 120,
+      render: (_, task) => {
+        const status = task.status || 'no_report';
+        const color =
+          status === 'receiving'
+            ? 'success'
+            : status === 'pending_review'
+              ? 'warning'
+              : 'default';
+        return (
+          <Tag color={color}>{t(`CustomReporting.taskStatusLabel.${status}`)}</Tag>
+        );
+      },
+    },
+    {
       title: t('CustomReporting.enabled'),
       key: 'is_enabled',
       width: 120,
@@ -198,7 +304,7 @@ export default function TaskTable({
     {
       title: t('action'),
       key: 'action',
-      width: 240,
+      width: 320,
       fixed: 'right',
       render: (_, task) => (
         <Space size={0} wrap>
@@ -213,6 +319,9 @@ export default function TaskTable({
               {t('CustomReporting.batch')}
             </Button>
           </Tooltip>
+          <Button type="link" onClick={() => handleRotateCredential(task)}>
+            {t('CustomReporting.rotateCredential')}
+          </Button>
           <Button danger type="link" onClick={() => handleDelete(task)}>
             {t('common.delete')}
           </Button>
@@ -223,8 +332,44 @@ export default function TaskTable({
 
   return (
     <div className="flex-1 min-h-0 rounded border border-[var(--color-border)] bg-[var(--color-bg)] p-[16px]">
+      <div className="mb-[16px] grid grid-cols-3 gap-[12px]">
+        <div className="rounded border border-[var(--color-border)] p-[16px]">
+          <div className="text-[13px] text-[var(--color-text-3)]">
+            {t('CustomReporting.statTotal')}
+          </div>
+          <div className="mt-[4px] text-[24px] font-[600]">{stats.total}</div>
+        </div>
+        <div className="rounded border border-[var(--color-border)] p-[16px]">
+          <div className="text-[13px] text-[var(--color-text-3)]">
+            {t('CustomReporting.statReceiving')}
+          </div>
+          <div className="mt-[4px] text-[24px] font-[600] text-[var(--color-success)]">
+            {stats.receiving}
+          </div>
+        </div>
+        <div className="rounded border border-[var(--color-border)] p-[16px]">
+          <div className="text-[13px] text-[var(--color-text-3)]">
+            {t('CustomReporting.statPendingReview')}
+          </div>
+          <div className="mt-[4px] text-[24px] font-[600] text-[var(--color-warning)]">
+            {stats.pending_review}
+          </div>
+        </div>
+      </div>
       <div className="mb-[12px] flex items-center justify-between gap-[12px]">
-        <div className="text-[14px] font-[600]">{t('CustomReporting.taskList')}</div>
+        <Space>
+          <div className="text-[14px] font-[600]">{t('CustomReporting.taskList')}</div>
+          <Input.Search
+            allowClear
+            className="w-[240px]"
+            placeholder={t('CustomReporting.searchPlaceholder')}
+            onSearch={(value) => {
+              const next = value.trim();
+              setSearchName(next);
+              void loadTasks({ ...pagination, current: 1 }, next);
+            }}
+          />
+        </Space>
         <Space>
           <Button onClick={() => void loadTasks()}>{t('common.refresh')}</Button>
           <Button type="primary" onClick={onCreate}>
