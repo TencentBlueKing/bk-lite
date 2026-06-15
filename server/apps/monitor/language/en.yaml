@@ -3617,6 +3617,22 @@ monitor_object_plugin:
       memory utilization, both reported directly as percentages. TP-Link SMB switches
       expose no temperature/fan/power-supply sensors, so those health items are not
       collected (N/A).
+  Switch Zyxel SNMP:
+    name: Zyxel (Telegraf)
+    desc: Zyxel-specific SNMP collection template for switches (ZYXEL private MIB,
+      enterprise 890). In addition to standard IF-MIB interface metrics, it collects
+      Zyxel private OIDs for device health including CPU utilization (direct
+      percentage) and hardware temperature sensors. Zyxel exposes fan as raw RPM (not
+      a state) and this switch line has no memory-utilization or power-supply-state
+      OID, so those health items are not collected (N/A).
+  Switch QTech SNMP:
+    name: QTech (Telegraf)
+    desc: QTech (QSW)-specific SNMP collection template for switches (QTECH-MIB,
+      enterprise 27514). In addition to standard IF-MIB interface metrics, it collects
+      QTech private OIDs for device health including CPU utilization, system memory
+      (used/total), temperature, fan and power-supply status. Memory utilization is
+      computed from used/total; fan/psu states (native 0=normal) are normalized to
+      the unified 1=normal convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

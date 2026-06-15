@@ -3205,6 +3205,12 @@ monitor_object_plugin:
   Switch TP-Link SNMP:
     name: TP-Link（Telegraf）
     desc: TP-Link (JetStream) 交换机专用 SNMP 采集模板（TPLINK 私有 MIB，企业号 11863）。在标准 IF-MIB 接口指标之外，额外采集 TP-Link 私有 OID 的设备健康指标：CPU 与内存使用率，均以利用率百分比直接上报。TP-Link 中小企业交换机无温度/风扇/电源传感器 OID，故此类健康项不采集（N/A）。
+  Switch Zyxel SNMP:
+    name: Zyxel（Telegraf）
+    desc: Zyxel 交换机专用 SNMP 采集模板（ZYXEL 私有 MIB，企业号 890）。在标准 IF-MIB 接口指标之外，额外采集 Zyxel 私有 OID 的设备健康指标：CPU 使用率（百分比直报）与硬件温度传感器。Zyxel 风扇以原始 RPM 上报（非状态）、且该交换机线无内存利用率与电源状态 OID，故此类健康项不采集（N/A）。
+  Switch QTech SNMP:
+    name: QTech（Telegraf）
+    desc: QTech (QSW) 交换机专用 SNMP 采集模板（QTECH-MIB，企业号 27514）。在标准 IF-MIB 接口指标之外，额外采集 QTech 私有 OID 的设备健康指标：CPU 使用率、系统内存（已用/总量）、温度、风扇与电源状态。内存使用率按 used/total 计算；风扇/电源状态（原生 0=正常）已归一化为统一的 1=正常 约定。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
