@@ -1,5 +1,11 @@
 import type { PluginItem } from '@/app/monitor/types/integration';
 
+export type PluginConfigContentState =
+  | 'none'
+  | 'reportedOnly'
+  | 'missingConfig'
+  | 'configured';
+
 export const isSameTemplatePlugin = (
   currentPlugin: PluginItem | null,
   nextPlugin: PluginItem | null
@@ -17,6 +23,17 @@ export const isSameTemplatePlugin = (
   );
 };
 
+export const isPluginConfigurable = (plugin: PluginItem | null) => {
+  if (!plugin) return false;
+  if (plugin.configured === false || plugin.config_source === 'reported_only') {
+    return false;
+  }
+  if (plugin.configured === true) {
+    return true;
+  }
+  return plugin.collect_mode !== 'manual';
+};
+
 export const getPluginConfigFetchDecision = (
   currentPlugin: PluginItem | null,
   nextPlugin: PluginItem
@@ -24,6 +41,15 @@ export const getPluginConfigFetchDecision = (
   const shouldChangeSelection = !isSameTemplatePlugin(currentPlugin, nextPlugin);
   return {
     shouldChangeSelection,
-    shouldFetchConfig: shouldChangeSelection && nextPlugin.collect_mode !== 'manual'
+    shouldFetchConfig: shouldChangeSelection && isPluginConfigurable(nextPlugin)
   };
+};
+
+export const getPluginConfigContentState = (
+  plugin: PluginItem | null,
+  configList: unknown[]
+): PluginConfigContentState => {
+  if (!plugin) return 'none';
+  if (!isPluginConfigurable(plugin)) return 'reportedOnly';
+  return configList.length ? 'configured' : 'missingConfig';
 };

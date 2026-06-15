@@ -17,6 +17,7 @@ import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import {
   OperateModalProps,
@@ -101,7 +102,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
+  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
   const { selectedGroup } = useUserInfoContext();
   const [params, setParams] = React.useState<ParamItem[]>([]);
   const [loading, setLoading] = React.useState(false);
@@ -875,7 +878,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
       placement="right"
       width={900}
       open={open}
-      onClose={onClose}
+      maskClosable={false}
+      onClose={handleClose}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Button
@@ -885,7 +889,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           >
             {t('common.confirm')}
           </Button>
-          <Button style={{ marginLeft: 8 }} onClick={onClose}>
+          <Button style={{ marginLeft: 8 }} onClick={handleClose}>
             {t('common.cancel')}
           </Button>
         </div>

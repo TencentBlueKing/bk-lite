@@ -1,5 +1,6 @@
 """作业管理开放接口（第三方 App 调用）"""
 
+import os
 from datetime import datetime, timedelta
 
 from asgiref.sync import async_to_sync
@@ -37,6 +38,19 @@ def _parse_expire_days(raw):
     if days < 1 or days > MAX_EXPIRE_DAYS:
         return None, "expire_days 非法"
     return days, None
+
+
+def _int_env(name, default):
+    try:
+        return int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+
+
+# 单文件大小上界（env 可配、保守默认；负责人可按部署调整，无需改码）。
+# TTL 只兜住保存时长，不兜单次上传体量——防止持有 UserAPISecret 的调用方
+# 用超大文件在过期前打满对象存储（issue #3154 的"大小"维度）。
+MAX_UPLOAD_FILE_SIZE_MB = _int_env("JOB_MAX_UPLOAD_FILE_SIZE_MB", 1024)
 
 
 def _get_user_team_from_request(request):
@@ -102,7 +116,8 @@ class OpenFileUploadView(APIView):
         Body: multipart/form-data { file: <binary>, expire_days: <int> }
 
     参数:
-        file: 必填，上传的文件
+        file: 必填，上传的文件（单文件大小上限默认 1024MB，
+            可由环境变量 JOB_MAX_UPLOAD_FILE_SIZE_MB 调整）
         expire_days: 可选，过期天数（默认 7，范围 1-365）
             文件在 expire_days 天后由定时任务自动清理；不存在永久保存选项。
 
@@ -130,6 +145,13 @@ class OpenFileUploadView(APIView):
         if not file:
             return Response(
                 {"detail": "未上传文件"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 单文件大小上界（防超大单文件在过期前占满存储）
+        if getattr(file, "size", 0) and file.size > MAX_UPLOAD_FILE_SIZE_MB * 1024 * 1024:
+            return Response(
+                {"detail": f"文件大小超过上限（{MAX_UPLOAD_FILE_SIZE_MB}MB）"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
 

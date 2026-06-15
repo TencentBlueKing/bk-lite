@@ -28,6 +28,7 @@ interface SubscriptionRuleFormProps {
 
 export interface SubscriptionRuleFormRef {
   submit: (isEnabled: boolean) => Promise<void>;
+  isDirty: () => boolean;
 }
 
 const EMPTY_CONDITION_FILTER = { query_list: [] };
@@ -374,7 +375,8 @@ const SubscriptionRuleForm = forwardRef<SubscriptionRuleFormRef, SubscriptionRul
 
   useImperativeHandle(ref, () => ({
     submit: handleSubmit,
-  }), [handleSubmit]);
+    isDirty: () => form.isFieldsTouched(),
+  }), [handleSubmit, form]);
 
   const currentFilterType = watchedFilterType || quickDefaults?.filter_type || initialValues?.filter_type || 'instances';
   const currentInstanceFilter = useMemo(() => {

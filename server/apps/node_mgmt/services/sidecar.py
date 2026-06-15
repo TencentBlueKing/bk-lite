@@ -447,6 +447,15 @@ class Sidecar:
         if node_types:
             request_data.update(node_type=node_types[0])
 
+        resolved_node_type = request_data.get("node_type") or (node.node_type if node else "")
+        has_existing_cpu_architecture = bool(getattr(node, "cpu_architecture", ""))
+        if (
+            resolved_node_type == ControllerConstants.NODE_TYPE_CONTAINER
+            and not request_data.get("cpu_architecture")
+            and not has_existing_cpu_architecture
+        ):
+            request_data.update(cpu_architecture=NodeConstants.X86_64_ARCH)
+
         if not node:
             # 创建节点
             node = Node.objects.create(**request_data)

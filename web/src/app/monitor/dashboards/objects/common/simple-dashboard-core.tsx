@@ -17,6 +17,7 @@ import {
   getLatestChartValue,
   mergeChartSeries,
   buildPreviousPeriodTimeValues,
+  freezeTimeValues,
   getPeriodCompare,
   runWithConcurrency,
   toMetricSeries,
@@ -448,7 +449,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     if (!silent) setLoading(true);
     try {
       if (displayMode === 'dashboard') {
-        const previousTimeValues = buildPreviousPeriodTimeValues(timeValues);
+        // 本次刷新冻结一个绝对时间窗,所有序列(含 KPI/采集状态/趋势/对比)复用,
+        // 避免每条序列各自现算 now 导致时间戳网格错位、多序列面板 tooltip 只显示一条。
+        const frozenTimeValues = freezeTimeValues(timeValues);
+        const previousTimeValues = buildPreviousPeriodTimeValues(frozenTimeValues);
         const compareMetrics = config.metrics.filter((m) => config.summaryCards.some((c) => c.compare && c.metric === m.name));
 
         // ── Group 1: summary metrics (StatCard values) ──
@@ -458,10 +462,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         const summaryResultsPromise = runWithConcurrency(
           summaryMetrics,
           METRIC_QUERY_CONCURRENCY,
-          (metric) => loadSingleMetric(metric, timeValues)
+          (metric) => loadSingleMetric(metric, frozenTimeValues)
         );
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(config.collectionStatusQuery, 'counts', idValues, instanceIdKeys, timeValues, undefined, false)
+          buildSearchParams(config.collectionStatusQuery, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false)
         )
           .then((result) =>
             toMetricSeries(
@@ -524,7 +528,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
         // ── Group 2: trend/chart metrics — loaded async in background ──
         if (trendMetrics.length > 0) {
-          runWithConcurrency(trendMetrics, METRIC_QUERY_CONCURRENCY, (metric) => loadSingleMetric(metric, timeValues))
+          runWithConcurrency(trendMetrics, METRIC_QUERY_CONCURRENCY, (metric) => loadSingleMetric(metric, frozenTimeValues))
             .then((trendResults) => {
               if (!loadSequence.isCurrent(loadSeq)) return;
               setSeries((prev) => ({ ...prev, ...Object.fromEntries(trendResults) }));

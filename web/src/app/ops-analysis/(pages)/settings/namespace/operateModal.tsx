@@ -3,6 +3,7 @@
 import React, { useEffect } from 'react';
 import { Drawer, Form, Input, Button, message, Switch } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { NamespaceOperateModalProps } from '@/app/ops-analysis/types/namespace';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 
@@ -13,9 +14,11 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
   onSuccess,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [form] = Form.useForm();
   const [loading, setLoading] = React.useState(false);
   const { createNamespace, updateNamespace } = useNamespaceApi();
+  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
 
   useEffect(() => {
     if (!open) return;
@@ -68,7 +71,8 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
       placement="right"
       width={600}
       open={open}
-      onClose={onClose}
+      maskClosable={false}
+      onClose={handleClose}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Button
@@ -78,7 +82,7 @@ const OperateModal: React.FC<NamespaceOperateModalProps> = ({
           >
             {t('common.confirm')}
           </Button>
-          <Button style={{ marginLeft: 8 }} onClick={onClose}>
+          <Button style={{ marginLeft: 8 }} onClick={handleClose}>
             {t('common.cancel')}
           </Button>
         </div>

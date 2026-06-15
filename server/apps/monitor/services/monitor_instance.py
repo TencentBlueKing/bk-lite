@@ -276,6 +276,7 @@ class InstanceSearch:
             # 添加组织信息
             item["organization"] = list(org_map.get(item["instance_id"], []))
             item["plugins"] = []
+            appended_plugin_ids = set()
 
             db_confs = confs_map.get(item["instance_id"], set())
             vm_confs = instance_plugin_status_map.get(item["instance_id"], set())
@@ -287,25 +288,31 @@ class InstanceSearch:
                     db_confs & vm_confs,
                     PluginConstants.STATUS_NORMAL,
                     PluginConstants.COLLECT_MODE_AUTO,
+                    True,
+                    PluginConstants.CONFIG_SOURCE_CONFIGURED_REPORTED,
                 ),
                 # 自动失联
                 (
                     db_confs - vm_confs,
                     PluginConstants.STATUS_OFFLINE,
                     PluginConstants.COLLECT_MODE_AUTO,
+                    True,
+                    PluginConstants.CONFIG_SOURCE_CONFIGURED,
                 ),
                 # 手动正常
                 (
                     vm_confs - db_confs,
                     PluginConstants.STATUS_NORMAL,
                     PluginConstants.COLLECT_MODE_MANUAL,
+                    False,
+                    PluginConstants.CONFIG_SOURCE_REPORTED_ONLY,
                 ),
                 # 手动失联理应不存在，如果你想加也可以放这里
                 # (set(), PluginConstants.STATUS_OFFLINE, PluginConstants.COLLECT_MODE_MANUAL),
             ]
 
             # 统一处理插件信息
-            for conf_set, status, collect_mode in categories:
+            for conf_set, status, collect_mode, configured, config_source in categories:
                 for c_tuple in conf_set:
                     plugin_info = plugin_map.get(c_tuple)
                     if not plugin_info:
@@ -318,7 +325,16 @@ class InstanceSearch:
 
                     # 为了避免修改原对象，复制一份
                     info = dict(plugin_info)
-                    info.update(status=status, collect_mode=collect_mode)
+                    plugin_id = info.get("plugin_id")
+                    if plugin_id in appended_plugin_ids:
+                        continue
+                    appended_plugin_ids.add(plugin_id)
+                    info.update(
+                        status=status,
+                        collect_mode=collect_mode,
+                        configured=configured,
+                        config_source=config_source,
+                    )
                     item["plugins"].append(info)
 
             # 同一物理插件可能同时以 plugin.id 与 legacy (obj, collector, collect_type)
