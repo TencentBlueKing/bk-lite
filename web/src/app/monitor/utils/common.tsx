@@ -508,7 +508,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
   { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },
   { match: /tplink|tp-link/i, label: 'TP-Link', icon: 'mm-tplink_tplink' },
-  { match: /zyxel/i, label: 'Zyxel', icon: 'mm-zyxel_zyxel' }
+  { match: /zyxel/i, label: 'Zyxel', icon: 'mm-zyxel_zyxel' },
+  { match: /qtech/i, label: 'QTech', icon: 'mm-qtech_qtech' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

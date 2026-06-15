@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="qtechBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1f8fd6"/>
+      <stop offset="1" stop-color="#0f5e96"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#qtechBlue)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <circle cx="50" cy="56" r="15"/>
+    <path d="M60 66 L70 76"/>
+    <path d="M80 44 L80 70 L92 70"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="1">QTECH</text>
+</svg>

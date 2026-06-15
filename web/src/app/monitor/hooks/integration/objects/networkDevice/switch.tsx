@@ -120,6 +120,7 @@ export const useSwitchConfig = () => {
       'Switch Netgear SNMP': 'snmp_netgear',
       'Switch TP-Link SNMP': 'snmp_tplink',
       'Switch Zyxel SNMP': 'snmp_zyxel',
+      'Switch QTech SNMP': 'snmp_qtech',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }
