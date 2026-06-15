@@ -3184,6 +3184,9 @@ monitor_object_plugin:
   Switch Brocade SNMP:
     name: Brocade（Telegraf）
     desc: Brocade/Foundry 交换机专用 SNMP 采集模板（FastIron/NetIron）。在标准 IF-MIB 接口指标之外，额外采集 FOUNDRY-SN-AGENT-MIB 私有 OID 的设备健康指标：1 分钟平均 CPU 使用率、动态内存使用率、机箱温度传感器、风扇与电源状态。Brocade 以利用率百分比直接上报 CPU 与内存；风扇/电源状态已归一化为统一的 1=正常 约定。
+  Switch Alcatel-Lucent SNMP:
+    name: Alcatel-Lucent（Telegraf）
+    desc: Alcatel-Lucent (Nokia) TiMOS 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 TIMETRA-CHASSIS-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存池（已用/空闲字节）、硬件温度传感器、风扇与电源状态。内存使用率按 used/(used+free) 计算；风扇/电源状态（TmnxDeviceState）已归一化为统一的 1=正常 约定。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

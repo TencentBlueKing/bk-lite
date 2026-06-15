@@ -3569,6 +3569,15 @@ monitor_object_plugin:
       temperature sensors, fan and power-supply status. Brocade reports CPU and
       memory as utilization percentages directly; fan/psu states are normalized to
       the unified 1=normal convention.
+  Switch Alcatel-Lucent SNMP:
+    name: Alcatel-Lucent (Telegraf)
+    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
+      switches. In addition to standard IF-MIB interface metrics, it collects
+      TIMETRA-CHASSIS-MIB private OIDs for device health including CPU utilization,
+      system memory pool (used/free bytes), hardware temperature sensors, fan and
+      power-supply status. Memory utilization is computed from used/(used+free);
+      fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal
+      convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
