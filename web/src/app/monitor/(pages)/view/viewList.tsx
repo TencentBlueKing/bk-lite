@@ -38,6 +38,12 @@ const { Option } = Select;
 // 视图列表的展示列类型（来自对象的 display_fields 配置）
 type DisplayCol = NonNullable<ObjectItem['display_fields']>[number];
 
+// 展示指标回填值的复合 key，必须与后端 display_field_key 保持一致：
+// 有插件用 `<plugin>::<metric>`（避免不同插件同名指标互相覆盖/串数据），无插件退化为裸指标名。
+const DISPLAY_FIELD_KEY_SEP = '::';
+const displayFieldKey = (plugin?: string, metric?: string): string =>
+  plugin ? `${plugin}${DISPLAY_FIELD_KEY_SEP}${metric}` : (metric ?? '');
+
 const ViewList: React.FC<ViewListProps> = ({
   objects,
   objectId,
@@ -289,7 +295,9 @@ const ViewList: React.FC<ViewListProps> = ({
         // 解析某行在某列应展示的绑定指标值（按绑定顺序取首个有值），返回 {value, unit, metricName}
         const resolveCell = (record: TableDataItem, col: DisplayCol) => {
           for (const binding of col.metrics || []) {
-            const cell = record[binding.metric] as { value?: string | number; unit?: string } | undefined;
+            const cell = record[displayFieldKey(binding.plugin, binding.metric)] as
+              | { value?: string | number; unit?: string }
+              | undefined;
             const v = cell?.value;
             if (v != null && v !== '') {
               return { value: v, unit: cell?.unit, metricName: binding.metric };
