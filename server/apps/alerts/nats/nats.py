@@ -630,10 +630,16 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
             normalized_event.setdefault("push_source_id", pusher)
             normalized_events.append(normalized_event)
 
+        # 内部约定：NATS 生效源（event_source 已校验）+ lite-monitor 推送方，双重判断为可信内部推送。
+        # 此时采信每个 event 自带的 organizations 作为归属组织，无需走组织级 secret。
+        trusted_internal = pusher == "lite-monitor"
+
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         # 传递空密钥，因为不需要认证
-        adapter = adapter_class(alert_source=event_source, secret="", events=normalized_events)
+        adapter = adapter_class(
+            alert_source=event_source, secret="", events=normalized_events, trusted_internal=trusted_internal
+        )
 
         # 记录推送来源信息
         logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
