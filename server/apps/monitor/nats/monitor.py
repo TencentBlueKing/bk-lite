@@ -407,8 +407,8 @@ def _get_monitor_instance_permission(monitor_obj_id: str, user_info: dict):
 def _normalize_permission_user(user):
     if hasattr(user, "username") and hasattr(user, "domain"):
         return user
-    if isinstance(user, str) and user:
-        return SimpleNamespace(username=user, domain="domain.com")
+    if isinstance(user, str) and user.strip():
+        return SimpleNamespace(username=user.strip(), domain="domain.com")
     return user
 
 

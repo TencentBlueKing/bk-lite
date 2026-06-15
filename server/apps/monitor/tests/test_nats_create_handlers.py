@@ -180,8 +180,8 @@ def test_execute_nats_create_rejects_user_info_without_user(monkeypatch):
         called["count"] += 1
         return object(), {"id": "metric"}
 
-    # user_info 是 dict 但缺 user（或 user 为空）→ 不再回退默认账号，直接拒
-    for bad_user_info in ({}, {"user": None}, {"user": ""}, {"domain": "tenant-a.com"}):
+    # user_info 是 dict 但缺 user（或 user 为空/纯空白）→ 不再回退默认账号，直接拒
+    for bad_user_info in ({}, {"user": None}, {"user": ""}, {"user": "  "}, {"user": "\t"}, {"domain": "tenant-a.com"}):
         result = module._execute_nats_create(fake_create, {"name": "cpu_usage"}, user_info=bad_user_info)
         assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
 
