@@ -7,7 +7,7 @@ from neo4j import GraphDatabase
 from neo4j.graph import Path
 
 from apps.cmdb.constants.constants import INSTANCE, ModelConstraintKey
-from apps.cmdb.graph.format_type import FORMAT_TYPE
+from apps.cmdb.graph.format_type import FORMAT_TYPE_PARAMS, ParameterCollector
 from apps.cmdb.services.unique_rule import raise_unique_rule_conflict_if_needed
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
@@ -298,52 +298,44 @@ class Neo4jClient:
             results.append(result)
         return results
 
-    def format_search_params(self, params: list, param_type: str = "AND"):
+    def format_search_params(self, params: list, param_type: str = "AND", collector: ParameterCollector = None):
         """
-        查询参数格式化:
-        bool: {"field": "is_host", "type": "bool", "value": True} -> "n.is_host = True"
+        参数化查询格式化（使用 FORMAT_TYPE_PARAMS 消除 Cypher 注入风险）。
 
-        time: {"field": "create_time", "type": "time", "start": "", "end": ""} -> "n.time >= '2022-01-01 08:00:00' AND n.time <= '2022-01-02 08:00:00'"     # noqa
+        返回 (params_str, query_params) 元组：
+          - params_str: 带 $placeholder 的 Cypher WHERE 子句片段
+          - query_params: 传给 session.run 的参数字典
 
-        str=: {"field": "name", "type": "str=", "value": "host"} -> "n.name = 'host'"
-        str<>: {"field": "name", "type": "str<>", "value": "host"} -> "n.name <> 'host'"
-        str*: {"field": "name", "type": "str*", "value": "host"} -> "n.name =~ '.*host.*'"
-        str[]: {"field": "name", "type": "str[]", "value": ["host"]} -> "n.name IN ["host"]"
-
-        int=: {"field": "mem", "type": "int=", "value": 200} -> "n.mem = 200"
-        int>: {"field": "mem", "type": "int>", "value": 200} -> "n.mem > 200"
-        int<: {"field": "mem", "type": "int<", "value": 200} -> "n.mem < 200"
-        int<>: {"field": "mem", "type": "int<>", "value": 200} -> "n.mem <> 200"
-        int[]: {"field": "mem", "type": "int[]", "value": [200]} -> "n.mem IN [200]"
-
-        id=: {"field": "id", "type": "id=", "value": 115} -> "n(id) = 115"
-        id[]: {"field": "id", "type": "id[]", "value": [115,116]} -> "n(id) IN [115,116]"
-
-        list[]: {"field": "test", "type": "list[]", "value": [1,2]} -> "ANY(x IN value WHERE x IN n.test)"
+        bool: {"field": "is_host", "type": "bool", "value": True} -> "n.is_host = $bool1"
+        str=: {"field": "name", "type": "str=", "value": "host"} -> "n.name = $str1"
+        id=:  {"field": "id",   "type": "id=",  "value": 115}   -> "ID(n) = $id1"
         """
+        if collector is None:
+            collector = ParameterCollector()
 
-        params_str = ""
-        param_type = f" {param_type} "
+        parts = []
+        sep = f" {param_type} "
         for param in params:
-            method = FORMAT_TYPE.get(param["type"])
+            method = FORMAT_TYPE_PARAMS.get(param["type"])
             if not method:
                 continue
+            parts.append(method(param, collector))
 
-            params_str += method(param)
-            params_str += param_type
-
-        return f"({params_str[: -len(param_type)]})" if params_str else params_str
+        params_str = f"({sep.join(parts)})" if parts else ""
+        return params_str, collector.get_params()
 
     def format_final_params(self, search_params: list, search_param_type: str = "AND", permission_params=""):
-        search_params_str = self.format_search_params(search_params, search_param_type)
+        """组合用户查询条件与权限条件，返回 (combined_str, query_params) 元组。"""
+        collector = ParameterCollector()
+        search_params_str, query_params = self.format_search_params(search_params, search_param_type, collector)
 
         if not search_params_str:
-            return permission_params
+            return permission_params, query_params
 
         if not permission_params:
-            return search_params_str
+            return search_params_str, query_params
 
-        return f"{search_params_str} AND {permission_params}"
+        return f"{search_params_str} AND {permission_params}", query_params
 
     def query_entity(
         self,
@@ -376,7 +368,7 @@ class Neo4jClient:
             or_condition_str = " OR ".join(or_conditions)
 
             # 将OR条件与其他条件结合
-            params_str = self.format_search_params(params, param_type=param_type)
+            params_str, query_params = self.format_search_params(params, param_type=param_type)
             if params_str:
                 params_str = f"({params_str}) AND ({or_condition_str})"
             else:
@@ -387,7 +379,7 @@ class Neo4jClient:
                 params_str = f"{params_str} AND {permission_params}"
         else:
             # 原有逻辑
-            params_str = self.format_final_params(params, search_param_type=param_type, permission_params=permission_params)
+            params_str, query_params = self.format_final_params(params, search_param_type=param_type, permission_params=permission_params)
 
         params_str = f"WHERE {params_str}" if params_str else params_str
 
@@ -399,10 +391,10 @@ class Neo4jClient:
         count_str = f"MATCH (n{label_str}) {params_str} RETURN COUNT(n) AS count"
         count = None
         if page:
-            count = self.session.run(count_str).single()["count"]
+            count = self.session.run(count_str, **query_params).single()["count"]
             sql_str += f" SKIP {page['skip']} LIMIT {page['limit']}"
 
-        objs = self.session.run(sql_str)
+        objs = self.session.run(sql_str, **query_params)
         return self.entity_to_list(objs), count
 
     def query_entity_by_id(self, id: int):
@@ -444,10 +436,10 @@ class Neo4jClient:
         查询边
         """
         label_str = f":{label}" if label else ""
-        params_str = self.format_search_params(params, param_type)
+        params_str, query_params = self.format_search_params(params, param_type)
         params_str = f"WHERE {params_str}" if params_str else params_str
 
-        objs = self.session.run(f"MATCH p=((a)-[n{label_str}]->(b)) {params_str} RETURN p")
+        objs = self.session.run(f"MATCH p=((a)-[n{label_str}]->(b)) {params_str} RETURN p", **query_params)
 
         return self.edge_to_list(objs, return_entity)
 
@@ -544,10 +536,10 @@ class Neo4jClient:
         """移除某些实体的某些属性"""
         label_str = f":{label}" if label else ""
         properties_str = self.format_properties_remove(attrs)
-        params_str = self.format_search_params(params)
+        params_str, query_params = self.format_search_params(params)
         params_str = f"WHERE {params_str}" if params_str else params_str
 
-        self.session.run(f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n")
+        self.session.run(f"MATCH (n{label_str}) {params_str} REMOVE {properties_str} RETURN n", **query_params)
 
     def batch_delete_entity(self, label: str, entity_ids: list):
         """批量删除实体"""
@@ -576,23 +568,23 @@ class Neo4jClient:
         """实体对象查询"""
 
         label_str = f":{label}" if label else ""
-        params_str = self.format_final_params(params, permission_params=permission_params)
+        params_str, query_params = self.format_final_params(params, permission_params=permission_params)
         params_str = f"WHERE {params_str}" if params_str else params_str
 
         sql_str = f"MATCH (n{label_str}) {params_str} RETURN n"
 
-        inst_objs = self.session.run(sql_str)
+        inst_objs = self.session.run(sql_str, **query_params)
         return inst_objs
 
     def query_topo(self, label: str, inst_id: int):
         """查询实例拓扑"""
 
         label_str = f":{label}" if label else ""
-        params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
+        params_str, query_params = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
         if params_str:
             params_str = f"AND {params_str}"
-        src_objs = self.session.run(f"MATCH p=(n{label_str})-[*]->(m{label_str}) WHERE NOT (m)-->() {params_str} RETURN p")
-        dst_objs = self.session.run(f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE NOT (m)<--() {params_str} RETURN p")
+        src_objs = self.session.run(f"MATCH p=(n{label_str})-[*]->(m{label_str}) WHERE NOT (m)-->() {params_str} RETURN p", **query_params)
+        dst_objs = self.session.run(f"MATCH p=(m{label_str})-[*]->(n{label_str}) WHERE NOT (m)<--() {params_str} RETURN p", **query_params)
 
         return dict(src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False))
 
@@ -602,11 +594,11 @@ class Neo4jClient:
         probe_depth = depth + 1
 
         label_str = f":{label}" if label else ""
-        params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
+        params_str, query_params = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
         where_clause = f"WHERE {params_str}" if params_str else ""
 
-        src_objs = self.session.run(f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) {where_clause} RETURN p")
-        dst_objs = self.session.run(f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) {where_clause} RETURN p")
+        src_objs = self.session.run(f"MATCH p=(n{label_str})-[*1..{probe_depth}]->(m{label_str}) {where_clause} RETURN p", **query_params)
+        dst_objs = self.session.run(f"MATCH p=(m{label_str})-[*1..{probe_depth}]->(n{label_str}) {where_clause} RETURN p", **query_params)
 
         return dict(
             src_result=self.format_topo_lite(inst_id, src_objs, True, depth=depth, exclude_ids=exclude_ids),
@@ -792,12 +784,12 @@ class Neo4jClient:
     def query_topo_test_config(self, label: str, inst_id: int, model_id: str):
         """查询实例拓扑"""
         label_str = f":{label}" if label else ""
-        params_str = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
+        params_str, query_params = self.format_search_params([{"field": "id", "type": "id=", "value": inst_id}])
         if params_str:
             params_str = f"AND {params_str}"
 
-        src_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=False))
-        dst_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=True))
+        src_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=False), **query_params)
+        dst_objs = self.session.run(self.convert_to_cypher_match(label_str, model_id, params_str, dst=True), **query_params)
 
         return dict(src_result=self.format_topo(inst_id, src_objs, True), dst_result=self.format_topo(inst_id, dst_objs, False))
 
@@ -923,12 +915,13 @@ class Neo4jClient:
         instance_permission_params = instance_permission_params or {}
         label_str = f":{label}" if label else ""
 
+        combined_collector = ParameterCollector()
         if format_permission_dict:
             permission_filters = []
             for organization_id, query_list in format_permission_dict.items():
                 organization_query = [{"field": "organization", "type": "list[]", "value": [organization_id]}]
-                base_permission_str = self.format_search_params(organization_query, param_type="AND")
-                org_permission_str = self.format_search_params(query_list, param_type="OR")
+                base_permission_str, _ = self.format_search_params(organization_query, param_type="AND", collector=combined_collector)
+                org_permission_str, _ = self.format_search_params(query_list, param_type="OR", collector=combined_collector)
 
                 if base_permission_str and org_permission_str:
                     permission_filters.append(f"({base_permission_str} AND {org_permission_str})")
@@ -940,7 +933,11 @@ class Neo4jClient:
                 permission_params = f"{permission_params} AND {formatted_permission}" if permission_params else formatted_permission
 
         # 首先应用基础查询参数和组织权限
-        final_params_str = self.format_final_params(params, permission_params=permission_params)
+        final_params_str, _ = self.format_search_params(params, collector=combined_collector)
+        if final_params_str and permission_params:
+            final_params_str = f"{final_params_str} AND {permission_params}"
+        elif permission_params:
+            final_params_str = permission_params
 
         # 在组织权限基础上，添加实例权限过滤
         instance_permission_str = self.format_instance_permission_params(instance_permission_params, created)
@@ -952,7 +949,7 @@ class Neo4jClient:
             final_params_str = f"WHERE {final_params_str}"
 
         count_sql = f"MATCH (n{label_str}) {final_params_str} RETURN n.{group_by_attr} AS {group_by_attr}, COUNT(n) AS count"
-        data = self.session.run(count_sql)
+        data = self.session.run(count_sql, **combined_collector.get_params())
 
         return {i[group_by_attr]: i["count"] for i in data}
 
