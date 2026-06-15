@@ -42,6 +42,8 @@ export interface ToolPayload {
 export interface Tool {
   id: string;
   name: string;
+  /** 翻译后的展示名称（内置工具按当前语言返回，自定义工具回退为 name） */
+  display_name?: string;
   description: string;
   icon: string;
   team: string[];

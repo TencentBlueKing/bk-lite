@@ -553,10 +553,34 @@ export const renderToolCallCard = (id: string, info: ToolCallInfo): string => {
  * @param toolCalls 工具调用信息
  * @param isStreaming 是否正在流式回复中（可选，默认根据工具状态判断）
  */
+/**
+ * 同批次去重：合并 (工具名 + 参数) 完全相同的重复调用，只保留信息最完整的一个。
+ * LLM 偶尔在一条消息里并行发出多个完全相同的工具调用（如 3 个相同的 generate_repair_report），
+ * 流式层会为每个 tool_call_id 各发一个 TOOL_CALL_START → 渲染出多张重复卡片。
+ * 这里在渲染汇聚点统一去重，实时/历史、流式/非流式全覆盖。
+ */
+const dedupeToolCallsBySignature = (entries: Array<[string, ToolCallInfo]>): Array<[string, ToolCallInfo]> => {
+  const sigToEntry = new Map<string, [string, ToolCallInfo]>();
+  const completeness = (info: ToolCallInfo) => (info.status === 'completed' ? 1 : 0) + (info.result ? 1 : 0);
+
+  for (const [id, info] of entries) {
+    const sig = `${info.name}::${info.args || ''}`;
+    const existing = sigToEntry.get(sig);
+    if (!existing) {
+      sigToEntry.set(sig, [id, info]);
+    } else if (completeness(info) > completeness(existing[1])) {
+      // 保留已完成 / 带结果的那个，避免把真正执行过的调用合并丢失
+      sigToEntry.set(sig, [id, info]);
+    }
+  }
+
+  return Array.from(sigToEntry.values());
+};
+
 export const renderAllToolCalls = (toolCalls: Map<string, ToolCallInfo>, isStreaming?: boolean): string => {
   if (toolCalls.size === 0) return '';
 
-  const toolsArray = Array.from(toolCalls.entries());
+  const toolsArray = dedupeToolCallsBySignature(Array.from(toolCalls.entries()));
   const totalCount = toolsArray.length;
   const completedCount = toolsArray.filter(([, info]) => info.status === 'completed').length;
   const hasRunning = completedCount < totalCount;

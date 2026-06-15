@@ -22,6 +22,68 @@ def test_monitor_language_keys_exist_in_en_and_zh():
     assert zh_loader.get("tools.monitor.tools.monitor_list_objects.description")
 
 
+def test_builtin_tool_display_name_keys_exist_in_en_and_zh():
+    """所有写入 SkillTools 的内置工具都应在中英文 yaml 中配置 display_name(tools.{name}.name)。"""
+    en_loader = LanguageLoader(app="opspilot", default_lang="en")
+    zh_loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
+
+    tool_names = [
+        "monitor",
+        "attachment_file",
+        "current_time",
+        "duckduckgo",
+        "fetch",
+        "github",
+        "jenkins",
+        "kubernetes",
+        "kubernetes_data_collection",
+        "postgres",
+        "mysql",
+        "oracle",
+        "mssql",
+        "redis",
+        "elasticsearch",
+        "python",
+        "shell",
+        "ssh",
+        "browser_use",
+        "agent_browser",
+    ]
+    for name in tool_names:
+        assert en_loader.get(f"tools.{name}.name"), f"missing en display name for {name}"
+        assert zh_loader.get(f"tools.{name}.name"), f"missing zh display name for {name}"
+
+    # 内置工具的展示名不应等于 ID 式的 name（至少中文要有可读名称）
+    assert zh_loader.get("tools.current_time.name") != "current_time"
+    assert zh_loader.get("tools.monitor.name") != "monitor"
+
+
+def test_build_builtin_monitor_tool_display_name_uses_translation(mocker):
+    mocker.patch.object(
+        LanguageLoader,
+        "get",
+        side_effect=lambda key: {
+            f"tools.{builtin_tools.BUILTIN_MONITOR_TOOL_NAME}.name": "监控",
+        }.get(key, ""),
+    )
+    loader = LanguageLoader(app="opspilot", default_lang="zh-Hans")
+
+    data = builtin_tools.build_builtin_monitor_tool(loader)
+
+    # name 仍作为 ID，display_name 走翻译
+    assert data["name"] == "monitor"
+    assert data["display_name"] == "监控"
+
+
+def test_build_builtin_monitor_tool_display_name_falls_back_when_untranslated(mocker):
+    mocker.patch.object(LanguageLoader, "get", side_effect=lambda key: "")
+    loader = LanguageLoader(app="opspilot", default_lang="en")
+
+    data = builtin_tools.build_builtin_monitor_tool(loader)
+
+    assert data["display_name"] == "Monitor"
+
+
 def test_build_builtin_monitor_tool_exposes_constructor_and_subtools(mocker):
     mocker.patch.object(
         LanguageLoader,
