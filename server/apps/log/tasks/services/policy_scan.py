@@ -7,7 +7,12 @@ import uuid
 
 # 单条告警快照列表最大保留条数（保留最新的 N 条）
 # 超出后丢弃最旧记录，防止 S3 对象无限膨胀。可通过环境变量调整。
-_MAX_ALERT_SNAPSHOTS = int(os.getenv("LOG_MAX_ALERT_SNAPSHOTS", "500"))
+try:
+    _MAX_ALERT_SNAPSHOTS = int(os.getenv("LOG_MAX_ALERT_SNAPSHOTS", "500"))
+    if _MAX_ALERT_SNAPSHOTS <= 0:
+        raise ValueError("必须为正整数")
+except ValueError:
+    _MAX_ALERT_SNAPSHOTS = 500
 
 from django.db import transaction
 
