@@ -60,15 +60,23 @@ class EventAlertManager:
     def _create_raw_data_records(self, events_with_raw_data, event_objs):
         event_obj_map = {obj.id: obj for obj in event_objs}
 
-        raw_data_objects = []
-        for event_info in events_with_raw_data:
-            event_id = event_info["event_id"]
-            if event_id in event_obj_map or MonitorEvent.objects.filter(id=event_id).exists():
-                raw_data_objects.append(MonitorEventRawData(event_id=event_id, data=event_info["raw_data"]))
+        # event_obj_map 是本轮刚建/回查事件的权威集合；仅对不在其中的少数 id 做一次批量存在性兜底，
+        # 取代原来逐条 .exists() 的 N 次 SELECT（正常情况下 missing_ids 为空，零额外查询）
+        missing_ids = [info["event_id"] for info in events_with_raw_data if info["event_id"] not in event_obj_map]
+        existing_missing = set()
+        if missing_ids:
+            existing_missing = set(MonitorEvent.objects.filter(id__in=missing_ids).values_list("id", flat=True))
+
+        raw_data_objects = [
+            MonitorEventRawData(event_id=info["event_id"], data=info["raw_data"])
+            for info in events_with_raw_data
+            if info["event_id"] in event_obj_map or info["event_id"] in existing_missing
+        ]
 
         if raw_data_objects:
-            for raw_data_obj in raw_data_objects:
-                raw_data_obj.save()
+            # 逐行 save() 改批量 bulk_create——S3JSONField 的上传在 pre_save 完成（bulk_create 会调用 pre_save），
+            # 行为与 save() 一致，仅把 N 次 INSERT 压成批量
+            MonitorEventRawData.objects.bulk_create(raw_data_objects, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             logger.info(f"Created {len(raw_data_objects)} raw data records for policy {self.policy.id}")
 
     def create_events_and_alerts(self, events):
