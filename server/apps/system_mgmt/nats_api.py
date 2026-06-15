@@ -730,6 +730,12 @@ def _normalize_nats_content(content):
     }, None
 
 
+# NATS 通道里「原样透传 content」的内部方法白名单。
+# 这些方法（如告警中心 receive_alert_events）有自己的入参契约（如 {source_id, pusher, events}），
+# 不走 OpsPilot/IM 触发那套 message/team/user_ids 规范化，否则 content 会被裁剪、事件丢失。
+RAW_PASSTHROUGH_NATS_METHODS = {"receive_alert_events"}
+
+
 @nats_client.register
 def send_msg_with_channel(channel_id, title, content, receivers, attachments=None):
     """
@@ -774,6 +780,10 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         return send_by_custom_webhook(channel_obj, content, receivers)
     elif channel_obj.channel_type == ChannelChoices.NATS:
         # NATS 通道：content 作为 kwargs 传递给目标服务
+        method_name = (channel_obj.config or {}).get("method_name")
+        if method_name in RAW_PASSTHROUGH_NATS_METHODS:
+            # 内部直推通道（如告警中心）：原样透传 content，跳过 IM 触发的字段规范化。
+            return send_nats_message(channel_obj, content)
         normalized, error = _normalize_nats_content(content)
         if error:
             return error

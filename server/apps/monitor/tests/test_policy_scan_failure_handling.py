@@ -1467,6 +1467,19 @@ def _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect):
     )
     _install_module(monkeypatch, "apps.system_mgmt.models", Channel=object)
     _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+
+    class _EmptyOrgQuerySet:
+        def filter(self, *args, **kwargs):
+            return self
+
+        def values_list(self, *args, **kwargs):
+            return []
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_object",
+        MonitorInstanceOrganization=types.SimpleNamespace(objects=_EmptyOrgQuerySet()),
+    )
     return _load_module(
         f"monitor_alert_lifecycle_retry_{id(send_side_effect)}",
         Path(__file__).resolve().parents[1] / "services" / "alert_lifecycle_notify.py",
@@ -1553,6 +1566,59 @@ def test_push_to_alert_center_returns_success_on_first_successful_attempt(monkey
     assert log_entry["success"] is True
     # 成功路径不应携带 error 字段（仅失败时记录）
     assert "error" not in log_entry
+
+
+def _make_payload_alert(instance_id="host-1"):
+    return types.SimpleNamespace(
+        id=1,
+        policy_id=10,
+        content="test",
+        level="warning",
+        value=50.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id=instance_id,
+        monitor_instance_name="Host",
+        dimensions={},
+        metric_instance_id="",
+        status="recovered",
+    )
+
+
+def test_payload_organizations_prefers_instance_org(monkeypatch):
+    """实例有组织 → payload.organizations 取实例组织。"""
+    module = _install_lifecycle_notify_dependencies(monkeypatch, lambda *a, **k: {"result": True})
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = types.SimpleNamespace(name="p", organizations=[9])
+
+    payload = notifier._build_alert_center_payload(
+        _make_payload_alert(), "recovered", "", "", {"host-1": [3, 5]}
+    )
+    assert payload["organizations"] == [3, 5]
+
+
+def test_payload_organizations_falls_back_to_policy(monkeypatch):
+    """实例无组织 → 回退策略组织。"""
+    module = _install_lifecycle_notify_dependencies(monkeypatch, lambda *a, **k: {"result": True})
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = types.SimpleNamespace(name="p", organizations=[9])
+
+    payload = notifier._build_alert_center_payload(
+        _make_payload_alert(), "recovered", "", "", {}
+    )
+    assert payload["organizations"] == [9]
+
+
+def test_payload_organizations_empty_when_no_instance_and_no_policy(monkeypatch):
+    """实例和策略都无组织 → 留空，忠实反映现状。"""
+    module = _install_lifecycle_notify_dependencies(monkeypatch, lambda *a, **k: {"result": True})
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = types.SimpleNamespace(name="p", organizations=[])
+
+    payload = notifier._build_alert_center_payload(
+        _make_payload_alert(), "recovered", "", "", {}
+    )
+    assert payload["organizations"] == []
 
 
 def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_failures(monkeypatch):
