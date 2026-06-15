@@ -163,3 +163,112 @@ def test_create_model_attr_duplicate(fake_graph):
     )
     with pytest.raises(BaseAppException):
         ModelManage.create_model_attr("host", {"attr_id": "ip", "attr_name": "IP", "attr_type": "str"})
+
+
+# --------------------------------------------------------------------------
+# create_model — 定点查询唯一性校验（issue #3379）
+# --------------------------------------------------------------------------
+
+
+def _patch_create_model_side_effects(monkeypatch):
+    """屏蔽 create_model 的图/DB 副作用（分类查询、字段分组、缓存、变更记录）。"""
+    import apps.cmdb.services.model as model_mod
+
+    monkeypatch.setattr(
+        "apps.cmdb.services.classification.ClassificationManage.search_model_classification_info",
+        lambda classification_id: {"_id": 99},
+    )
+    monkeypatch.setattr("apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change", lambda model_id: None)
+    monkeypatch.setattr(model_mod, "create_change_record", lambda **kw: None)
+    monkeypatch.setattr(model_mod.FIELD_GROUP_MANAGER, "create", lambda **kw: None)
+
+
+@pytest.mark.django_db
+def test_create_model_uses_targeted_conflict_query(fake_graph, monkeypatch):
+    """create_model 必须用 model_id/model_name OR 条件查询，而非全量加载所有 MODEL 节点。
+
+    验证点：query_entity 调用的 params 参数不为空列表。
+    revert 修复后（params=[]）此断言失败，证明测试覆盖了修复点。
+    """
+    from apps.cmdb.services.model import ModelManage
+
+    _patch_create_model_side_effects(monkeypatch)
+
+    fake = fake_graph(
+        "apps.cmdb.services.model",
+        create_entity={"model_id": "new_model", "model_name": "新模型", "_id": 10},
+        create_edge={},
+    )
+
+    data = {
+        "model_id": "new_model",
+        "model_name": "新模型",
+        "classification_id": "infra",
+    }
+    ModelManage.create_model(data)
+
+    # 找出 query_entity 调用
+    qe_calls = [(args, kwargs) for name, args, kwargs in fake.calls if name == "query_entity"]
+    assert qe_calls, "query_entity 未被调用"
+
+    # 修复后第一个 query_entity 调用（唯一性校验）传入的 params 不应为空列表
+    first_params = qe_calls[0][0][1] if len(qe_calls[0][0]) > 1 else qe_calls[0][1].get("params", [])
+    assert first_params != [], (
+        "create_model 仍在用全量查询（params=[]）；应改为定点过滤 model_id/model_name"
+    )
+    # 确认过滤条件包含 model_id 和 model_name 字段
+    filtered_fields = {f["field"] for f in first_params}
+    assert "model_id" in filtered_fields, "唯一性查询必须包含 model_id 过滤条件"
+    assert "model_name" in filtered_fields, "唯一性查询必须包含 model_name 过滤条件"
+
+
+@pytest.mark.django_db
+def test_create_model_raises_on_duplicate_model_id(fake_graph, monkeypatch):
+    """create_model 在 model_id 重复时必须抛出异常，即使只返回少量冲突候选节点。"""
+    from apps.cmdb.services.model import ModelManage
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    _patch_create_model_side_effects(monkeypatch)
+
+    # 定点查询返回一个 model_id 相同的已有模型（模拟重复）
+    fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=(
+            [{"model_id": "new_model", "model_name": "其他名称", "_id": 5}],
+            1,
+        ),
+    )
+
+    data = {
+        "model_id": "new_model",
+        "model_name": "新模型",
+        "classification_id": "infra",
+    }
+    with pytest.raises(BaseAppException):
+        ModelManage.create_model(data)
+
+
+@pytest.mark.django_db
+def test_create_model_raises_on_duplicate_model_name(fake_graph, monkeypatch):
+    """create_model 在 model_name 重复时必须抛出异常。"""
+    from apps.cmdb.services.model import ModelManage
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    _patch_create_model_side_effects(monkeypatch)
+
+    # 定点查询返回一个 model_name 相同的已有模型（模拟重复）
+    fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=(
+            [{"model_id": "other_id", "model_name": "新模型", "_id": 6}],
+            1,
+        ),
+    )
+
+    data = {
+        "model_id": "new_model",
+        "model_name": "新模型",
+        "classification_id": "infra",
+    }
+    with pytest.raises(BaseAppException):
+        ModelManage.create_model(data)
