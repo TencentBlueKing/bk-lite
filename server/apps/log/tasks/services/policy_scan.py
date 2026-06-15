@@ -691,42 +691,49 @@ class LogPolicyScan:
                     )
                 )
 
-            # 3. 批量执行数据库操作
-            # 批量创建新告警
-            if alerts_to_create:
-                Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
-                logger.debug(f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}")
+            # 3. 批量执行数据库操作（外层事务保证 Alert/Event/EventRawData 原子性）
+            # 任一步失败（包括 EventRawData.save() 触发的 S3 上传异常）均回滚全部 DB 写入，
+            # 避免"告警有、数据无"的孤儿记录。
+            # 注意：S3JSONField.pre_save() 在 DB 写入前上传至 MinIO；若 MinIO 失败则抛异常
+            # → 事务回滚，DB 保持一致。快照写入在事务外独立执行（各自已有 atomic 保护）。
+            with transaction.atomic():
+                # 批量创建新告警
+                if alerts_to_create:
+                    Alert.objects.bulk_create(alerts_to_create, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                    logger.debug(f"Created {len(alerts_to_create)} new alerts for policy {self.policy.id}")
 
-            # 批量更新现有告警
-            if alerts_to_update:
-                Alert.objects.bulk_update(
-                    alerts_to_update,
-                    ["value", "content", "level", "end_event_time", "notice"],
-                    batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
-                )
-                logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
+                # 批量更新现有告警
+                if alerts_to_update:
+                    Alert.objects.bulk_update(
+                        alerts_to_update,
+                        ["value", "content", "level", "end_event_time", "notice"],
+                        batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE,
+                    )
+                    logger.debug(f"Updated {len(alerts_to_update)} existing alerts for policy {self.policy.id}")
 
-            # 批量创建事件记录
-            event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
+                # 批量创建事件记录
+                event_objs = Event.objects.bulk_create(create_events, batch_size=DatabaseConstants.DEFAULT_BATCH_SIZE)
 
-            # 批量创建事件原始数据记录（关联到已创建的事件对象）
-            if event_id_to_raw_data:
-                create_raw_data = []
-                for event_obj in event_objs:
-                    if event_obj.id in event_id_to_raw_data:
-                        create_raw_data.append(
-                            EventRawData(
-                                event=event_obj,  # 使用 event 字段，而不是 event_id
-                                data=event_id_to_raw_data[event_obj.id],
+                # 批量创建事件原始数据记录（关联到已创建的事件对象）
+                if event_id_to_raw_data:
+                    create_raw_data = []
+                    for event_obj in event_objs:
+                        if event_obj.id in event_id_to_raw_data:
+                            create_raw_data.append(
+                                EventRawData(
+                                    event=event_obj,  # 使用 event 字段，而不是 event_id
+                                    data=event_id_to_raw_data[event_obj.id],
+                                )
                             )
-                        )
 
-                # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
-                for raw_data_obj in create_raw_data:
-                    raw_data_obj.save()
-                logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
+                    # 逐个保存原始数据记录以确保 S3JSONField 能正确上传数据
+                    for raw_data_obj in create_raw_data:
+                        raw_data_obj.save()
+                    logger.debug(f"Created {len(create_raw_data)} raw data records for policy {self.policy.id}")
 
             # 为告警创建或更新快照（传递原始数据映射）
+            # 快照写入在事务外执行：每条快照各自有 atomic 保护，且 S3JSONField 写 MinIO
+            # 不应阻塞主事务；快照失败不影响告警/事件已提交的数据。
             self._create_snapshots_for_alerts(event_objs, alerts_to_create, events, event_id_to_raw_data)
 
             logger.info(f"Created {len(event_objs)} events for policy {self.policy.id}")
