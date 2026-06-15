@@ -1900,6 +1900,8 @@ class ModelManage(object):
                 ]
             )
 
+        # 快速模型（自定义上报）不参与模型管理的导入导出，避免污染正式模型的跨环境流转
+        models = [m for m in models if not m.get("is_custom_reporting")]
         for model in models:
             ws_models.append(
                 [

@@ -1,7 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Alert, Descriptions, Drawer, Empty, Space, Spin, Tag } from 'antd';
+import { Alert, Button, Descriptions, Drawer, Empty, Modal, Space, Spin, Tag, message } from 'antd';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import { useCustomReportingApi } from '@/app/cmdb/api/customReporting';
@@ -34,9 +34,11 @@ export default function BatchReviewDrawer({
   onClose,
 }: BatchReviewDrawerProps) {
   const { t } = useTranslation();
-  const { getTaskBatchActivity } = useCustomReportingApi();
+  const { getTaskBatchActivity, approveCleanupReview, rejectCleanupReview } =
+    useCustomReportingApi();
   const [loading, setLoading] = useState(false);
   const [activity, setActivity] = useState<CustomReportingBatchActivityResponse | null>(null);
+  const [actionId, setActionId] = useState<number | null>(null);
   const requestIdRef = useRef(0);
 
   const loadActivity = useCallback(async () => {
@@ -70,6 +72,43 @@ export default function BatchReviewDrawer({
     }
     void loadActivity();
   }, [loadActivity, open]);
+
+  const handleReview = (
+    review: CustomReportingCleanupReview,
+    action: 'approve' | 'reject',
+  ) => {
+    if (!task?.id) {
+      return;
+    }
+    const isApprove = action === 'approve';
+    const deleteCount = (review.review_payload?.delete_ids as unknown[])?.length ?? 0;
+    Modal.confirm({
+      title: isApprove
+        ? t('CustomReporting.approveReviewTitle')
+        : t('CustomReporting.rejectReviewTitle'),
+      content: isApprove
+        ? `${t('CustomReporting.approveReviewConfirm')}（${deleteCount}）`
+        : t('CustomReporting.rejectReviewConfirm'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
+      okButtonProps: isApprove ? { danger: true } : undefined,
+      centered: true,
+      onOk: async () => {
+        setActionId(review.id);
+        try {
+          if (isApprove) {
+            await approveCleanupReview(task.id, review.id);
+          } else {
+            await rejectCleanupReview(task.id, review.id);
+          }
+          message.success(t('successfulSetted'));
+          await loadActivity();
+        } finally {
+          setActionId(null);
+        }
+      },
+    });
+  };
 
   const renderBatch = (batch: CustomReportingBatch) => (
     <div
@@ -138,6 +177,28 @@ export default function BatchReviewDrawer({
             {JSON.stringify(review.review_payload || {}, null, 2)}
           </pre>
         </Descriptions.Item>
+        {review.status === 'pending' ? (
+          <Descriptions.Item label={t('action')}>
+            <Space>
+              <Button
+                type="primary"
+                danger
+                size="small"
+                loading={actionId === review.id}
+                onClick={() => handleReview(review, 'approve')}
+              >
+                {t('CustomReporting.approveReview')}
+              </Button>
+              <Button
+                size="small"
+                loading={actionId === review.id}
+                onClick={() => handleReview(review, 'reject')}
+              >
+                {t('CustomReporting.rejectReview')}
+              </Button>
+            </Space>
+          </Descriptions.Item>
+        ) : null}
       </Descriptions>
     </div>
   );
