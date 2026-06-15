@@ -139,12 +139,14 @@ export const useModelApi = () => {
   const copyModel = (modelId: string, params: any) =>
     post(`/cmdb/api/model/${modelId}/copy/`, params);
 
-  const exportModelConfig = async (token: string) => {
+  const exportModelConfig = async (token: string, modelIds: string[] = []) => {
     const response = await fetch('/api/proxy/cmdb/api/model/export_model_config', {
-      method: 'GET',
+      method: 'POST',
       headers: {
         Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
       },
+      body: JSON.stringify({ model_ids: modelIds }),
     });
     if (!response.ok) {
       const errorData = await response.json().catch(() => ({}));

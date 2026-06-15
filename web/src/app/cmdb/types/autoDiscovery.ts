@@ -137,12 +137,39 @@ export interface TaskData {
   count: number;
 }
 
+export interface TopologyLinkRow {
+  relationship_id?: string;
+  relationship_type?: string;
+  evidence_source?: string;
+  confidence?: number | string;
+  source_device?: string;
+  source_port_id?: string;
+  source_inst_name?: string;
+  target_device?: string;
+  target_port_id?: string;
+  target_inst_name?: string;
+  remote_device_name?: string;
+  remote_port_name?: string;
+  vlan?: string | null;
+  status?: string;
+  [key: string]: any;
+}
+
+export interface TopologySummaryData {
+  summary?: Record<string, number>;
+  links?: TopologyLinkRow[];
+  stale_links?: TopologyLinkRow[];
+  unresolved_neighbors?: Array<Record<string, any>>;
+  dropped?: TopologyLinkRow[];
+}
+
 export interface TaskDetailData {
   add: TaskData;
   update: TaskData;
   delete: TaskData;
   relation: TaskData;
   raw_data?: TaskData;
+  topology?: TopologySummaryData;
 }
 
 export interface TaskTableProps {

@@ -10,6 +10,7 @@ from django.core.management import call_command
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.base.models import User
+from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.constants.installer import InstallerConstants
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.crypto.aes_crypto import AESCryptor
@@ -1652,6 +1653,85 @@ def test_update_node_client_uses_cpu_architecture_tag_before_task_fallback(monke
     node = Node.objects.get(id="node-sidecar-tag-arch")
 
     assert response.status_code == 202
+    assert node.cpu_architecture == NodeConstants.ARM64_ARCH
+
+
+@pytest.mark.django_db
+def test_update_node_client_defaults_container_node_cpu_architecture_to_x86(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-container-default-arch-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-container-default-arch",
+            "node_details": {
+                "ip": "10.0.0.36",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [
+                    f"zone:{cloud_region.id}",
+                    f"{ControllerConstants.NODE_TYPE_TAG}:{ControllerConstants.NODE_TYPE_CONTAINER}",
+                ],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, "node-sidecar-container-default-arch")
+    node = Node.objects.get(id="node-sidecar-container-default-arch")
+
+    assert response.status_code == 202
+    assert node.node_type == ControllerConstants.NODE_TYPE_CONTAINER
+    assert node.cpu_architecture == NodeConstants.X86_64_ARCH
+
+
+@pytest.mark.django_db
+def test_update_node_client_prefers_container_node_cpu_architecture_tag_over_x86_default(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="sidecar-container-tag-arch-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    monkeypatch.setattr(Sidecar, "create_default_config", lambda *args, **kwargs: None)
+    monkeypatch.setattr(Sidecar, "trigger_converge_tasks_if_needed", lambda *args, **kwargs: None)
+
+    request = SimpleNamespace(
+        headers={},
+        META={},
+        data={
+            "node_name": "node-container-tag-arch",
+            "node_details": {
+                "ip": "10.0.0.37",
+                "operating_system": "Linux",
+                "collector_configuration_directory": "/etc/collector",
+                "metrics": {},
+                "status": {},
+                "tags": [
+                    f"zone:{cloud_region.id}",
+                    f"{ControllerConstants.NODE_TYPE_TAG}:{ControllerConstants.NODE_TYPE_CONTAINER}",
+                    f"{Sidecar.CPU_ARCHITECTURE_TAG}:arm64",
+                ],
+                "log_file_list": [],
+            },
+        },
+    )
+
+    response = Sidecar.update_node_client(request, "node-sidecar-container-tag-arch")
+    node = Node.objects.get(id="node-sidecar-container-tag-arch")
+
+    assert response.status_code == 202
+    assert node.node_type == ControllerConstants.NODE_TYPE_CONTAINER
     assert node.cpu_architecture == NodeConstants.ARM64_ARCH
 
 

@@ -22,6 +22,7 @@ import {
 import { deepClone, getOrganizationDisplayText } from '@/app/cmdb/utils/common';
 import { PublicEnumLibraryItem, PublicEnumOption } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { useModelApi } from '@/app/cmdb/api';
 import { useUserInfoContext } from '@/context/userInfo';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
@@ -37,6 +38,7 @@ interface PublicEnumLibraryModalProps {
 const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumLibraryModalProps>(
   ({ onSuccess }, ref) => {
     const { t } = useTranslation();
+    const guardClose = useUnsavedConfirm();
     const { flatGroups } = useUserInfoContext();
     const libraryFormRef = useRef<FormInstance>(null);
     const {
@@ -527,12 +529,18 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
               : t('PublicEnumLibrary.editLibrary')
           }
           open={libraryModalVisible}
-          onCancel={handleLibraryModalCancel}
+          onCancel={() =>
+            guardClose(
+              !!libraryFormRef.current?.isFieldsTouched(),
+              handleLibraryModalCancel
+            )
+          }
           onOk={handleSubmitLibrary}
           confirmLoading={confirmLoading}
           okText={t('common.confirm')}
           cancelText={t('common.cancel')}
           width={480}
+          maskClosable={false}
           centered
           destroyOnClose={false}
           afterClose={() => libraryFormRef.current?.resetFields()}

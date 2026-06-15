@@ -224,34 +224,43 @@ async def _handle_multicred_post_execute(params, task_id, execution_result, cach
         await cache_cls.mark_success(collect_task_id, host, credential_id)
         return
 
-    # credential(认证失败)与 unreachable(连接不可达)均进入冷却；
-    # 其它 task 类失败可能是瞬时/可修复的，不冷却。
-    if execution_result["failure_kind"] not in ("credential", "unreachable"):
-        await cache_cls.clear_success(collect_task_id, host)
-        return
-
     await cache_cls.clear_success(collect_task_id, host)
 
-    consecutive_failures = int(params.get("credential_failures", 0)) + 1
-    cooldown_level = 1 if consecutive_failures == 1 else 2 if consecutive_failures == 2 else 3
-    cooldown_hours = _cooldown_hours_for_failure(consecutive_failures)
-    next_retry_at = (datetime.now(timezone.utc) + timedelta(hours=cooldown_hours)).isoformat()
-    await cache_cls.mark_failure(
-        collect_task_id,
-        host,
-        credential_id,
-        execution_result["error_message"],
-        cooldown_level,
-        consecutive_failures,
-        next_retry_at,
-    )
-    logger.info(
-        f"[Cooldown] host={host} credential={credential_id} kind={execution_result['failure_kind']} "
-        f"cooled {cooldown_hours}h (consecutive={consecutive_failures}) "
-        f"err={str(execution_result['error_message'])[:80]}"
-    )
-    # 仅多凭据时才尝试换下一个未冷却的凭据；单凭据无可换，记完冷却即结束。
-    if not credentials_pool:
+    has_pool = len(credentials_pool) > 1
+    failure_kind = execution_result["failure_kind"]
+    # 是否冷却当前凭据（让下一轮跳过它）：
+    #  - credential（认证失败）/unreachable（连接不可达）：持久失败，冷却。
+    #  - SNMP 无响应/超时：对 SNMP 而言“错误凭据/版本”就是静默无响应，等价持久失败；
+    #    仅在多凭据池下据此冷却（单凭据保持原“不冷却、下一轮重试”行为，避免误伤瞬时抖动）。
+    #  - 其它 task 类失败：疑似瞬时，不冷却。
+    persistent = failure_kind in ("credential", "unreachable")
+    if has_pool and _is_snmp_no_response(execution_result["error_message"]):
+        persistent = True
+
+    consecutive_failures = int(params.get("credential_failures", 0))
+    if persistent:
+        consecutive_failures += 1
+        cooldown_level = 1 if consecutive_failures == 1 else 2 if consecutive_failures == 2 else 3
+        cooldown_hours = _cooldown_hours_for_failure(consecutive_failures)
+        next_retry_at = (datetime.now(timezone.utc) + timedelta(hours=cooldown_hours)).isoformat()
+        await cache_cls.mark_failure(
+            collect_task_id,
+            host,
+            credential_id,
+            execution_result["error_message"],
+            cooldown_level,
+            consecutive_failures,
+            next_retry_at,
+        )
+        logger.info(
+            f"[Cooldown] host={host} credential={credential_id} kind={failure_kind} "
+            f"cooled {cooldown_hours}h (consecutive={consecutive_failures}) "
+            f"err={str(execution_result['error_message'])[:80]}"
+        )
+
+    # 轮询：多凭据池的语义是“挨个试到一个能用为止”，因此当前凭据任何失败都尝试换下一个
+    # 未冷却的凭据；持久失败的凭据已被上面冷却，下一轮会被跳过。单凭据无可换，结束。
+    if not has_pool:
         return
     next_task = await _build_next_credential_task(params, credential_index, consecutive_failures, cache_cls)
     if not next_task:
@@ -337,6 +346,22 @@ def _classify_failure_kind(error_message: str) -> str:
     if any(keyword in text for keyword in unreachable_keywords):
         return "unreachable"
     return "task"
+
+
+def _is_snmp_no_response(error_message: str) -> bool:
+    """SNMP 无响应/超时。对 SNMP 而言“错误的团体字/版本”不会报认证错误，而是设备静默丢包、
+    重试耗尽后超时——所以多凭据轮询要把它当作“此凭据对该设备不可用”的持久信号。
+    刻意只匹配 SNMP 专有措辞，不误伤 SSH/NATS 等的 timeout（那些保持 task 语义）。"""
+    text = str(error_message or "").lower()
+    return any(
+        keyword in text
+        for keyword in (
+            "no snmp response",
+            "empty snmp response",
+            "requesttimedout",
+            "no response received before timeout",
+        )
+    )
 
 
 def _cooldown_hours_for_failure(consecutive_failures: int) -> int:

@@ -19,6 +19,7 @@ import WebsiteDashboard from './objects/website';
 import K8sClusterDashboard from './objects/k8s-cluster';
 import K8sNodeDashboard from './objects/k8s-node';
 import K8sPodDashboard from './objects/k8s-pod';
+import SwitchDashboard from './objects/switch';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -172,6 +173,15 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Ping',
     inheritedPermissionPath: '/monitor/view',
     component: PingDashboard
+  },
+  {
+    key: 'switch',
+    aliases: ['交换机'],
+    groupKey: 'network',
+    objectName: 'Switch',
+    objectDisplayName: '交换机',
+    inheritedPermissionPath: '/monitor/view',
+    component: SwitchDashboard
   },
   {
     key: 'k8s-cluster',

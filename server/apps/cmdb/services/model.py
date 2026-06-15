@@ -1786,9 +1786,17 @@ class ModelManage(object):
         return True
 
     @staticmethod
-    def export_model_config(language):
-        """导出模型配置为Excel (按model_config.xlsx模板格式)"""
+    def export_model_config(language, model_ids=None):
+        """导出模型配置为Excel (按model_config.xlsx模板格式)
+
+        :param model_ids: 勾选导出的模型ID列表。为空(None 或空列表)时不过滤,
+            导出全量模型配置(向后兼容)。有值时:models/attr 只保留选中模型;
+            classifications 只保留选中模型所属的分类;public_enum_libraries 全量不过滤;
+            asso 逐行过滤,只保留 src 和 dst 都在选中集合内的关联行,过滤后无行则不生成该 asso sheet。
+        """
         from io import BytesIO
+
+        selected_ids = set(model_ids) if model_ids else None
 
         from openpyxl import Workbook
 
@@ -1855,7 +1863,16 @@ class ModelManage(object):
         ws_classifications.append(CLASSIFICATION_HEADERS_EN)
 
         classifications = ClassificationManage.search_model_classification(language=language)
+
+        models = ModelManage.search_model(language=language)
+        if selected_ids is not None:
+            models = [m for m in models if m.get("model_id", "") in selected_ids]
+        selected_classification_ids = {m.get("classification_id", "") for m in models}
+
         for classification in classifications:
+            cls_id = classification.get("classification_id", "")
+            if selected_ids is not None and cls_id not in selected_classification_ids:
+                continue
             ws_classifications.append(
                 [
                     classification.get("classification_id", ""),
@@ -1883,7 +1900,6 @@ class ModelManage(object):
                 ]
             )
 
-        models = ModelManage.search_model(language=language)
         for model in models:
             ws_models.append(
                 [
@@ -1948,23 +1964,30 @@ class ModelManage(object):
 
             associations = ModelManage.model_association_search(model_id)
             if associations:
-                ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
-                ws_asso.append(ASSO_HEADERS_CN)
-                ws_asso.append(ASSO_HEADERS_EN)
-                for asso in associations:
-                    rule_set_value = ""
-                    if asso.get("src_model_id") == model_id:
-                        rule_set = parse_auto_relation_rule_set(asso.get(AUTO_RELATION_RULE_FIELD))
-                        rule_set_value = dump_auto_relation_rule_set_compact(rule_set) if rule_set else ""
-                    ws_asso.append(
-                        [
-                            asso.get("src_model_id", ""),
-                            asso.get("dst_model_id", ""),
-                            asso.get("asst_id", ""),
-                            asso.get("mapping", ""),
-                            rule_set_value,
-                        ]
-                    )
+                if selected_ids is not None:
+                    associations = [
+                        a for a in associations
+                        if a.get("src_model_id", "") in selected_ids
+                        and a.get("dst_model_id", "") in selected_ids
+                    ]
+                if associations:
+                    ws_asso = workbook.create_sheet(title=f"asso-{model_id}")
+                    ws_asso.append(ASSO_HEADERS_CN)
+                    ws_asso.append(ASSO_HEADERS_EN)
+                    for asso in associations:
+                        rule_set_value = ""
+                        if asso.get("src_model_id") == model_id:
+                            rule_set = parse_auto_relation_rule_set(asso.get(AUTO_RELATION_RULE_FIELD))
+                            rule_set_value = dump_auto_relation_rule_set_compact(rule_set) if rule_set else ""
+                        ws_asso.append(
+                            [
+                                asso.get("src_model_id", ""),
+                                asso.get("dst_model_id", ""),
+                                asso.get("asst_id", ""),
+                                asso.get("mapping", ""),
+                                rule_set_value,
+                            ]
+                        )
 
         file_stream = BytesIO()
         workbook.save(file_stream)
