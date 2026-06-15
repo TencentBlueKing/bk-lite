@@ -445,6 +445,11 @@ const buildFromEvents = (events: any[], finalize = true) => {
           status: 'completed',
           result: undefined
         });
+        // 在 START 时即入队渲染，避免持久化事件流缺少 TOOL_CALL_END 时工具丢失
+        if (msg.toolCallId && !pendingToolIds.includes(msg.toolCallId)) {
+          pendingToolIds.push(msg.toolCallId);
+          lastBlockType = 'toolCall';
+        }
         break;
 
       case 'TOOL_CALL_ARGS':
@@ -483,7 +488,8 @@ const buildFromEvents = (events: any[], finalize = true) => {
         break;
 
       case 'TOOL_CALL_END':
-        if (msg.toolCallId && toolCalls.has(msg.toolCallId)) {
+        // 工具已在 TOOL_CALL_START 时入队，此处兜底处理 START 缺失的异常事件流
+        if (msg.toolCallId && toolCalls.has(msg.toolCallId) && !pendingToolIds.includes(msg.toolCallId)) {
           pendingToolIds.push(msg.toolCallId);
           lastBlockType = 'toolCall';
         }

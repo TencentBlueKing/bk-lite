@@ -669,6 +669,8 @@ export class AGUIMessageHandler {
    */
   handleError(error: string) {
     this.stopThinking();
+    this.isStreaming = false;
+    this.finalizePendingToolCalls();
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(error, 'error');
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -680,6 +682,8 @@ export class AGUIMessageHandler {
    */
   handleRunError(message: string, code?: string) {
     this.stopThinking();
+    this.isStreaming = false;
+    this.finalizePendingToolCalls();
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -723,6 +727,20 @@ export class AGUIMessageHandler {
     } else {
       this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
     }
+  }
+
+  /**
+   * 标记所有仍处于 calling 状态的工具为已完成
+   * 用于 RUN_FINISHED / RUN_ERROR 等终止事件：执行已结束，
+   * 任何残留的 calling 状态（如 TOOL_CALL_RESULT 缺失或 toolCallId 不匹配）
+   * 都应停止 spinner，避免对话结束后工具仍显示"执行中"
+   */
+  private finalizePendingToolCalls() {
+    this.toolCallsRef.forEach(tool => {
+      if (tool.status === 'calling') {
+        tool.status = 'completed';
+      }
+    });
   }
 
   /**
@@ -789,6 +807,8 @@ export class AGUIMessageHandler {
       case 'RUN_FINISHED':
         // 流式回复结束，设置 isStreaming 为 false 并更新内容（收起工具列表）
         this.isStreaming = false;
+        // 兜底：把仍处于 calling 的工具标记为完成，避免对话结束后仍显示"执行中"
+        this.finalizePendingToolCalls();
         this.handleBrowserStepComplete();
         // 重新渲染内容以收起工具列表
         this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);

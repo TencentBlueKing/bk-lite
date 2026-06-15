@@ -1853,6 +1853,9 @@ class ToolsNodes(BasicNode):
             "consecutive_failures": 0,  # 连续失败计数
             "tool_call_history": [],  # 最近的工具调用名称列表
         }
+        # 重复调用硬拦截计数器：签名(name + 规范化 args) -> 已成功执行次数
+        # 闭包级、按一次 ReAct 运行累计，达到阈值后拦截后续相同调用
+        duplicate_call_tracker: Dict[str, int] = {}
         # 动态工具选择相关
         dynamic_mode = self._dynamic_mode
         active_tools_ref = self.active_tools  # 可变列表引用
@@ -2651,6 +2654,31 @@ class ToolsNodes(BasicNode):
                 # LLM 未调用工具 → 循环即将自然结束
                 _emit_step_progress(graph_request.max_steps, "completed", description="任务完成")
 
+            # ========== 同批次去重：合并 AIMessage 中 (name+args) 完全相同的 tool_calls ==========
+            # LLM 偶尔在一条消息里并行发出多个完全相同的工具调用（如 3 个相同的 generate_repair_report），
+            # 每个 tool_call 都会在流式层各触发一个 TOOL_CALL_START → 前端渲染多张重复卡片。
+            # 在 AIMessage 产出时即去重（只保留首个），从源头消除重复卡片与重复执行。
+            _final_tool_calls = getattr(response, "tool_calls", None) or []
+            if getattr(graph_request.reflection_config, "duplicate_call_hard_enabled", False) and len(_final_tool_calls) > 1:
+                _seen_batch_sigs = set()
+                _deduped_tcs = []
+                for _tc in _final_tool_calls:
+                    try:
+                        _ak = json.dumps(_tc.get("args", {}), ensure_ascii=False, sort_keys=True, default=str)
+                    except Exception:
+                        _ak = str(_tc.get("args", {}))
+                    _bsig = f"{_tc.get('name')}::{_ak}"
+                    if _bsig in _seen_batch_sigs:
+                        logger.info(f"[{trace_id}] agent_node: 同批次去重，移除重复 tool_call name={_tc.get('name')}")
+                        continue
+                    _seen_batch_sigs.add(_bsig)
+                    _deduped_tcs.append(_tc)
+                if len(_deduped_tcs) < len(_final_tool_calls):
+                    try:
+                        response.tool_calls = _deduped_tcs
+                    except Exception:
+                        object.__setattr__(response, "tool_calls", _deduped_tcs)
+
             return {"messages": [response]}
 
         # ========== 工具节点：执行工具调用 ==========
@@ -2722,6 +2750,67 @@ class ToolsNodes(BasicNode):
                 tool_calls = _filtered_tool_calls
                 norm_calls = normalize_tool_calls(tool_calls)
 
+            # ========== 硬拦截：同名同参工具重复调用超阈值后阻止执行 ==========
+            # agent 可能用完全相同的参数反复调用同一工具（如 generate_repair_report），
+            # 既浪费 token 又会阻塞流程。两层防护：
+            # 1. 同批次去重：LLM 在一条消息里并行发出多个完全相同的调用时，仅执行第一个；
+            # 2. 跨步骤累计：对每个 (name + 规范化 args) 签名累计成功执行次数，
+            #    达到阈值后拦截后续相同调用、不再真正执行，并回注指令强制 agent 改用已有结果或推进。
+            duplicate_blocked_msgs: List[ToolMessage] = []
+            _dup_cfg = graph_request.reflection_config
+            if getattr(_dup_cfg, "duplicate_call_hard_enabled", False) and norm_calls:
+                import json as _json_dup
+
+                _survived_tool_calls = []
+                _seen_sigs_in_batch = set()
+                for ntc in norm_calls:
+                    try:
+                        _args_key = _json_dup.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
+                    except Exception:
+                        _args_key = str(ntc.args)
+                    _sig = f"{ntc.name}::{_args_key}"
+                    _prior = duplicate_call_tracker.get(_sig, 0)
+                    if _sig in _seen_sigs_in_batch:
+                        # 同批次内重复：仅执行第一个，其余直接拦截
+                        duplicate_blocked_msgs.append(
+                            ToolMessage(
+                                content=(f"[已拦截-同批重复] 本批次中工具 '{ntc.name}' 出现多个完全相同的调用，" f"已合并为一次执行。请使用该调用的返回结果，不要重复发起相同调用。"),
+                                tool_call_id=ntc.id,
+                            )
+                        )
+                        logger.info(f"[{trace_id}] logged_tool_node: 拦截同批次重复调用 tool={ntc.name}")
+                    elif _prior >= _dup_cfg.duplicate_call_hard_limit:
+                        duplicate_blocked_msgs.append(
+                            ToolMessage(
+                                content=(
+                                    f"[已拦截] 工具 '{ntc.name}' 已用完全相同的参数成功调用 {_prior} 次，" f"重复调用不会产生新结果。请直接使用之前的返回结果继续推进，或据此给出最终结论，" f"不要再用相同参数调用该工具。"
+                                ),
+                                tool_call_id=ntc.id,
+                            )
+                        )
+                        logger.info(
+                            f"[{trace_id}] logged_tool_node: 硬拦截重复调用 tool={ntc.name} (已执行 {_prior} 次，达到阈值 {_dup_cfg.duplicate_call_hard_limit})"
+                        )
+                    else:
+                        _seen_sigs_in_batch.add(_sig)
+                        _survived_tool_calls.append(ntc.raw)
+
+                if duplicate_blocked_msgs:
+                    # 仅保留未被拦截的调用进入实际执行
+                    try:
+                        last_message.tool_calls = _survived_tool_calls
+                    except Exception:
+                        try:
+                            object.__setattr__(last_message, "tool_calls", _survived_tool_calls)
+                        except Exception:
+                            logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，重复拦截可能失效")
+                    tool_calls = _survived_tool_calls
+                    norm_calls = normalize_tool_calls(tool_calls)
+
+                    # 所有调用均被拦截：无需执行 tool_node，直接返回拦截消息
+                    if not norm_calls:
+                        return {"messages": duplicate_blocked_msgs}
+
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config
             snapshots: Dict[str, str] = {}  # tool_call_id -> snapshot_result
@@ -2779,10 +2868,15 @@ class ToolsNodes(BasicNode):
                     result = await tool_node.ainvoke(state, config=config)
             except asyncio.TimeoutError:
                 logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
-                # 返回超时错误 ToolMessage
+                # 返回超时错误 ToolMessage（含被拦截的重复调用消息，保证 tool_call_id 配对）
                 timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
-                return {"messages": timeout_msgs}
+                return {"messages": duplicate_blocked_msgs + timeout_msgs}
             result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            # 把被硬拦截的重复调用消息并入结果，保证每个原始 tool_call_id 都有配对的 ToolMessage。
+            # 注意必须同步回写 result：函数末尾返回的是 result，而非 result_messages。
+            if duplicate_blocked_msgs:
+                result_messages = duplicate_blocked_msgs + result_messages
+                result = {"messages": result_messages}
 
             # ========== 缓存分析结果：供 generate_repair_report 自动生成使用 ==========
             for _rm in result_messages:
@@ -2960,6 +3054,34 @@ class ToolsNodes(BasicNode):
             # 记录工具调用名称
             for ntc in norm_calls:
                 reflection_tracker["tool_call_history"].append(ntc.name)
+
+            # 累计已"成功执行"的 (name + 规范化 args) 签名次数，供下一轮硬拦截判断。
+            # 仅统计成功调用：失败调用没有产出可用结果，重试是合理的（由 retry / 连续失败反思处理），
+            # 不应被去重拦截，否则会抢占既有的失败处理流程。
+            if getattr(graph_request.reflection_config, "duplicate_call_hard_enabled", False):
+                import json as _json_dup_inc
+
+                # 统计返回错误结果的 tool_call_id
+                _failed_call_ids = set()
+                for _msg in result_messages:
+                    if isinstance(_msg, ToolMessage):
+                        _c = str(getattr(_msg, "content", ""))
+                        _is_err = _c.startswith("Error:") or _c.startswith("Traceback")
+                        if not _is_err:
+                            _cl = _c.lower()
+                            _is_err = any(_kw in _cl for _kw in ["error", "failed", "exception"])
+                        if _is_err:
+                            _failed_call_ids.add(getattr(_msg, "tool_call_id", ""))
+
+                for ntc in norm_calls:
+                    if ntc.id in _failed_call_ids:
+                        continue
+                    try:
+                        _args_key = _json_dup_inc.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
+                    except Exception:
+                        _args_key = str(ntc.args)
+                    _sig = f"{ntc.name}::{_args_key}"
+                    duplicate_call_tracker[_sig] = duplicate_call_tracker.get(_sig, 0) + 1
 
             logger.info(
                 f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "
