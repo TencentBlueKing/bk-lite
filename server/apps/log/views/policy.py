@@ -237,7 +237,10 @@ class PolicyViewSet(viewsets.ModelViewSet):
         if only_global:
             base_qs = base_qs.filter(collect_type_id__isnull=True)
         elif normalized_collect_type_id is not None:
-            base_qs = base_qs.filter(collect_type_id=normalized_collect_type_id)
+            # 原逻辑：指定 collect_type_id 时同时保留 collect_type_id 为 NULL 的全局策略
+            base_qs = base_qs.filter(
+                models.Q(collect_type_id=normalized_collect_type_id) | models.Q(collect_type_id__isnull=True)
+            )
 
         accessible_instances = []
         accessible_policy_ids = []

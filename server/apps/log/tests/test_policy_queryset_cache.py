@@ -292,16 +292,28 @@ class TestPolicyQuerysetCache(unittest.TestCase):
 
     def test_db_filter_applied_before_python_loop_for_specific_collect_type(self):
         """
-        When collect_type_id='10' is provided, the ORM chain must call .filter(collect_type_id='10')
+        When collect_type_id='10' is provided, the ORM chain must call .filter(Q(collect_type_id='10') | Q(collect_type_id__isnull=True))
         on base_qs (result of prefetch_related) BEFORE the Python for-loop so fewer rows are loaded.
+        原逻辑：指定 collect_type_id 时同时保留全局策略（collect_type_id IS NULL），语义不变。
         """
+        import django.db.models as djm
+
         vs = self._new_viewset()
         req = _fake_request()
         _, base_qs, _ = _patch_db(self.mod, self.policies[:1])
 
         vs._get_accessible_policy_queryset(req, collect_type_id="10")
 
-        base_qs.filter.assert_called_once_with(collect_type_id="10")
+        base_qs.filter.assert_called_once()
+        call_args = base_qs.filter.call_args
+        self.assertEqual(len(call_args.args), 1, "filter() should be called with a single Q object")
+        q_arg = call_args.args[0]
+        self.assertIsInstance(q_arg, djm.Q, "filter() argument must be a Q object")
+        # Q(collect_type_id='10') | Q(collect_type_id__isnull=True)
+        self.assertEqual(q_arg.connector, "OR")
+        children = q_arg.children
+        self.assertIn(("collect_type_id", "10"), children)
+        self.assertIn(("collect_type_id__isnull", True), children)
 
     def test_db_filter_applied_for_global(self):
         """When collect_type_id='global', filter(collect_type_id__isnull=True) must be applied on base_qs."""
