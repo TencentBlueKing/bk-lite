@@ -213,7 +213,10 @@ class LogPolicyScan:
         if not pending:
             return []
 
-        max_workers = int(os.getenv("LOG_GROUPED_ALERT_MAX_WORKERS", "20"))
+        try:
+            max_workers = int(os.getenv("LOG_GROUPED_ALERT_MAX_WORKERS", "10"))
+        except (TypeError, ValueError):
+            max_workers = 10
         results_map = {}
 
         with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as executor:

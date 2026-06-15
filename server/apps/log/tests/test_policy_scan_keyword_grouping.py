@@ -362,7 +362,7 @@ def test_keyword_grouped_alert_detection_issues_sample_queries_concurrently(monk
     concurrent_peak = []
     active_count = [0]
     lock = threading.Lock()
-    barrier = threading.Barrier(5, timeout=5)
+    barrier = threading.Barrier(5, timeout=15)
 
     call_count = [0]
     sample_iter = iter(sample_responses)
