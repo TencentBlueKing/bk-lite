@@ -500,7 +500,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
   { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
   { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
-  { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' }
+  { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
+  { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

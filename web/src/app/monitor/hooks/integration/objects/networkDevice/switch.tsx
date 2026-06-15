@@ -112,6 +112,7 @@ export const useSwitchConfig = () => {
       'Switch Huawei SNMP': 'snmp_huawei',
       'Switch Aruba SNMP': 'snmp_aruba',
       'Switch Juniper SNMP': 'snmp_juniper',
+      'Switch Extreme SNMP': 'snmp_extreme',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }

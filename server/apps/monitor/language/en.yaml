@@ -2044,6 +2044,9 @@ monitor_object_metric:
     device_memory_free:
       name: Memory Free
       desc: This metric reports the number of free bytes available in each memory pool of the device. Together with the used bytes it determines overall memory utilization; a persistently low free value indicates memory pressure on that pool.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total memory capacity of the device. It is the denominator for memory utilization (some vendors compute (total - free) / total) and, together with free memory, reflects overall memory pressure.
     device_temperature_celsius:
       name: Temperature
       desc: This metric reports the temperature reading of each hardware sensor on the device, in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed.
@@ -3549,6 +3552,14 @@ monitor_object_plugin:
       temperature sensors, fan and power-supply status. Juniper reports memory as a
       utilization percentage directly; the jnxOperatingState of fans/psus is
       normalized to the unified 1=normal convention.
+  Switch Extreme SNMP:
+    name: Extreme (Telegraf)
+    desc: Extreme Networks-specific SNMP collection template for switches (EXOS). In
+      addition to standard IF-MIB interface metrics, it collects EXTREME-SYSTEM-MIB
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature, fan and power-supply status. Memory utilization is
+      computed as (total - free) / total; fan/psu states are normalized to the
+      unified 1=normal convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

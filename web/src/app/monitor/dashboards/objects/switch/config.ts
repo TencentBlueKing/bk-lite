@@ -29,10 +29,10 @@ export const SWITCH_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_memory_usage',
       display_name: '内存使用率',
       description:
-        '设备整体内存使用率（百分比）。品牌自适应：优先取设备直接上报的利用率（如华为 hwEntityMemUsage），无直报值时按各内存池 已用/(已用+空闲) 汇总计算（如思科内存池）。',
+        '设备整体内存使用率（百分比）。品牌自适应，依次回退：①设备直报利用率（华为/Aruba/Juniper）；②已用/(已用+空闲)（思科内存池）；③已用/总量；④(总量-空闲)/总量（Extreme 等 总量+空闲 机型）。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
       color: '#ff8a1f'
     },
     {

@@ -1,0 +1,110 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_extreme"
+        config_type = "extreme"
+        brand = "extreme"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Extreme CPU utilization (EXTREME-SYSTEM-MIB extremeCpuMonitorTotalUtilization, scalar %) ----
+    # 待现网核验：1.3.6.1.4.1.1916.1.32.1.2.0。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.32.1.2.0"
+        name = "usage"
+    # ---- Extreme current temperature (EXTREME-SYSTEM-MIB extremeCurrentTemperature, scalar °C) ----
+    # 待现网核验：1.3.6.1.4.1.1916.1.1.1.8.0 → 指标 device_temperature_celsius（整机单值，无 per-sensor descr）。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.8.0"
+        name = "celsius"
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- Extreme system memory (extremeMemoryMonitorSystemTable, total + free, KB) ----
+    # 待现网核验：total 1.3.6.1.4.1.1916.1.32.2.2.1.2；free(available) ...1.3 → device_memory_total/device_memory_free
+    # 利用率在共享盘按 (total-free)/total 计算（单位 KB 在比值中抵消）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.32.2.2.1.2"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.32.2.2.1.3"
+        name = "free"
+    # ---- Extreme fans (EXTREME-SYSTEM-MIB extremeFanStatusTable) ----
+    # 待现网核验：风扇状态 extremeFanOperational 1.3.6.1.4.1.1916.1.1.1.9.1.2；descr=风扇号 ...9.1.1。
+    # extremeFanOperational 已是 1=true(正常)/2=false(停转)，与统一 1=normal 对齐，无需 remap。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.9.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.9.1.2"
+        name = "state"
+    # ---- Extreme power supplies (EXTREME-SYSTEM-MIB extremePowerSupplyTable) ----
+    # 待现网核验：电源状态 extremePowerSupplyStatus 1.3.6.1.4.1.1916.1.1.1.27.1.2；descr=电源号 ...27.1.1。
+    # 枚举 1 notPresent/2 presentOK/3 presentNotOK/4 presentPowerOff → 下方 processors.enum 归一(2→1，其余→2)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.27.1.1"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1916.1.1.1.27.1.2"
+        name = "state"
+
+# ---- 枚举归一：Extreme 电源 extremePowerSupplyStatus → 统一 1=normal/2=abnormal（偏离1即异常）----
+# 待现网核验：仅作用于本品牌(tagpass brand=extreme)。presentOK(2)→1；其余(1 notPresent/3 presentNotOK/4 presentPowerOff)→2。
+# 风扇 extremeFanOperational 已 1=normal，无需在此处理。
+[[processors.enum]]
+    [processors.enum.tagpass]
+        brand = ["extreme"]
+    [[processors.enum.mapping]]
+        field = "device_psu_state"
+        dest = "device_psu_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1

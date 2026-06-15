@@ -1776,6 +1776,9 @@ monitor_object_metric:
     device_memory_free:
       name: 内存空闲量
       desc: 该指标表示设备各内存池当前空闲可用的字节数。它与已用量一起决定整体内存使用率；空闲量持续偏低说明该内存池存在内存压力。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标表示设备的内存总容量。它是计算内存使用率的分母（部分厂商按 (总量-空闲)/总量 计算），与空闲量一起反映整体内存压力。
     device_temperature_celsius:
       name: 温度
       desc: 该指标表示设备各硬件温度传感器的读数，单位为摄氏度。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏硬件。
@@ -3175,6 +3178,9 @@ monitor_object_plugin:
   Switch Juniper SNMP:
     name: Juniper（Telegraf）
     desc: Juniper 交换机专用 SNMP 采集模板（Junos）。在标准 IF-MIB 接口指标之外，额外采集 JUNIPER-MIB jnxOperating 私有 OID 的设备健康指标：CPU 与内存缓冲使用率、温度传感器、风扇与电源状态。Juniper 以利用率百分比直接上报内存；风扇/电源的 jnxOperatingState 已归一化为统一的 1=正常 约定。
+  Switch Extreme SNMP:
+    name: Extreme（Telegraf）
+    desc: Extreme Networks 交换机专用 SNMP 采集模板（EXOS）。在标准 IF-MIB 接口指标之外，额外采集 EXTREME-SYSTEM-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存（总量/空闲）、温度、风扇与电源状态。内存使用率按 (总量-空闲)/总量 计算；风扇/电源状态已归一化为统一的 1=正常 约定。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
