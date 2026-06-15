@@ -1038,6 +1038,19 @@ def mm_query(query: str, step="5m", *args, **kwargs):
     return _build_vm_query_failure_result(resp, "查询单个指标数据失败")
 
 
+def _scope_count_queryset(qs, *, is_superuser: bool, team, org_field: str):
+    """总览计数的统一 scope 口径：超管→全量；非超管→必须按 team 收窄。
+
+    非超管且无 team 视为**零授权**，返回空集（qs.none()）而非全量——
+    否则会把全平台跨组织计数泄露给一个没有任何组织归属的普通用户。
+    """
+    if is_superuser:
+        return qs
+    if not team:
+        return qs.none()
+    return qs.filter(**{org_field: team}).distinct()
+
+
 @nats_client.register
 def get_monitor_statistics(user_info=None, **kwargs):
     """监控中心总览统计
@@ -1055,40 +1068,45 @@ def get_monitor_statistics(user_info=None, **kwargs):
     team = user_info.get("team")
     is_superuser = bool(user_info.get("is_superuser"))
 
-    def _scope_instance(qs):
-        if is_superuser or not team:
-            return qs
-        return qs.filter(monitorinstanceorganization__organization=team).distinct()
-
-    def _scope_policy(qs):
-        if is_superuser or not team:
-            return qs
-        return qs.filter(policyorganization__organization=team).distinct()
-
     # ============ 资源概览 ============
+    # 监控对象/对象类型属平台级目录（各组织一致），非租户数据，不做组织收窄
     monitor_object_total = MonitorObject.objects.count()
     monitor_object_visible = MonitorObject.objects.filter(is_visible=True).count()
     monitor_object_category = MonitorObjectType.objects.count()
 
-    instance_qs = _scope_instance(MonitorInstance.objects.filter(is_deleted=False))
+    instance_qs = _scope_count_queryset(
+        MonitorInstance.objects.filter(is_deleted=False),
+        is_superuser=is_superuser,
+        team=team,
+        org_field="monitorinstanceorganization__organization",
+    )
     monitor_instance_total = instance_qs.count()
     monitor_instance_active = instance_qs.filter(is_active=True).count()
     monitor_instance_inactive = instance_qs.filter(is_active=False).count()
 
     # ============ 能力概览 ============
+    # 插件/指标/指标分组同属平台级目录，不做组织收窄
     plugin_total = MonitorPlugin.objects.count()
     plugin_builtin = MonitorPlugin.objects.filter(is_pre=True).count()
     plugin_custom = MonitorPlugin.objects.filter(is_pre=False).count()
     metric_total = Metric.objects.count()
     metric_group_total = MetricGroup.objects.count()
+    # 采集配置按实例归属收窄：超管→全量；非超管→跟随 instance_qs（无 team 时为空集→0）
     collect_config_total = (
-        CollectConfig.objects.filter(monitor_instance_id__in=instance_qs.values_list("id", flat=True)).count()
-        if not (is_superuser or not team)
-        else CollectConfig.objects.count()
+        CollectConfig.objects.count()
+        if is_superuser
+        else CollectConfig.objects.filter(monitor_instance_id__in=instance_qs.values_list("id", flat=True)).count()
     )
 
     # ============ 告警概览 ============
-    policy_qs = _scope_policy(MonitorPolicy.objects.all())
+    # 策略按组织收窄；下游 alert/event/snapshot/baseline 均以 policy_qs 的 id 集合间接收窄，
+    # 故非超管且无 team 时 policy_qs 为空集，所有告警类计数随之归零
+    policy_qs = _scope_count_queryset(
+        MonitorPolicy.objects.all(),
+        is_superuser=is_superuser,
+        team=team,
+        org_field="policyorganization__organization",
+    )
     policy_total = policy_qs.count()
     policy_enabled = policy_qs.filter(enable=True).count()
     policy_disabled = policy_qs.filter(enable=False).count()
