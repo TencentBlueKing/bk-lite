@@ -3172,6 +3172,9 @@ monitor_object_plugin:
   Switch Aruba SNMP:
     name: Aruba（Telegraf）
     desc: Aruba 交换机专用 SNMP 采集模板（ArubaOS-CX）。在标准 IF-MIB 接口指标之外，额外采集 ARUBAWIRED 私有 OID 的设备健康指标：各模块 CPU 与内存使用率、温度传感器、风扇与电源状态。Aruba 以利用率百分比直接上报内存；风扇/电源状态已归一化为统一的 1=正常 约定。
+  Switch Juniper SNMP:
+    name: Juniper（Telegraf）
+    desc: Juniper 交换机专用 SNMP 采集模板（Junos）。在标准 IF-MIB 接口指标之外，额外采集 JUNIPER-MIB jnxOperating 私有 OID 的设备健康指标：CPU 与内存缓冲使用率、温度传感器、风扇与电源状态。Juniper 以利用率百分比直接上报内存；风扇/电源的 jnxOperatingState 已归一化为统一的 1=正常 约定。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

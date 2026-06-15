@@ -3541,6 +3541,14 @@ monitor_object_plugin:
       sensors, fan and power-supply status. Aruba reports memory as a utilization
       percentage directly; fan/psu states are normalized to the unified 1=normal
       convention.
+  Switch Juniper SNMP:
+    name: Juniper (Telegraf)
+    desc: Juniper-specific SNMP collection template for switches (Junos). In addition
+      to standard IF-MIB interface metrics, it collects JUNIPER-MIB jnxOperating
+      private OIDs for device health including CPU and memory-buffer utilization,
+      temperature sensors, fan and power-supply status. Juniper reports memory as a
+      utilization percentage directly; the jnxOperatingState of fans/psus is
+      normalized to the unified 1=normal convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
