@@ -34,6 +34,18 @@ const { Option } = Select;
 
 const HEXAGON_AREA = 6400; // 格子的面积
 
+// 展示指标值现按 (plugin, metric) 复合 key 回填(后端 display_field_key)。蜂巢图的指标选择
+// 只携带指标名,故按名解析:先取裸 key(遗留/补充指标),否则取任一 `<plugin>::<metric>` key。
+// 按插件隔离保证同一实例对同一指标名至多有一个插件的值,扫描不会取错。
+const readDisplayMetricCell = (item: TableDataItem, metricName: string) => {
+  if (item[metricName] != null) return item[metricName];
+  const suffix = `::${metricName}`;
+  for (const key of Object.keys(item)) {
+    if (key.endsWith(suffix) && item[key] != null) return item[key];
+  }
+  return undefined;
+};
+
 const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
@@ -287,6 +299,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         (item) => item.name === metricName
       );
       if (tagetMerticItem) {
+        const cellValue = readDisplayMetricCell(item, metricName);
         return {
           name: '',
           description: (
@@ -294,13 +307,13 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
               <div>{item.instance_name}</div>
               {`${tagetMerticItem.display_name}: ${getEnumValueUnit(
                 tagetMerticItem,
-                item[metricName]
+                cellValue
               )}`}
             </>
           ),
           fill: queryMetric
-            ? handleHexColor(item[metricName], hexColor)
-            : handleFillColor(tagetMerticItem, item[metricName])
+            ? handleHexColor(cellValue, hexColor)
+            : handleFillColor(tagetMerticItem, cellValue)
         };
       }
       return {
