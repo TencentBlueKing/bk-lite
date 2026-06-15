@@ -205,6 +205,18 @@ class PolicyViewSet(viewsets.ModelViewSet):
         return queryset.select_related("collect_type").distinct()
 
     def _get_accessible_policy_queryset(self, request, collect_type_id=None):
+        cache_key = "_policy_accessible_queryset_cache"
+        cache = getattr(request, cache_key, None)
+        if cache is None:
+            cache = {}
+            setattr(request, cache_key, cache)
+
+        normalized_collect_type_id = None if collect_type_id in (None, "", "all") else str(collect_type_id)
+        cache_field = normalized_collect_type_id if normalized_collect_type_id is not None else "__none__"
+        if cache_field in cache:
+            cached_ids, cached_map = cache[cache_field]
+            return Policy.objects.filter(id__in=cached_ids), cached_map
+
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permissions_result = get_permissions_rules(
             request.user,
@@ -218,25 +230,18 @@ class PolicyViewSet(viewsets.ModelViewSet):
 
         policy_permissions = permissions_result.get("data", {})
         current_teams = permissions_result.get("team", [])
-        target_collect_type_id = str(collect_type_id) if collect_type_id and collect_type_id != "global" else None
         only_global = collect_type_id == "global"
 
-        all_policies = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set").all()
+        # Apply DB-layer collect_type filtering before Python-loop to reduce rows loaded
+        base_qs = Policy.objects.select_related("collect_type").prefetch_related("policyorganization_set")
+        if only_global:
+            base_qs = base_qs.filter(collect_type_id__isnull=True)
+        elif normalized_collect_type_id is not None:
+            base_qs = base_qs.filter(collect_type_id=normalized_collect_type_id)
 
         accessible_instances = []
         accessible_policy_ids = []
-        for policy_obj in all_policies:
-            policy_collect_type_id = str(policy_obj.collect_type_id) if policy_obj.collect_type_id is not None else None
-
-            if only_global and policy_collect_type_id is not None:
-                continue
-
-            if target_collect_type_id and policy_collect_type_id not in [
-                target_collect_type_id,
-                None,
-            ]:
-                continue
-
+        for policy_obj in base_qs:
             teams = {org.organization for org in policy_obj.policyorganization_set.all()}
             has_permission = check_instance_permission(
                 policy_obj.collect_type_id,
@@ -258,6 +263,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
             )
 
         permission_map = filter_instances_with_permissions(accessible_instances, policy_permissions, current_teams)
+        cache[cache_field] = (accessible_policy_ids, permission_map)
         queryset = Policy.objects.filter(id__in=accessible_policy_ids)
         return queryset, permission_map
 
