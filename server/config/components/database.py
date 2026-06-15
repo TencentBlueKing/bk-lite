@@ -28,7 +28,7 @@ elif db_engine == "mysql":
 
     DATABASES = {
         "default": {
-            "ENGINE": "cw_cornerstone.db.dameng.backend",
+            "ENGINE": "cw_cornerstone.db.mysql.backend",
             "NAME": os.getenv("DB_NAME"),
             "USER": os.getenv("DB_USER"),
             "PASSWORD": os.getenv("DB_PASSWORD"),
