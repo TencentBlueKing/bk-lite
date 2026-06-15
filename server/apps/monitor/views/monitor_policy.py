@@ -2,6 +2,7 @@ import copy
 import json
 from datetime import datetime, timezone
 
+from django.db import transaction
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -22,6 +23,7 @@ from apps.monitor.services.alert_lifecycle_notify import (
     NOTIFY_SCOPE_ALL_CONFIGURED,
 )
 from apps.monitor.services.policy import PolicyService
+from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
@@ -414,3 +416,107 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def template_monitor_object(self, request):
         data = PolicyService.get_policy_templates_monitor_object()
         return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="bulk_create_from_templates")
+    def bulk_create_from_templates(self, request):
+        monitor_object_id = request.data.get("monitor_object")
+        templates = request.data.get("templates") or []
+        asset_ids = request.data.get("asset_ids") or []
+        config = request.data.get("config") or {}
+        if not monitor_object_id:
+            raise BaseAppException("monitor_object 不能为空")
+        if not templates:
+            raise BaseAppException("templates 不能为空")
+        if not asset_ids:
+            raise BaseAppException("asset_ids 不能为空")
+
+        assets = self.get_bulk_policy_assets(monitor_object_id, asset_ids)
+        enriched_templates = self.enrich_bulk_policy_templates(monitor_object_id, templates)
+        payloads = build_bulk_policy_payloads(
+            monitor_object_id=int(monitor_object_id),
+            templates=enriched_templates,
+            assets=assets,
+            config=config,
+        )
+        created = []
+        with transaction.atomic():
+            for payload in payloads:
+                payload["created_by"] = request.user.username
+                payload["updated_by"] = request.user.username
+                payload["domain"] = getattr(request.user, "domain", "domain.com")
+                payload["updated_by_domain"] = getattr(request.user, "domain", "domain.com")
+                serializer = self.get_serializer(data=payload)
+                serializer.is_valid(raise_exception=True)
+                policy = serializer.save()
+                created.append(policy)
+                self.update_or_create_task(policy.id, payload["schedule"])
+                self.update_policy_organizations(policy.id, payload.get("organizations", []))
+                if self.is_no_data_alert_enabled(policy):
+                    self.update_policy_baselines(policy.id, policy.enable_alerts)
+
+        return WebUtils.response_success(
+            {
+                "created_count": len(created),
+                "policy_ids": [policy.id for policy in created],
+            }
+        )
+
+    def get_bulk_policy_assets(self, monitor_object_id, asset_ids):
+        from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization
+
+        normalized_ids = [str(asset_id) for asset_id in asset_ids if asset_id not in (None, "")]
+        if not normalized_ids:
+            return []
+        instances = list(
+            MonitorInstance.objects.filter(
+                id__in=normalized_ids,
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+            ).values("id")
+        )
+        found_ids = {item["id"] for item in instances}
+        missing_ids = sorted(set(normalized_ids) - found_ids)
+        if missing_ids:
+            raise BaseAppException(f"监控资产不存在: {', '.join(missing_ids)}")
+
+        org_map = {}
+        for instance_id, organization in MonitorInstanceOrganization.objects.filter(
+            monitor_instance_id__in=normalized_ids
+        ).values_list("monitor_instance_id", "organization"):
+            org_map.setdefault(instance_id, []).append(organization)
+
+        return [
+            {
+                "instance_id": item["id"],
+                "organizations": org_map.get(item["id"], []),
+            }
+            for item in instances
+        ]
+
+    def enrich_bulk_policy_templates(self, monitor_object_id, templates):
+        from apps.monitor.models.monitor_metrics import Metric
+
+        enriched = []
+        for template in templates:
+            metric_name = template.get("metric_name")
+            if not metric_name:
+                raise BaseAppException("模板 metric_name 不能为空")
+            metric_qs = Metric.objects.filter(
+                monitor_object_id=monitor_object_id,
+                name=metric_name,
+            )
+            collect_type = template.get("collect_type") or template.get("plugin_id")
+            if collect_type:
+                metric_qs = metric_qs.filter(monitor_plugin_id=collect_type)
+            metric = metric_qs.first()
+            if not metric:
+                raise BaseAppException(f"指标不存在: {metric_name}")
+            enriched.append(
+                {
+                    **template,
+                    "metric_id": metric.id,
+                    "metric_unit": "" if metric.unit in ("none", "short") else metric.unit,
+                    "collect_type": collect_type or metric.monitor_plugin_id,
+                }
+            )
+        return enriched

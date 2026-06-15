@@ -16,10 +16,24 @@ class PolicyService:
     @staticmethod
     def get_policy_templates(monitor_object_name):
         """获取监控策略模板"""
-        objs = PolicyTemplate.objects.filter(monitor_object__name=monitor_object_name)
+        objs = PolicyTemplate.objects.select_related("monitor_object", "plugin").filter(monitor_object__name=monitor_object_name)
         templates = []
         for obj in objs:
-            templates.extend(obj.templates)
+            group_name = f"{obj.monitor_object.display_name or obj.monitor_object.name}（{obj.plugin.display_name or obj.plugin.name}）"
+            for index, template in enumerate(obj.templates):
+                item = {
+                    **template,
+                    "template_key": f"{obj.id}:{index}",
+                    "monitor_object_id": obj.monitor_object_id,
+                    "monitor_object_name": obj.monitor_object.name,
+                    "monitor_object_display_name": obj.monitor_object.display_name or obj.monitor_object.name,
+                    "plugin_id": obj.plugin_id,
+                    "plugin_name": obj.plugin.name,
+                    "plugin_display_name": obj.plugin.display_name or obj.plugin.name,
+                    "plugin_collector": obj.plugin.collector,
+                    "template_group": group_name,
+                }
+                templates.append(item)
         return templates
 
     @staticmethod
