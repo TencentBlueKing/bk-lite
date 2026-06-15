@@ -86,6 +86,28 @@
       "dimensions": [],
       "instance_id_keys": ["instance_id"],
       "description": "This metric reports the operational state of each Alcatel-Lucent (TiMOS) power supply unit (TIMETRA-CHASSIS-MIB TmnxDeviceState), normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
     }
   ]
 }

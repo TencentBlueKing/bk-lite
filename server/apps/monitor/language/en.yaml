@@ -2014,6 +2014,12 @@ monitor_object_metric:
     interface_ifOutOctets:
       name: Interface Outgoing Traffic Rate
       desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate.
     device_total_incoming_traffic:
       name: Device Total Incoming Traffic Rate
       desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.

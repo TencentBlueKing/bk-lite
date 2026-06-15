@@ -53,6 +53,28 @@
       "dimensions": [{"name": "descr", "description": "Fan description"}],
       "instance_id_keys": ["instance_id"],
       "description": "This metric reports the operational state of each Huawei cooling fan (HUAWEI-ENTITY-EXTENT-MIB hwEntityFanState). Huawei reports a binary state where 1 means normal and 2 means abnormal; any value other than normal indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
     }
   ]
 }

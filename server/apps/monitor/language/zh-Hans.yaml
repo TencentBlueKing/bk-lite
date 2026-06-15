@@ -1746,6 +1746,12 @@ monitor_object_metric:
     interface_ifOutOctets:
       name: 接口发送流量速率
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为字节每秒。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     device_total_incoming_traffic:
       name: 设备接收总流量速率
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为字节每秒。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
