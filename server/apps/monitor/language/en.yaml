@@ -3633,6 +3633,14 @@ monitor_object_plugin:
       (used/total), temperature, fan and power-supply status. Memory utilization is
       computed from used/total; fan/psu states (native 0=normal) are normalized to
       the unified 1=normal convention.
+  Switch Dell Force10 SNMP:
+    name: Dell Force10 (Telegraf)
+    desc: Dell Force10 (S-Series)-specific SNMP collection template for switches
+      (F10-S-SERIES-CHASSIS-MIB, enterprise 6027). In addition to standard IF-MIB
+      interface metrics, it collects Dell Force10 private OIDs for device health
+      including per-processor CPU and memory utilization, per-stack-unit temperature,
+      fan-tray and power-supply status. CPU and memory are reported directly as
+      percentages; fan/psu states are normalized to the unified 1=normal convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

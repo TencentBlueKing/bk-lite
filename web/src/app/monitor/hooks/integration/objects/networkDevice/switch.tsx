@@ -121,6 +121,7 @@ export const useSwitchConfig = () => {
       'Switch TP-Link SNMP': 'snmp_tplink',
       'Switch Zyxel SNMP': 'snmp_zyxel',
       'Switch QTech SNMP': 'snmp_qtech',
+      'Switch Dell Force10 SNMP': 'snmp_dellforce',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }
