@@ -1,4 +1,5 @@
 import logging
+import re
 
 from rest_framework import serializers
 
@@ -25,6 +26,10 @@ _VALID_AGGREGATION_ALGORITHMS = {
     "sum_over_time",
     "last_over_time",
 }
+# PromQL/MetricsQL label 运算符白名单
+_VALID_LABEL_METHODS = {"=", "!=", "=~", "!~"}
+# label name 合法正则（Prometheus 规范）
+_LABEL_NAME_RE = re.compile(r'^[a-zA-Z_][a-zA-Z0-9_]*$')
 
 
 class MonitorPolicySerializer(serializers.ModelSerializer):
@@ -56,20 +61,45 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         return value
 
     def validate_query_condition(self, value):
-        """校验查询条件：pmq 自定义查询须带非空 query，否则（指标型）须带 metric_id。
+        """校验查询条件结构完整性，并对 filter 条件执行注入防护。
 
-        空 dict（未配/草稿）放行；只挡非空但下游扫描一定会 KeyError（缺 metric_id）或对 None 做
-        PromQL 查询（pmq 缺 query）的缺键配置。
+        结构校验：pmq 自定义查询须带非空 query，否则（指标型）须带 metric_id。
+        注入防护：对 filter 列表中每个条件的 label name 和运算符执行白名单校验，
+                  防止 PromQL/MetricsQL 注入落库。
         """
         if not value:
             return value
         if not isinstance(value, dict):
             raise serializers.ValidationError("query_condition 必须是对象")
-        if value.get("type") == "pmq":
+
+        query_type = value.get("type")
+        if query_type == "pmq":
             if not value.get("query"):
                 raise serializers.ValidationError("query_condition.type=pmq 时必须提供非空 query")
-        elif "metric_id" not in value:
+            # pmq 类型直接传原始 PromQL，不校验 filter
+            return value
+
+        if "metric_id" not in value:
             raise serializers.ValidationError("query_condition 缺少 metric_id")
+
+        # 校验 filter 中的 label name 和运算符，防止注入
+        filter_list = value.get("filter", [])
+        if not isinstance(filter_list, list):
+            return value
+
+        for idx, condition in enumerate(filter_list):
+            if not isinstance(condition, dict):
+                continue
+            name = condition.get("name", "")
+            method = condition.get("method", "")
+            if name and not _LABEL_NAME_RE.match(str(name)):
+                raise serializers.ValidationError(
+                    f"filter[{idx}].name={name!r} 包含非法字符，只允许 [a-zA-Z_][a-zA-Z0-9_]*"
+                )
+            if method and method not in _VALID_LABEL_METHODS:
+                raise serializers.ValidationError(
+                    f"filter[{idx}].method={method!r} 不是合法运算符，只允许 {sorted(_VALID_LABEL_METHODS)}"
+                )
         return value
 
     def validate_source(self, value):
