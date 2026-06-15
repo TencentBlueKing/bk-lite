@@ -9,8 +9,10 @@ Scenarios covered:
 """
 
 import inspect
+import json
 import sys
 import types
+from types import SimpleNamespace
 
 # ---------------------------------------------------------------------------
 # Stub out optional C-extension modules
@@ -610,7 +612,6 @@ class TestMemorySpaceViewSetCRUD:
 
     def test_list_memory_spaces(self, memory_space_team, memory_space_personal):
         """List returns all memory spaces for the team."""
-        from types import SimpleNamespace
 
         from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
 
@@ -700,7 +701,6 @@ class TestMemorySpaceTestWriteAction:
 
     def test_test_write_empty_input_returns_error(self):
         """Empty input returns 400 error."""
-        from types import SimpleNamespace
 
         from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
 
@@ -716,7 +716,6 @@ class TestMemorySpaceTestWriteAction:
 
     def test_test_write_no_write_rule_returns_input(self):
         """No write_rule returns input as-is."""
-        from types import SimpleNamespace
 
         from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
 
@@ -728,14 +727,12 @@ class TestMemorySpaceTestWriteAction:
 
         response = MemorySpaceViewSet.test_write.__wrapped__(viewset, request)
         assert response.status_code == 200
-        import json
 
         data = json.loads(response.content)
         assert data["data"]["result"] == "Test content"
 
     def test_test_write_no_model_id_returns_error(self):
         """No model_id with write_rule returns 400 error."""
-        from types import SimpleNamespace
 
         from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
 
@@ -750,7 +747,6 @@ class TestMemorySpaceTestWriteAction:
 
     def test_test_write_model_not_found_returns_404(self, db):
         """Non-existent model_id returns 404."""
-        from types import SimpleNamespace
 
         from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
 
@@ -769,9 +765,6 @@ class TestMemorySpaceWorkflowOptionsAction:
     """Test workflow memory space options action."""
 
     def test_workflow_options_returns_all_spaces_without_current_team_filter(self, db):
-        import json
-        from types import SimpleNamespace
-
         from apps.opspilot.models.memory_mgmt import MemorySpace
         from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet
 

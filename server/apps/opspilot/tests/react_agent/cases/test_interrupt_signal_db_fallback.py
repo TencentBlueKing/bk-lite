@@ -11,6 +11,7 @@ Verifies that:
 - Async versions work correctly in async contexts
 """
 
+import inspect
 import sys
 import types
 
@@ -309,7 +310,6 @@ class TestSourceAnalysis:
 
     def test_db_query_uses_exists_optimization(self):
         """TC-18-17: Database query should use exists() for performance."""
-        import inspect
 
         from apps.opspilot.utils.execution_interrupt import _check_interrupt_in_database
 
@@ -321,7 +321,6 @@ class TestSourceAnalysis:
 
     def test_uses_correct_status_enum(self):
         """TC-18-18: Should use WorkFlowTaskStatus.INTERRUPTED enum."""
-        import inspect
 
         from apps.opspilot.utils.execution_interrupt import _check_interrupt_in_database
 
@@ -372,7 +371,6 @@ class TestAsyncInterruptCheck:
     @pytest.mark.asyncio
     async def test_async_db_check_uses_sync_to_async(self):
         """TC-18-22: Async DB check should use sync_to_async wrapper."""
-        import inspect
 
         from apps.opspilot.utils.execution_interrupt import _check_interrupt_in_database_async
 
