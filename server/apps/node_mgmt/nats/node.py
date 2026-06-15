@@ -9,7 +9,7 @@ from apps.node_mgmt.management.services.node_init.collector_init import import_c
 from apps.node_mgmt.models import CloudRegion, SidecarEnv
 from apps.node_mgmt.services.node import NodeService
 from apps.node_mgmt.services.installer import InstallerService
-from apps.node_mgmt.tasks.installer import install_collector
+from apps.node_mgmt.tasks.installer import install_collector as install_collector_task
 from apps.node_mgmt.utils.architecture import normalize_cpu_architecture
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -692,9 +692,19 @@ def delete_configs(ids: list):
     NatsService().delete_configs(ids)
 
 
+def _install_collector_by_nats(data: dict):
+    task_id = InstallerService.install_collector(data["collector_package"], data["nodes"])
+    install_collector_task.delay(task_id)
+    return {"task_id": task_id}
+
+
+@nats_client.register
+def install_collector(data: dict):
+    """安装采集器"""
+    return _install_collector_by_nats(data)
+
+
 @nats_client.register
 def install_managed_component(data: dict):
     """安装托管组件（当前复用采集器安装流程）"""
-    task_id = InstallerService.install_collector(data["collector_package"], data["nodes"])
-    install_collector.delay(task_id)
-    return {"task_id": task_id}
+    return _install_collector_by_nats(data)

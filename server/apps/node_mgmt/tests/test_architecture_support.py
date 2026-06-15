@@ -4359,7 +4359,7 @@ def test_install_managed_component_nats_creates_task_and_dispatches_async_worker
             captured["task_id"] = task_id
 
     monkeypatch.setattr("apps.node_mgmt.nats.node.InstallerService.install_collector", fake_install_collector)
-    monkeypatch.setattr("apps.node_mgmt.nats.node.install_collector", _FakeDelay())
+    monkeypatch.setattr("apps.node_mgmt.nats.node.install_collector_task", _FakeDelay())
 
     from apps.node_mgmt.nats.node import install_managed_component
 
@@ -4370,6 +4370,34 @@ def test_install_managed_component_nats_creates_task_and_dispatches_async_worker
         "collector_package": 12,
         "nodes": ["node-1", "node-2"],
         "task_id": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_install_collector_nats_creates_task_and_dispatches_async_worker(monkeypatch):
+    captured = {}
+
+    def fake_install_collector(collector_package, nodes):
+        captured["collector_package"] = collector_package
+        captured["nodes"] = nodes
+        return 2
+
+    class _FakeDelay:
+        def delay(self, task_id):
+            captured["task_id"] = task_id
+
+    from apps.node_mgmt.nats import node as nats_node
+
+    monkeypatch.setattr(nats_node.InstallerService, "install_collector", fake_install_collector)
+    monkeypatch.setattr(nats_node, "install_collector_task", _FakeDelay(), raising=False)
+
+    result = nats_node.install_collector({"collector_package": 13, "nodes": ["node-3", "node-4"]})
+
+    assert result == {"task_id": 2}
+    assert captured == {
+        "collector_package": 13,
+        "nodes": ["node-3", "node-4"],
+        "task_id": 2,
     }
 
 
