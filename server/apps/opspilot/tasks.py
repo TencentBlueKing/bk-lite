@@ -136,6 +136,24 @@ def _summarize_memory_batch_content(memory_space, batch_content: str, model_id=N
         return batch_content
 
 
+def _resolve_org_display_name(organization_id) -> str:
+    """组织记忆的展示名（owner_username）：优先组名，回退“组织-{id}”。
+
+    与 LocalMemoryEngine.write 的直接写入路径保持一致，避免批量落库时 owner_username 为空，
+    导致前端“管理组织”列（读 owner_username）显示空。
+    """
+    display = f"组织-{organization_id}"
+    try:
+        from apps.system_mgmt.models import Group
+
+        group = Group.objects.filter(id=organization_id).first()
+        if group:
+            display = group.name
+    except Exception:  # noqa: BLE001
+        pass
+    return display
+
+
 def _flush_memory_write_cache_group(
     memory_space_id: int,
     title: str,
@@ -179,6 +197,9 @@ def _flush_memory_write_cache_group(
         memory_space = MemorySpace.objects.get(id=memory_space_id)
         summarized_content = _summarize_memory_batch_content(memory_space, batch_content, model_id=model_id)
         owner_username, owner_domain, organization_id = resolve_memory_target(memory_space, memory_target_id)
+        # 团队记忆 owner_username 为空时补组名，保证前端“管理组织”列有值（与直接写入路径一致）
+        if organization_id is not None and not owner_username:
+            owner_username = _resolve_org_display_name(organization_id)
 
         process_memory_write(
             memory_space_id=memory_space_id,

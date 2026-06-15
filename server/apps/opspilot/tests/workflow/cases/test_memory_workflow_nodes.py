@@ -1929,7 +1929,7 @@ def create_vm_with_flow_input(flow_input: dict, flow_id: str = ""):
 
 @pytest.mark.django_db
 class TestMemoryWriteUserIdsFanout:
-    """Personal write fans out to all flow_input.user_ids; team uses flow_input.team[0]."""
+    """Personal write fans out to all flow_input.user_ids; team uses flow_input.team."""
 
     def test_personal_write_fans_out_to_all_user_ids(self, memory_space_personal):
         """When flow_input.user_ids is present, write is called once per user."""
@@ -1959,8 +1959,8 @@ class TestMemoryWriteUserIdsFanout:
         assert mock_task.delay.call_args.kwargs["owner_username"] == "alice"
 
     def test_team_write_prefers_flow_input_team_over_memory_space_team(self, memory_space_team):
-        """Team write uses flow_input.team[0] (99) instead of memory_space.team[0] (1)."""
-        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": [99]})
+        """Team write uses flow_input.team (99) instead of memory_space.team[0] (1)."""
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": 99})
         node = MemoryWriteNode(vm)
         node_config = build_node_config(memory_space_id=memory_space_team.id, title="Team Override")
 
@@ -1988,7 +1988,7 @@ class TestMemoryWriteUserIdsFanout:
 
 @pytest.mark.django_db
 class TestMemoryReadUserIdsFanout:
-    """Personal read aggregates contexts for all flow_input.user_ids; team uses flow_input.team[0]."""
+    """Personal read aggregates contexts for all flow_input.user_ids; team uses flow_input.team."""
 
     def test_personal_read_aggregates_for_all_user_ids(self, memory_space_personal):
         """When flow_input.user_ids is present, contexts from all users are merged."""
@@ -2035,7 +2035,7 @@ class TestMemoryReadUserIdsFanout:
         assert "I prefer dark mode" in result.get("memory_context", "")
 
     def test_team_read_prefers_flow_input_team_over_memory_space_team(self, db):
-        """Team read uses flow_input.team[0] (99) instead of memory_space.team[0] (1)."""
+        """Team read uses flow_input.team (99) instead of memory_space.team[0] (1)."""
         from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 
         team_space = MemorySpace.objects.create(
@@ -2056,7 +2056,7 @@ class TestMemoryReadUserIdsFanout:
             domain="test.com",
         )
 
-        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": [99]})
+        vm = create_vm_with_flow_input({"user_id": "alice@test.com", "team": 99})
         node = MemoryReadNode(vm)
         node_config = build_node_config(memory_space_id=team_space.id)
 
@@ -2093,3 +2093,92 @@ class TestMemoryReadUserIdsFanout:
         result = node.execute("mem_read_1", node_config, {"last_message": "query"})
 
         assert "content for org seven" in result.get("memory_context", "")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_memory_write_cache_flush_timing_and_org(mocker):
+    """实证：batch=2 时第2次触发即落库（>=），且 team-scope 的 organization_id 正确落库。"""
+    from apps.opspilot.models import Memory
+    from apps.opspilot.models.bot_mgmt import Bot, BotWorkFlow
+    from apps.opspilot.models.memory_mgmt import MemorySpace
+    from apps.opspilot.tasks import process_memory_write_cache
+
+    mocker.patch(
+        "apps.opspilot.models.bot_mgmt.ChatApplication.sync_applications_from_workflow",
+        return_value=(0, 0, 0),
+    )
+
+    space = MemorySpace.objects.create(
+        name="TeamSpace5",
+        team=[5],
+        scope=MemorySpace.SCOPE_TEAM,
+        write_rule="",
+        default_model="",
+        created_by="admin",
+        domain="test.com",
+    )
+    bot = Bot.objects.create(name="b-mem", team=[5], created_by="admin")
+    wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+
+    def call(content):
+        process_memory_write_cache(
+            memory_space_id=space.id,
+            title="t",
+            content=content,
+            owner_username="组织-5",
+            owner_domain="",
+            organization_id=5,
+            model_id=None,
+            workflow_id=wf.id,
+            node_id="n1",
+            write_batch_size=2,
+        )
+
+    call("c1")
+    assert Memory.objects.filter(memory_space=space).count() == 0, "第1次触发不应写入"
+
+    call("c2")
+    mems = list(Memory.objects.filter(memory_space=space))
+    assert len(mems) == 1, f"第2次触发应写入，实际 {len(mems)}"
+    assert mems[0].organization_id == 5, f"organization_id 应为 5，实际 {mems[0].organization_id}"
+    # 团队记忆 owner_username 不应为空（前端“管理组织”列读它）；无 Group 时回退“组织-{id}”
+    assert mems[0].owner_username == "组织-5", f"owner_username 应为 组织-5，实际 {mems[0].owner_username!r}"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_personal_memory_writes_separate_record_per_user_e2e(mocker):
+    """端到端：个人记忆按 flow_input.user_ids 分别落库，每个干系人各一条独立记忆。"""
+    from apps.opspilot import tasks as opspilot_tasks
+    from apps.opspilot.models import Memory
+    from apps.opspilot.models.memory_mgmt import MemorySpace
+    from apps.opspilot.utils.chat_flow_utils.nodes.memory.memory_write import MemoryWriteNode
+
+    space = MemorySpace.objects.create(
+        name="PersonalE2E",
+        team=[1],
+        scope=MemorySpace.SCOPE_PERSONAL,
+        write_rule="",
+        default_model="",
+        created_by="admin",
+        domain="test.com",
+    )
+
+    # 让 .delay 同步执行真实任务，端到端落库
+    mocker.patch.object(
+        opspilot_tasks.process_memory_write,
+        "delay",
+        side_effect=lambda **kw: opspilot_tasks.process_memory_write(**kw),
+    )
+
+    # flow_id="" → 走非批量直接写入路径
+    vm = create_vm_with_flow_input({"user_ids": ["alice", "bob", "carol"], "user_id": "alice"}, flow_id="")
+    node = MemoryWriteNode(vm)
+    node_config = build_node_config(memory_space_id=space.id, title="干系人记忆")
+
+    node.execute("mem_write_1", node_config, {"last_message": "支付网关 OOMKilled 已恢复"})
+
+    mems = list(Memory.objects.filter(memory_space=space))
+    assert len(mems) == 3, f"应为每个干系人各落一条，实际 {len(mems)}"
+    assert {m.owner_username for m in mems} == {"alice", "bob", "carol"}
+    assert all(m.organization_id is None for m in mems), "个人记忆 organization_id 应为空"
+    assert all(m.owner_domain == "" for m in mems)

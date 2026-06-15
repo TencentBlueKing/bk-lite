@@ -370,6 +370,7 @@
     "executeUser": "Execute User",
     "defaultExecuteUser": "root",
     "executionLog": "Execution Log",
+    "streamingLive": "Live",
     "searchLog": "Search logs...",
     "sortAsc": "Ascending",
     "sortDesc": "Descending",

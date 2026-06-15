@@ -12,7 +12,9 @@ import stat
 import uuid
 import zipfile
 from codecs import decode as codecs_decode
+from collections.abc import Awaitable, Callable
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
@@ -950,7 +952,66 @@ def build_playbook_winrm_preflight_command(payload: PlaybookRequest) -> list[str
     ]
 
 
-async def run_command(cmd: list[str], timeout: int, max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES) -> tuple[int, str, dict[str, Any]]:
+class LineEventStreamer:
+    """Convert an arbitrarily chunked byte stream into complete decoded lines.
+
+    Pure helper (no IO): feed raw chunks read from a subprocess and receive the
+    complete lines contained so far. A trailing partial line is buffered until a
+    newline arrives or ``flush()`` is called. Lines are decoded as UTF-8 with
+    replacement and have their trailing ``\\r``/``\\n`` stripped.
+    """
+
+    def __init__(self) -> None:
+        self._buffer = bytearray()
+
+    def feed(self, chunk: bytes) -> list[str]:
+        if not chunk:
+            return []
+        self._buffer.extend(chunk)
+        lines: list[str] = []
+        while True:
+            idx = self._buffer.find(b"\n")
+            if idx == -1:
+                break
+            raw_line = bytes(self._buffer[:idx])
+            del self._buffer[: idx + 1]
+            lines.append(self._decode_line(raw_line))
+        return lines
+
+    def flush(self) -> str | None:
+        if not self._buffer:
+            return None
+        raw_line = bytes(self._buffer)
+        self._buffer.clear()
+        return self._decode_line(raw_line)
+
+    @staticmethod
+    def _decode_line(raw_line: bytes) -> str:
+        return raw_line.decode("utf-8", errors="replace").rstrip("\r\n")
+
+
+StreamPublish = Callable[[str, bytes], Awaitable[None]]
+
+
+def _build_stream_log_payload(execution_id: str, line: str) -> bytes:
+    payload = {
+        "execution_id": execution_id,
+        "stream": "stdout",
+        "line": line,
+        "timestamp": datetime.now(UTC).isoformat(),
+    }
+    return json.dumps(payload, ensure_ascii=False).encode("utf-8")
+
+
+async def run_command(
+    cmd: list[str],
+    timeout: int,
+    max_output_bytes: int = DEFAULT_MAX_OUTPUT_BYTES,
+    *,
+    stream_publish: StreamPublish | None = None,
+    stream_log_topic: str | None = None,
+    execution_id: str | None = None,
+) -> tuple[int, str, dict[str, Any]]:
     process_kwargs: dict[str, Any] = {}
     if os.name == "posix":
         process_kwargs["start_new_session"] = True
@@ -960,6 +1021,17 @@ async def run_command(cmd: list[str], timeout: int, max_output_bytes: int = DEFA
         stderr=asyncio.subprocess.STDOUT,
         **process_kwargs,
     )
+
+    streaming_enabled = bool(stream_publish and stream_log_topic and execution_id)
+    streamer = LineEventStreamer() if streaming_enabled else None
+
+    async def _publish_line(line: str) -> None:
+        # Streaming is best-effort: a publish failure must never break the run.
+        try:
+            data = _build_stream_log_payload(execution_id, line)
+            await stream_publish(stream_log_topic, data)
+        except Exception as publish_err:  # noqa: BLE001 - intentionally swallowed
+            logger.warning("stream log publish failed: %s", publish_err)
 
     async def _collect_output() -> tuple[bytes, dict[str, Any]]:
         assert proc.stdout is not None
@@ -981,6 +1053,14 @@ async def run_command(cmd: list[str], timeout: int, max_output_bytes: int = DEFA
                     retained_bytes += len(kept)
             if len(chunk) > max(remaining, 0):
                 truncated = True
+            if streamer is not None:
+                for line in streamer.feed(chunk):
+                    await _publish_line(line)
+
+        if streamer is not None:
+            trailing = streamer.flush()
+            if trailing is not None:
+                await _publish_line(trailing)
 
         return b"".join(chunks), {
             "truncated": truncated,
