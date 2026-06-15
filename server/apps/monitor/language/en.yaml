@@ -3584,6 +3584,23 @@ monitor_object_plugin:
       power-supply status. Memory utilization is computed from used/(used+free);
       fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal
       convention.
+  Switch MikroTik SNMP:
+    name: MikroTik (Telegraf)
+    desc: MikroTik (RouterOS)-specific SNMP collection template for switches/routers.
+      In addition to standard IF-MIB interface metrics, it collects HOST-RESOURCES
+      and MIKROTIK-MIB OIDs for device health including per-core CPU utilization,
+      system memory (used/total), and board temperature. MikroTik exposes fan as raw
+      RPM and lacks a standardized power-supply state, so fan/psu health is not
+      collected (N/A). Memory utilization is computed from used/total.
+  Switch D-Link SNMP:
+    name: D-Link (Telegraf)
+    desc: D-Link DES/DGS-specific SNMP collection template for switches (EQUIPMENT-MIB,
+      enterprise 171). In addition to standard IF-MIB interface metrics, it collects
+      D-Link private OIDs for device health including CPU utilization, memory
+      utilization, temperature sensors, fan and power-supply status. D-Link reports
+      CPU and memory as utilization percentages directly; fan status is natively
+      1=normal and power-supply status is normalized to the unified 1=normal
+      convention.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

@@ -503,7 +503,9 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
   { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
   { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
-  { match: /alcatel/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' }
+  { match: /alcatel/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
+  { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
+  { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。
