@@ -28,7 +28,7 @@
   },
   {
     "name": "Extreme交换机温度过高",
-    "alert_name": "交换机${resource_name} 传感器 ${metric_descr} 温度过高",
+    "alert_name": "交换机${resource_name} 温度过高",
     "description": "监控 Extreme 设备各硬件温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热，避免触发热保护或硬件损坏。",
     "metric_name": "device_temperature_celsius",
     "algorithm": "last_over_time",
