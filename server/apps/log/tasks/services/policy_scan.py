@@ -6,6 +6,15 @@ import time
 import uuid
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+# 单条告警快照列表最大保留条数（保留最新的 N 条）
+# 超出后丢弃最旧记录，防止 S3 对象无限膨胀。可通过环境变量调整。
+try:
+    _MAX_ALERT_SNAPSHOTS = int(os.getenv("LOG_MAX_ALERT_SNAPSHOTS", "500"))
+    if _MAX_ALERT_SNAPSHOTS <= 0:
+        raise ValueError("必须为正整数")
+except ValueError:
+    _MAX_ALERT_SNAPSHOTS = 500
+
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
@@ -879,9 +888,11 @@ class LogPolicyScan:
                         }
                         new_snapshots.append(event_snapshot)
 
-                    # 批量添加新快照
+                    # 批量添加新快照，并裁剪至上限以防 S3 对象无限膨胀
                     if new_snapshots:
                         snapshot_obj.snapshots.extend(new_snapshots)
+                        if len(snapshot_obj.snapshots) > _MAX_ALERT_SNAPSHOTS:
+                            snapshot_obj.snapshots = snapshot_obj.snapshots[-_MAX_ALERT_SNAPSHOTS:]
                         snapshot_obj.save(update_fields=["snapshots", "updated_at"])
 
         except Exception as e:
