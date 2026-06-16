@@ -1,0 +1,125 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_aruba"
+        config_type = "aruba"
+        brand = "aruba"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Aruba CX module CPU utilization (ARUBAWIRED-VSF/CHASSIS MIB, ent 47196, per module) ----
+    # 待现网核验：arubaWiredModuleCpuUtilization 1.3.6.1.4.1.47196.4.1.1.3.22.1.0.1.1.3（已归一化 0-100%）
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.22.1.0.1.1.3"
+        name = "usage"
+    # ---- Aruba CX module memory utilization (per module, % 直报，无 used/free 字节) ----
+    # 待现网核验：arubaWiredModuleMemoryUtilization 1.3.6.1.4.1.47196.4.1.1.3.22.1.0.1.1.4 → 统一 device_memory_usage(原始%)
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.22.1.0.1.1.4"
+        name = "usage"
+    # ---- Aruba CX temperature sensors (ARUBAWIRED-SYSTEM MIB, per sensor) ----
+    # 待现网核验：温度值 1.3.6.1.4.1.47196.4.1.1.3.11.3.1.1.7；descr=传感器名 ...1.1.5。
+    # ⚠ 若现网为毫摄氏度(模版阈值有 /1000)，需现网加换算；mock 用摄氏度正常值不受影响。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.3.1.1.5"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.3.1.1.7"
+        name = "celsius"
+    # ---- Aruba CX fans (ARUBAWIRED-SYSTEM MIB) ----
+    # 待现网核验：风扇状态 1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.10；descr=风扇名 ...1.1.5。
+    # 华为/思科原生 1=normal；⚠ Aruba 原生 4=Ok(正常)、5=Fault → 用下方 processors.enum 归一到 1=normal/2=abnormal。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.5"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.5.1.1.10"
+        name = "state"
+    # ---- Aruba CX power supplies (ARUBAWIRED-SYSTEM MIB) ----
+    # 待现网核验：电源状态 1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.11；descr=电源名 ...1.1.5。
+    # ⚠ Aruba 原生 1=Ok(正常)、2..=Fault* → 用下方 processors.enum 归一到 1=normal/2=abnormal。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.5"
+        name = "descr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.47196.4.1.1.3.11.2.1.1.11"
+        name = "state"
+
+# ---- 枚举归一：把 Aruba 私有 fan/psu 编码映射到统一 1=normal/2=abnormal（偏离1即异常）----
+# 待现网核验：仅作用于本品牌(tagpass brand=aruba)，避免影响其它品牌同名字段。
+# Fan: 4=Ok→1，其余(1 Unknown/2 Empty/3 Uninitialized/5 Fault)→2。PSU: 1=Ok→1，其余(2..6 Fault*)→2。
+[[processors.enum]]
+    [processors.enum.tagpass]
+        brand = ["aruba"]
+    [[processors.enum.mapping]]
+        field = "device_fan_state"
+        dest = "device_fan_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "4" = 1
+    [[processors.enum.mapping]]
+        field = "device_psu_state"
+        dest = "device_psu_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

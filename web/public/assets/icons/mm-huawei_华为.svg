@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="huaweiRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e60012"/>
+      <stop offset="1" stop-color="#c7000b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#huaweiRed)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round">
+    <path d="M60 30 C44 44 44 64 60 74"/>
+    <path d="M60 30 C76 44 76 64 60 74"/>
+    <path d="M60 38 C50 48 50 62 60 70"/>
+    <path d="M60 38 C70 48 70 62 60 70"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#ffffff" letter-spacing="1">HUAWEI</text>
+</svg>

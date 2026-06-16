@@ -1,5 +1,6 @@
 import json
 import asyncio
+import queue
 import re
 from decimal import Decimal, InvalidOperation
 import requests
@@ -323,13 +324,42 @@ class VictoriaMetricsAPI:
             )
 
             # 异步生成器，逐行处理数据
+            # 使用 Queue + 线程池将阻塞的 iter_lines() 卸载到 executor，
+            # 避免同步 I/O 阻塞 ASGI 事件循环。
+            _SENTINEL = object()
+            line_queue: queue.Queue = queue.Queue(maxsize=256)
             line_count = 0
             first_data_received = False
             start_time = time.time()
 
+            def _iter_lines_in_thread():
+                """在独立线程中消费流式响应，结果放入 Queue 供异步生成器读取。"""
+                try:
+                    for line in response.iter_lines(chunk_size=8192, decode_unicode=True):
+                        line_queue.put(line)
+                except Exception as exc:
+                    line_queue.put(exc)
+                finally:
+                    line_queue.put(_SENTINEL)
+
             try:
-                # 逐行处理响应数据
-                for line in response.iter_lines(chunk_size=8192, decode_unicode=True):
+                # 将阻塞的 iter_lines 迭代移至线程池
+                iter_future = loop.run_in_executor(None, _iter_lines_in_thread)
+
+                while True:
+                    # 以非阻塞方式从队列取行，没有数据时让出事件循环
+                    try:
+                        item = line_queue.get_nowait()
+                    except queue.Empty:
+                        await asyncio.sleep(0)
+                        continue
+
+                    if item is _SENTINEL:
+                        break
+                    if isinstance(item, Exception):
+                        raise item
+
+                    line = item
                     if line:
                         line_count += 1
 
@@ -342,8 +372,6 @@ class VictoriaMetricsAPI:
                             first_data_received = True
 
                         try:
-                            # 让出控制权给其他异步任务
-                            await asyncio.sleep(0)
                             yield line.strip()
 
                             # 每1000行记录一次状态
@@ -365,9 +393,9 @@ class VictoriaMetricsAPI:
                                 },
                             )
                             continue
-                    else:
-                        # 处理空行，让出控制权
-                        await asyncio.sleep(0.001)
+
+                # 等待线程完成，传播线程侧未捕获的异常
+                await iter_future
 
             finally:
                 # 确保响应对象被正确关闭

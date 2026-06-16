@@ -12,6 +12,12 @@ class CustomReportingTaskViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def list(self, request):
         return WebUtils.response_success(get_custom_reporting_extension().list_tasks(request, request.query_params.dict()))
 
+    @action(detail=False, methods=["get"], url_path="stats")
+    def stats(self, request):
+        return WebUtils.response_success(
+            get_custom_reporting_extension().get_stats(request, request.query_params.dict())
+        )
+
     def create(self, request):
         ser = CustomReportingCreateSerializer(data=request.data)
         ser.is_valid(raise_exception=True)
@@ -28,6 +34,12 @@ class CustomReportingTaskViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def destroy(self, request, pk=None):
         get_custom_reporting_extension().delete_task(request, pk)
         return WebUtils.response_success({})
+
+    @action(detail=True, methods=["get"], url_path="field_registrations")
+    def field_registrations(self, request, pk=None):
+        return WebUtils.response_success(
+            get_custom_reporting_extension().get_field_registrations(request, pk)
+        )
 
     @action(detail=True, methods=["get"], url_path="batch_activity")
     def batch_activity(self, request, pk=None):
@@ -68,6 +80,10 @@ class CustomReportingIngestViewSet(OpenAPIViewSet):
     authentication_classes = []
 
     def create(self, request):
-        auth = request.META.get("HTTP_AUTHORIZATION", "")
-        token = auth[7:] if auth.startswith("Bearer ") else None
+        # 兼容两种写法：Authorization: Bearer <token> 或直接 Authorization: <token>
+        auth = request.META.get("HTTP_AUTHORIZATION", "").strip()
+        if auth[:7].lower() == "bearer ":
+            token = auth[7:].strip()
+        else:
+            token = auth or None
         return WebUtils.response_success(get_custom_reporting_extension().ingest(request, token, request.data))

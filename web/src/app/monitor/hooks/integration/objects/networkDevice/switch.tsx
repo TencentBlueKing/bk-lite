@@ -109,6 +109,20 @@ export const useSwitchConfig = () => {
     collectTypes: {
       'Switch SNMP General': 'snmp',
       'Switch Cisco SNMP': 'snmp_cisco',
+      'Switch Huawei SNMP': 'snmp_huawei',
+      'Switch Aruba SNMP': 'snmp_aruba',
+      'Switch Juniper SNMP': 'snmp_juniper',
+      'Switch Extreme SNMP': 'snmp_extreme',
+      'Switch Brocade SNMP': 'snmp_brocade',
+      'Switch Alcatel-Lucent SNMP': 'snmp_alcatel',
+      'Switch MikroTik SNMP': 'snmp_mikrotik',
+      'Switch D-Link SNMP': 'snmp_dlink',
+      'Switch Netgear SNMP': 'snmp_netgear',
+      'Switch TP-Link SNMP': 'snmp_tplink',
+      'Switch Zyxel SNMP': 'snmp_zyxel',
+      'Switch QTech SNMP': 'snmp_qtech',
+      'Switch Dell Force10 SNMP': 'snmp_dellforce',
+      'Switch HP ProCurve SNMP': 'snmp_hphpn',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }

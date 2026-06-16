@@ -63,9 +63,11 @@ class FakeSession:
     def __init__(self, result_records=None):
         self._records = result_records if result_records is not None else []
         self.last_query = None
+        self.last_params = {}
 
     def run(self, query, *args, **kwargs):
         self.last_query = query
+        self.last_params = kwargs
         return FakeRunResult(self._records)
 
     def close(self):
@@ -154,14 +156,39 @@ def test_format_properties_remove():
 
 
 def test_format_search_params_str_eq():
+    """format_search_params 返回 (str, dict) 元组，str 使用 $placeholder 不含原始值。"""
     c = _client()
-    out = c.format_search_params([{"field": "name", "type": "str=", "value": "h"}])
-    assert "n.name" in out
+    params_str, query_params = c.format_search_params([{"field": "name", "type": "str=", "value": "h"}])
+    assert "n.name" in params_str
+    # 参数化：原始值在 query_params 中，不在 CQL 字符串内
+    assert "h" not in params_str
+    assert "h" in query_params.values()
+
+
+def test_format_search_params_injection_value():
+    """注入载荷在 query_params 中，不出现在 CQL 字符串里（核心防注入验证）。"""
+    c = _client()
+    injection = "foo'] RETURN n //"
+    params_str, query_params = c.format_search_params([{"field": "name", "type": "str=", "value": injection}])
+    # 注入字符串绝不能直接拼进 CQL
+    assert injection not in params_str
+    assert "RETURN" not in params_str
+    # 注入值通过参数传递
+    assert injection in query_params.values()
+
+
+def test_format_search_params_injection_field():
+    """非法 field 名（含注入字符）应被 CQLValidator 拒绝。"""
+    from apps.core.exceptions.base_app_exception import BaseAppException
+    c = _client()
+    with pytest.raises((BaseAppException, Exception)):
+        c.format_search_params([{"field": "name'] RETURN n //", "type": "str=", "value": "v"}])
 
 
 def test_format_final_params():
     c = _client()
-    assert c.format_final_params([], permission_params="n.org=1") == "n.org=1"
+    combined_str, query_params = c.format_final_params([], permission_params="n.org=1")
+    assert combined_str == "n.org=1"
 
 
 # --------------------------------------------------------------------------

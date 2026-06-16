@@ -259,6 +259,43 @@ def test_receiver_invalid_secret(monkeypatch):
     assert response.status_code == 403
 
 
+@pytest.mark.django_db
+def test_receiver_authentication_source_error_returns_403(monkeypatch):
+    """authenticate() 抛出 AuthenticationSourceError 时应返回 403 而非 500。
+
+    验证修复点：AuthenticationSourceError 被显式捕获并映射到 403，
+    revert 该 except 子句后此测试将失败。
+    """
+    from apps.alerts.error import AuthenticationSourceError
+    from apps.alerts.views import receiver as receiver_module
+
+    _make_source(source_id="src-auth-err", source_type="restful")
+
+    class FakeAdapterAuthError:
+        def __init__(self, alert_source=None, secret=None, events=None):
+            pass
+
+        def normalize_payload(self, data):
+            return [{"event_id": "E1"}]
+
+        def authenticate(self):
+            raise AuthenticationSourceError("Authentication failed")
+
+        def main(self):
+            return None
+
+    monkeypatch.setattr(
+        receiver_module.AlertSourceAdapterFactory, "get_adapter", staticmethod(lambda src: FakeAdapterAuthError)
+    )
+
+    request = _post_body({"source_id": "src-auth-err"}, secret="bad-key")
+    response = receiver_module.receiver_data(request)
+    assert response.status_code == 403
+    payload = json.loads(response.content)
+    assert payload["status"] == "error"
+    assert "Invalid secret" in payload["message"]
+
+
 def test_request_test_returns_success():
     from apps.alerts.views.receiver import request_test
 
