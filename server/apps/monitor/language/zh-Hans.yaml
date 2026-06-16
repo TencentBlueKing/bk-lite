@@ -571,6 +571,24 @@ monitor_object_metric:
       name: HTTP空闲超时时间
       desc: 表示 HTTP 连接无数据传输时的最长保持时间（秒），用于释放空闲连接资源，避免资源浪费和恶意连接占用。
   Firewall:
+    firewall_tcp_connections:
+      name: ASQ TCP 连接数
+      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 TCP 连接数（STORMSHIELD-SNS-MIB）。连接数快速上升可能意味着连接洪泛或会话表压力。
+    firewall_udp_connections:
+      name: ASQ UDP 连接数
+      desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 UDP 连接数（STORMSHIELD-SNS-MIB）。可结合 TCP 连接数评估整体会话负载与异常。
+    device_memory_free:
+      name: 空闲内存
+      desc: 该指标报告防火墙当前空闲的物理内存字节数（Check Point CHECKPOINT-MIB memTotalReal64 减去 memActiveReal64）。空闲内存持续偏低可能意味着内存压力上升。
+    device_memory_used:
+      name: 已用内存
+      desc: 该指标报告防火墙当前已使用的物理内存字节数（由内存总量减去空闲内存计算得到）。用于评估绝对内存消耗与压力。
+    firewall_vpn_encrypted_pps:
+      name: VPN 加密包速率
+      desc: 该指标报告防火墙 VPN 加密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB encpktsPersec）。可用于观察 VPN 加密流量负载与异常波动。
+    firewall_vpn_decrypted_pps:
+      name: VPN 解密包速率
+      desc: 该指标报告防火墙 VPN 解密数据包的速率，单位为包每秒（Check Point CHECKPOINT-MIB decpktsPersec）。可用于观察 VPN 解密流量负载与异常波动。
     device_cpu_usage:
       name: CPU 使用率
       desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高 CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
@@ -3290,6 +3308,12 @@ monitor_object_plugin:
   Firewall Fortinet SNMP:
     name: Fortinet（Telegraf）
     desc: 面向 FortiGate 防火墙的 Fortinet 专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 FORTINET-FORTIGATE-MIB 私有 OID 的设备健康（CPU、内存使用率、总内存）与防火墙特有状态（IPv4 活动会话数、活动 IPsec VPN 隧道数、HA 模式）。内存为设备直接上报的使用率百分比。
+  Firewall Check Point SNMP:
+    name: Check Point（Telegraf）
+    desc: 面向 Check Point Quantum NGFW（Gaia）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 CHECKPOINT-MIB 私有 OID 的设备健康（CPU 使用率，真实内存 总量/空闲/已用及推算使用率）与防火墙特有的 VPN 吞吐（每秒加密/解密包数）。内存使用率按 (总量-空闲)/总量 推算。
+  Firewall Stormshield SNMP:
+    name: Stormshield（Telegraf）
+    desc: 面向 Stormshield Network Security（SNS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）、UCD-SNMP 真实内存（总量/空闲、已用及推算使用率）与 STORMSHIELD-SNS-MIB 私有 OID 的防火墙特有状态（ASQ 活动 TCP/UDP 连接数、成熟 VPN 隧道数）。内存使用率按 (总量-空闲)/总量 推算。
   Firewall Flow NetFlow:
     name: 防火墙流量分析（NetFlow）
     desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
