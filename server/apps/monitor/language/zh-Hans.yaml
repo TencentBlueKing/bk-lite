@@ -3412,6 +3412,9 @@ monitor_object_plugin:
   Router Juniper MX SNMP:
     name: Juniper MX（Telegraf）
     desc: 面向 Juniper MX 系列路由器（Junos）的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 JUNIPER-MIB jnxOperating 私有 OID 的设备健康（CPU 使用率与内存缓冲使用率，均为百分比，按路由引擎/FPC 等运行实体取平均）。
+  Router Huawei AR SNMP:
+    name: Huawei AR（Telegraf）
+    desc: 面向 Huawei AR 系列路由器（VRP）的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HUAWEI-ENTITY-EXTENT-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为百分比直报，按各实体取平均）。
   Router Flow NetFlow:
     name: 路由器流量分析（NetFlow）
     desc: 使用 NetFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。

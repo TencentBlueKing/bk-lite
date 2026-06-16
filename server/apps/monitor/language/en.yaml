@@ -3928,6 +3928,13 @@ monitor_object_plugin:
       counters, it collects JUNIPER-MIB jnxOperating private OIDs for device health
       (CPU utilization and memory-buffer utilization, both reported as percentages and
       averaged across routing-engine/FPC operating entities).
+  Router Huawei AR SNMP:
+    name: Huawei AR (Telegraf)
+    desc: Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP).
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HUAWEI-ENTITY-EXTENT-MIB private OIDs for device health (CPU and
+      memory utilization, both reported directly as percentages and averaged across
+      entities).
   Router Flow NetFlow:
     name: Router Flow Analysis (NetFlow)
     desc: Use NetFlow to collect router traffic and convert it into normalized device
