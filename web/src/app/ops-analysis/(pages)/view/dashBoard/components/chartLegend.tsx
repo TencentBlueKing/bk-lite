@@ -97,8 +97,8 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
 
   // vertical layout (right side)
   return (
-    <div className="w-36 shrink-0 h-full flex items-center">
-      <div className="w-full max-h-full overflow-y-auto py-1">
+    <div className="min-w-36 max-w-80 shrink-0 h-full flex items-center">
+      <div className="max-h-full overflow-y-auto py-1">
         {legendData.map((item, index) => {
           const percent = showPercent && total > 0
             ? ((item.value || 0) / total * 100).toFixed(1)
@@ -115,7 +115,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
                 style={{ backgroundColor: chartColors[index % chartColors.length] }}
               />
-              <span className="text-xs text-[var(--color-text-2)] truncate">
+              <span className="inline-block max-w-64 text-xs text-[var(--color-text-2)] truncate">
                 {item.name}
                 {percent != null && ` (${percent}%)`}
               </span>

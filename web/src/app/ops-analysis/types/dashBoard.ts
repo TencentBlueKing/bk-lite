@@ -194,7 +194,7 @@ export interface TimeRangeValue {
 }
 
 /** 筛选值类型 */
-export type FilterValue = string | TimeRangeValue | null;
+export type FilterValue = string | number | TimeRangeValue | null;
 
 /** 筛选选项（用于下拉选择） */
 export interface FilterOption {
@@ -207,12 +207,12 @@ export interface UnifiedFilterDefinition {
   id: string;
   key: string; // 参数 key（如 "time_range", "env", "namespace"）
   name: string; // 显示名称（用户可编辑）
-  type: 'timeRange' | 'string'; // 控件类型（本期仅这两种）
+  type: 'timeRange' | 'string'; // 参数类型，用于绑定匹配
   defaultValue?: FilterValue; // 默认值
   order: number; // 显示顺序
   enabled: boolean; // 是否启用
-  inputMode?: 'input' | 'select'; // 输入方式：文本输入或下拉选择（仅 string 类型有效）
-  options?: FilterOption[]; // 下拉选项（仅 inputMode 为 select 时有效）
+  inputMode?: 'input' | 'select' | 'radio' | 'organization'; // 输入方式（仅 string 类型有效）
+  options?: FilterOption[]; // 选项（仅 inputMode 为 select/radio 时有效）
 }
 
 /** Dashboard.filters 运行时结构（hook 内部使用） */
