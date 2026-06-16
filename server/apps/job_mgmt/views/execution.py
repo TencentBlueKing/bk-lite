@@ -255,9 +255,11 @@ class JobExecutionViewSet(AuthViewSet):
         """
         original = self.get_object()
         username = request.user.username if request.user else ""
+        # BL-NEW-002 / #3403：与 quick_execute 一致，按服务端授权 team 校验原作业归属
+        authorized_team_ids = self._get_authorized_team_ids(request)
 
         try:
-            execution = ExecutionService.create_re_execution(original=original, username=username)
+            execution = ExecutionService.create_re_execution(original=original, username=username, authorized_team_ids=authorized_team_ids)
         except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
             return Response({"error": e.message}, status=e.status_code)
 

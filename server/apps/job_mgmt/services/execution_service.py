@@ -257,8 +257,21 @@ class ExecutionService:
         return execution
 
     @classmethod
-    def create_re_execution(cls, *, original: JobExecution, username: str) -> JobExecution:
-        """重新执行：基于原执行记录创建新执行并派发。"""
+    def create_re_execution(cls, *, original: JobExecution, username: str, authorized_team_ids) -> JobExecution:
+        """重新执行：基于原执行记录创建新执行并派发。
+
+        与 quick_execute / file_distribution 一致，执行前校验调用者对原作业 team
+        （及引用的 script / playbook）有权限，消除跨团队水平越权重执行（#3403）。
+        ``authorized_team_ids`` 为 ``None`` 表示超管，放行一切。
+        """
+        # 团队归属校验（须在创建/派发前）
+        if not is_team_authorized(original.team, authorized_team_ids):
+            raise ExecutionAuthorizationError("无权重新执行该作业", status_code=403)
+        if original.script and not is_team_authorized(original.script.team, authorized_team_ids):
+            raise ExecutionAuthorizationError("原关联脚本不属于当前用户的团队，无权执行", status_code=403)
+        if original.playbook and not is_team_authorized(original.playbook.team, authorized_team_ids):
+            raise ExecutionAuthorizationError("原关联 Playbook 不属于当前用户的团队，无权执行", status_code=403)
+
         target_list = original.target_list or []
         if not target_list:
             raise ExecutionAuthorizationError("原执行目标已不存在", status_code=400)
