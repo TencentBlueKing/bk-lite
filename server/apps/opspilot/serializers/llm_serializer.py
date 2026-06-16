@@ -158,6 +158,7 @@ class SkillToolsSerializer(AuthSerializer):
     permission_key = "tools"
 
     description_tr = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
     tools = serializers.SerializerMethodField()
 
     class Meta:
@@ -181,6 +182,7 @@ class SkillToolsSerializer(AuthSerializer):
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "description_tr",
+            "display_name",
         ]
 
     def _get_language_loader(self):
@@ -202,6 +204,21 @@ class SkillToolsSerializer(AuthSerializer):
 
         # fallback 到原始描述
         return instance.description
+
+    def get_display_name(self, instance: SkillTools):
+        """获取翻译后的工具集展示名称。
+
+        内置工具的 ``name`` 字段被当作 ID 使用（如 ``current_time``、``mysql``），
+        前端展示需要一个可读且支持中英文切换的名称。这里复用 language 目录下的
+        yaml 翻译映射（``tools.{name}.name``），未配置翻译时回退到 ``name``。
+        """
+        loader = self._get_language_loader()
+        translated = loader.get(f"tools.{instance.name}.name")
+        if translated:
+            return translated
+
+        # fallback 到原始 name（自定义 MCP 工具通常没有翻译映射）
+        return instance.name
 
     def get_tools(self, instance: SkillTools):
         """获取翻译后的子工具列表（覆盖原始 tools 字段）"""

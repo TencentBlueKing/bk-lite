@@ -494,9 +494,25 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
   );
 };
 
-// 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌 logo 图标与品牌标签。
-const BRANDS: { match: RegExp; label: string; icon: string }[] = [
-  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' }
+// 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
+// icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
+const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
+  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
+  { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
+  { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
+  { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
+  { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
+  { match: /alcatel/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
+  { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
+  { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
+  { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },
+  { match: /tplink|tp-link/i, label: 'TP-Link', icon: 'mm-tplink_tplink' },
+  { match: /zyxel/i, label: 'Zyxel', icon: 'mm-zyxel_zyxel' },
+  { match: /qtech/i, label: 'QTech', icon: 'mm-qtech_qtech' },
+  { match: /dellforce|force10|dell.?force/i, label: 'Dell Force10', icon: 'mm-dellforce_dellforce' },
+  { match: /hphpn|procurve|hp.?networking/i, label: 'HP ProCurve', icon: 'mm-hphpn_hphpn' },
+  { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

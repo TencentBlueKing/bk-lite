@@ -12,6 +12,7 @@ from django.utils import timezone
 from django.views.decorators.csrf import csrf_exempt
 
 from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
+from apps.alerts.error import AuthenticationSourceError
 from apps.alerts.models.alert_source import AlertSource
 from apps.core.logger import alert_logger as logger
 from apps.core.utils.exempt import api_exempt
@@ -67,6 +68,8 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
 
         adapter.main()
         return JsonResponse({"status": "success", "time": timezone.now().strftime("%Y-%m-%d %H:%M:%S"), "message": "Data received successfully."})
+    except AuthenticationSourceError:
+        return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)
     except ValueError as e:
         return JsonResponse({"status": "error", "message": str(e)}, status=400)
     except Exception as e:

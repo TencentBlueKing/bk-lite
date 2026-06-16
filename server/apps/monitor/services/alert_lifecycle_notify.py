@@ -281,10 +281,11 @@ class AlertLifecycleNotifier:
 
     def _push_to_alert_center(self, channel_id, channel_name, alerts, action, operator, reason):
         now = datetime.now(timezone.utc).isoformat()
+        instance_org_map = self._build_instance_org_map(alerts)
         content = {
             "source_id": "nats",
             "pusher": "lite-monitor",
-            "events": [self._build_alert_center_payload(alert, action, operator, reason) for alert in alerts],
+            "events": [self._build_alert_center_payload(alert, action, operator, reason, instance_org_map) for alert in alerts],
         }
         success = False
         error_msg = ""
@@ -314,7 +315,32 @@ class AlertLifecycleNotifier:
             results.append((alert, log_entry))
         return results
 
-    def _build_alert_center_payload(self, alert, action, operator, reason):
+    def _build_instance_org_map(self, alerts):
+        """按本批告警的实例一次性查出 实例ID -> [组织id] 映射，避免逐条 N+1 查询。"""
+        instance_ids = {alert.monitor_instance_id for alert in alerts if alert.monitor_instance_id}
+        if not instance_ids:
+            return {}
+        from apps.monitor.models.monitor_object import MonitorInstanceOrganization
+
+        org_map = defaultdict(list)
+        rows = MonitorInstanceOrganization.objects.filter(
+            monitor_instance_id__in=instance_ids
+        ).values_list("monitor_instance_id", "organization")
+        for instance_id, organization in rows:
+            org_map[instance_id].append(organization)
+        return org_map
+
+    def _resolve_alert_organizations(self, alert, instance_org_map):
+        """实例组织优先；实例无组织时回退策略组织；都没有则为空。"""
+        organizations = instance_org_map.get(alert.monitor_instance_id)
+        if organizations:
+            return organizations
+        if self.policy and getattr(self.policy, "organizations", None):
+            return list(self.policy.organizations)
+        return []
+
+    def _build_alert_center_payload(self, alert, action, operator, reason, instance_org_map=None):
+        instance_org_map = instance_org_map or {}
         alert_center_action = ACTION_TO_ALERT_CENTER.get(action, "created")
         start_time = str(int(alert.start_event_time.timestamp())) if alert.start_event_time else None
         end_time = str(int(alert.end_event_time.timestamp())) if alert.end_event_time else None
@@ -330,6 +356,7 @@ class AlertLifecycleNotifier:
             "end_time": end_time,
             "resource_id": alert.monitor_instance_id,
             "resource_name": getattr(alert, "monitor_instance_name", ""),
+            "organizations": self._resolve_alert_organizations(alert, instance_org_map),
             "tags": getattr(alert, "dimensions", {}),
             "labels": {
                 "policy_name": getattr(self.policy, "name", "") if self.policy else "",

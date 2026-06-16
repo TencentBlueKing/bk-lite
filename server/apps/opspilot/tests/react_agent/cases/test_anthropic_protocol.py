@@ -12,11 +12,14 @@ Verifies:
 8. Runtime capability detection for Anthropic vs OpenAI protocols
 9. Tool choice normalization coverage for runtime compatibility
 """
+
 import asyncio
 import sys
 import types
 from importlib import util
 from pathlib import Path
+
+from langchain_core.messages import AIMessage, HumanMessage, SystemMessage, ToolMessage
 
 for _mod_name in ("oracledb", "pyodbc"):
     sys.modules.setdefault(_mod_name, types.ModuleType(_mod_name))
@@ -539,8 +542,6 @@ class TestInvokeIsolatedAnthropicMessageFormat:
 
     @patch("apps.opspilot.metis.llm.common.llm_client_factory." "LLMClientFactory._create_isolated_anthropic_client")
     def test_human_message_object_converted(self, mock_create):
-        from langchain_core.messages import HumanMessage
-
         mock_client = MagicMock()
         mock_response = MagicMock()
         mock_response.content = [MagicMock(text="ok")]
@@ -821,8 +822,6 @@ class TestAnthropicCompatibleAdapter:
         assert headers["content-type"] == "application/json"
 
     def test_build_messages_payload_serializes_assistant_tool_calls(self):
-        from langchain_core.messages import AIMessage, HumanMessage
-
         from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import build_messages_payload
 
         payload = build_messages_payload(
@@ -857,8 +856,6 @@ class TestAnthropicCompatibleAdapter:
         }
 
     def test_build_messages_payload_groups_consecutive_tool_results(self):
-        from langchain_core.messages import AIMessage, HumanMessage, ToolMessage
-
         from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import build_messages_payload
 
         payload = build_messages_payload(
@@ -932,8 +929,6 @@ class TestAnthropicCompatibleAdapter:
 class TestAnthropicCompatibleChatClient:
     @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
     def test_invoke_builds_messages_payload_and_returns_ai_message(self, mock_safe_post):
-        from langchain_core.messages import HumanMessage, SystemMessage
-
         from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
 
         mock_response = MagicMock(status_code=200, text="")
@@ -962,8 +957,6 @@ class TestAnthropicCompatibleChatClient:
 
     @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
     def test_bind_tools_and_ainvoke_parse_tool_calls(self, mock_safe_post):
-        from langchain_core.messages import HumanMessage
-
         from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
 
         class FakeArgsSchema:
@@ -1019,8 +1012,6 @@ class TestAnthropicCompatibleChatClient:
 
     @patch("apps.opspilot.metis.llm.common.anthropic_compatible_adapter.safe_post_llm_endpoint")
     def test_invoke_unauthorized_raises_normalized_invalid_key_error(self, mock_safe_post):
-        from langchain_core.messages import HumanMessage
-
         from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
 
         mock_safe_post.return_value = MagicMock(status_code=401, text="Unauthorized")

@@ -1,3 +1,5 @@
+import os
+
 from rest_framework.decorators import action
 from rest_framework.viewsets import ViewSet, ModelViewSet
 
@@ -180,14 +182,27 @@ class SearchConditionViewSet(ModelViewSet):
     def get_queryset(self):
         """根据当前组织过滤查询集"""
         current_team = self.request.COOKIES.get("current_team")
-        if current_team:
-            base_queryset = SearchCondition.objects.filter(organization=int(current_team))
-            accessible_group_ids = self._get_accessible_group_ids()
-            accessible_ids = [instance.id for instance in base_queryset if self._is_accessible_search_condition(instance, accessible_group_ids)]
-            if not accessible_ids:
-                return SearchCondition.objects.none()
-            return base_queryset.filter(id__in=accessible_ids)
-        return SearchCondition.objects.none()
+        if not current_team:
+            return SearchCondition.objects.none()
+
+        org_id = int(current_team)
+        accessible_group_ids = self._get_accessible_group_ids()
+
+        # 仅拉取权限过滤所需的两列（id + condition），并流式迭代避免全量驻内存。
+        # 这样 N 条记录只产生 N 个轻量 dict，而非 N 个完整 ORM 对象。
+        slim_qs = (
+            SearchCondition.objects.filter(organization=org_id)
+            .only("id", "condition")
+            .iterator(chunk_size=int(os.getenv("SEARCH_CONDITION_CHUNK_SIZE", "200")))
+        )
+        accessible_ids = [
+            row.id
+            for row in slim_qs
+            if self._is_accessible_search_condition(row, accessible_group_ids)
+        ]
+        if not accessible_ids:
+            return SearchCondition.objects.none()
+        return SearchCondition.objects.filter(organization=org_id, id__in=accessible_ids)
 
     def create(self, request, *args, **kwargs):
         """创建搜索条件"""

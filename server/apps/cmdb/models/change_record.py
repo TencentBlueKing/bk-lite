@@ -32,7 +32,7 @@ SCENARIO_CHOICES = [
     (ORDINARY_ATTRIBUTE_CHANGE, "普通属性变更"),
     (COLLECT_AUTOMATION_CHANGE, "自动采集"),
     (MODEL_MANAGEMENT_CHANGE, "模型管理变更"),
-    (CUSTOM_REPORTING_CHANGE, "自定义报表变更"),
+    (CUSTOM_REPORTING_CHANGE, "自定义上报变更"),
 ]
 
 # 用户在"通用实例属性编辑页"可以修正的场景集合

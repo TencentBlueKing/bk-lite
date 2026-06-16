@@ -635,6 +635,30 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the overall CPU utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate heavy traffic inspection load, attack activity or a control-plane bottleneck.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the overall memory utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysMemUsage, reported directly as a percentage). When memory pressure is high the device may enter conserve mode and drop new sessions.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted to bytes).
+    firewall_active_sessions:
+      name: IPv4 Active Sessions
+      desc: This metric reports the number of active IPv4 sessions currently tracked by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly rising session count can indicate a connection flood or session-table exhaustion risk.
+    firewall_vpn_tunnels:
+      name: Active IPsec VPN Tunnels
+      desc: This metric reports the number of currently active IPsec VPN tunnels on the FortiGate firewall (FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount). A sudden drop may indicate a VPN outage affecting site-to-site connectivity.
+    firewall_ha_mode:
+      name: HA Mode
+      desc: This metric reports the high-availability mode of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgHaSystemMode) as standalone, active-active or active-passive. It helps confirm whether the expected HA topology is in effect.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -2014,6 +2038,12 @@ monitor_object_metric:
     interface_ifOutOctets:
       name: Interface Outgoing Traffic Rate
       desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate.
     device_total_incoming_traffic:
       name: Device Total Incoming Traffic Rate
       desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
@@ -2044,6 +2074,9 @@ monitor_object_metric:
     device_memory_free:
       name: Memory Free
       desc: This metric reports the number of free bytes available in each memory pool of the device. Together with the used bytes it determines overall memory utilization; a persistently low free value indicates memory pressure on that pool.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total memory capacity of the device. It is the denominator for memory utilization (some vendors compute (total - free) / total) and, together with free memory, reflects overall memory pressure.
     device_temperature_celsius:
       name: Temperature
       desc: This metric reports the temperature reading of each hardware sensor on the device, in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed.
@@ -3273,6 +3306,7 @@ monitor_object_metric_group:
     Status: Status
     Bandwidth: Bandwidth
     Traffic: Traffic
+    Firewall: Firewall
   VM:
     CPU: CPU
     Memory: Memory
@@ -3526,6 +3560,122 @@ monitor_object_plugin:
       IF-MIB interface metrics, it collects Cisco private OIDs for device health
       including CPU utilization, memory pools, temperature sensors, fan and
       power-supply status.
+  Switch Huawei SNMP:
+    name: Huawei (Telegraf)
+    desc: Huawei-specific SNMP collection template for switches. In addition to standard
+      IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB)
+      for device health including CPU utilization, memory utilization, temperature
+      sensors and fan status. Huawei reports memory as a utilization percentage
+      directly and this template exposes no power-supply state OID.
+  Switch Aruba SNMP:
+    name: Aruba (Telegraf)
+    desc: Aruba-specific SNMP collection template for switches (ArubaOS-CX). In addition
+      to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for
+      device health including per-module CPU and memory utilization, temperature
+      sensors, fan and power-supply status. Aruba reports memory as a utilization
+      percentage directly; fan/psu states are normalized to the unified 1=normal
+      convention.
+  Switch Juniper SNMP:
+    name: Juniper (Telegraf)
+    desc: Juniper-specific SNMP collection template for switches (Junos). In addition
+      to standard IF-MIB interface metrics, it collects JUNIPER-MIB jnxOperating
+      private OIDs for device health including CPU and memory-buffer utilization,
+      temperature sensors, fan and power-supply status. Juniper reports memory as a
+      utilization percentage directly; the jnxOperatingState of fans/psus is
+      normalized to the unified 1=normal convention.
+  Switch Extreme SNMP:
+    name: Extreme (Telegraf)
+    desc: Extreme Networks-specific SNMP collection template for switches (EXOS). In
+      addition to standard IF-MIB interface metrics, it collects EXTREME-SYSTEM-MIB
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature, fan and power-supply status. Memory utilization is
+      computed as (total - free) / total; fan/psu states are normalized to the
+      unified 1=normal convention.
+  Switch Brocade SNMP:
+    name: Brocade (Telegraf)
+    desc: Brocade/Foundry-specific SNMP collection template for switches
+      (FastIron/NetIron). In addition to standard IF-MIB interface metrics, it
+      collects FOUNDRY-SN-AGENT-MIB private OIDs for device health including
+      1-minute average CPU utilization, dynamic memory utilization, chassis
+      temperature sensors, fan and power-supply status. Brocade reports CPU and
+      memory as utilization percentages directly; fan/psu states are normalized to
+      the unified 1=normal convention.
+  Switch Alcatel-Lucent SNMP:
+    name: Alcatel-Lucent (Telegraf)
+    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
+      switches. In addition to standard IF-MIB interface metrics, it collects
+      TIMETRA-CHASSIS-MIB private OIDs for device health including CPU utilization,
+      system memory pool (used/free bytes), hardware temperature sensors, fan and
+      power-supply status. Memory utilization is computed from used/(used+free);
+      fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal
+      convention.
+  Switch MikroTik SNMP:
+    name: MikroTik (Telegraf)
+    desc: MikroTik (RouterOS)-specific SNMP collection template for switches
+      (currently mounted under the Switch object). In addition to standard IF-MIB
+      interface metrics, it collects HOST-RESOURCES
+      and MIKROTIK-MIB OIDs for device health including per-core CPU utilization,
+      system memory (used/total), and board temperature. MikroTik exposes fan as raw
+      RPM and lacks a standardized power-supply state, so fan/psu health is not
+      collected (N/A). Memory utilization is computed from used/total.
+  Switch D-Link SNMP:
+    name: D-Link (Telegraf)
+    desc: D-Link DES/DGS-specific SNMP collection template for switches (EQUIPMENT-MIB,
+      enterprise 171). In addition to standard IF-MIB interface metrics, it collects
+      D-Link private OIDs for device health including CPU utilization, memory
+      utilization, temperature sensors, fan and power-supply status. D-Link reports
+      CPU and memory as utilization percentages directly; fan status is natively
+      1=normal and power-supply status is normalized to the unified 1=normal
+      convention.
+  Switch Netgear SNMP:
+    name: Netgear (Telegraf)
+    desc: Netgear (FASTPATH)-specific SNMP collection template for switches. In
+      addition to standard IF-MIB interface metrics, it collects FASTPATH-BOXSERVICES
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature sensors, fan and power-supply status. Memory
+      utilization is computed as (total - free) / total; fan and power-supply states
+      are natively 1=normal.
+  Switch TP-Link SNMP:
+    name: TP-Link (Telegraf)
+    desc: TP-Link (JetStream)-specific SNMP collection template for switches (TPLINK
+      private MIB, enterprise 11863). In addition to standard IF-MIB interface
+      metrics, it collects TP-Link private OIDs for device health including CPU and
+      memory utilization, both reported directly as percentages. TP-Link SMB switches
+      expose no temperature/fan/power-supply sensors, so those health items are not
+      collected (N/A).
+  Switch Zyxel SNMP:
+    name: Zyxel (Telegraf)
+    desc: Zyxel-specific SNMP collection template for switches (ZYXEL private MIB,
+      enterprise 890). In addition to standard IF-MIB interface metrics, it collects
+      Zyxel private OIDs for device health including CPU utilization (direct
+      percentage) and hardware temperature sensors. Zyxel exposes fan as raw RPM (not
+      a state) and this switch line has no memory-utilization or power-supply-state
+      OID, so those health items are not collected (N/A).
+  Switch QTech SNMP:
+    name: QTech (Telegraf)
+    desc: QTech (QSW)-specific SNMP collection template for switches (QTECH-MIB,
+      enterprise 27514). In addition to standard IF-MIB interface metrics, it collects
+      QTech private OIDs for device health including CPU utilization, system memory
+      (used/total), temperature, fan and power-supply status. Memory utilization is
+      computed from used/total; fan/psu states (native 0=normal) are normalized to
+      the unified 1=normal convention.
+  Switch Dell Force10 SNMP:
+    name: Dell Force10 (Telegraf)
+    desc: Dell Force10 (S-Series)-specific SNMP collection template for switches
+      (F10-S-SERIES-CHASSIS-MIB, enterprise 6027). In addition to standard IF-MIB
+      interface metrics, it collects Dell Force10 private OIDs for device health
+      including per-processor CPU and memory utilization, per-stack-unit temperature,
+      fan-tray and power-supply status. CPU and memory are reported directly as
+      percentages; fan/psu states are normalized to the unified 1=normal convention.
+  Switch HP ProCurve SNMP:
+    name: HP ProCurve (Telegraf)
+    desc: HP ProCurve / HP Networking-specific SNMP collection template for switches
+      (HP-ICF MIBs). In addition to standard IF-MIB interface metrics, it collects HP
+      private OIDs for device health including CPU utilization and system memory
+      (used/total). Temperature and fan/power-supply state live in HP's shared
+      ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering,
+      which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory
+      utilization is computed from used/total.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
@@ -3598,6 +3748,13 @@ monitor_object_plugin:
       key IF-MIB metrics from firewall interfaces, including traffic volume, packet
       loss, and error counts.
     name: Firewall General (Telegraf)
+  Firewall Fortinet SNMP:
+    name: Fortinet (Telegraf)
+    desc: Fortinet-specific SNMP collection template for FortiGate firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      FORTINET-FORTIGATE-MIB private OIDs for device health (CPU and memory utilization,
+      total memory) and firewall-specific state (IPv4 active sessions, active IPsec
+      VPN tunnels and HA mode). Memory is reported directly as a utilization percentage.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized

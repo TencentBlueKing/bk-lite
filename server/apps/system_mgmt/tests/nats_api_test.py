@@ -1124,6 +1124,42 @@ def test_send_msg_with_channel_nats_normalizes_valid_content(monkeypatch):
     assert captured["content"] == {"message": "alert", "team": 2, "user_ids": ["0", "alice"]}
 
 
+@pytest.mark.django_db
+def test_send_msg_with_channel_nats_passthrough_for_alert_center(monkeypatch):
+    """告警中心通道（receive_alert_events）应原样透传 content，不做 message/team/user_ids 规范化。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import send_msg_with_channel
+
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        description="",
+        config={"namespace": "bklite", "method_name": "receive_alert_events", "timeout": 60},
+    )
+
+    captured = {}
+
+    def fake_send_nats_message(channel_obj, content):
+        captured["channel_id"] = channel_obj.id
+        captured["content"] = content
+        return {"result": True}
+
+    # 若误走 normalize 这里会被调用并抛错，从而暴露回归
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats_api._normalize_nats_content",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("alert center content must not be normalized")),
+    )
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", fake_send_nats_message)
+
+    payload = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"title": "x", "organizations": [3]}]}
+    result = send_msg_with_channel(channel.id, "", payload, [])
+
+    assert result == {"result": True}
+    assert captured["channel_id"] == channel.id
+    # content 原样透传，source_id / pusher / events 一个不丢
+    assert captured["content"] == payload
+
+
 def test_send_nats_message_merges_bot_id_and_node_id_from_config(monkeypatch):
     """send_nats_message must inject bot_id and node_id from channel config into the NATS payload."""
     import types as _types

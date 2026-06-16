@@ -1,8 +1,19 @@
 import hashlib
 import json
+import os
 import re
 import time
 import uuid
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+# 单条告警快照列表最大保留条数（保留最新的 N 条）
+# 超出后丢弃最旧记录，防止 S3 对象无限膨胀。可通过环境变量调整。
+try:
+    _MAX_ALERT_SNAPSHOTS = int(os.getenv("LOG_MAX_ALERT_SNAPSHOTS", "500"))
+    if _MAX_ALERT_SNAPSHOTS <= 0:
+        raise ValueError("必须为正整数")
+except ValueError:
+    _MAX_ALERT_SNAPSHOTS = 500
 
 from django.db import transaction
 
@@ -175,11 +186,30 @@ class LogPolicyScan:
             logger.error(f"keyword alert detection failed for policy {self.policy.id}: {e}")
             raise
 
+    def _fetch_group_sample(self, idx, group_values, total_count, final_query, start_timestamp, end_timestamp, sample_limit, group_by):
+        """为单个分组并发获取样本日志，返回 (idx, event_dict) 保序。"""
+        sample_query = self._build_group_sample_query(final_query, group_values)
+        try:
+            logs = self.vlogs_api.query(query=sample_query, start=start_timestamp, end=end_timestamp, limit=sample_limit)
+        except Exception as e:
+            logger.warning(f"Failed to query keyword grouped samples for policy {self.policy.id}: {e}")
+            logs = []
+        event = {
+            "source_id": self._build_group_source_id(group_values),
+            "level": self.policy.alert_level,
+            "content": self._render_alert_name(group_values, group_by),
+            "value": total_count,
+            "raw_data": (logs or [])[:sample_limit],
+        }
+        return idx, event
+
     def _keyword_grouped_alert_detection(self, final_query, group_by, sample_limit, start_timestamp, end_timestamp):
-        events = []
         group_query = self._build_keyword_group_query(final_query, group_by)
         grouped_results = self.vlogs_api.query(query=group_query, start=start_timestamp, end=end_timestamp, limit=1000)
-        for result in grouped_results or []:
+
+        # 预处理：筛出有效分组，记录原始序号以便并发后保序
+        pending = []
+        for idx, result in enumerate(grouped_results or []):
             group_values = self._extract_group_values(result, group_by)
             if not group_values:
                 logger.warning(f"Skip keyword grouped result without complete group values for policy {self.policy.id}: {result}")
@@ -187,22 +217,35 @@ class LogPolicyScan:
             total_count = self._parse_count_value(result.get("total_count"), default=0)
             if total_count <= 0:
                 continue
-            sample_query = self._build_group_sample_query(final_query, group_values)
-            try:
-                logs = self.vlogs_api.query(query=sample_query, start=start_timestamp, end=end_timestamp, limit=sample_limit)
-            except Exception as e:
-                logger.warning(f"Failed to query keyword grouped samples for policy {self.policy.id}: {e}")
-                logs = []
-            events.append(
-                {
-                    "source_id": self._build_group_source_id(group_values),
-                    "level": self.policy.alert_level,
-                    "content": self._render_alert_name(group_values, group_by),
-                    "value": total_count,
-                    "raw_data": logs[:sample_limit],
-                }
-            )
-        return events
+            pending.append((idx, group_values, total_count))
+
+        if not pending:
+            return []
+
+        try:
+            max_workers = int(os.getenv("LOG_GROUPED_ALERT_MAX_WORKERS", "10"))
+        except (TypeError, ValueError):
+            max_workers = 10
+        results_map = {}
+
+        with ThreadPoolExecutor(max_workers=min(max_workers, len(pending))) as executor:
+            futures = {
+                executor.submit(
+                    self._fetch_group_sample,
+                    idx, group_values, total_count,
+                    final_query, start_timestamp, end_timestamp, sample_limit, group_by,
+                ): idx
+                for idx, group_values, total_count in pending
+            }
+            for future in as_completed(futures):
+                try:
+                    idx, event = future.result()
+                    results_map[idx] = event
+                except Exception as e:
+                    logger.warning(f"Unexpected error in grouped sample fetch for policy {self.policy.id}: {e}")
+
+        # 按原始分组顺序返回
+        return [results_map[idx] for idx, _, _ in pending if idx in results_map]
 
     def aggregate_alert_detection(self):
         """聚合告警检测"""
@@ -845,9 +888,11 @@ class LogPolicyScan:
                         }
                         new_snapshots.append(event_snapshot)
 
-                    # 批量添加新快照
+                    # 批量添加新快照，并裁剪至上限以防 S3 对象无限膨胀
                     if new_snapshots:
                         snapshot_obj.snapshots.extend(new_snapshots)
+                        if len(snapshot_obj.snapshots) > _MAX_ALERT_SNAPSHOTS:
+                            snapshot_obj.snapshots = snapshot_obj.snapshots[-_MAX_ALERT_SNAPSHOTS:]
                         snapshot_obj.save(update_fields=["snapshots", "updated_at"])
 
         except Exception as e:

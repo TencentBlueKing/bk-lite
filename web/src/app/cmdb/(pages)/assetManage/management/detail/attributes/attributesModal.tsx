@@ -28,6 +28,7 @@ import {
   MinusOutlined,
   HolderOutlined,
   SettingOutlined,
+  QuestionCircleOutlined,
 } from '@ant-design/icons';
 import { deepClone } from '@/app/cmdb/utils/common';
 import { useSearchParams } from 'next/navigation';
@@ -48,6 +49,11 @@ import {
   normalizeDefaultValue,
   sanitizeDefaultValue,
 } from '@/app/cmdb/utils/enumDefaultValue';
+import {
+  getFileFieldConstraintMeta,
+  isFileFieldType,
+  type FileFieldType,
+} from '@/app/cmdb/utils/fileFieldConstraints';
 import { loadAttributeEnterpriseExtension } from '@/app/cmdb/hooks/useAttributeEnterpriseExtension';
 import { useTranslation } from '@/utils/i18n';
 import { useModelApi } from '@/app/cmdb/api';
@@ -326,6 +332,11 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
           values.attr_id = 'tag';
           values.is_required = false;
           values.editable = true;
+          values.is_only = false;
+        }
+
+        if (isFileFieldType(values.attr_type || '')) {
+          values.is_required = false;
           values.is_only = false;
         }
 
@@ -678,6 +689,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                   is_only: false,
                   tag_mode: 'free',
                 });
+              } else if (isFileFieldType(changedValues.attr_type || '')) {
+                formRef.current?.setFieldsValue({
+                  is_required: false,
+                  editable: true,
+                  is_only: false,
+                });
               } else if (
                 Object.prototype.hasOwnProperty.call(
                   changedValues,
@@ -756,7 +773,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                         item.id === 'tag' && type === 'add' && hasTagAttr
                       }
                     >
-                      {item.name}
+                      {t(item.name)}
                     </Option>
                   );
                 })}
@@ -1340,6 +1357,58 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               formRef,
               ui: { Form, Radio, Select },
             })}
+            <Form.Item
+              noStyle
+              shouldUpdate={(prevValues, currentValues) =>
+                prevValues.attr_type !== currentValues.attr_type
+              }
+            >
+              {({ getFieldValue }) => {
+                const attrType = getFieldValue('attr_type');
+                if (!isFileFieldType(attrType || '')) return null;
+
+                const constraintMeta = getFileFieldConstraintMeta(
+                  attrType as FileFieldType
+                );
+                const constraintItems = [
+                  t('fileFieldMaxCount', undefined, {
+                    count: constraintMeta.maxCount,
+                  }),
+                  t('fileFieldTooLarge', undefined, {
+                    size: constraintMeta.maxSizeMB,
+                  }),
+                  t(constraintMeta.supportedTypeKey),
+                  t('Model.fileFieldSystemConstraintExcludedCapabilities'),
+                ];
+
+                return (
+                  <Form.Item label=" " colon={false}>
+                    <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
+                      <div className="mb-1 flex items-center gap-1 text-sm font-medium text-[var(--color-text-primary)]">
+                        <span>{t('Model.systemConstraints')}</span>
+                        <Tooltip title={t('Model.systemConstraintsDescription')}>
+                          <QuestionCircleOutlined className="text-[var(--color-text-tertiary)]" />
+                        </Tooltip>
+                      </div>
+                      <div className="mb-3 text-xs text-[var(--color-text-secondary)]">
+                        {t('Model.systemConstraintsDescription')}
+                      </div>
+                      <div className="overflow-hidden rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)]">
+                        {constraintItems.map((item, index) => (
+                          <div
+                            key={item}
+                            className={`flex items-center gap-2 px-3 py-2 text-sm text-[var(--color-text-primary)] ${index !== constraintItems.length - 1 ? 'border-b border-[var(--color-border-1)]' : ''}`}
+                          >
+                            <span className="h-1.5 w-1.5 rounded-full bg-[var(--color-primary)]" />
+                            <span>{item}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  </Form.Item>
+                );
+              }}
+            </Form.Item>
             <div className="border-t border-[var(--color-border-1)] mt-2 mb-4" />
             <Form.Item
               noStyle
@@ -1348,33 +1417,63 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
               }
             >
               {({ getFieldValue }) => {
-                // 附件/图片字段一律可选、不可设为必填 → 隐藏必填开关（约束由系统兜底）
-                const isFileType = ['attachment', 'image'].includes(
-                  getFieldValue('attr_type')
-                );
+                const attrType = getFieldValue('attr_type') || '';
+                const isFileType = isFileFieldType(attrType);
+                const unsupportedHint = isFileType || attrType === 'tag';
                 return (
-                  <Form.Item label=" " colon={false} className="ml-[-80px]">
-                    <div className="flex items-center gap-8">
-                      {!isFileType && (
-                        <Form.Item<AttrFieldType>
-                          name="is_required"
-                          valuePropName="checked"
-                          className="mb-0"
-                        >
-                          <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
-                            {t('required')}
-                          </Checkbox>
-                        </Form.Item>
+                  <Form.Item label=" " colon={false}>
+                    <div className="rounded border border-[var(--color-border-1)] p-4">
+                      <div className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">
+                       {t('Model.fieldBehavior')}
+                      </div>
+                      <div className="flex items-start gap-8">
+                       <Form.Item<AttrFieldType>
+                         name="is_required"
+                         valuePropName="checked"
+                         className="mb-0"
+                       >
+                         <div className="flex flex-col gap-1">
+                           <Checkbox disabled={unsupportedHint}>
+                             {t('required')}
+                           </Checkbox>
+                           {unsupportedHint && (
+                             <span className="pl-6 text-xs text-[var(--color-text-tertiary)]">
+                               {t('Model.unsupported')}
+                             </span>
+                           )}
+                         </div>
+                       </Form.Item>
+                       <Form.Item<AttrFieldType>
+                         name="is_only"
+                         valuePropName="checked"
+                         className="mb-0"
+                       >
+                         <div className="flex flex-col gap-1">
+                           <Checkbox disabled={unsupportedHint}>
+                             {t('unique')}
+                           </Checkbox>
+                           {unsupportedHint && (
+                             <span className="pl-6 text-xs text-[var(--color-text-tertiary)]">
+                               {t('Model.unsupported')}
+                             </span>
+                           )}
+                         </div>
+                       </Form.Item>
+                       <Form.Item<AttrFieldType>
+                         name="editable"
+                         valuePropName="checked"
+                         className="mb-0"
+                       >
+                         <Checkbox disabled={attrType === 'tag'}>
+                           {t('editable')}
+                         </Checkbox>
+                       </Form.Item>
+                      </div>
+                      {isFileType && (
+                       <div className="mt-3 text-xs text-[var(--color-text-tertiary)]">
+                         {t('Model.fileFieldBehaviorHint')}
+                       </div>
                       )}
-                      <Form.Item<AttrFieldType>
-                        name="editable"
-                        valuePropName="checked"
-                        className="mb-0"
-                      >
-                        <Checkbox disabled={getFieldValue('attr_type') === 'tag'}>
-                          {t('editable')}
-                        </Checkbox>
-                      </Form.Item>
                     </div>
                   </Form.Item>
                 );

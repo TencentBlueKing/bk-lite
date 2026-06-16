@@ -10,6 +10,7 @@ Verifies that:
 - No threading.Thread with daemon=True in persistence code
 """
 
+import asyncio
 import sys
 import types
 
@@ -420,7 +421,6 @@ class TestSubsequentNodesAsync:
         and finishes within the await, rather than being handed off to a daemon
         thread that may never be joined.
         """
-        import asyncio
 
         from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
 

@@ -21,10 +21,12 @@ from apps.job_mgmt.serializers.playbook import (
     PlaybookUpgradeSerializer,
     extract_file_from_archive,
 )
+from apps.job_mgmt.services.error_response import exception_to_response
+from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class PlaybookViewSet(AuthViewSet):
+class PlaybookViewSet(BatchDeleteMixin, AuthViewSet):
     """Playbook视图集"""
 
     queryset = Playbook.objects.all()
@@ -33,6 +35,15 @@ class PlaybookViewSet(AuthViewSet):
     search_fields = ["name", "version"]
     ORGANIZATION_FIELD = "team"
     permission_key = "job"
+
+    batch_delete_serializer_class = PlaybookBatchDeleteSerializer
+    batch_delete_log_label = "作业"
+
+    def pre_batch_delete(self, instances):
+        """删除前先清理 MinIO 上的 Playbook 文件，避免数据库记录消失后存储残留。"""
+        for playbook in instances:
+            if playbook.file:
+                playbook.file.delete(save=False)
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -104,25 +115,8 @@ class PlaybookViewSet(AuthViewSet):
     @action(detail=False, methods=["post"])
     @HasPermission("playbook_library-Delete")
     def batch_delete(self, request):
-        """批量删除Playbook"""
-        serializer = PlaybookBatchDeleteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
-
-        # 只删除当前用户有权限的Playbook
-        queryset = self.filter_queryset(self.get_queryset())
-        playbooks = queryset.filter(id__in=ids)
-
-        # 先批量删除 MinIO 文件
-        for playbook in playbooks:
-            if playbook.file:
-                playbook.file.delete(save=False)
-
-        # 再批量删除数据库记录
-        deleted_count, _ = playbooks.delete()
-        log_operation(request, "delete", "job", f"批量删除作业: (共{deleted_count}个)")
-
-        return Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
+        """批量删除 Playbook（先清理 MinIO 文件再删数据库记录，见 ``pre_batch_delete``）"""
+        return self.perform_batch_delete(request)
 
     @action(detail=True, methods=["post"])
     @HasPermission("playbook_library-Edit")
@@ -256,4 +250,4 @@ class PlaybookViewSet(AuthViewSet):
             else:
                 return Response({"detail": error_msg}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
-            return Response({"detail": f"预览失败: {str(e)}"}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+            return exception_to_response(e, context="[playbook.preview]", default_message="预览失败", body_key="detail")
