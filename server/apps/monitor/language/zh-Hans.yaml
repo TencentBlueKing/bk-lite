@@ -3220,7 +3220,7 @@ monitor_object_plugin:
     desc: Alcatel-Lucent (Nokia) TiMOS 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 TIMETRA-CHASSIS-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存池（已用/空闲字节）、硬件温度传感器、风扇与电源状态。内存使用率按 used/(used+free) 计算；风扇/电源状态（TmnxDeviceState）已归一化为统一的 1=正常 约定。
   Switch MikroTik SNMP:
     name: MikroTik（Telegraf）
-    desc: MikroTik (RouterOS) 交换机/路由器 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 HOST-RESOURCES 与 MIKROTIK-MIB 的设备健康指标：每核 CPU 使用率、系统内存（已用/总量）、板载温度。MikroTik 风扇以原始 RPM 上报（非状态）、且电源无标准化状态 OID，故风扇/电源健康不采集（N/A）。内存使用率按 used/total 计算。
+    desc: MikroTik (RouterOS) 交换机专用 SNMP 采集模板（当前挂载于交换机对象）。在标准 IF-MIB 接口指标之外，额外采集 HOST-RESOURCES 与 MIKROTIK-MIB 的设备健康指标：每核 CPU 使用率、系统内存（已用/总量）、板载温度。MikroTik 风扇以原始 RPM 上报（非状态）、且电源无标准化状态 OID，故风扇/电源健康不采集（N/A）。内存使用率按 used/total 计算。
   Switch D-Link SNMP:
     name: D-Link（Telegraf）
     desc: D-Link DES/DGS 交换机专用 SNMP 采集模板（EQUIPMENT-MIB，企业号 171）。在标准 IF-MIB 接口指标之外，额外采集 D-Link 私有 OID 的设备健康指标：CPU 使用率、内存使用率、温度传感器、风扇与电源状态。D-Link 以利用率百分比直接上报 CPU 与内存；风扇状态原生 1=正常，电源状态已归一化为统一的 1=正常 约定。

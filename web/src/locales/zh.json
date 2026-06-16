@@ -1,5 +1,7 @@
 {
   "common": {
+    "expand": "展开",
+    "collapse": "收起",
     "edit": "编辑",
     "builtIn": "内置",
     "delete": "删除",
@@ -45,6 +47,10 @@
     "error": "错误",
     "delConfirm": "你确定要删除选中的项吗？",
     "delConfirmCxt": "删除后，数据无法恢复。",
+    "unsavedTitle": "确定放弃未保存的修改吗？",
+    "unsavedContent": "你有尚未保存的内容，关闭后将丢失。",
+    "discardChanges": "放弃修改",
+    "continueEditing": "继续编辑",
     "disassociationContent": "取消后数据无法恢复。",
     "delSuccess": "删除成功",
     "delFailed": "删除失败",

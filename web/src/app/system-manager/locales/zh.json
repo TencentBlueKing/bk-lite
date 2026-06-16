@@ -571,6 +571,8 @@
         "namespace": "命名空间",
         "method_name": "函数名",
         "timeout": "超时时间(秒)",
+        "opspilotManaged": "OpsPilot 托管",
+        "opspilotManagedTip": "OpsPilot 工作流自动创建，不可编辑或删除",
         "sign_secret": "签名密钥",
         "sub_type": "类型",
         "request_method": "请求方法",

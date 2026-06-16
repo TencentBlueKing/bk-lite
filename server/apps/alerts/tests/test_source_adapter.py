@@ -333,6 +333,53 @@ def test_build_ingress_dedup_key(event_levels, restful_source):
     assert key1 == key2
 
 
+# --------------------------------------------------------------------------
+# 可信内部推送（监控中心直推）的 Event.team 归属
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_event_team_uses_organizations_when_trusted_internal(event_levels, restful_source):
+    """可信内部推送 + event 自带 organizations → Event.team 采信之，不走 secret 解析。"""
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    event = Event(level="0", title="t", item="cpu", resource_id="1",
+                  resource_name="host1", resource_type="host")
+    adapter.add_base_fields(event, {"source_id": "restful", "organizations": [3, 5]})
+    assert event.team == [3, 5]
+
+
+@pytest.mark.django_db
+def test_event_team_trusted_internal_empty_orgs_stays_empty(event_levels, restful_source):
+    """可信内部推送但 organizations 为空 → 忠实落空，不回落 secret 解析。"""
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    adapter.resolved_team = [99]  # 即使 secret 解析有值也不应被采用
+    event = Event(level="0", title="t", item="cpu", resource_id="1",
+                  resource_name="host1", resource_type="host")
+    adapter.add_base_fields(event, {"source_id": "restful", "organizations": []})
+    assert event.team == []
+
+
+@pytest.mark.django_db
+def test_event_team_trusted_internal_invalid_orgs_sanitized(event_levels, restful_source):
+    """非法 organizations（非整数）→ 归一化为空，不让脏数据入库。"""
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+    event = Event(level="0", title="t", item="cpu", resource_id="1",
+                  resource_name="host1", resource_type="host")
+    adapter.add_base_fields(event, {"source_id": "restful", "organizations": ["x"]})
+    assert event.team == []
+
+
+@pytest.mark.django_db
+def test_event_team_external_source_ignores_organizations(event_levels, restful_source):
+    """非可信内部推送 → 即使 event 带 organizations 也不采信，沿用 secret 解析结果。"""
+    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=False)
+    adapter.resolved_team = [7]
+    event = Event(level="0", title="t", item="cpu", resource_id="1",
+                  resource_name="host1", resource_type="host")
+    adapter.add_base_fields(event, {"source_id": "restful", "organizations": [3, 5]})
+    assert event.team == [7]
+
+
 def test_rich_event_disabled_noop(event_levels, restful_source):
     adapter = RestFulAdapter(alert_source=restful_source)
     adapter.enable_rich_event = False

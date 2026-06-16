@@ -365,6 +365,16 @@ def search_instances(params):
 
 
 @nats_client.register
+def search_instances_batch(params):
+    """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
+    return InstanceManage.search_inst_batch(
+        model_id=params["model_id"],
+        ids=params.get("ids"),
+        inst_names=params.get("inst_names"),
+    )
+
+
+@nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
     logger.info("==[ConfigFileCollect] 接收配置文件采集结果")

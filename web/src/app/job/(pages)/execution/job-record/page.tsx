@@ -35,7 +35,9 @@ import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
+import { useAuth } from '@/context/auth';
 import useJobApi from '@/app/job/api';
+import { useExecutionStream } from '@/app/job/hooks/useExecutionStream';
 import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
@@ -164,6 +166,7 @@ const JobRecordPage = () => {
         res.execution_targets = res.execution_results.map((result: any, index: number) => ({
           id: index,
           target: index,
+          target_key: result.target_key != null ? String(result.target_key) : undefined,
           target_name: result.name || result.ip,
           target_ip: result.ip,
           status: result.status,
@@ -182,6 +185,7 @@ const JobRecordPage = () => {
         res.execution_targets = res.target_list.map((target: any, index: number) => ({
           id: Number(target.target_id || target.node_id || index),
           target: Number(target.target_id || target.node_id || index),
+          target_key: String(target.node_id || target.target_id || index),
           target_name: target.name || target.ip || `Target ${index + 1}`,
           target_ip: target.ip || '-',
           status: res.status,
@@ -543,11 +547,39 @@ const JobRecordPage = () => {
   };
 
   // Get selected target for detail view
-  const selectedTarget = useMemo(() => {
+  const rawSelectedTarget = useMemo(() => {
     if (!detail?.execution_targets?.length) return null;
     if (selectedTargetId === null) return detail.execution_targets[0];
     return detail.execution_targets.find(t => t.id === selectedTargetId) || detail.execution_targets[0];
   }, [detail, selectedTargetId]);
+
+  // 实时流式输出：执行中（pending/running）订阅 SSE，按 target 累积 stdout/stderr
+  const authContext = useAuth();
+  const isExecuting = detail?.status === 'pending' || detail?.status === 'running';
+  const { liveOutput, streaming } = useExecutionStream({
+    executionId: recordId ? Number(recordId) : null,
+    enabled: !!recordId && isExecuting,
+    token: authContext?.token || null,
+    onAllDone: () => {
+      if (recordId) fetchDetail(Number(recordId), true);
+    },
+  });
+
+  // 用实时输出覆盖选中目标的内容：
+  // - 仅执行中（pending/running）覆盖；终态回落到权威 execution_results。
+  // - 优先该目标自己的流（SSH/本地按 target_key）；无则回退 ansible 合并流（key='ansible'）。
+  const selectedTarget = useMemo(() => {
+    if (!rawSelectedTarget) return null;
+    if (!isExecuting) return rawSelectedTarget;
+    const perTarget = rawSelectedTarget.target_key ? liveOutput[rawSelectedTarget.target_key] : undefined;
+    const live = perTarget && (perTarget.stdout || perTarget.stderr) ? perTarget : liveOutput['ansible'];
+    if (!live || (!live.stdout && !live.stderr)) return rawSelectedTarget;
+    return {
+      ...rawSelectedTarget,
+      stdout: live.stdout || rawSelectedTarget.stdout,
+      stderr: live.stderr || rawSelectedTarget.stderr,
+    };
+  }, [rawSelectedTarget, liveOutput, isExecuting]);
 
   // Auto-select first target when detail loads
   useEffect(() => {
@@ -1033,6 +1065,12 @@ const JobRecordPage = () => {
                 <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
                   {t('job.executionLog')}
                 </span>
+                {streaming && (
+                  <Tag color="processing" className="m-0">
+                    <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse align-middle" />
+                    {t('job.streamingLive')}
+                  </Tag>
+                )}
                 {selectedTarget && (
                   <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
                     {selectedTarget.target_name} ({selectedTarget.target_ip})

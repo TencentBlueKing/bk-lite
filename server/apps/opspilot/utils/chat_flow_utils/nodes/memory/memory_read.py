@@ -40,10 +40,16 @@ def build_memory_entity(memory_space: MemorySpace, user_id: str, flow_input: dic
         # 个人记忆：使用 user_id
         return MemoryEntity(user_id=user_id)
     else:
-        # 团队记忆：优先使用 flow_input.team[0]，回退到 memory_space.team[0]
-        fi_team = (flow_input or {}).get("team") or [] if isinstance(flow_input, dict) else []
-        team_ids = fi_team if fi_team else (memory_space.team or [])
-        organization_id = team_ids[0] if team_ids else None
+        # 团队记忆：优先使用 flow_input.team（单个组织 ID），回退到 memory_space.team[0]
+        fi_team = (flow_input or {}).get("team") if isinstance(flow_input, dict) else None
+        # 兼容历史的单元素列表写法
+        if isinstance(fi_team, (list, tuple)):
+            fi_team = fi_team[0] if fi_team else None
+        if fi_team is not None and str(fi_team).strip() != "":
+            organization_id = int(fi_team)
+        else:
+            space_teams = memory_space.team or []
+            organization_id = space_teams[0] if space_teams else None
         return MemoryEntity(organization_id=organization_id)
 
 

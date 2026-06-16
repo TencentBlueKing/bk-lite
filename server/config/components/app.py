@@ -7,7 +7,7 @@ ROOT_URLCONF = "urls"
 
 # 检查当前数据库环境
 _db_engine = os.getenv("DB_ENGINE", "postgresql").lower()
-_migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase"}
+_migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase", "mysql"}
 
 # 模板页面配置
 TEMPLATES = [

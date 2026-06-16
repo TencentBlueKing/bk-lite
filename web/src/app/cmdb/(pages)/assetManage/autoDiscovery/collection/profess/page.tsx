@@ -1139,6 +1139,8 @@ const ProfessionalCollection: React.FC = () => {
         }
         onClose={closeDrawer}
         open={drawerVisible}
+        maskClosable={false}
+        keyboard={false}
         getContainer={false}
         className={styles.collectionTaskDrawer}
         rootClassName={styles.collectionTaskDrawer}

@@ -237,6 +237,8 @@ const ToolListPage: React.FC = () => {
 
       const tools = data.map((tool: any) => ({
         ...tool,
+        // 内置工具的 name 是 ID 式名称，展示用翻译后的 display_name（自定义工具回退为 name）
+        display_name: tool.display_name || tool.name,
         description: tool.description_tr,
         icon: tool.icon || 'gongjuji',
         tags: tool.tags,
@@ -401,6 +403,7 @@ const ToolListPage: React.FC = () => {
     <div className="w-full h-full">
       <EntityList<Tool>
         data={filteredToolData}
+        nameField="display_name"
         loading={loading}
         menuActions={menuActions}
         operateSection={
@@ -471,7 +474,7 @@ const ToolListPage: React.FC = () => {
         </div>
       </OperateModal>
       <Drawer
-        title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.name}` : t('common.viewDetails')}
+        title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.display_name || selectedToolForDetail.name}` : t('common.viewDetails')}
         placement="right"
         onClose={() => setSelectedToolForDetail(null)}
         open={!!selectedToolForDetail}

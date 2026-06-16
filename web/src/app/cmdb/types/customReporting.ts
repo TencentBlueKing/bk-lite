@@ -51,8 +51,25 @@ export interface CustomReportingTask {
   created_at: string;
   updated_by: string;
   updated_at: string;
+  last_reported_at?: string | null;
+  status?: 'receiving' | 'pending_review' | 'no_report';
+  recent_batch_trend?: number[];
   credential?: CustomReportingCredential;
   token?: string;
+}
+
+export interface CustomReportingStats {
+  total: number;
+  receiving: number;
+  pending_review: number;
+}
+
+export interface CustomReportingFieldRegistrationItem {
+  attr_id: string;
+  attr_name: string;
+  recommended_type: string;
+  is_undefined: boolean;
+  first_seen_at?: string | null;
 }
 
 export interface CustomReportingTaskListResponse {
@@ -79,10 +96,12 @@ export interface CustomReportingOnboardingDocument {
     format: string;
   };
   identity_keys: string[];
-  example_payload: {
-    instances: Array<Record<string, any>>;
-    relations: Array<Record<string, any>>;
-    batch_metadata: Record<string, any>;
+  examples: {
+    instances: { instances: Array<Record<string, any>> };
+    with_relations: {
+      instances: Array<Record<string, any>>;
+      relations: Array<Record<string, any>>;
+    };
   };
 }
 

@@ -56,6 +56,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const dragIndexRef = useRef<number | null>(null);
     // 镜像 pluginsMap，供 loadNodeOptions 同步读取已加载状态（避免在 setState updater 内做副作用）
     const pluginsMapRef = useRef<Record<number, PluginOption[]>>({});
+    // 正在请求中的指标 key，避免预热与下拉懒加载并发重复请求同一插件
+    const inflightMetricsRef = useRef<Set<string>>(new Set());
 
     useEffect(() => {
       pluginsMapRef.current = pluginsMap;
@@ -81,6 +83,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         setLoading(true);
         dirtyRef.current = new Set();
         pluginsMapRef.current = {};
+        inflightMetricsRef.current = new Set();
         setColumnsMap({});
         setPluginsMap({});
         setMetricsMap({});
@@ -191,16 +194,34 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const ensureMetrics = async (plugin: string) => {
       if (activeId == null || !plugin) return;
       const key = metricsKey(activeId, plugin);
-      if (metricsMap[key]) return;
+      if (metricsMap[key] || inflightMetricsRef.current.has(key)) return;
       const pluginOpt = currentPlugins.find((p) => p.name === plugin);
       if (!pluginOpt) return;
+      inflightMetricsRef.current.add(key);
       try {
         const metrics = await getObjectMetrics(activeId, pluginOpt.id);
         setMetricsMap((prev) => ({ ...prev, [key]: metrics || [] }));
       } catch {
         message.error(t('common.operationFailed'));
+      } finally {
+        inflightMetricsRef.current.delete(key);
       }
     };
+
+    // 预热已绑定指标的插件选项：否则初次渲染时 Select 的 value（指标原始名）在空 options
+    // 里匹配不到对应项，antd 会回退显示原始名（英文），点开下拉懒加载后才变成中文展示名。
+    useEffect(() => {
+      if (activeId == null || currentPlugins.length === 0) return;
+      const boundPlugins = new Set(
+        currentColumns
+          .flatMap((c) => c.metrics)
+          .map((m) => m.plugin)
+          .filter(Boolean)
+      );
+      boundPlugins.forEach((plugin) => ensureMetrics(plugin));
+      // ensureMetrics 依赖随渲染重建，且内部已用 metricsMap/inflight 双重去重，无需纳入依赖
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [activeId, currentPlugins, currentColumns]);
 
     const updateBindingPlugin = async (
       colIdx: number,
@@ -371,6 +392,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                     >
                       <Select
                         className="flex-1"
+                        showSearch
+                        optionFilterProp="label"
                         value={binding.plugin || undefined}
                         placeholder={t('monitor.object.selectTemplate')}
                         options={currentPlugins.map((p) => ({
@@ -383,6 +406,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                       />
                       <Select
                         className="flex-1"
+                        showSearch
+                        optionFilterProp="label"
                         value={binding.metric || undefined}
                         placeholder={t('monitor.object.selectMetric')}
                         disabled={!binding.plugin}

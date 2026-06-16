@@ -32,6 +32,8 @@ class AnsibleExecutor(object):
         callback=None,
         task_id=None,
         timeout=60,
+        stream_log_topic=None,
+        execution_id=None,
     ):
         """
         执行 ansible ad-hoc。
@@ -110,6 +112,10 @@ class AnsibleExecutor(object):
             "task_id": task_id or uuid.uuid4().hex,
             "execute_timeout": timeout,
         }
+        if stream_log_topic:
+            request_data["stream_log_topic"] = stream_log_topic
+        if execution_id:
+            request_data["execution_id"] = execution_id
         return_data = self.adhoc_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 

@@ -36,6 +36,14 @@ from apps.system_mgmt.models import (
     UserRule,
 )
 from apps.system_mgmt.models.system_settings import SystemSettings
+from apps.system_mgmt.otp_challenge import (
+    check_rate_limit,
+    create_challenge,
+    invalidate_challenge,
+    record_failed_attempt,
+    reset_rate_limit,
+    verify_challenge,
+)
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
 from apps.system_mgmt.utils.channel_utils import (
@@ -693,15 +701,15 @@ def _normalize_nats_content(content):
         return None, {"result": False, "message": "NATS content.message must be a non-empty string"}
 
     team = content.get("team")
-    if not isinstance(team, list):
-        return None, {"result": False, "message": "NATS content.team must be a list"}
-
-    normalized_team = []
-    for team_id in team:
-        team_value = str(team_id).strip()
-        if not team_value or not team_value.isdigit():
-            return None, {"result": False, "message": "NATS content.team items must be integers"}
-        normalized_team.append(int(team_value))
+    # team 现在只允许单个组织 ID；兼容历史的单元素列表写法
+    if isinstance(team, (list, tuple)):
+        if len(team) != 1:
+            return None, {"result": False, "message": "NATS content.team must be a single team id"}
+        team = team[0]
+    team_value = str(team).strip()
+    if not team_value or not team_value.isdigit():
+        return None, {"result": False, "message": "NATS content.team must be a single integer team id"}
+    normalized_team = int(team_value)
 
     user_ids = content.get("user_ids")
     if not isinstance(user_ids, list):
@@ -720,6 +728,12 @@ def _normalize_nats_content(content):
         "team": normalized_team,
         "user_ids": normalized_user_ids,
     }, None
+
+
+# NATS 通道里「原样透传 content」的内部方法白名单。
+# 这些方法（如告警中心 receive_alert_events）有自己的入参契约（如 {source_id, pusher, events}），
+# 不走 OpsPilot/IM 触发那套 message/team/user_ids 规范化，否则 content 会被裁剪、事件丢失。
+RAW_PASSTHROUGH_NATS_METHODS = {"receive_alert_events"}
 
 
 @nats_client.register
@@ -766,12 +780,117 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         return send_by_custom_webhook(channel_obj, content, receivers)
     elif channel_obj.channel_type == ChannelChoices.NATS:
         # NATS 通道：content 作为 kwargs 传递给目标服务
+        method_name = (channel_obj.config or {}).get("method_name")
+        if method_name in RAW_PASSTHROUGH_NATS_METHODS:
+            # 内部直推通道（如告警中心）：原样透传 content，跳过 IM 触发的字段规范化。
+            return send_nats_message(channel_obj, content)
         normalized, error = _normalize_nats_content(content)
         if error:
             return error
         return send_nats_message(channel_obj, normalized)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
+
+
+# OpsPilot 工作流自动托管的 NATS 触发通道：靠 config.source 标识，禁止用户在通道管理里编辑/删除
+OPSPILOT_CHANNEL_SOURCE = "opspilot"
+# 通道路由到 OpsPilot 的 NATS namespace，需与部署的 NATS_NAMESPACE 一致（默认 bklite），
+# 而非字符串 "opspilot"——所有 @nats_client.register 方法都经该 namespace 路由。
+OPSPILOT_NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
+OPSPILOT_NATS_METHOD = "trigger_workflow_by_nats"
+
+
+def _list_opspilot_nats_channels(bot_id):
+    """返回某个 bot 名下、由 OpsPilot 托管的 NATS 通道（DB 无关，Python 侧过滤 config）。"""
+    channels = Channel.objects.filter(channel_type=ChannelChoices.NATS)
+    result = []
+    for channel in channels:
+        config = channel.config or {}
+        if config.get("source") == OPSPILOT_CHANNEL_SOURCE and str(config.get("bot_id")) == str(bot_id):
+            result.append(channel)
+    return result
+
+
+@nats_client.register
+def sync_opspilot_nats_channels(bot_id, bot_name, team, nodes, timeout=60):
+    """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。
+
+    :param bot_id: Bot ID
+    :param bot_name: Bot 名称（用于拼通道名）
+    :param team: 通道归属组织 ID 列表
+    :param nodes: [{"node_id": "xxx", "name": "节点label"}, ...]
+    :param timeout: NATS 请求超时（秒）
+    """
+    try:
+        bot_id = int(bot_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "bot_id must be an integer"}
+
+    team = team or []
+    nodes = nodes or []
+    description = "OpsPilot 工作流自动创建的 NATS 触发通道"
+
+    existing_by_node = {(ch.config or {}).get("node_id"): ch for ch in _list_opspilot_nats_channels(bot_id)}
+
+    incoming_node_ids = set()
+    created = updated = 0
+    for node in nodes:
+        node_id = str((node or {}).get("node_id") or "").strip()
+        if not node_id:
+            continue
+        incoming_node_ids.add(node_id)
+        label = str((node or {}).get("name") or node_id).strip()
+        # 通道名：BOT名 - 节点名；Channel.name 上限 100
+        name = f"{bot_name} - {label}"[:100]
+        config = {
+            "namespace": OPSPILOT_NATS_NAMESPACE,
+            "method_name": OPSPILOT_NATS_METHOD,
+            "bot_id": bot_id,
+            "node_id": node_id,
+            "timeout": timeout,
+            "source": OPSPILOT_CHANNEL_SOURCE,
+        }
+        channel = existing_by_node.get(node_id)
+        if channel:
+            channel.name = name
+            channel.config = config
+            channel.team = team
+            channel.description = description
+            channel.save()
+            updated += 1
+        else:
+            Channel.objects.create(
+                name=name,
+                channel_type=ChannelChoices.NATS,
+                config=config,
+                team=team,
+                description=description,
+            )
+            created += 1
+
+    # 对账删除：flow_json 里已不存在的旧节点对应的通道
+    deleted = 0
+    for node_id, channel in existing_by_node.items():
+        if node_id not in incoming_node_ids:
+            channel.delete()
+            deleted += 1
+
+    return {"result": True, "data": {"created": created, "updated": updated, "deleted": deleted}}
+
+
+@nats_client.register
+def delete_opspilot_nats_channels(bot_id):
+    """删除某个 bot 名下所有 OpsPilot 托管的 NATS 通道（bot 删除时清理）。"""
+    try:
+        bot_id = int(bot_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "bot_id must be an integer"}
+
+    deleted = 0
+    for channel in _list_opspilot_nats_channels(bot_id):
+        channel.delete()
+        deleted += 1
+    return {"result": True, "data": {"deleted": deleted}}
 
 
 @nats_client.register
@@ -1336,8 +1455,6 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     Returns:
         Dict with login result and JWT token if successful
     """
-    from apps.system_mgmt.otp_challenge import check_rate_limit, invalidate_challenge, record_failed_attempt, reset_rate_limit, verify_challenge
-
     # Verify challenge exists and is valid
     challenge_data = verify_challenge(challenge_id)
     if not challenge_data:
@@ -1462,8 +1579,6 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
 
     # If OTP is enabled and we should use two-phase authentication
     if skip_token_for_otp and enable_otp:
-        from apps.system_mgmt.otp_challenge import create_challenge
-
         # Generate QR code for first-time OTP binding if user hasn't configured OTP yet
         qr_code_base64 = None
         if not user_has_otp:

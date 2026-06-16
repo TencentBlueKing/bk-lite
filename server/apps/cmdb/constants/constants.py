@@ -50,6 +50,16 @@ MODEL_ASSOCIATION = "model_association"
 # 实例关联标签
 INSTANCE_ASSOCIATION = "instance_association"
 
+# 拓扑主题：模型 -> 可用主题。network 主题表示「网络拓扑」视图
+TOPO_THEME_NETWORK = "network"
+# 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
+NETWORK_INTERFACE_MODEL = "interface"
+NETWORK_INTERFACE_BELONG_ASST = "belong"
+# 网络拓扑展开策略：默认展开 2 跳，最多 4 跳，节点上限 100（超出截断并提示，不静默丢弃）
+NETWORK_TOPO_DEFAULT_HOP = 2
+NETWORK_TOPO_MAX_HOP = 4
+NETWORK_TOPO_NODE_LIMIT = 100
+
 
 class ModelConstraintKey(BaseEnum):
     """模型约束键"""

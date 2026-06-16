@@ -372,7 +372,7 @@ def test_nats_trigger_executes_workflow(bot_workflow, mocker):
 
     result = trigger_workflow_by_nats(
         message="CPU 告警",
-        team=[2],
+        team=2,
         user_ids=["alice", "bob"],
         bot_id=bot_workflow.bot_id,
         node_id="nats_entry",
@@ -388,8 +388,8 @@ def test_nats_trigger_executes_workflow(bot_workflow, mocker):
     # Verify flow_input preserves team and user_ids for downstream nodes.
     engine2 = create_chat_flow_engine(bot_workflow, "nats_entry", entry_type="nats")
     engine2.custom_node_executors["agents"] = FakeAgentExecutor(engine2.variable_manager)
-    engine2.execute({"last_message": "CPU 告警", "team": [2], "user_ids": ["alice", "bob"], "entry_type": "nats"})
-    assert engine2.variable_manager.get_variable("flow_input")["team"] == [2]
+    engine2.execute({"last_message": "CPU 告警", "team": 2, "user_ids": ["alice", "bob"], "entry_type": "nats"})
+    assert engine2.variable_manager.get_variable("flow_input")["team"] == 2
     assert engine2.variable_manager.get_variable("flow_input")["user_ids"] == ["alice", "bob"]
 
 
@@ -405,7 +405,7 @@ def test_nats_trigger_rejects_invalid_team_values(bot_workflow):
 
     result = trigger_workflow_by_nats(
         message="CPU 告警",
-        team=["bad"],
+        team="bad",
         user_ids=["alice"],
         bot_id=bot_workflow.bot_id,
         node_id="nats_entry",
@@ -459,7 +459,7 @@ def test_nats_trigger_uses_latest_workflow_for_bot(bot_workflow, mocker):
 
     result = trigger_workflow_by_nats(
         message="CPU 告警",
-        team=[2],
+        team=2,
         user_ids=["alice"],
         bot_id=bot_workflow.bot_id,
         node_id="new_entry",
@@ -484,7 +484,7 @@ def test_nats_trigger_returns_failure_when_engine_execution_fails(bot_workflow, 
 
     result = trigger_workflow_by_nats(
         message="CPU 告警",
-        team=[2],
+        team=2,
         user_ids=["alice"],
         bot_id=bot_workflow.bot_id,
         node_id="entry_node",

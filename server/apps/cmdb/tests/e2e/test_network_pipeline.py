@@ -276,6 +276,57 @@ def test_network_topology_arp_inferred_link(monkeypatch):
     assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
 
 
+# 复现线上现象：真实 agent 给同一任务所有设备盖的是任务级 instance_id（cmdb_{task_id}），
+# 仅靠每行 host 区分设备。下面构造这种 VM 数据，验证 server 仍能按 host 把多台设备分开，
+# 否则多台会被合并成 1 台、跨设备拓扑关联全部消失（实测 topology_snapshot.devices=1）。
+SHARED_IID = "cmdb_777"
+
+
+def _shared_iid_arp_pair_rows():
+    def sys(host, ip, sysname):
+        return _build_metric(NETWORK_SYSTEM_METRIC, SHARED_IID, host=host, ip_addr=ip,
+                             sysname=sysname, sysobjectid="1.3.6.1.4.1.9.1.1208", port="161")
+
+    def iface(host, idx, descr, alias, mac):
+        return _build_metric(NETWORK_INTERFACE_METRIC, SHARED_IID, host=host, index=idx,
+                             description=descr, alias=alias, mac_address=mac, oper_status="1")
+
+    def topo(host, tag, ifindex, val, group):
+        metric = {"host": host, "tag": tag, "val": val, "group": group}
+        if ifindex != "":
+            metric["ifindex"] = ifindex
+        return _build_metric(NETWORK_TOPOLOGY_METRIC, SHARED_IID, **metric)
+
+    return [
+        sys("10.0.0.1", "10.0.0.1", "edge-sw-1"),
+        sys("10.0.0.2", "10.0.0.2", "dist-sw-1"),
+        iface("10.0.0.1", "101", "GigabitEthernet1/0/1", "edge-uplink", "00aabbccdd01"),
+        iface("10.0.0.2", "202", "GigabitEthernet1/0/24", "dist-downlink", "00aabbccdd02"),
+        # dev1 接口 MAC + ARP 看到 dev2 的接口 MAC
+        topo("10.0.0.1", "IFTable-IfDescr", "101", "GigabitEthernet1/0/1", "interfaces"),
+        topo("10.0.0.1", "IFTable-IfAlias", "101", "edge-uplink", "interfaces"),
+        topo("10.0.0.1", "IFTable-PhysAddress", "101", "0x00aabbccdd01", "interfaces"),
+        topo("10.0.0.1", "ARP-IfIndex", "10.0.0.2", "101", "arp"),
+        topo("10.0.0.1", "ARP-PhysAddress", "10.0.0.2", "0x00aabbccdd02", "arp"),
+        topo("10.0.0.2", "IFTable-IfDescr", "202", "GigabitEthernet1/0/24", "interfaces"),
+        topo("10.0.0.2", "IFTable-IfAlias", "202", "dist-downlink", "interfaces"),
+        topo("10.0.0.2", "IFTable-PhysAddress", "202", "0x00aabbccdd02", "interfaces"),
+    ]
+
+
+@pytest.mark.django_db
+def test_topology_separates_devices_by_host_under_shared_instance_id(monkeypatch):
+    vm_resp = {"status": "success", "data": {"resultType": "vector", "result": _shared_iid_arp_pair_rows()}}
+
+    runner = _run_network_pipeline(monkeypatch, vm_resp, topo_enabled=True)
+
+    # 两台设备必须被分别识别（而不是因共享 instance_id 合并成一台）
+    assert len(runner.result.get("switch", [])) == 2
+    # 跨设备 ARP 推断出 connect 关联
+    source_interface = _find_interface(runner.result, "10.0.0.1-switch-edge-uplink")
+    assert _connect_assos(source_interface) == [_connect_asso("10.0.0.2-switch-dist-downlink")]
+
+
 @pytest.mark.django_db
 def test_network_topology_authoritative_suppresses_arp_duplicate(monkeypatch):
     """同一对端点同时有 LLDP 与 ARP 证据，关联只产出一份"""

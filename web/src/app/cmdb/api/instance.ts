@@ -20,6 +20,16 @@ export const useInstanceApi = () => {
   const topoSearchInstances = (modelId: string, instId: string) =>
     get(`/cmdb/api/instance/topo_search/${modelId}/${instId}/`);
 
+  const getTopoThemes = (modelId: string) =>
+    get(`/cmdb/api/instance/topo_themes/${modelId}/`);
+
+  const getNetworkTopo = (modelId: string, instId: string, depth?: number) =>
+    get(
+      `/cmdb/api/instance/network_topo/${modelId}/${instId}/${
+        depth ? `?depth=${depth}` : ''
+      }`
+    );
+
   // 获取实例详情
   const getInstanceDetail = (instanceId: string) =>
     get(`/cmdb/api/instance/${instanceId}/`);
@@ -110,6 +120,8 @@ export const useInstanceApi = () => {
     fulltextSearchStats,
     fulltextSearchByModel,
     topoSearchInstances,
+    getTopoThemes,
+    getNetworkTopo,
     getInstanceDetail,
     createInstance,
     updateInstance,

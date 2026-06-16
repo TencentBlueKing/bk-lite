@@ -3,6 +3,7 @@
 import json
 
 from celery import current_app
+from django.http import StreamingHttpResponse
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -20,10 +21,19 @@ from apps.job_mgmt.serializers.execution import (
     QuickExecuteSerializer,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.execution_stream_service import (
+    JOB_LOG_MAX_AGE_SECONDS,
+    JOB_LOG_MAX_BYTES,
+    JOB_LOG_STREAM_NAME,
+    JOB_LOG_SUBJECTS,
+    snapshot_sse_from_results,
+    stream_execution_events,
+)
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
 from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from nats_client.clients import ensure_stream_sync
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -314,6 +324,38 @@ class JobExecutionViewSet(AuthViewSet):
         """
         execution = self.get_object()
         return Response(execution.execution_results or [])
+
+    @action(detail=True, methods=["get"])
+    @HasPermission("job_record-View")
+    def stream(self, request, pk=None):
+        """SSE 实时流式输出：非终态走 JetStream 实时回放+tail，终态走结果快照。"""
+        execution = self.get_object()
+        target_keys = [
+            (t.get("node_id") or str(t.get("target_id", "")))
+            for t in (execution.target_list or [])
+        ]
+
+        if execution.status in ExecutionStatus.TERMINAL_STATES:
+            logger.info(
+                "[stream] SSE 连接(终态快照): execution_id=%s status=%s targets=%s",
+                execution.id, execution.status, target_keys,
+            )
+            generator = snapshot_sse_from_results(execution.execution_results or [])
+        else:
+            logger.info(
+                "[stream] SSE 连接(实时): execution_id=%s status=%s targets=%s",
+                execution.id, execution.status, target_keys,
+            )
+            try:
+                ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
+            except Exception as e:
+                logger.warning(f"[stream] JetStream 流声明失败(降级继续): execution_id={execution.id}, error={e}")
+            generator = stream_execution_events(execution.id, target_keys)
+
+        response = StreamingHttpResponse(generator, content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
 
     @action(detail=True, methods=["post"])
     @HasPermission("job_record-Edit")

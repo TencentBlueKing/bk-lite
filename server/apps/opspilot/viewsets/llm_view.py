@@ -36,9 +36,9 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_tool,
     build_builtin_redis_tool,
 )
+from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
-from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
@@ -594,7 +594,11 @@ class SkillRequestLogViewSet(LanguageViewSet):
 
 
 class ToolsFilter(FilterSet):
-    display_name = filters.CharFilter(field_name="display_name", lookup_expr="icontains")
+    # display_name 是基于 language yaml 在序列化阶段动态翻译出来的派生字段，
+    # 数据库中并不存在该列，无法直接做 ORM 过滤；这里退化为按 name(即工具 ID)
+    # 进行模糊匹配，避免传入 display_name 参数时抛 FieldError。前端工具列表的
+    # 展示名搜索走客户端过滤，不依赖该后端过滤器。
+    display_name = filters.CharFilter(field_name="name", lookup_expr="icontains")
 
 
 class SkillToolsViewSet(AuthViewSet):

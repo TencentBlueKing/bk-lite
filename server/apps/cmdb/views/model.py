@@ -801,11 +801,15 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-View")
-    @action(detail=False, methods=["get"], url_path="export_model_config")
+    @action(detail=False, methods=["post"], url_path="export_model_config")
     def export_model_config(self, request):
         from django.http import HttpResponse
 
-        file_stream = ModelManage.export_model_config(language=request.user.locale)
+        model_ids = request.data.get("model_ids") or []
+
+        file_stream = ModelManage.export_model_config(
+            language=request.user.locale, model_ids=model_ids
+        )
 
         response = HttpResponse(
             file_stream.read(),

@@ -117,11 +117,12 @@ const attrRef = useRef<any>(null);
       dataIndex: 'attr_type',
       key: 'attr_type',
       width: 150,
-      render: (attr_type: unknown) => (
-        <span>
-          {ATTR_TYPE_LIST.find((item) => item.id === attr_type)?.name || '--'}
-        </span>
-      ),
+      render: (attr_type: unknown) => {
+        const typeName = ATTR_TYPE_LIST.find(
+          (item) => item.id === attr_type
+        )?.name;
+        return <span>{typeName ? t(typeName) : '--'}</span>;
+      },
     },
     {
       title: t('editable'),
