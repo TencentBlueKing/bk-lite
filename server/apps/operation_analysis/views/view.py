@@ -8,6 +8,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.filters.filters import ArchitectureModelFilter, DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter
 from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
 from apps.operation_analysis.serializers.directory_serializers import (
@@ -124,25 +125,37 @@ class DirectoryModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddCatalogue")
     def create(self, request, *args, **kwargs):
-        return super(DirectoryModelViewSet, self).create(request, *args, **kwargs)
+        response = super(DirectoryModelViewSet, self).create(request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增目录: {name}")
+        return response
 
     @HasPermission("view-EditCatalogue")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return super(DirectoryModelViewSet, self).update(request, *args, **kwargs)
+        response = super(DirectoryModelViewSet, self).update(request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑目录: {name}")
+        return response
 
     @HasPermission("view-EditCatalogue")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _partial_update_with_auth(self, request, *args, **kwargs)
+        response = _partial_update_with_auth(self, request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑目录: {name}")
+        return response
 
     @HasPermission("view-DeleteCatalogue")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "删除")
-        return super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
+        name = instance.name
+        response = super(DirectoryModelViewSet, self).destroy(request, *args, **kwargs)
+        log_ops_analysis_success(request, response, "delete", f"删除目录: {name}")
+        return response
 
     @HasPermission("view-View")
     @action(detail=False, methods=["get"], url_path="tree")
@@ -175,25 +188,37 @@ class DashboardModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddChart")
     def create(self, request, *args, **kwargs):
-        return _execute_with_clean_validation_error(lambda: super(DashboardModelViewSet, self).create(request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: super(DashboardModelViewSet, self).create(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增仪表盘: {name}")
+        return response
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _execute_with_clean_validation_error(lambda: super(DashboardModelViewSet, self).update(request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: super(DashboardModelViewSet, self).update(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑仪表盘: {name}")
+        return response
 
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑仪表盘: {name}")
+        return response
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "删除")
-        return super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
+        name = instance.name
+        response = super(DashboardModelViewSet, self).destroy(request, *args, **kwargs)
+        log_ops_analysis_success(request, response, "delete", f"删除仪表盘: {name}")
+        return response
 
 
 class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
@@ -220,25 +245,37 @@ class TopologyModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddChart")
     def create(self, request, *args, **kwargs):
-        return _execute_with_clean_validation_error(lambda: super(TopologyModelViewSet, self).create(request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: super(TopologyModelViewSet, self).create(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增拓扑图: {name}")
+        return response
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _execute_with_clean_validation_error(lambda: super(TopologyModelViewSet, self).update(request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: super(TopologyModelViewSet, self).update(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑拓扑图: {name}")
+        return response
 
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑拓扑图: {name}")
+        return response
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "删除")
-        return super(TopologyModelViewSet, self).destroy(request, *args, **kwargs)
+        name = instance.name
+        response = super(TopologyModelViewSet, self).destroy(request, *args, **kwargs)
+        log_ops_analysis_success(request, response, "delete", f"删除拓扑图: {name}")
+        return response
 
 
 class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
@@ -265,22 +302,34 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
 
     @HasPermission("view-AddChart")
     def create(self, request, *args, **kwargs):
-        return _execute_with_clean_validation_error(lambda: super(ArchitectureModelViewSet, self).create(request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: super(ArchitectureModelViewSet, self).create(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增架构图: {name}")
+        return response
 
     @HasPermission("view-EditChart")
     def update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _execute_with_clean_validation_error(lambda: super(ArchitectureModelViewSet, self).update(request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: super(ArchitectureModelViewSet, self).update(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑架构图: {name}")
+        return response
 
     @HasPermission("view-EditChart")
     def partial_update(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "编辑")
-        return _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑架构图: {name}")
+        return response
 
     @HasPermission("view-DeleteChart")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         _raise_if_builtin(instance, "删除")
-        return super(ArchitectureModelViewSet, self).destroy(request, *args, **kwargs)
+        name = instance.name
+        response = super(ArchitectureModelViewSet, self).destroy(request, *args, **kwargs)
+        log_ops_analysis_success(request, response, "delete", f"删除架构图: {name}")
+        return response
