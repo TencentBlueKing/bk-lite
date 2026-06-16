@@ -3,10 +3,10 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from 'antd';
 import { DownOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
-import Image from 'next/image';
 import { useRouter } from 'next/navigation';
 import { PROFESSIONAL_DASHBOARDS, PROFESSIONAL_DASHBOARD_GROUPS } from '../registry';
 import { normalizeDashboardKey } from '../shared/utils';
+import ObjectIcon from '@/app/monitor/components/objectIcon';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
@@ -34,22 +34,6 @@ const ICON_MAP: Record<string, string> = {
 };
 
 const DEFAULT_ICON = 'mm-middleware_中间件';
-
-const ObjectIcon = ({ iconKey }: { iconKey: string }) => {
-  const [failed, setFailed] = useState(false);
-  const resolvedKey = failed ? DEFAULT_ICON : iconKey;
-
-  return (
-    <Image
-      src={`/assets/icons/${resolvedKey}.svg`}
-      alt={resolvedKey}
-      width={16}
-      height={16}
-      style={{ flexShrink: 0 }}
-      onError={() => setFailed(true)}
-    />
-  );
-};
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
   const [collapsed, setCollapsed] = useState(false);
@@ -159,7 +143,7 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
                       >
                         <span className={styles.itemBranch} />
                         <span className={styles.itemIcon}>
-                          <ObjectIcon iconKey={item.iconKey} />
+                          <ObjectIcon icon={item.iconKey} fallback={DEFAULT_ICON} />
                         </span>
                         <span className={styles.itemLabel}>{item.label}</span>
                       </button>

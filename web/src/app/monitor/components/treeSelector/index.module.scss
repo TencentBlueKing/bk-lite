@@ -1,0 +1,55 @@
+// 仅对带 meta(图标/计数)的叶子节点撑满整行,使标签可截断、计数右对齐且不被裁掉;
+// 用稳定的全局标记类 .treeMetaNode(由 renderTitle 直接加在节点上,非 CSS Module 哈希类)
+// 配合 :has() 精确限定作用域,既不影响集成/事件等纯文本节点,又避免「:global() 外的局部类
+// 在 :has() 中不被哈希」导致选择器整体失配(长名称如 Elasticsearch 不截断、计数被裁)的坑。
+// 把带 meta 的整行约束到容器宽度,否则 Ant 的 treenode 行会按内容撑宽(缩进 + 长名称 + 计数)
+// 超出左栏,导致 flex:1 无可压缩空间、标签不截断、计数被裁。仅作用于 meta 行(:has),不影响其它页面。
+.treeWrap :global(.ant-tree-treenode:has(.treeMetaNode)) {
+  width: 100%;
+}
+
+.treeWrap :global(.ant-tree-node-content-wrapper:has(.treeMetaNode)) {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+}
+
+// Ant 在 wrapper 与我们的 .node 之间还有一层 .ant-tree-title(默认按内容宽度,不收缩),
+// 必须让它也成为可收缩的 flex 项,标签的 ellipsis 才会生效、计数才不被挤出。
+.treeWrap :global(.ant-tree-node-content-wrapper:has(.treeMetaNode) .ant-tree-title) {
+  flex: 1;
+  min-width: 0;
+}
+
+.node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  min-width: 0;
+  // 末尾留白,避免计数徽标紧贴节点右边缘被裁切
+  padding-right: 4px;
+}
+
+.icon {
+  display: inline-flex;
+  align-items: center;
+  flex-shrink: 0;
+}
+
+.label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.count {
+  flex-shrink: 0;
+  margin-left: 8px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-3, #86909c);
+}

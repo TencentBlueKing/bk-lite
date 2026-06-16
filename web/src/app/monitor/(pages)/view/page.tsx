@@ -67,9 +67,11 @@ const Integration = () => {
         };
       }
       acc[item.type].children.push({
-        title: (item.display_name || '--') + `(${item.instance_count || 0})`,
+        title: item.display_name || '--',
         label: item.name || '--',
         key: item.id,
+        icon: item.icon,
+        count: item.instance_count || 0,
         children: [],
       });
       return acc;

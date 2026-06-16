@@ -4,6 +4,8 @@ import { TreeItem, TableDataItem, TreeSortData } from '@/app/monitor/types';
 import { useTranslation } from '@/utils/i18n';
 import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
+import ObjectIcon from '@/app/monitor/components/objectIcon';
+import styles from './index.module.scss';
 
 const { Search } = Input;
 
@@ -216,6 +218,26 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
     onNodeDrag && onNodeDrag(getTreeSortData(_data), _data);
   };
 
+  // 叶子节点带 icon/count 时渲染「图标 + 标签 + 计数徽标」,否则按纯文本(向后兼容既有调用方)。
+  const renderTitle = (node: TreeDataNode) => {
+    const item = node as unknown as TreeItem;
+    const hasMeta = !!item.icon || item.count != null;
+    if (!hasMeta) {
+      return <span>{item.title}</span>;
+    }
+    return (
+      <span className={`${styles.node} treeMetaNode`}>
+        <span className={styles.icon}>
+          <ObjectIcon icon={item.icon} />
+        </span>
+        <span className={styles.label}>{item.title}</span>
+        {item.count != null ? (
+          <span className={styles.count}>{item.count}</span>
+        ) : null}
+      </span>
+    );
+  };
+
   const getTreeSortData = (data: any[]) => {
     return data.map((item) => {
       return {
@@ -239,16 +261,19 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
           onSearch={handleSearchTree}
         />
         {treeData.length ? (
-          <Tree
-            showLine
-            draggable={draggable}
-            selectedKeys={selectedKeys}
-            expandedKeys={expandedKeys}
-            treeData={treeData}
-            onExpand={(keys) => setExpandedKeys(keys)}
-            onSelect={handleSelect}
-            onDrop={onDrop}
-          />
+          <div className={styles.treeWrap}>
+            <Tree
+              showLine
+              draggable={draggable}
+              selectedKeys={selectedKeys}
+              expandedKeys={expandedKeys}
+              treeData={treeData}
+              titleRender={renderTitle}
+              onExpand={(keys) => setExpandedKeys(keys)}
+              onSelect={handleSelect}
+              onDrop={onDrop}
+            />
+          </div>
         ) : (
           <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
         )}
