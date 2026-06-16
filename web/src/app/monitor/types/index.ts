@@ -53,6 +53,10 @@ export interface TreeItem {
   title: React.ReactElement | string;
   key: string | number;
   label?: string;
+  // 叶子节点可选:对象图标名(后端 icon 字段)与实例计数;由 treeSelector 渲染为图标+计数徽标。
+  // 不传则按纯文本渲染(向后兼容既有调用方)。
+  icon?: string;
+  count?: number;
   children: TreeItem[];
 }
 
@@ -211,6 +215,8 @@ export interface ObjectItem {
   collector?: string;
   collect_type?: string;
   display_type?: string;
+  icon?: string;
+  instance_count?: number;
   display_fields?: { name: string; sort_order: number; metrics: { plugin: string; metric: string }[] }[];
   options?: ObjectItem[];
   label?: string;
