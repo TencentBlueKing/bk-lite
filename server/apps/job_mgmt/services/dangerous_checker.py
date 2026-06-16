@@ -1,11 +1,53 @@
 """危险规则检查服务"""
 
+import os
 import re
 from typing import List
+
+from django.core.cache import cache
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import DangerousLevel, MatchType
 from apps.job_mgmt.models import DangerousPath, DangerousRule
+
+# 规则缓存 TTL（秒），可通过环境变量覆盖；默认 120s
+_RULES_CACHE_TTL = int(os.getenv("DANGEROUS_RULES_CACHE_TTL", "120"))
+
+# 缓存 key
+_CMD_RULES_CACHE_KEY = "dangerous_checker:cmd_rules"
+_PATH_RULES_CACHE_KEY = "dangerous_checker:path_rules"
+
+
+def _get_cmd_rules() -> list:
+    """获取启用的命令规则（带缓存）。
+
+    缓存格式：list[dict]，字段 id / name / pattern / level / team。
+    TTL 由 DANGEROUS_RULES_CACHE_TTL 环境变量控制，默认 120s。
+    规则变更时通过 post_save/post_delete 信号主动失效（见 signals.py）。
+    """
+    rules = cache.get(_CMD_RULES_CACHE_KEY)
+    if rules is None:
+        rules = list(
+            DangerousRule.objects.filter(is_enabled=True).values("id", "name", "pattern", "level", "team")
+        )
+        cache.set(_CMD_RULES_CACHE_KEY, rules, _RULES_CACHE_TTL)
+    return rules
+
+
+def _get_path_rules() -> list:
+    """获取启用的路径规则（带缓存）。
+
+    缓存格式：list[dict]，字段 id / name / pattern / level / match_type / team。
+    TTL 由 DANGEROUS_RULES_CACHE_TTL 环境变量控制，默认 120s。
+    规则变更时通过 post_save/post_delete 信号主动失效（见 signals.py）。
+    """
+    rules = cache.get(_PATH_RULES_CACHE_KEY)
+    if rules is None:
+        rules = list(
+            DangerousPath.objects.filter(is_enabled=True).values("id", "name", "pattern", "level", "match_type", "team")
+        )
+        cache.set(_PATH_RULES_CACHE_KEY, rules, _RULES_CACHE_TTL)
+    return rules
 
 
 class DangerousCheckResult:
@@ -28,15 +70,26 @@ class DangerousCheckResult:
         return not self.has_forbidden
 
     def add_match(self, rule, matched_content: str):
-        """添加匹配结果"""
+        """添加匹配结果。rule 可为 ORM 对象或 dict（缓存格式）。"""
+        if isinstance(rule, dict):
+            rule_id = rule["id"]
+            rule_name = rule["name"]
+            pattern = rule["pattern"]
+            level = rule["level"]
+        else:
+            rule_id = rule.id
+            rule_name = rule.name
+            pattern = rule.pattern
+            level = rule.level
+
         match_info = {
-            "rule_id": rule.id,
-            "rule_name": rule.name,
-            "pattern": rule.pattern,
-            "level": rule.level,
+            "rule_id": rule_id,
+            "rule_name": rule_name,
+            "pattern": pattern,
+            "level": level,
             "matched_content": matched_content,
         }
-        if rule.level == DangerousLevel.FORBIDDEN:
+        if level == DangerousLevel.FORBIDDEN:
             self.has_forbidden = True
             self.forbidden.append(match_info)
         else:
@@ -128,6 +181,9 @@ class DangerousChecker:
         """
         检查脚本内容中的危险命令
 
+        规则集从缓存读取（TTL 由 DANGEROUS_RULES_CACHE_TTL 环境变量控制，默认 120s），
+        规则变更时通过 post_save/post_delete 信号主动失效，避免每次执行都打 DB。
+
         Args:
             script_content: 脚本内容
             team: 团队ID列表，用于过滤规则
@@ -137,17 +193,14 @@ class DangerousChecker:
         """
         result = DangerousCheckResult()
 
-        # 获取启用的命令规则
-        rules = DangerousRule.objects.filter(is_enabled=True)
+        rules = _get_cmd_rules()
 
         # 按组织过滤（空列表表示全局规则）
         if team:
-            from django.db.models import Q
-
-            rules = rules.filter(Q(team=[]) | Q(team__overlap=team))
+            rules = [r for r in rules if not r["team"] or bool(set(r["team"]) & set(team))]
 
         for rule in rules:
-            matches = DangerousChecker._match_pattern(rule.pattern, script_content)
+            matches = DangerousChecker._match_pattern(rule["pattern"], script_content)
             for matched_content in matches:
                 result.add_match(rule, matched_content)
 
@@ -158,6 +211,9 @@ class DangerousChecker:
         """
         检查目标路径是否为危险路径
 
+        规则集从缓存读取（TTL 由 DANGEROUS_RULES_CACHE_TTL 环境变量控制，默认 120s），
+        规则变更时通过 post_save/post_delete 信号主动失效，避免每次执行都打 DB。
+
         Args:
             target_path: 目标路径
             team: 团队ID列表，用于过滤规则
@@ -167,17 +223,14 @@ class DangerousChecker:
         """
         result = DangerousCheckResult()
 
-        # 获取启用的路径规则
-        rules = DangerousPath.objects.filter(is_enabled=True)
+        rules = _get_path_rules()
 
         # 按组织过滤
         if team:
-            from django.db.models import Q
-
-            rules = rules.filter(Q(team=[]) | Q(team__overlap=team))
+            rules = [r for r in rules if not r["team"] or bool(set(r["team"]) & set(team))]
 
         for rule in rules:
-            matches = DangerousChecker._match_path_pattern(rule.pattern, target_path, rule.match_type)
+            matches = DangerousChecker._match_path_pattern(rule["pattern"], target_path, rule["match_type"])
             for matched_content in matches:
                 result.add_match(rule, matched_content)
 
