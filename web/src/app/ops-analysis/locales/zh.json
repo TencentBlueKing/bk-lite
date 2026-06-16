@@ -348,6 +348,8 @@
     "inputMode": "输入方式",
     "inputModeInput": "文本输入",
     "inputModeSelect": "下拉选择",
+    "inputModeRadio": "单选框",
+    "inputModeOrganization": "组织选择",
     "configOptions": "配置选项",
     "configOptionsFirst": "请先配置选项",
     "optionLabel": "选项标签",

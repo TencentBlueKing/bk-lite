@@ -10,7 +10,6 @@ class ScriptFilter(filters.FilterSet):
 
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
     script_type = filters.CharFilter(field_name="script_type", lookup_expr="exact")
-    os_type = filters.CharFilter(field_name="os_type", lookup_expr="exact")
     is_built_in = filters.BooleanFilter(field_name="is_built_in")
 
     class Meta:

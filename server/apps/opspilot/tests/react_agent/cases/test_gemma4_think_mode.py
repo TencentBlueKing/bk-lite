@@ -22,6 +22,7 @@ import uuid
 from unittest.mock import MagicMock, patch
 
 import pytest
+from langchain_core.messages import HumanMessage
 
 # ---------------------------------------------------------------------------
 # Minimal module stubs required for importing llm_client_factory without a
@@ -163,8 +164,6 @@ class TestGemmaIsolatedCallDisablesThinking:
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
 
-        from langchain_core.messages import HumanMessage
-
         request = BasicLLMRequest(
             model="google/gemma-4-31B-it",
             openai_api_key="sk-test",
@@ -184,8 +183,6 @@ class TestGemmaIsolatedCallDisablesThinking:
         mock_response.choices[0].message.content = "ok"
         mock_client.chat.completions.create.return_value = mock_response
         mock_openai_cls.return_value = mock_client
-
-        from langchain_core.messages import HumanMessage
 
         request = BasicLLMRequest(
             model="gpt-4o",

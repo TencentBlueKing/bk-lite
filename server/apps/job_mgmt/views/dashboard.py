@@ -72,16 +72,24 @@ class DashboardViewSet(ViewSet):
         current_start = now - timedelta(days=days)
         previous_start = current_start - timedelta(days=days)
 
-        current_qs = JobExecution.objects.filter(created_at__gte=current_start, created_at__lt=now)
-        previous_qs = JobExecution.objects.filter(created_at__gte=previous_start, created_at__lt=current_start)
+        # 每个周期一次聚合（含条件计数），把原本 5 次 count() 压成 2 次查询
+        current_stats = JobExecution.objects.filter(created_at__gte=current_start, created_at__lt=now).aggregate(
+            total=Count("id"),
+            success=Count("id", filter=Q(status=ExecutionStatus.SUCCESS)),
+            failed=Count("id", filter=Q(status=ExecutionStatus.FAILED)),
+        )
+        previous_stats = JobExecution.objects.filter(created_at__gte=previous_start, created_at__lt=current_start).aggregate(
+            total=Count("id"),
+            success=Count("id", filter=Q(status=ExecutionStatus.SUCCESS)),
+        )
 
-        current_total = current_qs.count()
-        current_success = current_qs.filter(status=ExecutionStatus.SUCCESS).count()
-        current_failed = current_qs.filter(status=ExecutionStatus.FAILED).count()
+        current_total = current_stats["total"]
+        current_success = current_stats["success"]
+        current_failed = current_stats["failed"]
         current_success_rate = round((current_success / current_total * 100) if current_total else 0, 2)
 
-        previous_total = previous_qs.count()
-        previous_success = previous_qs.filter(status=ExecutionStatus.SUCCESS).count()
+        previous_total = previous_stats["total"]
+        previous_success = previous_stats["success"]
         previous_success_rate = round((previous_success / previous_total * 100) if previous_total else 0, 2)
 
         success_rate_increase = round(current_success_rate - previous_success_rate, 2) if previous_total else current_success_rate

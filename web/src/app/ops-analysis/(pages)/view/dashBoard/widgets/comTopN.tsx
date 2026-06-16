@@ -2,7 +2,10 @@ import React, { useEffect } from 'react';
 import { Spin, Empty } from 'antd';
 import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
 import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+import type {
+  DatasourceItem,
+  ResponseFieldDefinition,
+} from '@/app/ops-analysis/types/dataSource';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 
 interface TopNProps {
@@ -35,16 +38,38 @@ const unwrapTopNData = (data: any): any[] => {
   return [];
 };
 
+export const resolveTopNHeaderLabel = (
+  fieldKey?: string,
+  fieldSchema?: ResponseFieldDefinition[],
+) => {
+  const key = String(fieldKey || '').trim();
+  if (!key) return '';
+
+  const field = (fieldSchema || []).find((item) => item.key === key);
+  const title = String(field?.title || '').trim();
+
+  return title ? `${key}（${title}）` : key;
+};
+
 const TopN: React.FC<TopNProps> = ({
   rawData,
   loading = false,
   config,
+  dataSource,
   onReady,
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
   const labelField = config?.topNLabelField;
   const valueField = config?.topNValueField;
+  const labelHeader = resolveTopNHeaderLabel(
+    labelField,
+    dataSource?.field_schema,
+  );
+  const valueHeader = resolveTopNHeaderLabel(
+    valueField,
+    dataSource?.field_schema,
+  );
 
   const transformData = (data: any): TopNItem[] => {
     const rows = unwrapTopNData(data);
@@ -130,12 +155,30 @@ const TopN: React.FC<TopNProps> = ({
 
   return (
     <div className="h-full px-3 pt-2 pb-1 overflow-y-auto">
+      {(labelHeader || valueHeader) && (
+        <div
+          className="grid items-center mb-1.5 rounded-md py-1.5 text-[12px] font-medium"
+          style={{
+            gridTemplateColumns: 'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)',
+            columnGap: 12,
+            color: isDark ? 'rgba(255,255,255,0.66)' : '#5f6f89',
+          }}
+        >
+          <span className="truncate" title={labelHeader}>
+            {labelHeader}
+          </span>
+          <span />
+          <span className="text-right truncate" title={valueHeader}>
+            {valueHeader}
+          </span>
+        </div>
+      )}
       <div
         className="grid items-center"
         style={{
-          gridTemplateColumns: 'fit-content(40%) minmax(0, 1fr) auto',
-          columnGap: 6,
-          rowGap: 4,
+          gridTemplateColumns: 'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)',
+          columnGap: 12,
+          rowGap: 2,
         }}
       >
         {items.map((item, index) => {
@@ -144,29 +187,38 @@ const TopN: React.FC<TopNProps> = ({
           return (
             <React.Fragment key={`${item.name}-${index}`}>
               <span
-                className="text-[13px] truncate"
+                className="flex h-7 items-center truncate rounded-l-md px-2 text-[13px]"
                 style={{
-                  color: isDark ? 'var(--color-text-2)' : '#1f2329',
+                  color: isDark ? 'rgba(255,255,255,0.82)' : '#26364f',
                   minWidth: 0,
                 }}
                 title={item.name}
               >
                 {item.name}
               </span>
-              <div className="flex items-center h-6 min-w-0">
+              <div className="flex h-7 min-w-0 items-center">
                 <div
-                  className="h-3 rounded-sm transition-all duration-300"
+                  className="h-2.5 w-full overflow-hidden rounded-full"
                   style={{
-                    width: `${Math.max(percent, 1.5)}%`,
-                    backgroundColor: '#366CE4',
+                    backgroundColor: isDark ? 'rgba(255,255,255,0.09)' : '#e8eef8',
                   }}
-                />
+                >
+                  <div
+                    className="h-full rounded-full transition-all duration-300"
+                    style={{
+                      width: `${Math.max(percent, item.value > 0 ? 2 : 0)}%`,
+                      background: isDark
+                        ? 'linear-gradient(90deg, #5b8cff 0%, #2f6bff 100%)'
+                        : 'linear-gradient(90deg, #4f7df3 0%, #235ee8 100%)',
+                    }}
+                  />
+                </div>
               </div>
               <span
-                className="text-[13px] font-medium text-right"
+                className="flex h-7 items-center justify-end rounded-r-md px-2 text-[13px] font-semibold tabular-nums"
                 style={{
-                  color: isDark ? 'var(--color-text-1)' : '#1f2329',
-                  minWidth: 32,
+                  color: isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
+                  minWidth: 48,
                 }}
               >
                 {item.value.toLocaleString()}

@@ -13,6 +13,7 @@ from apps.cmdb.collection.plugins.community.middleware.jetty import JettyCollect
 from apps.cmdb.collection.plugins.community.middleware.kafka import KafkaCollectionPlugin
 from apps.cmdb.collection.plugins.community.middleware.keepalived import KeepalivedCollectionPlugin
 from apps.cmdb.collection.plugins.community.middleware.memcached import MemcachedCollectionPlugin
+from apps.cmdb.collection.plugins.community.middleware.minio import MinioCollectionPlugin
 from apps.cmdb.collection.plugins.community.middleware.nginx import NginxCollectionPlugin
 from apps.cmdb.collection.plugins.community.middleware.openresty import OpenrestyCollectionPlugin
 from apps.cmdb.collection.plugins.community.middleware.rabbitmq import RabbitmqCollectionPlugin
@@ -44,6 +45,7 @@ __all__ = [
     "WeblogicCollectionPlugin",
     "KeepalivedCollectionPlugin",
     "MemcachedCollectionPlugin",
+    "MinioCollectionPlugin",
     "OpenrestyCollectionPlugin",
     "RocketmqCollectionPlugin",
     "SparkCollectionPlugin",

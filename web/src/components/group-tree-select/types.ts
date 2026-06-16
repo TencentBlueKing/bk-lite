@@ -54,6 +54,12 @@ export interface GroupTreeSelectProps {
   disabled?: boolean;
 
   /**
+   * 是否允许清空已选值
+   * @default false
+   */
+  allowClear?: boolean;
+
+  /**
    * 样式
    */
   style?: React.CSSProperties;

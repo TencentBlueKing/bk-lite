@@ -29,7 +29,9 @@ import { useTranslation } from '@/utils/i18n';
 
 const MAX_SPARKLINE_POINTS = 24;
 const MIN_VALUE_FONT_SIZE = 18;
-const UNIT_FONT_SCALE = 0.54;
+const UNIT_FONT_SCALE = 0.48;
+const MIN_UNIT_GAP = 8;
+const MAX_UNIT_GAP = 12;
 
 const toAlphaColor = (color: string, alpha: number) => {
   const normalized = color.trim();
@@ -292,7 +294,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
       cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [config?.compare, displayMainValue, displayUnit, showSparkline]);
+  }, [config?.compare, displayMainValue, displayUnit, showSparkline, unitText]);
 
   useLayoutEffect(() => {
     const contentArea = contentAreaRef.current;
@@ -360,8 +362,12 @@ const ComSingle: React.FC<ComSingleProps> = ({
     ),
   );
   const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
-  const valueGap = displayUnit
-    ? Math.max(4, Math.round(valueFontSize * 0.08))
+  const unitLabel = displayUnit || unitText;
+  const valueGap = unitLabel
+    ? Math.min(
+      MAX_UNIT_GAP,
+      Math.max(MIN_UNIT_GAP, Math.round(valueFontSize * 0.14)),
+    )
     : 0;
   const sparklineLineColor = {
     type: 'linear' as const,
@@ -446,40 +452,50 @@ const ComSingle: React.FC<ComSingleProps> = ({
         <div className="min-w-0">
           <div ref={valueAreaRef} className="relative min-w-0 max-w-full">
             <div
-              className="inline-flex max-w-full items-end whitespace-nowrap font-semibold leading-none"
+              className="inline-flex max-w-full items-baseline whitespace-nowrap font-semibold leading-none"
               style={{
                 color: metricColor,
                 fontSize: `${valueFontSize}px`,
-                letterSpacing: '-0.02em',
+                fontVariantNumeric: 'tabular-nums',
+                letterSpacing: 0,
                 gap: `${valueGap}px`,
                 textShadow: chartTheme.singleValueGlow,
               }}
             >
               <span>{displayMainValue}</span>
-              {displayUnit || unitText ? (
+              {unitLabel ? (
                 <span
-                  className="shrink-0 font-semibold leading-none"
-                  style={{ fontSize: `${UNIT_FONT_SCALE}em` }}
+                  className="shrink-0 font-medium leading-none"
+                  style={{
+                    color: toAlphaColor(metricColor, 0.78),
+                    fontSize: `${UNIT_FONT_SCALE}em`,
+                    transform: 'translateY(-0.02em)',
+                  }}
                 >
-                  {displayUnit || unitText}
+                  {unitLabel}
                 </span>
               ) : null}
             </div>
             <div
               ref={measureRef}
-              className="pointer-events-none absolute left-0 top-0 inline-flex items-end whitespace-nowrap font-semibold leading-none opacity-0"
+              className="pointer-events-none absolute left-0 top-0 inline-flex items-baseline whitespace-nowrap font-semibold leading-none opacity-0"
               aria-hidden
               style={{
+                fontVariantNumeric: 'tabular-nums',
                 gap: `${valueGap}px`,
+                letterSpacing: 0,
               }}
             >
               <span>{displayMainValue}</span>
-              {displayUnit || unitText ? (
+              {unitLabel ? (
                 <span
-                  className="shrink-0 font-semibold leading-none"
-                  style={{ fontSize: `${UNIT_FONT_SCALE}em` }}
+                  className="shrink-0 font-medium leading-none"
+                  style={{
+                    fontSize: `${UNIT_FONT_SCALE}em`,
+                    transform: 'translateY(-0.02em)',
+                  }}
                 >
-                  {displayUnit || unitText}
+                  {unitLabel}
                 </span>
               ) : null}
             </div>

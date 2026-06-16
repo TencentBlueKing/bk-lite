@@ -1,3 +1,6 @@
+from urllib.parse import urlparse
+
+import yaml
 from django.http import JsonResponse
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
@@ -629,8 +632,6 @@ class SkillToolsViewSet(AuthViewSet):
         # 去除可能误带的协议前缀，仅取主机名用于校验。
         netloc = host
         if "://" in netloc:
-            from urllib.parse import urlparse
-
             netloc = urlparse(host).hostname or host
         target = f"http://{netloc}"
         if port not in (None, ""):
@@ -653,7 +654,6 @@ class SkillToolsViewSet(AuthViewSet):
         """
         if not kubeconfig_data or not str(kubeconfig_data).strip():
             return
-        import yaml
 
         try:
             kubeconfig = yaml.safe_load(kubeconfig_data)

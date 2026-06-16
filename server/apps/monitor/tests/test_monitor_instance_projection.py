@@ -1,6 +1,13 @@
 import types
 
-from apps.monitor.models import Metric, MetricGroup, MonitorInstance, MonitorInstanceOrganization, MonitorObject
+from apps.monitor.models import (
+    Metric,
+    MetricGroup,
+    MonitorInstance,
+    MonitorInstanceOrganization,
+    MonitorObject,
+)
+from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
 
@@ -68,6 +75,111 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }
+
+
+def test_monitor_instance_list_filters_instances_by_plugin_status_query(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        default_metric="any({instance_type='os'}) by (instance_id)",
+        instance_id_keys=["instance_id"],
+    )
+    plugin = MonitorPlugin.objects.create(
+        name="Host",
+        display_name="Host",
+        collector="Telegraf",
+        collect_type="host",
+        status_query="any({instance_type='os', collect_type='host'}) by (instance_id)",
+    )
+    plugin.monitor_object.add(monitor_object)
+    active_instance = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object_id=monitor_object.id,
+    )
+    MonitorInstance.objects.create(
+        id="('host-b',)",
+        name="Host B",
+        monitor_object_id=monitor_object.id,
+    )
+    captured_metrics = []
+
+    def fake_get_instances_by_metric(metric, instance_id_keys):
+        captured_metrics.append(metric)
+        if metric == plugin.status_query:
+            return {
+                active_instance.id: {
+                    "instance_id": active_instance.id,
+                    "agent_id": "agent-a",
+                    "time": 1781589583,
+                }
+            }
+        return {
+            "('host-a',)": {
+                "instance_id": "('host-a',)",
+                "agent_id": "agent-a",
+                "time": 1781589583,
+            },
+            "('host-b',)": {
+                "instance_id": "('host-b',)",
+                "agent_id": "agent-b",
+                "time": 1781589583,
+            },
+        }
+
+    monkeypatch.setattr(
+        MonitorObjectService,
+        "get_instances_by_metric",
+        fake_get_instances_by_metric,
+    )
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
+
+    data = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=-1,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+        monitor_plugin_id=plugin.id,
+    )
+
+    assert captured_metrics == [plugin.status_query]
+    assert data["count"] == 1
+    assert [item["instance_id"] for item in data["results"]] == [active_instance.id]
+
+
+def test_monitor_instance_list_returns_empty_for_unknown_plugin(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        default_metric="any({instance_type='os'}) by (instance_id)",
+        instance_id_keys=["instance_id"],
+    )
+    MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object_id=monitor_object.id,
+    )
+
+    def fake_get_instances_by_metric(metric, instance_id_keys):
+        raise AssertionError("unknown plugin should not query the default metric")
+
+    monkeypatch.setattr(
+        MonitorObjectService,
+        "get_instances_by_metric",
+        fake_get_instances_by_metric,
+    )
+
+    data = MonitorObjectService.get_monitor_instance(
+        monitor_object.id,
+        page=1,
+        page_size=-1,
+        name=None,
+        qs=MonitorInstance.objects.all(),
+        monitor_plugin_id=999999,
+    )
+
+    assert data == {"count": 0, "results": []}
 
 
 def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
