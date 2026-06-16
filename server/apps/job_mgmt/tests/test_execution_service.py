@@ -386,13 +386,13 @@ class TestCreateReExecution:
         original = self._make_original(target_list=[])
         with patch(DISPATCH_PATH):
             with pytest.raises(ExecutionAuthorizationError) as exc:
-                ExecutionService.create_re_execution(original=original, username="bob")
+                ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
         assert exc.value.status_code == 400
 
     def test_script_re_execution_sets_manual_trigger(self):
         original = self._make_original()
         with patch(DISPATCH_PATH, return_value="celery-1"):
-            execution = ExecutionService.create_re_execution(original=original, username="bob")
+            execution = ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
         assert execution.id != original.id
         assert execution.trigger_source == TriggerSource.MANUAL
         assert execution.job_type == JobType.SCRIPT
@@ -402,5 +402,40 @@ class TestCreateReExecution:
         original = self._make_original(job_type=JobType.PLAYBOOK, playbook=None)
         with patch(DISPATCH_PATH):
             with pytest.raises(ExecutionAuthorizationError) as exc:
-                ExecutionService.create_re_execution(original=original, username="bob")
+                ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
         assert exc.value.status_code == 400
+
+    # ---------- #3403：团队归属校验 ---------- #
+    def test_cross_team_raises_403_before_create(self):
+        original = self._make_original(team=[1])
+        with patch(DISPATCH_PATH) as dispatch:
+            with pytest.raises(ExecutionAuthorizationError) as exc:
+                ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={99})
+        assert exc.value.status_code == 403
+        dispatch.assert_not_called()
+        # 越权时不得创建新执行（库中仅剩原始那 1 条）
+        assert JobExecution.objects.count() == 1
+
+    def test_superuser_bypasses_team_check(self):
+        original = self._make_original(team=[999])
+        with patch(DISPATCH_PATH, return_value="celery-1"):
+            execution = ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids=None)
+        assert execution.trigger_source == TriggerSource.MANUAL
+
+    def test_referenced_script_cross_team_raises_403(self):
+        script = Script.objects.create(name="s", content="echo", script_type="shell", team=[99])
+        original = self._make_original(team=[1], script=script)
+        with patch(DISPATCH_PATH) as dispatch:
+            with pytest.raises(ExecutionAuthorizationError) as exc:
+                ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
+        assert exc.value.status_code == 403
+        dispatch.assert_not_called()
+
+    def test_referenced_playbook_cross_team_raises_403(self):
+        playbook = Playbook.objects.create(name="p", version="v1.0.0", team=[99])
+        original = self._make_original(team=[1], job_type=JobType.PLAYBOOK, playbook=playbook)
+        with patch(DISPATCH_PATH) as dispatch:
+            with pytest.raises(ExecutionAuthorizationError) as exc:
+                ExecutionService.create_re_execution(original=original, username="bob", authorized_team_ids={1})
+        assert exc.value.status_code == 403
+        dispatch.assert_not_called()
