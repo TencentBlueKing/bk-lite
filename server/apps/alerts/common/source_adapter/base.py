@@ -286,23 +286,23 @@ class AlertSourceAdapter(ABC):
                 )
                 return []
 
-            # 仅允许告警源已注册（team_secrets 中存在）的组织，过滤越权组织 ID
+            # 仅允许告警源已注册（team_secrets 中存在）的组织，过滤越权组织 ID。
+            # 注意：当 team_secrets 为空时，白名单也为空，所有 organizations 均被拒绝（返回 []），
+            # 防止未完成注册的告警源被利用绕过跨组织写污染防护。
             authorized_team_ids = {
                 str(tid) for tid in (self.alert_source.team_secrets or {}).keys()
             }
-            if authorized_team_ids:
-                allowed = [tid for tid in requested if str(tid) in authorized_team_ids]
-                blocked = [tid for tid in requested if str(tid) not in authorized_team_ids]
-                if blocked:
-                    logger.warning(
-                        "[AlertSource] 可信内部推送携带未授权 organizations，已过滤："
-                        "source_id=%s blocked=%s allowed=%s",
-                        self.alert_source.source_id,
-                        blocked,
-                        allowed,
-                    )
-                return allowed
-            return requested
+            allowed = [tid for tid in requested if str(tid) in authorized_team_ids]
+            blocked = [tid for tid in requested if str(tid) not in authorized_team_ids]
+            if blocked:
+                logger.warning(
+                    "[AlertSource] 可信内部推送携带未授权 organizations，已过滤："
+                    "source_id=%s blocked=%s allowed=%s",
+                    self.alert_source.source_id,
+                    blocked,
+                    allowed,
+                )
+            return allowed
         return self.resolved_team
 
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):

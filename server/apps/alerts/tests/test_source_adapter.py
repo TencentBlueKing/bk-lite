@@ -339,13 +339,21 @@ def test_build_ingress_dedup_key(event_levels, restful_source):
 
 
 @pytest.mark.django_db
-def test_event_team_uses_organizations_when_trusted_internal(event_levels, restful_source):
-    """可信内部推送 + event 自带 organizations → Event.team 采信之，不走 secret 解析。"""
-    adapter = RestFulAdapter(alert_source=restful_source, trusted_internal=True)
+def test_event_team_uses_organizations_when_trusted_internal(event_levels, db):
+    """可信内部推送 + event 自带 organizations（均在 team_secrets 内）→ Event.team 采信之，不走 secret 解析。"""
+    source = AlertSource.objects.create(
+        name="nats-restful源",
+        source_id="restful-with-secrets",
+        source_type="restful",
+        secret="src-secret",
+        team_secrets={"3": "s3", "5": "s5"},
+        config={},
+    )
+    adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
     event = Event(level="0", title="t", item="cpu", resource_id="1",
                   resource_name="host1", resource_type="host")
-    adapter.add_base_fields(event, {"source_id": "restful", "organizations": [3, 5]})
-    assert event.team == [3, 5]
+    adapter.add_base_fields(event, {"source_id": "restful-with-secrets", "organizations": [3, 5]})
+    assert sorted(event.team) == [3, 5]
 
 
 @pytest.mark.django_db
@@ -450,6 +458,30 @@ def test_trusted_internal_authorized_orgs_pass_through(event_levels, db):
     )
     adapter.add_base_fields(event, {"source_id": "nats-monitor-3", "organizations": [3, 5]})
     assert sorted(event.team) == [3, 5], "已注册组织应全部保留"
+
+
+@pytest.mark.django_db
+def test_trusted_internal_empty_team_secrets_blocks_all(event_levels, db):
+    """可信内部推送：告警源 team_secrets 为空时，任何 organizations 均被拒绝，防止注册前绕过。
+
+    此测试验证白名单为空时不退化为"全部放行"——防止告警源尚未完成组织注册时
+    被利用绕过跨组织写污染防护。
+    """
+    source = AlertSource.objects.create(
+        name="未注册nats源",
+        source_id="nats-no-secrets",
+        source_type="nats",
+        secret="src-secret",
+        team_secrets={},  # 未注册任何组织
+        config={},
+    )
+    adapter = RestFulAdapter(alert_source=source, trusted_internal=True)
+    event = Event(
+        level="0", title="t", item="cpu",
+        resource_id="1", resource_name="host1", resource_type="host",
+    )
+    adapter.add_base_fields(event, {"source_id": "nats-no-secrets", "organizations": [3, 5]})
+    assert event.team == [], "team_secrets 为空时任何 org 均应被拦截，不退化为全放行"
 
 
 def test_rich_event_disabled_noop(event_levels, restful_source):
