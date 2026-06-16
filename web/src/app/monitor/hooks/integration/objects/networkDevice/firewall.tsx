@@ -62,6 +62,7 @@ export const useFirewallConfig = () => {
       'Firewall Check Point SNMP': 'snmp_checkpoint',
       'Firewall Stormshield SNMP': 'snmp_stormshield',
       'Firewall Palo Alto SNMP': 'snmp_paloalto',
+      'Firewall SonicWall SNMP': 'snmp_sonicwall',
       'Firewall Flow NetFlow': 'netflow',
       'Firewall Flow sFlow': 'sflow'
     }

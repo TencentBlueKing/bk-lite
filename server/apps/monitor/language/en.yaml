@@ -635,6 +635,15 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    firewall_current_connections:
+      name: Current Connections
+      desc: This metric reports the number of entries currently in the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries). A rapidly rising count can indicate a connection flood or connection-table pressure.
+    firewall_max_connections:
+      name: Max Connections
+      desc: This metric reports the maximum number of connections supported by the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicMaxConnCacheEntries). Combined with the current count it gauges remaining connection-table headroom.
+    firewall_nat_translations:
+      name: NAT Translations
+      desc: This metric reports the number of currently active NAT translation entries on the SonicWall firewall (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicNatTranslationCount). An abnormal rise can indicate NAT resource pressure or anomalous traffic.
     firewall_session_utilization:
       name: Session Utilization
       desc: This metric reports the session-table utilization of the Palo Alto firewall (PAN-COMMON-MIB panSessionUtilization), the percentage of active sessions against the maximum session capacity. Approaching 100% means the session table is nearly exhausted and new connections may be dropped.
@@ -3814,6 +3823,13 @@ monitor_object_plugin:
       temperature/fan/psu are not collected because PAN-OS exposes them only via
       row-filtered hrStorage / entity-sensor tables that telegraf inputs.snmp cannot
       filter.
+  Firewall SonicWall SNMP:
+    name: SonicWall (Telegraf)
+    desc: SonicWall-specific SNMP collection template for SonicOS firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      SONICWALL-FIREWALL-IP-STATISTICS-MIB private OIDs for device health (CPU and RAM
+      utilization, both reported directly as percentages) and firewall-specific state
+      (current and maximum connection-cache entries and NAT translation count).
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
