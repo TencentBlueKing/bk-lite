@@ -3214,6 +3214,9 @@ monitor_object_plugin:
   Switch Dell Force10 SNMP:
     name: Dell Force10（Telegraf）
     desc: Dell Force10 (S-Series) 交换机专用 SNMP 采集模板（F10-S-SERIES-CHASSIS-MIB，企业号 6027）。在标准 IF-MIB 接口指标之外，额外采集 Dell Force10 私有 OID 的设备健康指标：每处理器 CPU 与内存使用率、每堆叠单元温度、风扇托盘与电源状态。CPU 与内存以利用率百分比直接上报；风扇/电源状态已归一化为统一的 1=正常 约定。
+  Switch HP ProCurve SNMP:
+    name: HP ProCurve（Telegraf）
+    desc: HP ProCurve / HP Networking 交换机专用 SNMP 采集模板（HP-ICF MIB）。在标准 IF-MIB 接口指标之外，额外采集 HP 私有 OID 的设备健康指标：CPU 使用率与系统内存（已用/总量）。温度与风扇/电源状态位于 HP 的 ENTITY-SENSOR / hpicfSensorTable 混合表、需按行类型/类过滤（telegraf inputs.snmp 无法实现），故不采集（N/A）。内存使用率按 used/total 计算。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

@@ -3641,6 +3641,15 @@ monitor_object_plugin:
       including per-processor CPU and memory utilization, per-stack-unit temperature,
       fan-tray and power-supply status. CPU and memory are reported directly as
       percentages; fan/psu states are normalized to the unified 1=normal convention.
+  Switch HP ProCurve SNMP:
+    name: HP ProCurve (Telegraf)
+    desc: HP ProCurve / HP Networking-specific SNMP collection template for switches
+      (HP-ICF MIBs). In addition to standard IF-MIB interface metrics, it collects HP
+      private OIDs for device health including CPU utilization and system memory
+      (used/total). Temperature and fan/power-supply state live in HP's shared
+      ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering,
+      which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory
+      utilization is computed from used/total.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
