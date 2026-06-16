@@ -47,7 +47,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '防火墙当前活动会话或连接数。品牌自适应回退：活动会话（Fortinet/Palo Alto）→ 当前连接（SonicWall）→ 活动连接（WatchGuard）→ ASQ TCP 连接（Stormshield）。反映负载与会话表压力。',
       unit: 'counts',
       query:
-        'firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__}',
+        'firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}',
       color: '#13c2c2'
     },
     {

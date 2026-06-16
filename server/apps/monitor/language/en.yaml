@@ -635,6 +635,9 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    firewall_pf_states:
+      name: PF State Table Entries
+      desc: This metric reports the current number of entries in the pfSense firewall pf state table (BEGEMOT-PF-MIB pfStateTableCount), roughly equal to the number of active connections. A rapidly rising count can indicate a connection flood or the state table approaching its limit.
     firewall_active_connections:
       name: Active Connections
       desc: This metric reports the number of currently active connections on the WatchGuard firewall (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns). A rapidly rising count can indicate a connection flood or connection-table pressure.
@@ -3842,6 +3845,14 @@ monitor_object_plugin:
       temperature/fan/psu are not collected because Fireware exposes no standard SNMP
       memory-utilization scalar or sensor table that telegraf inputs.snmp can read
       without row-level filtering.
+  Firewall pfSense SNMP:
+    name: pfSense (Telegraf)
+    desc: pfSense-specific SNMP collection template for pfSense (FreeBSD/pf) firewalls.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HOST-RESOURCES CPU load (averaged across cores) and the BEGEMOT-PF-MIB
+      pf state-table entry count (equivalent to active connections). Memory and
+      temperature/fan/psu are not collected because pfSense exposes memory only via
+      row-filtered hrStorage and has no standard sensor table.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
