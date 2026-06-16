@@ -3356,6 +3356,9 @@ monitor_object_plugin:
   Firewall pfSense SNMP:
     name: pfSense（Telegraf）
     desc: 面向 pfSense（FreeBSD/pf）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 BEGEMOT-PF-MIB 的 pf 状态表条目数（等价活动连接数）。内存与温度/风扇/电源不采集——pfSense 内存仅经需行级过滤的 hrStorage 暴露、且无标准传感器表。
+  Firewall OPNsense SNMP:
+    name: OPNsense（Telegraf）
+    desc: 面向 OPNsense（FreeBSD/pf）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 BEGEMOT-PF-MIB 的 pf 状态表条目数（等价活动连接数）。内存与温度/风扇/电源不采集——OPNsense 内存仅经需行级过滤的 hrStorage 暴露、且无标准传感器表。
   Firewall Flow NetFlow:
     name: 防火墙流量分析（NetFlow）
     desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。

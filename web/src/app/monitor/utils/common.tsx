@@ -518,7 +518,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /paloalto|palo.?alto|pan.?os/i, label: 'Palo Alto', icon: 'mm-paloalto_paloalto' },
   { match: /sonicwall|sonicos/i, label: 'SonicWall', icon: 'mm-sonicwall_sonicwall' },
   { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' },
-  { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' }
+  { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
+  { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

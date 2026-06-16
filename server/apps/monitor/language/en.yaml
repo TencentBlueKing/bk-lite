@@ -3853,6 +3853,14 @@ monitor_object_plugin:
       pf state-table entry count (equivalent to active connections). Memory and
       temperature/fan/psu are not collected because pfSense exposes memory only via
       row-filtered hrStorage and has no standard sensor table.
+  Firewall OPNsense SNMP:
+    name: OPNsense (Telegraf)
+    desc: OPNsense-specific SNMP collection template for OPNsense (FreeBSD/pf) firewalls.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HOST-RESOURCES CPU load (averaged across cores) and the BEGEMOT-PF-MIB
+      pf state-table entry count (equivalent to active connections). Memory and
+      temperature/fan/psu are not collected because OPNsense exposes memory only via
+      row-filtered hrStorage and has no standard sensor table.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
