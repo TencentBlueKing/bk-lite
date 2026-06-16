@@ -6,16 +6,31 @@ from django.db.models import Count, Q
 from django.utils import timezone
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.viewsets import ViewSet
 
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.serializers.dashboard import DashboardTrendSerializer
 
 
-class DashboardViewSet(ViewSet):
+class DashboardViewSet(AuthViewSet):
     """Dashboard视图集"""
 
+    ORGANIZATION_FIELD = "team"
+    permission_key = "job"
+
+    def _get_team_filter(self, request):
+        """返回当前用户可见的 team 过滤条件。
+
+        超级管理员不做 team 过滤（返回全量）；普通用户只能看当前 team 的数据。
+        """
+        if getattr(request.user, "is_superuser", False):
+            return Q()
+        current_team = self._validate_current_team_permission(request)
+        return Q(team__contains=current_team)
+
+    @HasPermission("job_record-View")
     @action(detail=False, methods=["get"])
     def trend(self, request):
         """
@@ -27,9 +42,12 @@ class DashboardViewSet(ViewSet):
         end_date = timezone.now().date()
         start_date = end_date - timedelta(days=days - 1)
 
+        team_filter = self._get_team_filter(request)
+
         # 按日期分组统计
         executions = (
             JobExecution.objects.filter(
+                team_filter,
                 created_at__date__gte=start_date,
                 created_at__date__lte=end_date,
             )
@@ -61,6 +79,7 @@ class DashboardViewSet(ViewSet):
         serializer = DashboardTrendSerializer(result, many=True)
         return Response(serializer.data)
 
+    @HasPermission("job_record-View")
     @action(detail=False, methods=["get"])
     def success_rate_compare(self, request):
         """获取当前周期成功率及与上周期对比"""
@@ -72,13 +91,15 @@ class DashboardViewSet(ViewSet):
         current_start = now - timedelta(days=days)
         previous_start = current_start - timedelta(days=days)
 
+        team_filter = self._get_team_filter(request)
+
         # 每个周期一次聚合（含条件计数），把原本 5 次 count() 压成 2 次查询
-        current_stats = JobExecution.objects.filter(created_at__gte=current_start, created_at__lt=now).aggregate(
+        current_stats = JobExecution.objects.filter(team_filter, created_at__gte=current_start, created_at__lt=now).aggregate(
             total=Count("id"),
             success=Count("id", filter=Q(status=ExecutionStatus.SUCCESS)),
             failed=Count("id", filter=Q(status=ExecutionStatus.FAILED)),
         )
-        previous_stats = JobExecution.objects.filter(created_at__gte=previous_start, created_at__lt=current_start).aggregate(
+        previous_stats = JobExecution.objects.filter(team_filter, created_at__gte=previous_start, created_at__lt=current_start).aggregate(
             total=Count("id"),
             success=Count("id", filter=Q(status=ExecutionStatus.SUCCESS)),
         )
