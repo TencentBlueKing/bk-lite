@@ -1,4 +1,4 @@
-__all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", "js_publish", "js_publish_sync", "request_v2", "subscribe_lines_sync"]
+__all__ = ["nat_request", "request", "request_sync", "publish", "publish_sync", "js_publish", "js_publish_sync", "request_v2", "subscribe_lines_sync", "publish_raw", "publish_raw_sync", "ensure_stream", "ensure_stream_sync", "iter_jetstream_subject"]
 
 import asyncio
 import functools
@@ -10,6 +10,7 @@ from urllib.parse import urlsplit, urlunsplit
 import jsonpickle
 from django.conf import settings
 from nats.aio.client import Client
+from nats.js.api import DiscardPolicy, StreamConfig
 
 from apps.core.logger import nats_logger as logger
 from apps.rpc.sensitive import sanitize_sensitive_data
@@ -282,3 +283,83 @@ def subscribe_lines_sync(subject: str, timeout: Optional[float] = None, stop_eve
         asyncio.run(runner())
 
     return result_queue, start
+
+
+# --- 流式输出原语（job_mgmt 脚本执行实时日志） ---
+
+async def publish_raw(subject: str, payload: dict) -> None:
+    """向原始 subject 发布一条扁平 JSON（不走 RPC 的 args/kwargs 包装）。"""
+    nc = await get_nc_client()
+    try:
+        await nc.publish(subject, json.dumps(payload, ensure_ascii=False).encode())
+        await nc.flush()
+    finally:
+        await nc.close()
+
+
+def publish_raw_sync(subject: str, payload: dict) -> None:
+    return asyncio.run(publish_raw(subject, payload))
+
+
+async def ensure_stream(name: str, subjects, max_age: int, max_bytes: int) -> None:
+    """幂等声明 JetStream 流：不存在则创建，存在则更新配置。"""
+    nc = await get_nc_client()
+    try:
+        js = nc.jetstream()
+        # nats-py StreamConfig.max_age 单位为秒，as_dict() 会自动转纳秒下发。
+        cfg = StreamConfig(
+            name=name,
+            subjects=list(subjects),
+            max_age=max_age,
+            max_bytes=max_bytes,
+            discard=DiscardPolicy.OLD,
+        )
+        try:
+            await js.add_stream(cfg)
+            logger.info("[jetstream] 流已创建: name=%s, subjects=%s, max_age=%ss", name, list(subjects), max_age)
+        except Exception as e:
+            # 多为「流已存在」→ 更新配置即可；记一条 warning 避免掩盖真实错误。
+            logger.warning("ensure_stream add_stream failed, fallback to update: name=%s, error=%s", name, str(e))
+            await js.update_stream(cfg)
+    finally:
+        await nc.close()
+
+
+def ensure_stream_sync(name: str, subjects, max_age: int, max_bytes: int) -> None:
+    return asyncio.run(ensure_stream(name, subjects, max_age, max_bytes))
+
+
+async def iter_jetstream_subject(filter_subject: str, idle_timeout: float = 300):  # pragma: no cover
+    """JetStream 有序消费者：从头回放 + 实时 tail。空闲超时即结束。
+
+    胶水代码，依赖真实 NATS/JetStream，单测以注入 fake source 覆盖上层逻辑；
+    本函数本身由本地集成验证。yield (subject, payload_dict)。
+    """
+    nc = await get_nc_client()
+    sub = None
+    delivered = 0
+    try:
+        js = nc.jetstream()
+        sub = await js.subscribe(filter_subject, ordered_consumer=True)
+        logger.info("[jetstream] 有序消费者已创建, filter=%s, idle_timeout=%ss", filter_subject, idle_timeout)
+        while True:
+            try:
+                msg = await sub.next_msg(timeout=idle_timeout)
+            except Exception as e:
+                logger.info("[jetstream] 流结束/空闲超时, filter=%s, 已投递=%s, 原因=%s", filter_subject, delivered, e)
+                break
+            try:
+                payload = json.loads(msg.data.decode())
+            except json.JSONDecodeError:
+                payload = {"line": msg.data.decode(errors="ignore")}
+            delivered += 1
+            yield msg.subject, payload
+    except Exception as e:
+        logger.warning("[jetstream] 订阅失败(降级), filter=%s, error=%s", filter_subject, e)
+    finally:
+        if sub is not None:
+            try:
+                await sub.unsubscribe()
+            except Exception:
+                pass
+        await nc.close()

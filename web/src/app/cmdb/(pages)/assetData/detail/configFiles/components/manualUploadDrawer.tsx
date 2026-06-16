@@ -4,6 +4,7 @@ import { Button, Drawer, Form, Input, Space, Typography, Upload } from 'antd';
 import { UploadOutlined } from '@ant-design/icons';
 import type { FormInstance } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 
 const { Text } = Typography;
 
@@ -23,6 +24,8 @@ const ManualUploadDrawer = ({
   onSubmit,
 }: ManualUploadDrawerProps) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
+  const handleClose = () => guardClose(form.isFieldsTouched(), onClose);
 
   const handleUploadFile = (file: File) => {
     const reader = new FileReader();
@@ -40,11 +43,12 @@ const ManualUploadDrawer = ({
       placement="right"
       width={600}
       open={open}
-      onClose={onClose}
+      maskClosable={false}
+      onClose={handleClose}
       footer={
         <div style={{ textAlign: 'right' }}>
           <Space>
-            <Button onClick={onClose}>
+            <Button onClick={handleClose}>
               {t('ConfigFile.cancel')}
             </Button>
             <Button

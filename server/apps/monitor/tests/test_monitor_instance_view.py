@@ -599,3 +599,65 @@ def test_effective_plugins_action_returns_service_data(monkeypatch):
 
     assert service_calls["args"] == (7, "('host-a',)", "zh-Hans")
     assert payload["data"] == expected
+
+
+def test_effective_plugins_action_normalizes_clean_instance_id(db, monkeypatch):
+    """前端传干净标量(如 "host-a"),实例在库中存为元组串 "('host-a',)"。
+
+    视图必须把入参归一为存储键形态再做存在性校验与服务调用,否则误报"监控实例不存在"
+    (回归自 fbc8ef34a「feat: filter monitor view plugins by reported data」)。
+    """
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        instance_id_keys=["instance_id"],
+    )
+    MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object=monitor_object,
+    )
+
+    service_calls = {}
+    expected = [{"id": 12, "name": "HostRemote"}]
+
+    class StubService:
+        @staticmethod
+        def get_effective_plugins(monitor_object_id, instance_id, locale):
+            service_calls["args"] = (monitor_object_id, instance_id, locale)
+            return expected
+
+    monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
+    # 仅 mock actor_context(超管,跳过组织权限),保留真实 _ensure_operate_instances 以触发存在性查询。
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_build_actor_context",
+        lambda request: {
+            "is_superuser": True,
+            "current_team": 1,
+            "username": "tester",
+            "domain": "default",
+            "group_list": [],
+            "include_children": False,
+        },
+    )
+
+    request = types.SimpleNamespace(
+        GET={"instance_id": "host-a"},  # 前端下传的是干净标量,而非存储用的元组串
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(
+            username="tester",
+            domain="default",
+            locale="zh-Hans",
+            is_superuser=True,
+            group_list=[],
+        ),
+    )
+
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(
+        request, str(monitor_object.id)
+    )
+    payload = json.loads(response.content)
+
+    assert service_calls["args"] == (monitor_object.id, "('host-a',)", "zh-Hans")
+    assert payload["data"] == expected

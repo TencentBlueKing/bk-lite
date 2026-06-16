@@ -23,6 +23,7 @@ import {
   GroupItem,
 } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 
 interface AssoModalProps {
   onSuccess: () => void;
@@ -56,6 +57,7 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
     const { createModelAssociation } = useModelApi();
 
     const { t } = useTranslation();
+    const guardClose = useUnsavedConfirm();
 
     useEffect(() => {
       if (modelVisible) {
@@ -111,7 +113,9 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
           width={600}
           subTitle={subTitle}
           visible={modelVisible}
-          onCancel={handleCancel}
+          onCancel={() =>
+            guardClose(!!formRef.current?.isFieldsTouched(), handleCancel)
+          }
           footer={
             <div>
               <Button
@@ -123,7 +127,13 @@ const AssociationsModal = forwardRef<AssoModalRef, AssoModalProps>(
               >
                 {t('common.confirm')}
               </Button>
-              <Button onClick={handleCancel}>{t('common.cancel')}</Button>
+              <Button
+                onClick={() =>
+                  guardClose(!!formRef.current?.isFieldsTouched(), handleCancel)
+                }
+              >
+                {t('common.cancel')}
+              </Button>
             </div>
           }
         >

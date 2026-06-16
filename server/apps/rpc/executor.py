@@ -52,6 +52,28 @@ class Executor(object):
         return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
+    def execute_local_stream(self, command, timeout=60, shell=None, execution_id=None, stream_log_topic=None):
+        """
+        执行本地命令（流式）：在阻塞返回全量结果的同时，agent 按行 publish stdout/stderr
+        到 stream_log_topic。返回值与 execute_local 一致。
+
+        :param command: 要执行的命令
+        :param timeout: 执行超时时间(秒)
+        :param shell: 脚本类型，支持: "sh", "bash", "bat", "cmd", "powershell", "pwsh"
+        :param execution_id: 执行 ID（写入流事件）
+        :param stream_log_topic: 行事件发布主题
+        :return: 命令执行结果
+        """
+        request_data = {"command": command, "execute_timeout": timeout, "stream_logs": True}
+        if shell:
+            request_data["shell"] = shell
+        if execution_id:
+            request_data["execution_id"] = execution_id
+        if stream_log_topic:
+            request_data["stream_log_topic"] = stream_log_topic
+        return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
+        return return_data
+
     def execute_ssh(
         self,
         command,

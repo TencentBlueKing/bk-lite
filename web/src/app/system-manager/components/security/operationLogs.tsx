@@ -5,8 +5,8 @@ import { Input, Select, Button, message } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useClientData } from '@/context/client';
-import dayjs from 'dayjs';
 import { useSecurityApi } from '@/app/system-manager/api/security';
+import { buildOperationLogParams } from '@/app/system-manager/utils/operationLogParams';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 
@@ -49,27 +49,7 @@ const OperationLogs: React.FC = () => {
   const fetchOperationLogs = async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
-      const params: any = {
-        page,
-        page_size: pageSize,
-      };
-
-      if (filters.username) {
-        params.username = filters.username;
-      }
-
-      if (filters.app) {
-        params.app = filters.app;
-      }
-
-      if (filters.actionType) {
-        params.action_type = filters.actionType;
-      }
-
-      if (timeRange && timeRange.length === 2) {
-        params.start_time = dayjs(timeRange[0]).format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = dayjs(timeRange[1]).format('YYYY-MM-DD HH:mm:ss');
-      }
+      const params = buildOperationLogParams(filters, timeRange, page, pageSize);
 
       const response = await getOperationLogs(params);
       setDataSource(response.items || []);

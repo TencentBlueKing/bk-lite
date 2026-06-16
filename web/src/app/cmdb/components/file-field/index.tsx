@@ -21,8 +21,9 @@ import { UploadOutlined, PaperClipOutlined, DownloadOutlined } from '@ant-design
 import type { UploadFile, UploadProps } from 'antd';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useTranslation } from '@/utils/i18n';
+import { FILE_FIELD_LIMITS, type FileFieldType } from '@/app/cmdb/utils/fileFieldConstraints';
 
-export type FileFieldType = 'attachment' | 'image';
+export type { FileFieldType } from '@/app/cmdb/utils/fileFieldConstraints';
 
 export interface FileMeta {
   file_id: string;
@@ -35,20 +36,6 @@ export interface FileMeta {
 }
 
 const MB = 1024 * 1024;
-
-// 系统级约束（与后端 enterprise/instance_ops/constants.py 保持一致；后端为最终兜底）
-export const FILE_FIELD_LIMITS: Record<FileFieldType, { maxCount: number; maxSize: number; accept: string }> = {
-  attachment: {
-    maxCount: 5,
-    maxSize: 50 * MB,
-    accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.rtf,.zip,.rar,.7z,.gz,.tar,.jpg,.jpeg,.png,.gif,.webp,.bmp',
-  },
-  image: {
-    maxCount: 5,
-    maxSize: 10 * MB,
-    accept: '.jpg,.jpeg,.png,.gif,.webp,.bmp',
-  },
-};
 
 /** 把后端字段值（JSON 字符串 / 数组）解析为元数据列表。 */
 export const parseFileValue = (value: any): FileMeta[] => {

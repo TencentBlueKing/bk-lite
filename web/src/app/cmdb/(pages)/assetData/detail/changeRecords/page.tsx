@@ -60,6 +60,7 @@ const SCENARIO_COLORS: Record<
     text: '#DC6803',
   },
   model_management_change: { dot: '#7A5AF8', bg: '#EBE9FE', text: '#6938EF' },
+  custom_reporting_change: { dot: '#06AED4', bg: '#CFF9FE', text: '#0E7090' },
 };
 
 // 实例历史默认展示的高信号场景
@@ -75,6 +76,7 @@ const STAT_KEYS = [
   'relation_change',
   'ordinary_attribute_change',
   'collect_automation_change',
+  'custom_reporting_change',
 ];
 
 interface ScenarioTagProps {

@@ -23,15 +23,15 @@ def _normalize_nats_trigger_input(message, team, user_ids, bot_id, node_id):
     if not isinstance(message, str) or not message.strip():
         return None, {"result": False, "message": "message is required"}
 
-    if not isinstance(team, list):
-        return None, {"result": False, "message": "team must be a list"}
-
-    normalized_team = []
-    for team_id in team:
-        team_value = str(team_id).strip()
-        if not team_value or not team_value.isdigit():
-            return None, {"result": False, "message": "team must contain integer ids"}
-        normalized_team.append(int(team_value))
+    # team 现在只允许单个组织 ID；兼容历史的单元素列表写法
+    if isinstance(team, (list, tuple)):
+        if len(team) != 1:
+            return None, {"result": False, "message": "team must be a single team id"}
+        team = team[0]
+    team_value = str(team).strip()
+    if not team_value or not team_value.isdigit():
+        return None, {"result": False, "message": "team must be a single integer team id"}
+    normalized_team = int(team_value)
 
     if not isinstance(user_ids, list):
         return None, {"result": False, "message": "user_ids must be a list"}
@@ -215,7 +215,7 @@ def trigger_workflow_by_nats(message, team, user_ids, bot_id, node_id):
 
     Args:
         message: 告警消息文本
-        team: 相关团队 ID 列表
+        team: 相关团队 ID（单个整数，仅允许一个组织）
         user_ids: 相关用户 ID 列表
         bot_id: 目标 Bot 的 ID
         node_id: 起始节点 ID

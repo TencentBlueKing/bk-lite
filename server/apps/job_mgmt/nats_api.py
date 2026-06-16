@@ -10,6 +10,7 @@ from apps.job_mgmt.constants import ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
 from apps.node_mgmt.utils.s3 import delete_s3_file
@@ -152,6 +153,9 @@ def ansible_task_callback(data: dict):
             ]
         )
         logger.warning("[ansible_task_callback] 任务异常收敛到 FAILED: task_id=%s, reason=%s", task_id, safe_error_message)
+        # 为各目标补发 done 哨兵，关闭前端实时流面板（避免空等到 idle 超时）
+        for t in target_list_for_fail:
+            publish_done_sentinel(execution.id, str(t.get("target_id", "")), ExecutionStatus.FAILED)
         send_callback(execution)
 
     # 解析新版本结构化回调数据
@@ -240,6 +244,10 @@ def ansible_task_callback(data: dict):
             "updated_at",
         ]
     )
+
+    # 为各目标补发 done 哨兵，关闭前端实时流面板（ansible 异步回调收尾）
+    for item in execution_results:
+        publish_done_sentinel(execution.id, item.get("target_key", ""), item.get("status", ExecutionStatus.SUCCESS))
 
     logger.info(f"[ansible_task_callback] 任务完成: task_id={task_id}, status={execution.status}")
 

@@ -14,6 +14,7 @@ from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType, WorkFlowTaskS
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory, WorkFlowTaskResult
 from apps.opspilot.serializers import BotSerializer
 from apps.opspilot.services.memory_write_buffer_service import find_memory_write_nodes_to_flush
+from apps.opspilot.services.nats_channel_sync import cleanup_opspilot_nats_channels_for_bot, sync_opspilot_nats_channels_for_bot
 from apps.opspilot.tasks import flush_memory_write_cache_for_node
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
@@ -181,6 +182,8 @@ class BotViewSet(PinMixin, AuthViewSet):
             create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
             obj.save()
+            # 发布时同步 nats 触发节点对应的 system_mgmt 通道
+            sync_opspilot_nats_channels_for_bot(obj)
 
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
@@ -236,11 +239,15 @@ class BotViewSet(PinMixin, AuthViewSet):
     @HasPermission("bot_list-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
+        bot_id = obj.id
+        bot_name = obj.name
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
         delete_celery_task(obj.id)
         response = super().destroy(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:
-            log_operation(request, "delete", "opspilot", f"删除工作台: {obj.name}")
+            # 清理该 bot 名下 OpsPilot 托管的 NATS 通道
+            cleanup_opspilot_nats_channels_for_bot(bot_id)
+            log_operation(request, "delete", "opspilot", f"删除工作台: {bot_name}")
         return response
 
     @action(methods=["POST"], detail=False)
@@ -265,6 +272,8 @@ class BotViewSet(PinMixin, AuthViewSet):
                 create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
+            # 启动（发布）时同步 nats 触发节点对应的 system_mgmt 通道
+            sync_opspilot_nats_channels_for_bot(bot)
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
             bot_name = "、".join(bots.values_list("name", flat=True))
