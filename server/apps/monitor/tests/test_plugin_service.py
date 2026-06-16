@@ -345,6 +345,21 @@ def test_normalize_instance_identity_rejects_empty_value():
         dimension_module.normalize_instance_identity(None)
 
 
+def test_normalize_instance_identity_preserves_multi_dimension_tuple():
+    dimension_module = _load_module(
+        "monitor_dimension_identity_multi_dimension_test_module",
+        Path(__file__).resolve().parents[1] / "utils" / "dimension.py",
+    )
+
+    result = dimension_module.normalize_instance_identity("('vcenter-a', 'host-3171')")
+
+    assert result == {
+        "raw_input": "('vcenter-a', 'host-3171')",
+        "logical_instance_value": "vcenter-a",
+        "storage_instance_key": "('vcenter-a', 'host-3171')",
+    }
+
+
 def _load_plugin_controller_module(monkeypatch, template_rows=None):
     """Load plugin_controller.py with all Django dependencies stubbed out."""
     from jinja2 import BaseLoader, DebugUndefined

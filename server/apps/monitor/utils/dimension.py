@@ -119,13 +119,17 @@ def normalize_instance_identity(instance_id: Any) -> dict:
     """统一解析实例ID，兼容原始值与遗留的tuple字符串格式。
 
     Args:
-        instance_id: 原始实例ID，支持裸字符串（如 "abc123"）或遗留tuple字符串（如 "('abc123',)"）
+        instance_id: 原始实例ID，支持裸字符串（如 "abc123"）、
+            单维 tuple 字符串（如 "('abc123',)"）、
+            多维 tuple 字符串（如 "('vc-a', 'host-1')"）
 
     Returns:
         包含以下键的字典：
         - raw_input: 原始输入值
         - logical_instance_value: 逻辑实例值（第一维）
-        - storage_instance_key: 存储键，格式为 "('value',)"
+        - storage_instance_key: 存储键。
+          单维实例保持为 "('value',)"，
+          多维实例保持完整 tuple 串，如 "('vc-a', 'host-1')"
 
     Raises:
         ValueError: instance_id 为空或解析失败
@@ -138,10 +142,11 @@ def normalize_instance_identity(instance_id: Any) -> dict:
         raise ValueError(f"invalid instance_id: {instance_id}")
 
     logical_value = str(parsed[0])
+    storage_instance_key = str(parsed) if len(parsed) > 1 else extract_monitor_instance_id(parsed)
     return {
         "raw_input": instance_id,
         "logical_instance_value": logical_value,
-        "storage_instance_key": extract_monitor_instance_id(parsed),
+        "storage_instance_key": storage_instance_key,
     }
 
 
