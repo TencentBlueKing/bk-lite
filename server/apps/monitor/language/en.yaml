@@ -635,6 +635,18 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    device_memory_free:
+      name: Free Memory
+      desc: This metric reports the amount of free physical memory in bytes on the firewall (Check Point CHECKPOINT-MIB memTotalReal64 minus memActiveReal64). Persistently low free memory can indicate rising memory pressure.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of used physical memory in bytes on the firewall, derived as total memory minus free memory. It helps gauge absolute memory consumption and pressure.
+    firewall_vpn_encrypted_pps:
+      name: VPN Encrypted Packets Rate
+      desc: This metric reports the rate of VPN-encrypted packets on the firewall in packets per second (Check Point CHECKPOINT-MIB encpktsPersec). It is useful for observing VPN encryption load and anomalous spikes.
+    firewall_vpn_decrypted_pps:
+      name: VPN Decrypted Packets Rate
+      desc: This metric reports the rate of VPN-decrypted packets on the firewall in packets per second (Check Point CHECKPOINT-MIB decpktsPersec). It is useful for observing VPN decryption load and anomalous spikes.
     device_cpu_usage:
       name: CPU Usage
       desc: This metric reports the overall CPU utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate heavy traffic inspection load, attack activity or a control-plane bottleneck.
@@ -3755,6 +3767,14 @@ monitor_object_plugin:
       FORTINET-FORTIGATE-MIB private OIDs for device health (CPU and memory utilization,
       total memory) and firewall-specific state (IPv4 active sessions, active IPsec
       VPN tunnels and HA mode). Memory is reported directly as a utilization percentage.
+  Firewall Check Point SNMP:
+    name: Check Point (Telegraf)
+    desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects CHECKPOINT-MIB private OIDs for device health (CPU utilization, real
+      memory total/free/used and derived usage) and firewall-specific VPN throughput
+      (encrypted and decrypted packets per second). Memory usage is derived as
+      (total - free) / total.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
