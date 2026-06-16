@@ -185,6 +185,7 @@ export interface InstanceParam {
   page?: number;
   page_size?: number;
   add_metrics?: boolean;
+  monitor_plugin_id?: React.Key;
   name?: string;
   vm_params?: any;
 }
