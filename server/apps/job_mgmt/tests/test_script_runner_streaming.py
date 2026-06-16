@@ -36,6 +36,38 @@ def test_ssh_branch_calls_execute_ssh_stream_with_topic():
     assert result["status"] == ExecutionStatus.SUCCESS
 
 
+def test_crlf_script_normalized_to_lf_for_shell():
+    """Windows 粘贴的 CRLF shell 脚本应转成 LF，避免 Linux bash 报 $'\\r' 语法错误。"""
+    runner = _runner()
+    target = {"node_id": "n7", "name": "h1", "ip": "1.2.3.4"}
+    fake_exec = MagicMock()
+    fake_exec.execute_local_stream.return_value = {"stdout": "", "stderr": "", "exit_code": 0}
+    crlf = "#!/bin/bash\r\necho hi\r\nfor i in 1 2; do echo $i; done\r\n"
+
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
+         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False):
+        runner.execute_script_on_target(target, TargetSource.NODE_MGMT, crlf, ScriptType.SHELL, 60, 99)
+
+    sent = fake_exec.execute_local_stream.call_args.args[0]
+    assert "\r" not in sent
+    assert "for i in 1 2; do echo $i; done" in sent
+
+
+def test_crlf_preserved_for_windows_bat():
+    """Windows 原生脚本(bat)保留 CRLF，不做规范化。"""
+    runner = _runner()
+    target = {"node_id": "n7", "name": "h1", "ip": "1.2.3.4"}
+    fake_exec = MagicMock()
+    fake_exec.execute_local_stream.return_value = {"stdout": "", "stderr": "", "exit_code": 0}
+
+    with patch("apps.job_mgmt.services.script_execution_runner.Executor", return_value=fake_exec), \
+         patch.object(ScriptExecutionRunner, "is_cancelled", return_value=False):
+        runner.execute_script_on_target(target, TargetSource.NODE_MGMT, "echo hi\r\n", ScriptType.BAT, 60, 99)
+
+    sent = fake_exec.execute_local_stream.call_args.args[0]
+    assert "\r\n" in sent
+
+
 def test_local_branch_calls_execute_local_stream_with_topic():
     runner = _runner()
     target = {"node_id": "node-7", "name": "h1", "ip": "1.2.3.4"}

@@ -3,8 +3,9 @@
 from django.db import transaction
 from rest_framework import serializers
 
-from apps.job_mgmt.constants import JobType, ScheduleType, TargetSource
-from apps.job_mgmt.models import ScheduledTask, Target
+from apps.job_mgmt.constants import TargetSource
+from apps.job_mgmt.models import ScheduledTask
+from apps.job_mgmt.serializers.validators import validate_scheduled_task_payload
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 
 
@@ -130,53 +131,8 @@ class ScheduledTaskCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """验证定时任务配置"""
-        job_type = attrs.get("job_type")
-        schedule_type = attrs.get("schedule_type")
-
-        # 调度类型验证
-        if schedule_type == ScheduleType.CRON:
-            if not attrs.get("cron_expression"):
-                raise serializers.ValidationError({"cron_expression": "周期执行时必须指定Cron表达式"})
-        elif schedule_type == ScheduleType.ONCE:
-            if not attrs.get("scheduled_time"):
-                raise serializers.ValidationError({"scheduled_time": "单次执行时必须指定计划执行时间"})
-
-        # 作业类型验证
-        if job_type == JobType.SCRIPT:
-            script = attrs.get("script")
-            script_content = attrs.get("script_content")
-            if not script and not script_content:
-                raise serializers.ValidationError({"script": "脚本执行时必须指定脚本或脚本内容"})
-            if script_content and not attrs.get("script_type"):
-                raise serializers.ValidationError({"script_type": "使用脚本内容时必须指定脚本类型"})
-        elif job_type == JobType.FILE_DISTRIBUTION:
-            if not attrs.get("files"):
-                raise serializers.ValidationError({"files": "文件分发时必须指定文件列表"})
-            if not attrs.get("target_path"):
-                raise serializers.ValidationError({"target_path": "文件分发时必须指定目标路径"})
-        elif job_type == JobType.PLAYBOOK:
-            if not attrs.get("playbook"):
-                raise serializers.ValidationError({"playbook": "Playbook执行时必须指定Playbook"})
-
-        # 验证目标列表（仅 manual 来源需要验证 target_id 存在）
-        target_source = attrs.get("target_source")
-        target_list = attrs.get("target_list", [])
-        if target_source == TargetSource.MANUAL:
-            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
-            if target_ids:
-                existing_count = Target.objects.filter(id__in=target_ids).count()
-                if existing_count != len(target_ids):
-                    raise serializers.ValidationError({"target_list": "部分目标不存在"})
-
-        # 验证 params 格式
-        params = attrs.get("params")
-        if params:
-            from apps.job_mgmt.services.script_params_service import ScriptParamsService
-
-            ScriptParamsService.validate_params_format(params)
-
-        return attrs
+        """验证定时任务配置（共用校验见 :mod:`serializers.validators`）"""
+        return validate_scheduled_task_payload(attrs, instance=None)
 
     def create(self, validated_data):
         request = self.context.get("request")
@@ -241,60 +197,8 @@ class ScheduledTaskUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate(self, attrs):
-        """验证定时任务配置"""
-        instance = self.instance
-        job_type = attrs.get("job_type", instance.job_type if instance else None)
-        schedule_type = attrs.get("schedule_type", instance.schedule_type if instance else None)
-
-        # 调度类型验证
-        if schedule_type == ScheduleType.CRON:
-            cron_expression = attrs.get("cron_expression", instance.cron_expression if instance else "")
-            if not cron_expression:
-                raise serializers.ValidationError({"cron_expression": "周期执行时必须指定Cron表达式"})
-        elif schedule_type == ScheduleType.ONCE:
-            scheduled_time = attrs.get("scheduled_time", instance.scheduled_time if instance else None)
-            if not scheduled_time:
-                raise serializers.ValidationError({"scheduled_time": "单次执行时必须指定计划执行时间"})
-
-        # 作业类型验证
-        if job_type == JobType.SCRIPT:
-            script = attrs.get("script", instance.script if instance else None)
-            script_content = attrs.get("script_content", instance.script_content if instance else None)
-            if not script and not script_content:
-                raise serializers.ValidationError({"script": "脚本执行时必须指定脚本或脚本内容"})
-            script_type = attrs.get("script_type", instance.script_type if instance else None)
-            if script_content and not script_type:
-                raise serializers.ValidationError({"script_type": "使用脚本内容时必须指定脚本类型"})
-        elif job_type == JobType.FILE_DISTRIBUTION:
-            files = attrs.get("files", instance.files if instance else None)
-            target_path = attrs.get("target_path", instance.target_path if instance else None)
-            if not files:
-                raise serializers.ValidationError({"files": "文件分发时必须指定文件列表"})
-            if not target_path:
-                raise serializers.ValidationError({"target_path": "文件分发时必须指定目标路径"})
-        elif job_type == JobType.PLAYBOOK:
-            playbook = attrs.get("playbook", instance.playbook if instance else None)
-            if not playbook:
-                raise serializers.ValidationError({"playbook": "Playbook执行时必须指定Playbook"})
-
-        # 验证目标列表（仅 manual 来源需要验证 target_id 存在）
-        target_source = attrs.get("target_source", instance.target_source if instance else None)
-        target_list = attrs.get("target_list")
-        if target_list is not None and target_source == TargetSource.MANUAL:
-            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
-            if target_ids:
-                existing_count = Target.objects.filter(id__in=target_ids).count()
-                if existing_count != len(target_ids):
-                    raise serializers.ValidationError({"target_list": "部分目标不存在"})
-
-        # 验证 params 格式
-        params = attrs.get("params")
-        if params:
-            from apps.job_mgmt.services.script_params_service import ScriptParamsService
-
-            ScriptParamsService.validate_params_format(params)
-
-        return attrs
+        """验证定时任务配置（共用校验见 :mod:`serializers.validators`）"""
+        return validate_scheduled_task_payload(attrs, instance=self.instance)
 
     def update(self, instance, validated_data):
         request = self.context.get("request")

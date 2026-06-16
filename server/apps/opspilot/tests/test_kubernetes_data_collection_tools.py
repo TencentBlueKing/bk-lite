@@ -1,5 +1,9 @@
+import asyncio
 import base64
 import json
+import sys
+import types
+from pathlib import Path
 
 
 def test_kubernetes_constructor_params_expose_structured_instances_only():
@@ -431,7 +435,6 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
     # F013: subsequent-node execution is now an awaited coroutine (no detached
     # daemon thread). Awaiting it must run the work in-flow to completion and
     # propagate the correct output-params-derived input to the next node.
-    import asyncio
 
     asyncio.run(engine._execute_subsequent_nodes_async(collector_node, [{"content": evidence_package}]))
 
@@ -612,10 +615,6 @@ def test_chat_service_formats_kubernetes_data_collection_tool_server(mocker):
 
 
 def test_execute_chat_flow_test_mode_enqueues_async_run(rf, mocker):
-    import json
-    import sys
-    import types
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
     falkordb_module = types.ModuleType("falkordb")
@@ -682,9 +681,6 @@ def test_execute_chat_flow_test_mode_enqueues_async_run(rf, mocker):
 
 
 def test_chat_flow_test_execute_task_runs_engine_with_entry_type(mocker):
-    import sys
-    import types
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
     falkordb_module = types.ModuleType("falkordb")
@@ -724,8 +720,6 @@ def test_chat_flow_test_execute_task_runs_engine_with_entry_type(mocker):
 
 
 def test_kubernetes_tools_loader_metadata_includes_node_diagnostics_and_collection_tools():
-    import sys
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
 
@@ -744,8 +738,6 @@ def test_kubernetes_tools_loader_metadata_includes_node_diagnostics_and_collecti
 
 
 def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tools():
-    import sys
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
 
@@ -766,9 +758,6 @@ def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tool
 
 
 def test_builtin_k8s_chatflow_uses_restricted_data_collection_toolkit():
-    import json
-    from pathlib import Path
-
     config_path = Path(__file__).resolve().parents[1] / "management" / "chatflow_data" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
     k8s_item = next(item for item in config if item["id"] == "k8s")
@@ -777,8 +766,6 @@ def test_builtin_k8s_chatflow_uses_restricted_data_collection_toolkit():
 
 
 def test_builtin_k8s_chatflow_prompts_align_alert_input_and_evidence_output():
-    from pathlib import Path
-
     chatflow_dir = Path(__file__).resolve().parents[1] / "management" / "chatflow_data" / "k8s"
     check_prompt = (chatflow_dir / "check.txt").read_text(encoding="utf-8")
     format_prompt = (chatflow_dir / "format.txt").read_text(encoding="utf-8")

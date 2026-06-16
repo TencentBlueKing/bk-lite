@@ -200,7 +200,8 @@ const ComTable: React.FC<ComTableProps> = ({
             return renderActionButtons(columnActions, record);
           }
 
-          const displayText = text?.toString() ?? '-';
+          const cellText = text === null || text === undefined ? '' : String(text);
+          const displayText = cellText.trim() ? cellText : '--';
 
           return (
             <Tooltip placement="topLeft" title={displayText}>

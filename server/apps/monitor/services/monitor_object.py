@@ -14,6 +14,7 @@ from apps.monitor.models.monitor_object import (
     MonitorObjectType,
 )
 from apps.monitor.models.collect_config import CollectConfig
+from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import (
     display_field_key,
@@ -103,25 +104,19 @@ class MonitorObjectService:
                 conf_info["status"] = "unavailable"
 
     @staticmethod
-    def get_monitor_instance(monitor_object_id, page, page_size, name, qs, add_metrics=False):
+    def get_monitor_instance(
+        monitor_object_id,
+        page,
+        page_size,
+        name,
+        qs,
+        add_metrics=False,
+        monitor_plugin_id=None,
+    ):
         """获取监控对象实例"""
-        start = (page - 1) * page_size
-        end = start + page_size
-
         qs = qs.filter(monitor_object_id=monitor_object_id, is_deleted=False)
         if name:
             qs = qs.filter(name__icontains=name)
-
-        # 去除重复
-        qs = qs.distinct()
-
-        count = qs.count()
-
-        projected_qs = MonitorObjectService._project_instance_identity(qs)
-        if page_size == -1:
-            objs = projected_qs
-        else:
-            objs = projected_qs[start:end]
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
         if not monitor_obj:
@@ -131,10 +126,41 @@ class MonitorObjectService:
         obj_metric_map = obj_metric_map.get(monitor_obj.name)
         if not obj_metric_map:
             raise BaseAppException("Monitor object default metric does not exist")
+
+        status_query = obj_metric_map.get("default_metric", "")
+        if monitor_plugin_id:
+            plugin = (
+                MonitorPlugin.objects.filter(
+                    id=monitor_plugin_id,
+                    monitor_object=monitor_object_id,
+                )
+                .only("id", "status_query")
+                .first()
+            )
+            if not plugin:
+                return {"count": 0, "results": []}
+            if plugin.status_query:
+                status_query = plugin.status_query
+
         instance_map = MonitorObjectService.get_instances_by_metric(
-            obj_metric_map.get("default_metric", ""),
+            status_query,
             obj_metric_map.get("instance_id_keys"),
         )
+        if monitor_plugin_id:
+            qs = qs.filter(id__in=instance_map.keys())
+
+        # 去除重复
+        qs = qs.distinct()
+
+        count = qs.count()
+
+        start = (page - 1) * page_size
+        end = start + page_size
+        projected_qs = MonitorObjectService._project_instance_identity(qs)
+        if page_size == -1:
+            objs = projected_qs
+        else:
+            objs = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in objs])
         org_map = {}
         for org in org_objs:

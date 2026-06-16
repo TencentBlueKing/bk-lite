@@ -13,7 +13,6 @@ from apps.job_mgmt.views import (
     ScheduledTaskViewSet,
     ScriptViewSet,
     TargetViewSet,
-    api_views,
 )
 from apps.job_mgmt.views.open_api import OpenFileDeleteView, OpenFileUploadView
 
@@ -49,5 +48,4 @@ router.register(r"api/distribution_file", DistributionFileViewSet, basename="dis
 urlpatterns = router.urls + [
     path("api/open/upload_file", OpenFileUploadView.as_view(), name="open_upload_file"),
     path("api/open/delete_file", OpenFileDeleteView.as_view(), name="open_delete_file"),
-    path("callback_test/", api_views.callback_test),
 ]

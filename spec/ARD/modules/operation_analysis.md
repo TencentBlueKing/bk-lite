@@ -8,23 +8,33 @@
 ## 2. 数据模型与存储【已实现/已存在 / PostgreSQL】
 | 模型 | 文件 | 说明 |
 |------|------|------|
-| Directory | `models/models.py` | 层级目录（最多 3 级） |
-| Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON） |
-| NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS） |
-| DataSourceAPIModel / DataSourceTag | `models/datasource_models.py` | 外部 REST API 数据源、标签 |
+| Directory | `models/models.py` | 层级目录（最多 3 级）；含 `is_build_in`/`build_in_key`（unique）内置标识 |
+| Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
+| NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
+| DataSourceAPIModel | `models/datasource_models.py` | 外部 REST API 数据源；含 `chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留） |
+| DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
+
+内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
 
 ## 3. 接口【已实现/已存在】
-`data_source`/`dashboard`/`directory`/`topology`/`architecture`/`namespace`/`tag`/`import_export`；开放端点 `open_api/import_export`。
+路由组：`data_source`/`dashboard`/`directory`/`topology`/`architecture`/`namespace`/`tag`/`import_export`；开放端点 `open_api/import_export`。
+
+关键自定义动作【已实现/已存在】：
+- `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口，是整个取数链路的起点（`views/datasource_view.py:337`）。
+- `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
+
+安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。
 
 ## 4. 依赖与通信【已实现/已存在】
-- NATS：`nats/nats.py` 暴露 `get_operation_analysis_module_data`/`_list`（仅暴露自身数据源模块）；`common/get_nats_source_data.py:GetNatsData.get_data()` 为**通用数据源取数器**，按 `path` 参数动态调用任意已注册 NATS 函数。
-  - 更正：operation_analysis 代码中**未硬编码调用** alerts 的 `get_alert_*`；这些是 alerts 独立的 NATS 端点，理论上可被配置为数据源调用，但非内置依赖（证据：operation_analysis 全模块无 `get_alert_`/`alerts.` 引用）。
+- NATS：`nats/nats.py` 暴露 `get_operation_analysis_module_data`（`nats/nats.py:11`）/`get_operation_analysis_module_list`（`nats/nats.py:28`）（仅暴露自身数据源模块）；`common/get_nats_source_data.py:GetNatsData.get_data()` 为**通用数据源取数器**。其当前实现为**单命名空间取数**：先经 `_get_target_namespace()` 从 `params.namespace_id` 解析目标命名空间（运行时选择；未指定则取第一个可用命名空间，显式指定但数据源未关联该命名空间则报错），再按 `path` 在该命名空间的 NATS 客户端上解析函数；当客户端存在 `DEFAULT_NATS` 属性时改调 `get_customization_nast_data`，否则按 `path` 取同名函数（`common/get_nats_source_data.py:83-138`）。
+  - 更正：operation_analysis **Python 代码中未硬编码调用** alerts 的 `get_alert_*`；这些是 alerts 独立的 NATS 端点，经通用取数器按 `path` 动态解析调用，非代码级内置依赖（证据：`grep -rn "get_alert_\|alerts\." --include=*.py` 在本模块无命中）。需注意：内置画布 YAML `support-files/builtin_canvases.yaml` 中确以 dataSource 字符串形式配置了 `get_alert_*`/`alert/get_alert_*` 等取数路径（约 37 处），即 alerts 是**配置态数据源**而非代码态依赖。
 - 服务：`services/directory_service.py`（目录树）、`services/node_tree.py`、`services/import_export/*`（YAML 导入导出）。
 - 依赖 `apps.core` 装饰器/视图工具；RPC 经 `OperationAnalysisRpc`（独立 server/namespace，`apps/rpc/base.py`）。
+- 初始化/导出 management commands【已实现/已存在】：`init_builtin_canvases`（内置画布落地）、`init_default_namespace`（默认命名空间）、`init_default_groups`（默认分组）、`init_source_api_data`（内置数据源导入）、`export_source_api_data`（数据源导出），是内置画布与默认数据源/命名空间的落地机制（`management/commands/`）。
 
 ## 5. 风险 / 待确认
 - 数据源为外部 REST/NATS，运营分析本身不落原始数据；数据一致性与缓存策略【待确认】。
-- `tasks.py` 当前为空（无后台任务）【已实现】。
+- 无 Celery 后台任务【已实现】：任务文件已由顶层 `tasks.py` 调整为包形式 `tasks/tasks.py`，文件仍不含任何 Celery 任务（`tasks/tasks.py:1-4`，仅文件头注释）。
 
 ## 6. 证据来源
-`server/apps/operation_analysis/{urls.py,models/*,nats/nats.py,common/get_nats_source_data.py,services/*}`、`apps/rpc/base.py:OperationAnalysisRpc`。
+`server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`。
