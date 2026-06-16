@@ -27,8 +27,17 @@ const transformToFrontendFormat = (groups: QueryGroupData[]): QueryGroup[] => {
     id: crypto.randomUUID(),
     name: group.name,
     object: group.object,
+    plugin: group.plugin ?? null,
     instanceIds: group.instance_ids,
-    metric: group.metric,
+    metric:
+      group.metric && /^\d+$/.test(String(group.metric))
+        ? Number(group.metric)
+        : null,
+    legacyMetricName:
+      group.legacy_metric_name ||
+      (group.metric && !/^\d+$/.test(String(group.metric))
+        ? String(group.metric)
+        : null),
     aggregation: group.aggregation,
     conditions: group.conditions,
     collapsed: false
