@@ -1,0 +1,111 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_dellforce"
+        config_type = "dellforce"
+        brand = "dellforce"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Dell Force10 CPU utilization (F10-S-SERIES-CHASSIS-MIB chSysProcessorUtil5Min, per-processor %) ----
+    # 待现网核验：1.3.6.1.4.1.6027.3.10.1.2.9.1.3（per-processor 0-100%，走表自动按 index 区分；仪表盘 avg by instance）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.10.1.2.9.1.3"
+        name = "usage"
+    # ---- Dell Force10 memory utilization (F10-S-SERIES-CHASSIS-MIB chSysMemUtil, per-processor % 直报) ----
+    # 待现网核验：1.3.6.1.4.1.6027.3.10.1.2.9.1.5（% 直报，无 used/free 字节）→ 统一 device_memory_usage(原始%)。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.10.1.2.9.1.5"
+        name = "usage"
+    # ---- Dell Force10 temperature (F10-S-SERIES-CHASSIS-MIB chStackUnitTemp, per-stack-unit °C) ----
+    # 待现网核验：1.3.6.1.4.1.6027.3.10.1.2.2.1.14（模版单位 °C，无需换算；无独立 descr 名列，省略 descr）。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.10.1.2.2.1.14"
+        name = "celsius"
+    # ---- Dell Force10 fan trays (F10-S-SERIES-CHASSIS-MIB chSysFanTrayOperStatus) ----
+    # 待现网核验：风扇状态 1.3.6.1.4.1.6027.3.10.1.2.4.1.2（无独立 descr 名列，省略 descr）。
+    # 枚举 1 up(正常) / 2 down / 3 absent。**原生 1=up=normal → 下方 processors.enum 归一(1→1，其余→2)兜底**。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.10.1.2.4.1.2"
+        name = "state"
+    # ---- Dell Force10 power supplies (F10-S-SERIES-CHASSIS-MIB chSysPowerSupplyOperStatus) ----
+    # 待现网核验：电源状态 1.3.6.1.4.1.6027.3.10.1.2.3.1.2（无独立 descr 名列，省略 descr）。
+    # 枚举 1 up(正常) / 2 down / 3 absent。**原生 1=up=normal → 下方 processors.enum 归一(1→1，其余→2)兜底**。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6027.3.10.1.2.3.1.2"
+        name = "state"
+
+# ---- 枚举归一：Dell Force10 chSysFanTray/PowerSupplyOperStatus → 统一 1=normal/2=abnormal（偏离1即异常）----
+# 待现网核验：仅作用于本品牌(tagpass brand=dellforce)。up(1)→1；其余(2 down/3 absent)→2。
+[[processors.enum]]
+    [processors.enum.tagpass]
+        brand = ["dellforce"]
+    [[processors.enum.mapping]]
+        field = "device_fan_state"
+        dest = "device_fan_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+    [[processors.enum.mapping]]
+        field = "device_psu_state"
+        dest = "device_psu_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

@@ -5,7 +5,9 @@ import type {
   CustomReportingCreateTaskPayload,
   CustomReportingCredentialResponse,
   CustomReportingCredentialRevokeResponse,
+  CustomReportingFieldRegistrationItem,
   CustomReportingOnboardingDocument,
+  CustomReportingStats,
   CustomReportingTask,
   CustomReportingTaskDetail,
   CustomReportingTaskListResponse,
@@ -20,6 +22,11 @@ export const useCustomReportingApi = () => {
   const getTaskList = useCallback(
     (params?: Record<string, any>) =>
       get<CustomReportingTaskListResponse>(`${CUSTOM_REPORTING_BASE}/`, { params }),
+    [get],
+  );
+
+  const getStats = useCallback(
+    () => get<CustomReportingStats>(`${CUSTOM_REPORTING_BASE}/stats/`),
     [get],
   );
 
@@ -64,6 +71,14 @@ export const useCustomReportingApi = () => {
     [get],
   );
 
+  const getFieldRegistrations = useCallback(
+    (taskId: number | string) =>
+      get<CustomReportingFieldRegistrationItem[]>(
+        `${CUSTOM_REPORTING_BASE}/${taskId}/field_registrations/`,
+      ),
+    [get],
+  );
+
   const issueCredential = useCallback(
     (
       taskId: number | string,
@@ -100,29 +115,55 @@ export const useCustomReportingApi = () => {
     [post],
   );
 
+  const approveCleanupReview = useCallback(
+    (taskId: number | string, reviewId: number) =>
+      post<{ id: number; status: string }>(
+        `${CUSTOM_REPORTING_BASE}/${taskId}/reviews/${reviewId}/approve/`,
+        {},
+      ),
+    [post],
+  );
+
+  const rejectCleanupReview = useCallback(
+    (taskId: number | string, reviewId: number) =>
+      post<{ id: number; status: string }>(
+        `${CUSTOM_REPORTING_BASE}/${taskId}/reviews/${reviewId}/reject/`,
+        {},
+      ),
+    [post],
+  );
+
   return useMemo(
     () => ({
       getTaskList,
+      getStats,
       getTaskDetail,
       getTaskBatchActivity,
       createTask,
       updateTask,
       deleteTask,
       getOnboardingDocument,
+      getFieldRegistrations,
       issueCredential,
       rotateCredential,
       revokeCredential,
+      approveCleanupReview,
+      rejectCleanupReview,
       supportsBatchQueries: true,
       supportsReviewQueries: true,
     }),
     [
+      approveCleanupReview,
       createTask,
       deleteTask,
+      getFieldRegistrations,
       getOnboardingDocument,
+      getStats,
       getTaskBatchActivity,
       getTaskDetail,
       getTaskList,
       issueCredential,
+      rejectCleanupReview,
       rotateCredential,
       revokeCredential,
       updateTask,

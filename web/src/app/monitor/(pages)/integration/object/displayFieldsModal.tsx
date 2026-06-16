@@ -392,6 +392,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                     >
                       <Select
                         className="flex-1"
+                        showSearch
+                        optionFilterProp="label"
                         value={binding.plugin || undefined}
                         placeholder={t('monitor.object.selectTemplate')}
                         options={currentPlugins.map((p) => ({
@@ -404,6 +406,8 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                       />
                       <Select
                         className="flex-1"
+                        showSearch
+                        optionFilterProp="label"
                         value={binding.metric || undefined}
                         placeholder={t('monitor.object.selectMetric')}
                         disabled={!binding.plugin}

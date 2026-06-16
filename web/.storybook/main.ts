@@ -27,6 +27,7 @@ const config: StorybookConfig = {
         '@/app/system-manager/api/group/index': path.resolve(__dirname, './mocks/system-manager/group-api.ts'),
         '@/app/system-manager/api/user': path.resolve(__dirname, './mocks/system-manager/user-api.ts'),
         '@/app/system-manager/api/user/index': path.resolve(__dirname, './mocks/system-manager/user-api.ts'),
+        '@/app/opspilot/api/provider': path.resolve(__dirname, './mocks/opspilot/provider-api.ts'),
       };
     }
     return config;

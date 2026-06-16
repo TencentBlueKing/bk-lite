@@ -2,11 +2,13 @@ import asyncio
 import hashlib
 import inspect
 import json
+import re
 import time
 import uuid
 from collections import Counter
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from itertools import groupby
+from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
@@ -20,6 +22,7 @@ from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel
+from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
@@ -925,11 +928,6 @@ class ToolsNodes(BasicNode):
 
     def _build_choice_tool(self):
         """构建 request_user_choice 工具，供 LLM 需要向用户提问时调用"""
-        from typing import List, Literal, Optional
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         class AskUserInput(PydanticBaseModel):
             question: str = PydanticField(description="完整的一句问句，具体、引用用户原话或当前上下文里的关键词。脱离上下文用户也能看懂。")
@@ -1089,11 +1087,6 @@ class ToolsNodes(BasicNode):
 
     def _build_diff_report_tool(self):
         """构建 report_config_diff 工具，供 LLM 将配置对比结果结构化输出给前端"""
-        from typing import List, Literal
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         class DiffItem(PydanticBaseModel):
             workload_name: str = PydanticField(description="工作负载名称，如 nginx-deployment")
@@ -1110,10 +1103,6 @@ class ToolsNodes(BasicNode):
             items: List[DiffItem] = PydanticField(description="各工作负载的对比项列表")
 
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
-            import uuid
-
-            from langchain_core.callbacks import dispatch_custom_event
-
             report_id = str(uuid.uuid4())[:8]
 
             report_data = {
@@ -1163,11 +1152,6 @@ class ToolsNodes(BasicNode):
 
     def _build_bulk_repair_tool(self, _analysis_cache: dict = None):  # noqa: C901
         """构建通用修复报告工具：LLM 生成内容，代码只负责聚合与渲染，不限定领域"""
-        from typing import List
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         if _analysis_cache is None:
             _analysis_cache = {}
@@ -1187,7 +1171,10 @@ class ToolsNodes(BasicNode):
             title: str = PydanticField(default="K8S 配置修复对比", description="报告标题（如 'K8S 配置修复对比'、'MySQL 索引优化建议'）")
             context_name: str = PydanticField(default="", description="上下文名称（如集群名、数据库实例名）")
             items: List[RepairItem] = PydanticField(default=[], description="修复项列表（可选：留空则自动从分析结果生成）")
-            target_names: List[str] = PydanticField(default=[], description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。")
+            target_names: List[str] = PydanticField(
+                default=[],
+                description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。",
+            )
             expected_target_count: int = PydanticField(default=0, description="预期的修复目标数量（即分析报告中有问题的目标总数）。用于校验是否遗漏，必须填写真实数量。")
             group_by: str = PydanticField(
                 default="target",
@@ -1197,11 +1184,6 @@ class ToolsNodes(BasicNode):
         async def _generate_repair_report(
             title: str, context_name: str, items: List[dict], group_by: str = "target", expected_target_count: int = 0, target_names: List[str] = None
         ) -> str:
-            import uuid
-            from itertools import groupby as _groupby
-
-            from langchain_core.callbacks import dispatch_custom_event
-
             # ========== 自动补全：如果 LLM 没传 items 或 items 不完整，从分析缓存生成 ==========
             def _auto_generate_items_from_cache() -> List[dict]:
                 """从分析结果缓存中自动生成修复项"""
@@ -1436,19 +1418,16 @@ class ToolsNodes(BasicNode):
                 """从 kubectl patch 命令中提取 -p 后的 JSON 并转为可读 YAML"""
                 if not fix_command:
                     return ""
-                import re as _cmd_re
 
                 # 用同类引号匹配：-p '...' (贪婪，因为 JSON 内无单引号)
-                m = _cmd_re.search(r"""(?:-p|--patch)\s+'([^']+)'""", fix_command)
+                m = re.search(r"""(?:-p|--patch)\s+'([^']+)'""", fix_command)
                 if not m:
-                    m = _cmd_re.search(r'''(?:-p|--patch)\s+"([^"]+)"''', fix_command)
+                    m = re.search(r'''(?:-p|--patch)\s+"([^"]+)"''', fix_command)
                 if not m:
                     return ""
                 json_str = m.group(1).strip()
                 try:
-                    import json as _pj
-
-                    obj = _pj.loads(json_str)
+                    obj = json.loads(json_str)
                     return _json_to_yaml(obj, indent=0)
                 except Exception:
                     return json_str[:200]
@@ -1530,7 +1509,7 @@ class ToolsNodes(BasicNode):
 
             if group_by == "target":
                 raw_items.sort(key=lambda x: (x.get("namespace", ""), x.get("target_name", "")))
-                for key, group in _groupby(raw_items, key=lambda x: (x.get("namespace", ""), x.get("target_name", ""), x.get("target_type", ""))):
+                for key, group in groupby(raw_items, key=lambda x: (x.get("namespace", ""), x.get("target_name", ""), x.get("target_type", ""))):
                     group_list = list(group)
                     ns, name, ttype = key
                     before_parts = []
@@ -1562,7 +1541,7 @@ class ToolsNodes(BasicNode):
 
             elif group_by == "category":
                 raw_items.sort(key=lambda x: (_severity_order.get(x.get("severity"), 9), x.get("category", "")))
-                for key, group in _groupby(raw_items, key=lambda x: (x.get("category", ""), x.get("severity", "info"))):
+                for key, group in groupby(raw_items, key=lambda x: (x.get("category", ""), x.get("severity", "info"))):
                     group_list = list(group)
                     category, severity = key
                     before_parts = []
@@ -1853,6 +1832,9 @@ class ToolsNodes(BasicNode):
             "consecutive_failures": 0,  # 连续失败计数
             "tool_call_history": [],  # 最近的工具调用名称列表
         }
+        # 重复调用硬拦截计数器：签名(name + 规范化 args) -> 已成功执行次数
+        # 闭包级、按一次 ReAct 运行累计，达到阈值后拦截后续相同调用
+        duplicate_call_tracker: Dict[str, int] = {}
         # 动态工具选择相关
         dynamic_mode = self._dynamic_mode
         active_tools_ref = self.active_tools  # 可变列表引用
@@ -2191,8 +2173,6 @@ class ToolsNodes(BasicNode):
                         _has_pending_choice = True
 
                 if _has_pending_choice:
-                    from langchain_core.messages import SystemMessage as _PreSM
-
                     # 提取用户选择结果用于更精确的续行引导
                     _choice_results = []
                     _choice_question = ""  # 提取问题文本
@@ -2266,7 +2246,7 @@ class ToolsNodes(BasicNode):
                             )
                     else:
                         _continuation_hint = "用户已完成选择，请基于选择结果继续执行下一步操作。"
-                    messages = list(messages) + [_PreSM(content=_continuation_hint)]
+                    messages = list(messages) + [SystemMessage(content=_continuation_hint)]
                     logger.info(
                         f"[{trace_id}] agent_node: 最近 AIMessage 调用了 request_user_choice，"
                         f"注入续行提示 (step={step_counter['count']}), choices={_choice_summary!r}"
@@ -2363,10 +2343,8 @@ class ToolsNodes(BasicNode):
             MAX_TOOL_MSG_LEN = 3000
             RECENT_KEEP = 8  # 最近 N 条消息保持原样不截断
             if len(messages) > RECENT_KEEP:
-                from langchain_core.messages import ToolMessage as _TMCompress
-
                 for msg in messages[:-RECENT_KEEP]:
-                    if isinstance(msg, _TMCompress):
+                    if isinstance(msg, ToolMessage):
                         content = getattr(msg, "content", "")
                         # YAML 内容更积极压缩
                         is_yaml = "apiVersion:" in content or "kind:" in content or "metadata:" in content
@@ -2446,9 +2424,8 @@ class ToolsNodes(BasicNode):
                             # 报告已生成，任何后续提问都不需要 → 移除
                             tool_calls = [tc for tc in tool_calls if tc is not _cc]
                             response.tool_calls = tool_calls
-                            from langchain_core.messages import SystemMessage as _CmdSM
 
-                            _cmd_hint = _CmdSM(
+                            _cmd_hint = SystemMessage(
                                 content=("修复报告已展示给用户，不要再提问。" "请直接以纯文本输出所有工作负载的修复命令（kubectl patch / SQL 等），按目标分组，每条命令前附一句说明。" "不要调用任何工具，直接输出命令文本。")
                             )
                             messages = list(messages) + [_cmd_hint]
@@ -2476,9 +2453,8 @@ class ToolsNodes(BasicNode):
                             logger.info(f"[{trace_id}] agent_node: 已去除重复 request_user_choice（已有回复），保留其他工具调用")
                         else:
                             # 只有 request_user_choice，强制 LLM 基于已有回复继续
-                            from langchain_core.messages import SystemMessage as _DedupSM
 
-                            _dedup_hint = _DedupSM(
+                            _dedup_hint = SystemMessage(
                                 content=(
                                     "你已经问过用户这个问题了，用户已经回答。请不要重复提问。"
                                     "请直接根据用户之前的回答和已有数据执行操作，输出具体结果。"
@@ -2510,8 +2486,6 @@ class ToolsNodes(BasicNode):
                 # 仅当 LLM 用纯文本列出选项（而非调用 request_user_choice 工具）时触发
                 response_content = str(getattr(response, "content", ""))
                 if choice_tool_instance and not _has_pending_choice and response_content.strip():
-                    import re as _re
-
                     should_force_choice = False
 
                     # 检查是否有分析缓存（说明正在进行 K8s 检查流程）
@@ -2520,8 +2494,8 @@ class ToolsNodes(BasicNode):
                     if _has_analysis_context:
                         # 模式1: 编号列表（1. xxx）或加粗列表（- **xxx**）
                         option_patterns = [
-                            _re.compile(r"(?:^|\n)\s*[1-4][.、）)]\s*.{4,}", _re.MULTILINE),
-                            _re.compile(r"(?:^|\n)\s*[-•]\s*\*\*.+?\*\*", _re.MULTILINE),
+                            re.compile(r"(?:^|\n)\s*[1-4][.、）)]\s*.{4,}", re.MULTILINE),
+                            re.compile(r"(?:^|\n)\s*[-•]\s*\*\*.+?\*\*", re.MULTILINE),
                         ]
                         option_matches = sum(len(p.findall(response_content)) for p in option_patterns)
                         if option_matches >= 2:
@@ -2540,10 +2514,8 @@ class ToolsNodes(BasicNode):
                         _repair_mode_keywords = ("修复展示方式", "请选择修复展示方式", "请选择修复展示方式")
                         _is_k8s_repair_mode_prompt = _has_analysis_context and any(kw in response_content for kw in _repair_mode_keywords)
                         if _is_k8s_repair_mode_prompt:
-                            from langchain_core.messages import AIMessage as _CombinedAI
-
                             logger.info(f"[{trace_id}] agent_node: 检测到 K8s 修复方式纯文本提问，直接合成 request_user_choice")
-                            synthetic_choice_response = _CombinedAI(
+                            synthetic_choice_response = AIMessage(
                                 content="",
                                 tool_calls=[
                                     {
@@ -2565,9 +2537,8 @@ class ToolsNodes(BasicNode):
                             return {"messages": [synthetic_choice_response]}
 
                         logger.warning(f"[{trace_id}] agent_node: 检测到纯文本提问/选项列表，强制重试使用 request_user_choice")
-                        from langchain_core.messages import SystemMessage as _ForceChoiceMsg
 
-                        force_msg = _ForceChoiceMsg(
+                        force_msg = SystemMessage(
                             content="你刚才用纯文本向用户提问或列出了选项，这是不允许的。"
                             "任何需要用户选择或回答的场景，必须调用 request_user_choice 工具。"
                             "请将你刚才的文本选项转换为 request_user_choice 工具调用。"
@@ -2583,9 +2554,8 @@ class ToolsNodes(BasicNode):
                             tool_calls = getattr(response, "tool_calls", None) or []
                             if tool_calls:
                                 logger.info(f"[{trace_id}] agent_node: 强制 request_user_choice 重试成功")
-                                from langchain_core.messages import AIMessage as _CombinedAI
 
-                                combined_response = _CombinedAI(
+                                combined_response = AIMessage(
                                     content=original_text_content,
                                     tool_calls=tool_calls,
                                     id=getattr(response, "id", None),
@@ -2615,9 +2585,8 @@ class ToolsNodes(BasicNode):
                         logger.info(f"[{trace_id}] agent_node: 用户拒绝操作，不强制续行重试")
                     else:
                         choice_continuation["retried_at_step"] = current_step
-                        from langchain_core.messages import SystemMessage as _RetrySystemMessage
 
-                        nudge_msg = _RetrySystemMessage(
+                        nudge_msg = SystemMessage(
                             content=(
                                 "你刚才返回了空响应，这是不允许的。用户已完成选择，你必须立即行动。"
                                 "【禁止】重复输出之前已经展示过的配置检查结果或问题摘要，用户已经看过了。"
@@ -2650,6 +2619,31 @@ class ToolsNodes(BasicNode):
 
                 # LLM 未调用工具 → 循环即将自然结束
                 _emit_step_progress(graph_request.max_steps, "completed", description="任务完成")
+
+            # ========== 同批次去重：合并 AIMessage 中 (name+args) 完全相同的 tool_calls ==========
+            # LLM 偶尔在一条消息里并行发出多个完全相同的工具调用（如 3 个相同的 generate_repair_report），
+            # 每个 tool_call 都会在流式层各触发一个 TOOL_CALL_START → 前端渲染多张重复卡片。
+            # 在 AIMessage 产出时即去重（只保留首个），从源头消除重复卡片与重复执行。
+            _final_tool_calls = getattr(response, "tool_calls", None) or []
+            if getattr(graph_request.reflection_config, "duplicate_call_hard_enabled", False) and len(_final_tool_calls) > 1:
+                _seen_batch_sigs = set()
+                _deduped_tcs = []
+                for _tc in _final_tool_calls:
+                    try:
+                        _ak = json.dumps(_tc.get("args", {}), ensure_ascii=False, sort_keys=True, default=str)
+                    except Exception:
+                        _ak = str(_tc.get("args", {}))
+                    _bsig = f"{_tc.get('name')}::{_ak}"
+                    if _bsig in _seen_batch_sigs:
+                        logger.info(f"[{trace_id}] agent_node: 同批次去重，移除重复 tool_call name={_tc.get('name')}")
+                        continue
+                    _seen_batch_sigs.add(_bsig)
+                    _deduped_tcs.append(_tc)
+                if len(_deduped_tcs) < len(_final_tool_calls):
+                    try:
+                        response.tool_calls = _deduped_tcs
+                    except Exception:
+                        object.__setattr__(response, "tool_calls", _deduped_tcs)
 
             return {"messages": [response]}
 
@@ -2722,6 +2716,65 @@ class ToolsNodes(BasicNode):
                 tool_calls = _filtered_tool_calls
                 norm_calls = normalize_tool_calls(tool_calls)
 
+            # ========== 硬拦截：同名同参工具重复调用超阈值后阻止执行 ==========
+            # agent 可能用完全相同的参数反复调用同一工具（如 generate_repair_report），
+            # 既浪费 token 又会阻塞流程。两层防护：
+            # 1. 同批次去重：LLM 在一条消息里并行发出多个完全相同的调用时，仅执行第一个；
+            # 2. 跨步骤累计：对每个 (name + 规范化 args) 签名累计成功执行次数，
+            #    达到阈值后拦截后续相同调用、不再真正执行，并回注指令强制 agent 改用已有结果或推进。
+            duplicate_blocked_msgs: List[ToolMessage] = []
+            _dup_cfg = graph_request.reflection_config
+            if getattr(_dup_cfg, "duplicate_call_hard_enabled", False) and norm_calls:
+                _survived_tool_calls = []
+                _seen_sigs_in_batch = set()
+                for ntc in norm_calls:
+                    try:
+                        _args_key = json.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
+                    except Exception:
+                        _args_key = str(ntc.args)
+                    _sig = f"{ntc.name}::{_args_key}"
+                    _prior = duplicate_call_tracker.get(_sig, 0)
+                    if _sig in _seen_sigs_in_batch:
+                        # 同批次内重复：仅执行第一个，其余直接拦截
+                        duplicate_blocked_msgs.append(
+                            ToolMessage(
+                                content=(f"[已拦截-同批重复] 本批次中工具 '{ntc.name}' 出现多个完全相同的调用，" f"已合并为一次执行。请使用该调用的返回结果，不要重复发起相同调用。"),
+                                tool_call_id=ntc.id,
+                            )
+                        )
+                        logger.info(f"[{trace_id}] logged_tool_node: 拦截同批次重复调用 tool={ntc.name}")
+                    elif _prior >= _dup_cfg.duplicate_call_hard_limit:
+                        duplicate_blocked_msgs.append(
+                            ToolMessage(
+                                content=(
+                                    f"[已拦截] 工具 '{ntc.name}' 已用完全相同的参数成功调用 {_prior} 次，" f"重复调用不会产生新结果。请直接使用之前的返回结果继续推进，或据此给出最终结论，" f"不要再用相同参数调用该工具。"
+                                ),
+                                tool_call_id=ntc.id,
+                            )
+                        )
+                        logger.info(
+                            f"[{trace_id}] logged_tool_node: 硬拦截重复调用 tool={ntc.name} (已执行 {_prior} 次，达到阈值 {_dup_cfg.duplicate_call_hard_limit})"
+                        )
+                    else:
+                        _seen_sigs_in_batch.add(_sig)
+                        _survived_tool_calls.append(ntc.raw)
+
+                if duplicate_blocked_msgs:
+                    # 仅保留未被拦截的调用进入实际执行
+                    try:
+                        last_message.tool_calls = _survived_tool_calls
+                    except Exception:
+                        try:
+                            object.__setattr__(last_message, "tool_calls", _survived_tool_calls)
+                        except Exception:
+                            logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，重复拦截可能失效")
+                    tool_calls = _survived_tool_calls
+                    norm_calls = normalize_tool_calls(tool_calls)
+
+                    # 所有调用均被拦截：无需执行 tool_node，直接返回拦截消息
+                    if not norm_calls:
+                        return {"messages": duplicate_blocked_msgs}
+
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config
             snapshots: Dict[str, str] = {}  # tool_call_id -> snapshot_result
@@ -2779,20 +2832,23 @@ class ToolsNodes(BasicNode):
                     result = await tool_node.ainvoke(state, config=config)
             except asyncio.TimeoutError:
                 logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
-                # 返回超时错误 ToolMessage
+                # 返回超时错误 ToolMessage（含被拦截的重复调用消息，保证 tool_call_id 配对）
                 timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
-                return {"messages": timeout_msgs}
+                return {"messages": duplicate_blocked_msgs + timeout_msgs}
             result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            # 把被硬拦截的重复调用消息并入结果，保证每个原始 tool_call_id 都有配对的 ToolMessage。
+            # 注意必须同步回写 result：函数末尾返回的是 result，而非 result_messages。
+            if duplicate_blocked_msgs:
+                result_messages = duplicate_blocked_msgs + result_messages
+                result = {"messages": result_messages}
 
             # ========== 缓存分析结果：供 generate_repair_report 自动生成使用 ==========
             for _rm in result_messages:
                 _rm_name = getattr(_rm, "name", "")
                 if _rm_name == "analyze_deployment_configurations":
                     try:
-                        import json as _json_cache
-
                         _rm_content = getattr(_rm, "content", "")
-                        _parsed = _json_cache.loads(_rm_content) if isinstance(_rm_content, str) else _rm_content
+                        _parsed = json.loads(_rm_content) if isinstance(_rm_content, str) else _rm_content
                         if isinstance(_parsed, dict) and "_deployments_full" in _parsed:
                             # 追加而非覆盖，支持分页场景下多次调用累积结果
                             if "deployments" not in _analysis_cache:
@@ -2804,7 +2860,7 @@ class ToolsNodes(BasicNode):
                             )
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
-                            _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)
+                            _rm.content = json.dumps(_parsed, ensure_ascii=False)
                             if should_emit_config_analysis_report(_parsed):
                                 report_payload = build_config_analysis_report_payload(_parsed)
                                 dispatch_custom_event(
@@ -2823,11 +2879,9 @@ class ToolsNodes(BasicNode):
 
             # ========== 防护：截断 YAML 内容防止 context 溢出 ==========
             if yaml_call_ids:
-                from langchain_core.messages import ToolMessage as _TM
-
                 kept_count = 0
                 for msg in result_messages:
-                    if isinstance(msg, _TM) and getattr(msg, "tool_call_id", "") in yaml_call_ids:
+                    if isinstance(msg, ToolMessage) and getattr(msg, "tool_call_id", "") in yaml_call_ids:
                         kept_count += 1
                         content = getattr(msg, "content", "")
                         if kept_count > MAX_YAML_PER_STEP:
@@ -2839,7 +2893,7 @@ class ToolsNodes(BasicNode):
                 if kept_count > MAX_YAML_PER_STEP or any(
                     len(getattr(msg, "content", "")) > MAX_YAML_CONTENT_LEN
                     for msg in result_messages
-                    if isinstance(msg, _TM) and getattr(msg, "tool_call_id", "") in yaml_call_ids
+                    if isinstance(msg, ToolMessage) and getattr(msg, "tool_call_id", "") in yaml_call_ids
                 ):
                     logger.info(f"[{trace_id}] YAML 内容截断: {kept_count} 个结果, 保留 {MAX_YAML_PER_STEP} 个 (max {MAX_YAML_CONTENT_LEN} chars)")
 
@@ -2960,6 +3014,32 @@ class ToolsNodes(BasicNode):
             # 记录工具调用名称
             for ntc in norm_calls:
                 reflection_tracker["tool_call_history"].append(ntc.name)
+
+            # 累计已"成功执行"的 (name + 规范化 args) 签名次数，供下一轮硬拦截判断。
+            # 仅统计成功调用：失败调用没有产出可用结果，重试是合理的（由 retry / 连续失败反思处理），
+            # 不应被去重拦截，否则会抢占既有的失败处理流程。
+            if getattr(graph_request.reflection_config, "duplicate_call_hard_enabled", False):
+                # 统计返回错误结果的 tool_call_id
+                _failed_call_ids = set()
+                for _msg in result_messages:
+                    if isinstance(_msg, ToolMessage):
+                        _c = str(getattr(_msg, "content", ""))
+                        _is_err = _c.startswith("Error:") or _c.startswith("Traceback")
+                        if not _is_err:
+                            _cl = _c.lower()
+                            _is_err = any(_kw in _cl for _kw in ["error", "failed", "exception"])
+                        if _is_err:
+                            _failed_call_ids.add(getattr(_msg, "tool_call_id", ""))
+
+                for ntc in norm_calls:
+                    if ntc.id in _failed_call_ids:
+                        continue
+                    try:
+                        _args_key = json.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
+                    except Exception:
+                        _args_key = str(ntc.args)
+                    _sig = f"{ntc.name}::{_args_key}"
+                    duplicate_call_tracker[_sig] = duplicate_call_tracker.get(_sig, 0) + 1
 
             logger.info(
                 f"[{trace_id}] ReAct tools_node 执行结束, result_message_count={len(result_messages)}, "

@@ -66,6 +66,7 @@ interface DraftClassification {
     model_name: string;
     icn?: string;
     is_pre?: boolean;
+    is_custom_reporting?: boolean;
     is_visible: boolean;
     order_id: number;
   }>;
@@ -162,6 +163,7 @@ const AssetManage = () => {
               model_name: m.model_name,
               icn: m.icn,
               is_pre: m.is_pre,
+              is_custom_reporting: m.is_custom_reporting,
               is_visible: m.is_visible ?? true,
               order_id: m.order_id ?? 0,
             }))
@@ -453,6 +455,11 @@ const AssetManage = () => {
             />
           </div>
           <span className="text-[14px] font-[600] pl-[10px] truncate">{record.model_name}</span>
+          {record.is_custom_reporting ? (
+            <Tag color="purple" className="ml-[8px] flex-shrink-0">
+              {t('CustomReporting.modeQuick')}
+            </Tag>
+          ) : null}
         </div>
       ),
     },

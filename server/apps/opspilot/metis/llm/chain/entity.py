@@ -168,6 +168,13 @@ class ReflectionConfig(BaseModel):
     consecutive_failures_threshold: int = 3  # 连续失败 N 次触发反思
     repetition_window: int = 6  # 检测重复的窗口大小（最近 N 条工具调用）
     repetition_threshold: int = 3  # 窗口内同一工具被调用 N 次以上视为循环
+    # 硬拦截：同名同参（name + 规范化 args）工具在一次运行内累计"成功执行"达到此次数后，
+    # 拦截后续相同调用、不再真正执行，并回注指令要求 agent 改用已有结果或推进。
+    # 与软反思不同，这是强制阻断，用于根治 agent 用完全相同参数反复调用同一工具的死循环。
+    # 同批次内（一条 AIMessage 并行发出多个相同调用）只执行第一个，不受此阈值控制。
+    # 默认 2：允许一次合理的"修复后重新校验"类同参重调，纯重复在第 2 次后即被拦截。
+    duplicate_call_hard_enabled: bool = True
+    duplicate_call_hard_limit: int = 2
 
 
 class ToolPoolConfig(BaseModel):
