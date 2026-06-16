@@ -6,6 +6,7 @@ import pytest
 from django.utils import timezone
 from rest_framework import status
 
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 from apps.log.serializers.policy import AlertSerializer
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -683,6 +684,58 @@ def test_field_values_endpoint_uses_explicit_log_groups(api_client, authenticate
 
     assert response.status_code == status.HTTP_200_OK
     field_values_mock.assert_called_once_with("", "", "host", 100, query="level:error", log_groups=["g-1"])
+
+
+@pytest.mark.django_db
+def test_creation_field_discovery_does_not_require_existing_log_group_instance_permission(
+    api_client, authenticated_user, mocker, settings, monkeypatch
+):
+    settings.LICENSE_MGMT_ENABLED = False
+    monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
+    collect_type = CollectType.objects.create(
+        name="file", collector="Vector", icon="file"
+    )
+    instance = CollectInstance.objects.create(
+        id="instance-1", name="instance-1", collect_type=collect_type
+    )
+    CollectInstanceOrganization.objects.create(collect_instance=instance, organization=1)
+    _mock_group_permission(mocker, teams=[1], instance_ids=[])
+    field_names_mock = mocker.patch(
+        "apps.log.views.collect_config.SearchService.all_field_names",
+        return_value=["host.name"],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(
+        "/api/v1/log/collect_types/all_attrs/?scope=log_group_create&query=level:error",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == ["host.name"]
+    field_names_mock.assert_called_once()
+    call_args = field_names_mock.call_args.args
+    assert 'instance_id:"instance-1"' in call_args[0]
+    assert call_args[3] == []
+
+
+@pytest.mark.django_db
+def test_normal_field_discovery_still_requires_accessible_log_group_scope(
+    api_client, authenticated_user, mocker, settings, monkeypatch
+):
+    settings.LICENSE_MGMT_ENABLED = False
+    monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
+    _mock_group_permission(mocker, teams=[1], instance_ids=[])
+    field_names_mock = mocker.patch(
+        "apps.log.views.collect_config.SearchService.all_field_names",
+        return_value=["host.name"],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get("/api/v1/log/collect_types/all_attrs/?query=level:error")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "当前组织暂无可用的日志分组权限" in response.json()["message"]
+    field_names_mock.assert_not_called()
 
 
 @pytest.mark.django_db
