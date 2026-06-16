@@ -1,0 +1,28 @@
+name: oceanstor
+version: "1.0.0"
+category: storage
+
+metadata:
+  display_name: "华为 OceanStor 存储【BETA】"
+  description: "华为 OceanStor 存储采集插件（Beta），DeviceManager REST 采集设备及存储池/磁盘/卷"
+  author: "WeOps"
+  tags: [storage, oceanstor, huawei, beta]
+  cloud_protocol: true
+  model_id: storage
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（REST 协议采集）
+  protocol:
+    type: protocol
+    timeout: 120
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.oceanstor.oceanstor_info
+      class: OceanStorManager
+
+# 默认执行器
+default_executor: protocol
