@@ -2,17 +2,33 @@ import asyncio
 import hashlib
 import inspect
 import json
+import json as _json_dup
+import json as _json_dup_inc
+import re as _cmd_re
+import re as _re
 import time
 import uuid
 from collections import Counter
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from itertools import groupby as _groupby
+from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
-from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import AIMessage
+from langchain_core.messages import AIMessage as _CombinedAI
+from langchain_core.messages import BaseMessage, HumanMessage
+from langchain_core.messages import SystemMessage
+from langchain_core.messages import SystemMessage as _CmdSM
+from langchain_core.messages import SystemMessage as _DedupSM
+from langchain_core.messages import SystemMessage as _ForceChoiceMsg
+from langchain_core.messages import SystemMessage as _PreSM
+from langchain_core.messages import SystemMessage as _RetrySystemMessage
+from langchain_core.messages import ToolMessage
+from langchain_core.messages import ToolMessage as _TM
+from langchain_core.messages import ToolMessage as _TMCompress
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -20,6 +36,7 @@ from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
 from pydantic import BaseModel
+from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
 from apps.core.logger import opspilot_logger as logger
@@ -925,11 +942,6 @@ class ToolsNodes(BasicNode):
 
     def _build_choice_tool(self):
         """构建 request_user_choice 工具，供 LLM 需要向用户提问时调用"""
-        from typing import List, Literal, Optional
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         class AskUserInput(PydanticBaseModel):
             question: str = PydanticField(description="完整的一句问句，具体、引用用户原话或当前上下文里的关键词。脱离上下文用户也能看懂。")
@@ -1089,11 +1101,6 @@ class ToolsNodes(BasicNode):
 
     def _build_diff_report_tool(self):
         """构建 report_config_diff 工具，供 LLM 将配置对比结果结构化输出给前端"""
-        from typing import List, Literal
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         class DiffItem(PydanticBaseModel):
             workload_name: str = PydanticField(description="工作负载名称，如 nginx-deployment")
@@ -1110,10 +1117,6 @@ class ToolsNodes(BasicNode):
             items: List[DiffItem] = PydanticField(description="各工作负载的对比项列表")
 
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
-            import uuid
-
-            from langchain_core.callbacks import dispatch_custom_event
-
             report_id = str(uuid.uuid4())[:8]
 
             report_data = {
@@ -1163,11 +1166,6 @@ class ToolsNodes(BasicNode):
 
     def _build_bulk_repair_tool(self, _analysis_cache: dict = None):  # noqa: C901
         """构建通用修复报告工具：LLM 生成内容，代码只负责聚合与渲染，不限定领域"""
-        from typing import List
-
-        from langchain_core.tools import StructuredTool
-        from pydantic import BaseModel as PydanticBaseModel
-        from pydantic import Field as PydanticField
 
         if _analysis_cache is None:
             _analysis_cache = {}
@@ -1187,7 +1185,10 @@ class ToolsNodes(BasicNode):
             title: str = PydanticField(default="K8S 配置修复对比", description="报告标题（如 'K8S 配置修复对比'、'MySQL 索引优化建议'）")
             context_name: str = PydanticField(default="", description="上下文名称（如集群名、数据库实例名）")
             items: List[RepairItem] = PydanticField(default=[], description="修复项列表（可选：留空则自动从分析结果生成）")
-            target_names: List[str] = PydanticField(default=[], description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。")
+            target_names: List[str] = PydanticField(
+                default=[],
+                description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。",
+            )
             expected_target_count: int = PydanticField(default=0, description="预期的修复目标数量（即分析报告中有问题的目标总数）。用于校验是否遗漏，必须填写真实数量。")
             group_by: str = PydanticField(
                 default="target",
@@ -1197,11 +1198,6 @@ class ToolsNodes(BasicNode):
         async def _generate_repair_report(
             title: str, context_name: str, items: List[dict], group_by: str = "target", expected_target_count: int = 0, target_names: List[str] = None
         ) -> str:
-            import uuid
-            from itertools import groupby as _groupby
-
-            from langchain_core.callbacks import dispatch_custom_event
-
             # ========== 自动补全：如果 LLM 没传 items 或 items 不完整，从分析缓存生成 ==========
             def _auto_generate_items_from_cache() -> List[dict]:
                 """从分析结果缓存中自动生成修复项"""
@@ -1436,7 +1432,6 @@ class ToolsNodes(BasicNode):
                 """从 kubectl patch 命令中提取 -p 后的 JSON 并转为可读 YAML"""
                 if not fix_command:
                     return ""
-                import re as _cmd_re
 
                 # 用同类引号匹配：-p '...' (贪婪，因为 JSON 内无单引号)
                 m = _cmd_re.search(r"""(?:-p|--patch)\s+'([^']+)'""", fix_command)
@@ -2194,8 +2189,6 @@ class ToolsNodes(BasicNode):
                         _has_pending_choice = True
 
                 if _has_pending_choice:
-                    from langchain_core.messages import SystemMessage as _PreSM
-
                     # 提取用户选择结果用于更精确的续行引导
                     _choice_results = []
                     _choice_question = ""  # 提取问题文本
@@ -2366,8 +2359,6 @@ class ToolsNodes(BasicNode):
             MAX_TOOL_MSG_LEN = 3000
             RECENT_KEEP = 8  # 最近 N 条消息保持原样不截断
             if len(messages) > RECENT_KEEP:
-                from langchain_core.messages import ToolMessage as _TMCompress
-
                 for msg in messages[:-RECENT_KEEP]:
                     if isinstance(msg, _TMCompress):
                         content = getattr(msg, "content", "")
@@ -2449,7 +2440,6 @@ class ToolsNodes(BasicNode):
                             # 报告已生成，任何后续提问都不需要 → 移除
                             tool_calls = [tc for tc in tool_calls if tc is not _cc]
                             response.tool_calls = tool_calls
-                            from langchain_core.messages import SystemMessage as _CmdSM
 
                             _cmd_hint = _CmdSM(
                                 content=("修复报告已展示给用户，不要再提问。" "请直接以纯文本输出所有工作负载的修复命令（kubectl patch / SQL 等），按目标分组，每条命令前附一句说明。" "不要调用任何工具，直接输出命令文本。")
@@ -2479,7 +2469,6 @@ class ToolsNodes(BasicNode):
                             logger.info(f"[{trace_id}] agent_node: 已去除重复 request_user_choice（已有回复），保留其他工具调用")
                         else:
                             # 只有 request_user_choice，强制 LLM 基于已有回复继续
-                            from langchain_core.messages import SystemMessage as _DedupSM
 
                             _dedup_hint = _DedupSM(
                                 content=(
@@ -2513,8 +2502,6 @@ class ToolsNodes(BasicNode):
                 # 仅当 LLM 用纯文本列出选项（而非调用 request_user_choice 工具）时触发
                 response_content = str(getattr(response, "content", ""))
                 if choice_tool_instance and not _has_pending_choice and response_content.strip():
-                    import re as _re
-
                     should_force_choice = False
 
                     # 检查是否有分析缓存（说明正在进行 K8s 检查流程）
@@ -2543,8 +2530,6 @@ class ToolsNodes(BasicNode):
                         _repair_mode_keywords = ("修复展示方式", "请选择修复展示方式", "请选择修复展示方式")
                         _is_k8s_repair_mode_prompt = _has_analysis_context and any(kw in response_content for kw in _repair_mode_keywords)
                         if _is_k8s_repair_mode_prompt:
-                            from langchain_core.messages import AIMessage as _CombinedAI
-
                             logger.info(f"[{trace_id}] agent_node: 检测到 K8s 修复方式纯文本提问，直接合成 request_user_choice")
                             synthetic_choice_response = _CombinedAI(
                                 content="",
@@ -2568,7 +2553,6 @@ class ToolsNodes(BasicNode):
                             return {"messages": [synthetic_choice_response]}
 
                         logger.warning(f"[{trace_id}] agent_node: 检测到纯文本提问/选项列表，强制重试使用 request_user_choice")
-                        from langchain_core.messages import SystemMessage as _ForceChoiceMsg
 
                         force_msg = _ForceChoiceMsg(
                             content="你刚才用纯文本向用户提问或列出了选项，这是不允许的。"
@@ -2618,7 +2602,6 @@ class ToolsNodes(BasicNode):
                         logger.info(f"[{trace_id}] agent_node: 用户拒绝操作，不强制续行重试")
                     else:
                         choice_continuation["retried_at_step"] = current_step
-                        from langchain_core.messages import SystemMessage as _RetrySystemMessage
 
                         nudge_msg = _RetrySystemMessage(
                             content=(
@@ -2759,8 +2742,6 @@ class ToolsNodes(BasicNode):
             duplicate_blocked_msgs: List[ToolMessage] = []
             _dup_cfg = graph_request.reflection_config
             if getattr(_dup_cfg, "duplicate_call_hard_enabled", False) and norm_calls:
-                import json as _json_dup
-
                 _survived_tool_calls = []
                 _seen_sigs_in_batch = set()
                 for ntc in norm_calls:
@@ -2917,8 +2898,6 @@ class ToolsNodes(BasicNode):
 
             # ========== 防护：截断 YAML 内容防止 context 溢出 ==========
             if yaml_call_ids:
-                from langchain_core.messages import ToolMessage as _TM
-
                 kept_count = 0
                 for msg in result_messages:
                     if isinstance(msg, _TM) and getattr(msg, "tool_call_id", "") in yaml_call_ids:
@@ -3059,8 +3038,6 @@ class ToolsNodes(BasicNode):
             # 仅统计成功调用：失败调用没有产出可用结果，重试是合理的（由 retry / 连续失败反思处理），
             # 不应被去重拦截，否则会抢占既有的失败处理流程。
             if getattr(graph_request.reflection_config, "duplicate_call_hard_enabled", False):
-                import json as _json_dup_inc
-
                 # 统计返回错误结果的 tool_call_id
                 _failed_call_ids = set()
                 for _msg in result_messages:

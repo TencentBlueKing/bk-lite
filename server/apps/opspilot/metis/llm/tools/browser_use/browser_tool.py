@@ -1,6 +1,7 @@
 """浏览器操作工具 - 使用Browser-Use进行网页自动化"""
 
 import asyncio
+import inspect
 import os
 import tempfile
 import threading
@@ -443,7 +444,6 @@ def _create_smart_wait_hook() -> tuple[Callable, dict]:
 
     async def smart_wait_hook(agent) -> None:
         """固定等待后检测页面加载状态"""
-        import asyncio
 
         state["step_count"] += 1
         step_num = state["step_count"]
@@ -967,7 +967,6 @@ def _create_step_callback_adapter(
 
     async def adapter(browser_state: BrowserStateSummary, model_output: AgentOutput, step_number: int) -> None:
         """适配器：将 browser-use 的回调参数转换为 BrowserStepInfo"""
-        import inspect
 
         if execution_id and await is_interrupt_requested_async(execution_id):
             raise BrowserExecutionInterruptedError("浏览器执行已中断")

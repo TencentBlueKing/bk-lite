@@ -20,6 +20,8 @@ Covers:
 import sys
 import types
 
+from langchain_core.messages import ToolMessage as _TM
+
 for _mod_name in ("oracledb", "pyodbc"):
     sys.modules.setdefault(_mod_name, types.ModuleType(_mod_name))
 
@@ -115,13 +117,16 @@ async def _build_and_run_react(request, mock_llm_responses, tools_list):
             return f"[REFLECTION: {ctx.get('reason', '')}]"
         return "You are a test assistant."
 
-    with patch(
-        "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
-        side_effect=_mock_render,
-    ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
-        new_callable=AsyncMock,
-        return_value=False,
+    with (
+        patch(
+            "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
+            side_effect=_mock_render,
+        ),
+        patch(
+            "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="test")]},
@@ -253,7 +258,6 @@ class TestDuplicateCallHardBlock:
         assert call_counter["n"] == 3, f"工具应只执行 3 次，实际 {call_counter['n']} 次"
 
         # 第 4 次调用对应的 tool_call_id=c4 应有一条 [已拦截] 的 ToolMessage 配对
-        from langchain_core.messages import ToolMessage as _TM
 
         blocked = [m for m in messages if isinstance(m, _TM) and getattr(m, "tool_call_id", "") == "c4"]
         assert blocked, "第 4 次重复调用应返回配对的 ToolMessage"
@@ -317,7 +321,6 @@ class TestDuplicateCallHardBlock:
         assert len(ai_with_tc[0].tool_calls) == 1, f"同批次重复应在源头去重为 1 个 tool_call，实际 {len(ai_with_tc[0].tool_calls)} 个"
 
         # 只生成 1 条 ToolMessage（b1），不应有 b2/b3 的孤儿 tool 结果
-        from langchain_core.messages import ToolMessage as _TM
 
         tool_msgs = [m for m in messages if isinstance(m, _TM)]
         assert len(tool_msgs) == 1, f"应只生成 1 条 ToolMessage，实际 {len(tool_msgs)} 条"
@@ -359,7 +362,6 @@ class TestDuplicateCallHardBlock:
 
         # 4 次参数各不相同，全部执行，无拦截
         assert call_counter["n"] == 4, f"不同参数应全部执行，实际 {call_counter['n']} 次"
-        from langchain_core.messages import ToolMessage as _TM
 
         assert not any("[已拦截]" in str(getattr(m, "content", "")) for m in messages if isinstance(m, _TM))
 
