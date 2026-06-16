@@ -635,6 +635,12 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    firewall_tcp_connections:
+      name: ASQ TCP Connections
+      desc: This metric reports the current number of TCP connections tracked by the Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). A rapidly rising count can indicate a connection flood or session-table pressure.
+    firewall_udp_connections:
+      name: ASQ UDP Connections
+      desc: This metric reports the current number of UDP connections tracked by the Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). Combined with the TCP connection count it helps gauge overall session load and anomalies.
     device_memory_free:
       name: Free Memory
       desc: This metric reports the amount of free physical memory in bytes on the firewall (Check Point CHECKPOINT-MIB memTotalReal64 minus memActiveReal64). Persistently low free memory can indicate rising memory pressure.
@@ -3775,6 +3781,14 @@ monitor_object_plugin:
       memory total/free/used and derived usage) and firewall-specific VPN throughput
       (encrypted and decrypted packets per second). Memory usage is derived as
       (total - free) / total.
+  Firewall Stormshield SNMP:
+    name: Stormshield (Telegraf)
+    desc: Stormshield SNS-specific SNMP collection template for Stormshield Network
+      Security firewalls. In addition to standard IF-MIB interface metrics and 64-bit
+      HC traffic counters, it collects HOST-RESOURCES CPU load (averaged across cores),
+      UCD-SNMP real memory (total/free, used and derived usage) and STORMSHIELD-SNS-MIB
+      private OIDs for firewall-specific state (ASQ active TCP/UDP connections and
+      mature VPN tunnels). Memory usage is derived as (total - free) / total.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
