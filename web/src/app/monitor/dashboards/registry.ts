@@ -22,6 +22,7 @@ import K8sPodDashboard from './objects/k8s-pod';
 import SwitchDashboard from './objects/switch';
 import FirewallDashboard from './objects/firewall';
 import LoadbalanceDashboard from './objects/loadbalance';
+import RouterDashboard from './objects/router';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -202,6 +203,15 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: '负载均衡',
     inheritedPermissionPath: '/monitor/view',
     component: LoadbalanceDashboard
+  },
+  {
+    key: 'router',
+    aliases: ['路由器'],
+    groupKey: 'network',
+    objectName: 'Router',
+    objectDisplayName: '路由器',
+    inheritedPermissionPath: '/monitor/view',
+    component: RouterDashboard
   },
   {
     key: 'k8s-cluster',

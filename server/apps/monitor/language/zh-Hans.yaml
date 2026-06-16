@@ -1888,6 +1888,18 @@ monitor_object_metric:
       name: 电源状态
       desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
   Router:
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 Juniper MX 路由器各运行实体的 CPU 使用率均值（JUNIPER-MIB jnxOperatingCPU，按 instance_id 聚合）。持续偏高说明转发/控制平面负载吃紧。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 Juniper MX 路由器各运行实体的内存使用率均值（JUNIPER-MIB jnxOperatingBuffer，直接以百分比上报）。持续偏高可能由路由表过大或内存泄漏导致。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率(HC)
+      desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率(HC)
+      desc: 该指标表示过去 5 分钟内发送字节数的平均速率，单位为字节每秒，基于 64 位 ifHCOutOctets 计数器，在高速接口上不会回绕。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
@@ -3003,6 +3015,7 @@ monitor_object_metric_group:
     Base: 基础
     Bandwidth: 带宽
     Status: 状态
+    Router: 路由器
   vCenter:
     Quantity: 数量
   Oracle:
@@ -3396,6 +3409,9 @@ monitor_object_plugin:
   Router SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集路由器各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 路由器通用（Telegraf）
+  Router Juniper MX SNMP:
+    name: Juniper MX（Telegraf）
+    desc: 面向 Juniper MX 系列路由器（Junos）的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 JUNIPER-MIB jnxOperating 私有 OID 的设备健康（CPU 使用率与内存缓冲使用率，均为百分比，按路由引擎/FPC 等运行实体取平均）。
   Router Flow NetFlow:
     name: 路由器流量分析（NetFlow）
     desc: 使用 NetFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。

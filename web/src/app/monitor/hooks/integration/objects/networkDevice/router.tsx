@@ -58,6 +58,7 @@ export const useRouterConfig = () => {
     },
     collectTypes: {
       'Router SNMP General': 'snmp',
+      'Router Juniper MX SNMP': 'snmp_juniper_mx',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
