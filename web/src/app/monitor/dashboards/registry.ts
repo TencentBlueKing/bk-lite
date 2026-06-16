@@ -20,6 +20,7 @@ import K8sClusterDashboard from './objects/k8s-cluster';
 import K8sNodeDashboard from './objects/k8s-node';
 import K8sPodDashboard from './objects/k8s-pod';
 import SwitchDashboard from './objects/switch';
+import FirewallDashboard from './objects/firewall';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -182,6 +183,15 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: '交换机',
     inheritedPermissionPath: '/monitor/view',
     component: SwitchDashboard
+  },
+  {
+    key: 'firewall',
+    aliases: ['防火墙'],
+    groupKey: 'network',
+    objectName: 'Firewall',
+    objectDisplayName: '防火墙',
+    inheritedPermissionPath: '/monitor/view',
+    component: FirewallDashboard
   },
   {
     key: 'k8s-cluster',
