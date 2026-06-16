@@ -10,7 +10,7 @@ from apps.core.logger import job_logger as logger
 from apps.job_mgmt.constants import DangerousLevel, MatchType
 from apps.job_mgmt.models import DangerousPath, DangerousRule
 
-# 规则缓存 TTL（秒），可通过环境变量覆盖；默认 120s
+# 规则缓存 TTL（秒），进程启动时从环境变量读取，修改后需重启服务生效；默认 120s
 _RULES_CACHE_TTL = int(os.getenv("DANGEROUS_RULES_CACHE_TTL", "120"))
 
 # 缓存 key
