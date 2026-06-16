@@ -454,6 +454,24 @@ def test_model_attr_update_enum(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_model_attr_update_file_triggers_rebuild(superuser, monkeypatch):
+    # 修改附件/图片字段时，应回填实例的文件名词干 _display
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_attr", lambda *a, **k: {"attr_id": "doc"})
+    monkeypatch.setattr(f"{VIEWS}.is_file_attr_type", lambda t: t in {"attachment", "image"})
+    called = {}
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.rebuild_file_instances_display",
+        lambda mid, aid: called.setdefault("hit", (mid, aid)),
+    )
+    response = ModelViewSet.as_view({"put": "model_attr_update"})(
+        _req("put", superuser, data={"attr_id": "doc", "attr_type": "attachment"}), model_id="host"
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert called.get("hit") == ("host", "doc")
+
+
+@pytest.mark.django_db
 def test_model_attr_delete_ok(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
     monkeypatch.setattr(f"{VIEWS}.ModelManage.delete_model_attr", lambda *a, **k: {"deleted": True})
