@@ -2,33 +2,19 @@ import asyncio
 import hashlib
 import inspect
 import json
-import json as _json_dup
-import json as _json_dup_inc
-import re as _cmd_re
-import re as _re
+import re
 import time
 import uuid
 from collections import Counter
 from datetime import datetime
-from itertools import groupby as _groupby
+from itertools import groupby
 from typing import Any, Dict, List, Literal, Optional
 from urllib.parse import parse_qs, urlparse
 
 import json_repair
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
-from langchain_core.messages import AIMessage
-from langchain_core.messages import AIMessage as _CombinedAI
-from langchain_core.messages import BaseMessage, HumanMessage
-from langchain_core.messages import SystemMessage
-from langchain_core.messages import SystemMessage as _CmdSM
-from langchain_core.messages import SystemMessage as _DedupSM
-from langchain_core.messages import SystemMessage as _ForceChoiceMsg
-from langchain_core.messages import SystemMessage as _PreSM
-from langchain_core.messages import SystemMessage as _RetrySystemMessage
-from langchain_core.messages import ToolMessage
-from langchain_core.messages import ToolMessage as _TM
-from langchain_core.messages import ToolMessage as _TMCompress
+from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import StructuredTool
 from langchain_mcp_adapters.client import MultiServerMCPClient
@@ -1434,16 +1420,14 @@ class ToolsNodes(BasicNode):
                     return ""
 
                 # 用同类引号匹配：-p '...' (贪婪，因为 JSON 内无单引号)
-                m = _cmd_re.search(r"""(?:-p|--patch)\s+'([^']+)'""", fix_command)
+                m = re.search(r"""(?:-p|--patch)\s+'([^']+)'""", fix_command)
                 if not m:
-                    m = _cmd_re.search(r'''(?:-p|--patch)\s+"([^"]+)"''', fix_command)
+                    m = re.search(r'''(?:-p|--patch)\s+"([^"]+)"''', fix_command)
                 if not m:
                     return ""
                 json_str = m.group(1).strip()
                 try:
-                    import json as _pj
-
-                    obj = _pj.loads(json_str)
+                    obj = json.loads(json_str)
                     return _json_to_yaml(obj, indent=0)
                 except Exception:
                     return json_str[:200]
@@ -1525,7 +1509,7 @@ class ToolsNodes(BasicNode):
 
             if group_by == "target":
                 raw_items.sort(key=lambda x: (x.get("namespace", ""), x.get("target_name", "")))
-                for key, group in _groupby(raw_items, key=lambda x: (x.get("namespace", ""), x.get("target_name", ""), x.get("target_type", ""))):
+                for key, group in groupby(raw_items, key=lambda x: (x.get("namespace", ""), x.get("target_name", ""), x.get("target_type", ""))):
                     group_list = list(group)
                     ns, name, ttype = key
                     before_parts = []
@@ -1557,7 +1541,7 @@ class ToolsNodes(BasicNode):
 
             elif group_by == "category":
                 raw_items.sort(key=lambda x: (_severity_order.get(x.get("severity"), 9), x.get("category", "")))
-                for key, group in _groupby(raw_items, key=lambda x: (x.get("category", ""), x.get("severity", "info"))):
+                for key, group in groupby(raw_items, key=lambda x: (x.get("category", ""), x.get("severity", "info"))):
                     group_list = list(group)
                     category, severity = key
                     before_parts = []
@@ -2262,7 +2246,7 @@ class ToolsNodes(BasicNode):
                             )
                     else:
                         _continuation_hint = "用户已完成选择，请基于选择结果继续执行下一步操作。"
-                    messages = list(messages) + [_PreSM(content=_continuation_hint)]
+                    messages = list(messages) + [SystemMessage(content=_continuation_hint)]
                     logger.info(
                         f"[{trace_id}] agent_node: 最近 AIMessage 调用了 request_user_choice，"
                         f"注入续行提示 (step={step_counter['count']}), choices={_choice_summary!r}"
@@ -2360,7 +2344,7 @@ class ToolsNodes(BasicNode):
             RECENT_KEEP = 8  # 最近 N 条消息保持原样不截断
             if len(messages) > RECENT_KEEP:
                 for msg in messages[:-RECENT_KEEP]:
-                    if isinstance(msg, _TMCompress):
+                    if isinstance(msg, ToolMessage):
                         content = getattr(msg, "content", "")
                         # YAML 内容更积极压缩
                         is_yaml = "apiVersion:" in content or "kind:" in content or "metadata:" in content
@@ -2441,7 +2425,7 @@ class ToolsNodes(BasicNode):
                             tool_calls = [tc for tc in tool_calls if tc is not _cc]
                             response.tool_calls = tool_calls
 
-                            _cmd_hint = _CmdSM(
+                            _cmd_hint = SystemMessage(
                                 content=("修复报告已展示给用户，不要再提问。" "请直接以纯文本输出所有工作负载的修复命令（kubectl patch / SQL 等），按目标分组，每条命令前附一句说明。" "不要调用任何工具，直接输出命令文本。")
                             )
                             messages = list(messages) + [_cmd_hint]
@@ -2470,7 +2454,7 @@ class ToolsNodes(BasicNode):
                         else:
                             # 只有 request_user_choice，强制 LLM 基于已有回复继续
 
-                            _dedup_hint = _DedupSM(
+                            _dedup_hint = SystemMessage(
                                 content=(
                                     "你已经问过用户这个问题了，用户已经回答。请不要重复提问。"
                                     "请直接根据用户之前的回答和已有数据执行操作，输出具体结果。"
@@ -2510,8 +2494,8 @@ class ToolsNodes(BasicNode):
                     if _has_analysis_context:
                         # 模式1: 编号列表（1. xxx）或加粗列表（- **xxx**）
                         option_patterns = [
-                            _re.compile(r"(?:^|\n)\s*[1-4][.、）)]\s*.{4,}", _re.MULTILINE),
-                            _re.compile(r"(?:^|\n)\s*[-•]\s*\*\*.+?\*\*", _re.MULTILINE),
+                            re.compile(r"(?:^|\n)\s*[1-4][.、）)]\s*.{4,}", re.MULTILINE),
+                            re.compile(r"(?:^|\n)\s*[-•]\s*\*\*.+?\*\*", re.MULTILINE),
                         ]
                         option_matches = sum(len(p.findall(response_content)) for p in option_patterns)
                         if option_matches >= 2:
@@ -2531,7 +2515,7 @@ class ToolsNodes(BasicNode):
                         _is_k8s_repair_mode_prompt = _has_analysis_context and any(kw in response_content for kw in _repair_mode_keywords)
                         if _is_k8s_repair_mode_prompt:
                             logger.info(f"[{trace_id}] agent_node: 检测到 K8s 修复方式纯文本提问，直接合成 request_user_choice")
-                            synthetic_choice_response = _CombinedAI(
+                            synthetic_choice_response = AIMessage(
                                 content="",
                                 tool_calls=[
                                     {
@@ -2554,7 +2538,7 @@ class ToolsNodes(BasicNode):
 
                         logger.warning(f"[{trace_id}] agent_node: 检测到纯文本提问/选项列表，强制重试使用 request_user_choice")
 
-                        force_msg = _ForceChoiceMsg(
+                        force_msg = SystemMessage(
                             content="你刚才用纯文本向用户提问或列出了选项，这是不允许的。"
                             "任何需要用户选择或回答的场景，必须调用 request_user_choice 工具。"
                             "请将你刚才的文本选项转换为 request_user_choice 工具调用。"
@@ -2570,9 +2554,8 @@ class ToolsNodes(BasicNode):
                             tool_calls = getattr(response, "tool_calls", None) or []
                             if tool_calls:
                                 logger.info(f"[{trace_id}] agent_node: 强制 request_user_choice 重试成功")
-                                from langchain_core.messages import AIMessage as _CombinedAI
 
-                                combined_response = _CombinedAI(
+                                combined_response = AIMessage(
                                     content=original_text_content,
                                     tool_calls=tool_calls,
                                     id=getattr(response, "id", None),
@@ -2603,7 +2586,7 @@ class ToolsNodes(BasicNode):
                     else:
                         choice_continuation["retried_at_step"] = current_step
 
-                        nudge_msg = _RetrySystemMessage(
+                        nudge_msg = SystemMessage(
                             content=(
                                 "你刚才返回了空响应，这是不允许的。用户已完成选择，你必须立即行动。"
                                 "【禁止】重复输出之前已经展示过的配置检查结果或问题摘要，用户已经看过了。"
@@ -2746,7 +2729,7 @@ class ToolsNodes(BasicNode):
                 _seen_sigs_in_batch = set()
                 for ntc in norm_calls:
                     try:
-                        _args_key = _json_dup.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
+                        _args_key = json.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
                     except Exception:
                         _args_key = str(ntc.args)
                     _sig = f"{ntc.name}::{_args_key}"
@@ -2864,10 +2847,8 @@ class ToolsNodes(BasicNode):
                 _rm_name = getattr(_rm, "name", "")
                 if _rm_name == "analyze_deployment_configurations":
                     try:
-                        import json as _json_cache
-
                         _rm_content = getattr(_rm, "content", "")
-                        _parsed = _json_cache.loads(_rm_content) if isinstance(_rm_content, str) else _rm_content
+                        _parsed = json.loads(_rm_content) if isinstance(_rm_content, str) else _rm_content
                         if isinstance(_parsed, dict) and "_deployments_full" in _parsed:
                             # 追加而非覆盖，支持分页场景下多次调用累积结果
                             if "deployments" not in _analysis_cache:
@@ -2879,7 +2860,7 @@ class ToolsNodes(BasicNode):
                             )
                             # 剥离完整数据，只保留精简摘要进入 LLM context
                             _parsed.pop("_deployments_full", None)
-                            _rm.content = _json_cache.dumps(_parsed, ensure_ascii=False)
+                            _rm.content = json.dumps(_parsed, ensure_ascii=False)
                             if should_emit_config_analysis_report(_parsed):
                                 report_payload = build_config_analysis_report_payload(_parsed)
                                 dispatch_custom_event(
@@ -2900,7 +2881,7 @@ class ToolsNodes(BasicNode):
             if yaml_call_ids:
                 kept_count = 0
                 for msg in result_messages:
-                    if isinstance(msg, _TM) and getattr(msg, "tool_call_id", "") in yaml_call_ids:
+                    if isinstance(msg, ToolMessage) and getattr(msg, "tool_call_id", "") in yaml_call_ids:
                         kept_count += 1
                         content = getattr(msg, "content", "")
                         if kept_count > MAX_YAML_PER_STEP:
@@ -2912,7 +2893,7 @@ class ToolsNodes(BasicNode):
                 if kept_count > MAX_YAML_PER_STEP or any(
                     len(getattr(msg, "content", "")) > MAX_YAML_CONTENT_LEN
                     for msg in result_messages
-                    if isinstance(msg, _TM) and getattr(msg, "tool_call_id", "") in yaml_call_ids
+                    if isinstance(msg, ToolMessage) and getattr(msg, "tool_call_id", "") in yaml_call_ids
                 ):
                     logger.info(f"[{trace_id}] YAML 内容截断: {kept_count} 个结果, 保留 {MAX_YAML_PER_STEP} 个 (max {MAX_YAML_CONTENT_LEN} chars)")
 
@@ -3054,7 +3035,7 @@ class ToolsNodes(BasicNode):
                     if ntc.id in _failed_call_ids:
                         continue
                     try:
-                        _args_key = _json_dup_inc.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
+                        _args_key = json.dumps(ntc.args, ensure_ascii=False, sort_keys=True, default=str)
                     except Exception:
                         _args_key = str(ntc.args)
                     _sig = f"{ntc.name}::{_args_key}"
