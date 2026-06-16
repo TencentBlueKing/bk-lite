@@ -12,8 +12,8 @@ export const getOpsChartTheme = (themeName: OpsChartThemeName) => {
 
   return {
     axisLabelColor: isDarkTheme ? 'rgba(255,255,255,0.64)' : '#7f92a7',
-    axisLineColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : '#e8e8e8',
-    splitLineColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : '#f0f0f0',
+    axisLineColor: isDarkTheme ? 'rgba(255,255,255,0.14)' : '#e5ebf4',
+    splitLineColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : '#e8eef7',
     tooltipBackgroundColor: isDarkTheme ? 'rgba(7, 29, 44, 0.96)' : '#ffffff',
     tooltipBorderColor: isDarkTheme ? 'rgba(255,255,255,0.12)' : '#e6e9ee',
     tooltipTextColor: isDarkTheme ? 'rgba(255,255,255,0.88)' : '#1e252e',
@@ -33,11 +33,11 @@ export const getOpsChartTheme = (themeName: OpsChartThemeName) => {
     panelShadow: isDarkTheme
       ? '0 10px 28px rgba(0, 0, 0, 0.24)'
       : '0 10px 30px rgba(31, 63, 104, 0.08)',
-    singleValueColor: isDarkTheme ? 'rgba(255,255,255,0.94)' : '#2e63ff',
-    singleValueGlow: isDarkTheme ? 'none' : '0 6px 18px rgba(46, 99, 255, 0.10)',
+    singleValueColor: isDarkTheme ? 'rgba(255,255,255,0.94)' : '#1e40af',
+    singleValueGlow: isDarkTheme ? 'none' : '0 4px 14px rgba(30, 64, 175, 0.08)',
     singleValueMetaColor: isDarkTheme ? 'rgba(255,255,255,0.52)' : '#7f92a7',
     singleValueSurface: isDarkTheme ? 'rgba(255,255,255,0.02)' : '#fcfdff',
-    lineWidth: isDarkTheme ? 2 : 1,
+    lineWidth: isDarkTheme ? 2 : 2,
     lineAreaOpacity: isDarkTheme ? 0.1 : 0.06,
     lineOpacity: isDarkTheme ? 0.94 : 0.92,
   };

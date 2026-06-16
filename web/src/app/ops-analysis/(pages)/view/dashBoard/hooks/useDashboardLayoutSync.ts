@@ -52,6 +52,93 @@ interface UseDashboardLayoutSyncOptions {
   setFilterValues: (values: Record<string, FilterValue>) => void;
 }
 
+export const buildFiltersFromDashboardLayout = ({
+  layout,
+  previousDefinitions,
+  dataSources,
+}: {
+  layout: DashboardLayoutItem[];
+  previousDefinitions: UnifiedFilterDefinition[];
+  dataSources: DatasourceItem[];
+}): UnifiedFilterDefinition[] => {
+  const discoveredParams = new Map<
+    string,
+    ParamItem & { type: 'string' | 'timeRange' }
+  >();
+
+  layout.forEach((item) => {
+    if (!isDashboardWidgetItem(item)) {
+      return;
+    }
+
+    const dataSourceId = item.valueConfig?.dataSource;
+    const normalizedId =
+      typeof dataSourceId === 'string'
+        ? parseInt(dataSourceId, 10)
+        : dataSourceId;
+    const dataSource = dataSources.find(
+      (source) => source.id === normalizedId,
+    );
+    const params = resolveWidgetBindableParams(item.valueConfig, dataSource);
+
+    getBindableFilterParams(params).forEach((param) => {
+      const id = getFilterDefinitionId(param.name, param.type);
+      if (!discoveredParams.has(id)) {
+        discoveredParams.set(id, param);
+      }
+    });
+  });
+
+  const existingDefinitions = new Map(
+    previousDefinitions.map((definition) => [definition.id, definition]),
+  );
+  const maxExistingOrder = previousDefinitions.reduce(
+    (maxOrder, definition) => Math.max(maxOrder, definition.order ?? -1),
+    -1,
+  );
+  let nextOrder = maxExistingOrder + 1;
+
+  const rebuiltDefinitions = Array.from(discoveredParams.entries()).map(
+    ([id, param]) => {
+      const existing =
+        existingDefinitions.get(id) ||
+        previousDefinitions.find(
+          (definition) =>
+            definition.key === param.name && definition.type === param.type,
+        );
+
+      let defaultValue: FilterValue = null;
+      if (existing?.defaultValue !== undefined) {
+        defaultValue = existing.defaultValue;
+      } else if (param.value !== undefined && param.value !== null) {
+        if (param.type === 'timeRange' && typeof param.value === 'number') {
+          defaultValue = buildRelativeTimeRangeFilterValue(param.value);
+        } else {
+          defaultValue = param.value as FilterValue;
+        }
+      }
+
+      return {
+        id,
+        key: param.name,
+        name: existing?.name || param.alias_name || param.name,
+        type: param.type,
+        defaultValue,
+        order: existing?.order ?? nextOrder++,
+        enabled: existing?.enabled ?? true,
+        inputMode: existing?.inputMode,
+        options: existing?.options,
+      };
+    },
+  );
+
+  return rebuiltDefinitions.sort((a, b) => {
+    const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+    if (orderDiff !== 0) return orderDiff;
+    return a.id.localeCompare(b.id);
+  });
+};
+
 export const syncFilterValuesForDefinitions = (
   nextDefinitions: UnifiedFilterDefinition[],
   currentValues: Record<string, FilterValue>,
@@ -99,73 +186,12 @@ export const useDashboardLayoutSync = ({
     (
       nextLayout: DashboardLayoutItem[],
       previousDefinitions: UnifiedFilterDefinition[],
-    ): UnifiedFilterDefinition[] => {
-      const discoveredParams = new Map<
-        string,
-        ParamItem & { type: 'string' | 'timeRange' }
-      >();
-
-      nextLayout.forEach((item) => {
-        if (!isDashboardWidgetItem(item)) {
-          return;
-        }
-
-        const dataSourceId = item.valueConfig?.dataSource;
-        const normalizedId =
-          typeof dataSourceId === 'string'
-            ? parseInt(dataSourceId, 10)
-            : dataSourceId;
-        const dataSource = dataSources.find(
-          (source) => source.id === normalizedId,
-        );
-        const params = resolveWidgetBindableParams(item.valueConfig, dataSource);
-
-        getBindableFilterParams(params).forEach((param) => {
-          const id = getFilterDefinitionId(param.name, param.type);
-          if (!discoveredParams.has(id)) {
-            discoveredParams.set(id, param);
-          }
-        });
-      });
-
-      const existingDefinitions = new Map(
-        previousDefinitions.map((definition) => [definition.id, definition]),
-      );
-
-      return Array.from(discoveredParams.entries()).map(
-        ([id, param], index) => {
-          const existing =
-            existingDefinitions.get(id) ||
-            previousDefinitions.find(
-              (definition) =>
-                definition.key === param.name && definition.type === param.type,
-            );
-
-          let defaultValue: FilterValue = null;
-          if (existing?.defaultValue !== undefined) {
-            defaultValue = existing.defaultValue;
-          } else if (param.value !== undefined && param.value !== null) {
-            if (param.type === 'timeRange' && typeof param.value === 'number') {
-              defaultValue = buildRelativeTimeRangeFilterValue(param.value);
-            } else {
-              defaultValue = param.value as FilterValue;
-            }
-          }
-
-          return {
-            id,
-            key: param.name,
-            name: existing?.name || param.alias_name || param.name,
-            type: param.type,
-            defaultValue,
-            order: index,
-            enabled: existing?.enabled ?? true,
-            inputMode: existing?.inputMode,
-            options: existing?.options,
-          };
-        },
-      );
-    },
+    ): UnifiedFilterDefinition[] =>
+      buildFiltersFromDashboardLayout({
+        layout: nextLayout,
+        previousDefinitions,
+        dataSources,
+      }),
     [dataSources],
   );
 
