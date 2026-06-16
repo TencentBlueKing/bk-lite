@@ -482,6 +482,27 @@ monitor_object_metric:
       name: Power Consumption
       desc: The power indicator is measured in watts and reflects the current power consumption of the device. This indicator helps evaluate the device's energy efficiency and power consumption trends. It facilitates the implementation of energy-saving policies and resource optimization.
   Loadbalance:
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the overall CPU utilization of the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second sample). Sustained high usage indicates heavy traffic-processing or SSL-offload load.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal) in bytes.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of memory currently used by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed) in bytes.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the overall memory utilization of the F5 BIG-IP, computed as used/total (100*used/total). Sustained high usage may be caused by oversized connection tables or memory leaks.
+    lb_current_connections:
+      name: Current Connections
+      desc: This metric reports the number of active client connections currently tracked by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapidly rising count can indicate a traffic flood or connection-table pressure.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -3461,6 +3482,7 @@ monitor_object_metric_group:
     Bandwidth: Bandwidth
     Status: Status
     Packet Error: Packet Error
+    Loadbalance: Load Balance
   Redis:
     Base: Base
     Memory: Memory
@@ -3761,6 +3783,13 @@ monitor_object_plugin:
       key IF-MIB metrics from load balancer interfaces, including traffic volume,
       packet loss, and error counts.
     name: Load Balancer General (Telegraf)
+  Loadbalance F5 SNMP:
+    name: F5 (Telegraf)
+    desc: F5-specific SNMP collection template for F5 BIG-IP load balancers. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host
+      memory total/used and derived usage) and load-balancer-specific state (current
+      client connections). Memory usage is derived as used / total.
   Loadbalance Flow NetFlow:
     name: Load Balancer Flow Analysis (NetFlow)
     desc: Use NetFlow to collect load balancer traffic and convert it into normalized

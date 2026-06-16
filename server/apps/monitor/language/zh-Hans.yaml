@@ -443,6 +443,27 @@ monitor_object_metric:
       name: 发送丢包速率
       desc: 本指标计算过去5分钟内发送的丢弃包的平均速率，单位为每秒。关注发送丢包情况能够帮助识别网络传输问题和配置不当的情况。
   Loadbalance:
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 F5 BIG-IP 负载均衡器的整体 CPU 使用率（F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s，5 秒采样）。持续偏高说明流量处理或 SSL 卸载负载吃紧。
+    device_memory_total:
+      name: 内存总量
+      desc: 该指标报告 F5 BIG-IP 的物理内存总容量（F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal），单位为字节。
+    device_memory_used:
+      name: 已用内存
+      desc: 该指标报告 F5 BIG-IP 当前已使用的内存字节数（F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed）。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 F5 BIG-IP 整体内存使用率，按 已用/总量 计算（100*used/total）。持续偏高可能由连接表过大或内存泄漏导致。
+    lb_current_connections:
+      name: 当前连接数
+      desc: 该指标报告 F5 BIG-IP 当前的客户端活动连接数（F5-BIGIP-SYSTEM-MIB sysStatClientCurConns）。连接数快速攀升可能意味着流量洪泛或连接表压力。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率(HC)
+      desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率(HC)
+      desc: 该指标表示过去 5 分钟内发送字节数的平均速率，单位为字节每秒，基于 64 位 ifHCOutOctets 计数器，在高速接口上不会回绕。
     interface_ifOutErrors:
       desc: 该指标计算过去5分钟内发送错误包的平均速率，单位为每秒。监测发送错误对于识别传输问题和确保数据完整性至关重要。
       name: 发送错误数据包速率
@@ -3119,6 +3140,7 @@ monitor_object_metric_group:
     Bandwidth: 带宽
     Status: 状态
     Packet Error: 数据包错误
+    Loadbalance: 负载均衡
   Redis:
     Base: 基础
     Memory: 内存
@@ -3314,6 +3336,9 @@ monitor_object_plugin:
   Loadbalance SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集负载均衡各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 负载均衡设备通用（Telegraf）
+  Loadbalance F5 SNMP:
+    name: F5（Telegraf）
+    desc: 面向 F5 BIG-IP 负载均衡的 F5 专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 F5-BIGIP-SYSTEM-MIB 私有 OID 的设备健康（主机 CPU 使用率、主机内存 总量/已用及推算使用率）与负载均衡特有状态（当前客户端连接数）。内存使用率按 已用/总量 推算。
   Loadbalance Flow NetFlow:
     name: 负载均衡流量分析（NetFlow）
     desc: 使用 NetFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
