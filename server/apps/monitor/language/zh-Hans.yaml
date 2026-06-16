@@ -571,6 +571,30 @@ monitor_object_metric:
       name: HTTP空闲超时时间
       desc: 表示 HTTP 连接无数据传输时的最长保持时间（秒），用于释放空闲连接资源，避免资源浪费和恶意连接占用。
   Firewall:
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标报告 FortiGate 防火墙整体 CPU 使用率（FORTINET-FORTIGATE-MIB fgSysCpuUsage）。持续高 CPU 可能意味着流量检测负载过重、攻击活动或控制平面瓶颈。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标报告 FortiGate 防火墙整体内存使用率（FORTINET-FORTIGATE-MIB fgSysMemUsage，直接以百分比上报）。内存压力过高时设备可能进入保护模式并丢弃新会话。
+    device_memory_total:
+      name: 内存总容量
+      desc: 该指标报告 FortiGate 防火墙的物理内存总容量（FORTINET-FORTIGATE-MIB fgSysMemCapacity，原始单位 KB，已换算为字节）。
+    firewall_active_sessions:
+      name: IPv4 活动会话数
+      desc: 该指标报告 FortiGate 防火墙当前跟踪的 IPv4 活动会话数（FORTINET-FORTIGATE-MIB fgSysSesCount）。会话数快速上升可能意味着连接洪泛或会话表耗尽风险。
+    firewall_vpn_tunnels:
+      name: 活动 IPsec VPN 隧道数
+      desc: 该指标报告 FortiGate 防火墙当前活动的 IPsec VPN 隧道数量（FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount）。数量骤降可能意味着 VPN 中断，影响站点间互联。
+    firewall_ha_mode:
+      name: 高可用模式
+      desc: 该指标报告 FortiGate 防火墙的高可用模式（FORTINET-FORTIGATE-MIB fgHaSystemMode）：独立、双活或主备。可用于确认设备是否处于预期的 HA 拓扑。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率(HC)
+      desc: 该指标表示过去 5 分钟内接收字节数的平均速率，单位为字节每秒，基于 64 位 ifHCInOctets 计数器，在高速接口上不会回绕。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率(HC)
+      desc: 该指标表示过去 5 分钟内发送字节数的平均速率，单位为字节每秒，基于 64 位 ifHCOutOctets 计数器，在高速接口上不会回绕。
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
@@ -2940,6 +2964,7 @@ monitor_object_metric_group:
     Status: 状态
     Bandwidth: 带宽
     Traffic: 流量
+    Firewall: 防火墙
   VM:
     CPU: CPU
     Memory: 内存
@@ -3214,6 +3239,9 @@ monitor_object_plugin:
   Switch Dell Force10 SNMP:
     name: Dell Force10（Telegraf）
     desc: Dell Force10 (S-Series) 交换机专用 SNMP 采集模板（F10-S-SERIES-CHASSIS-MIB，企业号 6027）。在标准 IF-MIB 接口指标之外，额外采集 Dell Force10 私有 OID 的设备健康指标：每处理器 CPU 与内存使用率、每堆叠单元温度、风扇托盘与电源状态。CPU 与内存以利用率百分比直接上报；风扇/电源状态已归一化为统一的 1=正常 约定。
+  Switch HP ProCurve SNMP:
+    name: HP ProCurve（Telegraf）
+    desc: HP ProCurve / HP Networking 交换机专用 SNMP 采集模板（HP-ICF MIB）。在标准 IF-MIB 接口指标之外，额外采集 HP 私有 OID 的设备健康指标：CPU 使用率与系统内存（已用/总量）。温度与风扇/电源状态位于 HP 的 ENTITY-SENSOR / hpicfSensorTable 混合表、需按行类型/类过滤（telegraf inputs.snmp 无法实现），故不采集（N/A）。内存使用率按 used/total 计算。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
@@ -3259,6 +3287,9 @@ monitor_object_plugin:
   Firewall SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集防火墙各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 防火墙通用（Telegraf）
+  Firewall Fortinet SNMP:
+    name: Fortinet（Telegraf）
+    desc: 面向 FortiGate 防火墙的 Fortinet 专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 FORTINET-FORTIGATE-MIB 私有 OID 的设备健康（CPU、内存使用率、总内存）与防火墙特有状态（IPv4 活动会话数、活动 IPsec VPN 隧道数、HA 模式）。内存为设备直接上报的使用率百分比。
   Firewall Flow NetFlow:
     name: 防火墙流量分析（NetFlow）
     desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
