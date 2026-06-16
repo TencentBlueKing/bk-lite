@@ -3586,8 +3586,9 @@ monitor_object_plugin:
       convention.
   Switch MikroTik SNMP:
     name: MikroTik (Telegraf)
-    desc: MikroTik (RouterOS)-specific SNMP collection template for switches/routers.
-      In addition to standard IF-MIB interface metrics, it collects HOST-RESOURCES
+    desc: MikroTik (RouterOS)-specific SNMP collection template for switches
+      (currently mounted under the Switch object). In addition to standard IF-MIB
+      interface metrics, it collects HOST-RESOURCES
       and MIKROTIK-MIB OIDs for device health including per-core CPU utilization,
       system memory (used/total), and board temperature. MikroTik exposes fan as raw
       RPM and lacks a standardized power-supply state, so fan/psu health is not
