@@ -4,6 +4,8 @@
   width: 100%;
   height: 100%;
   overflow: hidden;
+  // 外壳本身透明,补回侧边栏底色,避免树列表透出页面背景、与其它树页面(白底)不一致
+  background: var(--color-bg-1);
 }
 
 .searchBox {

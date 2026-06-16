@@ -232,10 +232,11 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
           <ObjectIcon icon={item.icon} />
         </span>
         <span className={styles.label}>
-          <EllipsisWithTooltip
-            className={styles.ellipsis}
-            text={typeof item.title === 'string' ? item.title : ''}
-          />
+          {typeof item.title === 'string' ? (
+            <EllipsisWithTooltip className={styles.ellipsis} text={item.title} />
+          ) : (
+            item.title
+          )}
         </span>
         {item.count != null ? (
           <span className={styles.count}>{item.count}</span>
