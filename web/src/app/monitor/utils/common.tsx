@@ -516,7 +516,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /checkpoint|check.?point/i, label: 'Check Point', icon: 'mm-checkpoint_checkpoint' },
   { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' },
   { match: /paloalto|palo.?alto|pan.?os/i, label: 'Palo Alto', icon: 'mm-paloalto_paloalto' },
-  { match: /sonicwall|sonicos/i, label: 'SonicWall', icon: 'mm-sonicwall_sonicwall' }
+  { match: /sonicwall|sonicos/i, label: 'SonicWall', icon: 'mm-sonicwall_sonicwall' },
+  { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

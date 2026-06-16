@@ -635,6 +635,9 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    firewall_active_connections:
+      name: Active Connections
+      desc: This metric reports the number of currently active connections on the WatchGuard firewall (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns). A rapidly rising count can indicate a connection flood or connection-table pressure.
     firewall_current_connections:
       name: Current Connections
       desc: This metric reports the number of entries currently in the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries). A rapidly rising count can indicate a connection flood or connection-table pressure.
@@ -3830,6 +3833,15 @@ monitor_object_plugin:
       SONICWALL-FIREWALL-IP-STATISTICS-MIB private OIDs for device health (CPU and RAM
       utilization, both reported directly as percentages) and firewall-specific state
       (current and maximum connection-cache entries and NAT translation count).
+  Firewall WatchGuard SNMP:
+    name: WatchGuard (Telegraf)
+    desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      WATCHGUARD-SYSTEM-STATISTICS-MIB private OIDs for device health (CPU utilization)
+      and firewall-specific state (current active connections). Memory and
+      temperature/fan/psu are not collected because Fireware exposes no standard SNMP
+      memory-utilization scalar or sensor table that telegraf inputs.snmp can read
+      without row-level filtering.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
