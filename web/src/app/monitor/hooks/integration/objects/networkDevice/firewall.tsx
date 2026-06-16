@@ -61,6 +61,7 @@ export const useFirewallConfig = () => {
       'Firewall Fortinet SNMP': 'snmp_fortinet',
       'Firewall Check Point SNMP': 'snmp_checkpoint',
       'Firewall Stormshield SNMP': 'snmp_stormshield',
+      'Firewall Palo Alto SNMP': 'snmp_paloalto',
       'Firewall Flow NetFlow': 'netflow',
       'Firewall Flow sFlow': 'sflow'
     }

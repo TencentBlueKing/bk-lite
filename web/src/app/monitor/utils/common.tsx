@@ -514,7 +514,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /hphpn|procurve|hp.?networking/i, label: 'HP ProCurve', icon: 'mm-hphpn_hphpn' },
   { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' },
   { match: /checkpoint|check.?point/i, label: 'Check Point', icon: 'mm-checkpoint_checkpoint' },
-  { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' }
+  { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' },
+  { match: /paloalto|palo.?alto|pan.?os/i, label: 'Palo Alto', icon: 'mm-paloalto_paloalto' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。
