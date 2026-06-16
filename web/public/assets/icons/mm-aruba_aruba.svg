@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="arubaOrange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8300"/>
+      <stop offset="1" stop-color="#e07000"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#arubaOrange)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="5" stroke-linecap="round">
+    <path d="M34 74 C40 44 80 44 86 74"/>
+    <path d="M44 74 C48 54 72 54 76 74"/>
+  </g>
+  <circle cx="60" cy="50" r="4.5" fill="#ffffff"/>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="13" font-weight="700" fill="#ffffff" letter-spacing="1">ARUBA</text>
+</svg>

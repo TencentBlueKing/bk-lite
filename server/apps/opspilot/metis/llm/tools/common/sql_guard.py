@@ -24,6 +24,7 @@
 """
 
 import asyncio
+import concurrent.futures
 import re
 
 from loguru import logger
@@ -315,7 +316,6 @@ def run_blocking(func, *args, **kwargs):
         return func(*args, **kwargs)
 
     # 处于异步事件循环线程中:在独立线程执行阻塞调用,并阻塞等待其结果。
-    import concurrent.futures
 
     with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
         return pool.submit(func, *args, **kwargs).result()

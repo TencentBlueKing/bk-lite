@@ -131,6 +131,8 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           id: index
         }));
         setRawData(rawList);
+      } catch {
+        setRawData([]);
       } finally {
         setLoading(false);
       }

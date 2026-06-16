@@ -45,6 +45,7 @@ import ModelModal from './list/modelModal';
 import CopyModelModal from './list/copyModelModal';
 import PublicEnumLibraryModal, { PublicEnumLibraryModalRef } from './list/publicEnumLibraryModal';
 import ImportModelConfigModal, { ImportModelConfigModalRef } from './list/importModelConfigModal';
+import ExportModelConfigModal, { ExportModelConfigModalRef } from './list/exportModelConfigModal';
 import ManageToolbar from './list/manageToolbar';
 import CustomTable from '@/components/custom-table';
 import { useRouter } from 'next/navigation';
@@ -65,6 +66,7 @@ interface DraftClassification {
     model_name: string;
     icn?: string;
     is_pre?: boolean;
+    is_custom_reporting?: boolean;
     is_visible: boolean;
     order_id: number;
   }>;
@@ -74,7 +76,7 @@ const AssetManage = () => {
   const { getClassificationList, deleteClassification } =
     useClassificationApi();
   const { getModelInstanceCount } = useInstanceApi();
-  const { exportModelConfig, getModelList, saveModelLayout } = useModelApi();
+  const { getModelList, saveModelLayout } = useModelApi();
   const { isSuperUser, selectedGroup } = useUserInfoContext();
   const authContext = useAuth();
   const { data: session } = useSession();
@@ -90,13 +92,13 @@ const AssetManage = () => {
   const copyModelRef = useRef<any>(null);
   const publicEnumLibraryRef = useRef<PublicEnumLibraryModalRef>(null);
   const importModelConfigRef = useRef<ImportModelConfigModalRef>(null);
+  const exportModelConfigRef = useRef<ExportModelConfigModalRef>(null);
   const [modelGroup, setModelGroup] = useState<GroupItem[]>([]);
   const [groupList, setGroupList] = useState<GroupItem[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [searchText, setSearchText] = useState<string>('');
   const [rawModelGroup, setRawModelGroup] = useState<GroupItem[]>([]);
   const [hoveredModelId, setHoveredModelId] = useState<string | null>(null);
-  const [exportLoading, setExportLoading] = useState<boolean>(false);
   const [manageMode, setManageMode] = useState<boolean>(false);
   const [savingLayout, setSavingLayout] = useState<boolean>(false);
   const [layoutDirty, setLayoutDirty] = useState<boolean>(false);
@@ -161,6 +163,7 @@ const AssetManage = () => {
               model_name: m.model_name,
               icn: m.icn,
               is_pre: m.is_pre,
+              is_custom_reporting: m.is_custom_reporting,
               is_visible: m.is_visible ?? true,
               order_id: m.order_id ?? 0,
             }))
@@ -270,16 +273,9 @@ const AssetManage = () => {
     setSearchText((e.target as HTMLInputElement).value);
   };
 
-  // 导出模型配置
-  const handleExportConfig = async () => {
-    setExportLoading(true);
-    try {
-      await exportModelConfig(tokenRef.current);
-    } catch (error: any) {
-      message.error(error.message);
-    } finally {
-      setExportLoading(false);
-    }
+  // 导出模型配置：打开勾选弹窗
+  const handleExportConfig = () => {
+    exportModelConfigRef.current?.showModal();
   };
 
   const linkToDetail = (model: ModelItem) => {
@@ -459,6 +455,11 @@ const AssetManage = () => {
             />
           </div>
           <span className="text-[14px] font-[600] pl-[10px] truncate">{record.model_name}</span>
+          {record.is_custom_reporting ? (
+            <Tag color="purple" className="ml-[8px] flex-shrink-0">
+              {t('CustomReporting.modeQuick')}
+            </Tag>
+          ) : null}
         </div>
       ),
     },
@@ -543,7 +544,6 @@ const AssetManage = () => {
                       icon: <DownloadOutlined />,
                       label: t('Model.exportModelConfig'),
                       onClick: handleExportConfig,
-                      disabled: exportLoading,
                     },
                     {
                       key: 'importConfig',
@@ -791,6 +791,7 @@ const AssetManage = () => {
       />
       <PublicEnumLibraryModal ref={publicEnumLibraryRef} />
       <ImportModelConfigModal ref={importModelConfigRef} onSuccess={updateModelList} />
+      <ExportModelConfigModal ref={exportModelConfigRef} modelGroup={rawModelGroup} />
     </div>
   );
 };

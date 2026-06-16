@@ -44,6 +44,7 @@ import {
 } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import type {
   UnifiedFilterDefinition,
   FilterValue,
@@ -183,10 +184,12 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
   dataSources,
 }) => {
   const { t } = useTranslation();
+  const guardClose = useUnsavedConfirm();
   const [definitions, setDefinitions] = useState<UnifiedFilterDefinition[]>([]);
   const [optionsModalOpen, setOptionsModalOpen] = useState(false);
   const [editingFilterId, setEditingFilterId] = useState<string | null>(null);
   const hasInitializedRef = useRef(false);
+  const initialSnapshotRef = useRef<string>('');
 
   const filterTypeOptions = [
     { label: t('dashboard.string'), value: 'input' },
@@ -241,7 +244,14 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
 
     merged.sort((a, b) => a.order - b.order);
     setDefinitions(merged);
+    initialSnapshotRef.current = JSON.stringify(merged);
   }, [open, initialDefinitions, scannedParams]);
+
+  const handleCancel = () =>
+    guardClose(
+      JSON.stringify(definitions) !== initialSnapshotRef.current,
+      onCancel,
+    );
 
   const handleFieldChange = <K extends keyof UnifiedFilterDefinition>(
     id: string,
@@ -527,11 +537,12 @@ const UnifiedFilterConfigModal: React.FC<UnifiedFilterConfigModalProps> = ({
     <Modal
       title={t('dashboard.unifiedFilterConfig')}
       open={open}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       onOk={handleConfirm}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
       width={920}
+      maskClosable={false}
       centered
       destroyOnHidden
     >

@@ -18,7 +18,7 @@ class DataCleanupService:
         try:
             return datetime.fromisoformat(collect_time_str.replace("Z", "+00:00"))
         except (ValueError, TypeError):
-            logger.warning(f"Failed to parse collect_time: {collect_time_str}")
+            logger.warning("[DataCleanup] 解析 collect_time 失败，跳过该实例 collect_time=%s", collect_time_str)
             return None
 
     @staticmethod
@@ -31,12 +31,12 @@ class DataCleanupService:
     @classmethod
     def cleanup_expired_instances(cls, task: CollectModels) -> dict:
         if task.expire_days <= 0:
-            logger.info(f"Task {task.id} has expire_days={task.expire_days}, skipping cleanup")
+            logger.info("[DataCleanup] 任务未配置过期天数，跳过清理 task_id=%s, expire_days=%s", task.id, task.expire_days)
             return {"task_id": task.id, "deleted_count": 0, "skipped": True}
 
         threshold_iso = cls.get_expire_threshold(task.expire_days)
         threshold_dt = datetime.fromisoformat(threshold_iso)
-        logger.info(f"Task {task.id}: cleaning instances with collect_time < {threshold_iso}")
+        logger.info("[DataCleanup] 开始清理过期实例 task_id=%s, collect_time < %s", task.id, threshold_iso)
 
         with GraphClient() as ag:
             params = [
@@ -60,9 +60,15 @@ class DataCleanupService:
                 try:
                     ag.batch_delete_entity(INSTANCE, expired_ids)
                     deleted_count = len(expired_ids)
-                    logger.info(f"Task {task.id}: batch deleted {deleted_count} expired instances")
+                    logger.info("[DataCleanup] 批量删除过期实例成功 task_id=%s, deleted_count=%s", task.id, deleted_count)
                 except Exception as e:
-                    logger.error(f"Task {task.id}: batch delete failed: {e}")
+                    logger.error(
+                        "[DataCleanup] 批量删除过期实例失败 task_id=%s, expired_count=%s, error=%s",
+                        task.id,
+                        len(expired_ids),
+                        e,
+                        exc_info=True,
+                    )
                     return {
                         "task_id": task.id,
                         "model_id": task.model_id,
@@ -73,7 +79,7 @@ class DataCleanupService:
                         "error": str(e),
                     }
 
-        logger.info(f"Task {task.id}: cleanup completed, deleted={deleted_count}")
+        logger.info("[DataCleanup] 过期实例清理完成 task_id=%s, deleted_count=%s", task.id, deleted_count)
         return {
             "task_id": task.id,
             "model_id": task.model_id,
@@ -93,7 +99,7 @@ class DataCleanupService:
         total_failed = 0
         delete_ids = []
 
-        logger.info(f"Starting daily data cleanup, found {tasks.count()} tasks to process")
+        logger.info("[DataCleanup] 开始每日过期数据清理，待处理任务数 task_count=%s", tasks.count())
 
         for task in tasks:
             try:
@@ -103,7 +109,7 @@ class DataCleanupService:
                 total_failed += result.get("failed_count", 0)
                 delete_ids.extend(result.get("expired_ids", []))
             except Exception as e:
-                logger.error(f"Error cleaning up task {task.id}: {e}")
+                logger.error("[DataCleanup] 清理任务过期数据出错 task_id=%s, error=%s", task.id, e, exc_info=True)
                 results.append({"task_id": task.id, "error": str(e)})
 
         summary = {
@@ -114,6 +120,12 @@ class DataCleanupService:
             "delete_ids":delete_ids
         }
 
-        logger.info(f"Daily cleanup completed: {summary['tasks_processed']} tasks, {total_deleted} instances deleted, {total_failed} failed, delete_ids={delete_ids}")
+        logger.info(
+            "[DataCleanup] 每日过期数据清理完成 tasks_processed=%s, total_deleted=%s, total_failed=%s, delete_ids=%s",
+            summary["tasks_processed"],
+            total_deleted,
+            total_failed,
+            delete_ids,
+        )
 
         return summary

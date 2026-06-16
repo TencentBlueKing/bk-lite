@@ -4,8 +4,7 @@ import { Descriptions } from 'antd';
 import {
   TableDataItem,
   Organization,
-  UserItem,
-  ColumnItem
+  UserItem
 } from '@/app/log/types';
 import { useTranslation } from '@/utils/i18n';
 import informationStyle from './index.module.scss';
@@ -19,6 +18,7 @@ import { useLevelList } from '@/app/log/hooks/event';
 import Permission from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import { FilterItem } from '@/app/log/types/integration';
+import { buildLogAlertRawColumns } from './rawLogColumns';
 
 const Information: React.FC<TableDataItem> = ({
   formData,
@@ -43,45 +43,13 @@ const Information: React.FC<TableDataItem> = ({
   const isClosed = useMemo(() => formData.status === 'closed', [formData]);
 
   const activeColumns = useMemo(() => {
-    let columns: ColumnItem[] = [
-      {
-        title: 'timestamp',
-        dataIndex: '_time',
-        key: '_time',
-        width: 150,
-        fixed: 'left',
-        sorter: (a: any, b: any) => a.id - b.id,
-        render: (val, { _time }) => (
-          <>{val ? convertToLocalizedTime(_time) : '--'}</>
-        )
-      },
-      {
-        title: 'message',
-        dataIndex: '_msg',
-        key: '_msg',
-        width: 350,
-        render: (val) => <>{val || '--'}</>
-      }
-    ];
-    if (!isAggregate && formData.show_fields?.length) {
-      const displayColumns = formData.show_fields.map((item: string) => ({
-        title: item,
-        dataIndex: item,
-        key: item
-      }));
-      columns = [...columns, ...displayColumns];
-    }
-    if (isAggregate && rawData.length) {
-      columns = Object.keys(rawData[0] || {})
-        .filter((item) => item !== 'id')
-        .map((item) => ({
-          title: item,
-          dataIndex: item,
-          key: item
-        }));
-    }
-    return columns;
-  }, [formData, isAggregate, rawData]);
+    return buildLogAlertRawColumns({
+      isAggregate,
+      showFields: formData.show_fields,
+      rawData,
+      renderTime: convertToLocalizedTime
+    });
+  }, [convertToLocalizedTime, formData.show_fields, isAggregate, rawData]);
 
   const buildVictoriaLogsQuery = () => {
     try {

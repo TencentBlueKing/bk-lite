@@ -11,7 +11,7 @@ import {
   Switch,
   Table,
 } from 'antd';
-import { PlusOutlined, DeleteOutlined } from '@ant-design/icons';
+import { PlusOutlined, DeleteOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import OperateModal from '@/components/operate-modal';
 import { useTranslation } from '@/utils/i18n';
@@ -79,7 +79,7 @@ const ScriptLibraryPage = () => {
 
   // Params management
   const [params, setParams] = useState<ScriptParam[]>([]);
-  const [paramModalOpen, setParamModalOpen] = useState(false);
+  const [paramFormVisible, setParamFormVisible] = useState(false);
   const [editingParamIndex, setEditingParamIndex] = useState<number | null>(null);
 
   const fetchData = useCallback(
@@ -297,19 +297,25 @@ const ScriptLibraryPage = () => {
     }
   };
 
-  // Param modal handlers
-  const openAddParamModal = () => {
+  // Inline param form handlers
+  const openAddParamForm = () => {
     setEditingParamIndex(null);
     paramForm.resetFields();
-    paramForm.setFieldsValue({ is_encrypted: false });
-    setParamModalOpen(true);
+    paramForm.setFieldsValue({ is_encrypted: false, is_required: false });
+    setParamFormVisible(true);
   };
 
-  const openEditParamModal = (index: number) => {
+  const openEditParamForm = (index: number) => {
     setEditingParamIndex(index);
     paramForm.resetFields();
     paramForm.setFieldsValue(params[index]);
-    setParamModalOpen(true);
+    setParamFormVisible(true);
+  };
+
+  const cancelParamForm = () => {
+    paramForm.resetFields();
+    setEditingParamIndex(null);
+    setParamFormVisible(false);
   };
 
   const handleParamSubmit = async () => {
@@ -320,6 +326,7 @@ const ScriptLibraryPage = () => {
         description: values.description || '',
         default: values.default || '',
         is_encrypted: values.is_encrypted || false,
+        is_required: values.is_required || false,
       };
       if (editingParamIndex !== null) {
         const updated = [...params];
@@ -328,7 +335,7 @@ const ScriptLibraryPage = () => {
       } else {
         setParams([...params, param]);
       }
-      setParamModalOpen(false);
+      cancelParamForm();
     } catch {
       // validation error
     }
@@ -351,10 +358,18 @@ const ScriptLibraryPage = () => {
       render: (val: string) => val || '-',
     },
     {
+      title: t('job.isRequired'),
+      dataIndex: 'is_required',
+      key: 'is_required',
+      render: (val: boolean) =>
+        val ? <CheckOutlined className="text-green-500" /> : <CloseOutlined className="text-gray-400" />,
+    },
+    {
       title: t('job.isEncrypted'),
       dataIndex: 'is_encrypted',
       key: 'is_encrypted',
-      render: (val: boolean) => (val ? '✓' : '-'),
+      render: (val: boolean) =>
+        val ? <CheckOutlined className="text-green-500" /> : <CloseOutlined className="text-gray-400" />,
     },
     {
       title: t('job.paramDescription'),
@@ -370,7 +385,7 @@ const ScriptLibraryPage = () => {
         <div className="flex items-center gap-3">
           <a
             className="text-[var(--color-primary)] cursor-pointer"
-            onClick={() => openEditParamModal(index)}
+            onClick={() => openEditParamForm(index)}
           >
             {t('job.editRule')}
           </a>
@@ -601,87 +616,82 @@ const ScriptLibraryPage = () => {
             />
           </Form.Item>
 
-          {/* Parameter Definition */}
+        </Form>
+
+        {/* Parameter Definition（置于主表单之外，内联表单使用独立的 paramForm 实例，避免 Form 嵌套） */}
+        <div className="mb-2">
           <div className="mb-2">
-            <div className="mb-2">
-              <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
-                {t('job.paramDefinition')}
-              </span>
-            </div>
-            {params.length > 0 && (
-              <Table
-                columns={isViewMode ? paramColumns.filter((c) => c.key !== 'action') : paramColumns}
-                dataSource={params}
-                rowKey={(_, index) => String(index)}
-                pagination={false}
-                size="small"
-              />
-            )}
-            {!isViewMode && (
-              <div className={styles.addParamWrapper}>
-                <Button
-                  type="text"
-                  icon={<PlusOutlined />}
-                  className={styles.addParamButton}
-                  onClick={openAddParamModal}
-                >
-                  {t('job.addParam')}
-                </Button>
-              </div>
-            )}
+            <span className="text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
+              {t('job.paramDefinition')}
+            </span>
           </div>
-        </Form>
-      </OperateModal>
-
-      {/* Add/Edit Param Modal */}
-      <OperateModal
-        title={editingParamIndex !== null ? t('job.editParam') : t('job.addParamTitle')}
-        open={paramModalOpen}
-        onCancel={() => setParamModalOpen(false)}
-        footer={
-          <div className="flex justify-end gap-2">
-            <Button onClick={() => setParamModalOpen(false)}>{t('job.cancel')}</Button>
-            <Button type="primary" onClick={handleParamSubmit}>
-              {t('job.confirm')}
-            </Button>
-          </div>
-        }
-        width={520}
-      >
-        <Form form={paramForm} layout="vertical" colon={false}>
-          <Form.Item
-            name="name"
-            label={t('job.paramName')}
-            rules={[{ required: true, message: t('job.paramNamePlaceholder') }]}
-          >
-            <Input placeholder={t('job.paramNamePlaceholder')} />
-          </Form.Item>
-
-          <Form.Item
-            name="is_encrypted"
-            label={t('job.isEncrypted')}
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
-
-          <Form.Item
-            name="default"
-            label={t('job.defaultValue')}
-          >
-            <Input placeholder={t('job.defaultValuePlaceholder')} />
-          </Form.Item>
-
-          <Form.Item
-            name="description"
-            label={t('job.paramDescription')}
-          >
-            <Input.TextArea
-              rows={3}
-              placeholder={t('job.paramDescriptionPlaceholder')}
+          {params.length > 0 && (
+            <Table
+              columns={isViewMode ? paramColumns.filter((c) => c.key !== 'action') : paramColumns}
+              dataSource={params}
+              rowKey={(_, index) => String(index)}
+              pagination={false}
+              size="small"
             />
-          </Form.Item>
-        </Form>
+          )}
+
+          {!isViewMode && !paramFormVisible && (
+            <div className={styles.addParamWrapper}>
+              <Button
+                type="text"
+                icon={<PlusOutlined />}
+                className={styles.addParamButton}
+                onClick={openAddParamForm}
+              >
+                {t('job.addParam')}
+              </Button>
+            </div>
+          )}
+
+          {!isViewMode && paramFormVisible && (
+            <div
+              className="mt-2 rounded-md p-4"
+              style={{ border: '1px solid var(--color-border-1)', background: 'var(--color-fill-1)' }}
+            >
+              <div className="mb-3 text-sm font-medium" style={{ color: 'var(--color-text-1)' }}>
+                {editingParamIndex !== null ? t('job.editParam') : t('job.addParamTitle')}
+              </div>
+              <Form form={paramForm} layout="vertical" colon={false}>
+                <Form.Item
+                  name="name"
+                  label={t('job.paramName')}
+                  rules={[{ required: true, message: t('job.paramNamePlaceholder') }]}
+                >
+                  <Input placeholder={t('job.paramNamePlaceholder')} />
+                </Form.Item>
+
+                <div className="flex gap-12">
+                  <Form.Item name="is_required" label={t('job.isRequired')} valuePropName="checked">
+                    <Switch />
+                  </Form.Item>
+                  <Form.Item name="is_encrypted" label={t('job.isEncrypted')} valuePropName="checked">
+                    <Switch />
+                  </Form.Item>
+                </div>
+
+                <Form.Item name="default" label={t('job.defaultValue')}>
+                  <Input placeholder={t('job.defaultValuePlaceholder')} />
+                </Form.Item>
+
+                <Form.Item name="description" label={t('job.paramDescription')}>
+                  <Input.TextArea rows={2} placeholder={t('job.paramDescriptionPlaceholder')} />
+                </Form.Item>
+
+                <div className="flex justify-end gap-2">
+                  <Button onClick={cancelParamForm}>{t('job.cancel')}</Button>
+                  <Button type="primary" onClick={handleParamSubmit}>
+                    {t('job.confirm')}
+                  </Button>
+                </div>
+              </Form>
+            </div>
+          )}
+        </div>
       </OperateModal>
     </div>
   );

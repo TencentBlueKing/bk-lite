@@ -23,17 +23,21 @@ from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import decode_team_secret, split_list
+from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.rpc.cmdb import CMDB
 
 
 class AlertSourceAdapter(ABC):
     """告警源适配器基类"""
 
-    def __init__(self, alert_source: AlertSource, secret: str = None, events: List = []):
+    def __init__(self, alert_source: AlertSource, secret: str = None, events: List = [], trusted_internal: bool = False):
         self.alert_source = alert_source
         self.config = alert_source.config
         self.secret = secret
         self.events = events
+        # 可信内部推送（如监控中心经 NATS 内部源直推）：采信 event 自带的 organizations 作为归属组织，
+        # 不走组织级 secret 解析。仅影响内部通道，外部告警源安全模型不变。
+        self.trusted_internal = trusted_internal
         self.mapping = self.alert_source.config.get("event_fields_mapping", {})
         self.unique_fields = ["title"]
         self.info_level, self.levels = self.get_event_level()
@@ -182,7 +186,7 @@ class AlertSourceAdapter(ABC):
                 self.add_base_fields(event, add_event)
                 events.append(event)
             except Exception as e:
-                logger.error(f"Failed to transform alert: {add_event}, error: {e}")
+                logger.error("[AlertSource] 事件转换失败: %s, error: %s", add_event, e, exc_info=True)
         bulk_events = self.bulk_save_events(events)
         return bulk_events
 
@@ -264,6 +268,43 @@ class AlertSourceAdapter(ABC):
 
         return None
 
+    def _resolve_event_team(self, alert: Dict[str, Any]) -> List:
+        """归属组织取值：可信内部推送且 event 自带 organizations 时采信之，否则走 secret 解析结果。
+
+        安全约束：可信内部推送路径下，event 中携带的 organizations 必须是本告警源已注册组织
+        （team_secrets.keys()）的子集，超出范围的组织 ID 将被过滤并告警，防止 NATS 内任意
+        节点通过伪造 pusher 字符串实现跨组织写污染。
+        """
+        if self.trusted_internal and "organizations" in alert:
+            try:
+                requested = normalize_team_ids(alert.get("organizations"))
+            except ValueError:
+                logger.warning(
+                    "[AlertSource] 可信内部推送携带非法 organizations，已置空：source_id=%s organizations=%s",
+                    self.alert_source.source_id,
+                    alert.get("organizations"),
+                )
+                return []
+
+            # 仅允许告警源已注册（team_secrets 中存在）的组织，过滤越权组织 ID。
+            # 注意：当 team_secrets 为空时，白名单也为空，所有 organizations 均被拒绝（返回 []），
+            # 防止未完成注册的告警源被利用绕过跨组织写污染防护。
+            authorized_team_ids = {
+                str(tid) for tid in (self.alert_source.team_secrets or {}).keys()
+            }
+            allowed = [tid for tid in requested if str(tid) in authorized_team_ids]
+            blocked = [tid for tid in requested if str(tid) not in authorized_team_ids]
+            if blocked:
+                logger.warning(
+                    "[AlertSource] 可信内部推送携带未授权 organizations，已过滤："
+                    "source_id=%s blocked=%s allowed=%s",
+                    self.alert_source.source_id,
+                    blocked,
+                    allowed,
+                )
+            return allowed
+        return self.resolved_team
+
     def add_base_fields(self, event: Event, alert: Dict[str, Any]):
         """添加基础字段"""
 
@@ -276,7 +317,7 @@ class AlertSourceAdapter(ABC):
         )
         event.raw_data = alert
         event.event_id = f"EVENT-{uuid.uuid4().hex}"
-        event.team = self.resolved_team
+        event.team = self._resolve_event_team(alert)
 
         if not event.external_id or not str(event.external_id).strip():
             event.external_id = self.resolve_recovery_external_id(event) or self.generate_external_id(
@@ -286,7 +327,7 @@ class AlertSourceAdapter(ABC):
                 event.resource_type,
                 self.alert_source.source_id,
             )
-            logger.debug(f"Generated external_id for event: {event.event_id}")
+            logger.debug("[AlertSource] 已生成 external_id for event: %s", event.event_id)
 
     @staticmethod
     def build_ingress_dedup_key(event: Event) -> Optional[str]:
@@ -398,7 +439,7 @@ class AlertSourceAdapter(ABC):
             # 收集所有 event_id 用于后续查询
             all_event_ids.extend([e.event_id for e in event_batch])
 
-        logger.info(f"Bulk saved {len(events_to_create)} events.")
+        logger.info("[AlertSource] 批量写入 %s 条事件", len(events_to_create))
 
         # 2. 优化：立即查询返回带 pk 的对象（1 次查询）
         # 避免后续 event_operator 需要用 event_id 再查一遍
@@ -408,7 +449,7 @@ class AlertSourceAdapter(ABC):
         created_events_list = list(created_events)
         result = split_list(created_events_list, 100)
 
-        logger.debug(f"Reloaded {len(created_events_list)} events with pk")
+        logger.debug("[AlertSource] 重新加载 %s 条带 pk 的事件", len(created_events_list))
         return result
 
     def rich_event(self, event: dict):
@@ -418,7 +459,7 @@ class AlertSourceAdapter(ABC):
         try:
             self.enrich_event(event)
         except Exception as e:
-            logger.error(f"Failed to enrich events: {e}")
+            logger.error("[AlertSource] 事件富化失败: %s", e, exc_info=True)
 
     @staticmethod
     def enrich_event(event):
@@ -445,9 +486,7 @@ class AlertSourceAdapter(ABC):
             # 将cmdb实例信息添加到事件中
             event["labels"].update(cmdb_instance)
         except Exception as err:
-            import traceback
-
-            logger.error(f"CMDB search_instances failed: {traceback.format_exc()}")
+            logger.error("[AlertSource] CMDB search_instances 调用失败", exc_info=True)
 
     def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Event:
         """将单个告警数据转换为Event对象"""
@@ -465,7 +504,7 @@ class AlertSourceAdapter(ABC):
             # 转为 aware datetime（带时区）
             return timezone.make_aware(dt, timezone.get_current_timezone())
         except Exception as e:
-            logger.error(f"Failed to convert timestamp {timestamp} to datetime: {e}")
+            logger.error("[AlertSource] 时间戳转换失败 timestamp=%s: %s", timestamp, e)
             return timezone.now()
 
     @staticmethod
@@ -481,11 +520,11 @@ class AlertSourceAdapter(ABC):
 
             shields = AlertShield.objects.filter(is_active=True)
             if shields.exists():
-                logger.debug(f"加载了 {shields.count()} 个活跃屏蔽策略")
+                logger.debug("[AlertSource] 加载了 %s 个活跃屏蔽策略", shields.count())
                 return shields
             return None
         except Exception as e:
-            logger.error(f"查询活跃屏蔽策略失败: {e}")
+            logger.error("[AlertSource] 查询活跃屏蔽策略失败: %s", e, exc_info=True)
             return None
 
     def event_operator(self, events_list):
@@ -503,9 +542,7 @@ class AlertSourceAdapter(ABC):
             try:
                 execute_shield_check_for_events([i.event_id for i in event_list], active_shields=active_shields)
             except Exception as err:  # noqa
-                import traceback
-
-                logger.error(f"Shield check failed for events:{traceback.format_exc()}")
+                logger.error("[AlertSource] 事件屏蔽检查失败", exc_info=True)
 
     def main(self, events=None):
         """使适配器实例可调用"""
@@ -545,11 +582,9 @@ class AlertSourceAdapter(ABC):
             if recovery_events:
                 try:
                     RecoveryHandler.handle_recovery_events(recovery_events)
-                    logger.info(f"处理了 {len(recovery_events)} 个恢复事件 (RECOVERY/CLOSED)")
+                    logger.info("[AlertSource] 处理了 %s 个恢复事件 (RECOVERY/CLOSED)", len(recovery_events))
                 except Exception as err:
-                    import traceback
-
-                    logger.error(f"Recovery handler failed: {traceback.format_exc()}")
+                    logger.error("[AlertSource] 恢复事件处理失败", exc_info=True)
 
 
 class AlertSourceAdapterFactory:
@@ -561,7 +596,7 @@ class AlertSourceAdapterFactory:
     def register_adapter(cls, source_type: str, adapter_class):
         """注册适配器"""
         cls._adapters[source_type] = adapter_class
-        logger.info(f"Adapter registered for source type: {source_type}")
+        logger.info("[AlertSource] 适配器已注册 source type: %s", source_type)
 
     @classmethod
     def get_adapter(cls, alert_source: AlertSource):

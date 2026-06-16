@@ -1,7 +1,5 @@
 """作业执行 Celery 任务入口"""
 
-from datetime import timedelta
-
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.utils import timezone
@@ -9,6 +7,7 @@ from django.utils import timezone
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.job_mgmt.config import SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
@@ -73,7 +72,7 @@ def execute_scheduled_task(scheduled_task_id: int):
                 )
                 execute_scheduled_task.apply_async(
                     args=[scheduled_task_id],
-                    countdown=30,
+                    countdown=SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
                 )
                 return
         else:
@@ -145,9 +144,12 @@ def execute_scheduled_task(scheduled_task_id: int):
 
     logger.info(f"[execute_scheduled_task] 创建执行记录: execution_id={execution.id}, targets={len(target_list)}")
 
-    # 根据作业类型调用对应的执行任务
+    # 根据作业类型调用对应的执行任务（broker 不可用 / 未知作业类型时置 FAILED 避免 PENDING 孤立）
     if not _dispatch_execution_job(scheduled_task.job_type, execution.id):
-        logger.error(f"[execute_scheduled_task] 未知的作业类型: {scheduled_task.job_type}")
+        logger.error(
+            f"[execute_scheduled_task] 作业派发失败（broker 不可用或作业类型未知）: "
+            f"scheduled_task_id={scheduled_task_id}, execution_id={execution.id}, job_type={scheduled_task.job_type}"
+        )
         execution.status = ExecutionStatus.FAILED
         execution.save(update_fields=["status", "updated_at"])
         return
@@ -157,9 +159,8 @@ def execute_scheduled_task(scheduled_task_id: int):
 
 @shared_task(max_retries=0)
 def cleanup_expired_distribution_files_task():
-    threshold = timezone.now() - timedelta(days=7)
-    # 仅清理临时文件（is_permanent=False），永久文件不清理
-    expired_files = DistributionFile.objects.filter(created_at__lt=threshold, is_permanent=False)
+    # 清理所有已到期文件（expire_at <= 当前时间）
+    expired_files = DistributionFile.objects.filter(expire_at__lte=timezone.now())
     total_count = expired_files.count()
     if total_count == 0:
         logger.info("[cleanup_expired_distribution_files_task] 没有过期文件需要清理")
@@ -181,18 +182,29 @@ def cleanup_expired_distribution_files_task():
     logger.info(f"[cleanup_expired_distribution_files_task] 清理完成: success={success_count}, fail={fail_count}")
 
 
+_JOB_TYPE_TO_TASK_NAME = {
+    JobType.SCRIPT: "apps.job_mgmt.tasks.execute_script_task",
+    JobType.FILE_DISTRIBUTION: "apps.job_mgmt.tasks.distribute_files_task",
+    JobType.PLAYBOOK: "apps.job_mgmt.tasks.execute_playbook_task",
+}
+
+
 def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
-    result = None
-    if job_type == JobType.SCRIPT:
-        result = current_app.send_task("apps.job_mgmt.tasks.execute_script_task", args=[execution_id])
-    elif job_type == JobType.FILE_DISTRIBUTION:
-        result = current_app.send_task("apps.job_mgmt.tasks.distribute_files_task", args=[execution_id])
-    elif job_type == JobType.PLAYBOOK:
-        result = current_app.send_task("apps.job_mgmt.tasks.execute_playbook_task", args=[execution_id])
-    else:
+    """通过 Celery 派发执行任务并回填 ``celery_task_id``。
+
+    Returns ``False`` 当作业类型未知或 broker 派发失败（broker 不可用、连接超时等）；
+    调用方应据此把执行记录置为 FAILED，避免留下 PENDING 孤立记录。
+    """
+    task_name = _JOB_TYPE_TO_TASK_NAME.get(job_type)
+    if not task_name:
         return False
 
-    # 保存 Celery task_id 到执行记录，用于取消时 revoke
+    try:
+        result = current_app.send_task(task_name, args=[execution_id])
+    except Exception as e:
+        logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
+        return False
+
     if result:
         JobExecution.objects.filter(id=execution_id).update(celery_task_id=result.id)
     return True

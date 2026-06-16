@@ -16,7 +16,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { getIconByObjectName } from '@/app/monitor/utils/common';
+import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
 import {
   ModalRef,
@@ -417,7 +417,7 @@ const Integration = () => {
                       <div className="flex items-center space-x-4 my-2">
                         <div className="w-14 h-14 min-w-[56px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
                           <img
-                            src={`/assets/icons/${getIconByObjectName(objectName, objects)}.svg`}
+                            src={`/assets/icons/${getPluginBrandIcon(app.name) || getIconByObjectName(objectName, objects)}.svg`}
                             alt={objectName}
                             className="w-12 h-12"
                             onError={(e) => {

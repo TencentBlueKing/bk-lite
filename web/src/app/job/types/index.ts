@@ -153,6 +153,7 @@ export interface ScriptParam {
   description?: string;
   default?: string;
   is_encrypted?: boolean;
+  is_required?: boolean;
 }
 
 export interface Script {
@@ -360,6 +361,7 @@ export type JobRecordSource = 'manual' | 'scheduled' | 'api';
 export interface ExecutionTarget {
   id: number;
   target: number;
+  target_key?: string;
   target_name: string;
   target_ip: string;
   status: JobRecordStatus;

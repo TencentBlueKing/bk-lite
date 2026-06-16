@@ -48,6 +48,8 @@ class MonitorEffectivePluginService:
             item.update(
                 status=PluginConstants.STATUS_NORMAL if is_reported else PluginConstants.STATUS_OFFLINE,
                 collect_mode=PluginConstants.COLLECT_MODE_AUTO if is_configured else PluginConstants.COLLECT_MODE_MANUAL,
+                configured=is_configured,
+                config_source=MonitorEffectivePluginService._get_config_source(is_configured, is_reported),
             )
             data.append(item)
 
@@ -114,6 +116,14 @@ class MonitorEffectivePluginService:
             "is_pre": plugin.is_pre,
             "is_custom": is_custom,
         }
+
+    @staticmethod
+    def _get_config_source(is_configured: bool, is_reported: bool) -> str:
+        if is_configured and is_reported:
+            return PluginConstants.CONFIG_SOURCE_CONFIGURED_REPORTED
+        if is_configured:
+            return PluginConstants.CONFIG_SOURCE_CONFIGURED
+        return PluginConstants.CONFIG_SOURCE_REPORTED_ONLY
 
     @staticmethod
     def _sort_key(item: dict):

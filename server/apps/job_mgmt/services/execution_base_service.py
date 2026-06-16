@@ -1,13 +1,16 @@
 from datetime import datetime
 from typing import Optional, Tuple
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.core.mixinx import EncryptMixin
+from apps.job_mgmt.config import EXECUTION_MAX_WORKERS
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
+from apps.job_mgmt.services.execution_stream_service import build_stream_topic
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
@@ -16,7 +19,7 @@ from config.components.nats import NATS_NAMESPACE
 
 
 class ExecutionTaskBaseService(object):
-    MAX_WORKERS = 10
+    MAX_WORKERS = EXECUTION_MAX_WORKERS
 
     def __init__(self, execution_id: int, task_name: str):
         self.execution_id = execution_id
@@ -88,10 +91,22 @@ class ExecutionTaskBaseService(object):
 
     @staticmethod
     def update_execution_counts(execution: JobExecution):
-        results = execution.execution_results or []
-        execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
-        execution.failed_count = sum(1 for r in results if r.get("status") in [ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT])
-        execution.save(update_fields=["success_count", "failed_count", "updated_at"])
+        """重算 success_count / failed_count 并保存。
+
+        在事务内对当前 execution 行加 ``SELECT ... FOR UPDATE`` 锁，
+        消除"读 execution_results → 计数 → 写 counts"窗口内的并发覆盖。
+        计算后回写到传入的 ``execution`` 实例，保证调用方读到的字段值是最新的。
+        """
+        with transaction.atomic():
+            locked = JobExecution.objects.select_for_update().get(id=execution.id)
+            results = locked.execution_results or []
+            success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
+            failed_count = sum(1 for r in results if r.get("status") in [ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT])
+            locked.success_count = success_count
+            locked.failed_count = failed_count
+            locked.save(update_fields=["success_count", "failed_count", "updated_at"])
+        execution.success_count = success_count
+        execution.failed_count = failed_count
 
     @classmethod
     def finalize_execution(cls, execution: JobExecution, task_name: str, results: list):
@@ -241,6 +256,8 @@ class ExecutionTaskBaseService(object):
             task_id=str(execution.id),
             timeout=execution.timeout,
             extra_vars=extra_vars if extra_vars else None,
+            stream_log_topic=build_stream_topic(execution.id, "ansible"),
+            execution_id=str(execution.id),
         )
 
         logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
@@ -297,7 +314,7 @@ class ExecutionTaskBaseService(object):
                 if target.ssh_credential_type == SSHCredentialType.PASSWORD:
                     cred["password"] = cls.decrypt_password(target.ssh_password)
                 else:
-                    private_key = cls._get_ssh_private_key(target)
+                    private_key = cls._read_ssh_key_file(target)
                     if private_key:
                         cred["private_key_content"] = private_key
                     ssh_key_passphrase = cls.decrypt_password(target.ssh_key_passphrase)
@@ -316,47 +333,37 @@ class ExecutionTaskBaseService(object):
         return credentials
 
     @staticmethod
-    def _get_ssh_private_key(target) -> Optional[str]:
-        """从 Target 获取 SSH 私钥内容"""
+    def _read_ssh_key_file(target) -> Optional[str]:
+        """读取 Target 的 SSH 私钥文件内容；读取失败返回 None 并记录告警。
+
+        使用上下文管理器确保异常路径也能释放文件句柄；仅捕获文件 / IO 类异常，
+        避免静默吞掉非预期错误（原实现 except Exception 会掩盖权限 / IO 问题）。
+        """
         if not target.ssh_key_file:
             return None
         try:
-            target.ssh_key_file.open("r")
-            content = target.ssh_key_file.read()
-            target.ssh_key_file.close()
-            if isinstance(content, bytes):
-                return content.decode("utf-8")
-            return content
-        except Exception:
+            with target.ssh_key_file.open("r") as fh:
+                content = fh.read()
+        except (FileNotFoundError, OSError) as e:
+            logger.warning(f"[_read_ssh_key_file] 读取 SSH 密钥文件失败: target_id={getattr(target, 'id', None)}, error={e}")
             return None
+        return content.decode("utf-8") if isinstance(content, bytes) else content
 
     @classmethod
     def get_ssh_credentials(cls, target_id: int) -> dict:
         """从 Target 获取 SSH 凭据信息"""
         try:
             target = Target.objects.get(id=target_id)
-            private_key = None
-            if target.ssh_key_file:
-                try:
-                    target.ssh_key_file.open("r")
-                    content = target.ssh_key_file.read()
-                    target.ssh_key_file.close()
-                    if isinstance(content, bytes):
-                        private_key = content.decode("utf-8")
-                    else:
-                        private_key = content
-                except Exception:
-                    pass
-            return {
-                "host": target.ip,
-                "username": target.ssh_user,
-                "password": cls.decrypt_password(target.ssh_password),
-                "private_key": private_key,
-                "port": target.ssh_port,
-                "node_id": target.node_id,  # 云区域 ID
-            }
         except Target.DoesNotExist:
             return {}
+        return {
+            "host": target.ip,
+            "username": target.ssh_user,
+            "password": cls.decrypt_password(target.ssh_password),
+            "private_key": cls._read_ssh_key_file(target),
+            "port": target.ssh_port,
+            "node_id": target.node_id,  # 云区域 ID
+        }
 
     @staticmethod
     def format_error_message(e: Exception) -> str:

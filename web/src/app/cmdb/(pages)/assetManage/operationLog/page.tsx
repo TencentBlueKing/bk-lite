@@ -156,7 +156,7 @@ const OperationLog: React.FC = () => {
         total: data.count || 0,
       }));
     } catch {
-      message.error('加载列表失败');
+      message.error(t('common.loadListFailed'));
       return { data: [], total: 0, success: false };
     } finally {
       setTableLoading(false);

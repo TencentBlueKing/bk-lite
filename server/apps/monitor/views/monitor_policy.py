@@ -2,6 +2,7 @@ import copy
 import json
 from datetime import datetime, timezone
 
+from django.db import transaction
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -16,8 +17,13 @@ from apps.monitor.filters.monitor_policy import MonitorPolicyFilter
 from apps.monitor.models import PolicyOrganization, MonitorAlert
 from apps.monitor.models.monitor_policy import MonitorPolicy
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
-from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
+from apps.monitor.services.alert_lifecycle_notify import (
+    AlertLifecycleNotifier,
+    NOTIFY_SCOPE_ALERT_CENTER_ONLY,
+    NOTIFY_SCOPE_ALL_CONFIGURED,
+)
 from apps.monitor.services.policy import PolicyService
+from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
@@ -115,6 +121,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
             )
 
+        self.close_active_threshold_alerts_for_policy_config_change(
+            policy,
+            old_baseline_state,
+            updated_policy,
+            request.user.username,
+        )
+
         # 处理 enable 字段变更
         if "enable" in request.data and policy and updated_policy:
             new_enable = updated_policy.enable
@@ -148,6 +161,13 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
             )
 
+        self.close_active_threshold_alerts_for_policy_config_change(
+            policy,
+            old_baseline_state,
+            updated_policy,
+            request.user.username,
+        )
+
         # 处理 enable 字段变更
         if "enable" in request.data and policy and updated_policy:
             new_enable = updated_policy.enable
@@ -160,30 +180,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         policy = MonitorPolicy.objects.filter(id=policy_id).first()
         if policy:
             PolicyBaselineService(policy).clear()
-            now = datetime.now(timezone.utc)
             alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
-            if alerts_to_close:
-                operation_log = {
-                    "action": "closed",
-                    "reason": "policy_deleted",
-                    "operator": request.user.username,
-                    "time": now.isoformat(),
-                }
-                for alert in alerts_to_close:
-                    alert.status = "closed"
-                    alert.end_event_time = now
-                    alert.operator = request.user.username
-                    alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-                MonitorAlert.objects.bulk_update(
-                    alerts_to_close,
-                    fields=["status", "end_event_time", "operator", "operation_logs"],
-                )
-                AlertLifecycleNotifier(policy).notify_alerts(
-                    alerts_to_close,
-                    action="closed",
-                    operator=request.user.username,
-                    reason="policy_deleted",
-                )
+            self.close_alerts(policy, alerts_to_close, request.user.username, "policy_deleted")
         PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
         return super().destroy(request, *args, **kwargs)
@@ -233,6 +231,41 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             return True
         return self.baseline_state_changed(old_state, policy)
 
+    def get_policy_config_change_reason(self, old_state, policy):
+        if not old_state or not policy:
+            return ""
+
+        new_state = self.get_baseline_state(policy)
+        if old_state.get("source") != new_state.get("source"):
+            return "policy_scope_changed"
+        if old_state.get("group_by") != new_state.get("group_by"):
+            return "policy_group_by_changed"
+        if old_state.get("query_condition") != new_state.get("query_condition"):
+            return "policy_query_condition_changed"
+        if old_state.get("monitor_object") != new_state.get("monitor_object") or old_state.get("collect_type") != new_state.get("collect_type"):
+            return "policy_monitor_target_changed"
+        return ""
+
+    def close_active_threshold_alerts_for_policy_config_change(self, old_policy, old_state, policy, operator):
+        reason = self.get_policy_config_change_reason(old_state, policy)
+        if not reason or not old_policy or not policy:
+            return
+
+        alerts_to_close = list(
+            MonitorAlert.objects.filter(
+                policy_id=old_policy.id,
+                alert_type="alert",
+                status="new",
+            )
+        )
+        self.close_alerts(
+            policy,
+            alerts_to_close,
+            operator,
+            reason,
+            notify_scope=NOTIFY_SCOPE_ALERT_CENTER_ONLY,
+        )
+
     def update_policy_baselines(
         self,
         policy_id,
@@ -253,18 +286,11 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             self.close_active_no_data_alerts(policy, operator, "no_data_disabled")
             baseline_service.clear()
 
-    def close_active_no_data_alerts(self, policy, operator, reason):
-        now = datetime.now(timezone.utc)
-        alerts_to_close = list(
-            MonitorAlert.objects.filter(
-                policy_id=policy.id,
-                alert_type="no_data",
-                status="new",
-            )
-        )
+    def close_alerts(self, policy, alerts_to_close, operator, reason, notify_scope=NOTIFY_SCOPE_ALL_CONFIGURED):
         if not alerts_to_close:
             return
 
+        now = datetime.now(timezone.utc)
         operation_log = {
             "action": "closed",
             "reason": reason,
@@ -276,48 +302,38 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
             alert.end_event_time = now
             alert.operator = operator
             alert.operation_logs = (alert.operation_logs or []) + [operation_log]
+            alert.alert_center_notified = False
         MonitorAlert.objects.bulk_update(
             alerts_to_close,
-            fields=["status", "end_event_time", "operator", "operation_logs"],
+            fields=["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"],
         )
-        AlertLifecycleNotifier(policy).notify_alerts(
-            alerts_to_close,
-            action="closed",
-            operator=operator,
-            reason=reason,
+        if policy and notify_scope:
+            AlertLifecycleNotifier(policy).notify_alerts(
+                alerts_to_close,
+                action="closed",
+                operator=operator,
+                reason=reason,
+                notify_scope=notify_scope,
+            )
+
+    def close_active_no_data_alerts(self, policy, operator, reason):
+        alerts_to_close = list(
+            MonitorAlert.objects.filter(
+                policy_id=policy.id,
+                alert_type="no_data",
+                status="new",
+            )
         )
+        self.close_alerts(policy, alerts_to_close, operator, reason)
 
     def handle_policy_enable_change(self, policy_id, old_enable, new_enable):
         if old_enable == new_enable:
             return
 
         if old_enable and not new_enable:
-            now = datetime.now(timezone.utc)
             policy = MonitorPolicy.objects.filter(id=policy_id).first()
             alerts_to_close = list(MonitorAlert.objects.filter(policy_id=policy_id, status="new"))
-            if alerts_to_close:
-                operation_log = {
-                    "action": "closed",
-                    "reason": "policy_disabled",
-                    "operator": "system",
-                    "time": now.isoformat(),
-                }
-                for alert in alerts_to_close:
-                    alert.status = "closed"
-                    alert.end_event_time = now
-                    alert.operator = "system"
-                    alert.operation_logs = (alert.operation_logs or []) + [operation_log]
-                MonitorAlert.objects.bulk_update(
-                    alerts_to_close,
-                    fields=["status", "end_event_time", "operator", "operation_logs"],
-                )
-                if policy:
-                    AlertLifecycleNotifier(policy).notify_alerts(
-                        alerts_to_close,
-                        action="closed",
-                        operator="system",
-                        reason="policy_disabled",
-                    )
+            self.close_alerts(policy, alerts_to_close, "system", "policy_disabled")
         elif not old_enable and new_enable:
             MonitorPolicy.objects.filter(id=policy_id).update(last_run_time=datetime.now(timezone.utc))
 
@@ -400,3 +416,107 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
     def template_monitor_object(self, request):
         data = PolicyService.get_policy_templates_monitor_object()
         return WebUtils.response_success(data)
+
+    @action(methods=["post"], detail=False, url_path="bulk_create_from_templates")
+    def bulk_create_from_templates(self, request):
+        monitor_object_id = request.data.get("monitor_object")
+        templates = request.data.get("templates") or []
+        asset_ids = request.data.get("asset_ids") or []
+        config = request.data.get("config") or {}
+        if not monitor_object_id:
+            raise BaseAppException("monitor_object 不能为空")
+        if not templates:
+            raise BaseAppException("templates 不能为空")
+        if not asset_ids:
+            raise BaseAppException("asset_ids 不能为空")
+
+        assets = self.get_bulk_policy_assets(monitor_object_id, asset_ids)
+        enriched_templates = self.enrich_bulk_policy_templates(monitor_object_id, templates)
+        payloads = build_bulk_policy_payloads(
+            monitor_object_id=int(monitor_object_id),
+            templates=enriched_templates,
+            assets=assets,
+            config=config,
+        )
+        created = []
+        with transaction.atomic():
+            for payload in payloads:
+                payload["created_by"] = request.user.username
+                payload["updated_by"] = request.user.username
+                payload["domain"] = getattr(request.user, "domain", "domain.com")
+                payload["updated_by_domain"] = getattr(request.user, "domain", "domain.com")
+                serializer = self.get_serializer(data=payload)
+                serializer.is_valid(raise_exception=True)
+                policy = serializer.save()
+                created.append(policy)
+                self.update_or_create_task(policy.id, payload["schedule"])
+                self.update_policy_organizations(policy.id, payload.get("organizations", []))
+                if self.is_no_data_alert_enabled(policy):
+                    self.update_policy_baselines(policy.id, policy.enable_alerts)
+
+        return WebUtils.response_success(
+            {
+                "created_count": len(created),
+                "policy_ids": [policy.id for policy in created],
+            }
+        )
+
+    def get_bulk_policy_assets(self, monitor_object_id, asset_ids):
+        from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization
+
+        normalized_ids = [str(asset_id) for asset_id in asset_ids if asset_id not in (None, "")]
+        if not normalized_ids:
+            return []
+        instances = list(
+            MonitorInstance.objects.filter(
+                id__in=normalized_ids,
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+            ).values("id")
+        )
+        found_ids = {item["id"] for item in instances}
+        missing_ids = sorted(set(normalized_ids) - found_ids)
+        if missing_ids:
+            raise BaseAppException(f"监控资产不存在: {', '.join(missing_ids)}")
+
+        org_map = {}
+        for instance_id, organization in MonitorInstanceOrganization.objects.filter(
+            monitor_instance_id__in=normalized_ids
+        ).values_list("monitor_instance_id", "organization"):
+            org_map.setdefault(instance_id, []).append(organization)
+
+        return [
+            {
+                "instance_id": item["id"],
+                "organizations": org_map.get(item["id"], []),
+            }
+            for item in instances
+        ]
+
+    def enrich_bulk_policy_templates(self, monitor_object_id, templates):
+        from apps.monitor.models.monitor_metrics import Metric
+
+        enriched = []
+        for template in templates:
+            metric_name = template.get("metric_name")
+            if not metric_name:
+                raise BaseAppException("模板 metric_name 不能为空")
+            metric_qs = Metric.objects.filter(
+                monitor_object_id=monitor_object_id,
+                name=metric_name,
+            )
+            collect_type = template.get("collect_type") or template.get("plugin_id")
+            if collect_type:
+                metric_qs = metric_qs.filter(monitor_plugin_id=collect_type)
+            metric = metric_qs.first()
+            if not metric:
+                raise BaseAppException(f"指标不存在: {metric_name}")
+            enriched.append(
+                {
+                    **template,
+                    "metric_id": metric.id,
+                    "metric_unit": "" if metric.unit in ("none", "short") else metric.unit,
+                    "collect_type": collect_type or metric.monitor_plugin_id,
+                }
+            )
+        return enriched

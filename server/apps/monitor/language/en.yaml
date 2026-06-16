@@ -635,6 +635,30 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the overall CPU utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate heavy traffic inspection load, attack activity or a control-plane bottleneck.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the overall memory utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysMemUsage, reported directly as a percentage). When memory pressure is high the device may enter conserve mode and drop new sessions.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted to bytes).
+    firewall_active_sessions:
+      name: IPv4 Active Sessions
+      desc: This metric reports the number of active IPv4 sessions currently tracked by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly rising session count can indicate a connection flood or session-table exhaustion risk.
+    firewall_vpn_tunnels:
+      name: Active IPsec VPN Tunnels
+      desc: This metric reports the number of currently active IPsec VPN tunnels on the FortiGate firewall (FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount). A sudden drop may indicate a VPN outage affecting site-to-site connectivity.
+    firewall_ha_mode:
+      name: HA Mode
+      desc: This metric reports the high-availability mode of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgHaSystemMode) as standalone, active-active or active-passive. It helps confirm whether the expected HA topology is in effect.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -763,6 +787,15 @@ monitor_object_metric:
     postgresql_maxwritten_clean_rate:
       name: Background Clean Page Write Rate
       desc: Indicates high write pressure
+    postgresql_blk_write_time:
+      name: Disk Block Write Time Rate
+      desc: Rate of cumulative block write time (pg_stat_database.blk_write_time), in milliseconds of write time per second. High values indicate disk I/O write pressure or a storage bottleneck.
+    postgresql_active_time:
+      name: SQL Active Execution Time Rate
+      desc: Rate of cumulative SQL execution time (pg_stat_database.active_time), in milliseconds of active execution per second. Sustained high values indicate long-running or heavily concurrent statements.
+    postgresql_sessions_killed:
+      name: Abnormally Terminated Sessions Rate
+      desc: Rate of sessions terminated by fatal errors such as administrator commands, idle-session timeout, or deadlock resolution (pg_stat_database.sessions_killed), in sessions per second. A rising rate signals connection instability.
   RabbitMQ:
     rabbitmq_node_uptime:
       name: Node Uptime
@@ -2005,6 +2038,12 @@ monitor_object_metric:
     interface_ifOutOctets:
       name: Interface Outgoing Traffic Rate
       desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate.
     device_total_incoming_traffic:
       name: Device Total Incoming Traffic Rate
       desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
@@ -2023,6 +2062,30 @@ monitor_object_metric:
     device_total_outgoing_sflow_traffic:
       name: Device Total Outgoing sFlow Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the CPU utilization of the device control plane (typically the 5-minute average), as a percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays. Sourced from vendor-specific SNMP OIDs and normalized to a 0-100 percentage.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports overall memory utilization of the device, computed as used / (used + free) * 100 across all memory pools. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations.
+    device_memory_used:
+      name: Memory Used
+      desc: This metric reports the number of bytes currently in use for each memory pool of the device. It helps administrators understand the absolute memory consumption per pool (for example Processor or I/O pools) and identify which pool is under pressure.
+    device_memory_free:
+      name: Memory Free
+      desc: This metric reports the number of free bytes available in each memory pool of the device. Together with the used bytes it determines overall memory utilization; a persistently low free value indicates memory pressure on that pool.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total memory capacity of the device. It is the denominator for memory utilization (some vendors compute (total - free) / total) and, together with free memory, reflects overall memory pressure.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the temperature reading of each hardware sensor on the device, in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed.
+    device_fan_state:
+      name: Fan Status
+      desc: This metric reports the operational state of each cooling fan on the device. A non-normal state (warning, critical, shutdown, or notFunctioning) indicates a cooling fault that can quickly lead to overheating and should be investigated immediately.
+    device_psu_state:
+      name: Power Supply Status
+      desc: This metric reports the operational state of each power supply unit on the device. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly.
   Router:
     snmp_uptime:
       name: System Uptime
@@ -2407,6 +2470,106 @@ monitor_object_metric:
       name: Cache Retrieve Hit Count
       desc: Number of successful cache retrievals; high hit rate indicates efficient
         caching and reduced backend load
+  Haproxy:
+    haproxy_scur:
+      name: Current Sessions
+      desc: Number of active sessions currently being processed by this frontend/backend/server, reflecting real-time concurrency
+    haproxy_smax:
+      name: Max Sessions
+      desc: Maximum number of concurrent sessions observed since startup, useful for capacity planning
+    haproxy_slim:
+      name: Session Limit
+      desc: Configured session limit; current sessions approaching this value indicates risk of new connections being rejected
+    haproxy_stot:
+      name: Total Sessions
+      desc: Cumulative number of sessions handled since startup, a monotonically increasing counter measuring overall workload
+    haproxy_rate:
+      name: Session Rate
+      desc: Number of new sessions established per second over the last second, reflecting real-time connection pressure
+    haproxy_rate_max:
+      name: Max Session Rate
+      desc: Highest per-second session establishment rate observed since startup, indicating peak load
+    haproxy_qcur:
+      name: Current Queued Requests
+      desc: Number of requests currently queued waiting for an available backend server; sustained high values indicate backend saturation
+    haproxy_qmax:
+      name: Max Queued Requests
+      desc: Maximum number of queued requests observed since startup, reflecting peak backend pressure
+    haproxy_bin:
+      name: Bytes In
+      desc: Cumulative number of bytes received from clients since startup, measuring inbound traffic volume
+    haproxy_bout:
+      name: Bytes Out
+      desc: Cumulative number of bytes sent to clients since startup, measuring outbound traffic volume
+    haproxy_req_rate:
+      name: HTTP Request Rate
+      desc: Number of HTTP requests received per second over the last second, reflecting real-time request throughput
+    haproxy_req_rate_max:
+      name: Max HTTP Request Rate
+      desc: Highest per-second HTTP request rate observed since startup, indicating peak request pressure
+    haproxy_req_tot:
+      name: Total HTTP Requests
+      desc: Cumulative number of HTTP requests received since startup, a counter measuring overall request workload
+    haproxy_hrsp_2xx:
+      name: 2xx Responses
+      desc: Cumulative number of HTTP 2xx (success) responses returned, reflecting normally served requests
+    haproxy_hrsp_3xx:
+      name: 3xx Responses
+      desc: Cumulative number of HTTP 3xx (redirect) responses returned
+    haproxy_hrsp_4xx:
+      name: 4xx Responses
+      desc: Cumulative number of HTTP 4xx (client error) responses returned; sustained growth may indicate client or auth issues
+    haproxy_hrsp_5xx:
+      name: 5xx Responses
+      desc: Cumulative number of HTTP 5xx (server error) responses returned; growth usually indicates backend service faults
+    haproxy_ereq:
+      name: Request Errors
+      desc: Cumulative number of request errors (e.g. invalid requests, client timeouts before request) since startup
+    haproxy_econ:
+      name: Connection Errors
+      desc: Cumulative number of errors connecting to backend servers since startup; growth indicates backend connectivity problems
+    haproxy_eresp:
+      name: Response Errors
+      desc: Cumulative number of response errors from backend servers since startup, including aborts and bad responses
+    haproxy_dreq:
+      name: Denied Requests
+      desc: Cumulative number of requests denied by security ACL rules since startup
+    haproxy_dresp:
+      name: Denied Responses
+      desc: Cumulative number of responses denied by security ACL rules since startup
+    haproxy_wretr:
+      name: Connection Retries
+      desc: Cumulative number of times a connection to a backend server was retried since startup; high values indicate backend instability
+    haproxy_wredis:
+      name: Request Redispatches
+      desc: Cumulative number of times a request was redispatched to another backend server since startup
+    haproxy_act:
+      name: Active Servers
+      desc: Number of active (non-backup) servers currently up in this backend, reflecting available serving capacity
+    haproxy_bck:
+      name: Backup Servers
+      desc: Number of backup servers currently up in this backend, available for failover
+    haproxy_chkfail:
+      name: Failed Health Checks
+      desc: Cumulative number of failed health checks since startup; growth indicates an unstable or failing server
+    haproxy_chkdown:
+      name: Down Transitions
+      desc: Cumulative number of UP-to-DOWN transitions since startup, reflecting how often the server became unavailable
+    haproxy_downtime:
+      name: Total Downtime
+      desc: Cumulative total downtime in seconds since startup, reflecting accumulated unavailability of the server
+    haproxy_qtime:
+      name: Average Queue Time
+      desc: Average time in milliseconds spent in the queue waiting for a free server, computed over the last 1024 requests
+    haproxy_ctime:
+      name: Average Connect Time
+      desc: Average time in milliseconds to establish a connection to the backend server, computed over the last 1024 requests
+    haproxy_rtime:
+      name: Average Response Time
+      desc: Average backend response time in milliseconds, computed over the last 1024 requests; high values indicate slow backends
+    haproxy_ttime:
+      name: Average Total Time
+      desc: Average total session time in milliseconds end to end, computed over the last 1024 requests
   Node:
     node_status_condition:
       name: Node Status
@@ -3071,6 +3234,15 @@ monitor_object_metric_group:
     State: State
     Cache: Cache
     Process: Process
+  Haproxy:
+    Session: Session
+    Queue: Queue
+    Traffic: Traffic
+    Request: Request
+    Response: Response
+    Error: Error
+    Server: Server
+    Latency: Latency
   Postgres:
     Connection: Connection
     Query: Query
@@ -3134,6 +3306,7 @@ monitor_object_metric_group:
     Status: Status
     Bandwidth: Bandwidth
     Traffic: Traffic
+    Firewall: Firewall
   VM:
     CPU: CPU
     Memory: Memory
@@ -3222,6 +3395,10 @@ monitor_object_metric_group:
     Packet Loss: Packet Loss
     Bandwidth: Bandwidth
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   ElasticSearch:
     Base: Base
     Node: Node
@@ -3377,6 +3554,128 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the SNMP protocol to regularly collect
       key IF-MIB metrics from switch interfaces, including traffic volume, packet
       loss, and error counts.
+  Switch Cisco SNMP:
+    name: Cisco (Telegraf)
+    desc: Cisco-specific SNMP collection template for switches. In addition to standard
+      IF-MIB interface metrics, it collects Cisco private OIDs for device health
+      including CPU utilization, memory pools, temperature sensors, fan and
+      power-supply status.
+  Switch Huawei SNMP:
+    name: Huawei (Telegraf)
+    desc: Huawei-specific SNMP collection template for switches. In addition to standard
+      IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB)
+      for device health including CPU utilization, memory utilization, temperature
+      sensors and fan status. Huawei reports memory as a utilization percentage
+      directly and this template exposes no power-supply state OID.
+  Switch Aruba SNMP:
+    name: Aruba (Telegraf)
+    desc: Aruba-specific SNMP collection template for switches (ArubaOS-CX). In addition
+      to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for
+      device health including per-module CPU and memory utilization, temperature
+      sensors, fan and power-supply status. Aruba reports memory as a utilization
+      percentage directly; fan/psu states are normalized to the unified 1=normal
+      convention.
+  Switch Juniper SNMP:
+    name: Juniper (Telegraf)
+    desc: Juniper-specific SNMP collection template for switches (Junos). In addition
+      to standard IF-MIB interface metrics, it collects JUNIPER-MIB jnxOperating
+      private OIDs for device health including CPU and memory-buffer utilization,
+      temperature sensors, fan and power-supply status. Juniper reports memory as a
+      utilization percentage directly; the jnxOperatingState of fans/psus is
+      normalized to the unified 1=normal convention.
+  Switch Extreme SNMP:
+    name: Extreme (Telegraf)
+    desc: Extreme Networks-specific SNMP collection template for switches (EXOS). In
+      addition to standard IF-MIB interface metrics, it collects EXTREME-SYSTEM-MIB
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature, fan and power-supply status. Memory utilization is
+      computed as (total - free) / total; fan/psu states are normalized to the
+      unified 1=normal convention.
+  Switch Brocade SNMP:
+    name: Brocade (Telegraf)
+    desc: Brocade/Foundry-specific SNMP collection template for switches
+      (FastIron/NetIron). In addition to standard IF-MIB interface metrics, it
+      collects FOUNDRY-SN-AGENT-MIB private OIDs for device health including
+      1-minute average CPU utilization, dynamic memory utilization, chassis
+      temperature sensors, fan and power-supply status. Brocade reports CPU and
+      memory as utilization percentages directly; fan/psu states are normalized to
+      the unified 1=normal convention.
+  Switch Alcatel-Lucent SNMP:
+    name: Alcatel-Lucent (Telegraf)
+    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
+      switches. In addition to standard IF-MIB interface metrics, it collects
+      TIMETRA-CHASSIS-MIB private OIDs for device health including CPU utilization,
+      system memory pool (used/free bytes), hardware temperature sensors, fan and
+      power-supply status. Memory utilization is computed from used/(used+free);
+      fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal
+      convention.
+  Switch MikroTik SNMP:
+    name: MikroTik (Telegraf)
+    desc: MikroTik (RouterOS)-specific SNMP collection template for switches
+      (currently mounted under the Switch object). In addition to standard IF-MIB
+      interface metrics, it collects HOST-RESOURCES
+      and MIKROTIK-MIB OIDs for device health including per-core CPU utilization,
+      system memory (used/total), and board temperature. MikroTik exposes fan as raw
+      RPM and lacks a standardized power-supply state, so fan/psu health is not
+      collected (N/A). Memory utilization is computed from used/total.
+  Switch D-Link SNMP:
+    name: D-Link (Telegraf)
+    desc: D-Link DES/DGS-specific SNMP collection template for switches (EQUIPMENT-MIB,
+      enterprise 171). In addition to standard IF-MIB interface metrics, it collects
+      D-Link private OIDs for device health including CPU utilization, memory
+      utilization, temperature sensors, fan and power-supply status. D-Link reports
+      CPU and memory as utilization percentages directly; fan status is natively
+      1=normal and power-supply status is normalized to the unified 1=normal
+      convention.
+  Switch Netgear SNMP:
+    name: Netgear (Telegraf)
+    desc: Netgear (FASTPATH)-specific SNMP collection template for switches. In
+      addition to standard IF-MIB interface metrics, it collects FASTPATH-BOXSERVICES
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature sensors, fan and power-supply status. Memory
+      utilization is computed as (total - free) / total; fan and power-supply states
+      are natively 1=normal.
+  Switch TP-Link SNMP:
+    name: TP-Link (Telegraf)
+    desc: TP-Link (JetStream)-specific SNMP collection template for switches (TPLINK
+      private MIB, enterprise 11863). In addition to standard IF-MIB interface
+      metrics, it collects TP-Link private OIDs for device health including CPU and
+      memory utilization, both reported directly as percentages. TP-Link SMB switches
+      expose no temperature/fan/power-supply sensors, so those health items are not
+      collected (N/A).
+  Switch Zyxel SNMP:
+    name: Zyxel (Telegraf)
+    desc: Zyxel-specific SNMP collection template for switches (ZYXEL private MIB,
+      enterprise 890). In addition to standard IF-MIB interface metrics, it collects
+      Zyxel private OIDs for device health including CPU utilization (direct
+      percentage) and hardware temperature sensors. Zyxel exposes fan as raw RPM (not
+      a state) and this switch line has no memory-utilization or power-supply-state
+      OID, so those health items are not collected (N/A).
+  Switch QTech SNMP:
+    name: QTech (Telegraf)
+    desc: QTech (QSW)-specific SNMP collection template for switches (QTECH-MIB,
+      enterprise 27514). In addition to standard IF-MIB interface metrics, it collects
+      QTech private OIDs for device health including CPU utilization, system memory
+      (used/total), temperature, fan and power-supply status. Memory utilization is
+      computed from used/total; fan/psu states (native 0=normal) are normalized to
+      the unified 1=normal convention.
+  Switch Dell Force10 SNMP:
+    name: Dell Force10 (Telegraf)
+    desc: Dell Force10 (S-Series)-specific SNMP collection template for switches
+      (F10-S-SERIES-CHASSIS-MIB, enterprise 6027). In addition to standard IF-MIB
+      interface metrics, it collects Dell Force10 private OIDs for device health
+      including per-processor CPU and memory utilization, per-stack-unit temperature,
+      fan-tray and power-supply status. CPU and memory are reported directly as
+      percentages; fan/psu states are normalized to the unified 1=normal convention.
+  Switch HP ProCurve SNMP:
+    name: HP ProCurve (Telegraf)
+    desc: HP ProCurve / HP Networking-specific SNMP collection template for switches
+      (HP-ICF MIBs). In addition to standard IF-MIB interface metrics, it collects HP
+      private OIDs for device health including CPU utilization and system memory
+      (used/total). Temperature and fan/power-supply state live in HP's shared
+      ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering,
+      which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory
+      utilization is computed from used/total.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
@@ -3449,6 +3748,13 @@ monitor_object_plugin:
       key IF-MIB metrics from firewall interfaces, including traffic volume, packet
       loss, and error counts.
     name: Firewall General (Telegraf)
+  Firewall Fortinet SNMP:
+    name: Fortinet (Telegraf)
+    desc: Fortinet-specific SNMP collection template for FortiGate firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      FORTINET-FORTIGATE-MIB private OIDs for device health (CPU and memory utilization,
+      total memory) and firewall-specific state (IPv4 active sessions, active IPsec
+      VPN tunnels and HA mode). Memory is reported directly as a utilization percentage.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
@@ -3498,6 +3804,9 @@ monitor_object_plugin:
     name: Apache(Telegraf)
     desc: Through the Telegraf collector, regularly collect Apache metrics including
       uptime, resource utilization, request processing efficiency, and bandwidth usage.
+  Haproxy:
+    name: Haproxy(Telegraf)
+    desc: Based on the Telegraf haproxy input, periodically collects HAProxy frontend, backend, and server runtime data including sessions, queues, traffic, HTTP responses, errors, server health, and latency.
   Hardware Server IPMI:
     name: Physical Server IPMI General(Telegraf)
     desc: Through the Telegraf collector, utilize the IPMI protocol to regularly collect
@@ -3573,6 +3882,7 @@ monitor_object_plugin:
 monitor_object:
   Dameng: Dameng Database
   Apache: Apache
+  Haproxy: Haproxy
   Firewall: Firewall
   Docker: Docker
   Scanning Device: Scanning Device

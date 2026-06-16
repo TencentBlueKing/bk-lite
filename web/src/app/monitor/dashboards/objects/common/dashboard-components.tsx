@@ -572,6 +572,8 @@ export interface DashboardShellProps {
   dashboard: ReturnType<typeof useSimpleDashboardData>;
   /** Dashboard content (only shown in dashboard display mode). */
   dashboardContent: React.ReactNode;
+  /** 可选品牌标签（如 'Cisco'）：共享对象仪表盘按实例品牌在头部高亮显示，便于辨认当前盘属于哪个品牌。 */
+  brandLabel?: string;
   styles: DashboardStyles;
 }
 
@@ -582,6 +584,7 @@ export interface DashboardShellProps {
 export const DashboardShell = ({
   dashboard,
   dashboardContent,
+  brandLabel,
   styles
 }: DashboardShellProps) => (
   <div className={styles.page}>
@@ -601,9 +604,16 @@ export const DashboardShell = ({
         />
         <DashboardInstanceCard
           instanceName={dashboard.resolvedInstanceName}
-          metaItems={dashboard.objectMetaItems.map((item, index) => (
-            <span key={index} className={styles.instanceMetaInline}>{item}</span>
-          ))}
+          metaItems={[
+            ...(brandLabel
+              ? [
+                <span key="brand" className={styles.instanceMetaInline}>{brandLabel}</span>
+              ]
+              : []),
+            ...dashboard.objectMetaItems.map((item, index) => (
+              <span key={index} className={styles.instanceMetaInline}>{item}</span>
+            ))
+          ]}
           icon={<DatabaseOutlined />}
           selectorValue={dashboard.instanceSelectValue}
           selectorLoading={dashboard.instanceLoading}

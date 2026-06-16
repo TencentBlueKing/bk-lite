@@ -16,6 +16,7 @@ import IpRangeInput from '@/app/cmdb/components/ipInput';
 import { useCommon } from '@/app/cmdb/context/common';
 import { FieldModalRef } from '@/app/cmdb/types/assetManage';
 import { useTranslation } from '@/utils/i18n';
+import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { ModelItem } from '@/app/cmdb/types/autoDiscovery';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useAssetManageStore } from '@/app/cmdb/store';
@@ -23,7 +24,7 @@ import { useUserInfoContext } from '@/context/userInfo';
 
 import {
   CYCLE_OPTIONS,
-  NETWORK_DEVICE_OPTIONS,
+  getNetworkDeviceOptions,
   createTaskValidationRules,
 } from '@/app/cmdb/constants/professCollection';
 
@@ -143,6 +144,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
     const instanceModelId = targetModelId || modelId;
     const normalizedTaskType = taskType || nodeId || '';
     const { t } = useTranslation();
+    const guardClose = useUnsavedConfirm();
     const instanceApi = useInstanceApi();
     const collectApi = useCollectApi();
     const modelApi = useModelApi();
@@ -183,7 +185,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
       total: 0,
     });
     const dropdownItems = {
-      items: NETWORK_DEVICE_OPTIONS,
+      items: getNetworkDeviceOptions(t),
     };
 
     const normalizeOrganizationValue = useCallback((value: any): number[] => {
@@ -317,13 +319,13 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
 
     const instColumns = [
       {
-        title: '实例名',
+        title: t('Collection.instanceName'),
         dataIndex: 'inst_name',
         key: 'inst_name',
         render: (text: any) => text || '--',
       },
       {
-        title: '管理IP',
+        title: t('Collection.manageIp'),
         dataIndex: 'ip_addr',
         key: 'ip_addr',
         render: (text: any) => text || '--',
@@ -1054,7 +1056,10 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           <Button type="primary" htmlType="submit" loading={submitLoading}>
             {submitText || t('Collection.confirm')}
           </Button>
-          <Button onClick={onClose} disabled={submitLoading}>
+          <Button
+            onClick={() => guardClose(form.isFieldsTouched(), onClose)}
+            disabled={submitLoading}
+          >
             {t('Collection.cancel')}
           </Button>
         </div>
@@ -1073,14 +1078,19 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
           }
           width={620}
           open={instVisible}
-          onClose={handleDrawerClose}
+          maskClosable={false}
+          onClose={() => guardClose(selectedRows.length > 0, handleDrawerClose)}
           footer={
             <div style={{ textAlign: 'left' }}>
               <Space>
                 <Button type="primary" onClick={handleDrawerConfirm}>
                   {t('Collection.confirm')}
                 </Button>
-                <Button onClick={handleDrawerClose}>
+                <Button
+                  onClick={() =>
+                    guardClose(selectedRows.length > 0, handleDrawerClose)
+                  }
+                >
                   {t('Collection.cancel')}
                 </Button>
               </Space>

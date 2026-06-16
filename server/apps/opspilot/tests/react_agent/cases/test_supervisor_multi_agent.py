@@ -1,3 +1,4 @@
+import inspect
 import json
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -132,7 +133,6 @@ class TestSubAgentProgress:
 
         node = ToolsNodes()
         # Verify the parameter exists in the signature
-        import inspect
 
         sig = inspect.signature(node.build_react_nodes)
         assert "agent_name" in sig.parameters

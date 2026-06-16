@@ -1,11 +1,14 @@
 """目标管理序列化器"""
 
+from functools import cached_property
+
 from rest_framework import serializers
 
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.serializers import TeamSerializer
-from apps.job_mgmt.constants import CredentialSource, OSType, SSHCredentialType, WinRMTransport
+from apps.job_mgmt.constants import WinRMTransport
 from apps.job_mgmt.models import Target
+from apps.job_mgmt.serializers.validators import validate_manual_credentials
 from apps.node_mgmt.models import CloudRegion
 
 
@@ -24,11 +27,14 @@ class TargetSerializer(TeamSerializer):
     winrm_password = serializers.CharField(write_only=True, required=False, allow_blank=True)
     ssh_key_file = serializers.FileField(write_only=True, required=False, allow_null=True)
 
-    def __init__(self, instance=None, data=None, **kwargs):
-        super().__init__(instance=instance, data=data, **kwargs)
-        # 批量查询云区域名称映射
-        cloud_regions = CloudRegion.objects.all().values("id", "name")
-        self.cloud_region_map = {cr["id"]: cr["name"] for cr in cloud_regions}
+    @cached_property
+    def cloud_region_map(self):
+        """云区域 ID → 名称的映射；首次访问时一次性加载，单实例缓存。
+
+        相较旧实现在 ``__init__`` 中无条件全表加载，仅在序列化时按需读取，
+        校验未调用 ``to_representation`` 的场景（如内部批量 ``is_valid``）零开销。
+        """
+        return {cr["id"]: cr["name"] for cr in CloudRegion.objects.all().values("id", "name")}
 
     def get_cloud_region_name(self, instance):
         """获取云区域名称"""
@@ -41,34 +47,7 @@ class TargetSerializer(TeamSerializer):
         # 更新时跳过凭据验证（如果没有提供相关字段）
         if self.instance:
             return attrs
-
-        os_type = attrs.get("os_type", OSType.LINUX)
-        credential_source = attrs.get("credential_source", CredentialSource.MANUAL)
-
-        if credential_source == CredentialSource.MANUAL:
-            if os_type == OSType.LINUX:
-                if not attrs.get("ssh_user"):
-                    raise serializers.ValidationError({"ssh_user": "Linux目标必须提供SSH用户名"})
-                ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
-                if ssh_credential_type == SSHCredentialType.PASSWORD:
-                    if not attrs.get("ssh_password"):
-                        raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
-                else:
-                    if not attrs.get("ssh_key_file"):
-                        raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须上传SSH密钥文件"})
-            else:
-                if not attrs.get("winrm_user"):
-                    raise serializers.ValidationError({"winrm_user": "Windows目标必须提供WinRM用户名"})
-                if not attrs.get("winrm_password"):
-                    raise serializers.ValidationError({"winrm_password": "Windows目标必须提供WinRM密码"})
-        elif credential_source == CredentialSource.CREDENTIAL:
-            if not attrs.get("credential_id"):
-                raise serializers.ValidationError({"credential_id": "凭据管理方式必须选择凭据"})
-
-        if not attrs.get("cloud_region_id"):
-            raise serializers.ValidationError({"cloud_region_id": "云区域必填"})
-
-        return attrs
+        return validate_manual_credentials(attrs, require_cloud_region=True)
 
     def validate_team(self, value):
         """确保 team 是列表"""
@@ -167,28 +146,5 @@ class TargetTestConnectionSerializer(serializers.Serializer):
 
     def validate(self, attrs):
         """验证测试连接参数"""
-        os_type = attrs.get("os_type", OSType.LINUX)
-        credential_source = attrs.get("credential_source", CredentialSource.MANUAL)
-
-        if credential_source == CredentialSource.MANUAL:
-            if os_type == OSType.LINUX:
-                if not attrs.get("ssh_user"):
-                    raise serializers.ValidationError({"ssh_user": "Linux目标必须提供SSH用户名"})
-                ssh_credential_type = attrs.get("ssh_credential_type", SSHCredentialType.PASSWORD)
-                if ssh_credential_type == SSHCredentialType.PASSWORD:
-                    if not attrs.get("ssh_password"):
-                        raise serializers.ValidationError({"ssh_password": "密码认证方式必须提供SSH密码"})
-                else:
-                    if not attrs.get("ssh_key_file"):
-                        raise serializers.ValidationError({"ssh_key_file": "密钥认证方式必须提供SSH密钥文件"})
-            else:
-                if not attrs.get("winrm_user"):
-                    raise serializers.ValidationError({"winrm_user": "Windows目标必须提供WinRM用户名"})
-                if not attrs.get("winrm_password"):
-                    raise serializers.ValidationError({"winrm_password": "Windows目标必须提供WinRM密码"})
-
-        elif credential_source == CredentialSource.CREDENTIAL:
-            if not attrs.get("credential_id"):
-                raise serializers.ValidationError({"credential_id": "凭据管理方式必须选择凭据"})
-
-        return attrs
+        # cloud_region_id 已通过字段 required=True 校验，这里不再重复
+        return validate_manual_credentials(attrs, require_cloud_region=False)

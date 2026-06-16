@@ -137,8 +137,8 @@ export const useSecurityApi = () => {
     username?: string;
     app?: string;
     action_type?: string;
-    start_time?: string;
-    end_time?: string;
+    operation_time_start?: string;
+    operation_time_end?: string;
     page?: number;
     page_size?: number;
   }): Promise<any> {

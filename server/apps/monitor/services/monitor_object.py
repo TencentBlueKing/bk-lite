@@ -13,8 +13,12 @@ from apps.monitor.models.monitor_object import (
     MonitorInstanceOrganization,
     MonitorObjectType,
 )
+from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.utils.dimension import parse_instance_id
-from apps.monitor.utils.display_fields_metrics import extract_metric_names
+from apps.monitor.utils.display_fields_metrics import (
+    display_field_key,
+    extract_metric_bindings,
+)
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.tasks.grouping_rule import sync_instance_and_group
 
@@ -144,48 +148,119 @@ class MonitorObjectService:
             result.append(MonitorObjectService._serialize_instance_list_item(obj, instance_map, org_map))
 
         if add_metrics and page_size != -1:
-            instance_ids = []
-            for instance_info in result:
-                instance_id = parse_instance_id(instance_info["instance_id"])
-                instance_ids.append(instance_id)
-
-            display_metric_names = extract_metric_names(obj_metric_map.get("display_fields", [])) or obj_metric_map.get(
-                "supplementary_indicators", []
-            )
-            metrics_obj = Metric.objects.filter(
-                monitor_object_id=monitor_object_id,
-                name__in=display_metric_names,
-            )
-            for metric_obj in metrics_obj:
-                query_parts = []
-                for i, key in enumerate(metric_obj.instance_id_keys):
-                    values_set = {re.escape(str(item[i])) for item in instance_ids if len(item) > i and item[i] is not None}
-                    if not values_set:
-                        continue
-                    values = "|".join(values_set)  # 去重并拼接
-                    query_parts.append(f'{key}=~"{values}"')
-
-                query = metric_obj.query
-                query = query.replace("__$labels__", f"{', '.join(query_parts)}")
-                metrics = VictoriaMetricsAPI().query(query)
-                _metric_map = {}
-                for metric in metrics.get("data", {}).get("result", []):
-                    instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
-                    value = metric["value"][1]
-                    if instance_id not in _metric_map:
-                        _metric_map[instance_id] = value
-                    else:
-                        try:
-                            if float(value) > float(_metric_map[instance_id]):
-                                _metric_map[instance_id] = value
-                        except (ValueError, TypeError):
-                            pass
-                for instance in result:
-                    instance[metric_obj.name] = _metric_map.get(instance["instance_id"])
+            MonitorObjectService._fill_display_metrics(monitor_object_id, obj_metric_map, result)
 
         MonitorObjectService.add_attr(result)
 
         return dict(count=count, results=result)
+
+    @staticmethod
+    def _query_metric_values(metric_obj, target_instances):
+        """对 target_instances 跑该指标的 VM 查询,返回 {instance_id: value}(同实例多值取最大)。"""
+        target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
+        query_parts = []
+        for i, key in enumerate(metric_obj.instance_id_keys):
+            values_set = {re.escape(str(item[i])) for item in target_ids if len(item) > i and item[i] is not None}
+            if not values_set:
+                continue
+            # re.escape 的反斜杠需再做一次 PromQL 字符串转义,否则 VM 侧报 invalid syntax
+            values = MonitorObjectService._escape_promql_label_value("|".join(sorted(values_set)))
+            query_parts.append(f'{key}=~"{values}"')
+
+        query = metric_obj.query.replace("__$labels__", f"{', '.join(query_parts)}")
+        metrics = VictoriaMetricsAPI().query(query)
+        value_map = {}
+        for metric in metrics.get("data", {}).get("result", []):
+            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            value = metric["value"][1]
+            if instance_id not in value_map:
+                value_map[instance_id] = value
+            else:
+                try:
+                    if float(value) > float(value_map[instance_id]):
+                        value_map[instance_id] = value
+                except (ValueError, TypeError):
+                    pass
+        return value_map
+
+    @staticmethod
+    def _fill_display_metrics(monitor_object_id, obj_metric_map, result):
+        """按 display_fields 的 (plugin, metric) 绑定回填展示指标值。
+
+        - 回填 key 用复合 key ``<plugin>::<metric>``(见 display_field_key),避免不同插件的同名
+          指标互相覆盖;
+        - 按插件(模板)隔离:只把“采集配置归属该插件”的实例纳入该绑定取数,别的插件的实例该列留空。
+          无采集配置的实例无法判定插件归属,不展示带插件的绑定指标(显示 --)。
+        - 兼容:绑定缺 plugin(遗留配置)时按指标名匹配、不做隔离、用裸指标名回填;display_fields
+          为空时退回 supplementary_indicators(裸指标名,不区分插件)。
+        """
+        bindings = extract_metric_bindings(obj_metric_map.get("display_fields", []))
+
+        if not bindings:
+            supplementary = obj_metric_map.get("supplementary_indicators", [])
+            if not supplementary:
+                return
+            for metric_obj in Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary):
+                value_map = MonitorObjectService._query_metric_values(metric_obj, result)
+                for instance in result:
+                    instance[metric_obj.name] = value_map.get(instance["instance_id"])
+            return
+
+        # 实例 -> 其采集配置覆盖的插件名集合(用于按插件隔离)
+        instance_plugin_map = {}
+        cc_qs = CollectConfig.objects.filter(
+            monitor_instance_id__in=[inst["instance_id"] for inst in result],
+            monitor_plugin__isnull=False,
+        ).values_list("monitor_instance_id", "monitor_plugin__name")
+        for inst_id, plugin_name in cc_qs:
+            instance_plugin_map.setdefault(inst_id, set()).add(plugin_name)
+
+        # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
+        metric_by_plugin = {}
+        metric_by_name = {}
+        for metric_obj in Metric.objects.filter(
+            monitor_object_id=monitor_object_id,
+            name__in=[b["metric"] for b in bindings],
+        ).select_related("monitor_plugin"):
+            plugin_name = metric_obj.monitor_plugin.name if metric_obj.monitor_plugin_id else ""
+            metric_by_plugin[(plugin_name, metric_obj.name)] = metric_obj
+            metric_by_name.setdefault(metric_obj.name, metric_obj)
+
+        # 先把每个绑定解析成 (plugin, metric, metric_obj, eligible)
+        resolved = []
+        for binding in bindings:
+            plugin_name, metric_name = binding["plugin"], binding["metric"]
+            if plugin_name:
+                metric_obj = metric_by_plugin.get((plugin_name, metric_name))
+                eligible = [
+                    inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())
+                ]
+            else:
+                # 遗留绑定无 plugin:按名取任一插件、不隔离,保持旧行为
+                metric_obj = metric_by_name.get(metric_name)
+                eligible = result
+            if not metric_obj or not eligible:
+                continue
+            resolved.append((plugin_name, metric_name, metric_obj, eligible))
+
+        # 按「查询模板 + instance_id_keys」分组合并:同名指标(各品牌 query 相同)只发一次 VM 查询,
+        # 覆盖该组所有 eligible 实例,再按各绑定的插件分发回各自实例,避免 N 个品牌 = N 次串行查询。
+        groups = {}
+        for item in resolved:
+            metric_obj = item[2]
+            group_key = (metric_obj.query, tuple(metric_obj.instance_id_keys))
+            groups.setdefault(group_key, []).append(item)
+
+        for items in groups.values():
+            union = {}
+            for _, _, _, eligible in items:
+                for inst in eligible:
+                    union[inst["instance_id"]] = inst
+            value_map = MonitorObjectService._query_metric_values(items[0][2], list(union.values()))
+            for plugin_name, metric_name, _, eligible in items:
+                out_key = display_field_key(plugin_name, metric_name)
+                for instance in eligible:
+                    instance[out_key] = value_map.get(instance["instance_id"])
 
     @staticmethod
     def _serialize_instance_list_item(obj, instance_map, org_map):
@@ -200,6 +275,11 @@ class MonitorObjectService:
             "fallback_sampling_rate": obj.fallback_sampling_rate,
             "organizations": list(org_map.get(obj.id, [])),
         }
+
+    @staticmethod
+    def _escape_promql_label_value(value):
+        value_str = str(value)
+        return value_str.replace("\\", "\\\\").replace('"', '\\"')
 
     @staticmethod
     def generate_monitor_instance_id(monitor_object_id, monitor_instance_name, interval):

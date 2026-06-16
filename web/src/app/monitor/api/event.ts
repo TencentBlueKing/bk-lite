@@ -46,6 +46,10 @@ const useEventApi = () => {
     return await post('/monitor/api/monitor_policy/template/', params, config);
   };
 
+  const bulkCreatePoliciesFromTemplates = async (data: Record<string, unknown>) => {
+    return await post('/monitor/api/monitor_policy/bulk_create_from_templates/', data);
+  };
+
   const getSystemChannelList = async () => {
     return await get('/monitor/api/system_mgmt/search_channel_list/');
   };
@@ -90,6 +94,7 @@ const useEventApi = () => {
     getEventRaw,
     getMonitorPolicy,
     getPolicyTemplate,
+    bulkCreatePoliciesFromTemplates,
     getSystemChannelList,
     patchMonitorPolicy,
     deleteMonitorPolicy,

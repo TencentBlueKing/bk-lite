@@ -94,9 +94,25 @@ export interface InstallerProgressSummary {
   step_total?: number;
 }
 
+export interface InstallerEventSummary {
+  state?: string;
+  expected_steps?: InstallerStepCode[];
+  expected_count?: number;
+  observed_count?: number;
+  completed_steps?: InstallerStepCode[];
+  completed_count?: number;
+  missing_steps?: InstallerStepCode[];
+  duplicate_count?: number;
+  last_step?: InstallerStepCode | null;
+  last_status?: InstallerTaskStatus | null;
+  anomalies?: string[];
+  steps?: LogStep[];
+}
+
 export interface OperationTaskResult {
   steps?: LogStep[];
   installer_progress?: InstallerProgressSummary;
+  installer_summary?: InstallerEventSummary;
   failure?: InstallerFailure;
 }
 

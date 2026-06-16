@@ -134,7 +134,7 @@ class ImportService:
 
         transaction.set_rollback(True)
         summary = self._build_summary()
-        logger.warning(f"Import rolled back due to failed items: {summary}")
+        logger.warning("[CanvasImport] 存在导入失败项，事务已回滚：%s", summary)
         return {
             "success": False,
             "results": self.results,
@@ -466,11 +466,12 @@ class ImportService:
             }
         """
         logger.info(
-            f"Starting import: {len(self.doc.namespaces)} namespaces, "
-            f"{len(self.doc.datasources)} datasources, "
-            f"{len(self.doc.dashboards)} dashboards, "
-            f"{len(self.doc.topologies)} topologies, "
-            f"{len(self.doc.architectures)} architectures"
+            "[CanvasImport] 开始导入：命名空间 %s、数据源 %s、仪表盘 %s、拓扑 %s、架构 %s",
+            len(self.doc.namespaces),
+            len(self.doc.datasources),
+            len(self.doc.dashboards),
+            len(self.doc.topologies),
+            len(self.doc.architectures),
         )
 
         try:
@@ -511,7 +512,7 @@ class ImportService:
             # 统计结果
             summary = self._build_summary()
 
-            logger.info(f"Import completed: {summary}")
+            logger.info("[CanvasImport] 导入完成：%s", summary)
 
             return {
                 "success": summary["failed"] == 0,
@@ -520,7 +521,7 @@ class ImportService:
             }
 
         except Exception as e:
-            logger.error(f"Import failed with exception: {e}")
+            logger.error("[CanvasImport] 导入过程异常中断：%s", e, exc_info=True)
             raise
 
     def _build_summary(self) -> dict:

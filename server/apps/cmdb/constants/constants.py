@@ -50,6 +50,16 @@ MODEL_ASSOCIATION = "model_association"
 # 实例关联标签
 INSTANCE_ASSOCIATION = "instance_association"
 
+# 拓扑主题：模型 -> 可用主题。network 主题表示「网络拓扑」视图
+TOPO_THEME_NETWORK = "network"
+# 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
+NETWORK_INTERFACE_MODEL = "interface"
+NETWORK_INTERFACE_BELONG_ASST = "belong"
+# 网络拓扑展开策略：默认展开 2 跳，最多 4 跳，节点上限 100（超出截断并提示，不静默丢弃）
+NETWORK_TOPO_DEFAULT_HOP = 2
+NETWORK_TOPO_MAX_HOP = 4
+NETWORK_TOPO_NODE_LIMIT = 100
+
 
 class ModelConstraintKey(BaseEnum):
     """模型约束键"""
@@ -377,6 +387,16 @@ COLLECT_OBJ_TREE = [
                 "encrypted_fields": ["password"],
             },
             {
+                "id": "influxdb",
+                "model_id": "influxdb",
+                "name": "【BETA】InfluxDB",
+                "task_type": CollectPluginTypes.PROTOCOL,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "HTTP", "Beta"],
+                "desc": "采集InfluxDB关键配置信息（兼容1.x/2.x，优先2.x）",
+                "encrypted_fields": ["password", "token"],
+            },
+            {
                 "id": "postgresql",
                 "model_id": "postgresql",
                 "name": "PostgreSQL",
@@ -449,6 +469,22 @@ COLLECT_OBJ_TREE = [
         ],
     },
     {
+        "id": "storage_device",
+        "name": "存储设备",
+        "children": [
+            {
+                "id": "storage",
+                "model_id": "storage",
+                "name": "【BETA】华为存储",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "HTTPS", "Beta"],
+                "desc": "采集华为 OceanStor 存储设备及其存储池、磁盘、卷（LUN）",
+                "encrypted_fields": ["password"],
+            },
+        ],
+    },
+    {
         "id": "cloud",
         "name": "云平台",
         "children": [
@@ -470,6 +506,56 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.PROTOCOL,
                 "tag": ["SDK"],
                 "desc": "采集腾讯云账户下CVM、VPC、云数据库等资产清单",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "hwcloud",
+                "model_id": "hwcloud",
+                "name": "华为云【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集华为云平台及其下 ECS 等资产清单",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "manageone",
+                "model_id": "manageone",
+                "name": "ManageOne【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集 ManageOne 平台及其下云平台、云服务器、宿主机、数据存储、负载均衡",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "openstack",
+                "model_id": "openstack",
+                "name": "OpenStack【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集 OpenStack 平台及其下节点、虚拟机、卷组、存储池",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "smartx",
+                "model_id": "smartx",
+                "name": "SmartX【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集 SmartX 平台及其下集群、物理机、虚拟机、虚拟卷",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "fusioninsight",
+                "model_id": "fusioninsight",
+                "name": "FusionInsight【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集 FusionInsight 平台及其下集群、主机",
                 "encrypted_fields": ["accessKey", "accessSecret"],
             },
         ],
@@ -533,6 +619,16 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.JOB,
                 "tag": ["JOB", "Linux"],
                 "desc": "发现与采集Nginx基础配置信息",
+                "encrypted_fields": ["password"],
+            },
+            {
+                "id": "minio",
+                "model_id": "minio",
+                "name": "【BETA】MinIO",
+                "task_type": CollectPluginTypes.MIDDLEWARE,
+                "type": CollectDriverTypes.JOB,
+                "tag": ["JOB", "Linux", "Beta"],
+                "desc": "发现与采集MinIO对象存储的基础配置信息",
                 "encrypted_fields": ["password"],
             },
             {
@@ -734,6 +830,16 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.JOB,
                 "tag": ["JOB", "Linux", "Beta"],
                 "desc": "发现与采集HAProxy基础配置信息",
+                "encrypted_fields": ["password"],
+            },
+            {
+                "id": "keepalive",
+                "model_id": "keepalive",
+                "name": "KeepAlive【beta】",
+                "task_type": CollectPluginTypes.MIDDLEWARE,
+                "type": CollectDriverTypes.JOB,
+                "tag": ["JOB", "Linux", "Beta"],
+                "desc": "采集 KeepAlive 实例的 IP、端口、版本、优先级、状态、虚拟路由 ID 等信息",
                 "encrypted_fields": ["password"],
             },
             {

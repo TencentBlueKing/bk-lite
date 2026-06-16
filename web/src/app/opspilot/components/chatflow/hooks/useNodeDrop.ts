@@ -115,7 +115,25 @@ export const useNodeDrop = ({
         };
 
         setNodes((nds) => {
-          const updatedNodes = nds.concat(newNode);
+          let nodeToAdd = newNode;
+          // nats 触发节点多次拖出时自动改名（NATS触发、NATS触发 1…），
+          // 保证后端按「BOT名 - 节点名」生成的通道名不冲突
+          if (type === 'nats') {
+            const baseLabel = getNodeLabel('nats');
+            const existingLabels = new Set(
+              nds
+                .filter((n) => n.type === 'nats')
+                .map((n) => (n.data as ChatflowNodeData | undefined)?.label)
+            );
+            let uniqueLabel = baseLabel;
+            let suffix = 1;
+            while (existingLabels.has(uniqueLabel)) {
+              uniqueLabel = `${baseLabel} ${suffix}`;
+              suffix += 1;
+            }
+            nodeToAdd = { ...newNode, data: { ...newNode.data, label: uniqueLabel } };
+          }
+          const updatedNodes = nds.concat(nodeToAdd);
 
           if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
           saveTimerRef.current = setTimeout(() => {

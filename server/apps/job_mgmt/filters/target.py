@@ -12,7 +12,6 @@ class TargetFilter(filters.FilterSet):
     ip = filters.CharFilter(field_name="ip", lookup_expr="icontains")
     os_type = filters.CharFilter(field_name="os_type", lookup_expr="exact")
     driver = filters.CharFilter(field_name="driver", lookup_expr="exact")
-    source = filters.CharFilter(field_name="source", lookup_expr="exact")
     node_id = filters.CharFilter(field_name="node_id", lookup_expr="exact")
     cloud_region_id = filters.NumberFilter(field_name="cloud_region_id", lookup_expr="exact")
     credential_source = filters.CharFilter(field_name="credential_source", lookup_expr="exact")
@@ -25,7 +24,6 @@ class TargetFilter(filters.FilterSet):
             "ip",
             "os_type",
             "driver",
-            "source",
             "node_id",
             "cloud_region_id",
             "credential_source",

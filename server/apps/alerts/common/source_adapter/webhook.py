@@ -31,7 +31,7 @@ class WebhookAdapter(AlertSourceAdapter):
 
             return self._transform_alert_to_event(data)
         except Exception as e:
-            logger.error(f"Failed to process webhook request: {e}")
+            logger.error("[AlertSource] 处理 webhook 请求失败: %s", e, exc_info=True)
             raise
 
     def test_connection(self) -> bool:

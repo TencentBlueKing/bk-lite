@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="brocadeOrange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f7901e"/>
+      <stop offset="1" stop-color="#d96a0b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#brocadeOrange)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M38 40 L58 40 C66 40 66 54 58 54 L38 54 L58 54 C68 54 68 70 58 70 L38 70 Z"/>
+    <circle cx="80" cy="55" r="9"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#ffffff" letter-spacing="1">BROCADE</text>
+</svg>

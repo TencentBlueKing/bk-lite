@@ -46,7 +46,7 @@ class AlertRecoveryChecker:
         all_events = list(alert.events.select_related('source').all())
         
         if not all_events:
-            logger.debug(f"Alert {alert.alert_id} 没有关联事件")
+            logger.debug("[AlertRecovery] Alert %s 没有关联事件", alert.alert_id)
             return False
         
         # 2. 按 action 分组，构建索引
@@ -61,7 +61,7 @@ class AlertRecoveryChecker:
                     recovery_by_external_id[event.external_id].append(event)
         # 3. 如果没有 CREATED 事件，无需恢复
         if not created_events and recovery_by_external_id.keys().__len__() == 0:
-            logger.debug(f"Alert {alert.alert_id} 没有 CREATED 事件和 恢复事件，无需恢复")
+            logger.debug("[AlertRecovery] Alert %s 没有 CREATED 事件和 恢复事件，无需恢复", alert.alert_id)
             return False
         
         # 4. 检查每个 CREATED 事件是否都被恢复
@@ -73,8 +73,8 @@ class AlertRecoveryChecker:
             if not external_id:
                 # CREATED 事件没有 external_id，无法判断恢复状态
                 logger.warning(
-                    f"Alert {alert.alert_id} 的 CREATED 事件 {created_event.event_id} "
-                    f"缺少 external_id，无法判断恢复状态"
+                    "[AlertRecovery] Alert %s 的 CREATED 事件 %s 缺少 external_id，无法判断恢复状态",
+                    alert.alert_id, created_event.event_id,
                 )
                 unrecovered_events.append(created_event)
                 continue
@@ -96,9 +96,11 @@ class AlertRecoveryChecker:
         # 5. 如果还有未恢复的 CREATED 事件，保持 Alert 活跃
         if unrecovered_events:
             logger.debug(
-                f"Alert {alert.alert_id} 还有 {len(unrecovered_events)} 个未恢复的 CREATED 事件，"
-                f"external_ids: {[e.external_id for e in unrecovered_events[:3]]}"
-                f"{'...' if len(unrecovered_events) > 3 else ''}"
+                "[AlertRecovery] Alert %s 还有 %s 个未恢复的 CREATED 事件，external_ids: %s%s",
+                alert.alert_id,
+                len(unrecovered_events),
+                [e.external_id for e in unrecovered_events[:3]],
+                "..." if len(unrecovered_events) > 3 else "",
             )
             return False
         
@@ -110,15 +112,14 @@ class AlertRecoveryChecker:
             alert.session_status = SessionStatus.RECOVERED
             alert.save(update_fields=['status', 'session_status', 'updated_at'])
             logger.info(
-                f"会话 Alert {alert.alert_id} 已自动恢复 "
-                f"(session_status={SessionStatus.RECOVERED}, "
-                f"CREATED 事件数={len(created_events)})"
+                "[AlertRecovery] 会话 Alert %s 已自动恢复 (session_status=%s, CREATED 事件数=%s)",
+                alert.alert_id, SessionStatus.RECOVERED, len(created_events),
             )
         else:
             alert.save(update_fields=['status', 'updated_at'])
             logger.info(
-                f"Alert {alert.alert_id} 已自动恢复 "
-                f"(CREATED 事件数={len(created_events)})"
+                "[AlertRecovery] Alert %s 已自动恢复 (CREATED 事件数=%s)",
+                alert.alert_id, len(created_events),
             )
 
         from apps.alerts.service.reminder_service import ReminderService

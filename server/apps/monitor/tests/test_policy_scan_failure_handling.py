@@ -248,11 +248,249 @@ def _install_monitor_policy_view_dependencies(monkeypatch):
     _install_module(monkeypatch, "apps.monitor.models", PolicyOrganization=object, MonitorAlert=object)
     _install_module(monkeypatch, "apps.monitor.models.monitor_policy", MonitorPolicy=_ImportMonitorPolicy)
     _install_module(monkeypatch, "apps.monitor.serializers.monitor_policy", MonitorPolicySerializer=object)
-    _install_module(monkeypatch, "apps.monitor.services.alert_lifecycle_notify", AlertLifecycleNotifier=object)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.alert_lifecycle_notify",
+        AlertLifecycleNotifier=object,
+        NOTIFY_SCOPE_ALERT_CENTER_ONLY="alert_center_only",
+        NOTIFY_SCOPE_ALL_CONFIGURED="all_configured",
+    )
     _install_module(monkeypatch, "apps.monitor.services.policy", PolicyService=object)
     _install_module(monkeypatch, "apps.monitor.services.policy_baseline", PolicyBaselineService=object)
     _install_module(monkeypatch, "apps.monitor.utils.pagination", parse_page_params=lambda *args, **kwargs: (1, 10))
     _install_module(monkeypatch, "config.drf.pagination", CustomPageNumberPagination=object)
+
+
+def _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls):
+    class _ChannelQuerySet:
+        def __init__(self, channel):
+            self.channel = channel
+
+        def first(self):
+            return self.channel
+
+    class Channel:
+        class objects:
+            @staticmethod
+            def filter(id):
+                return _ChannelQuerySet(channels_by_id.get(id))
+
+    class SystemMgmtUtils:
+        @staticmethod
+        def send_msg_with_channel(channel_id, title, content, notice_users):
+            send_calls.append(
+                {
+                    "channel_id": channel_id,
+                    "title": title,
+                    "content": content,
+                    "notice_users": notice_users,
+                }
+            )
+            return {"result": True}
+
+    class MonitorAlert:
+        class objects:
+            @staticmethod
+            def bulk_update(alerts, fields):
+                send_calls.append({"bulk_update": [alert.id for alert in alerts], "fields": fields})
+
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+    _install_module(monkeypatch, "apps.monitor.utils.system_mgmt_api", SystemMgmtUtils=SystemMgmtUtils)
+    _install_module(monkeypatch, "apps.system_mgmt.models", Channel=Channel)
+    _install_module(monkeypatch, "apps.monitor.models", MonitorAlert=MonitorAlert)
+
+    return _load_module(
+        "alert_lifecycle_notifier_scope_test_module",
+        Path(__file__).resolve().parents[1] / "services" / "alert_lifecycle_notify.py",
+    )
+
+
+def _build_alert_for_notify_scope(notice_type_ids):
+    return types.SimpleNamespace(
+        id=9001,
+        policy_id=42,
+        notice_type_ids=notice_type_ids,
+        notice_users=["alice"],
+        notice_logs=[],
+        start_event_time=datetime(2026, 4, 21, 7, 59, tzinfo=timezone.utc),
+        end_event_time=_FrozenDateTime.fixed_now,
+        monitor_instance_id="('host-1',)",
+        monitor_instance_name="host-1",
+        metric_instance_id="('host-1', '/data')",
+        dimensions={"instance_id": "host-1", "mountpoint": "/data"},
+        level="warning",
+        value=91.2,
+        content="disk usage high",
+        status="closed",
+    )
+
+
+def _build_alert_for_notice_disabled_continuation(notice_type_ids, notice_logs):
+    alert = _build_alert_for_notify_scope(notice_type_ids)
+    alert.notice_logs = notice_logs
+    return alert
+
+
+def test_alert_lifecycle_notifier_alert_center_scope_only_sends_alert_center_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        1: types.SimpleNamespace(id=1, name="alert-center", channel_type="nats", config={"method_name": "receive_alert_events"}),
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notify_scope([1, 2])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=True)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts(
+        [alert],
+        action="closed",
+        operator="alice",
+        reason="policy_scope_changed",
+        notify_scope="alert_center_only",
+    )
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [1]
+    assert channel_send_calls[0]["title"] == ""
+    assert channel_send_calls[0]["content"]["events"][0]["labels"]["reason"] == "policy_scope_changed"
+    assert alert.notice_logs[-1]["channel_id"] == 1
+    assert {"bulk_update": [alert.id], "fields": ["notice_logs"]} in send_calls
+
+
+def test_alert_lifecycle_notifier_alert_center_scope_skips_when_only_normal_channels_are_configured(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notify_scope([2])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=True)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts(
+        [alert],
+        action="closed",
+        operator="alice",
+        reason="policy_scope_changed",
+        notify_scope="alert_center_only",
+    )
+
+    assert send_calls == []
+    assert alert.notice_logs == []
+
+
+def test_alert_lifecycle_notifier_notice_disabled_created_sends_nothing(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation([2], [])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="created")
+
+    assert send_calls == []
+    assert alert.notice_logs == []
+
+
+def test_alert_lifecycle_notifier_notice_disabled_recovered_uses_successful_created_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [2],
+        [{"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": True}],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="recovered", operator="system", reason="auto_recovered")
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [2]
+    assert channel_send_calls[0]["notice_users"] == ["alice"]
+    assert alert.notice_logs[-1]["action"] == "recovered"
+
+
+def test_alert_lifecycle_notifier_notice_disabled_closed_skips_without_successful_created_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    created_log = {"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": False}
+    alert = _build_alert_for_notice_disabled_continuation([2], [created_log])
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="closed", operator="alice", reason="policy_disabled")
+
+    assert send_calls == []
+    assert alert.notice_logs == [created_log]
+
+
+def test_alert_lifecycle_notifier_notice_disabled_upgraded_skips_normal_channel(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [2],
+        [{"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": True}],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="upgraded")
+
+    assert send_calls == []
+
+
+def test_alert_lifecycle_notifier_notice_disabled_upgraded_sends_alert_center_with_successful_created(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        1: types.SimpleNamespace(id=1, name="alert-center", channel_type="nats", config={"method_name": "receive_alert_events"}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [1],
+        [{"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 1, "success": True}],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts([alert], action="upgraded")
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [1]
+    assert channel_send_calls[0]["title"] == ""
+
+
+def test_alert_lifecycle_notifier_notice_disabled_alert_center_scope_requires_successful_alert_center_created(monkeypatch):
+    send_calls = []
+    channels_by_id = {
+        1: types.SimpleNamespace(id=1, name="alert-center", channel_type="nats", config={"method_name": "receive_alert_events"}),
+        2: types.SimpleNamespace(id=2, name="wechat", channel_type="wechat", config={}),
+    }
+    module = _load_alert_lifecycle_notifier_module(monkeypatch, channels_by_id, send_calls)
+    alert = _build_alert_for_notice_disabled_continuation(
+        [1, 2],
+        [
+            {"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 1, "success": True},
+            {"time": "2026-04-21T08:00:00+00:00", "action": "created", "channel_id": 2, "success": True},
+        ],
+    )
+    policy = types.SimpleNamespace(id=42, name="Disk Policy", notice=False)
+
+    module.AlertLifecycleNotifier(policy).notify_alerts(
+        [alert],
+        action="closed",
+        operator="alice",
+        reason="policy_scope_changed",
+        notify_scope="alert_center_only",
+    )
+
+    channel_send_calls = [call for call in send_calls if "channel_id" in call]
+    assert [call["channel_id"] for call in channel_send_calls] == [1]
 
 
 def test_monitor_policy_baseline_refreshes_when_grouping_contract_changes(monkeypatch):
@@ -362,6 +600,7 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
         end_event_time=None,
         operator="",
         operation_logs=[],
+        alert_center_notified=True,
     )
     recovered_no_data_alert = types.SimpleNamespace(
         status="recovered",
@@ -417,8 +656,8 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
         def __init__(self, policy_obj):
             self.policy_obj = policy_obj
 
-        def notify_alerts(self, alerts, action, operator="", reason=""):
-            lifecycle_calls.append((alerts, action, operator, reason))
+        def notify_alerts(self, alerts, action, operator="", reason="", notify_scope="all_configured"):
+            lifecycle_calls.append((alerts, action, operator, reason, notify_scope))
 
     module.MonitorPolicy = MonitorPolicy
     module.MonitorAlert = MonitorAlert
@@ -439,9 +678,158 @@ def test_monitor_policy_disabling_no_data_closes_only_active_no_data_alerts(monk
     assert active_no_data_alert.operation_logs[-1]["reason"] == "no_data_disabled"
     assert recovered_no_data_alert.status == "recovered"
     assert active_threshold_alert.status == "new"
-    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs"])]
-    assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled")]
+    assert bulk_updates == [([active_no_data_alert], ["status", "end_event_time", "operator", "operation_logs", "alert_center_notified"])]
+    assert lifecycle_calls == [([active_no_data_alert], "closed", "alice", "no_data_disabled", "all_configured")]
     assert baseline_calls == [("clear", policy.id)]
+
+
+class _AlertQuerySet(list):
+    pass
+
+
+def test_monitor_policy_source_change_closes_active_threshold_alerts_with_alert_center_only_scope(monkeypatch):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_scope_change_close_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    policy = types.SimpleNamespace(id=42)
+    active_threshold_alert = types.SimpleNamespace(
+        id=501,
+        status="new",
+        alert_type="alert",
+        end_event_time=None,
+        operator="",
+        operation_logs=[],
+    )
+    active_no_data_alert = types.SimpleNamespace(id=502, status="new", alert_type="no_data", operation_logs=[])
+    filter_calls = []
+    bulk_updates = []
+    lifecycle_calls = []
+
+    class MonitorAlert:
+        class objects:
+            @staticmethod
+            def filter(**kwargs):
+                filter_calls.append(kwargs)
+                return _AlertQuerySet([active_threshold_alert])
+
+            @staticmethod
+            def bulk_update(alerts, fields):
+                bulk_updates.append((alerts, fields))
+
+    class AlertLifecycleNotifier:
+        def __init__(self, policy_obj):
+            self.policy_obj = policy_obj
+
+        def notify_alerts(self, alerts, action, operator="", reason="", notify_scope="all_configured"):
+            lifecycle_calls.append((alerts, action, operator, reason, notify_scope))
+
+    module.MonitorAlert = MonitorAlert
+    module.AlertLifecycleNotifier = AlertLifecycleNotifier
+    module.datetime = _FrozenDateTime
+
+    old_state = {
+        "source": {"type": "instance", "values": ["('host-1',)"]},
+        "group_by": ["instance_id"],
+        "query_condition": {"metric_id": 10},
+        "monitor_object": 3,
+        "collect_type": "host",
+    }
+    updated_policy = types.SimpleNamespace(
+        id=42,
+        source={"type": "instance", "values": ["('host-2',)"]},
+        group_by=["instance_id"],
+        query_condition={"metric_id": 10},
+        monitor_object_id=3,
+        collect_type="host",
+    )
+
+    module.MonitorPolicyViewSet().close_active_threshold_alerts_for_policy_config_change(
+        policy,
+        old_state,
+        updated_policy,
+        operator="alice",
+    )
+
+    assert filter_calls == [{"policy_id": policy.id, "alert_type": "alert", "status": "new"}]
+    assert active_threshold_alert.status == "closed"
+    assert active_threshold_alert.end_event_time == _FrozenDateTime.fixed_now
+    assert active_threshold_alert.operator == "alice"
+    assert active_threshold_alert.operation_logs[-1]["reason"] == "policy_scope_changed"
+    assert active_no_data_alert.status == "new"
+    assert bulk_updates == [([active_threshold_alert], ["status", "end_event_time", "operator", "operation_logs"])]
+    assert lifecycle_calls == [([active_threshold_alert], "closed", "alice", "policy_scope_changed", "alert_center_only")]
+
+
+@pytest.mark.parametrize(
+    ("old_state", "updated_policy", "expected_reason"),
+    [
+        (
+            {
+                "source": {"type": "instance", "values": ["('host-1',)"]},
+                "group_by": ["instance_id", "mountpoint"],
+                "query_condition": {"metric_id": 10},
+                "monitor_object": 3,
+                "collect_type": "host",
+            },
+            types.SimpleNamespace(
+                id=42,
+                source={"type": "instance", "values": ["('host-1',)"]},
+                group_by=["instance_id"],
+                query_condition={"metric_id": 10},
+                monitor_object_id=3,
+                collect_type="host",
+            ),
+            "policy_group_by_changed",
+        ),
+        (
+            {
+                "source": {"type": "instance", "values": ["('host-1',)"]},
+                "group_by": ["instance_id"],
+                "query_condition": {"metric_id": 10, "filter": [{"key": "mountpoint", "value": "/data"}]},
+                "monitor_object": 3,
+                "collect_type": "host",
+            },
+            types.SimpleNamespace(
+                id=42,
+                source={"type": "instance", "values": ["('host-1',)"]},
+                group_by=["instance_id"],
+                query_condition={"metric_id": 10, "filter": [{"key": "mountpoint", "value": "/"}]},
+                monitor_object_id=3,
+                collect_type="host",
+            ),
+            "policy_query_condition_changed",
+        ),
+        (
+            {
+                "source": {"type": "instance", "values": ["('host-1',)"]},
+                "group_by": ["instance_id"],
+                "query_condition": {"metric_id": 10},
+                "monitor_object": 3,
+                "collect_type": "host",
+            },
+            types.SimpleNamespace(
+                id=42,
+                source={"type": "instance", "values": ["('host-1',)"]},
+                group_by=["instance_id"],
+                query_condition={"metric_id": 10},
+                monitor_object_id=4,
+                collect_type="http",
+            ),
+            "policy_monitor_target_changed",
+        ),
+    ],
+)
+def test_monitor_policy_config_change_reason_priority(monkeypatch, old_state, updated_policy, expected_reason):
+    _install_monitor_policy_view_dependencies(monkeypatch)
+    module = _load_module(
+        "monitor_policy_view_change_reason_test_module",
+        Path(__file__).resolve().parents[1] / "views" / "monitor_policy.py",
+    )
+
+    assert module.MonitorPolicyViewSet().get_policy_config_change_reason(old_state, updated_policy) == expected_reason
 
 
 def _install_scanner_dependencies(monkeypatch):
@@ -610,6 +998,19 @@ def test_threshold_event_does_not_reuse_active_no_data_alert(monkeypatch):
     )
     _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
 
+    class _Atomic:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    _install_module(
+        monkeypatch,
+        "django.db",
+        transaction=types.SimpleNamespace(atomic=lambda *a, **k: _Atomic(), on_commit=lambda cb: cb()),
+    )
+
     module = _load_module(
         "monitor_policy_event_alert_manager_key_test_module",
         Path(__file__).resolve().parents[1] / "tasks" / "services" / "policy_scan" / "event_alert_manager.py",
@@ -632,7 +1033,7 @@ def test_threshold_event_does_not_reuse_active_no_data_alert(monkeypatch):
     existing_updates = []
 
     manager = object.__new__(module.EventAlertManager)
-    manager.policy = types.SimpleNamespace(id=1006, name="mixed-policy")
+    manager.policy = types.SimpleNamespace(id=1006, name="mixed-policy", notice=True)
     manager.active_alerts = [active_no_data_alert]
     manager._create_alerts_from_events = lambda events: created_from_events.extend(events) or [created_alert]
     manager.create_events = lambda events: persisted_events.extend(events) or events
@@ -1068,3 +1469,267 @@ def test_policy_baseline_refresh_clears_baselines_when_query_succeeds_but_is_emp
 
     assert clear_calls == [True]
     assert replace_calls == []
+
+
+def _install_lifecycle_notify_dependencies(monkeypatch, send_side_effect):
+    """Helper: install minimal mocks to load alert_lifecycle_notify.py"""
+    _install_module(
+        monkeypatch,
+        "apps.monitor.utils.system_mgmt_api",
+        SystemMgmtUtils=types.SimpleNamespace(send_msg_with_channel=send_side_effect),
+    )
+    _install_module(monkeypatch, "apps.system_mgmt.models", Channel=object)
+    _install_module(monkeypatch, "apps.core.logger", monitor_logger=_Logger())
+
+    class _EmptyOrgQuerySet:
+        def filter(self, *args, **kwargs):
+            return self
+
+        def values_list(self, *args, **kwargs):
+            return []
+
+    _install_module(
+        monkeypatch,
+        "apps.monitor.models.monitor_object",
+        MonitorInstanceOrganization=types.SimpleNamespace(objects=_EmptyOrgQuerySet()),
+    )
+    return _load_module(
+        f"monitor_alert_lifecycle_retry_{id(send_side_effect)}",
+        Path(__file__).resolve().parents[1] / "services" / "alert_lifecycle_notify.py",
+    )
+
+
+def test_push_to_alert_center_returns_failure_on_first_failed_attempt(monkeypatch):
+    """_push_to_alert_center 单次尝试失败时应返回 success=False，不重试"""
+    call_count = []
+
+    def always_fail(*args, **kwargs):
+        call_count.append(1)
+        return {"result": False, "message": "transient error"}
+
+    sleep_calls = []
+    monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_fail)
+
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = None
+
+    alert = types.SimpleNamespace(
+        id=1,
+        policy_id=10,
+        content="test",
+        level="warning",
+        value=50.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-1",
+        monitor_instance_name="Host 1",
+        dimensions={},
+        metric_instance_id="",
+        status="recovered",
+    )
+
+    results = notifier._push_to_alert_center(9, "alert-center", [alert], "recovered", "", "")
+
+    assert len(call_count) == 1
+    assert sleep_calls == []
+    assert len(results) == 1
+    log_alert, log_entry = results[0]
+    assert log_entry["success"] is False
+    assert log_entry.get("is_alert_center") is True
+
+
+def test_push_to_alert_center_returns_success_on_first_successful_attempt(monkeypatch):
+    """_push_to_alert_center 单次尝试成功时应返回 success=True"""
+    call_count = []
+
+    def always_succeed(*args, **kwargs):
+        call_count.append(1)
+        return {"result": True}
+
+    sleep_calls = []
+    monkeypatch.setattr("time.sleep", lambda s: sleep_calls.append(s))
+
+    module = _install_lifecycle_notify_dependencies(monkeypatch, always_succeed)
+
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = None
+
+    alert = types.SimpleNamespace(
+        id=2,
+        policy_id=10,
+        content="test",
+        level="critical",
+        value=99.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id="host-2",
+        monitor_instance_name="Host 2",
+        dimensions={},
+        metric_instance_id="",
+        status="closed",
+    )
+
+    results = notifier._push_to_alert_center(9, "alert-center", [alert], "closed", "", "")
+
+    assert len(call_count) == 1
+    assert sleep_calls == []
+    log_alert, log_entry = results[0]
+    assert log_entry["success"] is True
+    # 成功路径不应携带 error 字段（仅失败时记录）
+    assert "error" not in log_entry
+
+
+def _make_payload_alert(instance_id="host-1"):
+    return types.SimpleNamespace(
+        id=1,
+        policy_id=10,
+        content="test",
+        level="warning",
+        value=50.0,
+        start_event_time=None,
+        end_event_time=None,
+        monitor_instance_id=instance_id,
+        monitor_instance_name="Host",
+        dimensions={},
+        metric_instance_id="",
+        status="recovered",
+    )
+
+
+def test_payload_organizations_prefers_instance_org(monkeypatch):
+    """实例有组织 → payload.organizations 取实例组织。"""
+    module = _install_lifecycle_notify_dependencies(monkeypatch, lambda *a, **k: {"result": True})
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = types.SimpleNamespace(name="p", organizations=[9])
+
+    payload = notifier._build_alert_center_payload(
+        _make_payload_alert(), "recovered", "", "", {"host-1": [3, 5]}
+    )
+    assert payload["organizations"] == [3, 5]
+
+
+def test_payload_organizations_falls_back_to_policy(monkeypatch):
+    """实例无组织 → 回退策略组织。"""
+    module = _install_lifecycle_notify_dependencies(monkeypatch, lambda *a, **k: {"result": True})
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = types.SimpleNamespace(name="p", organizations=[9])
+
+    payload = notifier._build_alert_center_payload(
+        _make_payload_alert(), "recovered", "", "", {}
+    )
+    assert payload["organizations"] == [9]
+
+
+def test_payload_organizations_empty_when_no_instance_and_no_policy(monkeypatch):
+    """实例和策略都无组织 → 留空，忠实反映现状。"""
+    module = _install_lifecycle_notify_dependencies(monkeypatch, lambda *a, **k: {"result": True})
+    notifier = object.__new__(module.AlertLifecycleNotifier)
+    notifier.policy = types.SimpleNamespace(name="p", organizations=[])
+
+    payload = notifier._build_alert_center_payload(
+        _make_payload_alert(), "recovered", "", "", {}
+    )
+    assert payload["organizations"] == []
+
+
+def test_retry_alert_center_lifecycle_notify_task_marks_success_and_increments_failures(monkeypatch):
+    """补偿任务：成功的告警标记 notified=True，失败的递增 retry_count"""
+    recovered_alert = types.SimpleNamespace(
+        id=10,
+        status="recovered",
+        alert_center_notified=False,
+        alert_center_retry_count=0,
+    )
+    closed_alert = types.SimpleNamespace(
+        id=20,
+        status="closed",
+        alert_center_notified=False,
+        alert_center_retry_count=2,
+    )
+    update_calls = []  # 记录 (filter_kwargs, update_kwargs)，验证失败路径的 F() 原子递增
+
+    class _UpdateQS:
+        def __init__(self, filter_kwargs):
+            self.filter_kwargs = filter_kwargs
+
+        def update(self, **kwargs):
+            update_calls.append((self.filter_kwargs, kwargs))
+            return len(self.filter_kwargs.get("id__in", []))
+
+    class _AlertQS:
+        def filter(self, **kwargs):
+            # 失败递增走 filter(id__in=...).update()；补偿查询走 order_by/__getitem__
+            if "id__in" in kwargs and "status__in" not in kwargs:
+                return _UpdateQS(kwargs)
+            return self
+
+        def order_by(self, *args):
+            return self
+
+        def __getitem__(self, sl):
+            return [recovered_alert, closed_alert]
+
+    class _MonitorAlert:
+        objects = _AlertQS()
+
+    def shared_task(*args, **kwargs):
+        def decorator(func):
+            return func
+        return decorator
+
+    # recovered → push succeeds, closed → push fails
+    push_results = {
+        "recovered": [(recovered_alert, True)],
+        "closed": [(closed_alert, False)],
+    }
+
+    marked_success = []
+
+    class _FakeNotifier:
+        def __init__(self, policy=None):
+            pass
+
+        def push_to_alert_center_only(self, alerts, action, **kwargs):
+            return push_results[action]
+
+        def _mark_alert_center_notified(self, alert_ids):
+            marked_success.extend(list(alert_ids))
+
+    _install_module(monkeypatch, "celery", shared_task=shared_task)
+    _install_module(monkeypatch, "celery_singleton", Singleton=object)
+    _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=Exception)
+    _install_module(monkeypatch, "apps.monitor.models", MonitorPolicy=object, MonitorAlert=_MonitorAlert)
+    _install_module(monkeypatch, "apps.core.logger", celery_logger=_Logger())
+    _install_module(monkeypatch, "apps.monitor.tasks.services.policy_scan", MonitorPolicyScan=object)
+    _install_module(monkeypatch, "apps.monitor.tasks.utils.policy_methods", period_to_seconds=lambda p: 60)
+    _install_module(
+        monkeypatch,
+        "apps.monitor.constants.alert_policy",
+        AlertConstants=types.SimpleNamespace(MAX_BACKFILL_SECONDS=3600, MAX_BACKFILL_COUNT=10),
+    )
+    _install_module(
+        monkeypatch,
+        "apps.monitor.services.alert_lifecycle_notify",
+        AlertLifecycleNotifier=_FakeNotifier,
+    )
+
+    module = _load_module(
+        "monitor_policy_retry_task_test_module",
+        Path(__file__).resolve().parents[1] / "tasks" / "monitor_policy.py",
+    )
+
+    result = module.retry_alert_center_lifecycle_notify_task()
+
+    assert result["succeeded"] == 1
+    assert result["failed"] == 1
+    assert result["total"] == 2
+
+    # 成功路径：复用 _mark_alert_center_notified，传入成功告警 id
+    assert marked_success == [10]
+
+    # 失败路径：filter(id__in=[20]).update() 做 F() 原子递增
+    fail_update = next((c for c in update_calls if c[0].get("id__in") == [20]), None)
+    assert fail_update is not None
+    assert "alert_center_retry_count" in fail_update[1]

@@ -571,6 +571,8 @@
         "namespace": "Namespace",
         "method_name": "Method Name",
         "timeout": "Timeout (seconds)",
+        "opspilotManaged": "OpsPilot-managed",
+        "opspilotManagedTip": "Auto-created by OpsPilot workflow; cannot be edited or deleted",
         "sign_secret": "Sign Secret",
         "sub_type": "Type",
         "request_method": "HTTP Method",

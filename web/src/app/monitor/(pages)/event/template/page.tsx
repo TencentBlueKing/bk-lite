@@ -1,5 +1,7 @@
 'use client';
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Button, Checkbox, Empty, Input, message, Spin, Tag } from 'antd';
+import { SearchOutlined } from '@ant-design/icons';
 import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import useEventApi from '@/app/monitor/api/event';
@@ -7,10 +9,19 @@ import templateStyle from './index.module.scss';
 import { TreeItem, TableDataItem, ObjectItem } from '@/app/monitor/types';
 import { findLabelById, getIconByObjectName } from '@/app/monitor/utils/common';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
-import { useRouter, useSearchParams } from 'next/navigation';
+import { useSearchParams } from 'next/navigation';
 import TreeSelector from '@/app/monitor/components/treeSelector';
-import EntityList from '@/components/entity-list';
 import { cloneDeep } from 'lodash';
+import BulkApplyModal from './bulkApplyModal';
+import {
+  clearTemplateSelection,
+  getMetricLabel,
+  getTemplateKey,
+  groupPolicyTemplates,
+  PolicyTemplateItem,
+  selectTemplateGroup,
+  toggleTemplateSelection
+} from './templateBulkUtils';
 
 const Template: React.FC = () => {
   const { isLoading } = useApiClient();
@@ -18,7 +29,6 @@ const Template: React.FC = () => {
   const { getPolicyTemplate, getTemplateObjects } = useEventApi();
   const searchParams = useSearchParams();
   const objId = searchParams.get('objId');
-  const router = useRouter();
   const templateAbortControllerRef = useRef<AbortController | null>(null);
   const templateRequestIdRef = useRef<number>(0);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
@@ -28,6 +38,49 @@ const Template: React.FC = () => {
   const [defaultSelectObj, setDefaultSelectObj] = useState<React.Key>('');
   const [objectId, setObjectId] = useState<React.Key>('');
   const [objects, setObjects] = useState<ObjectItem[]>([]);
+  const [selectedTemplateKeys, setSelectedTemplateKeys] = useState<string[]>([]);
+  const [searchKeyword, setSearchKeyword] = useState('');
+  const [bulkModalVisible, setBulkModalVisible] = useState(false);
+
+  const filteredTableData = useMemo(() => {
+    const keyword = searchKeyword.trim().toLowerCase();
+    if (!keyword) return tableData;
+    return tableData.filter((item) => {
+      const content = [
+        item.name,
+        item.description,
+        item.metric_name,
+        item.template_group,
+        item.plugin_display_name,
+        item.plugin_name
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return content.includes(keyword);
+    });
+  }, [tableData, searchKeyword]);
+
+  const templateGroups = useMemo(
+    () => groupPolicyTemplates(filteredTableData, selectedTemplateKeys),
+    [filteredTableData, selectedTemplateKeys]
+  );
+
+  const selectedTemplates = useMemo(
+    () =>
+      tableData.filter((item) =>
+        selectedTemplateKeys.includes(getTemplateKey(item))
+      ),
+    [tableData, selectedTemplateKeys]
+  );
+
+  const selectedTemplateTags = useMemo(() => {
+    const groupSet = new Set<string>();
+    selectedTemplates.forEach((item) => {
+      groupSet.add(item.template_group || item.plugin_display_name || item.plugin_name || '--');
+    });
+    return Array.from(groupSet);
+  }, [selectedTemplates]);
 
   useEffect(() => {
     if (isLoading) return;
@@ -53,6 +106,8 @@ const Template: React.FC = () => {
   const handleObjectChange = async (id: string) => {
     cancelAllRequests();
     setObjectId(id);
+    setSelectedTemplateKeys(clearTemplateSelection());
+    setSearchKeyword('');
   };
 
   const getAssetInsts = async (objectId: React.Key) => {
@@ -72,11 +127,13 @@ const Template: React.FC = () => {
       if (currentRequestId !== templateRequestIdRef.current) return;
       const list = data.map((item: TableDataItem, index: number) => ({
         ...item,
-        id: index,
+        id: item.id ?? `${item.plugin_id || item.collect_type || monitorName}:${item.name || item.metric_name || index}:${index}`,
+        template_key: item.template_key || `${item.plugin_id || item.collect_type || monitorName}:${item.name || item.metric_name || index}:${index}`,
         description: item.description || '--',
         icon: getIconByObjectName(monitorName as string, objects)
       }));
       setTableData(list);
+      setSelectedTemplateKeys(clearTemplateSelection());
     } finally {
       if (currentRequestId === templateRequestIdRef.current) {
         setTableLoading(false);
@@ -125,18 +182,54 @@ const Template: React.FC = () => {
     return Object.values(groupedData);
   };
 
-  const handleCardClick = (type: string, row: TableDataItem) => {
-    const monitorObjId = objectId as string;
-    const monitorName = findLabelById(treeData, monitorObjId) as string;
-    const params = new URLSearchParams({
-      monitorObjId,
-      monitorName,
-      type,
-      name: row?.name || ''
-    });
-    sessionStorage.setItem('strategyInfo', JSON.stringify(row));
-    const targetUrl = `/monitor/event/strategy/detail?${params.toString()}`;
-    router.push(targetUrl);
+  const handleApply = () => {
+    if (!selectedTemplates.length) {
+      message.warning('请先选择策略模版');
+      return;
+    }
+    setBulkModalVisible(true);
+  };
+
+  const renderTemplateCard = (item: PolicyTemplateItem) => {
+    const key = getTemplateKey(item);
+    const selected = selectedTemplateKeys.includes(key);
+    const icon = item.icon || OBJECT_DEFAULT_ICON;
+    return (
+      <button
+        key={key}
+        type="button"
+        className={`${templateStyle.templateCard} ${selected ? templateStyle.templateCardSelected : ''}`}
+        onClick={() => {
+          setSelectedTemplateKeys((prev) => toggleTemplateSelection(prev, item));
+        }}
+      >
+        <Checkbox checked={selected} className={templateStyle.cardCheckbox} />
+        <div className={templateStyle.cardIcon}>
+          <img
+            src={`/assets/icons/${icon}.svg`}
+            alt={String(icon)}
+            onError={(e) => {
+              (e.target as HTMLImageElement).src =
+                `/assets/icons/${OBJECT_DEFAULT_ICON}.svg`;
+            }}
+          />
+        </div>
+        <div className={templateStyle.cardBody}>
+          <div className={templateStyle.cardTitle} title={item.name || '--'}>
+            {item.name || '--'}
+          </div>
+          <Tag className={templateStyle.cardTag}>
+            {item.template_group || item.plugin_display_name || item.plugin_name || '--'}
+          </Tag>
+          <div className={templateStyle.cardMetric} title={getMetricLabel(item)}>
+            {getMetricLabel(item)}
+          </div>
+          <div className={templateStyle.cardDescription} title={item.description || '--'}>
+            {item.description || '--'}
+          </div>
+        </div>
+      </button>
+    );
   };
 
   return (
@@ -151,28 +244,97 @@ const Template: React.FC = () => {
       </div>
 
       <div className={templateStyle.table}>
-        <EntityList
-          searchSize="middle"
-          loading={tableLoading}
-          data={tableData}
-          iconRender={(icon) => (
-            <div className="w-10 h-10 min-w-[40px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
-              <img
-                src={`/assets/icons/${icon}.svg`}
-                alt={icon}
-                className="w-8 h-8 object-contain"
-                onError={(e) => {
-                  (e.target as HTMLImageElement).src =
-                    `/assets/icons/${OBJECT_DEFAULT_ICON}.svg`;
-                }}
-              />
+        <div className={templateStyle.toolbar}>
+          <Input
+            allowClear
+            prefix={<SearchOutlined />}
+            placeholder="搜索模版名称、指标或描述"
+            value={searchKeyword}
+            onChange={(event) => setSearchKeyword(event.target.value)}
+          />
+        </div>
+
+        <Spin spinning={tableLoading}>
+          {templateGroups.length ? (
+            <div className={templateStyle.groupList}>
+              {templateGroups.map((group) => {
+                const allChecked =
+                  group.templates.length > 0 &&
+                  group.selectedCount === group.templates.length;
+                const indeterminate =
+                  group.selectedCount > 0 &&
+                  group.selectedCount < group.templates.length;
+                return (
+                  <section key={group.name} className={templateStyle.templateGroup}>
+                    <div className={templateStyle.groupHeader}>
+                      <div>
+                        <span className={templateStyle.groupName}>{group.name}</span>
+                        <span className={templateStyle.groupCount}>
+                          {group.templates.length} 个模版
+                        </span>
+                        <span className={templateStyle.groupSelected}>
+                          已选 {group.selectedCount}
+                        </span>
+                      </div>
+                      <Checkbox
+                        checked={allChecked}
+                        indeterminate={indeterminate}
+                        onChange={(event) => {
+                          setSelectedTemplateKeys((prev) =>
+                            selectTemplateGroup(
+                              prev,
+                              group.templates,
+                              event.target.checked
+                            )
+                          );
+                        }}
+                      >
+                        全选本组
+                      </Checkbox>
+                    </div>
+                    <div className={templateStyle.cardGrid}>
+                      {group.templates.map(renderTemplateCard)}
+                    </div>
+                  </section>
+                );
+              })}
             </div>
+          ) : (
+            <Empty description={tableLoading ? '加载中' : '暂无策略模版'} />
           )}
-          onCardClick={(item) => {
-            handleCardClick('builtIn', item);
-          }}
-        />
+        </Spin>
+
+        {selectedTemplates.length > 0 && (
+          <div className={templateStyle.bulkBar}>
+            <div className={templateStyle.bulkSummary}>
+              <span className={templateStyle.bulkCount}>
+                已选 {selectedTemplates.length} 个策略模版
+              </span>
+              <div className={templateStyle.bulkTags}>
+                {selectedTemplateTags.map((tag) => (
+                  <Tag key={tag}>{tag}</Tag>
+                ))}
+              </div>
+            </div>
+            <div className={templateStyle.bulkActions}>
+              <Button onClick={() => setSelectedTemplateKeys(clearTemplateSelection())}>
+                清空
+              </Button>
+              <Button type="primary" onClick={handleApply}>
+                应用
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
+
+      <BulkApplyModal
+        visible={bulkModalVisible}
+        monitorObjectId={objectId as string | number}
+        selectedTemplates={selectedTemplates}
+        onClose={() => setBulkModalVisible(false)}
+        onSuccess={() => setSelectedTemplateKeys(clearTemplateSelection())}
+      />
     </div>
   );
 };

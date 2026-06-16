@@ -1079,14 +1079,14 @@ def test_send_msg_with_channel_nats_rejects_invalid_content(monkeypatch):
     assert result2["result"] is False, "Expected rejection when message is empty string"
     assert "message" in result2["message"]
 
-    # team is not a list
+    # team is not a valid integer
     result3 = send_msg_with_channel(channel.id, "title", {"message": "alert", "team": "bad", "user_ids": ["alice"]}, [])
-    assert result3["result"] is False, "Expected rejection when team is not a list"
+    assert result3["result"] is False, "Expected rejection when team is not a valid integer"
     assert "team" in result3["message"]
 
-    # team contains invalid item
-    result4 = send_msg_with_channel(channel.id, "title", {"message": "alert", "team": ["bad"], "user_ids": ["alice"]}, [])
-    assert result4["result"] is False, "Expected rejection when team contains invalid item"
+    # more than one team id (only a single team is allowed now)
+    result4 = send_msg_with_channel(channel.id, "title", {"message": "alert", "team": [1, 2], "user_ids": ["alice"]}, [])
+    assert result4["result"] is False, "Expected rejection when more than one team is provided"
     assert "team" in result4["message"]
 
 
@@ -1115,13 +1115,49 @@ def test_send_msg_with_channel_nats_normalizes_valid_content(monkeypatch):
     result = send_msg_with_channel(
         channel.id,
         "title",
-        {"message": "  alert  ", "team": ["2", 3], "user_ids": [0, " alice ", "", None]},
+        {"message": "  alert  ", "team": "2", "user_ids": [0, " alice ", "", None]},
         [],
     )
 
     assert result == {"result": True}
     assert captured["channel_id"] == channel.id
-    assert captured["content"] == {"message": "alert", "team": [2, 3], "user_ids": ["0", "alice"]}
+    assert captured["content"] == {"message": "alert", "team": 2, "user_ids": ["0", "alice"]}
+
+
+@pytest.mark.django_db
+def test_send_msg_with_channel_nats_passthrough_for_alert_center(monkeypatch):
+    """告警中心通道（receive_alert_events）应原样透传 content，不做 message/team/user_ids 规范化。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import send_msg_with_channel
+
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        description="",
+        config={"namespace": "bklite", "method_name": "receive_alert_events", "timeout": 60},
+    )
+
+    captured = {}
+
+    def fake_send_nats_message(channel_obj, content):
+        captured["channel_id"] = channel_obj.id
+        captured["content"] = content
+        return {"result": True}
+
+    # 若误走 normalize 这里会被调用并抛错，从而暴露回归
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats_api._normalize_nats_content",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("alert center content must not be normalized")),
+    )
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", fake_send_nats_message)
+
+    payload = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"title": "x", "organizations": [3]}]}
+    result = send_msg_with_channel(channel.id, "", payload, [])
+
+    assert result == {"result": True}
+    assert captured["channel_id"] == channel.id
+    # content 原样透传，source_id / pusher / events 一个不丢
+    assert captured["content"] == payload
 
 
 def test_send_nats_message_merges_bot_id_and_node_id_from_config(monkeypatch):
@@ -1150,13 +1186,13 @@ def test_send_nats_message_merges_bot_id_and_node_id_from_config(monkeypatch):
         }
     )
 
-    result = send_nats_message(channel_obj, {"message": "alert!", "team": [2], "user_ids": ["alice"]})
+    result = send_nats_message(channel_obj, {"message": "alert!", "team": 2, "user_ids": ["alice"]})
 
     assert result["result"] is True
     assert captured["kwargs"]["bot_id"] == 42, "bot_id must be injected from channel config"
     assert captured["kwargs"]["node_id"] == "node-xyz", "node_id must be injected from channel config"
     assert captured["kwargs"]["message"] == "alert!"
-    assert captured["kwargs"]["team"] == [2]
+    assert captured["kwargs"]["team"] == 2
     assert captured["kwargs"]["user_ids"] == ["alice"]
 
 
@@ -1180,7 +1216,7 @@ def test_send_nats_message_requires_bot_id_and_node_id_in_config(monkeypatch):
         }
     )
 
-    result = send_nats_message(channel_obj, {"message": "alert!", "team": [2], "user_ids": ["alice"]})
+    result = send_nats_message(channel_obj, {"message": "alert!", "team": 2, "user_ids": ["alice"]})
     assert result["result"] is False
     assert "bot_id" in result["message"] or "node_id" in result["message"]
 
@@ -1267,3 +1303,89 @@ def test_send_msg_with_channel_email_accepts_username_receivers(monkeypatch):
     assert result["result"] is True, f"Expected success but got: {result}"
     assert len(sent_to) == 1
     assert "alice_nats@example.com" in sent_to[0]
+
+
+@pytest.mark.django_db
+def test_sync_opspilot_nats_channels_create_update_delete():
+    """OpsPilot 通道对账：新增、改名/换组、对账删除已移除节点。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import OPSPILOT_NATS_NAMESPACE, sync_opspilot_nats_channels
+
+    res = sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="K8sBot",
+        team=[2],
+        nodes=[{"node_id": "n1", "name": "NATS触发"}, {"node_id": "n2", "name": "NATS触发 1"}],
+    )
+    assert res["result"] is True
+    assert res["data"] == {"created": 2, "updated": 0, "deleted": 0}
+
+    def _bot_channels(bot_id=7):
+        return [
+            c
+            for c in Channel.objects.filter(channel_type=ChannelChoices.NATS)
+            if (c.config or {}).get("source") == "opspilot" and (c.config or {}).get("bot_id") == bot_id
+        ]
+
+    chans = _bot_channels()
+    assert len(chans) == 2
+    c1 = next(c for c in chans if c.config["node_id"] == "n1")
+    assert c1.name == "K8sBot - NATS触发"
+    assert c1.config["source"] == "opspilot"
+    assert c1.config["bot_id"] == 7
+    assert c1.config["namespace"] == OPSPILOT_NATS_NAMESPACE
+    assert c1.config["method_name"] == "trigger_workflow_by_nats"
+    assert c1.team == [2]
+
+    # 再次发布：n1 改名换组、删除 n2、新增 n3
+    res2 = sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="K8sBot",
+        team=[3],
+        nodes=[{"node_id": "n1", "name": "改名后"}, {"node_id": "n3", "name": "新节点"}],
+    )
+    assert res2["data"] == {"created": 1, "updated": 1, "deleted": 1}
+
+    chans2 = {c.config["node_id"]: c for c in _bot_channels()}
+    assert set(chans2.keys()) == {"n1", "n3"}
+    assert chans2["n1"].name == "K8sBot - 改名后"
+    assert chans2["n1"].team == [3]
+
+
+@pytest.mark.django_db
+def test_delete_opspilot_nats_channels_keeps_manual_channels():
+    """删除 bot 名下托管通道，但不动用户手建的 NATS 通道。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import delete_opspilot_nats_channels, sync_opspilot_nats_channels
+
+    sync_opspilot_nats_channels(bot_id=7, bot_name="B", team=[1], nodes=[{"node_id": "n1", "name": "x"}])
+    Channel.objects.create(name="manual", channel_type=ChannelChoices.NATS, config={"namespace": "x"}, team=[1], description="")
+
+    res = delete_opspilot_nats_channels(bot_id=7)
+    assert res["data"]["deleted"] == 1
+    assert Channel.objects.filter(name="manual").exists()
+    assert not Channel.objects.filter(config__node_id="n1").exists()
+
+
+def test_channel_viewset_rejects_opspilot_managed_channel():
+    """ChannelViewSet 拒绝编辑/删除 OpsPilot 托管的 NATS 通道。"""
+    import types as _types
+
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.viewset.channel_viewset import ChannelViewSet
+
+    viewset = ChannelViewSet()
+    request = _types.SimpleNamespace(user=_types.SimpleNamespace(locale="en"))
+
+    managed = Channel(
+        name="m",
+        channel_type=ChannelChoices.NATS,
+        config={"source": "opspilot", "bot_id": 1, "node_id": "n1"},
+        team=[1],
+        description="",
+    )
+    resp = viewset._reject_if_opspilot_managed(request, managed)
+    assert resp is not None and resp.status_code == 403
+
+    normal = Channel(name="m2", channel_type=ChannelChoices.NATS, config={"namespace": "x"}, team=[1], description="")
+    assert viewset._reject_if_opspilot_managed(request, normal) is None

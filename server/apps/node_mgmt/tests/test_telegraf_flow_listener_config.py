@@ -25,7 +25,13 @@ def test_telegraf_default_config_includes_passive_flow_udp_listeners():
         assert "SAMPLING_INTERVAL" in add_config
         assert "samplingRate" in add_config
         assert "$${FLOW_ASSET_MAP_JSON" not in add_config
-        assert "${FLOW_ASSET_MAP_JSON:-{}}" in add_config
+        assert "${FLOW_ASSET_MAP_JSON:-{}}" not in add_config
+        starlark_source = add_config.split("[processors.starlark.constants]")[0]
+        assert '"${FLOW_ASSET_MAP_JSON}"' not in starlark_source
+        assert 'flow_asset_map_json == "$" + "{FLOW_ASSET_MAP_JSON}"' in add_config
+        assert 'return "{}"' in add_config
+        assert "FLOW_ASSET_MAP = json.decode(_flow_asset_map_json())" in add_config
+        assert "flow_asset_map_json = '${FLOW_ASSET_MAP_JSON}'" in add_config
 
 
 def test_telegraf_flow_sampling_fields_only_use_reported_device_fields():

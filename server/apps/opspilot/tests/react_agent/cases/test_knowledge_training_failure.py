@@ -17,6 +17,8 @@ Bug summary:
 Test approach: replicate the control-flow logic from tasks.py source and verify
 state transitions, since Django ORM cannot be imported without DB.
 """
+
+import os
 import re
 
 import pytest
@@ -28,7 +30,6 @@ import pytest
 
 def _read_source(rel_path, start_line, end_line):
     """Read source lines from tasks.py for analysis."""
-    import os
 
     base = os.path.dirname(os.path.abspath(__file__))
     full = os.path.normpath(os.path.join(base, "..", "..", "..", rel_path))
@@ -261,7 +262,6 @@ class TestGraphFunctionConsistency:
 
     def _get_function_source(self, func_name):
         """Get source for a specific function from tasks.py."""
-        import os
 
         base = os.path.dirname(os.path.abspath(__file__))
         full = os.path.normpath(os.path.join(base, "..", "..", "..", "tasks.py"))
@@ -284,7 +284,6 @@ class TestGraphFunctionConsistency:
     def test_all_graph_functions_handle_failure_status(self, func_name):
         """Every graph function must write a failure status when operation fails."""
         # Read the inner _execute function
-        import os
 
         base = os.path.dirname(os.path.abspath(__file__))
         full = os.path.normpath(os.path.join(base, "..", "..", "..", "tasks.py"))

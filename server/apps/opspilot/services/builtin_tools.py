@@ -19,6 +19,15 @@ BUILTIN_MSSQL_TOOL_ID = -4
 BUILTIN_MSSQL_TOOL_NAME = "mssql"
 
 
+def _get_display_name(loader: LanguageLoader, tool_name: str, default: str) -> str:
+    """获取工具的展示名称（中英文）。
+
+    复用 language 目录下的 yaml 翻译映射（``tools.{tool_name}.name``），
+    未配置翻译时回退到传入的 default（英文展示名）。
+    """
+    return loader.get(f"tools.{tool_name}.name") or default
+
+
 def _build_kwargs_from_params(constructor_params):
     return [
         {
@@ -54,7 +63,7 @@ def build_builtin_monitor_tool(loader: LanguageLoader):
     return {
         "id": BUILTIN_MONITOR_TOOL_ID,
         "name": BUILTIN_MONITOR_TOOL_NAME,
-        "display_name": "Monitor",
+        "display_name": _get_display_name(loader, BUILTIN_MONITOR_TOOL_NAME, "Monitor"),
         "description": description,
         "description_tr": description,
         "icon": "gongjuji",
@@ -90,7 +99,7 @@ def build_builtin_attachment_file_tool(loader: LanguageLoader):
     return {
         "id": BUILTIN_ATTACHMENT_FILE_TOOL_ID,
         "name": BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
-        "display_name": "Attachment File",
+        "display_name": _get_display_name(loader, BUILTIN_ATTACHMENT_FILE_TOOL_NAME, "Attachment File"),
         "description": description,
         "description_tr": description,
         "icon": "gongjuji",
@@ -127,7 +136,7 @@ def build_builtin_redis_tool(loader: LanguageLoader):
     return {
         "id": BUILTIN_REDIS_TOOL_ID,
         "name": BUILTIN_REDIS_TOOL_NAME,
-        "display_name": "Redis",
+        "display_name": _get_display_name(loader, BUILTIN_REDIS_TOOL_NAME, "Redis"),
         "description": description,
         "description_tr": description,
         "icon": "gongjuji",
@@ -165,7 +174,7 @@ def build_builtin_mysql_tool(loader: LanguageLoader):
     return {
         "id": BUILTIN_MYSQL_TOOL_ID,
         "name": BUILTIN_MYSQL_TOOL_NAME,
-        "display_name": "MySQL",
+        "display_name": _get_display_name(loader, BUILTIN_MYSQL_TOOL_NAME, "MySQL"),
         "description": description,
         "description_tr": description,
         "icon": "gongjuji",
@@ -203,7 +212,7 @@ def build_builtin_oracle_tool(loader: LanguageLoader):
     return {
         "id": BUILTIN_ORACLE_TOOL_ID,
         "name": BUILTIN_ORACLE_TOOL_NAME,
-        "display_name": "Oracle",
+        "display_name": _get_display_name(loader, BUILTIN_ORACLE_TOOL_NAME, "Oracle"),
         "description": description,
         "description_tr": description,
         "icon": "gongjuji",
@@ -241,7 +250,7 @@ def build_builtin_mssql_tool(loader: LanguageLoader):
     return {
         "id": BUILTIN_MSSQL_TOOL_ID,
         "name": BUILTIN_MSSQL_TOOL_NAME,
-        "display_name": "MSSQL",
+        "display_name": _get_display_name(loader, BUILTIN_MSSQL_TOOL_NAME, "MSSQL"),
         "description": description,
         "description_tr": description,
         "icon": "gongjuji",

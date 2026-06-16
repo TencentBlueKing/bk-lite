@@ -298,8 +298,8 @@ function renderCredentialFields({
           <>
             <InputRow label={t('Collection.SNMPTask.securityLevel', '安全级别')}>
               <Select value={level} onChange={(nextValue) => updateItem(index, { level: nextValue })}>
-                <Select.Option value="authNoPriv">认证不加密</Select.Option>
-                <Select.Option value="authPriv">认证加密</Select.Option>
+                <Select.Option value="authNoPriv">{t('Collection.SNMPTask.authNoPriv', '认证不加密')}</Select.Option>
+                <Select.Option value="authPriv">{t('Collection.SNMPTask.authPriv', '认证加密')}</Select.Option>
               </Select>
             </InputRow>
             <InputRow label={t('Collection.SNMPTask.userName', '用户')}>
@@ -651,7 +651,7 @@ export default function CredentialPoolEditor({
       <div className={styles.credentialPoolHeader}>
         <div className={styles.credentialPoolTitle}>
           <span>{t('Collection.credential', '凭据')}</span>
-          <Tooltip title="最多配置 3 个凭据，系统按顺序试探，命中后优先复用。">
+          <Tooltip title={t('Collection.credentialPoolTip', '最多配置 3 个凭据，系统按顺序试探，命中后优先复用。')}>
             <QuestionCircleOutlined className={styles.credentialPoolHelpIcon} />
           </Tooltip>
         </div>

@@ -3,7 +3,9 @@ from apps.cmdb.collection.plugins.community.middleware.base import BaseMiddlewar
 
 
 class KeepalivedCollectionPlugin(BaseMiddlewareCollectionPlugin):
-    supported_model_id = "keepalived"
+    # 模型 model_id 为 "keepalive"（见 model_config.xlsx models 表）；
+    # stargazer 产出的指标仍是 keepalived_info_gauge，故 metric_names 不变。
+    supported_model_id = "keepalive"
     metric_names = ("keepalived_info_gauge",)
     field_mapping = {
         "inst_name": MiddlewareCollectMetrics.get_keepalived_inst_name,

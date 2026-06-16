@@ -5,7 +5,7 @@ import styles from './index.module.scss';
 import OperateOid from './components/operateOid';
 import CustomTable from '@/components/custom-table';
 import PermissionWrapper from '@/components/permission';
-import { NETWORK_DEVICE_OPTIONS } from '@/app/cmdb/constants/professCollection';
+import { getNetworkDeviceOptions } from '@/app/cmdb/constants/professCollection';
 import { Button, Input, Select, Modal, message, Space } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useOidApi } from '@/app/cmdb/api';
@@ -36,7 +36,7 @@ const OidLibrary: React.FC = () => {
     pageSize: 20,
   });
 
-  const deviceTypeList = NETWORK_DEVICE_OPTIONS;
+  const deviceTypeList = getNetworkDeviceOptions(t);
   const [deviceType, setDeviceType] = useState<string[]>([]);
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [operateVisible, setOperateVisible] = useState<boolean>(false);
@@ -168,7 +168,7 @@ const OidLibrary: React.FC = () => {
         current: params.current !== undefined ? params.current : prev.current,
       }));
     } catch {
-      message.error('加载列表失败');
+      message.error(t('common.loadListFailed'));
       return { data: [], total: 0, success: false };
     } finally {
       setTableLoading(false);

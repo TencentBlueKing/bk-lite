@@ -20,6 +20,10 @@ import (
 	"github.com/nats-io/nats.go"
 )
 
+// objectStoreMaxWait 是 JetStream Object Store 每个 chunk 投递的最大等待时间。
+// 默认值 5s 在弱网或大包场景下容易触发 "read pipe: i/o timeout"（Issue #2985）。
+const objectStoreMaxWait = 60 * time.Second
+
 type Config struct {
 	ServerURL  string        `json:"server_url"`
 	APIToken   string        `json:"api_token"`
@@ -291,6 +295,10 @@ func classifyDownloadError(err error) string {
 		return "auth"
 	case strings.Contains(message, "connect nats failed") || strings.Contains(message, "connection refused") || strings.Contains(message, "network is unreachable"):
 		return "connection"
+	// 服务端 installer_schema 仅识别 timeout/connection 等枚举值，
+	// i/o timeout 归类为 timeout 以保证 failure summary 与 retriable 标记正确
+	case strings.Contains(message, "read pipe") || strings.Contains(message, "i/o timeout"):
+		return "timeout"
 	default:
 		return ""
 	}
@@ -503,7 +511,7 @@ func downloadFromStorage(storage *StorageConfig) (string, error) {
 	}
 	defer nc.Close()
 
-	js, err := nc.JetStream()
+	js, err := nc.JetStream(nats.MaxWait(objectStoreMaxWait))
 	if err != nil {
 		return "", fmt.Errorf("create jetstream context failed: %w", err)
 	}

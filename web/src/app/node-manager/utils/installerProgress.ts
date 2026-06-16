@@ -2,6 +2,7 @@ import {
   ControllerInstallProgressRow,
   InstallerFailure,
   InstallerFailureContext,
+  InstallerEventSummary,
   InstallerProgressMetric,
   InstallerProgressSummary,
   InstallerStepCode,
@@ -107,6 +108,16 @@ const normalizeProgress = (progress?: InstallerProgressMetric) => {
   };
 };
 
+const normalizeStringList = (values?: string[] | null) => {
+  if (!Array.isArray(values)) {
+    return [];
+  }
+
+  return values
+    .map((value) => normalizeText(value))
+    .filter((value): value is string => Boolean(value));
+};
+
 export const normalizeInstallerStatus = (status?: string | null) => {
   if (!status) {
     return 'waiting';
@@ -151,6 +162,45 @@ export const normalizeInstallerLogs = (steps?: LogStep[] | null): LogStep[] => {
   }));
 };
 
+export const normalizeInstallerSummary = (
+  summary?: InstallerEventSummary | null
+): InstallerEventSummary | undefined => {
+  if (!summary) {
+    return undefined;
+  }
+
+  const normalizedSummary: InstallerEventSummary = {
+    state: normalizeText(summary.state) || undefined,
+    expected_steps: normalizeStringList(summary.expected_steps) as InstallerStepCode[],
+    expected_count:
+      normalizeNumber(summary.expected_count) === null
+        ? undefined
+        : Math.max(Math.round(summary.expected_count as number), 0),
+    observed_count:
+      normalizeNumber(summary.observed_count) === null
+        ? undefined
+        : Math.max(Math.round(summary.observed_count as number), 0),
+    completed_steps: normalizeStringList(summary.completed_steps) as InstallerStepCode[],
+    completed_count:
+      normalizeNumber(summary.completed_count) === null
+        ? undefined
+        : Math.max(Math.round(summary.completed_count as number), 0),
+    missing_steps: normalizeStringList(summary.missing_steps) as InstallerStepCode[],
+    duplicate_count:
+      normalizeNumber(summary.duplicate_count) === null
+        ? undefined
+        : Math.max(Math.round(summary.duplicate_count as number), 0),
+    last_step: (normalizeText(summary.last_step || undefined) as InstallerStepCode) || null,
+    last_status: normalizeText(summary.last_status || undefined)
+      ? normalizeInstallerStatus(summary.last_status)
+      : null,
+    anomalies: normalizeStringList(summary.anomalies),
+    steps: normalizeInstallerLogs(summary.steps)
+  };
+
+  return normalizedSummary;
+};
+
 export const normalizeInstallerResult = (
   result?: OperationTaskResult | null
 ): OperationTaskResult | null => {
@@ -183,6 +233,7 @@ export const normalizeInstallerResult = (
   return {
     steps: normalizeInstallerLogs(result.steps),
     installer_progress: installerProgress,
+    installer_summary: normalizeInstallerSummary(result.installer_summary),
     failure: normalizeFailure(result.failure)
   };
 };
@@ -424,6 +475,36 @@ export const getInstallerFailureSuggestionByType = (
 ) => {
   if (failureType && INSTALLER_FAILURE_SUGGESTION_KEYS[failureType]) {
     return t(INSTALLER_FAILURE_SUGGESTION_KEYS[failureType]);
+  }
+
+  return null;
+};
+
+export const getInstallerSummaryGuidance = (
+  t: TranslationFunction,
+  summary?: InstallerEventSummary | null
+) => {
+  const state = normalizeText(summary?.state);
+  const guidanceKeyMap: Record<string, string> = {
+    no_installer_events:
+      'node-manager.cloudregion.node.installerSummaryNoEvents',
+    incomplete_installer_events:
+      'node-manager.cloudregion.node.installerSummaryIncomplete',
+    installer_success_connectivity_pending:
+      'node-manager.cloudregion.node.installerSummaryConnectivityPending',
+    installer_success_connectivity_timeout:
+      'node-manager.cloudregion.node.installerSummaryConnectivityTimeout',
+    duplicated_events:
+      'node-manager.cloudregion.node.installerSummaryDuplicatedEvents'
+  };
+
+  if (state && guidanceKeyMap[state]) {
+    return t(guidanceKeyMap[state]);
+  }
+
+  const anomaly = summary?.anomalies?.find((item) => guidanceKeyMap[item]);
+  if (anomaly) {
+    return t(guidanceKeyMap[anomaly]);
   }
 
   return null;
