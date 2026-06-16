@@ -358,17 +358,21 @@ class Neo4jClient:
             inst_names = permission_or_creator_filter.get("inst_names", [])
             creator = permission_or_creator_filter.get("creator")
 
-            # 构建OR条件：有权限的实例 OR 自己创建的实例
+            # 构建OR条件：有权限的实例 OR 自己创建的实例（参数化，避免注入）
+            perm_collector = ParameterCollector()
             or_conditions = []
             if inst_names:
-                or_conditions.append(f"n.inst_name IN {inst_names}")
+                perm_param = perm_collector.add_param(inst_names, prefix="perm_inst")
+                or_conditions.append(f"n.inst_name IN {perm_param}")
             if creator:
-                or_conditions.append(f"n._creator = '{creator}'")
+                perm_param = perm_collector.add_param(creator, prefix="perm_creator")
+                or_conditions.append(f"n._creator = {perm_param}")
 
             or_condition_str = " OR ".join(or_conditions)
 
             # 将OR条件与其他条件结合
-            params_str, query_params = self.format_search_params(params, param_type=param_type)
+            params_str, query_params = self.format_search_params(params, param_type=param_type, collector=perm_collector)
+            query_params = perm_collector.get_params()
             if params_str:
                 params_str = f"({params_str}) AND ({or_condition_str})"
             else:
@@ -984,8 +988,8 @@ class Neo4jClient:
         # 组合权限条件和全文检索条件
         where_condition = f"({final_permission_condition}) AND" if final_permission_condition else ""
 
-        query = f"""MATCH (n:{INSTANCE}) WHERE {where_condition} ANY(key IN keys(n) WHERE (NOT n[key] IS NULL AND ANY(value IN n[key] WHERE toString(value) CONTAINS '{search}'))) RETURN n"""  # noqa
-        objs = self.session.run(query)
+        query = f"""MATCH (n:{INSTANCE}) WHERE {where_condition} ANY(key IN keys(n) WHERE (NOT n[key] IS NULL AND ANY(value IN n[key] WHERE toString(value) CONTAINS $search))) RETURN n"""  # noqa
+        objs = self.session.run(query, search=search)
         return self.entity_to_list(objs)
 
     def batch_save_entity(
