@@ -375,6 +375,45 @@ def search_instances_batch(params):
 
 
 @nats_client.register
+def update_instance(params):
+    """
+    修改实例属性
+
+    params={
+        "inst_id": 123,            # 实例ID，优先使用；缺省时用 model_id+inst_name 定位
+        "model_id": "host",        # 配合 inst_name 定位实例时必填
+        "inst_name": "host-01",    # 配合 model_id 定位实例时必填
+        "update_attr": {...},      # 待更新的属性键值
+        "operator": "admin"        # 操作人，用于变更记录
+    }
+    -> 更新后的实例数据
+    """
+    update_attr = params.get("update_attr") or {}
+    if not update_attr:
+        raise ValueError("update_attr is required")
+
+    inst_id = params.get("inst_id") or params.get("_id")
+    if not inst_id:
+        model_id = params.get("model_id")
+        inst_name = params.get("inst_name")
+        if not (model_id and inst_name):
+            raise ValueError("inst_id or (model_id and inst_name) is required")
+        instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
+        if not instances:
+            raise ValueError("实例不存在！")
+        inst_id = instances[0]["_id"]
+
+    return InstanceManage.instance_update(
+        user_groups=[],
+        roles=[],
+        inst_id=int(inst_id),
+        update_attr=update_attr,
+        operator=params.get("operator", ""),
+        skip_permission_check=True,
+    )
+
+
+@nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
     logger.info("==[ConfigFileCollect] 接收配置文件采集结果")
