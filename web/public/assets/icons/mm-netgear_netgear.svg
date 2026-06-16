@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="netgearDark" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b2f33"/>
+      <stop offset="1" stop-color="#15181b"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#netgearDark)"/>
+  <g fill="none" stroke="#ff8200" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34 72 L34 44 L60 70 L60 44"/>
+    <path d="M74 44 L74 72 L90 72"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="10.5" font-weight="700" fill="#ff8200" letter-spacing="0.5">NETGEAR</text>
+</svg>
