@@ -5,6 +5,7 @@ import { useTranslation } from '@/utils/i18n';
 import type { TreeProps, TreeDataNode } from 'antd';
 import { cloneDeep } from 'lodash';
 import ObjectIcon from '@/app/monitor/components/objectIcon';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import styles from './index.module.scss';
 
 const { Search } = Input;
@@ -230,7 +231,12 @@ const TreeComponent: React.FC<TreeComponentProps> = ({
         <span className={styles.icon}>
           <ObjectIcon icon={item.icon} />
         </span>
-        <span className={styles.label}>{item.title}</span>
+        <span className={styles.label}>
+          <EllipsisWithTooltip
+            className={styles.ellipsis}
+            text={typeof item.title === 'string' ? item.title : ''}
+          />
+        </span>
         {item.count != null ? (
           <span className={styles.count}>{item.count}</span>
         ) : null}

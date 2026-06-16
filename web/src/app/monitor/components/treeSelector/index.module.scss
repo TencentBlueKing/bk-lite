@@ -42,6 +42,12 @@
   flex: 1;
   min-width: 0;
   overflow: hidden;
+}
+
+// EllipsisWithTooltip 的内层 div 自身需要截断样式,否则它测不出溢出(tooltip 不触发)、
+// 且丢失「…」省略号。给它 nowrap+ellipsis 才能正确截断并触发悬浮全名。
+.ellipsis {
+  overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
