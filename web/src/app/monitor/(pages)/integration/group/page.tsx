@@ -218,8 +218,7 @@ const GroupPage = () => {
     try {
       setTreeLoading(type !== 'timer');
       const params = {
-        name: '',
-        add_instance_count: true
+        name: ''
       };
       const data = await getMonitorObject(params);
       setObjects(data);
@@ -244,7 +243,6 @@ const GroupPage = () => {
           title: item.display_name || '--',
           key: item.id,
           icon: item.icon,
-          count: item.instance_count || 0,
           children: []
         });
         return acc;

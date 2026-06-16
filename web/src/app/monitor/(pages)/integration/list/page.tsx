@@ -143,9 +143,7 @@ const Integration = () => {
   const getObjects = async () => {
     try {
       setTreeLoading(true);
-      const data: ObjectItem[] = await getMonitorObject({
-        add_instance_count: true
-      });
+      const data: ObjectItem[] = await getMonitorObject();
       const _treeData = getTreeData(cloneDeep(data));
       setTreeData(_treeData);
       setObjects(data);
@@ -170,7 +168,6 @@ const Integration = () => {
             label: item.name || '--',
             key: item.id,
             icon: item.icon,
-            count: item.instance_count || 0,
             children: []
           });
         }
