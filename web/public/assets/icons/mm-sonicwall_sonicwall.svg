@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="swOrange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ff8200"/>
+      <stop offset="1" stop-color="#d96b00"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#swOrange)"/>
+  <path d="M36 70 Q48 50 60 70 Q72 90 84 70" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round"/>
+  <path d="M36 52 Q48 32 60 52 Q72 72 84 52" fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" opacity="0.6"/>
+  <text x="60" y="100" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="11" font-weight="700" fill="#ffffff" letter-spacing="0.3">SONICWALL</text>
+</svg>

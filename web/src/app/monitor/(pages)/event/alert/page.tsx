@@ -48,6 +48,7 @@ import alertStyle from './index.module.scss';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import useMonitorApi from '@/app/monitor/api/index';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 const { Search } = Input;
 const { Option } = Select;
@@ -330,6 +331,7 @@ const Alert: React.FC = () => {
           title: item.display_name || '--',
           label: item.name || '--',
           key: item.id,
+          icon: item.icon,
           children: []
         });
         return acc;
@@ -586,15 +588,17 @@ const Alert: React.FC = () => {
   return (
     <div className="w-full">
       <div className={alertStyle.alert}>
-        <div className={alertStyle.filters}>
-          <TreeSelector
-            loading={treeLoading}
-            showAllMenu
-            data={treeData}
-            defaultSelectedKey="all"
-            onNodeSelect={handleObjectChange}
-          />
-        </div>
+        <ResizableSidebar collapseStorageKey="monitor.event.alert.sidebarCollapsed">
+          <div className={alertStyle.filters}>
+            <TreeSelector
+              loading={treeLoading}
+              showAllMenu
+              data={treeData}
+              defaultSelectedKey="all"
+              onNodeSelect={handleObjectChange}
+            />
+          </div>
+        </ResizableSidebar>
         <div className={alertStyle.alarmList}>
           <Tabs activeKey={activeTab} items={tabs} onChange={changeTab} />
           <div className={alertStyle.searchCondition}>

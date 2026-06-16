@@ -185,6 +185,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.GET.get("name"),
             qs,
             add_metrics,
+            request.GET.get("monitor_plugin_id"),
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}

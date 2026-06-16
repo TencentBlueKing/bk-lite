@@ -4,18 +4,17 @@
     width: 100%;
 
     .filters {
-        width: 210px;
-        min-width: 210px;
+        width: 100%;
         background-color: var(--color-bg-1);
         padding: 20px;
-        margin-right: 10px;
         height: calc(100vh - 144px);
         overflow-y: auto;
     }
 
     .alarmList {
-        width: calc(100vw - 246px);
-        min-width: 800px;
+        flex: 1;
+        min-width: 0;
+        margin-left: 10px;
 
         .searchCondition {
             padding: 10px 20px;

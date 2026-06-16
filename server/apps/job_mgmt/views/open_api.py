@@ -13,6 +13,7 @@ from rest_framework.views import APIView
 
 from apps.core.logger import job_logger as logger
 from apps.job_mgmt.models import DistributionFile
+from apps.job_mgmt.views.mixins import TeamResolveMixin
 from apps.node_mgmt.utils.s3 import delete_s3_file, upload_file_to_s3
 
 # 文件过期天数：默认值与上下限
@@ -53,55 +54,7 @@ def _int_env(name, default):
 MAX_UPLOAD_FILE_SIZE_MB = _int_env("JOB_MAX_UPLOAD_FILE_SIZE_MB", 1024)
 
 
-def _get_user_team_from_request(request):
-    """
-    获取用户的 team。
-
-    - API Secret 认证 (api_pass=True)：直接使用 group_list[0]（即 UserAPISecret.team）
-    - Auth Backend 认证 (api_pass=False)：优先使用 current_team cookie，需要权限校验
-
-    Returns:
-        tuple: (team_id, error_message)
-        - 成功时返回 (team_id, None)
-        - 失败时返回 (None, error_message)
-    """
-    group_list = getattr(request.user, "group_list", [])
-
-    # 提取 group_ids（兼容 [int] 和 [{"id": int}] 两种格式）
-    user_group_ids = []
-    for g in group_list:
-        if isinstance(g, dict):
-            user_group_ids.append(g["id"])
-        else:
-            user_group_ids.append(g)
-
-    if not user_group_ids:
-        return None, "用户未关联团队"
-
-    # API Secret 认证：直接使用 group_list[0]（即 UserAPISecret.team）
-    if getattr(request, "api_pass", False):
-        return user_group_ids[0], None
-
-    # Auth Backend 认证：优先使用 current_team cookie
-    current_team_str = request.COOKIES.get("current_team")
-    if current_team_str:
-        try:
-            current_team = int(current_team_str)
-        except (TypeError, ValueError):
-            return None, "current_team 参数非法"
-
-        # 校验用户是否有权限访问该 team
-        if not getattr(request.user, "is_superuser", False):
-            if current_team not in user_group_ids:
-                return None, "无权访问该团队数据"
-
-        return current_team, None
-
-    # 没有 current_team，使用 group_list[0]
-    return user_group_ids[0], None
-
-
-class OpenFileUploadView(APIView):
+class OpenFileUploadView(TeamResolveMixin, APIView):
     """
     开放文件上传接口
 
@@ -133,7 +86,7 @@ class OpenFileUploadView(APIView):
 
         # 获取用户的 team（用于文件归属）
         # 优先使用 current_team cookie，否则使用 group_list[0]
-        user_team, error = _get_user_team_from_request(request)
+        user_team, error = self.resolve_user_team(request)
         if error:
             return Response(
                 {"detail": error},
@@ -198,7 +151,7 @@ class OpenFileUploadView(APIView):
         )
 
 
-class OpenFileDeleteView(APIView):
+class OpenFileDeleteView(TeamResolveMixin, APIView):
     """
     开放文件删除接口
 
@@ -226,7 +179,7 @@ class OpenFileDeleteView(APIView):
 
         # 获取当前用户的 team（用于权限校验）
         # 优先使用 current_team cookie，否则使用 group_list[0]
-        user_team, error = _get_user_team_from_request(request)
+        user_team, error = self.resolve_user_team(request)
         if error:
             return Response(
                 {"detail": error},

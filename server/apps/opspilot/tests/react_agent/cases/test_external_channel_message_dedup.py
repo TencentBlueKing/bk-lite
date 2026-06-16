@@ -10,6 +10,7 @@ Verifies that:
 - Concurrent messages are handled correctly
 """
 
+import inspect
 import sys
 import types
 
@@ -391,7 +392,6 @@ class TestConcurrentSafety:
 
     def test_source_code_uses_cache_add(self):
         """TC-17-17: Verify source code uses cache.add() for atomic operation."""
-        import inspect
 
         from apps.opspilot.utils.base_chat_flow_utils import BaseChatFlowUtils
 

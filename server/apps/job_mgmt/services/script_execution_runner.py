@@ -213,6 +213,12 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             result["finished_at"] = timezone.now().isoformat()
             return result
 
+        # 规范化换行符：Windows 编辑/粘贴的脚本常带 \r\n，会让 Linux 的 bash/sh 报
+        # `syntax error near unexpected token $'\r'`。类 Unix 脚本统一转 LF；
+        # Windows 原生脚本(bat/powershell)保持原样。在 parse_shebang 之前处理。
+        if script_type not in (ScriptType.BAT, ScriptType.POWERSHELL):
+            script_content = script_content.replace("\r\n", "\n").replace("\r", "\n")
+
         logger.info(
             "[%s] 目标 %s(%s) 开始流式执行: source=%s topic=%s",
             self.task_name,

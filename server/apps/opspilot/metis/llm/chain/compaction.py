@@ -196,7 +196,6 @@ async def compact_messages(
     summary = await generate_summary(to_compress, llm, config.summary_max_tokens)
 
     # 构造摘要消息（使用 HumanMessage 而非 SystemMessage，避免某些模型要求 SystemMessage 必须在最前面）
-    from langchain_core.messages import HumanMessage
 
     summary_msg = HumanMessage(content=f"[以下是之前对话的摘要，用于保持上下文连贯性]\n\n{summary}")
 

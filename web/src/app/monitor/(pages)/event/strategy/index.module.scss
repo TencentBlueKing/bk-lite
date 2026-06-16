@@ -1,10 +1,12 @@
 .asset {
     display: flex;
     overflow: hidden;
+    width: 100%;
 
     .assetTree {
         display: flex;
         flex-direction: column;
+        width: 100%;
         height: calc(100vh - 146px);
         padding: 20px 10px;
         background-color: var(--color-bg-1);
@@ -17,6 +19,8 @@
     }
 
     .table {
+        flex: 1;
+        min-width: 0;
         background: var(--color-bg-1);
         height: calc(100vh - 146px);
         padding: 20px;
@@ -35,7 +39,7 @@
 }
 
 .asset .table :global(.ant-table) {
-    width: calc(100vw - 280px);
+    width: 100%;
 }
 
 .strategy {

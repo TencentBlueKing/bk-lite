@@ -148,7 +148,7 @@ ARD 完成或重大修订后，执行三轮"ARD ↔ 代码"双向校验：
 
 三轮校验在 BK-Lite ARD 中实际捕获并修正的代表性问题：
 - 方向性错误：nats-executor 主题模式 `{action}.{location}.{id}`（原文写反）。
-- 隐藏缺陷：`DB_ENGINE=mysql` 实际指向达梦 backend（`database.py:31`）。
+- 强论断需复核（示例）：早期曾疑「`DB_ENGINE=mysql` 指向达梦 backend」，经核 `database.py:31` 实为 `cw_cornerstone.db.mysql.backend`（正确 mysql 分支），该论断不成立——印证"缺陷类强论断必须先 Read/Bash 直核再落笔"。
 - 伪依赖：opspilot `METIS_SERVER_URL` 等仅定义未引用（RAG 实走本地 pgvector）。
 - 误关联：operation_analysis 未硬编码调 alerts，是通用 NATS 取数器。
 - 完整性：补回多处遗漏的模型与 Celery 任务。

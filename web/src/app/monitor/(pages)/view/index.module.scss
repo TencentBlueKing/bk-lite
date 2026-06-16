@@ -5,14 +5,12 @@
         height: calc(100vh - 90px);
         padding: 20px 10px 10px 10px;
         background: var(--color-bg-1);
-        width: 210px;
-        min-width: 210px;
-        margin-right: 10px;
         overflow-y: auto;
     }
 
     .table {
-        width: calc(100vw - 256px);
+        flex: 1;
+        min-width: 0;
         padding: 20px;
         background: var(--color-bg-1);
         height: calc(100vh - 90px);
