@@ -2,11 +2,12 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { Input } from 'antd';
-import { DownOutlined, LeftOutlined, RightOutlined } from '@ant-design/icons';
+import { DownOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { PROFESSIONAL_DASHBOARDS, PROFESSIONAL_DASHBOARD_GROUPS } from '../registry';
 import { normalizeDashboardKey } from '../shared/utils';
 import ObjectIcon from '@/app/monitor/components/objectIcon';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
@@ -36,7 +37,6 @@ const ICON_MAP: Record<string, string> = {
 const DEFAULT_ICON = 'mm-middleware_中间件';
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
-  const [collapsed, setCollapsed] = useState(false);
   const [searchValue, setSearchValue] = useState('');
   const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const router = useRouter();
@@ -106,7 +106,7 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
   const normalizedCurrent = normalizeDashboardKey(currentObjectKey);
 
   return (
-    <div className={`${styles.sidebar} ${collapsed ? styles.collapsed : ''}`}>
+    <ResizableSidebar collapseStorageKey="monitor.dashboard.sidebarCollapsed">
       <div className={styles.sidebarInner}>
         <div className={styles.searchBox}>
           <Input.Search
@@ -155,9 +155,6 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
           })}
         </div>
       </div>
-      <div className={styles.toggleBtn} onClick={() => setCollapsed(!collapsed)}>
-        {collapsed ? <RightOutlined /> : <LeftOutlined />}
-      </div>
-    </div>
+    </ResizableSidebar>
   );
 };
