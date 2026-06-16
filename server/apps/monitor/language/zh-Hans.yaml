@@ -571,6 +571,33 @@ monitor_object_metric:
       name: HTTP空闲超时时间
       desc: 表示 HTTP 连接无数据传输时的最长保持时间（秒），用于释放空闲连接资源，避免资源浪费和恶意连接占用。
   Firewall:
+    firewall_active_connections:
+      name: 活动连接数
+      desc: 该指标报告 WatchGuard 防火墙当前活动的连接数（WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns）。连接数快速上升可能意味着连接洪泛或连接表压力。
+    firewall_current_connections:
+      name: 当前连接数
+      desc: 该指标报告 SonicWall 防火墙当前连接缓存中的连接数（SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries）。连接数快速上升可能意味着连接洪泛或连接表压力。
+    firewall_max_connections:
+      name: 最大连接数
+      desc: 该指标报告 SonicWall 防火墙连接缓存支持的最大连接数（SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicMaxConnCacheEntries）。结合当前连接数可评估连接表余量。
+    firewall_nat_translations:
+      name: NAT 转换数
+      desc: 该指标报告 SonicWall 防火墙当前活动的 NAT 转换条目数（SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicNatTranslationCount）。转换数异常增长可能意味着 NAT 资源压力或异常流量。
+    firewall_session_utilization:
+      name: 会话利用率
+      desc: 该指标报告 Palo Alto 防火墙会话表的使用率（PAN-COMMON-MIB panSessionUtilization），即当前活动会话数占最大会话容量的百分比。接近 100% 意味着会话表即将耗尽，可能丢弃新连接。
+    firewall_max_sessions:
+      name: 最大会话数
+      desc: 该指标报告 Palo Alto 防火墙支持的最大并发会话容量（PAN-COMMON-MIB panSessionMax）。结合活动会话数可评估会话表余量。
+    firewall_active_sessions_tcp:
+      name: TCP 活动会话数
+      desc: 该指标报告 Palo Alto 防火墙当前活动的 TCP 会话数（PAN-COMMON-MIB panSessionActiveTcp）。可用于分析会话构成与 TCP 负载。
+    firewall_active_sessions_udp:
+      name: UDP 活动会话数
+      desc: 该指标报告 Palo Alto 防火墙当前活动的 UDP 会话数（PAN-COMMON-MIB panSessionActiveUdp）。可用于分析会话构成与 UDP 负载。
+    firewall_active_sessions_icmp:
+      name: ICMP 活动会话数
+      desc: 该指标报告 Palo Alto 防火墙当前活动的 ICMP 会话数（PAN-COMMON-MIB panSessionActiveICMP）。ICMP 会话异常升高可能意味着扫描或攻击活动。
     firewall_tcp_connections:
       name: ASQ TCP 连接数
       desc: 该指标报告 Stormshield 防火墙 ASQ 引擎当前的 TCP 连接数（STORMSHIELD-SNS-MIB）。连接数快速上升可能意味着连接洪泛或会话表压力。
@@ -3314,6 +3341,15 @@ monitor_object_plugin:
   Firewall Stormshield SNMP:
     name: Stormshield（Telegraf）
     desc: 面向 Stormshield Network Security（SNS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）、UCD-SNMP 真实内存（总量/空闲、已用及推算使用率）与 STORMSHIELD-SNS-MIB 私有 OID 的防火墙特有状态（ASQ 活动 TCP/UDP 连接数、成熟 VPN 隧道数）。内存使用率按 (总量-空闲)/总量 推算。
+  Firewall Palo Alto SNMP:
+    name: Palo Alto（Telegraf）
+    desc: 面向 Palo Alto Networks（PAN-OS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 PAN-COMMON-MIB 私有 OID 的防火墙特有会话健康（会话表使用率、活动会话总数/TCP/UDP/ICMP、最大支持会话数）。内存与温度/风扇/电源不采集——PAN-OS 仅通过需行级过滤的 hrStorage / entity-sensor 表暴露，telegraf inputs.snmp 无法行级过滤。
+  Firewall SonicWall SNMP:
+    name: SonicWall（Telegraf）
+    desc: 面向 SonicWall（SonicOS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 SONICWALL-FIREWALL-IP-STATISTICS-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为设备直接上报的百分比）与防火墙特有状态（当前/最大连接缓存条目数、NAT 转换条目数）。
+  Firewall WatchGuard SNMP:
+    name: WatchGuard（Telegraf）
+    desc: 面向 WatchGuard（Fireware）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 WATCHGUARD-SYSTEM-STATISTICS-MIB 私有 OID 的设备健康（CPU 使用率）与防火墙特有状态（当前活动连接数）。内存与温度/风扇/电源不采集——Fireware 无标准 SNMP 内存利用率标量或传感器表，telegraf inputs.snmp 无法在不做行级过滤的情况下读取。
   Firewall Flow NetFlow:
     name: 防火墙流量分析（NetFlow）
     desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。

@@ -635,6 +635,33 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    firewall_active_connections:
+      name: Active Connections
+      desc: This metric reports the number of currently active connections on the WatchGuard firewall (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns). A rapidly rising count can indicate a connection flood or connection-table pressure.
+    firewall_current_connections:
+      name: Current Connections
+      desc: This metric reports the number of entries currently in the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries). A rapidly rising count can indicate a connection flood or connection-table pressure.
+    firewall_max_connections:
+      name: Max Connections
+      desc: This metric reports the maximum number of connections supported by the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicMaxConnCacheEntries). Combined with the current count it gauges remaining connection-table headroom.
+    firewall_nat_translations:
+      name: NAT Translations
+      desc: This metric reports the number of currently active NAT translation entries on the SonicWall firewall (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicNatTranslationCount). An abnormal rise can indicate NAT resource pressure or anomalous traffic.
+    firewall_session_utilization:
+      name: Session Utilization
+      desc: This metric reports the session-table utilization of the Palo Alto firewall (PAN-COMMON-MIB panSessionUtilization), the percentage of active sessions against the maximum session capacity. Approaching 100% means the session table is nearly exhausted and new connections may be dropped.
+    firewall_max_sessions:
+      name: Max Sessions
+      desc: This metric reports the maximum concurrent session capacity supported by the Palo Alto firewall (PAN-COMMON-MIB panSessionMax). Combined with the active session count it gauges remaining session headroom.
+    firewall_active_sessions_tcp:
+      name: Active TCP Sessions
+      desc: This metric reports the number of currently active TCP sessions on the Palo Alto firewall (PAN-COMMON-MIB panSessionActiveTcp). It helps analyse session composition and TCP load.
+    firewall_active_sessions_udp:
+      name: Active UDP Sessions
+      desc: This metric reports the number of currently active UDP sessions on the Palo Alto firewall (PAN-COMMON-MIB panSessionActiveUdp). It helps analyse session composition and UDP load.
+    firewall_active_sessions_icmp:
+      name: Active ICMP Sessions
+      desc: This metric reports the number of currently active ICMP sessions on the Palo Alto firewall (PAN-COMMON-MIB panSessionActiveICMP). An abnormal rise in ICMP sessions can indicate scanning or attack activity.
     firewall_tcp_connections:
       name: ASQ TCP Connections
       desc: This metric reports the current number of TCP connections tracked by the Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). A rapidly rising count can indicate a connection flood or session-table pressure.
@@ -3789,6 +3816,32 @@ monitor_object_plugin:
       UCD-SNMP real memory (total/free, used and derived usage) and STORMSHIELD-SNS-MIB
       private OIDs for firewall-specific state (ASQ active TCP/UDP connections and
       mature VPN tunnels). Memory usage is derived as (total - free) / total.
+  Firewall Palo Alto SNMP:
+    name: Palo Alto (Telegraf)
+    desc: Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In
+      addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it
+      collects HOST-RESOURCES CPU load (averaged across cores) and PAN-COMMON-MIB private
+      OIDs for firewall-specific session health (session-table utilization, active
+      sessions total/TCP/UDP/ICMP and maximum supported sessions). Memory and
+      temperature/fan/psu are not collected because PAN-OS exposes them only via
+      row-filtered hrStorage / entity-sensor tables that telegraf inputs.snmp cannot
+      filter.
+  Firewall SonicWall SNMP:
+    name: SonicWall (Telegraf)
+    desc: SonicWall-specific SNMP collection template for SonicOS firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      SONICWALL-FIREWALL-IP-STATISTICS-MIB private OIDs for device health (CPU and RAM
+      utilization, both reported directly as percentages) and firewall-specific state
+      (current and maximum connection-cache entries and NAT translation count).
+  Firewall WatchGuard SNMP:
+    name: WatchGuard (Telegraf)
+    desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      WATCHGUARD-SYSTEM-STATISTICS-MIB private OIDs for device health (CPU utilization)
+      and firewall-specific state (current active connections). Memory and
+      temperature/fan/psu are not collected because Fireware exposes no standard SNMP
+      memory-utilization scalar or sensor table that telegraf inputs.snmp can read
+      without row-level filtering.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
     desc: Use NetFlow to collect firewall traffic and convert it into normalized
