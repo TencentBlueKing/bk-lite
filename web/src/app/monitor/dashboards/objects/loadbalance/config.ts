@@ -1,16 +1,14 @@
 import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 
-// 共享防火墙仪表盘：覆盖 bk-lite Firewall 对象下所有品牌 SNMP 插件
-// （Fortinet / Check Point / Stormshield / Palo Alto / SonicWall / WatchGuard …）。
-// 品牌间会话/连接与内存的指标名不同，用 PromQL `or` 回退链做品牌自适应：
-// 取到哪个就显示哪个，取不到的实例对应卡片/趋势显示「--」/空，不伪造数据。
-export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
-  routeKey: 'firewall',
-  pageTitle: '防火墙监控仪表盘',
-  objectFallbackName: 'Firewall',
-  instanceType: 'firewall',
+// 共享负载均衡仪表盘：覆盖 bk-lite Loadbalance 对象下所有品牌 SNMP 插件（首品牌 F5 BIG-IP）。
+// 品牌间连接/内存指标名可能不同，用 PromQL `or` 回退链做品牌自适应；取不到的实例对应卡片/趋势显示「--」/空，不伪造。
+export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
+  routeKey: 'loadbalance',
+  pageTitle: '负载均衡监控仪表盘',
+  objectFallbackName: 'Loadbalance',
+  instanceType: 'loadbalance',
   collectionStatusQuery:
-    "count({instance_type='firewall', __$labels__}) by (instance_id)",
+    "count({instance_type='loadbalance', __$labels__}) by (instance_id)",
   metaItems: ['Telegraf', 'snmp'],
   metrics: [
     {
@@ -25,7 +23,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_cpu_usage',
       display_name: 'CPU 使用率',
       description:
-        '防火墙 CPU 使用率。品牌自适应：直报利用率（Fortinet/Check Point/SonicWall）或各核负载均值（Palo Alto/Stormshield 走 HOST-RESOURCES hrProcessorLoad）。持续偏高说明流量检测/威胁防护负载吃紧。',
+        '负载均衡主机 CPU 使用率。品牌自适应：直报利用率（F5 sysGlobalHostCpuUsageRatio5s）或各核负载均值。持续偏高说明流量处理负载吃紧。',
       unit: 'percent',
       query: 'avg(device_cpu_usage{__$labels__}) by (instance_id)',
       color: '#2f6bff'
@@ -34,20 +32,19 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       name: 'device_memory_usage',
       display_name: '内存使用率',
       description:
-        '防火墙内存使用率（百分比）。品牌自适应：①设备直报利用率（Fortinet/SonicWall）；②(总量-空闲)/总量（Check Point/Stormshield）。部分型号（Palo Alto/WatchGuard）无标准 SNMP 内存利用率，显示「--」。',
+        '负载均衡主机内存使用率（百分比）。品牌自适应：①设备直报利用率；②已用/总量（F5）。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
       color: '#ff8a1f'
     },
     {
-      name: 'firewall_sessions',
-      display_name: '活动会话/连接',
+      name: 'lb_connections',
+      display_name: '当前连接',
       description:
-        '防火墙当前活动会话或连接数。品牌自适应回退：活动会话（Fortinet/Palo Alto）→ 当前连接（SonicWall）→ 活动连接（WatchGuard）→ ASQ TCP 连接（Stormshield）。反映负载与会话表压力。',
+        '负载均衡当前客户端连接数。品牌自适应回退：当前客户端连接（F5 sysStatClientCurConns）。反映负载与连接表压力。',
       unit: 'counts',
-      query:
-        'firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}',
+      query: 'lb_current_connections{__$labels__}',
       color: '#13c2c2'
     },
     {
@@ -89,7 +86,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'thunder',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: 'CPU 使用率', detail: '防火墙 CPU 使用率，逼近 100% 说明处理能力将耗尽。' }]
+      guide: [{ label: 'CPU 使用率', detail: '主机 CPU 使用率，逼近 100% 说明处理能力将耗尽。' }]
     },
     {
       title: '内存使用率',
@@ -99,17 +96,18 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       icon: 'memory',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '内存使用率', detail: '整体内存使用率，持续偏高可能由会话表过大或内存泄漏导致；部分型号无此 SNMP 指标。' }]
+      guide: [{ label: '内存使用率', detail: '主机内存使用率，持续偏高可能影响连接处理性能。' }],
+      footer: [{ label: '已用', metric: 'device_memory_used', unit: 'bytes' }]
     },
     {
-      title: '活动会话/连接',
-      metric: 'firewall_sessions',
+      title: '当前连接',
+      metric: 'lb_connections',
       unit: 'counts',
       color: '#13c2c2',
       icon: 'api',
       compare: true,
       compareFavorableDirection: 'down',
-      guide: [{ label: '活动会话/连接', detail: '当前活动会话或连接数，快速攀升可能是连接洪泛或会话表逼近上限。' }]
+      guide: [{ label: '当前连接', detail: '当前客户端连接数，快速攀升可能是连接突增或容量逼近上限。' }]
     },
     {
       title: '入向总流量',
@@ -126,7 +124,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       title: 'CPU 与内存使用率趋势',
       subtitle: 'CPU、内存',
       metric: 'device_cpu_usage',
-      guide: [{ label: '资源使用率', detail: '对比 CPU 与内存使用率，两者持续高位说明防火墙负载吃紧。' }],
+      guide: [{ label: '资源使用率', detail: '对比 CPU 与内存使用率，两者持续高位说明负载均衡负载吃紧。' }],
       series: [
         { metric: 'device_cpu_usage', label: 'CPU 使用率', color: '#2f6bff', unit: 'percent' },
         { metric: 'device_memory_usage', label: '内存使用率', color: '#ff8a1f', unit: 'percent' }
@@ -143,12 +141,12 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       ]
     },
     {
-      title: '活动会话/连接趋势',
-      subtitle: '会话/连接数',
-      metric: 'firewall_sessions',
-      guide: [{ label: '活动会话/连接', detail: '活动会话或连接数随时间变化，突增提示连接洪泛或异常流量。' }],
+      title: '当前连接趋势',
+      subtitle: '客户端连接数',
+      metric: 'lb_connections',
+      guide: [{ label: '当前连接', detail: '当前客户端连接数随时间变化，突增提示连接洪泛或异常流量。' }],
       series: [
-        { metric: 'firewall_sessions', label: '活动会话/连接', color: '#13c2c2', unit: 'counts' }
+        { metric: 'lb_connections', label: '当前连接', color: '#13c2c2', unit: 'counts' }
       ]
     }
   ],
