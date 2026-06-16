@@ -318,8 +318,11 @@ def reset_pwd(request):
         if not username or not password:
             return JsonResponse({"result": False, "message": loader.get("error.password_required", "Username or password cannot be empty")})
 
+        # 从 cookie 中读取调用方 token，转发给 NATS handler 进行身份校验
+        caller_token = request.COOKIES.get("bklite_token", "")
+
         client = SystemMgmt()
-        res = client.reset_pwd(username, domain, password)
+        res = client.reset_pwd(username, domain, password, caller_token=caller_token)
 
         # 如果密码重置成功，记录操作日志
         if res.get("result"):

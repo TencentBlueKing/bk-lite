@@ -16,7 +16,7 @@ from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 from apps.rpc.ansible import AnsibleExecutor
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import User
-from apps.system_mgmt.nats_api import get_all_users, get_authorized_groups_scoped
+from apps.system_mgmt.nats_api import get_all_users, get_authorized_groups_scoped, reset_pwd
 from apps.system_mgmt.utils.channel_utils import send_email_to_user
 
 logger = logging.getLogger(__name__)
@@ -1389,3 +1389,72 @@ def test_channel_viewset_rejects_opspilot_managed_channel():
 
     normal = Channel(name="m2", channel_type=ChannelChoices.NATS, config={"namespace": "x"}, team=[1], description="")
     assert viewset._reject_if_opspilot_managed(request, normal) is None
+
+
+# ── reset_pwd 调用方身份校验测试（Issue #3441）─────────────────────────────────
+
+
+def _make_caller(username, domain="domain.com"):
+    """构造一个伪调用方用户对象（用于 _verify_token 返回值）。"""
+    return types.SimpleNamespace(username=username, domain=domain)
+
+
+def test_reset_pwd_无caller_token时拒绝请求(monkeypatch):
+    """caller_token 缺失时应直接拒绝，不执行任何 DB 写入。"""
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: _make_caller("alice"))
+    result = reset_pwd("alice", "domain.com", "NewPass123!", caller_token="")
+    assert result["result"] is False
+    assert "caller_token" in result["message"]
+
+
+def test_reset_pwd_caller_token无效时拒绝请求(monkeypatch):
+    """_verify_token 抛异常（token 过期/篡改）时应返回 Unauthorized。"""
+
+    def _raise(token):
+        raise Exception("Token is invalid")
+
+    monkeypatch.setattr(nats_api, "_verify_token", _raise)
+    result = reset_pwd("alice", "domain.com", "NewPass123!", caller_token="bad.token")
+    assert result["result"] is False
+    assert "Unauthorized" in result["message"]
+
+
+def test_reset_pwd_caller与目标用户不一致时拒绝(monkeypatch):
+    """token 属于 bob，却要重置 alice 的密码——应拒绝（防止跨账号密码覆盖）。"""
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: _make_caller("bob"))
+    result = reset_pwd("alice", "domain.com", "NewPass123!", caller_token="bob.token")
+    assert result["result"] is False
+    assert "Unauthorized" in result["message"]
+
+
+def test_reset_pwd_caller与目标用户一致时允许执行(monkeypatch):
+    """token 属于 alice，重置 alice 自己的密码——应通过校验并更新密码。"""
+    caller = _make_caller("alice", "domain.com")
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: caller)
+
+    saved = {}
+
+    class _FakeUser:
+        username = "alice"
+        domain = "domain.com"
+        temporary_pwd = True
+
+        def save(self):
+            saved["password"] = self.password
+            saved["temporary_pwd"] = self.temporary_pwd
+
+    class _FakeQS:
+        def first(self):
+            return _FakeUser()
+
+    class _FakeManager:
+        def filter(self, **kwargs):
+            return _FakeQS()
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeManager())
+
+    # 使用真实的 PasswordValidator（不 mock，确保测试覆盖完整路径）
+    result = reset_pwd("alice", "domain.com", "ValidPass1!", caller_token="alice.token")
+    assert result["result"] is True
+    assert "password" in saved  # 密码已被写入
+    assert saved["temporary_pwd"] is False
