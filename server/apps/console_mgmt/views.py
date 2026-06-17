@@ -3,6 +3,7 @@ import random
 from zoneinfo import ZoneInfo
 
 from django.contrib.auth.hashers import check_password, make_password
+from django.core.cache import cache
 from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone as django_timezone
@@ -13,6 +14,9 @@ from apps.system_mgmt.models import Group, Role, User
 from apps.system_mgmt.models.app import App
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+# 每用户每邮箱发送验证码的速率限制：60 秒内最多 1 次
+EMAIL_CODE_RATE_LIMIT_SECONDS = 60
 
 
 def _format_datetime_for_user(value, timezone_name=None):
@@ -200,6 +204,22 @@ def send_email_code(request):
 
         if not email:
             return JsonResponse({"result": False, "message": loader.get("error.email_required", "Email address cannot be empty")})
+
+        # 速率限制：每个已登录用户每个目标邮箱 60 秒内最多发送 1 次，防止平台邮件服务被滥用为骚扰工具
+        username = getattr(request.user, "username", None)
+        if username:
+            rate_key = f"send_email_code_rate:{username}:{email}"
+            if cache.get(rate_key):
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": loader.get(
+                            "error.email_code_rate_limit",
+                            "Please wait before requesting another verification code",
+                        ),
+                    }
+                )
+            cache.set(rate_key, 1, timeout=EMAIL_CODE_RATE_LIMIT_SECONDS)
 
         # 生成6位随机数字验证码
         verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
