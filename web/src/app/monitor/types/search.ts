@@ -7,6 +7,15 @@ export interface InstanceItem {
   instance_id_values: string[];
 }
 
+export interface PluginItem {
+  id: React.Key;
+  name?: string;
+  display_name?: string;
+  collector?: string;
+  collect_type?: string;
+  [key: string]: unknown;
+}
+
 export interface ConditionItem {
   label: string | null;
   condition: string | null;
@@ -27,8 +36,10 @@ export interface QueryGroup {
   id: string;
   name: string;
   object: React.Key;
+  plugin: React.Key | null;
   instanceIds: string[];
-  metric: string | null;
+  metric: React.Key | null;
+  legacyMetricName?: string | null;
   aggregation: string;
   conditions: ConditionItem[];
   collapsed: boolean;
@@ -39,6 +50,7 @@ export interface SearchPayload {
   activeGroup: QueryGroup;
   metricsMap: Record<string, MetricItem[]>;
   instancesMap: Record<string, InstanceItem[]>;
+  pluginsMap: Record<string, PluginItem[]>;
   objectsMap: Record<string, ObjectItem>;
 }
 
@@ -74,8 +86,10 @@ export interface QueryGroupData {
   id: string;
   name: string;
   object: React.Key;
+  plugin?: React.Key | null;
   instance_ids: string[];
-  metric: string | null;
+  metric: React.Key | null;
+  legacy_metric_name?: string | null;
   aggregation: string;
   conditions: ConditionItemData[];
 }

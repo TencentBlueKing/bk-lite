@@ -1,0 +1,73 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_opnsense"
+        config_type = "opnsense"
+        brand = "opnsense"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- OPNsense CPU usage (HOST-RESOURCES hrProcessorLoad, per-core %, headline avg by instance) ----
+    # 来源：LibreNMS Opnsense + 标准 HOST-RESOURCES（bsnmpd BEGEMOT-HOSTRES 实现同 OID 树）。待现网核验。
+    # 待现网核验：1.3.6.1.2.1.25.3.3.1.2（每核 0-100%，共享盘 avg by instance_id 取整机均值）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.3.3.1.2"
+        name = "usage"
+    # ---- OPNsense firewall-specific (pf current state-table entries ≈ active connections, scalar) ----
+    # 来源：官方 BEGEMOT-PF-MIB（FreeBSD bsnmpd）pfStateTableCount。
+    #   begemotPf=1.3.6.1.4.1.12325.1.200 → begemotPfObjects=.1 → pfStateTable=.3 → pfStateTableCount=.1.0。
+    # 待现网核验：1.3.6.1.4.1.12325.1.200.1.3.1.0（当前 pf 状态表条目数，等价活动连接数）。
+    [[inputs.snmp.table]]
+        name = "firewall"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12325.1.200.1.3.1.0"
+        name = "pf_states"
+# ---- 内存/温度/风扇/电源：OPNsense 默认 bsnmpd 的内存仅经 HOST-RESOURCES hrStorage（需按 ----
+# ---- hrStorageDescr 行级匹配 RAM 行）暴露；温度/风扇/电源为软件/虚拟设备无标准传感器表。----
+# ---- telegraf inputs.snmp 不能行级过滤 → 标 N/A 不采（与 paloalto/watchguard 内存同因）。----

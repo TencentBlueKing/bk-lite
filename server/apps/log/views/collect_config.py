@@ -17,7 +17,12 @@ from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
-from apps.log.models import CollectType, CollectInstance, CollectConfig
+from apps.log.models import (
+    CollectConfig,
+    CollectInstance,
+    CollectInstanceOrganization,
+    CollectType,
+)
 from apps.log.models.policy import Policy
 from apps.log.serializers.collect_config import CollectTypeSerializer
 from apps.log.filters.collect_config import CollectTypeFilter
@@ -35,6 +40,70 @@ class CollectTypeViewSet(ModelViewSet):
     queryset = CollectType.objects.all()
     serializer_class = CollectTypeSerializer
     filterset_class = CollectTypeFilter
+
+    LOG_GROUP_CREATE_SCOPE = "log_group_create"
+
+    @staticmethod
+    def _escape_logsql_value(value):
+        return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+    @classmethod
+    def _build_instance_scope_query(cls, instance_ids):
+        expressions = [
+            f'instance_id:"{cls._escape_logsql_value(instance_id)}"'
+            for instance_id in instance_ids
+        ]
+        if not expressions:
+            return ""
+        if len(expressions) == 1:
+            return expressions[0]
+        return f"({' OR '.join(expressions)})"
+
+    @classmethod
+    def _append_creation_scope_filter(cls, query, instance_ids):
+        scope_query = cls._build_instance_scope_query(instance_ids)
+        if not scope_query:
+            return ""
+
+        base_query = (query or "").strip()
+        if not base_query or base_query == "*":
+            return scope_query
+        return f"({base_query}) AND {scope_query}"
+
+    @staticmethod
+    def _is_log_group_create_scope(request):
+        return (
+            request.query_params.get("scope")
+            == CollectTypeViewSet.LOG_GROUP_CREATE_SCOPE
+        )
+
+    def _get_log_group_create_attrs(self, request, query, start_time, end_time):
+        try:
+            organization_ids = LogAccessScopeService.get_manageable_organization_ids(
+                request
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(error_message=str(exc), status_code=403)
+
+        if not organization_ids:
+            return WebUtils.response_error(error_message="当前用户无权限创建日志分组", status_code=403)
+
+        instance_ids = list(
+            CollectInstanceOrganization.objects.filter(
+                organization__in=list(organization_ids)
+            )
+            .order_by("collect_instance_id")
+            .values_list("collect_instance_id", flat=True)
+            .distinct()
+        )
+        final_query = self._append_creation_scope_filter(query, instance_ids)
+        if not final_query:
+            return WebUtils.response_success([])
+
+        data = SearchService.all_field_names(
+            final_query, start_time, end_time, [], resolved_groups=[]
+        )
+        return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="display_category_enum")
     def display_category_enum(self, request, *args, **kwargs):
@@ -170,6 +239,9 @@ class CollectTypeViewSet(ModelViewSet):
         start_time = request.query_params.get("start_time", "")
         end_time = request.query_params.get("end_time", "")
         log_groups = request.query_params.getlist("log_groups") or request.query_params.getlist("log_groups[]")
+
+        if self._is_log_group_create_scope(request):
+            return self._get_log_group_create_attrs(request, query, start_time, end_time)
 
         try:
             scope = LogAccessScopeService.resolve_scope(request, log_groups)

@@ -375,6 +375,112 @@ def search_instances_batch(params):
 
 
 @nats_client.register
+def update_instance(params):
+    """
+    修改实例属性
+
+    params={
+        "inst_id": 123,            # 实例ID，优先使用；缺省时用 model_id+inst_name 定位
+        "model_id": "host",        # 配合 inst_name 定位实例时必填
+        "inst_name": "host-01",    # 配合 model_id 定位实例时必填
+        "update_attr": {...},      # 待更新的属性键值
+        "operator": "admin"        # 操作人，用于变更记录
+    }
+    -> 更新后的实例数据
+    """
+    update_attr = params.get("update_attr") or {}
+    if not update_attr:
+        raise ValueError("update_attr is required")
+
+    inst_id = params.get("inst_id") or params.get("_id")
+    if not inst_id:
+        model_id = params.get("model_id")
+        inst_name = params.get("inst_name")
+        if not (model_id and inst_name):
+            raise ValueError("inst_id or (model_id and inst_name) is required")
+        instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
+        if not instances:
+            raise ValueError("实例不存在！")
+        inst_id = instances[0]["_id"]
+
+    return InstanceManage.instance_update(
+        user_groups=[],
+        roles=[],
+        inst_id=int(inst_id),
+        update_attr=update_attr,
+        operator=params.get("operator", ""),
+        skip_permission_check=True,
+    )
+
+
+@nats_client.register
+def create_instance(params):
+    """
+    创建实例
+
+    params={
+        "model_id": "host",        # 模型ID，必填
+        "instance_info": {...},    # 实例属性键值，必填
+        "operator": "admin"        # 操作人，用于变更记录
+    }
+    -> 创建后的实例数据
+    """
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+
+    instance_info = params.get("instance_info") or {}
+    if not instance_info:
+        raise ValueError("instance_info is required")
+
+    return InstanceManage.instance_create(
+        model_id=model_id,
+        instance_info=instance_info,
+        operator=params.get("operator", ""),
+    )
+
+
+@nats_client.register
+def delete_instance(params):
+    """
+    删除实例（支持单个或批量）
+
+    params={
+        "inst_ids": [1, 2],        # 实例ID列表，优先使用
+        "inst_id": 1,              # 单个实例ID（兼容 _id）
+        "model_id": "host",        # 配合 inst_name 定位单个实例时必填
+        "inst_name": "host-01",    # 配合 model_id 定位单个实例时必填
+        "operator": "admin"        # 操作人，用于变更记录
+    }
+    -> {"result": True, "deleted": [<inst_ids>]}
+    """
+    inst_ids = _normalize_to_list(params.get("inst_ids"))
+
+    if not inst_ids:
+        single_id = params.get("inst_id") or params.get("_id")
+        if single_id:
+            inst_ids = [single_id]
+        else:
+            model_id = params.get("model_id")
+            inst_name = params.get("inst_name")
+            if not (model_id and inst_name):
+                raise ValueError("inst_ids, inst_id or (model_id and inst_name) is required")
+            instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
+            if not instances:
+                raise ValueError("实例不存在！")
+            inst_ids = [instances[0]["_id"]]
+
+    inst_ids = [int(i) for i in inst_ids]
+    InstanceManage.instance_batch_delete(
+        user_groups=[],
+        roles=[],
+        inst_ids=inst_ids,
+        operator=params.get("operator", ""),
+    )
+    return {"result": True, "deleted": inst_ids}
+
+
+@nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
     logger.info("==[ConfigFileCollect] 接收配置文件采集结果")

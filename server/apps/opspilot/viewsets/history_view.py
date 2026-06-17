@@ -154,8 +154,10 @@ class HistoryViewSet(TeamPermissionMixin, viewsets.ModelViewSet):
         ids = request.data.get("ids")
         page_size = int(request.data.get("page_size", 10))
         page = int(request.data.get("page", 1))
+        # 验证当前用户所在 team，并仅返回属于该 team 的 bot 对话记录，防止跨租户枚举
+        current_team = self._validate_current_team_permission(request)
         history_list = (
-            BotConversationHistory.objects.filter(id__in=ids)
+            BotConversationHistory.objects.filter(id__in=ids, bot__team__contains=[current_team])
             .values("id", "conversation_role", "conversation")
             .order_by("created_at")
         )

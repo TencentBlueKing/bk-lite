@@ -34,6 +34,11 @@ class RequestTimingMiddleware(MiddlewareMixin):
         "/",  # 排除根路径（通常是健康检查或负载均衡器探针）
     ]
 
+    SIDECAR_OPEN_API_PATH_PREFIXES = [
+        "/node_mgmt/open_api/node",
+        "/api/v1/node_mgmt/open_api/node",
+    ]
+
     def process_request(self, request):
         """记录请求开始时间"""
         request._start_time = time.time()
@@ -68,6 +73,9 @@ class RequestTimingMiddleware(MiddlewareMixin):
         # 前缀匹配排除
         return any(path.startswith(prefix) for prefix in self.EXCLUDE_PATHS)
 
+    def _is_sidecar_open_api_path(self, path):
+        return any(path.startswith(prefix) for prefix in self.SIDECAR_OPEN_API_PATH_PREFIXES)
+
     def _log_request(self, request, response, elapsed_time_ms):
         """记录请求日志"""
         method = request.method
@@ -84,5 +92,7 @@ class RequestTimingMiddleware(MiddlewareMixin):
             logger.error(log_message)
         elif status_code >= 400:
             logger.warning(log_message)
+        elif self._is_sidecar_open_api_path(path):
+            logger.debug(log_message)
         else:
             logger.info(log_message)

@@ -20,6 +20,8 @@ interface TrendLineProps {
   onReady?: (ready: boolean) => void;
 }
 
+const LINE_SMOOTHNESS = 0.36;
+
 const withAlpha = (color: string, alpha: number) => {
   const normalized = color.trim();
 
@@ -42,11 +44,18 @@ const withAlpha = (color: string, alpha: number) => {
   return color;
 };
 
-const getGradientStops = (color: string, baseOpacity: number) => [
-  { offset: 0, color: withAlpha(color, Math.min(baseOpacity * 3.8, 0.26)) },
-  { offset: 0.55, color: withAlpha(color, Math.min(baseOpacity * 1.7, 0.12)) },
-  { offset: 1, color: withAlpha(color, 0) },
-];
+const getSeriesAreaColor = (color: string) => ({
+  type: 'linear' as const,
+  x: 0,
+  y: 0,
+  x2: 0,
+  y2: 1,
+  colorStops: [
+    { offset: 0, color: withAlpha(color, 0.12) },
+    { offset: 0.52, color: withAlpha(color, 0.045) },
+    { offset: 1, color: withAlpha(color, 0) },
+  ],
+});
 
 const TrendLine: React.FC<TrendLineProps> = ({
   rawData,
@@ -181,7 +190,12 @@ const TrendLine: React.FC<TrendLineProps> = ({
     tooltip: {
       trigger: 'axis',
       axisPointer: {
-        type: 'cross',
+        type: 'line',
+        lineStyle: {
+          color: chartTheme.axisPointerColor,
+          type: 'dashed',
+          width: 1,
+        },
       },
       enterable: false,
       confine: true,
@@ -223,7 +237,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
     },
     grid: {
-      top: 8,
+      top: 18,
       left: 16,
       right: 16,
       bottom: 8,
@@ -284,7 +298,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         show: true,
         lineStyle: {
           color: chartTheme.splitLineColor,
-          type: 'solid',
+          type: 'dashed',
         },
       },
     },
@@ -327,7 +341,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         },
         splitLine: {
           show: true,
-          lineStyle: { color: chartTheme.splitLineColor, type: 'solid' },
+          lineStyle: { color: chartTheme.splitLineColor, type: 'dashed' },
         },
       },
       {
@@ -350,7 +364,8 @@ const TrendLine: React.FC<TrendLineProps> = ({
       name: item.name,
       type: 'line',
       data: item.data,
-      smooth: true,
+      smooth: LINE_SMOOTHNESS,
+      smoothMonotone: 'x',
       symbol: 'none',
       yAxisIndex: useDualAxis
         ? largeSeriesIndices.includes(index)
@@ -359,22 +374,20 @@ const TrendLine: React.FC<TrendLineProps> = ({
         : 0,
       lineStyle: {
         width: chartTheme.lineWidth,
+        opacity: chartTheme.lineOpacity,
+      },
+      itemStyle: {
+        borderColor: chartTheme.panelBg,
+        borderWidth: 1,
       },
       areaStyle: {
-        color: {
-          type: 'linear',
-          x: 0,
-          y: 0,
-          x2: 0,
-          y2: 1,
-          colorStops: getGradientStops(
-            chartColors[index % chartColors.length],
-            chartTheme.lineAreaOpacity,
-          ),
-        },
+        color: getSeriesAreaColor(chartColors[index % chartColors.length]),
       },
       emphasis: {
         focus: 'series',
+        lineStyle: {
+          width: chartTheme.lineWidth + 0.8,
+        },
       },
     }));
   } else {
@@ -383,26 +396,25 @@ const TrendLine: React.FC<TrendLineProps> = ({
         name: t('topology.treeValueTitle'),
         type: 'line',
         data: chartData && chartData.values ? chartData.values : [],
-        smooth: true,
+        smooth: LINE_SMOOTHNESS,
+        smoothMonotone: 'x',
         symbol: 'none',
         lineStyle: {
           width: chartTheme.lineWidth,
+          opacity: chartTheme.lineOpacity,
+        },
+        itemStyle: {
+          borderColor: chartTheme.panelBg,
+          borderWidth: 1,
         },
         areaStyle: {
-          color: {
-            type: 'linear',
-            x: 0,
-            y: 0,
-            x2: 0,
-            y2: 1,
-            colorStops: getGradientStops(
-              chartColors[0],
-              chartTheme.lineAreaOpacity,
-            ),
-          },
+          color: getSeriesAreaColor(chartColors[0]),
         },
         emphasis: {
           focus: 'series',
+          lineStyle: {
+            width: chartTheme.lineWidth + 0.8,
+          },
         },
       },
     ];

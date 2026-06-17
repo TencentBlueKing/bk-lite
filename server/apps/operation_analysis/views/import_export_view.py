@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
+from apps.operation_analysis.common.audit_log import log_ops_analysis_import_results
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
@@ -169,6 +170,8 @@ class ImportExportViewSet(ViewSet):
 
         result = import_service.execute()
 
+        if isinstance(result, dict):
+            log_ops_analysis_import_results(request, result.get("results"))
         return Response(result, status=status.HTTP_200_OK)
 
     def _get_current_team(self, request) -> int | None:

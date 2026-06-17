@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { Tag, Dropdown } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { CloseCircleFilled, DownOutlined } from '@ant-design/icons';
 import { useUserInfoContext } from '@/context/userInfo';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { createStrategy } from './strategies';
@@ -15,6 +15,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   placeholder,
   multiple = true,
   disabled = false,
+  allowClear = false,
   style = { width: '100%' },
   mode = 'ownership',
   height = 300,
@@ -146,6 +147,12 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
     onChange?.(newValue);
   }, [internalValue, onChange]);
 
+  const handleClear = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    setInternalValue([]);
+    onChange?.(multiple ? [] : undefined);
+  }, [multiple, onChange]);
+
   const dropdownContent = (
     <div
       className="rounded shadow-lg"
@@ -212,6 +219,12 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
           <div className="flex-1 overflow-hidden">
             {displayContent}
           </div>
+          {allowClear && internalValue.length > 0 && !disabled && (
+            <CloseCircleFilled
+              className="text-xs text-gray-400 ml-2 hover:text-gray-500"
+              onClick={handleClear}
+            />
+          )}
           <DownOutlined className="text-xs text-gray-400 ml-2" />
         </div>
       </Dropdown>

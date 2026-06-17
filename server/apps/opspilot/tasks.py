@@ -248,6 +248,8 @@ def chat_flow_test_execute_task(workflow_id, node_id, input_data, entry_type, ex
             engine = create_chat_flow_engine(workflow, node_id, entry_type=entry_type, execution_id=execution_id)
             if entry_type:
                 engine.entry_type = entry_type
+            # 来自配置页"测试"的执行，标记 is_test，便于与真实对话执行区分
+            engine.is_test = True
             engine.execute(input_data)
             logger.info(f"ChatFlow测试异步任务完成: workflow_id={workflow_id}, node_id={node_id}, execution_id={execution_id}")
         except Exception as e:

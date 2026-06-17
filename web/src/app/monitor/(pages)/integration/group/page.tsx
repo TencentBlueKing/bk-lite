@@ -25,6 +25,7 @@ import { showGroupName } from '@/app/monitor/utils/common';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 
 const GroupPage = () => {
   const { isLoading } = useApiClient();
@@ -241,6 +242,7 @@ const GroupPage = () => {
         acc[item.type].children.push({
           title: item.display_name || '--',
           key: item.id,
+          icon: item.icon,
           children: []
         });
         return acc;
@@ -281,17 +283,19 @@ const GroupPage = () => {
   };
 
   return (
-    <div className="flex overflow-hidden">
-      <div className="w-[210px] min-w-[210px] flex flex-col h-[calc(100vh-146px)] overflow-y-auto overflow-x-hidden p-[20px_10px] bg-[var(--color-bg-1)]">
-        <TreeSelector
-          showAllMenu
-          data={treeData}
-          defaultSelectedKey={'all'}
-          onNodeSelect={handleObjectChange}
-          loading={treeLoading}
-        />
-      </div>
-      <div className="w-[calc(100vw-250px)] bg-[var(--color-bg-1)] h-[calc(100vh-146px)] p-[20px] ml-[10px]">
+    <div className="w-full flex overflow-hidden">
+      <ResizableSidebar collapseStorageKey="monitor.integration.group.sidebarCollapsed">
+        <div className="flex flex-col h-[calc(100vh-146px)] overflow-y-auto overflow-x-hidden p-[20px_10px] bg-[var(--color-bg-1)]">
+          <TreeSelector
+            showAllMenu
+            data={treeData}
+            defaultSelectedKey={'all'}
+            onNodeSelect={handleObjectChange}
+            loading={treeLoading}
+          />
+        </div>
+      </ResizableSidebar>
+      <div className="flex-1 min-w-0 bg-[var(--color-bg-1)] h-[calc(100vh-146px)] p-[20px]">
         <div className="flex items-center justify-between mb-[10px]">
           <Input
             allowClear

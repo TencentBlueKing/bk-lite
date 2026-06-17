@@ -94,9 +94,13 @@ def get_opspilot_module_data(module, child_module, page, page_size, group_id):
         "rerank_model": RerankProvider,
     }
     if module != "provider":
-        model = model_map[module]
+        model = model_map.get(module)
+        if model is None:
+            return {"result": False, "message": f"Unknown module: {module}"}
     else:
-        model = provider_model_map[child_module]
+        model = provider_model_map.get(child_module)
+        if model is None:
+            return {"result": False, "message": f"Unknown child_module: {child_module}"}
     queryset = model.objects.filter(team__contains=int(group_id))
     # 计算总数
     total_count = queryset.count()

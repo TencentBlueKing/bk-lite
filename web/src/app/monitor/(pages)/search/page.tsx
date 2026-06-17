@@ -15,19 +15,20 @@ import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import { Dayjs } from 'dayjs';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import {
-  SearchParams,
   SearchPayload,
-  QueryGroup,
   QueryPanelRef,
   ChartItem
 } from '@/app/monitor/types/search';
 import {
-  mergeViewQueryKeyValues,
   renderChart,
-  getRecentTimeRange
 } from '@/app/monitor/utils/common';
 import dayjs from 'dayjs';
 import QueryPanel from './queryPanel';
+import {
+  buildSearchQueryParams,
+  getMetricsMapKey,
+  resolveMetricSelection
+} from './searchQueryLogic';
 
 const SearchView: React.FC = () => {
   const { get } = useApiClient();
@@ -81,70 +82,6 @@ const SearchView: React.FC = () => {
     executeSearch('refresh', timeValues, payload);
   };
 
-  const getParams = (
-    group: QueryGroup,
-    _timeRange: TimeValuesProps,
-    payload: SearchPayload
-  ): SearchParams => {
-    const metrics = payload.metricsMap[String(group.object)] || [];
-    const instances = payload.instancesMap[String(group.object)] || [];
-    const metricItem = metrics.find((item) => item.name === group.metric);
-    const _query: string = metricItem?.query || '';
-    const queryValues: string[][] = instances
-      .filter((item) => group.instanceIds.includes(item.instance_id))
-      .map((item) => item.instance_id_values);
-    const querykeys: string[] = metricItem?.instance_id_keys || [];
-    const queryList = queryValues.map((values) => ({
-      keys: querykeys,
-      values
-    }));
-    const params: SearchParams = {
-      query: '',
-      source_unit: metricItem?.unit || ''
-    };
-    const recentTimeRange = getRecentTimeRange(_timeRange);
-    const startTime = recentTimeRange.at(0);
-    const endTime = recentTimeRange.at(1);
-    if (startTime && endTime) {
-      const MAX_POINTS = 100;
-      const DEFAULT_STEP = 360;
-      params.start = startTime;
-      params.end = endTime;
-      params.step = Math.max(
-        Math.ceil(
-          (params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP
-        ),
-        1
-      );
-    }
-    let query = '';
-    if (group.instanceIds.length) {
-      query += mergeViewQueryKeyValues(queryList);
-    }
-    if (group.conditions.length) {
-      const conditionQueries = group.conditions
-        .map((condition) => {
-          if (condition.label && condition.condition && condition.value) {
-            return `${condition.label}${condition.condition}"${condition.value}"`;
-          }
-          return '';
-        })
-        .filter(Boolean);
-      if (conditionQueries.length) {
-        if (query) query += ',';
-        query += conditionQueries.join(',');
-      }
-    }
-    let finalQuery = _query.replace(/__\$labels__/g, query);
-    if (group.aggregation && group.aggregation !== 'AVG') {
-      const aggFunc = group.aggregation.toLowerCase();
-      const byClause = querykeys.length ? ` by (${querykeys.join(',')})` : '';
-      finalQuery = `${aggFunc}(${finalQuery})${byClause}`;
-    }
-    params.query = finalQuery;
-    return params;
-  };
-
   const handleSearch = (type: string, _timeRange = timeValues) => {
     const payload = lastSearchPayloadRef.current;
     if (!payload) return;
@@ -165,8 +102,9 @@ const SearchView: React.FC = () => {
     searchAbortControllerRef.current = abortController;
     const currentRequestId = ++searchRequestIdRef.current;
     const initialChartItems: ChartItem[] = validGroups.map((group) => {
-      const metrics = payload.metricsMap[String(group.object)] || [];
-      const metricItem = metrics.find((m) => m.name === group.metric) || null;
+      const dataKey = getMetricsMapKey(group.object, group.plugin);
+      const metrics = payload.metricsMap[dataKey] || [];
+      const metricItem = resolveMetricSelection(metrics, group.metric);
       const objectItem = payload.objectsMap[String(group.object)];
       return {
         groupId: group.id,
@@ -186,7 +124,15 @@ const SearchView: React.FC = () => {
     const requests = validGroups.map(async (group, index) => {
       const startTime = Date.now();
       try {
-        const params = getParams(group, _timeRange, payload);
+        const dataKey = getMetricsMapKey(group.object, group.plugin);
+        const metrics = payload.metricsMap[dataKey] || [];
+        const instances = payload.instancesMap[dataKey] || [];
+        const params = buildSearchQueryParams({
+          group,
+          metrics,
+          instances,
+          timeRange: _timeRange
+        });
         const responseData = await get(
           '/monitor/api/metrics_instance/query_range/',
           {
@@ -197,12 +143,10 @@ const SearchView: React.FC = () => {
         if (currentRequestId !== searchRequestIdRef.current) return;
         const data = responseData.data?.result || [];
         const displayUnit = responseData.data?.unit || '';
-        const metrics = payload.metricsMap[String(group.object)] || [];
-        const instances = payload.instancesMap[String(group.object)] || [];
         const list = instances
           .filter((item) => group.instanceIds.includes(item.instance_id))
           .map((item) => {
-            const targetMetric = metrics.find((m) => m.name === group.metric);
+            const targetMetric = resolveMetricSelection(metrics, group.metric);
             return {
               instance_id_values: item.instance_id_values,
               instance_name: item.instance_name,

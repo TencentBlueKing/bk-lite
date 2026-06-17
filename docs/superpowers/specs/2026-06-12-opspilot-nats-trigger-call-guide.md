@@ -211,7 +211,50 @@ with patch("apps.system_mgmt.utils.channel_utils.nats_client.request_sync",
 
 ---
 
-## 八、常见错误对照
+## 八、查询 OpsPilot 托管通道：`search_opspilot_nats_channels`
+
+通用的 `search_channel_list` 无法按「是否 opspilot 托管」过滤（它只按 `channel_type`/`teams`，
+且返回不含 `config`）。要专门列出 OpsPilot 自动建的 NATS 触发通道，用这个专用接口：
+
+```python
+search_opspilot_nats_channels(teams=None, bot_id=None, include_children=False)
+```
+
+| 参数 | 类型 | 含义 |
+|---|---|---|
+| `teams` | list[int] | 可选，组织 ID 列表；**为空/None → 跨团队全局列举** |
+| `bot_id` | int | 可选，仅返回该 Bot 的通道 |
+| `include_children` | bool | 传 `teams` 时是否一并包含其子组织 |
+
+过滤条件：`channel_type == NATS` 且 `config.source == "opspilot"`（Python 侧过滤，**DB 无关**）。
+
+返回（含路由字段，便于看通道↔bot/节点映射）：
+
+```json
+{
+  "result": true,
+  "data": [
+    {"id": 9, "name": "BotA - NATS触发", "description": "...", "team": [2], "bot_id": 12, "node_id": "nats_entry"}
+  ]
+}
+```
+
+示例：
+
+```python
+from apps.rpc.system_mgmt import SystemMgmt
+
+SystemMgmt().search_opspilot_nats_channels()                              # 全局列出所有 opspilot 托管通道
+SystemMgmt().search_opspilot_nats_channels(bot_id=12)                     # 只看某个 bot
+SystemMgmt().search_opspilot_nats_channels(teams=[2], include_children=True)  # 某组织(含子组织)范围内
+```
+
+> 与 `search_channel_list` 的区别：后者是按 `channel_type`/`teams` 的通用查询、不区分来源、返回不含路由字段；
+> 本接口专门筛 `source=="opspilot"` 的通道并返回 `bot_id`/`node_id`。
+
+---
+
+## 九、常见错误对照
 
 | 现象 | 原因 | 排查点 |
 |---|---|---|
@@ -224,10 +267,11 @@ with patch("apps.system_mgmt.utils.channel_utils.nats_client.request_sync",
 
 ---
 
-## 九、要点速记
+## 十、要点速记
 
 1. 调用方只填 **`content = {message, team, user_ids}`**；`title`/`receivers` 在 NATS 触发分支无效。
 2. `team` 是**单个整数**（组织 ID），不是列表。
 3. `bot_id`/`node_id` **不是调用方传的**，来自通道 `config`，由 `send_nats_message` 注入。
 4. `message→workflow 输入`、`team→组织上下文`、`user_ids→干系人(个人记忆逐人写 + 通知)`。
 5. 通道由 OpsPilot 发布时自动创建并只读，调用方只需 `channel_id`。
+6. 要按"是否 opspilot 托管"列通道，用 `search_opspilot_nats_channels`（见第八节），通用 `search_channel_list` 做不到。

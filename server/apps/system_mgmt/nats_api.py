@@ -894,6 +894,75 @@ def delete_opspilot_nats_channels(bot_id):
 
 
 @nats_client.register
+def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=False):
+    """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。
+
+    与通用 search_channel_list 不同：本接口专门按 OpsPilot 托管标识过滤，
+    支持跨团队/全局列举，并返回路由字段 bot_id / node_id。
+
+    :param teams: 可选，组织 ID 列表；为空/None 则跨团队全局列举
+    :param bot_id: 可选，仅返回该 Bot 的通道
+    :param include_children: 当传 teams 时，是否一并包含其子组织
+    :return: 标准 NATS 返回结构，data 为 [{id, name, description, team, bot_id, node_id}]
+    """
+    channels = Channel.objects.filter(channel_type=ChannelChoices.NATS)
+
+    # 传了 teams 才按组织过滤；为空表示全局
+    if teams:
+        normalized_teams = []
+        for team_id in teams:
+            try:
+                normalized_teams.append(int(team_id))
+            except (TypeError, ValueError):
+                continue
+
+        if include_children and normalized_teams:
+            all_groups = Group.objects.values_list("id", "parent_id")
+            children_map = {}
+            for gid, pid in all_groups:
+                if pid is not None:
+                    children_map.setdefault(pid, []).append(gid)
+
+            def _collect_descendants(group_id, acc):
+                acc.add(group_id)
+                for child_id in children_map.get(group_id, []):
+                    _collect_descendants(child_id, acc)
+
+            expanded = set()
+            for team_id in normalized_teams:
+                _collect_descendants(team_id, expanded)
+            normalized_teams = list(expanded)
+
+        if not normalized_teams:
+            return {"result": True, "data": []}
+
+        team_filter = Q(team__contains=normalized_teams[0])
+        for team_id in normalized_teams[1:]:
+            team_filter |= Q(team__contains=team_id)
+        channels = channels.filter(team_filter)
+
+    # DB 无关：在 Python 侧按 config.source（及可选 bot_id）过滤
+    data = []
+    for channel in channels:
+        config = channel.config or {}
+        if config.get("source") != OPSPILOT_CHANNEL_SOURCE:
+            continue
+        if bot_id is not None and str(config.get("bot_id")) != str(bot_id):
+            continue
+        data.append(
+            {
+                "id": channel.id,
+                "name": channel.name,
+                "description": channel.description,
+                "team": channel.team,
+                "bot_id": config.get("bot_id"),
+                "node_id": config.get("node_id"),
+            }
+        )
+    return {"result": True, "data": data}
+
+
+@nats_client.register
 def send_email_to_receiver(title, content, receiver):
     channel_obj = Channel.objects.filter(channel_type=ChannelChoices.EMAIL).first()
     channel_config = channel_obj.config
@@ -1246,12 +1315,26 @@ def login(username, password):
 
 
 @nats_client.register
-def reset_pwd(username, domain, password):
+def reset_pwd(username, domain, password, caller_token=""):
     """
     重置用户密码（NATS接口）
 
-    会进行密码复杂度校验
+    会进行密码复杂度校验，以及调用方身份校验——caller_token 必须是有效的
+    JWT 会话 token，且 token 所属用户必须与 username 一致（自助改密），
+    以阻止任意内网服务通过 NATS 总线篡改他人密码。
     """
+    # 调用方身份校验：验证 caller_token 有效，且属于请求的同一用户
+    if not caller_token:
+        return {"result": False, "message": "caller_token is required"}
+    try:
+        caller = _verify_token(caller_token)
+    except Exception:
+        return {"result": False, "message": "Unauthorized: invalid token"}
+    caller_domain = getattr(caller, "domain", "") or "domain.com"
+    target_domain = domain or "domain.com"
+    if caller.username != username or caller_domain != target_domain:
+        return {"result": False, "message": "Unauthorized: caller does not match target user"}
+
     filter_kwargs = {"username": username}
     if domain:
         filter_kwargs["domain"] = domain
@@ -1410,11 +1493,31 @@ def generate_qr_code_by_user_id(user_id):
 
 # 验证OTP代码
 @nats_client.register
-def verify_otp_code(username, otp_code):
-    user = User.objects.get(username=username)
+def verify_otp_code(username, otp_code, client_ip=""):
+    """
+    Verify OTP code for a user by username.
+
+    Requires client_ip for rate limiting. Falls back to empty string when not
+    provided (legacy callers), but rate limiting is still applied per IP+username.
+    """
+    # Check rate limit before any DB lookup
+    is_limited, remaining = check_rate_limit(client_ip, username)
+    if is_limited:
+        return {"result": False, "message": "Too many failed attempts. Please try again later."}
+
+    user = User.objects.filter(username=username).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    if not user.otp_secret:
+        return {"result": False, "message": "OTP not configured for this user"}
+
     totp = pyotp.TOTP(user.otp_secret)
     if totp.verify(otp_code):
+        reset_rate_limit(client_ip, username)
         return {"result": True, "message": "Verification successful"}
+
+    record_failed_attempt(client_ip, username)
     return {"result": False, "message": "Invalid OTP code"}
 
 

@@ -115,3 +115,121 @@ def test_normalize_task_result_for_read_preserves_failure_summary_context():
     assert normalized["failure"]["type"] == "file_busy"
     assert normalized["failure"]["summary"] == "A running process is blocking the target file from being replaced"
     assert normalized["failure"]["context"]["target_path"] == "/opt/fusion-collectors/bin/vector"
+
+
+def test_normalize_task_result_for_read_summarizes_missing_installer_events():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {
+                    "action": "credential_check",
+                    "status": "success",
+                    "message": "Validate credentials (password)",
+                },
+                {
+                    "action": "run",
+                    "status": "success",
+                    "message": "Installer bootstrap completed",
+                },
+                {
+                    "action": "connectivity_check",
+                    "status": "running",
+                    "message": "Wait for node connection",
+                },
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "no_installer_events"
+    assert summary["observed_count"] == 0
+    assert summary["completed_count"] == 0
+    assert summary["missing_steps"] == [
+        "fetch_session",
+        "prepare_dirs",
+        "download",
+        "extract",
+        "write_config",
+        "install",
+    ]
+    assert summary["anomalies"] == ["no_installer_events"]
+
+
+def test_normalize_task_result_for_read_deduplicates_installer_events_and_flags_connectivity_wait():
+    installer_steps = [
+        ("fetch_session", "success", "Installer session fetched"),
+        ("prepare_dirs", "success", "Directories prepared"),
+        ("download", "success", "Controller package downloaded"),
+        ("extract", "success", "Extracted 3144 files"),
+        ("write_config", "success", "Installer runtime configured"),
+        ("install", "success", "Package installer finished"),
+    ]
+    duplicated_steps = []
+    for _ in range(2):
+        duplicated_steps.extend(
+            {
+                "action": action,
+                "status": status,
+                "message": message,
+                "details": {
+                    "installer_event": True,
+                    "raw_step": action,
+                },
+            }
+            for action, status, message in installer_steps
+        )
+
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {"action": "credential_check", "status": "success", "message": "Validate credentials"},
+                {"action": "run", "status": "success", "message": "Installer bootstrap completed"},
+                *duplicated_steps,
+                {"action": "connectivity_check", "status": "running", "message": "Wait for node connection"},
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "installer_success_connectivity_pending"
+    assert summary["expected_count"] == 6
+    assert summary["observed_count"] == 12
+    assert summary["completed_count"] == 6
+    assert summary["duplicate_count"] == 6
+    assert summary["missing_steps"] == []
+    assert summary["last_step"] == "install"
+    assert summary["last_status"] == "success"
+    assert summary["anomalies"] == ["duplicated_events", "installer_success_connectivity_pending"]
+    assert [step["action"] for step in summary["steps"]] == [step[0] for step in installer_steps]
+
+
+def test_normalize_task_result_for_read_reports_incomplete_installer_events():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "error",
+            "steps": [
+                {
+                    "action": "fetch_session",
+                    "status": "success",
+                    "message": "Installer session fetched",
+                    "details": {"installer_event": True, "raw_step": "fetch_session"},
+                },
+                {
+                    "action": "download",
+                    "status": "error",
+                    "message": "Download failed",
+                    "details": {"installer_event": True, "raw_step": "download_package", "error": "Download failed"},
+                },
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "incomplete_installer_events"
+    assert summary["completed_count"] == 1
+    assert summary["last_step"] == "download"
+    assert summary["last_status"] == "error"
+    assert summary["missing_steps"] == ["prepare_dirs", "extract", "write_config", "install"]
+    assert summary["anomalies"] == ["incomplete_installer_events"]

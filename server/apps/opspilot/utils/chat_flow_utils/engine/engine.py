@@ -58,6 +58,8 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         self.start_node_id = start_node_id
         self.entry_type = entry_type or WorkFlowExecuteType.OPENAI  # 默认为 openai
         self.execution_id = execution_id or str(uuid.uuid4())
+        # 标记本次执行是否来自配置页的"测试"发起；用于区分测试执行与真实对话执行
+        self.is_test = False
         self.task_result: Optional[WorkFlowTaskResult] = None
         self.variable_manager = VariableManager()
         self.execution_contexts: Dict[str, NodeExecutionContext] = {}
@@ -211,6 +213,7 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
             input_data=json.dumps(input_data, ensure_ascii=False),
             output_data={},
             execute_type=self._get_execute_type(start_node_type),
+            is_test=self.is_test,
         )
         return self.task_result
 

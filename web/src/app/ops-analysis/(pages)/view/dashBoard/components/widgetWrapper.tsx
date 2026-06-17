@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Spin, Tooltip } from 'antd';
-import { WarningOutlined } from '@ant-design/icons';
+import { Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   FilterValue,
   UnifiedFilterDefinition,
-  BindingValidationResult,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -337,54 +335,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     widgetId,
   ]);
 
-  const invalidBindings = useMemo((): BindingValidationResult[] => {
-    const bindings = config?.filterBindings;
-    if (!bindings || !filterDefinitions || !Array.isArray(dataSource?.params)) {
-      return [];
-    }
-
-    const results: BindingValidationResult[] = [];
-    const enabledBindingIds = Object.entries(bindings)
-      .filter(([, enabled]) => enabled)
-      .map(([filterId]) => filterId);
-
-    for (const filterId of enabledBindingIds) {
-      const definition = filterDefinitions.find((d) => d.id === filterId);
-      if (!definition) {
-        results.push({
-          filterId,
-          isValid: false,
-          reason: 'filter_not_found',
-        });
-        continue;
-      }
-
-      const matchingParams = dataSource.params.filter(
-        (p) => p.name === definition.key && p.filterType === 'filter',
-      );
-
-      if (matchingParams.length === 0) {
-        results.push({
-          filterId,
-          isValid: false,
-          reason: 'param_not_found',
-        });
-        continue;
-      }
-
-      const exactMatch = matchingParams.find((p) => p.type === definition.type);
-      if (!exactMatch) {
-        results.push({
-          filterId,
-          isValid: false,
-          reason: 'type_mismatch',
-        });
-      }
-    }
-
-    return results;
-  }, [config?.filterBindings, filterDefinitions, dataSource?.params]);
-
   const hasEnabledFilterBindings = useMemo(() => {
     const bindings = config?.filterBindings;
     return Boolean(
@@ -653,62 +603,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     widgetUsesNamespace,
   ]);
 
-  const getInvalidBindingReasonText = (
-    reason: BindingValidationResult['reason'],
-  ): string => {
-    switch (reason) {
-      case 'filter_not_found':
-        return t('dashboard.bindingInvalidFilterNotFound');
-      case 'param_not_found':
-        return t('dashboard.bindingInvalidParamNotFound');
-      case 'type_mismatch':
-        return t('dashboard.bindingInvalidTypeMismatch');
-      default:
-        return t('dashboard.bindingInvalidUnknown');
-    }
-  };
-
-  const renderBindingWarning = () => {
-    if (invalidBindings.length === 0) {
-      return null;
-    }
-
-    const tooltipContent = (
-      <div>
-        <div style={{ fontWeight: 500, marginBottom: 4 }}>
-          {t('dashboard.bindingInvalidTitle')}
-        </div>
-        {invalidBindings.map((binding) => {
-          const definition = filterDefinitions?.find(
-            (d) => d.id === binding.filterId,
-          );
-          const name = definition?.name || binding.filterId;
-          return (
-            <div key={binding.filterId} style={{ fontSize: 12 }}>
-              • {name}: {getInvalidBindingReasonText(binding.reason)}
-            </div>
-          );
-        })}
-      </div>
-    );
-
-    return (
-      <Tooltip title={tooltipContent} placement="topRight">
-        <div
-          style={{
-            position: 'absolute',
-            top: 4,
-            right: 4,
-            zIndex: 10,
-            cursor: 'pointer',
-          }}
-        >
-          <WarningOutlined style={{ color: '#faad14', fontSize: 16 }} />
-        </div>
-      </Tooltip>
-    );
-  };
-
   const renderError = (message: string) => (
     <WidgetErrorState message={message} />
   );
@@ -730,7 +624,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
   return (
     <div style={{ position: 'relative', height: '100%' }}>
-      {renderBindingWarning()}
       <WidgetRenderer
         chartType={chartType}
         rawData={rawData}

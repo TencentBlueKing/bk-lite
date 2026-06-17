@@ -185,6 +185,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.GET.get("name"),
             qs,
             add_metrics,
+            request.GET.get("monitor_plugin_id"),
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
@@ -248,9 +249,12 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         if not instance_id:
             raise BaseAppException("instance_id is required")
 
-        # 前端下传的可能是干净标量(如 "mssql_1433"),而实例ID在库中以元组串形态存储
-        # (如 "('mssql_1433',)")。统一归一为存储键形态,兼容两种输入,既匹配存在性校验,
-        # 也保证 get_effective_plugins 内部按存储键比对上报数据,避免误报"监控实例不存在"。
+        # 前端下传的可能是干净标量(如 "mssql_1433"),也可能是完整 tuple 串
+        # (如 VMware ESXi 的 "('vcenter-a', 'host-3171')")。统一归一为存储键形态：
+        # - 单维实例补齐为 "('mssql_1433',)"
+        # - 多维实例保持完整 tuple
+        # 这样既匹配存在性校验,也保证 get_effective_plugins 内部按存储键比对上报数据,
+        # 避免误报"监控实例不存在"。
         instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
 
         actor_context = _build_actor_context(request)
