@@ -198,6 +198,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       latestExecutionId: executionProps.latestExecutionId,
       openPreview: executionProps.openPreviewPanel,
       closePreview: executionProps.closePreviewPanel,
+      stopExecution: executionProps.stopExecution,
     });
   }, [
     executionProps.closePreviewPanel,
@@ -205,6 +206,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     executionProps.isPreviewOpen,
     executionProps.latestExecutionId,
     executionProps.openPreviewPanel,
+    executionProps.stopExecution,
     onExecutionStateChange,
   ]);
 

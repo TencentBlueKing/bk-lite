@@ -12,6 +12,7 @@ from apps.operation_analysis.models.models import Dashboard, Directory
 from apps.operation_analysis.services.import_export.authorization_service import ImportExportAuthorizationService
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
 from apps.operation_analysis.views.openapi_import_export_view import OpenImportExportViewSet
+from apps.system_mgmt.models import OperationLog
 
 
 def _build_request(path, user, data=None, *, api_pass=False, current_team="1"):
@@ -249,6 +250,75 @@ def test_openapi_submit_returns_structured_error_for_invalid_yaml(authenticated_
     assert payload["result"] is False
     assert response_data["success"] is False
     assert response_data["errors"]
+
+
+@pytest.mark.django_db
+def test_backend_import_submit_logs_success_results_as_create_and_update(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    request = _build_request(
+        "/operation_analysis/api/import_export/import/submit",
+        authenticated_user,
+        data={"yaml_content": "version: '1.0.0'\ndashboards: []"},
+    )
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.import_export_view.PrecheckService.precheck",
+        staticmethod(lambda **kwargs: {"valid": True, "conflicts": [], "errors": []}),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.import_export_view.ImportExportAuthorizationService.apply_precheck_permissions",
+        classmethod(lambda cls, request, doc, result, current_team: result),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.import_export_view.ImportExportAuthorizationService.validate_conflict_decisions",
+        classmethod(lambda cls, conflicts, conflict_decisions: []),
+    )
+    monkeypatch.setattr(
+        "apps.operation_analysis.views.import_export_view.ImportExportAuthorizationService.validate_import_submit_permissions",
+        classmethod(lambda cls, request, doc, conflicts, conflict_decisions, current_team: None),
+    )
+
+    class FakeImportService:
+        def __init__(self, **kwargs):
+            pass
+
+        def execute(self):
+            return {
+                "success": True,
+                "results": [
+                    {
+                        "object_key": "dashboard::new-board",
+                        "object_type": "dashboard",
+                        "status": "success",
+                        "new_id": 10,
+                    },
+                    {
+                        "object_key": "datasource::existing-source",
+                        "object_type": "datasource",
+                        "status": "overwritten",
+                        "new_id": 20,
+                    },
+                    {
+                        "object_key": "namespace::skipped",
+                        "object_type": "namespace",
+                        "status": "skipped",
+                        "new_id": None,
+                    },
+                ],
+                "summary": {"success": 1, "overwritten": 1, "skipped": 1, "failed": 0},
+            }
+
+    monkeypatch.setattr("apps.operation_analysis.views.import_export_view.ImportService", FakeImportService)
+
+    response = ImportExportViewSet.as_view({"post": "import_submit"})(request)
+    response.render()
+
+    logs = list(OperationLog.objects.filter(app="ops-analysis").order_by("id").values("action_type", "summary"))
+    assert response.status_code == status.HTTP_200_OK
+    assert logs == [
+        {"action_type": "create", "summary": "导入新增仪表盘: dashboard::new-board"},
+        {"action_type": "update", "summary": "导入更新数据源: datasource::existing-source"},
+    ]
 
 
 @pytest.mark.django_db

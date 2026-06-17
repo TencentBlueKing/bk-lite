@@ -25,6 +25,7 @@ from apps.monitor.services.alert_lifecycle_notify import (
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
 from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
 
@@ -460,6 +461,11 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 "policy_ids": [policy.id for policy in created],
             }
         )
+
+    @action(methods=["post"], detail=False, url_path="preview")
+    def preview(self, request):
+        data = PolicyPreviewService(request.data).preview()
+        return WebUtils.response_success(data)
 
     def get_bulk_policy_assets(self, monitor_object_id, asset_ids):
         from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization

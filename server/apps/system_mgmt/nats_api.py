@@ -1246,12 +1246,26 @@ def login(username, password):
 
 
 @nats_client.register
-def reset_pwd(username, domain, password):
+def reset_pwd(username, domain, password, caller_token=""):
     """
     重置用户密码（NATS接口）
 
-    会进行密码复杂度校验
+    会进行密码复杂度校验，以及调用方身份校验——caller_token 必须是有效的
+    JWT 会话 token，且 token 所属用户必须与 username 一致（自助改密），
+    以阻止任意内网服务通过 NATS 总线篡改他人密码。
     """
+    # 调用方身份校验：验证 caller_token 有效，且属于请求的同一用户
+    if not caller_token:
+        return {"result": False, "message": "caller_token is required"}
+    try:
+        caller = _verify_token(caller_token)
+    except Exception:
+        return {"result": False, "message": "Unauthorized: invalid token"}
+    caller_domain = getattr(caller, "domain", "") or "domain.com"
+    target_domain = domain or "domain.com"
+    if caller.username != username or caller_domain != target_domain:
+        return {"result": False, "message": "Unauthorized: caller does not match target user"}
+
     filter_kwargs = {"username": username}
     if domain:
         filter_kwargs["domain"] = domain
@@ -1410,11 +1424,31 @@ def generate_qr_code_by_user_id(user_id):
 
 # 验证OTP代码
 @nats_client.register
-def verify_otp_code(username, otp_code):
-    user = User.objects.get(username=username)
+def verify_otp_code(username, otp_code, client_ip=""):
+    """
+    Verify OTP code for a user by username.
+
+    Requires client_ip for rate limiting. Falls back to empty string when not
+    provided (legacy callers), but rate limiting is still applied per IP+username.
+    """
+    # Check rate limit before any DB lookup
+    is_limited, remaining = check_rate_limit(client_ip, username)
+    if is_limited:
+        return {"result": False, "message": "Too many failed attempts. Please try again later."}
+
+    user = User.objects.filter(username=username).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    if not user.otp_secret:
+        return {"result": False, "message": "OTP not configured for this user"}
+
     totp = pyotp.TOTP(user.otp_secret)
     if totp.verify(otp_code):
+        reset_rate_limit(client_ip, username)
         return {"result": True, "message": "Verification successful"}
+
+    record_failed_attempt(client_ip, username)
     return {"result": False, "message": "Invalid OTP code"}
 
 
