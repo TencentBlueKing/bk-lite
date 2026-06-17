@@ -376,6 +376,8 @@ def test_create_monitor_instance_reuses_flow_instance_and_creates_new_snmp_confi
     from apps.monitor.services import node_mgmt as module
 
     captured = {}
+    logical_id = "MToxMC4wLjAuMTI"
+    storage_id = str((logical_id,))
     requested_instance = {
         "instance_id": "1:switch:10.0.0.12",
         "instance_name": "Core Switch",
@@ -384,7 +386,10 @@ def test_create_monitor_instance_reuses_flow_instance_and_creates_new_snmp_confi
     }
     prepared_instance = {
         **requested_instance,
-        "instance_id": "('1:switch:10.0.0.12',)",
+        "raw_instance_id": "1:switch:10.0.0.12",
+        "logical_instance_value": logical_id,
+        "storage_instance_key": storage_id,
+        "instance_id": storage_id,
     }
 
     class _MonitorObjectQuerySet:
@@ -410,7 +415,7 @@ def test_create_monitor_instance_reuses_flow_instance_and_creates_new_snmp_confi
             captured["called"] = True
 
     def prepare_instances(instances, monitor_object_id, collect_type, collector, configs):
-        assert instances == [requested_instance]
+        assert instances == [prepared_instance]
         assert monitor_object_id == 12
         assert collect_type == "snmp"
         assert collector == "Telegraf"
@@ -449,6 +454,11 @@ def test_create_monitor_instance_reuses_flow_instance_and_creates_new_snmp_confi
         "_create_instances_in_db",
         staticmethod(create_instances),
     )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_validate_expected_collect_configs",
+        staticmethod(lambda instances, configs, monitor_plugin_id, collect_type: None),
+    )
 
     module.InstanceConfigService.create_monitor_instance_by_node_mgmt(
         {
@@ -470,6 +480,35 @@ def test_create_monitor_instance_reuses_flow_instance_and_creates_new_snmp_confi
     }
     assert captured["data"]["instances"] == [prepared_instance]
     assert captured["data"]["monitor_plugin_id"] == 301
+
+
+def test_prepare_network_device_identity_instances_uses_cloud_region_ip_safe_id():
+    from apps.monitor.services import node_mgmt as module
+
+    explicit = module.InstanceConfigService._prepare_network_device_identity_instances(
+        [
+            {
+                "instance_id": "1_switch_snmp_10.0.0.12",
+                "cloud_region": 1,
+                "ip": "10.0.0.12",
+                "instance_name": "Core Switch",
+            }
+        ]
+    )[0]
+    parsed = module.InstanceConfigService._prepare_network_device_identity_instances(
+        [
+            {
+                "instance_id": "1_switch_snmp_10.0.0.12",
+                "instance_name": "Core Switch",
+            }
+        ]
+    )[0]
+
+    assert explicit["logical_instance_value"] == "MToxMC4wLjAuMTI"
+    assert explicit["storage_instance_key"] == "('MToxMC4wLjAuMTI',)"
+    assert explicit["instance_id"] == "('MToxMC4wLjAuMTI',)"
+    assert explicit["raw_instance_id"] == "1_switch_snmp_10.0.0.12"
+    assert parsed["instance_id"] == explicit["instance_id"]
 
 
 def test_create_monitor_instance_does_not_replace_selected_host_remote_node_id(monkeypatch):
@@ -531,6 +570,11 @@ def test_create_monitor_instance_does_not_replace_selected_host_remote_node_id(m
         module.InstanceConfigService,
         "_create_instances_in_db",
         staticmethod(lambda new_instances, existing_instances, deleted_ids, monitor_object_id: (["inst-a"], [])),
+    )
+    monkeypatch.setattr(
+        module.InstanceConfigService,
+        "_validate_expected_collect_configs",
+        staticmethod(lambda instances, configs, monitor_plugin_id, collect_type: None),
     )
 
     module.InstanceConfigService.create_monitor_instance_by_node_mgmt(
