@@ -57,6 +57,7 @@ from apps.system_mgmt.utils.channel_utils import (
 )
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.pwd_policy_cache import get_pwd_policy_settings as _get_pwd_policy_settings
 from apps.system_mgmt.utils.token_blacklist import blacklist_token, is_blacklisted
 
 
@@ -1238,12 +1239,10 @@ def login(username, password):
         # 密码错误，递增错误次数
         user.password_error_count += 1
 
-        # 获取系统设置的最大重试次数和锁定时长
-        max_retry_setting = SystemSettings.objects.filter(key="pwd_set_max_retry_count").first()
-        max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
-
-        lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
-        lock_duration_seconds = int(lock_duration_setting.value) if lock_duration_setting else 180  # 默认180秒(3分钟)
+        # 批量读取密码策略（单次 DB 查询 + 缓存，避免每次失败登录多次打 DB）
+        pwd_policy = _get_pwd_policy_settings()
+        max_retry_count = pwd_policy["pwd_set_max_retry_count"]
+        lock_duration_seconds = pwd_policy["pwd_set_lock_duration"]
 
         # 如果错误次数达到或超过最大重试次数，锁定账号
         if user.password_error_count >= max_retry_count:
@@ -1278,14 +1277,13 @@ def login(username, password):
     # 检查密码过期
     password_expiry_reminder = ""
     if user.password_last_modified:
-        # 获取密码有效期和提醒提前天数
-        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
-        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+        # 批量读取密码策略（与密码错误路径共用同一缓存，无额外 DB 开销）
+        pwd_policy = _get_pwd_policy_settings()
+        validity_period_days = pwd_policy["pwd_set_validity_period"]
 
         # validity_period_days <= 0 表示永不过期，跳过过期检查
         if validity_period_days > 0:
-            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+            reminder_days = pwd_policy["pwd_set_expiry_reminder_days"]
 
             password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
             days_until_expire = (password_expire_date - now).days
@@ -1615,13 +1613,13 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
         # Initialize language loader for user's locale
         loader = LanguageLoader(app="system_mgmt", default_lang=user.locale or "en")
 
-        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
-        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+        # 批量读取密码策略（单次 DB 查询 + 缓存，复用与 login() 相同的缓存键）
+        pwd_policy = _get_pwd_policy_settings()
+        validity_period_days = pwd_policy["pwd_set_validity_period"]
 
         # validity_period_days <= 0 表示永不过期，跳过过期检查
         if validity_period_days > 0:
-            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+            reminder_days = pwd_policy["pwd_set_expiry_reminder_days"]
 
             now = timezone.now()
             password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
