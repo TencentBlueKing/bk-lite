@@ -1538,3 +1538,65 @@ def test_search_opspilot_nats_channels_filters_by_source_and_bot():
     # 按 teams 过滤（team 3 → 只 bot8）
     team3 = search_opspilot_nats_channels(teams=[3])
     assert {c["node_id"] for c in team3["data"]} == {"m1"}
+
+
+def test_wechat_user_register_uses_select_for_update_inside_transaction(monkeypatch):
+    """
+    验证 wechat_user_register 的 RMW 操作受 select_for_update 保护。
+    若将修复代码 revert（去掉 transaction.atomic + select_for_update），本测试必须失败。
+    """
+    import threading
+    from unittest.mock import MagicMock, patch, call
+    from apps.system_mgmt.nats_api import wechat_user_register
+
+    select_for_update_called = threading.Event()
+    atomic_entered = threading.Event()
+
+    # 拦截 User.objects.select_for_update() 调用链
+    original_user_objects = nats_api.User.objects
+
+    class _SFUQuerSet:
+        """模拟 select_for_update() 返回的 queryset，支持 get_or_create"""
+        def get_or_create(self, username, defaults=None):
+            select_for_update_called.set()
+            # 构造最小 User 对象
+            user = MagicMock()
+            user.group_list = []
+            user.role_list = []
+            user.last_login = None
+            user.id = 1
+            user.username = username
+            user.display_name = defaults.get("display_name", "") if defaults else ""
+            user.locale = "zh-Hans"
+            user.timezone = "Asia/Shanghai"
+            return user, True
+
+    class _FakeUserObjects:
+        def select_for_update(self):
+            return _SFUQuerSet()
+
+        def get_or_create(self, *args, **kwargs):
+            # 未经 select_for_update 直接调用——不应发生
+            return MagicMock(group_list=[], role_list=[]), True
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeUserObjects())
+
+    # 让 Group / Role 查询返回空，简化测试
+    monkeypatch.setattr(nats_api.Group, "objects", MagicMock(**{
+        "filter.return_value.first.return_value": None,
+    }))
+    monkeypatch.setattr(nats_api.Role, "objects", MagicMock(**{
+        "filter.return_value.values_list.return_value": [],
+    }))
+
+    # 屏蔽 JWT 签名
+    monkeypatch.setattr(nats_api, "_build_jwt_payload", lambda user_id: {})
+    import jwt as _jwt
+    monkeypatch.setattr(_jwt, "encode", lambda **kwargs: "fake-token")
+
+    result = wechat_user_register("wx_test_race", "测试用户")
+
+    assert result["result"] is True, "wechat_user_register 应返回 result=True"
+    assert select_for_update_called.is_set(), (
+        "select_for_update() 未被调用——RMW 操作缺少悲观锁，并发时会丢失更新（issue #3460）"
+    )

@@ -1360,23 +1360,26 @@ def reset_pwd(username, domain, password, caller_token=""):
 
 @nats_client.register
 def wechat_user_register(user_id, nick_name):
-    user, is_first_login = User.objects.get_or_create(username=user_id, defaults={"display_name": nick_name})
-    default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
-    if not user.group_list and default_group:
-        user.group_list = [default_group.id]
-    default_role = list(
-        Role.objects.filter(
-            Q(name="normal", app__in=["opspilot", "ops-console"])
-            | Q(
-                name="guest",
-                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
-            )
-        ).values_list("id", flat=True)
-    )
-    default_role.extend(user.role_list)
-    user.role_list = list(set(default_role))
-    user.last_login = timezone.now()
-    user.save()
+    with transaction.atomic():
+        user, is_first_login = User.objects.select_for_update().get_or_create(
+            username=user_id, defaults={"display_name": nick_name}
+        )
+        default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
+        if not user.group_list and default_group:
+            user.group_list = [default_group.id]
+        default_role = list(
+            Role.objects.filter(
+                Q(name="normal", app__in=["opspilot", "ops-console"])
+                | Q(
+                    name="guest",
+                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
+                )
+            ).values_list("id", flat=True)
+        )
+        default_role.extend(user.role_list)
+        user.role_list = list(set(default_role))
+        user.last_login = timezone.now()
+        user.save()
     try:
         if default_group:
             set_opspilot_guest_group_default_rule(default_group, user)
