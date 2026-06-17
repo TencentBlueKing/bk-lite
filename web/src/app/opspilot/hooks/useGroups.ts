@@ -13,7 +13,7 @@ const useGroups = () => {
     if (isLoading) return;
     const fetchGroups = async () => {
       try {
-        const data = await get('/opspilot/knowledge_mgmt/knowledge_base/get_teams/');
+        const data = await get('/opspilot/bot_mgmt/bot/get_teams/');
         setGroups(data || []);
       } catch (error) {
         console.error(`${t('common.fetchFailed')}:`, error);
