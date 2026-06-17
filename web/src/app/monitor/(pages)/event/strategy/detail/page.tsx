@@ -39,6 +39,10 @@ import MetricPreview from './metricPreview';
 import VariablesTable from './variablesTable';
 import { isStringArray } from '@/app/monitor/utils/common';
 import {
+  getMetricDimensionNames,
+  sanitizeGroupBy
+} from '@/app/monitor/utils/metricDimensions';
+import {
   COMPARISON_METHOD,
   ENUM_COMPARISON_METHOD
 } from '@/app/monitor/constants/event';
@@ -194,7 +198,7 @@ const StrategyOperation = () => {
           // 同时设置 labels，确保条件维度能正常使用
           const target = initMetricData.find((item) => item.name === _metricId);
           if (target) {
-            const _labels = (target?.dimensions || []).map((item) => item.name);
+            const _labels = getMetricDimensionNames(target?.dimensions);
             setLabels(_labels);
             setCalculationUnit(filterInvalidUnit(target?.unit));
             // 计算完整的分组维度选项列表并设置为所有选项
@@ -303,7 +307,7 @@ const StrategyOperation = () => {
       period: period?.value || null,
       query: query_condition?.query || null
     });
-    setGroupBy(group_by || []);
+    setGroupBy(sanitizeGroupBy(group_by || []));
     feedbackThreshold(thresholdList);
     setCalculationUnit(filterInvalidUnit(calculation_unit));
     setPeriod(period?.value || null);
@@ -349,7 +353,7 @@ const StrategyOperation = () => {
         (item) => item.id === query_condition?.metric_id
       );
       if (_metrics) {
-        const _labels = (_metrics?.dimensions || []).map((item) => item.name);
+        const _labels = getMetricDimensionNames(_metrics?.dimensions);
         setMetric(_metrics?.name || '');
         setLabels(_labels);
         setConditions(query_condition?.filter || []);
@@ -408,7 +412,7 @@ const StrategyOperation = () => {
   const handleMetricChange = (val: string) => {
     setMetric(val);
     const target = metrics.find((item) => item.name === val);
-    const _labels = (target?.dimensions || []).map((item) => item.name);
+    const _labels = getMetricDimensionNames(target?.dimensions);
     setLabels(_labels);
     // 计算完整的分组维度选项列表（固定列表 + 标签列表，去重）
     const fixedList = getGroupIds(monitorName as string)?.list || defaultGroup;
@@ -502,7 +506,7 @@ const StrategyOperation = () => {
   };
 
   const handleGroupByChange = (val: string[]) => {
-    setGroupBy(val);
+    setGroupBy(sanitizeGroupBy(val));
   };
 
   const handleConditionsChange = (newConditions: FilterItem[]) => {
@@ -647,7 +651,7 @@ const StrategyOperation = () => {
       }
       params.enable_alerts = _enableAlerts;
       params.recovery_condition = params.recovery_condition || 0;
-      params.group_by = groupBy;
+      params.group_by = sanitizeGroupBy(groupBy);
       params.enable = true;
       operateStrategy(params);
     });
