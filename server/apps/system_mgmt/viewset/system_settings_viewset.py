@@ -8,6 +8,7 @@ from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.serializers.system_settings_serializer import SystemSettingsSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.pwd_policy_cache import invalidate_pwd_policy_cache as _invalidate_pwd_policy_cache
 
 
 class SystemSettingsViewSet(viewsets.ModelViewSet):
@@ -67,6 +68,10 @@ class SystemSettingsViewSet(viewsets.ModelViewSet):
         missing_settings = [SystemSettings(key=key, value=value) for key, value in kwargs.items() if key not in existing_keys]
         if missing_settings:
             SystemSettings.objects.bulk_create(missing_settings)
+
+        # 若密码策略相关配置被更新，清除 login 路径缓存（确保新策略立即生效）
+        if any(k.startswith("pwd_set_") for k in kwargs):
+            _invalidate_pwd_policy_cache()
 
         # 记录操作日志
         updated_keys = list(kwargs.keys())
