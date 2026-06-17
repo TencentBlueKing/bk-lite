@@ -50,15 +50,44 @@ class TestGetRoomLayout:
                         "col": 1, "u_count": 42, "datacenter_type": "1",
                         "datacenter_state": "1"},
                     10: {"_id": 10, "inst_name": "sw", "model_id": "switch",
-                         "rack_u_start": 41, "u_size": 21}}
+                         "rack_u_start": 1, "u_size": 21}}
             return {i: full[i] for i in ids if i in full}
         q_map.side_effect = map_side_effect
 
         out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
         assert len(out["racks"]) == 1
+        # 占 U1-21 → 已用 21、利用率 50%、最大连续空闲 = U22-42 = 21
+        assert out["racks"][0]["used_u"] == 21
         assert out["racks"][0]["usage"] == 50
-        # 设备占 U41-42（u_size=21 越界裁剪到 42），最大连续空闲 = U1-40 = 40
-        assert out["racks"][0]["max_free_u"] == 40
+        assert out["racks"][0]["max_free_u"] == 21
+
+    @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=True)
+    @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")
+    @patch.object(rack_room.InstanceManage, "instance_association_instance_list")
+    def test_used_u_is_distinct_occupied_not_sum(self, q_assoc, q_map, _perm):
+        # 一台落位 U1-2、一台未分配 U 位（有 u_size 无 rack_u_start）：
+        # used_u 应为去重占用数 2（= u_count - free_u），不被未分配设备抬高，利用率不超 100%
+        def assoc_side_effect(model_id, inst_id):
+            if model_id == "server_room":
+                return [_assoc("server_room", "rack", "run", [5])]
+            return [_assoc("rack", "switch", "contains", [10, 11])]
+        q_assoc.side_effect = assoc_side_effect
+
+        def map_side_effect(ids):
+            full = {5: {"_id": 5, "inst_name": "R", "model_id": "rack", "row": 1,
+                        "col": 1, "u_count": 10, "datacenter_type": "1"},
+                    10: {"_id": 10, "inst_name": "sw1", "model_id": "switch",
+                         "rack_u_start": 1, "u_size": 2},
+                    11: {"_id": 11, "inst_name": "sw2", "model_id": "switch",
+                         "rack_u_start": None, "u_size": 2}}
+            return {i: full[i] for i in ids if i in full}
+        q_map.side_effect = map_side_effect
+
+        out = rack_room.get_room_layout(7, permission_map={"x": 1}, user=None)
+        rack = out["racks"][0]
+        assert rack["used_u"] == 2          # 不是 2+2=4
+        assert rack["free_u"] == 8
+        assert rack["usage"] == 20
 
     @patch.object(rack_room.InstanceManage, "_has_topology_view_permission", return_value=False)
     @patch.object(rack_room.InstanceManage, "_query_instance_map_by_ids")

@@ -177,15 +177,16 @@ def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
             ):
                 continue
             u_count = _safe_int(r.get("u_count")) or 0
-            used_u, ranges = 0, []
+            ranges = []
             for d in _rack_device_instances(rid, permission_map, user):
                 us = _safe_int(d.get("rack_u_start"))
                 sz = _safe_int(d.get("u_size"))
-                if sz:
-                    used_u += sz
                 if us and sz:
                     ranges.append((us, us + sz - 1))
             free_u, max_free_u = free_u_stats(u_count, ranges)
+            # 已占用 = 总U - 空闲U（去重计数）：忽略未分配设备、重叠不重复计、永不超 100%，
+            # 与机柜抽屉概览口径一致
+            used_u = u_count - free_u
             racks.append({
                 "inst_id": str(rid), "inst_name": r.get("inst_name"),
                 "row": _safe_int(r.get("row")), "col": _safe_int(r.get("col")),
