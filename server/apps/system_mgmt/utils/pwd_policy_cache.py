@@ -20,9 +20,9 @@ PWD_POLICY_KEYS = [
 ]
 
 PWD_POLICY_DEFAULTS = {
-    "pwd_set_max_retry_count": 5,
+    "pwd_set_max_retry_count": 3,    # 与 0019_init_password_settings 迁移一致
     "pwd_set_lock_duration": 180,
-    "pwd_set_validity_period": 90,
+    "pwd_set_validity_period": 180,  # 与 0019_init_password_settings 迁移一致
     "pwd_set_expiry_reminder_days": 7,
 }
 
