@@ -43,6 +43,18 @@
           "suffix": "s"
         }
       }
+    },
+    {
+      "name": "insecure_skip_verify",
+      "label": "跳过证书校验",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "HTTPS 场景下是否跳过服务端证书校验",
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.insecure_skip_verify"
+      }
     }
   ],
   "table_columns": [
@@ -77,6 +89,15 @@
         "source_fields": ["url"],
         "target_field": "instance_name"
       }
+    },
+    {
+      "name": "insecure_skip_verify",
+      "label": "跳过证书校验",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "HTTPS 场景下是否跳过服务端证书校验",
+      "widget_props": {}
     },
     {
       "name": "instance_name",

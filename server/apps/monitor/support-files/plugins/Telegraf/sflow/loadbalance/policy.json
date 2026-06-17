@@ -3,10 +3,10 @@
   "plugin": "Loadbalance Flow sFlow",
   "templates": [
     {
-      "name": "设备总入流量过高",
-      "alert_name": "负载均衡设备${resource_name} 总入流量过高",
-      "description": "sFlow 总入流量过高告警。",
-      "metric_name": "device_total_incoming_sflow_traffic",
+      "name": "设备总流量过高",
+      "alert_name": "负载均衡${resource_name} 设备总流量过高",
+      "description": "sFlow 总流量过高告警。",
+      "metric_name": "device_flow_bytes_rate",
       "algorithm": "max",
       "threshold": [
         {
@@ -17,10 +17,24 @@
       ]
     },
     {
-      "name": "设备总出流量过高",
-      "alert_name": "负载均衡设备${resource_name} 总出流量过高",
-      "description": "sFlow 总出流量过高告警。",
-      "metric_name": "device_total_outgoing_sflow_traffic",
+      "name": "设备总包量过高",
+      "alert_name": "负载均衡${resource_name} 设备总包量过高",
+      "description": "sFlow 总包量过高告警。",
+      "metric_name": "device_flow_packets_rate",
+      "algorithm": "max",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 900,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "平均包大小异常",
+      "alert_name": "负载均衡${resource_name} 平均包大小异常",
+      "description": "sFlow 平均包大小异常告警。",
+      "metric_name": "device_flow_avg_packet_size",
       "algorithm": "max",
       "threshold": [
         {
