@@ -380,6 +380,7 @@ def _get_actor_user_scope(actor_context, include_children=False):
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
     is_superuser = (actor_context or {}).get("is_superuser", False)
+    actor_group_list = (actor_context or {}).get("group_list")
 
     if not username or current_team in (None, ""):
         return None, []
@@ -398,8 +399,9 @@ def _get_actor_user_scope(actor_context, include_children=False):
             return user_obj, GroupUtils.get_group_with_descendants(current_team)
         return user_obj, [current_team]
 
+    user_group_list = actor_group_list if actor_group_list else user_obj.group_list
     authorized_groups = GroupUtils.get_user_authorized_child_groups(
-        user_obj.group_list,
+        user_group_list,
         current_team,
         include_children=include_children,
     )
@@ -438,7 +440,10 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
     if not query_groups:
         return {"result": True, "data": []}
 
-    users = User.objects.filter(group_list__overlap=query_groups).values("id", "username", "display_name")
+    user_filter = Q()
+    for group_id in query_groups:
+        user_filter |= Q(group_list__contains=int(group_id))
+    users = User.objects.filter(user_filter).values("id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 

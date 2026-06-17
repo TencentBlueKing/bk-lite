@@ -24,3 +24,31 @@ def test_flow_traffic_metric_queries_use_effective_sampling_rate():
                 missing_sampling_rate_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}")
 
     assert missing_sampling_rate_queries == []
+
+
+def test_flow_traffic_queries_use_telegraf_metric_names():
+    expected_metric_name = {
+        "netflow": "netflow_in_bytes",
+        "sflow": "sflow_bytes",
+    }
+    metric_files = sorted(
+        path
+        for protocol in expected_metric_name
+        for path in (FLOW_METRICS_ROOT / protocol).glob("*/metrics.json")
+    )
+
+    assert metric_files
+
+    unsupported_queries = []
+    for path in metric_files:
+        protocol = path.parts[-3]
+        expected_name = expected_metric_name[protocol]
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            if not metric.get("name", "").startswith("device_total_"):
+                continue
+            query = metric.get("query", "")
+            if expected_name not in query or "flow_bytes_in" in query or "flow_bytes_out" in query:
+                unsupported_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}")
+
+    assert unsupported_queries == []

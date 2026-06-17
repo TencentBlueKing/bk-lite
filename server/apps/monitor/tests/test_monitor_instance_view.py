@@ -4,6 +4,7 @@ import types
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
+from apps.monitor.utils.dimension import build_safe_instance_id
 from apps.monitor.views import monitor_instance as monitor_instance_view
 
 
@@ -413,6 +414,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
     from apps.monitor.constants.plugin import PluginConstants
     from apps.monitor.services import monitor_instance
 
+    logical_id = build_safe_instance_id(1, "10.10.41.149")
     monitor_object = MonitorObject.objects.create(
         name="Switch",
         display_name="Switch",
@@ -420,7 +422,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
         instance_id_keys=["instance_id"],
     )
     instance = MonitorInstance.objects.create(
-        id="('flow:15:1:10.10.41.149',)",
+        id=str((logical_id,)),
         name="NetFlow-10.10.41.149",
         monitor_object=monitor_object,
         cloud_region_id=1,
@@ -454,7 +456,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
                 "data": {
                     "result": [
                         {
-                            "metric": {"instance_id": "flow:15:1:10.10.41.149"},
+                            "metric": {"instance_id": logical_id},
                             "value": [1781234567, "1"],
                         }
                     ]

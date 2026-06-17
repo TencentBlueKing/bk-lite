@@ -12,6 +12,10 @@ import Spin from '@/components/spin';
 import { useUserInfoContext } from '@/context/userInfo';
 import { transformTreeData } from '@/app/monitor/utils/common';
 import monitorApi from '@/app/monitor/api';
+import {
+  loadMonitorCommonData,
+  shouldLoadMonitorCommonData,
+} from './commonDataLoader';
 
 interface CommonContextType {
   userList: UserItem[];
@@ -32,43 +36,26 @@ const CommonContextProvider = ({ children }: { children: React.ReactNode }) => {
   const [pageLoading, setPageLoading] = useState(false);
 
   useEffect(() => {
-    if (isLoading) return;
+    if (!shouldLoadMonitorCommonData({
+      requestLoading: isLoading,
+      userInfoLoading: commonContext.loading,
+      selectedGroupId: commonContext.selectedGroup?.id,
+    })) {
+      return;
+    }
     getPermissionGroups();
-  }, [isLoading]);
+  }, [isLoading, commonContext.loading, commonContext.selectedGroup?.id]);
 
   const getPermissionGroups = async () => {
     setPageLoading(true);
     try {
-      Promise.all([getAllUsers(), getUnitList()])
-        .then(([usersResponse = [], unitsResponse = []]) => {
-          setUserList(usersResponse);
-          setUnitList(unitsResponse);
-          const groupedByCategory = unitsResponse.reduce(
-            (acc: UnitListItem, item: UnitListItem) => {
-              if (!acc[item.category]) {
-                acc[item.category] = [];
-              }
-              acc[item.category].push({
-                ...item,
-                label: item.unit_name,
-                value: item.unit_id,
-                unit: item.display_unit,
-              });
-              return acc;
-            },
-            {}
-          );
-          const transformedUnitList = Object.entries(groupedByCategory).map(
-            ([category, children]) => ({
-              label: category,
-              children,
-            })
-          );
-          setGroupedUnitList(transformedUnitList as GroupedUnitList[]);
-        })
-        .catch(() => {
-          setPageLoading(false);
-        });
+      const { users, units, groupedUnits } = await loadMonitorCommonData({
+        getAllUsers,
+        getUnitList,
+      });
+      setUserList(users);
+      setUnitList(units);
+      setGroupedUnitList(groupedUnits);
     } finally {
       setPageLoading(false);
     }

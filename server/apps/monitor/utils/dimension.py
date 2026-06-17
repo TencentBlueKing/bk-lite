@@ -1,7 +1,17 @@
 """维度处理工具函数 - 用于处理监控指标的维度数据"""
 
 import ast
+import base64
 from typing import Any, Union
+
+
+def build_safe_instance_id(*parts: Any) -> str:
+    """Encode identity parts into a stable label-safe instance id."""
+    normalized_parts = [str(part).strip() for part in parts]
+    if any(not part for part in normalized_parts):
+        raise ValueError("instance id parts must not be empty")
+    raw_value = ":".join(normalized_parts)
+    return base64.urlsafe_b64encode(raw_value.encode("utf-8")).decode("ascii").rstrip("=")
 
 
 def build_dimensions(

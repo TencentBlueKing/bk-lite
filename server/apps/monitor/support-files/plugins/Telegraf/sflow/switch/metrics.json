@@ -18,7 +18,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_incoming_sflow_traffic",
-      "query": "sum(flow_bytes_in{instance_type='switch', collect_type='sflow', __$labels__} * label_value(flow_bytes_in{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
       "display_name": "Device Total Incoming sFlow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -31,7 +31,7 @@
     {
       "metric_group": "Traffic",
       "name": "device_total_outgoing_sflow_traffic",
-      "query": "sum(flow_bytes_out{instance_type='switch', collect_type='sflow', __$labels__} * label_value(flow_bytes_out{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
       "display_name": "Device Total Outgoing sFlow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
