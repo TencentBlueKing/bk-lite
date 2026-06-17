@@ -82,7 +82,6 @@ def _load_nats_api():
 
     Bot = _model("Bot")
     LLMSkill = _model("LLMSkill")
-    KnowledgeBase = _model("KnowledgeBase")
     SkillTools = _model("SkillTools")
     LLMModel = _model("LLMModel")
     OCRProvider = _model("OCRProvider")
@@ -95,7 +94,6 @@ def _load_nats_api():
         BotConversationHistory=object,
         BotWorkFlow=object,
         EmbedProvider=EmbedProvider,
-        KnowledgeBase=KnowledgeBase,
         LLMModel=LLMModel,
         LLMSkill=LLMSkill,
         OCRProvider=OCRProvider,
@@ -157,10 +155,6 @@ class TestGetOpspilotModuleDataBoundary:
 
     def test_known_module_skill_succeeds(self):
         result = self._call(module="skill")
-        assert "count" in result
-
-    def test_known_module_knowledge_succeeds(self):
-        result = self._call(module="knowledge")
         assert "count" in result
 
     def test_known_module_tools_succeeds(self):

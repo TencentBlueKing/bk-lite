@@ -74,7 +74,7 @@ class TestInvokeChatExceptionHandler:
         compared to the success return, so callers can tell them apart.
         """
         source_path = "apps/opspilot/services/chat_service.py"
-        source = _read_source(source_path, 145, 165)
+        source = _read_source(source_path, 136, 158)
 
         except_section = source[source.index("except") :]
 
