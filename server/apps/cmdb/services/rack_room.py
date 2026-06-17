@@ -1,0 +1,197 @@
+"""机房机柜俯视图：纯布局组装 + 只读数据拉取。
+
+边界处理遵循设计：未定位/未分配 U 位的实例不静默丢弃，单独成列；
+越界/重叠/同格冲突均标记返回，由前端高亮提示。
+"""
+
+from apps.cmdb.services.instance import InstanceManage
+
+
+def col_to_letter(col: int) -> str:
+    """1->A, 26->Z, 27->AA。"""
+    result = ""
+    n = int(col)
+    while n > 0:
+        n, rem = divmod(n - 1, 26)
+        result = chr(65 + rem) + result
+    return result
+
+
+def build_room_layout(racks: list) -> dict:
+    """把机柜列表组装成俯视平面图数据。
+
+    入参每项：inst_id, inst_name, row, col, u_count, datacenter_type,
+              datacenter_state, used_u（已占用 U 数）。
+    """
+    placed, unplaced, cells = [], [], {}
+    for r in racks:
+        # 行/列均为 1-based 网格坐标；缺任一坐标即视为"未定位"（不丢弃，单独成列）。
+        # 用 is not None 而非真值判断，语义只关心"有没有坐标"，不把 0 误判为缺失。
+        if r.get("row") is not None and r.get("col") is not None:
+            u_count = r.get("u_count") or 0
+            used_u = r.get("used_u") or 0
+            item = {
+                **r,
+                "col_letter": col_to_letter(r["col"]),
+                "usage": round(used_u / u_count * 100) if u_count else 0,
+            }
+            placed.append(item)
+            cells.setdefault((r["row"], r["col"]), []).append(item["inst_id"])
+        else:
+            unplaced.append(r)
+
+    conflicts = [
+        {"row": rc[0], "col": rc[1], "inst_ids": ids}
+        for rc, ids in cells.items() if len(ids) > 1
+    ]
+    return {
+        "racks": placed,
+        "unplaced": unplaced,
+        "conflicts": conflicts,
+        "grid": {
+            "max_row": max((r["row"] for r in placed), default=0),
+            "max_col": max((r["col"] for r in placed), default=0),
+        },
+    }
+
+
+def build_rack_layout(u_count: int, devices: list) -> dict:
+    """把机柜内设备组装成正视 U 图数据。
+
+    入参每项：inst_id, inst_name, model_id, rack_u_start, u_size。
+    """
+    placed, unplaced = [], []
+    for d in devices:
+        u_start, u_size = d.get("rack_u_start"), d.get("u_size")
+        if not u_start or not u_size:
+            unplaced.append(d)
+            continue
+        u_end = u_start + u_size - 1
+        overflow = u_start < 1 or (bool(u_count) and u_end > u_count)
+        placed.append({**d, "u_end": u_end, "overflow": overflow})
+
+    overlaps = []
+    ordered = sorted(placed, key=lambda x: x["rack_u_start"])
+    for i, a in enumerate(ordered):
+        for b in ordered[i + 1:]:
+            if b["rack_u_start"] > a["u_end"]:
+                break
+            overlaps.append([a["inst_id"], b["inst_id"]])
+
+    free_u, max_free_u = free_u_stats(
+        u_count, [(d["rack_u_start"], d["u_end"]) for d in placed])
+    return {"u_count": u_count, "placed": placed,
+            "unplaced": unplaced, "overlaps": overlaps,
+            "free_u": free_u, "max_free_u": max_free_u}
+
+
+def free_u_stats(u_count: int, ranges: list) -> tuple:
+    """空闲 U 统计：free_u 总空闲数；max_free_u 最大连续空闲段
+    （"能否塞下 N U 设备"）。ranges 为已占用的 [(u_start, u_end), ...]，越界自动裁剪。"""
+    if not u_count or u_count <= 0:
+        return 0, 0
+    occupied = [False] * (u_count + 1)  # 下标 1..u_count
+    for s, e in ranges:
+        for pos in range(max(1, s), min(u_count, e) + 1):
+            occupied[pos] = True
+    free_u, max_free_u, run = 0, 0, 0
+    for pos in range(1, u_count + 1):
+        if occupied[pos]:
+            run = 0
+        else:
+            free_u += 1
+            run += 1
+            max_free_u = max(max_free_u, run)
+    return free_u, max_free_u
+
+
+def _safe_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _scalar(value):
+    """枚举字段（如 datacenter_type/state）在 CMDB 中以列表存储（单选也是 ['1']），
+    取首个值归一为标量供前端按枚举 id 着色；空列表/None 返回 None。"""
+    if isinstance(value, list):
+        return value[0] if value else None
+    return value
+
+
+def _rack_device_instances(rack_id, permission_map=None, user=None) -> list:
+    """机柜直接 contains 的设备实例（已按权限过滤）。"""
+    assocs = InstanceManage.instance_association_instance_list("rack", int(rack_id))
+    ids = [item["_id"] for a in assocs if a["src_model_id"] == "rack"
+           for item in a["inst_list"]]
+    if not ids:
+        return []
+    inst_map = InstanceManage._query_instance_map_by_ids({int(i) for i in ids})
+    devices = []
+    for i in ids:
+        inst = inst_map.get(int(i))
+        if not inst:
+            continue
+        if permission_map and not InstanceManage._has_topology_view_permission(
+            inst, permission_map, user=user
+        ):
+            continue
+        devices.append(inst)
+    return devices
+
+
+def get_rack_layout(rack_id, permission_map=None, user=None) -> dict:
+    rack = InstanceManage.query_entity_by_id(int(rack_id)) or {}
+    u_count = _safe_int(rack.get("u_count")) or 0
+    devices = [
+        {"inst_id": str(d["_id"]), "inst_name": d.get("inst_name"),
+         "model_id": d.get("model_id"),
+         "rack_u_start": _safe_int(d.get("rack_u_start")),
+         "u_size": _safe_int(d.get("u_size"))}
+        for d in _rack_device_instances(rack_id, permission_map, user)
+    ]
+    layout = build_rack_layout(u_count, devices)
+    layout["rack"] = {"inst_id": str(rack_id),
+                      "inst_name": rack.get("inst_name"), "u_count": u_count}
+    return layout
+
+
+def get_room_layout(server_room_id, permission_map=None, user=None) -> dict:
+    assocs = InstanceManage.instance_association_instance_list(
+        "server_room", int(server_room_id))
+    rack_ids = [item["_id"] for a in assocs
+                if a["src_model_id"] == "server_room" and a["dst_model_id"] == "rack"
+                for item in a["inst_list"]]
+    racks = []
+    if rack_ids:
+        inst_map = InstanceManage._query_instance_map_by_ids({int(i) for i in rack_ids})
+        for rid in rack_ids:
+            r = inst_map.get(int(rid))
+            if not r:
+                continue
+            if permission_map and not InstanceManage._has_topology_view_permission(
+                r, permission_map, user=user
+            ):
+                continue
+            u_count = _safe_int(r.get("u_count")) or 0
+            used_u, ranges = 0, []
+            for d in _rack_device_instances(rid, permission_map, user):
+                us = _safe_int(d.get("rack_u_start"))
+                sz = _safe_int(d.get("u_size"))
+                if sz:
+                    used_u += sz
+                if us and sz:
+                    ranges.append((us, us + sz - 1))
+            free_u, max_free_u = free_u_stats(u_count, ranges)
+            racks.append({
+                "inst_id": str(rid), "inst_name": r.get("inst_name"),
+                "row": _safe_int(r.get("row")), "col": _safe_int(r.get("col")),
+                "u_count": u_count,
+                "datacenter_type": _scalar(r.get("datacenter_type")),
+                "datacenter_state": _scalar(r.get("datacenter_state")),
+                "used_u": used_u, "free_u": free_u, "max_free_u": max_free_u,
+            })
+    return build_room_layout(racks)
