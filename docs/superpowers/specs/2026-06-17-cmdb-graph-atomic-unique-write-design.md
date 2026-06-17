@@ -31,7 +31,28 @@ result = ag.create_entity(INSTANCE, instance_info, check_attr_map, exist_items, 
   - **仅当所有受约束属性非 NULL 时才强制**；缺失/NULL 属性的节点豁免。
   - 创建唯一约束**前必须先有同属性的 exact-match（range）索引**，否则失败。
   - 若存量数据已违反约束，约束状态置 **FAILED 且不生效**，需先清理冲突数据再重建。
-- **客户端 1.2.0 API 齐全**：`create_node_range_index(label, *properties)`、`create_node_unique_constraint(label, *properties)`、`list_constraints()`、`drop_node_unique_constraint(label, *properties)`。约束冲突由底层 redis `ResponseError` 抛出（确切类名实现时用本地 FalkorDB 跑 TDD 钉死）。
+- **客户端 1.2.0 API 齐全**：`create_node_range_index(label, *properties)`、`create_node_unique_constraint(label, *properties)`、`list_constraints()`、`drop_node_unique_constraint(label, *properties)`。
+
+## 实测验证结论（2026-06-17，10.10.41.149:6479，临时图 `cmdb_constraint_probe*`，已删除）
+
+在真实 FalkorDB 服务器上用 host 的真实约束形态实测，全部假设已验证：
+
+| 验证项 | 结果 |
+|---|---|
+| 复合 unique 约束可建、状态 `OPERATIONAL` | ✅ |
+| 重复被原子阻断 | ✅ 异常类 = **`redis.exceptions.ResponseError`**，消息 = `unique constraint violation on node of type instance` |
+| `model_id` 入约束 → 按模型分区（不同 model_id 同值放行） | ✅ 成立 |
+| NULL/缺失字段豁免（与 `_build_rule_signature` 跳过缺失语义一致） | ✅ 生效（两条都缺 `cloud` 不报冲突）|
+| 完整字段复合 `(ip_addr, cloud)` 唯一阻断 | ✅ |
+| 存量重复 → 约束置 `FAILED` 不生效 | ✅ 确认（佐证组件 ② 必要性）|
+
+**关键修正（实测发现）**：FalkorDB 的 range index 是**按单属性**的，`create_node_range_index('instance', a, b)` 等于分别建 a、b 两个单属性索引。`model_id` 被所有复合约束共享，**重复建会报 `Attribute 'model_id' is already indexed`**。因此组件 ① 必须**按单属性幂等建索引**（捕获 `already indexed` 跳过），再建复合 unique 约束引用这些属性。
+
+**host 真实唯一性定义**（实测读取）→ 生成两个约束：
+- `is_only: inst_name` → `unique(instance, [model_id, inst_name])`
+- `unique_rule: [ip_addr, cloud]`（`ip_addr`/`cloud`/`inst_name` 均 required）→ `unique(instance, [model_id, ip_addr, cloud])`
+
+**数据局面**：可达的 `cmdb_graph` 仅 7 个实例（host 为 0），第二台 `10.10.40.189:6379` 不可达 —— 无大规模真实数据，验证对象为约束机制本身而非数据量。
 
 ## 已确认的决策
 
@@ -64,8 +85,8 @@ FalkorDB 唯一约束 (model_id, 字段...)  ←─ 竞态硬保证（串行写 
   - 单字段 `is_only` 属性 X → 约束 `unique(instance, [model_id, X])`
   - 复合 `unique_rule` 字段列表 [A, B, …] → 约束 `unique(instance, [model_id, A, B, …])`
   - model_id 入约束 + NULL 豁免 → 实现「按模型分区唯一」，且与现有 `_build_rule_signature`「字段缺失即跳过」语义一致。
-- 每个唯一约束前先建对应 `create_node_range_index`（FalkorDB 硬性要求）。属性顺序在 index 与 constraint 间保持一致。
-- 幂等：用 `list_constraints()` 判断已存在则跳过。
+- 建唯一约束前，先确保其每个受约束属性都有 range index（FalkorDB 硬性要求）。**实测修正**：range index 按单属性建且不可重复——对约束涉及的每个属性（`model_id` + 规则字段）调用 `create_node_range_index('instance', 单属性)` 并捕获 `Attribute '...' is already indexed` 跳过；不要用复合索引语法重复建共享的 `model_id`。
+- 幂等：用 `list_constraints()` 判断约束已存在则跳过；约束冲突异常按 `redis.exceptions.ResponseError` + 消息 `unique constraint violation` 识别。
 - 同步触发点：
   - `model.py::create_model_attr` / `update_model_attr`（`is_only` 切换时增/删约束）
   - unique_rules 增删改（unique_rule 服务写回 model 时同步）
