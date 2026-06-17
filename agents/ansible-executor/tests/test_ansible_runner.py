@@ -6,6 +6,8 @@ from core.config import ServiceConfig
 from service import ansible_runner
 from service.ansible_runner import (
     PlaybookRequest,
+    _build_host_credentials_inventory,
+    _quote_inventory_value,
     _safe_extract_zip,
     _safe_workspace_path,
     parse_ansible_output_per_host,
@@ -259,3 +261,40 @@ xx
             "output_truncated": True,
         }
     ]
+
+
+def test_quote_inventory_value_quotes_hash_to_avoid_ini_comment_truncation():
+    # ansible 的 ini inventory 用 shlex.split(comments=True)，未加引号的 '#'
+    # 会被当行内注释，导致 '#' 及其后内容被丢弃（密码被静默截断）。
+    assert _quote_inventory_value("CW@roger1117!@#") == '"CW@roger1117!@#"'
+
+
+def test_quote_inventory_value_quotes_semicolon():
+    assert _quote_inventory_value("pa;ss") == '"pa;ss"'
+
+
+def test_quote_inventory_value_plain_value_unquoted():
+    assert _quote_inventory_value("simplepass123") == "simplepass123"
+
+
+def test_host_credentials_inventory_password_with_hash_survives_shlex_parsing(tmp_path):
+    import shlex
+
+    inventory = _build_host_credentials_inventory(
+        tmp_path,
+        [
+            {
+                "host": "10.11.27.147",
+                "user": "root",
+                "password": "CW@roger1117!@#",
+                "connection": "ssh",
+                "port": 22,
+            }
+        ],
+    )
+    host_line = inventory.strip().splitlines()[-1]
+    tokens = shlex.split(host_line, comments=True)
+
+    assert "ansible_password=CW@roger1117!@#" in tokens
+    # 行内 '#' 之后的连接参数不能被注释吃掉
+    assert "ansible_connection=ssh" in tokens

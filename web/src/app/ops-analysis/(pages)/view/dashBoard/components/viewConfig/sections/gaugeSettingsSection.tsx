@@ -1,8 +1,10 @@
 import React from 'react';
 import { ReloadOutlined } from '@ant-design/icons';
-import { Button, Form, Input, InputNumber, Radio, TreeSelect } from 'antd';
+import { Button, Form, Input, InputNumber, Radio, Select, TreeSelect } from 'antd';
 import type { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
+import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 
 interface GaugeSettingsSectionProps {
   t: (key: string, defaultMessage?: string) => string;
@@ -203,11 +205,42 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           </Radio.Group>
         </Form.Item>
 
-        <Form.Item label={t('topology.nodeConfig.unit')} name="unit">
-          <Input
-            placeholder={t('common.inputMsg')}
+        <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
+          <Select
+            allowClear
+            placeholder={t('common.selectMsg')}
             style={{ width: '240px' }}
+            options={[
+              { value: '', label: t('topology.nodeConfig.customSuffix') },
+              ...getUnitCategories().map((cat) => ({
+                label: cat.label,
+                options: cat.units.map((u) => ({
+                  value: u.id,
+                  label: u.label,
+                })),
+              })),
+            ]}
           />
+        </Form.Item>
+
+        {/* unitId 为空（自定义/未设）时回退到自由文本后缀，兼容旧配置 */}
+        <Form.Item
+          noStyle
+          shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
+        >
+          {({ getFieldValue }) =>
+            !getFieldValue('unitId') ? (
+              <Form.Item
+                label={t('topology.nodeConfig.customSuffix')}
+                name="unit"
+              >
+                <Input
+                  placeholder={t('common.inputMsg')}
+                  style={{ width: '240px' }}
+                />
+              </Form.Item>
+            ) : null
+          }
         </Form.Item>
 
         <Form.Item
@@ -244,6 +277,13 @@ export const GaugeSettingsSection: React.FC<GaugeSettingsSectionProps> = ({
           onAddThreshold={onAddThreshold}
           onRemoveThreshold={onRemoveThreshold}
         />
+
+        <Form.Item
+          label={t('topology.nodeConfig.valueMappings')}
+          name="valueMappings"
+        >
+          <ValueMappingsConfigSection t={t} />
+        </Form.Item>
       </div>
     </div>
   );
