@@ -50,6 +50,12 @@ def test_serializer_marks_audit_fields_read_only():
     assert {"id", "created_by", "updated_by", "domain", "updated_by_domain", "is_builtin"} <= read_only
 
 
+def test_skill_packages_are_serialized_and_updatable():
+    """智能体可保存多个技能包，但仍必须通过显式白名单进入模型。"""
+    assert "skill_packages" in LLMSerializer.Meta.fields
+    assert "skill_packages" in LLMViewSet.UPDATABLE_SKILL_FIELDS
+
+
 class _FakeSkill:
     """最小化的 LLMSkill 替身：仅暴露白名单可能写入的属性与受保护字段。"""
 
@@ -64,6 +70,7 @@ class _FakeSkill:
         self.skill_prompt = "old-prompt"
         self.team = [1]
         self.skill_params = []
+        self.skill_packages = []
         self.knowledge_base = SimpleNamespace(set=lambda *a, **k: None, clear=lambda: None)
         self.rag_score_threshold_map = {}
         self.saved = False

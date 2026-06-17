@@ -17,6 +17,7 @@ const EntityList = <T,>({
   filter = false,
   filterLoading = false,
   search = true,
+  toolbarPrefix,
   operateSection,
   menuActions,
   singleAction,
@@ -168,30 +169,35 @@ const EntityList = <T,>({
 
   return (
     <div className="w-full h-full">
-      <div className="flex justify-end mb-4">
-        <Space.Compact>
-          {filter && (<Select
-            size={searchSize}
-            allowClear={true}
-            placeholder={`${t('common.select')}...`}
-            mode="multiple"
-            maxTagCount="responsive"
-            className="w-[170px]"
-            options={filterOptions}
-            disabled={filterLoading}
-            loading={filterLoading}
-            onChange={handleFilter}
-          />)}
-          {search && (<Search
-            size={searchSize}
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            className="w-60"
-            onSearch={handleSearch}
-          />)}
-        </Space.Compact>
-        {operateSection && <>{operateSection}</>}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {toolbarPrefix}
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Space.Compact>
+            {filter && (<Select
+              size={searchSize}
+              allowClear={true}
+              placeholder={`${t('common.select')}...`}
+              mode="multiple"
+              maxTagCount="responsive"
+              className="w-[170px]"
+              options={filterOptions}
+              disabled={filterLoading}
+              loading={filterLoading}
+              onChange={handleFilter}
+            />)}
+            {search && (<Search
+              size={searchSize}
+              allowClear
+              enterButton
+              placeholder={`${t('common.search')}...`}
+              className="w-60"
+              onSearch={handleSearch}
+            />)}
+          </Space.Compact>
+          {operateSection && <>{operateSection}</>}
+        </div>
       </div>
       {loading ? (
         <div className="min-h-[300px] flex items-center justify-center">

@@ -1,7 +1,11 @@
 from urllib.parse import urlparse
 
 import yaml
+import os
+import tempfile
+
 from django.http import JsonResponse
+from django.db.models import Q
 from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from redis.exceptions import RedisError
@@ -23,8 +27,14 @@ from apps.opspilot.metis.llm.tools.mysql.connection import normalize_mysql_insta
 from apps.opspilot.metis.llm.tools.oracle.connection import normalize_oracle_instance, test_oracle_instance
 from apps.opspilot.metis.llm.tools.postgres.connection import normalize_postgres_instance, test_postgres_instance
 from apps.opspilot.metis.llm.tools.redis.connection import normalize_redis_instance, test_redis_instance
-from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
-from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
+from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
+from apps.opspilot.serializers.llm_serializer import (
+    LLMModelSerializer,
+    LLMSerializer,
+    SkillPackageSerializer,
+    SkillRequestLogSerializer,
+    SkillToolsSerializer,
+)
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
@@ -40,6 +50,8 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_redis_tool,
 )
 from apps.opspilot.services.mcp_client import MCPClient
+from apps.opspilot.services.skill_package.importer import SkillPackageImporter
+from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
 from apps.opspilot.utils.pin_mixin import PinMixin
@@ -90,6 +102,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "show_think",
             "tools",
             "skill_params",
+            "skill_packages",
             "temperature",
             "skill_type",
             "enable_rag_strict_mode",
@@ -312,6 +325,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
             params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
             from apps.opspilot.utils.prompt_utils import merge_skill_params
 
@@ -388,6 +402,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             params["browser_use_force_task"] = True
+            self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
             from apps.opspilot.utils.prompt_utils import merge_skill_params
 
@@ -401,6 +416,23 @@ class LLMViewSet(PinMixin, AuthViewSet):
         except Exception as e:
             logger.exception("AGUI skill execute failed: skill_id=%s", params.get("skill_id"))
             return self.create_error_stream_response(str(e))
+
+    @staticmethod
+    def _tool_names(tools):
+        return {tool.get("name") for tool in (tools or []) if isinstance(tool, dict) and tool.get("name")}
+
+    def _apply_skill_packages_to_params(self, params, skill_obj: LLMSkill):
+        skill_packages = hydrate_skill_packages(getattr(skill_obj, "skill_packages", []) or [])
+        base_prompt = params.get("skill_prompt") or skill_obj.skill_prompt or ""
+        skill_prompt, matched_skill_packages = build_skill_package_prompt(
+            base_prompt=base_prompt,
+            skill_packages=skill_packages,
+            user_message=params.get("user_message", ""),
+            available_tool_names=self._tool_names(params.get("tools")),
+        )
+        params["skill_prompt"] = skill_prompt
+        params["matched_skill_packages"] = matched_skill_packages
+        params.update(build_skill_package_strategy(matched_skill_packages))
 
 
 class ObjFilter(FilterSet):
@@ -595,6 +627,107 @@ class SkillRequestLogViewSet(LanguageViewSet):
     def retrieve(self, request, *args, **kwargs):
         """禁用 retrieve 接口"""
         return JsonResponse({"result": False, "message": "接口未启用"}, status=405)
+
+
+class SkillPackageViewSet(AuthViewSet):
+    serializer_class = SkillPackageSerializer
+    queryset = SkillPackage.objects.all().order_by("-id")
+    permission_key = "tools"
+
+    def get_queryset(self):
+        queryset = super().get_queryset()
+        is_enabled = self.request.query_params.get("is_enabled")
+        if is_enabled not in (None, ""):
+            queryset = queryset.filter(is_enabled=str(is_enabled).lower() in ("1", "true", "yes"))
+
+        keyword = (self.request.query_params.get("search") or "").strip()
+        if keyword:
+            queryset = queryset.filter(
+                Q(name__icontains=keyword)
+                | Q(package_id__icontains=keyword)
+                | Q(description__icontains=keyword)
+                | Q(category__icontains=keyword)
+            )
+        return queryset
+
+    @HasPermission("tools_list-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("tools_list-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("tools_list-Edit")
+    def update(self, request, *args, **kwargs):
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("tools_list-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("tools_list-Delete")
+    def destroy(self, request, *args, **kwargs):
+        return super().destroy(request, *args, **kwargs)
+
+    @action(methods=["POST"], detail=False)
+    @HasPermission("tools_list-Add")
+    def import_zip(self, request):
+        upload = request.FILES.get("file")
+        if not upload:
+            return Response({"result": False, "message": "请上传技能包 ZIP 文件"}, status=status.HTTP_400_BAD_REQUEST)
+        if not upload.name.lower().endswith(".zip"):
+            return Response({"result": False, "message": "技能包必须是 ZIP 文件"}, status=status.HTTP_400_BAD_REQUEST)
+
+        temp_path = ""
+        try:
+            with tempfile.NamedTemporaryFile(delete=False, suffix=".zip") as temp_file:
+                temp_path = temp_file.name
+                for chunk in upload.chunks():
+                    temp_file.write(chunk)
+
+            organization_id = str(request.COOKIES.get("current_team") or "default")
+            result = SkillPackageImporter().import_zip(temp_path, organization_id=organization_id)
+            domain = getattr(request.user, "domain", "domain.com") or "domain.com"
+            team = [int(organization_id)] if organization_id.isdigit() else []
+            package, created = SkillPackage.objects.update_or_create(
+                package_id=result.skill_id,
+                version=result.version,
+                domain=domain,
+                defaults={
+                    "name": result.name,
+                    "description": result.description,
+                    "category": result.category,
+                    "source_type": "zip",
+                    "storage_path": str(result.storage_path),
+                    "manifest": result.manifest,
+                    "skill_markdown": result.skill_markdown,
+                    "required_tools": result.required_tools,
+                    "triggers": result.triggers,
+                    "team": team,
+                    "updated_by": request.user.username,
+                    "updated_by_domain": domain,
+                    "is_enabled": True,
+                },
+            )
+            if created:
+                package.created_by = request.user.username
+                package.domain = domain
+                package.save(update_fields=["created_by", "domain"])
+            serializer = self.get_serializer(package)
+            log_operation(request, "create", "opspilot", f"导入技能包: {package.name}")
+            return Response({"result": True, "data": serializer.data})
+        except ValueError as exc:
+            return Response({"result": False, "message": str(exc)}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as exc:
+            logger.exception("Import skill package failed")
+            return Response({"result": False, "message": str(exc)}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        finally:
+            if temp_path:
+                try:
+                    os.unlink(temp_path)
+                except OSError:
+                    pass
 
 
 class ToolsFilter(FilterSet):

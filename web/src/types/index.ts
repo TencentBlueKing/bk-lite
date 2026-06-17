@@ -112,6 +112,7 @@ export interface EntityListProps<T> {
   filter?: boolean;
   filterLoading?: boolean;
   search?: boolean;
+  toolbarPrefix?: React.ReactNode;
   operateSection?: React.ReactNode;
   infoText?: string;
   nameField?: string;
