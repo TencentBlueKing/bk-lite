@@ -190,6 +190,20 @@ def test_non_created_action_ignored(source, instant_strategy):
     assert Alert.objects.count() == 0
 
 
+@pytest.mark.django_db
+def test_shielded_event_produces_no_instant_alert(source, instant_strategy):
+    """R3-1: 已被屏蔽的事件不得生成即时告警。"""
+    from apps.alerts.constants.constants import EventStatus
+
+    evt = _make_event(source)
+    Event.objects.filter(event_id=evt.event_id).update(status=EventStatus.SHIELD)
+    evt.refresh_from_db()
+    with mock.patch.object(id_mod, "current_app") as mock_app:
+        InstantAlertDispatcher.dispatch([[evt]])
+        mock_app.send_task.assert_not_called()
+    assert Alert.objects.count() == 0
+
+
 # --------------------------------------------------------------------------
 # 同步/异步阈值降级
 # --------------------------------------------------------------------------
