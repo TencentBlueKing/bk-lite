@@ -4,12 +4,15 @@ import React, { useMemo, useEffect, useCallback, useState } from 'react';
 import Link from 'next/link';
 import Icon from '@/components/icon';
 import sideMenuStyle from './index.module.scss';
-import { useModelApi } from '@/app/cmdb/api';
+import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { usePathname, useSearchParams, useRouter } from 'next/navigation';
-import { ArrowLeftOutlined } from '@ant-design/icons';
+import {
+  ArrowLeftOutlined, ApartmentOutlined, AppstoreOutlined, HddOutlined,
+} from '@ant-design/icons';
 import { MenuItem } from '@/types/index';
 import { useRelationships } from '@/app/cmdb/context/relationships';
+import { useTranslation } from '@/utils/i18n';
 
 interface SideMenuProps {
   menuItems: MenuItem[];
@@ -64,6 +67,50 @@ const SideMenu: React.FC<SideMenuProps> = ({
   const [allAssociations, setAllAssociations] = useState<ModelAssociation[]>(
     []
   );
+
+  // 左侧快捷入口：网络拓扑 / 机房视图 / 机柜视图，直达关联关系页对应子视图（缩短操作路径）
+  const { getTopoThemes } = useInstanceApi();
+  const { t } = useTranslation();
+  const [themes, setThemes] = useState<string[]>([]);
+  const currentTab = searchParams.get('tab') || '';
+
+  useEffect(() => {
+    if (!modelId) return;
+    let cancelled = false;
+    getTopoThemes(modelId)
+      .then((res: { themes: string[] }) => {
+        if (!cancelled) setThemes(res?.themes || []);
+      })
+      .catch(() => {
+        if (!cancelled) setThemes([]);
+      });
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [modelId]);
+
+  const relItem = menuItems.find((m) => m.name === ASSET_NAME);
+  const shortcuts = useMemo(() => {
+    const list: { tab: string; title: string; icon: React.ReactNode }[] = [];
+    if (themes.includes('network')) {
+      list.push({ tab: 'network', title: t('Model.networkTopo'), icon: <ApartmentOutlined /> });
+    }
+    if (modelId === 'server_room') {
+      list.push({ tab: 'roomView', title: t('Model.roomLayout'), icon: <AppstoreOutlined /> });
+    }
+    if (modelId === 'rack') {
+      list.push({ tab: 'rackView', title: t('Model.rackElevation'), icon: <HddOutlined /> });
+    }
+    return list;
+  }, [themes, modelId, t]);
+
+  const goShortcut = (tab: string) => {
+    if (!relItem?.url) return;
+    const params = new URLSearchParams(searchParams);
+    params.set('tab', tab);
+    router.push(`${relItem.url}?${params.toString()}`);
+  };
 
   const handleItemClick = (modelAsstId: string, item: MenuItem) => {
     if (!isActive(item.url)) {
@@ -180,6 +227,25 @@ const SideMenu: React.FC<SideMenuProps> = ({
         <ul className="p-3 flex-1">
           {menuItems.map((item) => (
             <React.Fragment key={item.url}>
+              {item.name === ASSET_NAME && shortcuts.map((s) => {
+                const active = isActive(item.url) && currentTab === s.tab;
+                return (
+                  <li
+                    key={`sc-${s.tab}`}
+                    className={`rounded-md mb-1 ${active ? sideMenuStyle.active : ''}`}
+                  >
+                    <a
+                      className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3 cursor-pointer"
+                      onClick={() => goShortcut(s.tab)}
+                    >
+                      <span className="text-base pr-1.5 inline-flex items-center">
+                        {s.icon}
+                      </span>
+                      {s.title}
+                    </a>
+                  </li>
+                );
+              })}
               <li
                 className={`rounded-md mb-1 ${isActive(item.url) ? sideMenuStyle.active : ''}`}
               >
