@@ -133,7 +133,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
         styles={{
           body: { padding: 0, background: TECH.bg1 },
           content: { background: TECH.bg1 },
-          wrapper: { boxShadow: '-12px 0 40px rgba(0,0,0,0.5)' },
+          wrapper: { boxShadow: '-12px 0 40px rgba(23,54,106,0.15)' },
         }}
       >
         {rack && (
@@ -192,7 +192,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
             radial-gradient(1200px 500px at 20% -10%, ${TECH.panelHi}, transparent),
             linear-gradient(180deg, ${TECH.bg1}, ${TECH.bg0});
           border: 1px solid ${TECH.line};
-          box-shadow: inset 0 0 60px rgba(0,0,0,0.4);
+          box-shadow: inset 0 0 60px rgba(23,54,106,0.05);
         }
         .rf-canvas {
           position: relative;
@@ -229,7 +229,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           width: 7px; height: 7px; border-radius: 50%;
         }
         .rf-rack-name {
-          color: #fff; font-size: 12px; font-weight: 600; line-height: 1.2;
+          color: ${TECH.text}; font-size: 12px; font-weight: 600; line-height: 1.2;
           letter-spacing: -0.2px;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           margin-top: 2px; padding-right: 12px;
@@ -245,7 +245,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
         .rf-rack-free > b { font-weight: 600; font-family: ui-monospace, monospace; }
         .rf-bar {
           position: absolute; left: 10px; right: 10px; bottom: 18px; height: 5px;
-          border-radius: 3px; background: rgba(255,255,255,0.08); overflow: hidden;
+          border-radius: 3px; background: rgba(23,54,106,0.1); overflow: hidden;
         }
         .rf-bar > i { display: block; height: 100%; border-radius: 3px; }
         .rf-rack-usage {
@@ -257,7 +257,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
         .rd-hd { display: flex; align-items: center; gap: 12px; padding: 18px 20px; }
         .rd-led { width: 11px; height: 11px; border-radius: 50%; flex: none; }
         .rd-name {
-          font-size: 17px; font-weight: 600; color: #fff;
+          font-size: 17px; font-weight: 600; color: ${TECH.text};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .rd-sub { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
