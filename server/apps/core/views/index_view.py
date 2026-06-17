@@ -444,6 +444,13 @@ def reset_pwd(request):
 
         # 从 cookie 中读取调用方 token，转发给 NATS handler 进行身份校验
         caller_token = request.COOKIES.get("bklite_token", "")
+        if not caller_token:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": _get_loader(request).get("error.please_provide_token", "Please provide Token"),
+                }
+            )
 
         client = _create_system_mgmt_client()
         res = client.reset_pwd(username, domain, password, caller_token=caller_token)

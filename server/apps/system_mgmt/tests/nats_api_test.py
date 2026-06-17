@@ -1458,3 +1458,43 @@ def test_reset_pwd_caller与目标用户一致时允许执行(monkeypatch):
     assert result["result"] is True
     assert "password" in saved  # 密码已被写入
     assert saved["temporary_pwd"] is False
+
+
+def test_reset_pwd_空domain与default_domain等价_不被跨domain绕过(monkeypatch):
+    """caller.domain='domain.com' 与 target domain='' 应被视为同一域，不应误拒或被绕过。"""
+    # caller domain 为 domain.com（默认域），目标 domain 为空（等价 domain.com）
+    caller = _make_caller("alice", "domain.com")
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: caller)
+
+    saved = {}
+
+    class _FakeUser:
+        username = "alice"
+        domain = "domain.com"
+        temporary_pwd = True
+
+        def save(self):
+            saved["password"] = self.password
+            saved["temporary_pwd"] = self.temporary_pwd
+
+    class _FakeQS:
+        def first(self):
+            return _FakeUser()
+
+    class _FakeManager:
+        def filter(self, **kwargs):
+            return _FakeQS()
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeManager())
+    # domain="" should normalise to "domain.com" on both sides → allowed
+    result = reset_pwd("alice", "", "ValidPass1!", caller_token="alice.token")
+    assert result["result"] is True
+
+
+def test_reset_pwd_不同domain时拒绝(monkeypatch):
+    """caller 属于 domain.com，target domain 为 corp.com——应拒绝跨域改密。"""
+    caller = _make_caller("alice", "domain.com")
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: caller)
+    result = reset_pwd("alice", "corp.com", "ValidPass1!", caller_token="alice.token")
+    assert result["result"] is False
+    assert "Unauthorized" in result["message"]

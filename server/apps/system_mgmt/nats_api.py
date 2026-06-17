@@ -1259,9 +1259,11 @@ def reset_pwd(username, domain, password, caller_token=""):
         return {"result": False, "message": "caller_token is required"}
     try:
         caller = _verify_token(caller_token)
-    except Exception as e:
-        return {"result": False, "message": f"Unauthorized: {e}"}
-    if caller.username != username or (domain and getattr(caller, "domain", "") != domain):
+    except Exception:
+        return {"result": False, "message": "Unauthorized: invalid token"}
+    caller_domain = getattr(caller, "domain", "") or "domain.com"
+    target_domain = domain or "domain.com"
+    if caller.username != username or caller_domain != target_domain:
         return {"result": False, "message": "Unauthorized: caller does not match target user"}
 
     filter_kwargs = {"username": username}
