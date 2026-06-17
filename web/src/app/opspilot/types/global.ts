@@ -1,24 +1,3 @@
-export interface KnowledgeItem {
-  score: number;
-  content: string;
-}
-
-export interface KnowledgeBase {
-  citing_num: number;
-  knowledge_id: number;
-  knowledge_base_id: number;
-  knowledge_source_type: string;
-  knowledge_title: string;
-  result: KnowledgeItem[]
-}
-
-export interface Annotation {
-  answer: CustomChatMessage;
-  question: CustomChatMessage;
-  selectedKnowledgeBase: string | number;
-  tagId?: number | string;
-}
-
 export interface BrowserStepAction {
   navigate?: { url: string; new_tab?: boolean };
   wait?: { seconds: number };
@@ -114,8 +93,6 @@ export interface CustomChatMessage {
   isThinking?: boolean;
   createAt?: string;
   updateAt?: string;
-  knowledgeBase?: KnowledgeBase | null;
-  annotation?: Annotation | null;
   images?: Array<{
     id: string;
     url: string;

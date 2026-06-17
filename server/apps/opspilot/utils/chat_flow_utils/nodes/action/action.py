@@ -268,11 +268,11 @@ class NotifyNode(BaseNodeExecutor):
             if extension not in self.SUPPORTED_ATTACHMENT_EXTENSIONS:
                 raise ValueError(f"附件 {asset.filename} 类型不支持发送")
 
-            asset.file_knowledge.file.open("rb")
+            asset.file.open("rb")
             try:
-                file_bytes = asset.file_knowledge.file.read()
+                file_bytes = asset.file.read()
             finally:
-                asset.file_knowledge.file.close()
+                asset.file.close()
 
             attachments.append(
                 {

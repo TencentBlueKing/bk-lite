@@ -128,8 +128,8 @@ def download_workflow_attachment(request, download_token):
     if not asset:
         return JsonResponse({"result": False, "message": "Attachment not found"}, status=404)
 
-    asset.file_knowledge.file.open("rb")
-    response = FileResponse(asset.file_knowledge.file, as_attachment=True, filename=asset.filename)
+    asset.file.open("rb")
+    response = FileResponse(asset.file, as_attachment=True, filename=asset.filename)
     if asset.mime_type:
         response["Content-Type"] = asset.mime_type
     return response
@@ -244,9 +244,6 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         "chat_history": chat_history,
         "user_message": chat_history[-1]["message"],
         "conversation_window_size": num,
-        "enable_rag": pick_request_value(kwargs, "enable_rag", skill_obj.enable_rag),
-        "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill_obj.rag_score_threshold_map.items()],
-        "enable_rag_knowledge_source": skill_obj.enable_rag_knowledge_source,
         "show_think": skill_obj.show_think,
         "tools": skill_obj.tools,
         "skill_type": skill_obj.skill_type,
@@ -264,19 +261,7 @@ def invoke_chat(params, skill_obj, kwargs, current_ip, user_message, history_log
 
 
 def format_knowledge_sources(content, skill_obj, doc_map=None, title_map=None):
-    """Format and append knowledge source references if enabled"""
-    if skill_obj.enable_rag_knowledge_source:
-        stripped_content = content.strip()
-        if (stripped_content.startswith("{") and stripped_content.endswith("}")) or (
-            stripped_content.startswith("[") and stripped_content.endswith("]")
-        ):
-            return content
-        doc_map = doc_map or {}
-        title_map = title_map or {}
-        knowledge_titles = sorted({doc_map.get(k, {}).get("name") for k in title_map.keys() if doc_map.get(k, {}).get("name")})
-        last_content = content.strip().split("\n")[-1]
-        if "引用知识" not in last_content and knowledge_titles:
-            content += f"\n引用知识: {', '.join(knowledge_titles)}"
+    """知识库引用已移除，直接返回原始内容（保留签名以兼容调用方）。"""
     return content
 
 
@@ -322,7 +307,6 @@ def get_chat_msg(current_ip, kwargs, params, skill_obj, user_message, history_lo
     }
     if history_log:
         history_log.conversation = content
-        history_log.citing_knowledge = list(doc_map.values())
         history_log.save()
     insert_skill_log(current_ip, skill_obj.id, return_data, kwargs, user_message=user_message)
     return return_data, content, False  # 第三个返回值表示是否失败
@@ -373,7 +357,6 @@ def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):
         domain=bot.domain,
         conversation_role="user",
         conversation=user_message,
-        citing_knowledge=[],
     )
     return BotConversationHistory(
         bot_id=kwargs.get("studio_id"),
@@ -382,7 +365,6 @@ def _lobe_persist_history(params, skill_obj, user_message, user, kwargs):
         domain=bot.domain,
         conversation_role="bot",
         conversation="",
-        citing_knowledge=[],
     )
 
 

@@ -1,5 +1,5 @@
 from django.core.paginator import Paginator
-from django.db import connection, transaction
+from django.db import connection
 from django.db.models import Count, Max, Min, OuterRef, Subquery
 from django.db.models.functions import TruncDay
 from django.http import JsonResponse
@@ -8,9 +8,8 @@ from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.opspilot.enum import ChannelChoices
-from apps.opspilot.models import BotConversationHistory, ConversationTag, KnowledgeDocument, ManualKnowledge
+from apps.opspilot.models import BotConversationHistory, ConversationTag
 from apps.opspilot.serializers.history_serializer import HistorySerializer
-from apps.opspilot.tasks import invoke_document_to_es
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.team_permission_mixin import TeamPermissionMixin
 
@@ -157,7 +156,7 @@ class HistoryViewSet(TeamPermissionMixin, viewsets.ModelViewSet):
         page = int(request.data.get("page", 1))
         history_list = (
             BotConversationHistory.objects.filter(id__in=ids)
-            .values("id", "conversation_role", "conversation", "citing_knowledge")
+            .values("id", "conversation_role", "conversation")
             .order_by("created_at")
         )
         paginator = Paginator(history_list, page_size)
@@ -174,76 +173,8 @@ class HistoryViewSet(TeamPermissionMixin, viewsets.ModelViewSet):
                     "id": i["id"],
                     "role": i["conversation_role"],
                     "content": i["conversation"],
-                    "citing_knowledge": i["citing_knowledge"],
                     "has_tag": i["id"] in tag_map,
                     "tag_id": tag_map.get(i["id"], 0),
                 }
             )
         return JsonResponse({"result": True, "data": return_data})
-
-    @action(methods=["GET"], detail=False)
-    @HasPermission("bot_conversation_log-View")
-    def get_tag_detail(self, request):
-        tag_obj = ConversationTag.objects.get(id=request.GET.get("tag_id"))
-        return JsonResponse(
-            {
-                "result": True,
-                "data": {
-                    "knowledge_base_id": tag_obj.knowledge_base_id,
-                    "content": tag_obj.content,
-                    "question": tag_obj.question,
-                },
-            }
-        )
-
-    @action(methods=["POST"], detail=False)
-    @HasPermission("bot_conversation_log-Mark")
-    def set_tag(self, request):
-        kwargs = request.data
-        params = {
-            "knowledge_source_type": "manual",
-            "name": kwargs["question"],
-            "knowledge_base_id": kwargs["knowledge_base_id"],
-        }
-        with transaction.atomic():
-            tag_obj = self.get_or_create_tag(kwargs)
-            new_doc = KnowledgeDocument.create_new_document(params, request.user.username, request.user.domain)
-            ManualKnowledge.objects.create(
-                knowledge_document_id=new_doc.id,
-                content=kwargs.get("content", ""),
-            )
-            tag_obj.knowledge_document_id = new_doc.id
-            tag_obj.content = kwargs["content"]
-            tag_obj.save()
-        invoke_document_to_es.delay(new_doc.id)
-        return JsonResponse({"result": True, "data": {"tag_id": tag_obj.id}})
-
-    @action(methods=["POST"], detail=False)
-    @HasPermission("bot_conversation_log-Mark")
-    def remove_tag(self, request):
-        tag_obj = ConversationTag.objects.get(id=request.data.get("tag_id"))
-        doc_obj = KnowledgeDocument.objects.filter(id=tag_obj.knowledge_document_id).first()
-        with transaction.atomic():
-            if doc_obj:
-                doc_obj.delete()
-            tag_obj.delete()
-        return JsonResponse({"result": True})
-
-    @staticmethod
-    def get_or_create_tag(kwargs):
-        tag_obj = ConversationTag.objects.filter(id=kwargs["tag_id"]).first()
-        if tag_obj:
-            doc_obj = KnowledgeDocument.objects.filter(id=tag_obj.knowledge_document_id).first()
-            if doc_obj:
-                doc_obj.delete()
-            tag_obj.knowledge_base_id = kwargs["knowledge_base_id"]
-            tag_obj.question = kwargs["question"]
-        else:
-            tag_obj = ConversationTag.objects.create(
-                knowledge_base_id=kwargs["knowledge_base_id"],
-                answer_id=kwargs.get("answer_id"),
-                question=kwargs["question"],
-                knowledge_document_id=0,
-                content=kwargs["content"],
-            )
-        return tag_obj

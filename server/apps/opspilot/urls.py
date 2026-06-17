@@ -7,24 +7,17 @@ from apps.opspilot.viewsets import (
     ChannelViewSet,
     ChatApplicationViewSet,
     EmbedProviderViewSet,
-    FileKnowledgeViewSet,
     HistoryViewSet,
-    KnowledgeBaseViewSet,
-    KnowledgeDocumentViewSet,
-    KnowledgeGraphViewSet,
     LLMModelViewSet,
     LLMViewSet,
-    ManualKnowledgeViewSet,
     MemorySpaceViewSet,
     MemoryViewSet,
     ModelVendorViewSet,
     OCRProviderViewSet,
-    QAPairsViewSet,
     RasaModelViewSet,
     RerankProviderViewSet,
     SkillRequestLogViewSet,
     SkillToolsViewSet,
-    WebPageKnowledgeViewSet,
     WorkFlowTaskResultViewSet,
 )
 from apps.opspilot.viewsets.memory_engine_view import MemoryEngineViewSet
@@ -49,15 +42,6 @@ router.register(r"bot_mgmt/chat_application", ChatApplicationViewSet)
 
 # channel
 router.register(r"channel_mgmt/channel", ChannelViewSet)
-
-# knowledge
-router.register(r"knowledge_mgmt/knowledge_base", KnowledgeBaseViewSet)
-router.register(r"knowledge_mgmt/file_knowledge", FileKnowledgeViewSet)
-router.register(r"knowledge_mgmt/knowledge_document", KnowledgeDocumentViewSet)
-router.register(r"knowledge_mgmt/web_page_knowledge", WebPageKnowledgeViewSet)
-router.register(r"knowledge_mgmt/manual_knowledge", ManualKnowledgeViewSet)
-router.register(r"knowledge_mgmt/qa_pairs", QAPairsViewSet)
-router.register(r"knowledge_mgmt/knowledge_graph", KnowledgeGraphViewSet)
 
 # memory
 router.register(r"memory_mgmt/memory_space", MemorySpaceViewSet)

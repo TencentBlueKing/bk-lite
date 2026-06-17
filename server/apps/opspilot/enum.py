@@ -32,28 +32,6 @@ class LLMModelChoices(models.TextChoices):
     BAICHUAN = "Baichuan", "百川"
 
 
-class DocumentStatus(object):
-    TRAINING = 0
-    READY = 1
-    ERROR = 2
-    PENDING = 3
-    CHUNKING = 4
-
-    CHOICE = (
-        (TRAINING, _("Training")),
-        (READY, _("Ready")),
-        (ERROR, _("Error")),
-        (PENDING, _("Pending")),
-        (CHUNKING, _("Chunking")),
-    )
-
-
-class ActionChoice(object):
-    USE_KNOWLEDGE = 0
-
-    CHOICE = ((USE_KNOWLEDGE, _("Use specified knowledge base")),)
-
-
 class WorkFlowExecuteType(models.TextChoices):
     """工作流执行类型枚举"""
 
@@ -78,11 +56,3 @@ class WorkFlowTaskStatus(models.TextChoices):
     INTERRUPTED = "interrupted", _("Interrupted")
     SUCCESS = "success", _("Success")
     FAIL = "fail", _("Fail")
-
-
-class KnowledgeTaskStatus(models.TextChoices):
-    """知识任务状态枚举"""
-
-    RUNNING = "running", _("Running")
-    SUCCESS = "success", _("Success")
-    FAILED = "failed", _("Failed")

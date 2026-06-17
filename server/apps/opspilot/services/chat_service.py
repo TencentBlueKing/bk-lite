@@ -7,7 +7,6 @@ from typing import Any, Dict, Tuple
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
-from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.models import LLMModel, SkillTools
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
@@ -25,7 +24,6 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
-from apps.opspilot.services.rag_service import rag_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -64,28 +62,8 @@ class ChatService:
         Returns:
             包含回复内容和引用知识的字典
         """
-        # 将原始 kwargs 一次性解析为类型化的 ChatRequest（容忍未知键），
-        # 避免在方法体内零散地 kwargs[...] / kwargs.get(...) 读取导致 KeyError。
-        request = ChatRequest.from_kwargs(kwargs)
-
-        citing_knowledge = []
-        data, doc_map, title_map = ChatService.invoke_chat(kwargs)
-
-        # 如果启用了知识源引用，构建引用信息
-        if request.enable_rag_knowledge_source:
-            citing_knowledge = [
-                {
-                    "knowledge_title": doc_map.get(k, {}).get("name"),
-                    "knowledge_id": k,
-                    "knowledge_base_id": doc_map.get(k, {}).get("knowledge_base_id"),
-                    "result": v,
-                    "knowledge_source_type": doc_map.get(k, {}).get("knowledge_source_type"),
-                    "citing_num": len(v),
-                }
-                for k, v in title_map.items()
-            ]
-
-        return {"content": data["message"], "citing_knowledge": citing_knowledge}
+        data, _doc_map, _title_map = ChatService.invoke_chat(kwargs)
+        return {"content": data["message"], "citing_knowledge": []}
 
     @staticmethod
     def invoke_chat(kwargs: Dict[str, Any]) -> Tuple[Dict, Dict, Dict]:
@@ -311,13 +289,7 @@ class ChatService:
         """
         show_think = kwargs.get("show_think", True)
         title_map = doc_map = {}
-        naive_rag_request = []
         extra_config = {"show_think": show_think}
-
-        # 如果启用RAG，搜索文档
-        if kwargs["enable_rag"]:
-            naive_rag_request, km_request, doc_map = rag_service.format_naive_rag_kwargs(kwargs)
-            extra_config.update(km_request)
 
         user_message, image_data = history_service.process_user_message_and_images(kwargs["user_message"])
 
@@ -339,9 +311,8 @@ class ChatService:
             "user_message": user_message,
             "chat_history": chat_history,
             "user_id": str(kwargs["user_id"]),
-            "enable_naive_rag": kwargs["enable_rag"],
+            "enable_naive_rag": False,
             "rag_stage": "string",
-            "naive_rag_request": naive_rag_request,
             "enable_suggest": kwargs.get("enable_suggest", False),
             "enable_query_rewrite": kwargs.get("enable_query_rewrite", False),
             "locale": kwargs.get("locale", "en"),
@@ -355,10 +326,6 @@ class ChatService:
             chat_kwargs["thread_id"] = str(uuid.uuid4())
 
         chat_kwargs["execution_id"] = kwargs.get("execution_id") or chat_kwargs.get("thread_id")
-        if kwargs["enable_rag_knowledge_source"]:
-            extra_config.update({"enable_rag_source": True})
-        if kwargs.get("enable_rag_strict_mode"):
-            extra_config.update({"enable_rag_strict_mode": kwargs["enable_rag_strict_mode"]})
 
         if kwargs.get("browser_use_force_task"):
             extra_config.update(
@@ -369,17 +336,7 @@ class ChatService:
                 }
             )
 
-        if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
-            ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
-        elif extra_config:
-            extra_config.update({"execution_id": chat_kwargs["execution_id"]})
-            if kwargs.get("attachment_id"):
-                extra_config["attachment_id"] = kwargs["attachment_id"]
-            if kwargs.get("node_id"):
-                extra_config["node_id"] = kwargs["node_id"]
-            if kwargs.get("trigger_type"):
-                extra_config["trigger_type"] = kwargs["trigger_type"]
-            chat_kwargs.update({"extra_config": extra_config})
+        ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
         return chat_kwargs, doc_map, title_map
 
 

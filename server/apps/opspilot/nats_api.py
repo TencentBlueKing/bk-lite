@@ -8,7 +8,6 @@ from apps.opspilot.models import (
     BotConversationHistory,
     BotWorkFlow,
     EmbedProvider,
-    KnowledgeBase,
     LLMModel,
     LLMSkill,
     OCRProvider,
@@ -67,7 +66,6 @@ def get_opspilot_module_list():
     return [
         {"name": "bot", "display_name": "Studio"},
         {"name": "skill", "display_name": "Agent"},
-        {"name": "knowledge", "display_name": "Knowledge"},
         {"name": "tools", "display_name": "Tool"},
         {
             "name": "provider",
@@ -87,7 +85,6 @@ def get_opspilot_module_data(module, child_module, page, page_size, group_id):
     model_map = {
         "bot": Bot,
         "skill": LLMSkill,
-        "knowledge": KnowledgeBase,
         "tools": SkillTools,
     }
     provider_model_map = {
@@ -168,7 +165,6 @@ def consume_bot_event(kwargs):
         timestamp： 对话时间
         event：("user", "用户"), ("bot", "机器人")
         input_channel：web,enterprise_wechat,dingtalk,wechat_official_account
-        citing_knowledge: 引用知识，列表 []
     """
     text = kwargs.get("text", "") or ""
     if not text.strip():
@@ -186,11 +182,6 @@ def consume_bot_event(kwargs):
             return {"result": True}
         user, _ = get_user_info(bot_id, input_channel, sender_id)
         bot = Bot.objects.get(id=bot_id)
-        citing_knowledge = kwargs.get("citing_knowledge", [])
-        if not citing_knowledge:
-            msg = kwargs.get("metadata", {}).get("other_data", {}).get("citing_knowledge", [])
-            msg_str = json.dumps(msg).replace("\u0000", " ").replace(r"\u0000", " ")
-            citing_knowledge = json.loads(msg_str)
         BotConversationHistory.objects.create(
             bot_id=bot_id,
             channel_user_id=user.id,
@@ -199,7 +190,6 @@ def consume_bot_event(kwargs):
             domain=bot.domain,
             conversation_role=kwargs["event"],
             conversation=kwargs["text"] or "",
-            citing_knowledge=citing_knowledge,
         )
     except (KeyError, ValueError, TypeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
         # 预期内的数据/解析错误：记录详细堆栈并向 NATS 调用方回传失败结果，

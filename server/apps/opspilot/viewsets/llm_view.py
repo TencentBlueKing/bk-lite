@@ -23,7 +23,7 @@ from apps.opspilot.metis.llm.tools.mysql.connection import normalize_mysql_insta
 from apps.opspilot.metis.llm.tools.oracle.connection import normalize_oracle_instance, test_oracle_instance
 from apps.opspilot.metis.llm.tools.postgres.connection import normalize_postgres_instance, test_postgres_instance
 from apps.opspilot.metis.llm.tools.redis.connection import normalize_redis_instance, test_redis_instance
-from apps.opspilot.models import KnowledgeBase, LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
+from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.llm_serializer import LLMModelSerializer, LLMSerializer, SkillRequestLogSerializer, SkillToolsSerializer
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
@@ -72,8 +72,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
 
     # F017: 明确允许通过 update 直接写入的标量模型字段白名单。
     # 排除主键 / 审计 / 域 / 内建标记等受保护字段，避免任意 request.data
-    # 键被盲目 setattr 到模型上（mass-assignment）。team / knowledge_base /
-    # rag_score_threshold 等关系字段及派生字段由下方专门逻辑处理，不在此列。
+    # 键被盲目 setattr 到模型上（mass-assignment）。team 等关系字段由下方
+    # 专门逻辑处理，不在此列。
     UPDATABLE_SKILL_FIELDS = frozenset(
         {
             "name",
@@ -81,9 +81,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "skill_prompt",
             "enable_conversation_history",
             "conversation_window_size",
-            "enable_rag",
-            "enable_rag_knowledge_source",
-            "rag_score_threshold_map",
             "introduction",
             "team",
             "show_think",
@@ -91,10 +88,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "skill_params",
             "temperature",
             "skill_type",
-            "enable_rag_strict_mode",
             "is_template",
-            "enable_km_route",
-            "km_llm_model_id",
             "guide",
             "enable_suggest",
             "enable_query_rewrite",
@@ -206,8 +200,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             self.delete_rules(instance.id, delete_team)
         if "llm_model" in params:
             params["llm_model_id"] = params.pop("llm_model")
-        if "km_llm_model" in params:
-            params["km_llm_model_id"] = params.pop("km_llm_model")
         for tool in params.get("tools", []):
             for i in tool.get("kwargs", []):
                 if i.get("type") == "password":
@@ -230,15 +222,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             if key in params and hasattr(instance, key):
                 setattr(instance, key, params[key])
         instance.updated_by = request.user.username
-        if "rag_score_threshold" in params:
-            score_threshold_map = {i["knowledge_base"]: i["score"] for i in params["rag_score_threshold"]}
-            instance.rag_score_threshold_map = score_threshold_map
-            knowledge_base_list = KnowledgeBase.objects.filter(id__in=list(score_threshold_map.keys()))
-            instance.knowledge_base.set(knowledge_base_list)
-        # 当 enable_rag=False 时，清空知识库和阈值配置
-        if "enable_rag" in params and not params["enable_rag"]:
-            instance.knowledge_base.clear()
-            instance.rag_score_threshold_map = {}
         instance.save()
         log_operation(request, "update", "opspilot", f"编辑智能体: {instance.name}")
         return JsonResponse({"result": True})
@@ -263,14 +246,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "user_message": "你好", # 用户消息
             "llm_model": 1, # 大模型ID
             "skill_prompt": "abc", # Prompt
-            "enable_rag": True, # 是否启用RAG
-            "enable_rag_knowledge_source": True, # 是否显示RAG知识来源
-            "rag_score_threshold": [{"knowledge_base": 1, "score": 0.7}], # RAG分数阈值
             "chat_history": "abc", # 对话历史
             "conversation_window_size": 10, # 对话窗口大小
             "show_think": True, # 是否展示think的内容
             "group": 1,
-            "enable_rag_strict_mode": False,
             "skill_name": "test"
         }
         """
@@ -305,8 +284,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["skill_type"] = skill_obj.skill_type
             params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
-            params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
-            params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
             params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
@@ -337,14 +314,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
             "user_message": "你好",
             "llm_model": 1,
             "skill_prompt": "abc",
-            "enable_rag": True,
-            "enable_rag_knowledge_source": True,
-            "rag_score_threshold": [{"knowledge_base": 1, "score": 0.7}],
             "chat_history": "abc",
             "conversation_window_size": 10,
             "show_think": True,
             "group": 1,
-            "enable_rag_strict_mode": False,
             "skill_name": "test"
         }
 
@@ -380,8 +353,6 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["skill_type"] = skill_obj.skill_type
             params["tools"] = resolve_request_tools(params.get("tools"), skill_obj.tools)
             params["group"] = params["group"] if params.get("group") else skill_obj.team[0]
-            params["enable_km_route"] = params["enable_km_route"] if params.get("enable_km_route") else skill_obj.enable_km_route
-            params["km_llm_model"] = params["km_llm_model"] if params.get("km_llm_model") else skill_obj.km_llm_model
             params["enable_suggest"] = params["enable_suggest"] if params.get("enable_suggest") else skill_obj.enable_suggest
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
             params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think

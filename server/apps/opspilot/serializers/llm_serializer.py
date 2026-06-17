@@ -41,7 +41,6 @@ class LLMModelSerializer(AuthSerializer, CustomProviderSerializer):
 class LLMSerializer(TeamSerializer, AuthSerializer):
     permission_key = "skill"
 
-    rag_score_threshold = serializers.SerializerMethodField()
     llm_model_name = serializers.SerializerMethodField()
     is_pinned = serializers.SerializerMethodField()
     skill_params = serializers.SerializerMethodField()
@@ -76,10 +75,6 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "skill_prompt",
             "enable_conversation_history",
             "conversation_window_size",
-            "enable_rag",
-            "enable_rag_knowledge_source",
-            "knowledge_base",
-            "rag_score_threshold_map",
             "introduction",
             "team",
             "show_think",
@@ -87,10 +82,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "skill_params",
             "temperature",
             "skill_type",
-            "enable_rag_strict_mode",
             "is_template",
-            "enable_km_route",
-            "km_llm_model",
             "guide",
             "enable_suggest",
             "enable_query_rewrite",
@@ -99,7 +91,6 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "team_name",
-            "rag_score_threshold",
             "llm_model_name",
             "is_pinned",
         ]
@@ -114,10 +105,6 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "updated_by_domain",
             "is_builtin",
         ]
-
-    @staticmethod
-    def get_rag_score_threshold(instance: LLMSkill):
-        return [{"knowledge_base": k, "score": v} for k, v in instance.rag_score_threshold_map.items()]
 
     def get_llm_model_name(self, instance: LLMSkill):
         return instance.llm_model.name if instance.llm_model is not None else ""
