@@ -87,11 +87,29 @@ FalkorDB 唯一约束 (model_id, 字段...)  ←─ 竞态硬保证（串行写 
   - model_id 入约束 + NULL 豁免 → 实现「按模型分区唯一」，且与现有 `_build_rule_signature`「字段缺失即跳过」语义一致。
 - 建唯一约束前，先确保其每个受约束属性都有 range index（FalkorDB 硬性要求）。**实测修正**：range index 按单属性建且不可重复——对约束涉及的每个属性（`model_id` + 规则字段）调用 `create_node_range_index('instance', 单属性)` 并捕获 `Attribute '...' is already indexed` 跳过；不要用复合索引语法重复建共享的 `model_id`。
 - 幂等：用 `list_constraints()` 判断约束已存在则跳过；约束冲突异常按 `redis.exceptions.ResponseError` + 消息 `unique constraint violation` 识别。
-- 同步触发点：
-  - `model.py::create_model_attr` / `update_model_attr`（`is_only` 切换时增/删约束）
-  - unique_rules 增删改（unique_rule 服务写回 model 时同步）
-  - `model.py::delete_model`（drop 该模型相关约束）
+- 同步触发点（已扫码确认为单一汇聚点）：
+  - 额外唯一规则增删改：`unique_rule.py::_apply_unique_rule_mutation`（create/update/delete 三入口全经此）在 `_save_unique_rules` 之后同步 DB 约束到 `next_rules`。
+  - `is_only` 切换：`model.py::create_model_attr` / `update_model_attr`。
+  - `model.py::delete_model`（drop 该模型相关约束）。
 - 引导命令 `cmdb_provision_unique_constraints`：为全部存量模型幂等建约束。**建前先查重复，有冲突则跳过该约束并报告，绝不留 FAILED 约束。**
+
+### 唯一规则语义支持核验（扫码确认）
+
+模型的唯一性由三部分组成，约束设计逐条覆盖：
+
+| 语义（前后端） | 约束映射 | 状态 |
+| --- | --- | --- |
+| `inst_name` 内置 is_only、始终生效、不可入额外规则 | `unique(instance,[model_id,inst_name])` | ✅ 实测 |
+| 历史 `is_only` 字段（`legacy_unique_fields`，inst_name 之外） | `unique(instance,[model_id,X])` | ✅ |
+| 额外复合规则 `[A,B,…]`（如 `内网IP+云区域`=`[ip_addr,cloud]`） | `unique(instance,[model_id,A,B,…])` | ✅ 实测 |
+| 每模型最多 3 条 + inst_name + legacy（`UNIQUE_RULE_MAX_COUNT=3`） | ≤ ~5 约束/模型，单属性索引共享 model_id | ✅ 无索引膨胀 |
+| 字段必须必填 | 约束非空时强制；缺失走 NULL 豁免 | ✅ 与 `_build_rule_signature` 一致 |
+| 排除 enum/tag/bool/organization/display 字段（`UNIQUE_RULE_UNSUPPORTED_*`） | 多值/列表类型不进约束 | ✅ 规避列表属性约束 |
+| 同字段不可跨规则、规则内不可重复 | 字段集互斥，约束属性集不冲突 | ✅ |
+
+**利好**：`_apply_unique_rule_mutation` 在保存前已调 `_raise_conflict_if_rules_invalid` 做存量冲突校验，冲突即不保存 → 保存后建的约束数据必无冲突 → 必为 `OPERATIONAL`。**`FAILED` 风险只存在于组件 ② 的存量旧规则迁移，新规则编辑路径无此风险。**
+
+**必须处理的语义差（空串 vs NULL）**：应用层 `_is_empty_unique_rule_value` 把 `""`/纯空格当空→跳过比对；DB 约束把 `""` 当真实值→会强制唯一。规则字段虽必填（`check_required_attr` 用 `not item.get(attr)` 拒空串）一般挡得住，但自动采集等路径可能绕过。为与应用层语义完全一致，**写入归一化时把唯一字段空值落成 NULL（不存 `""`）**，并加测试覆盖。
 
 ## 组件 ②：存量重复盘点 + 半自动清理（管理命令）
 
