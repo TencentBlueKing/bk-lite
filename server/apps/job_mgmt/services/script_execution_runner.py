@@ -94,47 +94,53 @@ class ScriptExecutionRunner(ExecutionTaskBaseService):
             return True
 
     def _run_via_sidecar(self, execution, target_list: list, script_content: str) -> list:
+        """分批提交目标到线程池执行：每批不超过 MAX_WORKERS。
+
+        取消后不再向线程池提交后续批次（不依赖 future.cancel 竞速），保证"取消即止"。
+        """
         results = []
         cancelled = False
         sentineled = set()
-        with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(target_list))) as pool:
-            futures = {
-                pool.submit(
-                    self.execute_script_on_target,
-                    t,
-                    execution.target_source,
-                    script_content,
-                    execution.script_type,
-                    execution.timeout,
-                    execution.id,
-                ): t
-                for t in target_list
-            }
-            for future in as_completed(futures):
-                target_info = futures[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    logger.info(f"[{self.task_name}] 目标 {target_info.get('name')} 执行完成: status={result['status']}")
-                    tk = result.get("target_key", "")
-                    publish_done_sentinel(execution.id, tk, result.get("status", ExecutionStatus.FAILED))
-                    sentineled.add(tk)
-                except Exception as e:
-                    logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
-                    failed_result = self.build_target_failed_result(target_info, str(e))
-                    results.append(failed_result)
-                    tk = failed_result.get("target_key", "")
-                    publish_done_sentinel(execution.id, tk, ExecutionStatus.FAILED)
-                    sentineled.add(tk)
+        workers = min(self.MAX_WORKERS, len(target_list)) or 1
+        for batch_start in range(0, len(target_list), workers):
+            batch = target_list[batch_start : batch_start + workers]
+            with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+                futures = {
+                    pool.submit(
+                        self.execute_script_on_target,
+                        t,
+                        execution.target_source,
+                        script_content,
+                        execution.script_type,
+                        execution.timeout,
+                        execution.id,
+                    ): t
+                    for t in batch
+                }
+                for future in as_completed(futures):
+                    target_info = futures[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                        logger.info(f"[{self.task_name}] 目标 {target_info.get('name')} 执行完成: status={result['status']}")
+                        tk = result.get("target_key", "")
+                        publish_done_sentinel(execution.id, tk, result.get("status", ExecutionStatus.FAILED))
+                        sentineled.add(tk)
+                    except Exception as e:
+                        logger.exception(f"[{self.task_name}] 目标 {target_info.get('name')} 执行异常: {e}")
+                        failed_result = self.build_target_failed_result(target_info, str(e))
+                        results.append(failed_result)
+                        tk = failed_result.get("target_key", "")
+                        publish_done_sentinel(execution.id, tk, ExecutionStatus.FAILED)
+                        sentineled.add(tk)
 
-                # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
-                if not cancelled and self.is_cancelled(execution.id):
-                    cancelled = True
-                    logger.info(f"[{self.task_name}] 检测到取消，停止剩余目标: execution_id={execution.id}")
-                    for pending_future in futures:
-                        pending_future.cancel()
+            # 本批完成后检查是否已取消，取消则不再提交后续批次
+            if self.is_cancelled(execution.id):
+                cancelled = True
+                logger.info(f"[{self.task_name}] 检测到取消，停止提交剩余目标: execution_id={execution.id}")
+                break
 
-        # 取消导致被 cancel 的目标不会产出结果、也就不会发哨兵；收尾补发 CANCELLED，
+        # 被取消而未提交执行的目标不会产出结果、也就不会发哨兵；收尾补发 CANCELLED，
         # 避免前端 SSE 面板空等到 idle 超时（spec §8）。
         if cancelled:
             self._publish_cancelled_sentinels(execution.id, target_list, sentineled)

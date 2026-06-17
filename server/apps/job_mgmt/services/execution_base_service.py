@@ -56,8 +56,8 @@ class ExecutionTaskBaseService(object):
             logger.error(f"[{self.task_name}] 执行记录不存在: execution_id={self.execution_id}")
             return None, []
 
-        if execution.status == ExecutionStatus.CANCELLED:
-            logger.info(f"[{self.task_name}] 任务已取消: execution_id={self.execution_id}")
+        if execution.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED):
+            logger.info(f"[{self.task_name}] 任务已取消，不再进入执行: execution_id={self.execution_id}, status={execution.status}")
             return None, []
 
         self.update_execution_status(execution, ExecutionStatus.RUNNING, started_at=timezone.now())
@@ -100,7 +100,8 @@ class ExecutionTaskBaseService(object):
         """从数据库刷新并检查执行是否已被取消"""
         try:
             current_status = JobExecution.objects.filter(id=execution_id).values_list("status", flat=True).first()
-            return current_status == ExecutionStatus.CANCELLED
+            # CANCELLING（已请求取消、尚未收敛）同样视为已取消，使 Runner 检查点立即停止后续目标
+            return current_status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED)
         except Exception:
             return False
 
@@ -128,13 +129,13 @@ class ExecutionTaskBaseService(object):
         execution.execution_results = results
         execution.save(update_fields=["execution_results", "updated_at"])
         execution.refresh_from_db()
-        if execution.status == ExecutionStatus.CANCELLED:
-            # 取消时仍保留已完成的结果和计数，但状态保持 CANCELLED
+        if execution.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED):
+            # 取消时保留已完成的真实结果与计数，并把 CANCELLING 收敛为 CANCELLED 终态
             cls.update_execution_counts(execution)
-            execution.finished_at = timezone.now()
-            execution.save(update_fields=["finished_at", "updated_at"])
+            cls.update_execution_status(execution, ExecutionStatus.CANCELLED, finished_at=timezone.now())
             logger.info(
-                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, " f"success={execution.success_count}, failed={execution.failed_count}"
+                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, "
+                f"success={execution.success_count}, failed={execution.failed_count}"
             )
             # 取消时也发送回调通知，让第三方系统知道任务被取消
             execution.refresh_from_db()
@@ -318,7 +319,9 @@ class ExecutionTaskBaseService(object):
         for target in targets:
             # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
             if target.credential_source == CredentialSource.CREDENTIAL:
-                logger.warning(f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标")
+                logger.warning(
+                    f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标"
+                )
                 continue
 
             cred = {
