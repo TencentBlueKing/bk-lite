@@ -24,6 +24,7 @@ from apps.alerts.service.reminder_service import ReminderService
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.alerts.utils.time_range_checker import TimeRangeChecker
 from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.core.logger import alert_logger as logger
 
 
@@ -186,7 +187,7 @@ class AlertAssignmentOperator:
                     overview=f"告警自动分派，分派策略ID [{assignment.id}] 策略名称 [{assignment.name}] 分派人员 {assignment.personnel}",
                 )
             )
-        OperatorLog.objects.bulk_create(bulk_data)
+        record_operator_logs_bulk(bulk_data)
 
     def _batch_find_matching_alerts(
         self, assignment: AlertAssignment, excluded_ids: set = None

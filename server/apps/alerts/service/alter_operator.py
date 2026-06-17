@@ -9,7 +9,7 @@ from django.db import transaction
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.constants.constants import (
     AlertStatus,
     AlertOperate,
@@ -588,4 +588,4 @@ class AlertOperator(object):
         记录告警操作日志
         :param log_data: 日志数据字典
         """
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)

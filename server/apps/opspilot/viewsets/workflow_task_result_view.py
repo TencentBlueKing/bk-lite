@@ -19,6 +19,7 @@ class WorkFlowTaskResultFilter(FilterSet):
     bot_id = filters.NumberFilter(field_name="bot_work_flow__bot__id")
     execute_type = filters.ChoiceFilter(choices=WorkFlowExecuteType.choices)
     execution_id = filters.CharFilter(field_name="execution_id")
+    is_test = filters.BooleanFilter(field_name="is_test")
     start_time = filters.DateTimeFilter(field_name="run_time", lookup_expr="gte")
     end_time = filters.DateTimeFilter(field_name="run_time", lookup_expr="lte")
 

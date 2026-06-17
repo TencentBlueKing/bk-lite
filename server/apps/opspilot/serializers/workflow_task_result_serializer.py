@@ -21,6 +21,7 @@ class WorkFlowTaskResultSerializer(serializers.ModelSerializer):
             "output_data",
             "last_output",
             "execute_type",
+            "is_test",
             "duration_ms",
         ]
         read_only_fields = fields
