@@ -61,6 +61,38 @@ from apps.system_mgmt.utils.pwd_policy_cache import get_pwd_policy_settings as _
 from apps.system_mgmt.utils.token_blacklist import blacklist_token, is_blacklisted
 
 
+def _collect_ancestor_group_ids(seed_ids):
+    """
+    从 seed_ids 出发，沿 parent_id 链向上收集所有祖先组 ID（含自身）。
+
+    仅使用轻量级 values_list 查询（不加载角色关联），避免全表 prefetch。
+    返回的集合可用于后续有针对性地加载完整 Group 对象。
+
+    :param seed_ids: 起始组 ID 列表（通常为 user.group_list）
+    :return: 包含 seed_ids 及其所有祖先的 ID set
+    """
+    if not seed_ids:
+        return set()
+    # 一次查询获取全表的 (id, parent_id, allow_inherit_roles)，仅传输轻量列
+    all_meta = {
+        row[0]: (row[1], row[2])
+        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
+    }
+    result = set()
+    stack = list(seed_ids)
+    while stack:
+        gid = stack.pop()
+        if gid in result:
+            continue
+        result.add(gid)
+        meta = all_meta.get(gid)
+        if meta:
+            parent_id, allow_inherit = meta
+            if parent_id and parent_id not in result:
+                stack.append(parent_id)
+    return result
+
+
 def get_user_all_roles(user):
     """
     获取用户的所有角色（个人角色 + 组角色，含完整继承链）
@@ -76,8 +108,12 @@ def get_user_all_roles(user):
 
     group_role_ids = set()
     if user.group_list:
-        # 单次查询所有组织，内存中完成递归，避免 N+1
-        all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+        # 先收集祖先组 ID（轻量查询），再按需加载完整对象（含角色关联）
+        ancestor_ids = _collect_ancestor_group_ids(user.group_list)
+        all_groups = {
+            g.id: g
+            for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
+        }
 
         visited = set()
 
@@ -217,14 +253,24 @@ def verify_token(token):
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
 
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-    group_list = Group.objects.all().order_by("id")
-    if not is_superuser:
-        group_list = group_list.filter(id__in=user.group_list)
-    groups = list(group_list.values("id", "name", "parent_id"))
 
-    queryset = Group.objects.prefetch_related("roles").all()
+    if is_superuser:
+        # 超管需要完整组树：单次全量查询（含角色关联）
+        queryset = list(Group.objects.prefetch_related("roles").all().order_by("id"))
+        groups = [{"id": g.id, "name": g.name, "parent_id": g.parent_id} for g in queryset]
+    else:
+        # 非超管：仅加载用户直属组及其祖先（供树路径展示），消除全表扫描
+        visible_ids = _collect_ancestor_group_ids(user.group_list)
+        queryset = list(
+            Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id")
+        )
+        groups = [
+            {"id": g.id, "name": g.name, "parent_id": g.parent_id}
+            for g in queryset
+            if g.id in set(user.group_list)
+        ]
 
-    # 构建嵌套组结构
+    # 构建嵌套组结构（queryset 已按范围过滤，避免全表扫描）
     groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
 
     menus = cache.get(f"menus-user:{user.id}")
