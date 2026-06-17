@@ -374,6 +374,24 @@ def search_instances_batch(params):
     )
 
 
+def _resolve_allowed_org_ids(params, data):
+    """解析实例写操作的 organization 范围上下文。
+
+    HTTP 路径下该范围由 view 从请求 cookie（current_team/include_children）+ 用户组织树推导。
+    NATS 为可信的机器对机器调用、无用户范围概念：
+    - 调用方显式传 allowed_org_ids 时按其限制；
+    - 否则默认放行 payload 自带的 organization（即不做范围限制），
+      避免实例数据携带 organization 时触发“缺少 organization 范围上下文”。
+    """
+    allowed = params.get("allowed_org_ids")
+    if allowed is not None:
+        return allowed
+    org_value = (data or {}).get("organization")
+    if isinstance(org_value, list):
+        return org_value
+    return None
+
+
 @nats_client.register
 def update_instance(params):
     """
@@ -384,7 +402,8 @@ def update_instance(params):
         "model_id": "host",        # 配合 inst_name 定位实例时必填
         "inst_name": "host-01",    # 配合 model_id 定位实例时必填
         "update_attr": {...},      # 待更新的属性键值
-        "operator": "admin"        # 操作人，用于变更记录
+        "operator": "admin",       # 操作人，用于变更记录
+        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
     }
     -> 更新后的实例数据
     """
@@ -409,6 +428,7 @@ def update_instance(params):
         inst_id=int(inst_id),
         update_attr=update_attr,
         operator=params.get("operator", ""),
+        allowed_org_ids=_resolve_allowed_org_ids(params, update_attr),
         skip_permission_check=True,
     )
 
@@ -421,7 +441,8 @@ def create_instance(params):
     params={
         "model_id": "host",        # 模型ID，必填
         "instance_info": {...},    # 实例属性键值，必填
-        "operator": "admin"        # 操作人，用于变更记录
+        "operator": "admin",       # 操作人，用于变更记录
+        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
     }
     -> 创建后的实例数据
     """
@@ -437,6 +458,7 @@ def create_instance(params):
         model_id=model_id,
         instance_info=instance_info,
         operator=params.get("operator", ""),
+        allowed_org_ids=_resolve_allowed_org_ids(params, instance_info),
     )
 
 
