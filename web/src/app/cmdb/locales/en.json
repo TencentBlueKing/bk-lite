@@ -761,6 +761,16 @@
         "statusError": "Error",
         "textFormatHint": "Supports pasting YAML, JSON, Shell and other plain text configs"
     },
+    "AttributeGovernance": {
+        "title": "Governance Tags",
+        "keyAttribute": "Key Attribute",
+        "freshness": "Freshness",
+        "notSet": "Not Set",
+        "freshnessTimely": "Needs Timely Update (7 days)",
+        "freshnessOccasional": "Infrequent Update (90 days)",
+        "freshnessStable": "Stable (Excluded from Evaluation)",
+        "selectFreshness": "Select freshness"
+    },
     "CustomReporting": {
         "title": "Custom Reporting",
         "message": "Custom reporting provides a minimal entry for customer-pushed CMDB data. Maintain tasks, review onboarding documents, and manage credentials from one place.",
