@@ -8,6 +8,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
+import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 
 interface Props {
   device: RackDevice | null;
@@ -111,7 +112,7 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
       styles={{
         body: { padding: 0, background: TECH.bg0 },
         content: { background: TECH.bg0 },
-        wrapper: { boxShadow: '-12px 0 40px rgba(0,0,0,0.55)' },
+        wrapper: { boxShadow: '-12px 0 40px rgba(23,54,106,0.15)' },
       }}
     >
       {device && (
@@ -136,8 +137,8 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
               <div className="dd-grid">
                 {rows.map((row) => (
                   <div className="dd-row" key={row.k}>
-                    <span className="dd-k" title={row.k}>{row.k}</span>
-                    <span className="dd-v" title={row.v}>{row.v}</span>
+                    <EllipsisWithTooltip text={row.k} className="dd-k" />
+                    <EllipsisWithTooltip text={row.v} className="dd-v" />
                   </div>
                 ))}
               </div>
@@ -162,17 +163,19 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
           border-bottom: 1px solid ${TECH.line};
         }
         .dd-led { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-        .dd-name { font-size: 16px; font-weight: 600; color: #fff;
+        .dd-name { font-size: 16px; font-weight: 600; color: ${TECH.text};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .dd-sub { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
         .dd-u { font-size: 12px; color: ${TECH.textDim}; font-family: ui-monospace, monospace; }
         .dd-body { flex: 1; overflow: auto; padding: 8px 14px; }
         .dd-grid { display: flex; flex-direction: column; }
-        .dd-row { display: flex; justify-content: space-between; gap: 14px;
-          padding: 11px 6px; border-bottom: 1px dashed ${TECH.line}; }
-        .dd-k { color: ${TECH.textDim}; font-size: 13px; flex: none; max-width: 42%;
+        .dd-row { display: flex; justify-content: space-between; align-items: baseline;
+          gap: 14px; padding: 11px 6px; border-bottom: 1px dashed ${TECH.line}; }
+        .dd-row :global(.dd-k) { color: ${TECH.textDim}; font-size: 13px;
+          flex: none; max-width: 42%;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dd-v { color: ${TECH.text}; font-size: 13px; text-align: right;
+        .dd-row :global(.dd-v) { color: ${TECH.text}; font-size: 13px;
+          flex: 1; min-width: 0; text-align: right;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .dd-empty { padding: 40px; text-align: center; color: ${TECH.textDim}; }
         .dd-ft { padding: 14px 16px; border-top: 1px solid ${TECH.line}; }

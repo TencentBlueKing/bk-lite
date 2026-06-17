@@ -116,17 +116,17 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
         <svg width={SVG_W} height={svgH} style={{ display: 'block', margin: '0 auto' }}>
           <defs>
             <linearGradient id="rkFrame" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#1a2742" />
-              <stop offset="0.5" stopColor="#0f1830" />
-              <stop offset="1" stopColor="#1a2742" />
+              <stop offset="0" stopColor="#eef2f8" />
+              <stop offset="0.5" stopColor="#e0e7f2" />
+              <stop offset="1" stopColor="#eef2f8" />
             </linearGradient>
             <linearGradient id="rkRail" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#33486f" />
-              <stop offset="1" stopColor="#1b2640" />
+              <stop offset="0" stopColor="#d6dde9" />
+              <stop offset="1" stopColor="#c3ccda" />
             </linearGradient>
             <linearGradient id="rkDev" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#1d2c4a" />
-              <stop offset="1" stopColor="#0e1830" />
+              <stop offset="0" stopColor="#fbfdff" />
+              <stop offset="1" stopColor="#eaf0f8" />
             </linearGradient>
             <filter id="rkGlow" x="-40%" y="-40%" width="180%" height="180%">
               <feGaussianBlur stdDeviation="2.4" result="b" />
@@ -145,8 +145,8 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
           <rect x={FRAME_X + FRAME_W - 9} y={RACK_TOP} width={9} height={u * uPx} fill="url(#rkRail)" />
           {Array.from({ length: u }).map((_, i) => (
             <g key={`h${i}`}>
-              <circle cx={FRAME_X + 4.5} cy={RACK_TOP + i * uPx + uPx / 2} r={1.1} fill="#0a1020" />
-              <circle cx={FRAME_X + FRAME_W - 4.5} cy={RACK_TOP + i * uPx + uPx / 2} r={1.1} fill="#0a1020" />
+              <circle cx={FRAME_X + 4.5} cy={RACK_TOP + i * uPx + uPx / 2} r={1.1} fill="#9aa7bd" />
+              <circle cx={FRAME_X + FRAME_W - 4.5} cy={RACK_TOP + i * uPx + uPx / 2} r={1.1} fill="#9aa7bd" />
             </g>
           ))}
 
@@ -176,7 +176,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
               <g key={d.inst_id} className="rk-dev" style={{ cursor: 'pointer' }}
                 onClick={() => onDevice(d)}>
                 <rect x={dx} y={y + 1.5} width={wDev} height={h} rx={3}
-                  fill="url(#rkDev)" stroke={bad ? TECH.danger : 'rgba(120,170,255,0.35)'}
+                  fill="url(#rkDev)" stroke={bad ? TECH.danger : 'rgba(23,54,106,0.18)'}
                   strokeWidth={bad ? 1.6 : 0.8}
                   filter={bad ? 'url(#rkGlow)' : undefined} />
                 <rect x={dx + 3} y={y + 4} width={3.5} height={Math.max(h - 5, 4)} rx={1.5}
@@ -184,7 +184,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
                 {h > 22 && !conflicted && [0, 1, 2].map((k) => (
                   <line key={k} x1={tx + 4} x2={tx + 58}
                     y1={cy - 4 + k * 4} y2={cy - 4 + k * 4}
-                    stroke="rgba(120,160,220,0.16)" strokeWidth={1.4} />
+                    stroke="rgba(23,54,106,0.12)" strokeWidth={1.4} />
                 ))}
                 <circle cx={dx + wDev - 9} cy={cy} r={2.1} fill={bad ? TECH.danger : TECH.ok}
                   filter="url(#rkGlow)" />
@@ -229,15 +229,15 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
         .rk-ov-i {
           flex: 1; display: flex; flex-direction: column; align-items: center;
           gap: 2px; padding: 6px 4px; border-radius: 8px;
-          background: rgba(120,160,255,0.05); border: 1px solid ${TECH.line};
+          background: rgba(23,54,106,0.04); border: 1px solid ${TECH.line};
         }
         .rk-ov-i :global(b) { font-size: 17px; font-weight: 600; color: ${TECH.text};
           font-family: ui-monospace, monospace; line-height: 1.1; }
         .rk-ov-i :global(i) { font-size: 11px; color: ${TECH.textDim}; font-style: normal; }
-        .rk-ov-i.hl { background: rgba(63,208,255,0.1); border-color: rgba(63,208,255,0.4); }
+        .rk-ov-i.hl { background: rgba(47,116,230,0.1); border-color: rgba(47,116,230,0.35); }
         .rk-ov-i.hl :global(b) { color: ${TECH.cyan}; }
         .rk-dev :global(rect) { transition: filter .15s; }
-        .rk-dev:hover :global(text) { fill: #fff; }
+        .rk-dev:hover :global(text) { fill: ${TECH.cyan}; }
       `}</style>
     </div>
   );
