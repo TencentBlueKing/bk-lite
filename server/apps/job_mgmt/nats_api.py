@@ -118,6 +118,9 @@ def ansible_task_callback(data: dict):
         logger.info(f"[ansible_task_callback] 任务已处于终态: task_id={task_id}, status={execution.status}")
         return {"success": True, "message": "任务已处理"}
 
+    # CANCELLING 是非终态：真实结果仍正常落库，但最终状态收敛为 CANCELLED（修复取消后结果被丢弃）
+    was_cancelling = execution.status == ExecutionStatus.CANCELLING
+
     # 辅助函数：将执行记录收敛到 FAILED 终态
     def _fail_execution(error_message: str):
         """将执行记录收敛到 FAILED 终态"""
@@ -226,10 +229,13 @@ def ansible_task_callback(data: dict):
                 }
             )
 
-    # 更新执行记录
-    execution.status = (
-        ExecutionStatus.FAILED if any(item.get("status") == ExecutionStatus.FAILED for item in execution_results) else ExecutionStatus.SUCCESS
-    )
+    # 更新执行记录：取消中(CANCELLING)的任务收敛为 CANCELLED 终态，其余按真实结果写 SUCCESS/FAILED
+    if was_cancelling:
+        execution.status = ExecutionStatus.CANCELLED
+    else:
+        execution.status = (
+            ExecutionStatus.FAILED if any(item.get("status") == ExecutionStatus.FAILED for item in execution_results) else ExecutionStatus.SUCCESS
+        )
     execution.execution_results = execution_results
     execution.finished_at = timezone.now()
     execution.success_count = sum(1 for item in execution_results if item.get("status") == ExecutionStatus.SUCCESS)
