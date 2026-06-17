@@ -1,8 +1,9 @@
 import json
-import random
+import os
+import secrets
 from zoneinfo import ZoneInfo
 
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password
 from django.core.cache import cache
 from django.db import transaction
 from django.http import JsonResponse
@@ -17,6 +18,14 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 # 每用户每邮箱发送验证码的速率限制：60 秒内最多 1 次
 EMAIL_CODE_RATE_LIMIT_SECONDS = 60
+
+# 验证码在 cache 中的有效期（秒），可通过环境变量覆盖，默认 600s（10 分钟）
+_EMAIL_CODE_TTL = int(os.getenv("EMAIL_CODE_TTL", "600"))
+
+
+def _email_code_cache_key(username: str, email: str) -> str:
+    """生成验证码 cache key，按用户+邮箱隔离。"""
+    return f"vc:{username}:{email}"
 
 
 def _format_datetime_for_user(value, timezone_name=None):
@@ -161,27 +170,37 @@ def validate_pwd(request):
 
 def validate_email_code(request):
     """
-    验证邮箱验证码
+    验证邮箱验证码（服务端持有验证码状态，一次性使用）
     :param request: {
-        "hashed_code": "哈希后的验证码",
+        "email": "待验证邮箱地址",
         "input_code": "用户输入的验证码"
     }
     """
     try:
         params = json.loads(request.body)
-        hashed_code = params.get("hashed_code")
+        email = params.get("email")
         input_code = params.get("input_code")
 
         # 获取用户语言设置
         locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
         loader = LanguageLoader(app="console_mgmt", default_lang=locale)
 
-        if not hashed_code or not input_code:
+        if not email or not input_code:
             return JsonResponse({"result": False, "message": loader.get("error.verification_code_empty", "Verification code cannot be empty")})
 
-        # 使用check_password验证
-        if check_password(input_code, hashed_code):
+        username = request.user.username if hasattr(request, "user") and request.user else ""
+        cache_key = _email_code_cache_key(username, email)
+        stored_code = cache.get(cache_key)
+
+        if stored_code is None:
+            # 验证码不存在：已过期或从未发送
+            return JsonResponse({"result": False, "message": loader.get("error.verification_code_expired", "Verification code has expired or does not exist")})
+
+        if secrets.compare_digest(str(stored_code), str(input_code)):
+            # 验证通过：立即删除（一次性使用）
+            cache.delete(cache_key)
             return JsonResponse({"result": True, "message": loader.get("success.verification_success", "Verification successful")})
+
         return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})
@@ -221,8 +240,8 @@ def send_email_code(request):
                     }
                 )
 
-        # 生成6位随机数字验证码
-        verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        # 使用密码学安全 PRNG 生成 6 位数字验证码
+        verification_code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
 
         # 构造邮件内容（使用翻译）
         title = loader.get("email.verification_code_title", "Email Verification Code")
@@ -247,14 +266,15 @@ def send_email_code(request):
         if not result.get("result"):
             return JsonResponse(result)
 
-        # 使用make_password哈希验证码返回给前端
-        hashed_code = make_password(verification_code)
+        # 验证码存入服务端 cache，TTL 到期自动失效；不向客户端返回任何哈希
+        username = request.user.username if hasattr(request, "user") and request.user else ""
+        cache_key = _email_code_cache_key(username, email)
+        cache.set(cache_key, verification_code, timeout=_EMAIL_CODE_TTL)
 
         return JsonResponse(
             {
                 "result": True,
                 "message": loader.get("success.verification_code_sent", "Verification code has been sent"),
-                "data": {"hashed_code": hashed_code},
             }
         )
     except Exception as e:
