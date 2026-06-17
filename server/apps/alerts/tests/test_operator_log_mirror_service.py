@@ -46,3 +46,13 @@ def test_mirror_failure_does_not_break_write(mock_sm):
         operator_object="事故-删除", target_id="INC-1", overview="删",
     )
     assert OperatorLog.objects.filter(id=obj.id).exists()
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.utils.operator_log.OperatorLog")
+def test_bulk_passes_batch_size(mock_model):
+    # ensure batch_size is forwarded to bulk_create
+    mock_model.objects.bulk_create.return_value = []
+    record_operator_logs_bulk([], batch_size=200)
+    _, kwargs = mock_model.objects.bulk_create.call_args
+    assert kwargs.get("batch_size") == 200

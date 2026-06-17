@@ -258,4 +258,4 @@ class AlertAutoClose:
             valid_alert_count, closed_count, error_count,
         )
 
-        record_operator_logs_bulk(self.bulk_logs)
+        record_operator_logs_bulk(self.bulk_logs, batch_size=200)

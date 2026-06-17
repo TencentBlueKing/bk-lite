@@ -49,14 +49,15 @@ def record_operator_log(**log_data):
     return obj
 
 
-def record_operator_logs_bulk(items):
+def record_operator_logs_bulk(items, batch_size=None):
     """
     批量写入 OperatorLog 并逐条镜像。
 
     :param items: List[dict | OperatorLog] — 支持字典或已构造的模型实例。
+    :param batch_size: 每批写入的最大行数（None = 单批；建议大批量时传 200）。
     :return: List[OperatorLog] — 已持久化的实例列表（bulk_create 后 id 已填充）。
     """
     objs = [i if isinstance(i, OperatorLog) else OperatorLog(**i) for i in items]
-    OperatorLog.objects.bulk_create(objs)
+    OperatorLog.objects.bulk_create(objs, batch_size=batch_size)
     _mirror(objs)
     return objs
