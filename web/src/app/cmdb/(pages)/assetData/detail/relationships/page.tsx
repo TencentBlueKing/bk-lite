@@ -14,6 +14,8 @@ import Topo from './topo';
 import NetworkTopo from './networkTopo';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
+import DeviceDetailDrawer from './deviceDetailDrawer';
+import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useSearchParams } from 'next/navigation';
@@ -38,6 +40,9 @@ const Ralationships = () => {
 
   const { getTopoThemes } = useInstanceApi();
   const [themes, setThemes] = useState<string[]>([]);
+  // 机柜视图点设备：右侧抽屉展示详情（再从抽屉下钻到实例详情），与机房视图一致
+  const [device, setDevice] = useState<RackDevice | null>(null);
+  const [devOpen, setDevOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (!modelId) return;
@@ -139,11 +144,23 @@ const Ralationships = () => {
         <NetworkTopo modelId={modelId} instId={instId} />
       )}
       {activeTab === 'rackView' && (
-        <RackElevation modelId={modelId} instId={instId} />
+        <RackElevation
+          modelId={modelId}
+          instId={instId}
+          onDeviceClick={(d) => {
+            setDevice(d);
+            setDevOpen(true);
+          }}
+        />
       )}
       {activeTab === 'roomView' && (
         <RoomFloorPlan modelId={modelId} instId={instId} />
       )}
+      <DeviceDetailDrawer
+        device={device}
+        open={devOpen}
+        onClose={() => setDevOpen(false)}
+      />
     </Spin>
   );
 };
