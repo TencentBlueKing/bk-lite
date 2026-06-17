@@ -34,6 +34,7 @@ const StudioSettingsPage: React.FC = () => {
     latestExecutionId: '',
     openPreview: () => {},
     closePreview: () => {},
+    stopExecution: () => {},
   });
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -219,7 +220,7 @@ const StudioSettingsPage: React.FC = () => {
   );
 
   const renderChatflowExecutionAction = () => {
-    const { summary, previewOpen, latestExecutionId, openPreview } = chatflowExecutionState;
+    const { summary, previewOpen, latestExecutionId, openPreview, stopExecution } = chatflowExecutionState;
     if (summary.status === 'idle') {
       return null;
     }
@@ -261,6 +262,17 @@ const StudioSettingsPage: React.FC = () => {
       </Tag>
     );
 
+    const stopButton = summary.status === 'running' ? (
+      <Button
+        size="small"
+        danger
+        className={actionButtonClassName}
+        onClick={stopExecution}
+      >
+        {t('common.stop')}
+      </Button>
+    ) : null;
+
     if (summary.status === 'failed' && summary.reason) {
       return (
         <div className="flex items-center gap-2">
@@ -275,6 +287,7 @@ const StudioSettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <span title={latestExecutionId}>{logButton}</span>
           <span title={latestExecutionId}>{statusTag}</span>
+          {stopButton}
         </div>
       );
     }
@@ -283,6 +296,7 @@ const StudioSettingsPage: React.FC = () => {
       <div className="flex items-center gap-2">
         {logButton}
         {statusTag}
+        {stopButton}
       </div>
     );
   };

@@ -10,18 +10,18 @@
 .topologyContainer {
   :global(.x6-graph-svg) {
     background:
-      radial-gradient(circle at 20% 18%, rgba(148, 163, 184, 0.06) 0%, transparent 34%),
-      radial-gradient(circle at 78% 14%, rgba(203, 213, 225, 0.1) 0%, transparent 30%),
+      radial-gradient(circle at 18% 16%, rgba(113, 170, 255, 0.14) 0%, transparent 32%),
+      radial-gradient(circle at 82% 20%, rgba(190, 155, 255, 0.12) 0%, transparent 28%),
       linear-gradient(
         135deg,
-        #f8fafc 0%,
-        #fbfcfe 46%,
-        #f6f8fb 100%
+        #eff7ff 0%,
+        #f9fbff 48%,
+        #f8f2ff 100%
       ) !important;
   }
 
   :global(.x6-graph-grid line) {
-    stroke: rgba(148, 163, 184, 0.06) !important;
+    stroke: rgba(112, 140, 180, 0.12) !important;
   }
 
   :global(.x6-node foreignObject) {

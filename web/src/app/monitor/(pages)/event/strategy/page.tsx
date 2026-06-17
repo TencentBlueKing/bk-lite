@@ -23,6 +23,7 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { PlusOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import Permission from '@/components/permission';
 import { cloneDeep } from 'lodash';
 
@@ -311,6 +312,7 @@ const Strategy: React.FC = () => {
           title: (item.display_name || '--') + `(${item.policy_count})`,
           label: item.name || '--',
           key: item.id,
+          icon: item.icon,
           children: []
         });
         return acc;
@@ -357,14 +359,16 @@ const Strategy: React.FC = () => {
   return (
     <Spin spinning={treeLoading}>
       <div className={assetStyle.asset}>
-        <div className={assetStyle.assetTree}>
-          <TreeSelector
-            data={treeData}
-            defaultSelectedKey={defaultSelectObj as string}
-            loading={treeLoading}
-            onNodeSelect={handleObjectChange}
-          />
-        </div>
+        <ResizableSidebar collapseStorageKey="monitor.event.strategy.sidebarCollapsed">
+          <div className={assetStyle.assetTree}>
+            <TreeSelector
+              data={treeData}
+              defaultSelectedKey={defaultSelectObj as string}
+              loading={treeLoading}
+              onNodeSelect={handleObjectChange}
+            />
+          </div>
+        </ResizableSidebar>
         <div className={assetStyle.table}>
           <div className={assetStyle.search}>
             <div>

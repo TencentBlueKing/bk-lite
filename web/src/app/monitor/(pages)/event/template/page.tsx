@@ -11,6 +11,7 @@ import { findLabelById, getIconByObjectName } from '@/app/monitor/utils/common';
 import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { useSearchParams } from 'next/navigation';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 import BulkApplyModal from './bulkApplyModal';
 import {
@@ -173,6 +174,7 @@ const Template: React.FC = () => {
           title: item.display_name || '--',
           label: item.name || '--',
           key: item.id,
+          icon: item.icon,
           children: []
         });
         return acc;
@@ -234,14 +236,16 @@ const Template: React.FC = () => {
 
   return (
     <div className={templateStyle.container}>
-      <div className={templateStyle.containerTree}>
-        <TreeSelector
-          data={treeData}
-          defaultSelectedKey={defaultSelectObj as string}
-          loading={treeLoading}
-          onNodeSelect={handleObjectChange}
-        />
-      </div>
+      <ResizableSidebar collapseStorageKey="monitor.event.template.sidebarCollapsed">
+        <div className={templateStyle.containerTree}>
+          <TreeSelector
+            data={treeData}
+            defaultSelectedKey={defaultSelectObj as string}
+            loading={treeLoading}
+            onNodeSelect={handleObjectChange}
+          />
+        </div>
+      </ResizableSidebar>
 
       <div className={templateStyle.table}>
         <div className={templateStyle.toolbar}>

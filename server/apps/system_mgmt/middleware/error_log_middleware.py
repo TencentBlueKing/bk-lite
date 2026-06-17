@@ -30,6 +30,9 @@ class ErrorLogMiddleware(MiddlewareMixin):
 
     # API 路径模式: /api/v1/{app}/{module}/...
     API_PATH_PATTERN = re.compile(r"^/api/v\d+/([^/]+)/([^/]+)")
+    APP_NAME_MAPPING = {
+        "operation_analysis": "ops-analysis",
+    }
 
     # 需要记录错误日志的应用白名单（为空表示记录所有）
     ALLOWED_APPS = [
@@ -43,6 +46,8 @@ class ErrorLogMiddleware(MiddlewareMixin):
         "log",
         "playground",
         "ops_analysis",
+        "operation_analysis",
+        "ops-analysis",
     ]
 
     def process_exception(self, request, exception):
@@ -141,6 +146,7 @@ class ErrorLogMiddleware(MiddlewareMixin):
         if match:
             app = match.group(1)
             module = match.group(2)
+            app = self.APP_NAME_MAPPING.get(app, app)
             return app, module
         return None, None
 

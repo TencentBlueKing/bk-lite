@@ -10,8 +10,10 @@ auth entrypoints (F001/F020/F021 and the new request serializers):
   a token not matching the bot is rejected.
 - ``execute_chat_flow``: a bot outside the validated user's team is not
   resolvable (team scoping); there is no User-Agent bypass.
-- ``submit_approval`` / ``submit_choice``: missing required fields -> 400 via
-  the new request serializers; a valid body applies the decision/choice.
+- ``submit_approval`` / ``submit_choice``: anonymous requests are rejected (401);
+  valid token + matching execution_id applies the decision/choice; missing
+  required fields still return 400; execution_id not owned by caller's team
+  returns 404 (ownership check).
 - ``get_bot_detail``: returns MASKED channel_config (no decrypted secrets).
 - ``download_workflow_attachment``: expired/invalid signed token -> 403; a
   missing asset -> 404; a valid signed token streams the file.
@@ -270,35 +272,115 @@ class TestExecuteChatFlow:
 
 
 # --------------------------------------------------------------------------- #
-# submit_approval / submit_choice — request serializers (400 on missing fields)
+# submit_approval / submit_choice — auth gate + ownership check (Issue #3431)
 # --------------------------------------------------------------------------- #
+# Helper: build a "token valid → user" stub reused across both test classes.
+def _stub_valid_token(mocker, username="alice", team=1):
+    user = SimpleNamespace(username=username, domain="d", team=team, locale="en")
+    mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
+    return user
+
+
+def _stub_invalid_token(mocker):
+    mocker.patch.object(
+        views,
+        "validate_openai_token",
+        return_value=(False, {"choices": [{"message": {"role": "assistant", "content": "No authorization"}}]}),
+    )
+
+
 class TestSubmitApproval:
-    def test_missing_fields_returns_400(self, request_factory):
-        request = _make_request(request_factory, body={"execution_id": "e1"})
-        request.user = SimpleNamespace(username="alice")
+    # --- auth gate (the core fix: no anonymous writes) ---
+
+    def test_no_token_rejected_401(self, request_factory, mocker):
+        """Anonymous POST must be rejected — this is the regression guard for #3431."""
+        _stub_invalid_token(mocker)
+        request = _make_request(
+            request_factory,
+            body={"execution_id": "e1", "node_id": "n1", "tool_call_id": "t1", "decision": "approve"},
+        )
+        resp = views.submit_approval(request)
+        assert resp.status_code == 401
+
+    def test_invalid_token_rejected_401(self, request_factory, mocker):
+        """Malformed / expired token must be rejected before any cache write."""
+        _stub_invalid_token(mocker)
+        request = _make_request(
+            request_factory,
+            token="Bearer bad-token",
+            body={"execution_id": "e1", "node_id": "n1", "tool_call_id": "t1", "decision": "approve"},
+        )
+        resp = views.submit_approval(request)
+        assert resp.status_code == 401
+
+    # --- ownership gate ---
+
+    def test_execution_not_in_team_returns_404(self, request_factory, mocker):
+        """execution_id owned by a different team → 404, no cache write."""
+        _stub_valid_token(mocker, team=99)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        qs_mock = mocker.MagicMock()
+        qs_mock.order_by.return_value.first.return_value = None
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock)
+        submit = mocker.patch("apps.opspilot.services.approval.submit_approval_decision")
+
+        request = _make_request(
+            request_factory,
+            token="Bearer tok",
+            body={"execution_id": "e1", "node_id": "n1", "tool_call_id": "t1", "decision": "approve"},
+        )
+        resp = views.submit_approval(request)
+
+        assert resp.status_code == 404
+        submit.assert_not_called()
+
+    # --- field validation (still enforced after auth) ---
+
+    def test_missing_fields_returns_400(self, request_factory, mocker):
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        task_stub = mocker.MagicMock()
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=task_stub)
+
+        request = _make_request(request_factory, token="Bearer tok", body={"execution_id": "e1"})
         resp = views.submit_approval(request)
 
         assert resp.status_code == 400
         assert json.loads(resp.content)["result"] is False
 
-    def test_invalid_decision_returns_400(self, request_factory):
+    def test_invalid_decision_returns_400(self, request_factory, mocker):
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        task_stub = mocker.MagicMock()
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=task_stub)
+
         request = _make_request(
             request_factory,
+            token="Bearer tok",
             body={"execution_id": "e1", "node_id": "n1", "tool_call_id": "t1", "decision": "maybe"},
         )
-        request.user = SimpleNamespace(username="alice")
         resp = views.submit_approval(request)
 
         assert resp.status_code == 400
         assert "decision" in json.loads(resp.content)["message"]
 
-    def test_valid_body_applies(self, request_factory, mocker):
+    # --- success path ---
+
+    def test_valid_token_and_owner_applies_decision(self, request_factory, mocker):
+        """Authenticated owner can submit approval — decision is written to cache."""
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        task_mock = mocker.MagicMock()
+        qs_mock = mocker.MagicMock()
+        qs_mock.order_by.return_value.first.return_value = task_mock
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock)
         submit = mocker.patch("apps.opspilot.services.approval.submit_approval_decision")
+
         request = _make_request(
             request_factory,
+            token="Bearer tok",
             body={"execution_id": "e1", "node_id": "n1", "tool_call_id": "t1", "decision": "approve"},
         )
-        request.user = SimpleNamespace(username="alice")
         resp = views.submit_approval(request)
 
         assert resp.status_code == 200
@@ -307,40 +389,104 @@ class TestSubmitApproval:
         assert data["data"]["decision"] == "approve"
         submit.assert_called_once()
 
-    def test_wrong_method_405(self, request_factory):
+    def test_wrong_method_405(self, request_factory, mocker):
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
         request = _make_request(request_factory, method="get", path="/")
-        request.user = SimpleNamespace(username="alice")
         resp = views.submit_approval(request)
         assert resp.status_code == 405
 
 
 class TestSubmitChoice:
-    def test_missing_fields_returns_400(self, request_factory):
-        request = _make_request(request_factory, body={"execution_id": "e1", "node_id": "n1"})
-        request.user = SimpleNamespace(username="alice")
+    # --- auth gate ---
+
+    def test_no_token_rejected_401(self, request_factory, mocker):
+        """Anonymous POST must be rejected — regression guard for #3431."""
+        _stub_invalid_token(mocker)
+        request = _make_request(
+            request_factory,
+            body={"execution_id": "e1", "node_id": "n1", "choice_id": "c1", "selected": ["opt1"]},
+        )
+        resp = views.submit_choice(request)
+        assert resp.status_code == 401
+
+    def test_invalid_token_rejected_401(self, request_factory, mocker):
+        _stub_invalid_token(mocker)
+        request = _make_request(
+            request_factory,
+            token="Bearer bad",
+            body={"execution_id": "e1", "node_id": "n1", "choice_id": "c1", "selected": ["opt1"]},
+        )
+        resp = views.submit_choice(request)
+        assert resp.status_code == 401
+
+    # --- ownership gate ---
+
+    def test_execution_not_in_team_returns_404(self, request_factory, mocker):
+        _stub_valid_token(mocker, team=99)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        qs_mock = mocker.MagicMock()
+        qs_mock.order_by.return_value.first.return_value = None
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock)
+        submit = mocker.patch("apps.opspilot.utils.user_choice.submit_user_choice")
+
+        request = _make_request(
+            request_factory,
+            token="Bearer tok",
+            body={"execution_id": "e1", "node_id": "n1", "choice_id": "c1", "selected": ["opt1"]},
+        )
+        resp = views.submit_choice(request)
+
+        assert resp.status_code == 404
+        submit.assert_not_called()
+
+    # --- field validation ---
+
+    def test_missing_fields_returns_400(self, request_factory, mocker):
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        task_stub = mocker.MagicMock()
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=task_stub)
+
+        request = _make_request(request_factory, token="Bearer tok", body={"execution_id": "e1", "node_id": "n1"})
         resp = views.submit_choice(request)
 
         assert resp.status_code == 400
         assert json.loads(resp.content)["result"] is False
 
-    def test_empty_selected_returns_400(self, request_factory):
+    def test_empty_selected_returns_400(self, request_factory, mocker):
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        task_stub = mocker.MagicMock()
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=task_stub)
+
         request = _make_request(
             request_factory,
+            token="Bearer tok",
             body={"execution_id": "e1", "node_id": "n1", "choice_id": "c1", "selected": []},
         )
-        request.user = SimpleNamespace(username="alice")
         resp = views.submit_choice(request)
 
         assert resp.status_code == 400
         assert "selected" in json.loads(resp.content)["message"]
 
-    def test_valid_body_applies(self, request_factory, mocker):
+    # --- success path ---
+
+    def test_valid_token_and_owner_applies_choice(self, request_factory, mocker):
+        """Authenticated owner can submit a choice — result is written to cache."""
+        _stub_valid_token(mocker)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        task_mock = mocker.MagicMock()
+        qs_mock = mocker.MagicMock()
+        qs_mock.order_by.return_value.first.return_value = task_mock
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock)
         submit = mocker.patch("apps.opspilot.utils.user_choice.submit_user_choice")
+
         request = _make_request(
             request_factory,
+            token="Bearer tok",
             body={"execution_id": "e1", "node_id": "n1", "choice_id": "c1", "selected": ["opt1"]},
         )
-        request.user = SimpleNamespace(username="alice")
         resp = views.submit_choice(request)
 
         assert resp.status_code == 200
