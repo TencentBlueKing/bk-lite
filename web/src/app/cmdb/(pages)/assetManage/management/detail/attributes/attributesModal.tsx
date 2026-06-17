@@ -801,13 +801,17 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                         <span className="text-sm text-[var(--color-text-secondary)] shrink-0">
                           {t('Model.enumSelectMode')}：
                         </span>
-                          <Radio.Group
-                            value={enumSelectMode}
-                            onChange={(e) => setEnumSelectMode(e.target.value)}
-                            disabled={type === 'edit'}
-                          >
-                          <Radio value="single">{t('Model.singleSelect')}</Radio>
-                          <Radio value="multiple">{t('Model.multipleSelect')}</Radio>
+                        <Radio.Group
+                          value={enumSelectMode}
+                          onChange={(e) => setEnumSelectMode(e.target.value)}
+                          disabled={type === 'edit'}
+                        >
+                          <Radio value="single">
+                            {t('Model.singleSelect')}
+                          </Radio>
+                          <Radio value="multiple">
+                            {t('Model.multipleSelect')}
+                          </Radio>
                         </Radio.Group>
                       </div>
                       <div className="flex items-center gap-3 mb-3">
@@ -824,8 +828,12 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           }}
                           disabled={type === 'edit'}
                         >
-                          <Radio value="custom">{t('PublicEnumLibrary.enumRuleTypeCustom')}</Radio>
-                          <Radio value="public_library">{t('PublicEnumLibrary.enumRuleTypePublicLibrary')}</Radio>
+                          <Radio value="custom">
+                            {t('PublicEnumLibrary.enumRuleTypeCustom')}
+                          </Radio>
+                          <Radio value="public_library">
+                            {t('PublicEnumLibrary.enumRuleTypePublicLibrary')}
+                          </Radio>
                         </Radio.Group>
                       </div>
                       {enumRuleType === 'public_library' ? (
@@ -853,11 +861,17 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                               ))}
                             </Select>
                             {onManagePublicLibrary && (
-                              <Tooltip title={t('PublicEnumLibrary.managePublicLibrary')}>
+                              <Tooltip
+                                title={t(
+                                  'PublicEnumLibrary.managePublicLibrary',
+                                )}
+                              >
                                 <Button
                                   type="text"
                                   icon={<SettingOutlined />}
-                                  onClick={() => onManagePublicLibrary?.(publicLibraryId)}
+                                  onClick={() =>
+                                    onManagePublicLibrary?.(publicLibraryId)
+                                  }
                                   className="shrink-0"
                                 />
                               </Tooltip>
@@ -883,7 +897,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   dataSource={selectedLib.options}
                                   rowKey="id"
                                   pagination={false}
-                                  className="mt-3 [&_.ant-table-cell]:!py-1.5" style={{ width: 'calc(100% - 40px)' }}
+                                  className="mt-3 [&_.ant-table-cell]:!py-1.5"
+                                  style={{ width: 'calc(100% - 40px)' }}
                                   columns={[
                                     {
                                       title: t('PublicEnumLibrary.optionId'),
@@ -929,7 +944,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   <HolderOutlined className="mr-[4px]" />
                                   <Input
                                     placeholder={
-                                      t('common.inputTip') + t('PublicEnumLibrary.optionId')
+                                      t('common.inputTip') +
+                                      t('PublicEnumLibrary.optionId')
                                     }
                                     className="mr-[10px] w-2/5"
                                     value={enumItem.id}
@@ -937,7 +953,8 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                                   />
                                   <Input
                                     placeholder={
-                                      t('common.inputTip') + t('PublicEnumLibrary.optionName')
+                                      t('common.inputTip') +
+                                      t('PublicEnumLibrary.optionName')
                                     }
                                     className="mr-[10px] w-2/5"
                                     value={enumItem.name}
@@ -966,13 +983,20 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                           className="mb-2"
                         >
                           <Select
-                            mode={enumSelectMode === 'multiple' ? 'multiple' : undefined}
+                            mode={
+                              enumSelectMode === 'multiple'
+                                ? 'multiple'
+                                : undefined
+                            }
                             allowClear
                             placeholder={t('common.selectTip')}
                             onChange={(value) => syncEnumDefaultValue(value)}
                           >
                             {getCurrentEnumOptions().map((opt) => (
-                              <Option key={String(opt.id)} value={String(opt.id)}>
+                              <Option
+                                key={String(opt.id)}
+                                value={String(opt.id)}
+                              >
                                 {opt.name}
                               </Option>
                             ))}
@@ -1044,7 +1068,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                         onDragEnd={onTableDragEnd}
                       >
                         <SortableContext
-                          items={tableColumnList.map((_, idx) => idx.toString())}
+                          items={tableColumnList.map((_, idx) =>
+                            idx.toString(),
+                          )}
                           strategy={verticalListSortingStrategy}
                         >
                           <ul className="ml-6">
@@ -1368,7 +1394,7 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 if (!isFileFieldType(attrType || '')) return null;
 
                 const constraintMeta = getFileFieldConstraintMeta(
-                  attrType as FileFieldType
+                  attrType as FileFieldType,
                 );
                 const constraintItems = [
                   t('fileFieldMaxCount', undefined, {
@@ -1386,7 +1412,9 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                     <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-fill-1)] p-4">
                       <div className="mb-1 flex items-center gap-1 text-sm font-medium text-[var(--color-text-primary)]">
                         <span>{t('Model.systemConstraints')}</span>
-                        <Tooltip title={t('Model.systemConstraintsDescription')}>
+                        <Tooltip
+                          title={t('Model.systemConstraintsDescription')}
+                        >
                           <QuestionCircleOutlined className="text-[var(--color-text-tertiary)]" />
                         </Tooltip>
                       </div>
@@ -1409,7 +1437,6 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 );
               }}
             </Form.Item>
-            <div className="border-t border-[var(--color-border-1)] mt-2 mb-4" />
             <Form.Item
               noStyle
               shouldUpdate={(prevValues, currentValues) =>
@@ -1421,58 +1448,73 @@ const AttributesModal = forwardRef<AttrModalRef, AttrModalProps>(
                 const isFileType = isFileFieldType(attrType);
                 const unsupportedHint = isFileType || attrType === 'tag';
                 return (
-                  <Form.Item label=" " colon={false}>
-                    <div className="rounded border border-[var(--color-border-1)] p-4">
+                  <Form.Item
+                    label=" "
+                    colon={false}
+                    className="mb-4"
+                    labelCol={{ span: 1 }}
+                    wrapperCol={{ span: 23 }}
+                  >
+                    <div className="rounded border border-[var(--color-border-1)] bg-[var(--color-bg-1)] px-4 py-3">
                       <div className="mb-3 text-sm font-medium text-[var(--color-text-primary)]">
-                       {t('Model.fieldBehavior')}
+                        {t('Model.fieldBehavior')}
                       </div>
                       <div className="flex items-start gap-8">
-                       <Form.Item<AttrFieldType>
-                         name="is_required"
-                         valuePropName="checked"
-                         className="mb-0"
-                       >
-                         <div className="flex flex-col gap-1">
-                           <Checkbox disabled={unsupportedHint}>
-                             {t('required')}
-                           </Checkbox>
-                           {unsupportedHint && (
-                             <span className="pl-6 text-xs text-[var(--color-text-tertiary)]">
-                               {t('Model.unsupported')}
-                             </span>
-                           )}
-                         </div>
-                       </Form.Item>
-                       <Form.Item<AttrFieldType>
-                         name="is_only"
-                         valuePropName="checked"
-                         className="mb-0"
-                       >
-                         <div className="flex flex-col gap-1">
-                           <Checkbox disabled={unsupportedHint}>
-                             {t('unique')}
-                           </Checkbox>
-                           {unsupportedHint && (
-                             <span className="pl-6 text-xs text-[var(--color-text-tertiary)]">
-                               {t('Model.unsupported')}
-                             </span>
-                           )}
-                         </div>
-                       </Form.Item>
-                       <Form.Item<AttrFieldType>
-                         name="editable"
-                         valuePropName="checked"
-                         className="mb-0"
-                       >
-                         <Checkbox disabled={attrType === 'tag'}>
-                           {t('editable')}
-                         </Checkbox>
-                       </Form.Item>
+                        <div className="flex flex-col gap-1">
+                          <Form.Item<AttrFieldType>
+                            name="is_required"
+                            valuePropName="checked"
+                            noStyle
+                          >
+                            <Checkbox
+                              className="whitespace-nowrap"
+                              disabled={unsupportedHint}
+                            >
+                              {t('required')}
+                            </Checkbox>
+                          </Form.Item>
+                          {unsupportedHint && (
+                            <span className="pl-6 text-xs text-[var(--color-text-tertiary)]">
+                              {t('Model.unsupported')}
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex flex-col gap-1">
+                          <Form.Item<AttrFieldType>
+                            name="is_only"
+                            valuePropName="checked"
+                            noStyle
+                          >
+                            <Checkbox
+                              className="whitespace-nowrap"
+                              disabled={unsupportedHint}
+                            >
+                              {t('unique')}
+                            </Checkbox>
+                          </Form.Item>
+                          {unsupportedHint && (
+                            <span className="pl-6 text-xs text-[var(--color-text-tertiary)]">
+                              {t('Model.unsupported')}
+                            </span>
+                          )}
+                        </div>
+                        <Form.Item<AttrFieldType>
+                          name="editable"
+                          valuePropName="checked"
+                          noStyle
+                        >
+                          <Checkbox
+                            className="whitespace-nowrap"
+                            disabled={attrType === 'tag'}
+                          >
+                            {t('editable')}
+                          </Checkbox>
+                        </Form.Item>
                       </div>
                       {isFileType && (
-                       <div className="mt-3 text-xs text-[var(--color-text-tertiary)]">
-                         {t('Model.fileFieldBehaviorHint')}
-                       </div>
+                        <div className="mt-2 text-xs text-[var(--color-text-tertiary)]">
+                          {t('Model.fileFieldBehaviorHint')}
+                        </div>
                       )}
                     </div>
                   </Form.Item>

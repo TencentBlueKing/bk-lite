@@ -12,6 +12,10 @@ Display Field 模块常量定义
 # 需要生成 _display 冗余字段的字段类型
 DISPLAY_FIELD_TYPES = frozenset(["organization", "user", "enum", "tag", "table"])
 
+# 敏感字段类型：值为密文，排除出全文检索且**不**生成 _display（刻意不可搜索）。
+# 与展示型/文件型不同——后者排除原值但靠 _display 仍可搜，敏感型则完全不进索引。
+SENSITIVE_FIELD_TYPES = frozenset(["pwd"])
+
 # 组织类型字段
 FIELD_TYPE_ORGANIZATION = "organization"
 

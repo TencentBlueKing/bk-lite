@@ -22,6 +22,7 @@
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",
     "test:operation-log-time-filter": "pnpm exec tsx scripts/operation-log-time-filter-test.ts",
     "test:cmdb-attr-type-i18n": "pnpm exec tsx scripts/cmdb-attr-type-i18n-test.ts",
+    "test:operation-log-detail": "pnpm exec tsx scripts/operation-log-detail-test.ts",
     "type-check": "pnpm clean && pnpm prepare-enterprise && pnpm precommit && tsc -p tsconfig.lint.json --noEmit",
     "precommit": "node -r dotenv/config scripts/generate-tsconfig.js dotenv_config_path=.env.local",
     "prepare": "husky install",

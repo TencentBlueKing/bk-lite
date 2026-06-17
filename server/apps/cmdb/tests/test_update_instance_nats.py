@@ -27,8 +27,33 @@ def test_update_instance_by_inst_id(mock_im):
         inst_id=123,
         update_attr={"ip": "1.2.3.4"},
         operator="admin",
+        allowed_org_ids=None,
         skip_permission_check=True,
     )
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_update_instance_org_scope_defaults_to_payload(mock_im):
+    """带 organization 时默认放行其自身（机器接口无范围限制）。"""
+    mock_im.instance_update.return_value = {"_id": 1}
+
+    N.update_instance({"inst_id": 1, "update_attr": {"organization": [3, 5]}})
+
+    _, kwargs = mock_im.instance_update.call_args
+    assert kwargs["allowed_org_ids"] == [3, 5]
+
+
+@patch("apps.cmdb.nats.nats.InstanceManage")
+def test_update_instance_explicit_allowed_org_ids(mock_im):
+    """显式传 allowed_org_ids 时按其限制。"""
+    mock_im.instance_update.return_value = {"_id": 1}
+
+    N.update_instance(
+        {"inst_id": 1, "update_attr": {"organization": [3]}, "allowed_org_ids": [3, 9]}
+    )
+
+    _, kwargs = mock_im.instance_update.call_args
+    assert kwargs["allowed_org_ids"] == [3, 9]
 
 
 @patch("apps.cmdb.nats.nats.InstanceManage")
