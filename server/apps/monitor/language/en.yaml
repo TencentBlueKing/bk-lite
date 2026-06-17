@@ -1195,6 +1195,9 @@ monitor_object_metric:
       desc: Percentage of busy threads relative to maximum threads, indicating thread
         resource utilization efficiency
   Website:
+    http_response_result_code:
+      name: Probe Result
+      desc: Identifies the probe result from the Telegraf http_response result_code field. 0 means success, while non-zero values represent response string mismatch, body read error, connection failure, timeout, DNS error, or response status code mismatch.
     http_node_success_rate:
       name: Node Success Rate
       desc: Calculate the 5-minute probe success rate for each probing node, reflecting the access experience in a specific region or network environment.

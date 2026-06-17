@@ -1114,6 +1114,9 @@ monitor_object_metric:
       name: 线程池利用率
       desc: 当前忙碌线程数占最大线程数的百分比，反映线程资源使用效率
   Website:
+    http_response_result_code:
+      name: 拨测结果
+      desc: 根据 Telegraf http_response 的 result_code 字段识别拨测结果，0 表示成功，非 0 表示响应内容不匹配、响应体读取失败、连接失败、超时、DNS 错误或响应状态码不匹配等异常。
     http_node_success_rate:
       name: 单点成功率
       desc: 统计每个拨测节点5分钟的拨测成功率，用于反映特定地域或网络环境下的访问情况。
