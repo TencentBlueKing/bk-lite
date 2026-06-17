@@ -7,7 +7,7 @@ import django_minio_backend.models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("opspilot", "0056_alter_workflowconversationhistory_entry_type"),
+        ("opspilot", "0057_workflowtaskresult_is_test"),
     ]
 
     operations = [
