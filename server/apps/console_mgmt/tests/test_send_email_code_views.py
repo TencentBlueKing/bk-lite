@@ -5,12 +5,17 @@
 - 修复前：无速率限制，任意已登录用户可向任意外部邮箱无限发送
 - 修复后：每用户每目标邮箱 60 秒内最多 1 次，超出返回 result=False
 
-revert 测试：若将 `cache.set(rate_key, ...)` 和速率检查代码移除，第二个请求
-会再次调用 send_email_to_receiver → mock 调用次数 > 1 → test_速率限制_第二次请求被拦截 失败。
+实现说明：
+- 使用 cache.add() 原子操作（set-if-not-exists）避免 TOCTOU 竞争条件
+- cache.add() 返回 True 表示 key 不存在并已写入（允许发送）
+- cache.add() 返回 False 表示 key 已存在（速率限制命中，拒绝发送）
+
+revert 测试：若将速率限制代码移除，第二个请求会再次调用
+send_email_to_receiver → mock 调用次数 > 1 → test_速率限制_第二次请求被拦截 失败。
 """
 
 import json
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import pytest
 from django.test import RequestFactory
@@ -47,7 +52,7 @@ class TestSendEmailCodeRateLimit:
         mock_result = {"result": True}
         with patch("apps.console_mgmt.views.SystemMgmt") as MockClient, \
              patch("apps.console_mgmt.views.cache") as mock_cache:
-            mock_cache.get.return_value = None  # 未命中速率限制
+            mock_cache.add.return_value = True  # key 不存在，add 成功 → 允许发送
             instance = MockClient.return_value
             instance.send_email_to_receiver.return_value = mock_result
 
@@ -56,9 +61,9 @@ class TestSendEmailCodeRateLimit:
             data = json.loads(resp.content)
 
             assert data["result"] is True
-            # 发送后必须设置速率限制缓存
-            mock_cache.set.assert_called_once()
-            call_args = mock_cache.set.call_args
+            # 必须使用 cache.add() 原子写入速率限制标记
+            mock_cache.add.assert_called_once()
+            call_args = mock_cache.add.call_args
             assert call_args.kwargs.get("timeout") == EMAIL_CODE_RATE_LIMIT_SECONDS or (
                 len(call_args.args) >= 3 and call_args.args[2] == EMAIL_CODE_RATE_LIMIT_SECONDS
             )
@@ -69,7 +74,7 @@ class TestSendEmailCodeRateLimit:
         """速率限制命中时，不调用 send_email_to_receiver，返回 result=False。"""
         with patch("apps.console_mgmt.views.SystemMgmt") as MockClient, \
              patch("apps.console_mgmt.views.cache") as mock_cache:
-            mock_cache.get.return_value = 1  # 模拟速率限制已命中
+            mock_cache.add.return_value = False  # key 已存在，add 失败 → 速率限制命中
             instance = MockClient.return_value
 
             req = _build_request(alice)
@@ -79,22 +84,20 @@ class TestSendEmailCodeRateLimit:
             assert data["result"] is False
             # 被速率限制拦截，不应发送邮件
             instance.send_email_to_receiver.assert_not_called()
-            # 速率限制已命中，不应再次 set（避免重置窗口）
-            mock_cache.set.assert_not_called()
 
     def test_速率限制_缓存key包含用户名和目标邮箱(self, alice):
         """缓存 key 必须同时包含用户名和目标邮箱，避免不同用户/邮箱互相干扰。"""
         with patch("apps.console_mgmt.views.SystemMgmt") as MockClient, \
              patch("apps.console_mgmt.views.cache") as mock_cache:
-            mock_cache.get.return_value = None
+            mock_cache.add.return_value = True
             instance = MockClient.return_value
             instance.send_email_to_receiver.return_value = {"result": True}
 
             req = _build_request(alice, email="other@example.com")
             send_email_code(req)
 
-            set_call = mock_cache.set.call_args
-            rate_key = set_call.args[0] if set_call.args else set_call.kwargs.get("key", "")
+            add_call = mock_cache.add.call_args
+            rate_key = add_call.args[0] if add_call.args else add_call.kwargs.get("key", "")
             assert alice.username in rate_key
             assert "other@example.com" in rate_key
 
@@ -103,13 +106,13 @@ class TestSendEmailCodeRateLimit:
         alice = UserFactory(username="alice", domain="domain.com")
         bob = UserFactory(username="bob", domain="domain.com")
 
-        def fake_cache_get(key):
-            # 只有 alice 的 key 命中速率限制
-            return 1 if "alice" in key else None
+        def fake_cache_add(key, value, timeout=None):
+            # 只有 alice 的 key 已存在（返回 False = 速率限制命中）
+            return False if "alice" in key else True
 
         with patch("apps.console_mgmt.views.SystemMgmt") as MockClient, \
              patch("apps.console_mgmt.views.cache") as mock_cache:
-            mock_cache.get.side_effect = fake_cache_get
+            mock_cache.add.side_effect = fake_cache_add
             instance = MockClient.return_value
             instance.send_email_to_receiver.return_value = {"result": True}
 

@@ -206,10 +206,11 @@ def send_email_code(request):
             return JsonResponse({"result": False, "message": loader.get("error.email_required", "Email address cannot be empty")})
 
         # 速率限制：每个已登录用户每个目标邮箱 60 秒内最多发送 1 次，防止平台邮件服务被滥用为骚扰工具
+        # 使用 cache.add() 原子操作（set-if-not-exists），避免 get+set 的 TOCTOU 竞争条件
         username = getattr(request.user, "username", None)
         if username:
             rate_key = f"send_email_code_rate:{username}:{email}"
-            if cache.get(rate_key):
+            if not cache.add(rate_key, 1, timeout=EMAIL_CODE_RATE_LIMIT_SECONDS):
                 return JsonResponse(
                     {
                         "result": False,
@@ -219,7 +220,6 @@ def send_email_code(request):
                         ),
                     }
                 )
-            cache.set(rate_key, 1, timeout=EMAIL_CODE_RATE_LIMIT_SECONDS)
 
         # 生成6位随机数字验证码
         verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
