@@ -49,6 +49,7 @@ import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
 import { cloneDeep } from 'lodash';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -445,8 +446,11 @@ const Asset = () => {
         }
         if (!isDerivativeObject(item, data)) {
           acc[item.type].children.push({
-            title: `${item.display_name || '--'}(${item.instance_count ?? 0})`,
+            title: item.display_name || '--',
+            label: item.name || '--',
             key: item.id,
+            icon: item.icon,
+            count: item.instance_count ?? 0,
             children: []
           });
         }
@@ -503,14 +507,16 @@ const Asset = () => {
 
   return (
     <div className={assetStyle.asset}>
-      <div className={assetStyle.tree}>
-        <TreeSelector
-          data={treeData}
-          defaultSelectedKey={defaultSelectObj as string}
-          onNodeSelect={handleObjectChange}
-          loading={treeLoading}
-        />
-      </div>
+      <ResizableSidebar collapseStorageKey="monitor.integration.asset.sidebarCollapsed">
+        <div className={assetStyle.tree}>
+          <TreeSelector
+            data={treeData}
+            defaultSelectedKey={defaultSelectObj as string}
+            onNodeSelect={handleObjectChange}
+            loading={treeLoading}
+          />
+        </div>
+      </ResizableSidebar>
       <div className={assetStyle.table}>
         <div className={assetStyle.search}>
           <Input

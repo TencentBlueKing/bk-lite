@@ -58,6 +58,7 @@ export const useLoadbalanceConfig = () => {
     },
     collectTypes: {
       'Loadbalance SNMP General': 'snmp',
+      'Loadbalance F5 SNMP': 'snmp_f5',
       'Loadbalance Flow NetFlow': 'netflow',
       'Loadbalance Flow sFlow': 'sflow'
     }

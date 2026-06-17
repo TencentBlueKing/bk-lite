@@ -512,7 +512,15 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /qtech/i, label: 'QTech', icon: 'mm-qtech_qtech' },
   { match: /dellforce|force10|dell.?force/i, label: 'Dell Force10', icon: 'mm-dellforce_dellforce' },
   { match: /hphpn|procurve|hp.?networking/i, label: 'HP ProCurve', icon: 'mm-hphpn_hphpn' },
-  { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' }
+  { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' },
+  { match: /checkpoint|check.?point/i, label: 'Check Point', icon: 'mm-checkpoint_checkpoint' },
+  { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' },
+  { match: /paloalto|palo.?alto|pan.?os/i, label: 'Palo Alto', icon: 'mm-paloalto_paloalto' },
+  { match: /sonicwall|sonicos/i, label: 'SonicWall', icon: 'mm-sonicwall_sonicwall' },
+  { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' },
+  { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
+  { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
+  { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

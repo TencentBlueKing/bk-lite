@@ -4,9 +4,9 @@
 
 // 默认阈值颜色配置
 export const DEFAULT_THRESHOLD_COLORS = [
-  { color: '#fd666d', value: '70' }, // 红色 - 危险
-  { color: '#EAB839', value: '30' }, // 黄色 - 警告
-  { color: '#366CE4', value: '0' },  // 蓝色 - 正常
+  { color: '#dc2626', value: '70' }, // 红色 - 危险
+  { color: '#d97706', value: '30' }, // 黄色 - 警告
+  { color: '#2563eb', value: '0' },  // 蓝色 - 正常
 ];
 
 // 阈值颜色预设方案
