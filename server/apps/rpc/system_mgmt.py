@@ -177,7 +177,8 @@ class SystemMgmt(object):
         """
         return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
 
-    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com"):
+    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com",
+                           target_type="", target_id="", detail=None):
         """
         保存操作日志
         :param username: 用户名
@@ -186,9 +187,13 @@ class SystemMgmt(object):
         :param action_type: 操作类型 (create/update/delete/execute)
         :param summary: 操作概要
         :param domain: 域名
+        :param target_type: 操作目标类型（可选）
+        :param target_id: 操作目标ID（可选）
+        :param detail: 操作详情 JSON（可选，默认空字典）
         """
         return self.client.run(
-            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type, summary=summary, domain=domain
+            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type,
+            summary=summary, domain=domain, target_type=target_type, target_id=target_id, detail=detail,
         )
 
     def search_channel_list(self, channel_type, teams, include_children):

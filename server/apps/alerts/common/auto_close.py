@@ -13,6 +13,7 @@ from apps.alerts.constants import (
     SessionStatus,
 )
 from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
+from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.alerts.utils.util import split_list
 from apps.core.logger import alert_logger as logger
 
@@ -257,4 +258,4 @@ class AlertAutoClose:
             valid_alert_count, closed_count, error_count,
         )
 
-        OperatorLog.objects.bulk_create(self.bulk_logs, batch_size=200)
+        record_operator_logs_bulk(self.bulk_logs, batch_size=200)

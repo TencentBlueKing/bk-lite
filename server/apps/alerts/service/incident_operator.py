@@ -6,8 +6,8 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.models.operator_log import  OperatorLog
 from apps.alerts.models.models import  Incident
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.core.logger import alert_logger as logger
 from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
 
@@ -206,4 +206,4 @@ class IncidentOperator:
         记录告警操作日志
         :param log_data: 日志数据字典
         """
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)

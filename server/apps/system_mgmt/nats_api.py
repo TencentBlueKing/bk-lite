@@ -1836,7 +1836,8 @@ def save_error_log(username, app, module, error_message, domain="domain.com"):
 
 
 @nats_client.register
-def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com"):
+def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com",
+                       target_type="", target_id="", detail=None):
     """
     保存操作日志
     :param username: 用户名
@@ -1845,6 +1846,9 @@ def save_operation_log(username, source_ip, app, action_type, summary="", domain
     :param action_type: 操作类型 (create/update/delete/execute)
     :param summary: 操作概要
     :param domain: 域名
+    :param target_type: 操作目标类型（可选）
+    :param target_id: 操作目标ID（可选）
+    :param detail: 操作详情 JSON（可选，默认空字典）
     """
     try:
         # 验证 action_type 是否合法
@@ -1867,6 +1871,9 @@ def save_operation_log(username, source_ip, app, action_type, summary="", domain
             action_type=action_type,
             summary=summary,
             domain=domain,
+            target_type=target_type or "",
+            target_id=str(target_id or ""),
+            detail=detail or {},
         )
         return {"result": True, "message": "Operation log saved successfully"}
     except Exception as e:
