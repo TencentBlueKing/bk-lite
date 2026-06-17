@@ -92,11 +92,13 @@ class BotViewSet(PinMixin, AuthViewSet):
             return response
 
         bot_id = response.data.get("id") or kwargs.get("pk")
+        # 配置页仅恢复"测试"发起的执行；真实对话执行（is_test=False）不应回填到画布展示
         execution_id = (
             WorkFlowTaskResult.objects.filter(
                 bot_work_flow__bot_id=bot_id,
                 status=WorkFlowTaskStatus.RUNNING,
                 finished_at__isnull=True,
+                is_test=True,
             )
             .order_by("-run_time", "-id")
             .values_list("execution_id", flat=True)

@@ -894,6 +894,75 @@ def delete_opspilot_nats_channels(bot_id):
 
 
 @nats_client.register
+def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=False):
+    """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。
+
+    与通用 search_channel_list 不同：本接口专门按 OpsPilot 托管标识过滤，
+    支持跨团队/全局列举，并返回路由字段 bot_id / node_id。
+
+    :param teams: 可选，组织 ID 列表；为空/None 则跨团队全局列举
+    :param bot_id: 可选，仅返回该 Bot 的通道
+    :param include_children: 当传 teams 时，是否一并包含其子组织
+    :return: 标准 NATS 返回结构，data 为 [{id, name, description, team, bot_id, node_id}]
+    """
+    channels = Channel.objects.filter(channel_type=ChannelChoices.NATS)
+
+    # 传了 teams 才按组织过滤；为空表示全局
+    if teams:
+        normalized_teams = []
+        for team_id in teams:
+            try:
+                normalized_teams.append(int(team_id))
+            except (TypeError, ValueError):
+                continue
+
+        if include_children and normalized_teams:
+            all_groups = Group.objects.values_list("id", "parent_id")
+            children_map = {}
+            for gid, pid in all_groups:
+                if pid is not None:
+                    children_map.setdefault(pid, []).append(gid)
+
+            def _collect_descendants(group_id, acc):
+                acc.add(group_id)
+                for child_id in children_map.get(group_id, []):
+                    _collect_descendants(child_id, acc)
+
+            expanded = set()
+            for team_id in normalized_teams:
+                _collect_descendants(team_id, expanded)
+            normalized_teams = list(expanded)
+
+        if not normalized_teams:
+            return {"result": True, "data": []}
+
+        team_filter = Q(team__contains=normalized_teams[0])
+        for team_id in normalized_teams[1:]:
+            team_filter |= Q(team__contains=team_id)
+        channels = channels.filter(team_filter)
+
+    # DB 无关：在 Python 侧按 config.source（及可选 bot_id）过滤
+    data = []
+    for channel in channels:
+        config = channel.config or {}
+        if config.get("source") != OPSPILOT_CHANNEL_SOURCE:
+            continue
+        if bot_id is not None and str(config.get("bot_id")) != str(bot_id):
+            continue
+        data.append(
+            {
+                "id": channel.id,
+                "name": channel.name,
+                "description": channel.description,
+                "team": channel.team,
+                "bot_id": config.get("bot_id"),
+                "node_id": config.get("node_id"),
+            }
+        )
+    return {"result": True, "data": data}
+
+
+@nats_client.register
 def send_email_to_receiver(title, content, receiver):
     channel_obj = Channel.objects.filter(channel_type=ChannelChoices.EMAIL).first()
     channel_config = channel_obj.config
