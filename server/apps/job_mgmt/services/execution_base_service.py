@@ -26,6 +26,21 @@ class ExecutionTaskBaseService(object):
         self.task_name = task_name
 
     @staticmethod
+    def normalize_script_line_endings(script_content: str, script_type: str) -> str:
+        """规范化脚本换行符（CRLF/CR -> LF）。
+
+        Windows 编辑/粘贴的脚本常带 ``\\r\\n``，会让 Linux 的 bash/sh 报
+        ``syntax error near unexpected token $'\\r'``；老 Mac 的裸 ``\\r`` 同理。
+        类 Unix 脚本统一转 LF；Windows 原生脚本(bat/powershell)保持原样。
+
+        sidecar(SSH/local_stream) 与 Ansible 两条下发路径都必须调用，缺一不可
+        （#3404：dd4508928 只覆盖了 sidecar，遗漏 Ansible 路径）。
+        """
+        if not script_content or script_type in (ScriptType.BAT, ScriptType.POWERSHELL):
+            return script_content
+        return script_content.replace("\r\n", "\n").replace("\r", "\n")
+
+    @staticmethod
     def decrypt_password(password: Optional[str]) -> Optional[str]:
         """解密密码字段（兼容历史明文数据）"""
         if not password:
@@ -186,6 +201,9 @@ class ExecutionTaskBaseService(object):
             script_type: 脚本类型
         """
         task_name = "execute_script_via_ansible"
+
+        # 规范化换行符：与 sidecar 路径一致，类 Unix 脚本转 LF（#3404）
+        script_content = cls.normalize_script_line_endings(script_content, script_type)
 
         # 获取所有目标的 Target 对象
         target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]

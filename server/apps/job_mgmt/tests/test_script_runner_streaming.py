@@ -68,6 +68,69 @@ def test_crlf_preserved_for_windows_bat():
     assert "\r\n" in sent
 
 
+def test_crlf_normalized_for_ansible_shell_path():
+    """Ansible 驱动执行 Linux shell 脚本时同样需规范化 CRLF，否则远端 bash 报 $'\\r'。
+
+    回归 #3404：dd4508928 只在 sidecar(SSH/local_stream) 路径规范化，遗漏了
+    手动目标 + Ansible 驱动这条先于 sidecar 返回的下发路径。
+    """
+    from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+
+    execution = MagicMock()
+    execution.id = 99
+    execution.timeout = 60
+    target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
+    fake_target = MagicMock()
+    fake_target.cloud_region_id = 1
+    fake_exec = MagicMock()
+    crlf = "#!/bin/bash\r\necho hi\r\nfor i in 1 2; do echo $i; done\r\n"
+
+    with patch("apps.job_mgmt.services.execution_base_service.Target") as mock_target_model, \
+         patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"), \
+         patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), \
+         patch("apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec):
+        mock_target_model.objects.filter.return_value = [fake_target]
+        ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, crlf, ScriptType.SHELL)
+
+    assert fake_exec.adhoc.called
+    module_args = fake_exec.adhoc.call_args.kwargs["module_args"]
+    assert "\r" not in module_args
+    assert "for i in 1 2; do echo $i; done" in module_args
+
+
+def test_crlf_preserved_for_ansible_bat_path():
+    """Windows 原生脚本(bat)经 Ansible(win_shell)下发时保留 CRLF，不做规范化。"""
+    from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+
+    execution = MagicMock()
+    execution.id = 99
+    execution.timeout = 60
+    target_list = [{"target_id": 5, "name": "h1", "ip": "1.1.1.1"}]
+    fake_target = MagicMock()
+    fake_target.cloud_region_id = 1
+    fake_exec = MagicMock()
+
+    with patch("apps.job_mgmt.services.execution_base_service.Target") as mock_target_model, \
+         patch.object(ExecutionTaskBaseService, "_get_ansible_node", return_value="node-1"), \
+         patch.object(ExecutionTaskBaseService, "_build_host_credentials", return_value={}), \
+         patch("apps.job_mgmt.services.execution_base_service.AnsibleExecutor", return_value=fake_exec):
+        mock_target_model.objects.filter.return_value = [fake_target]
+        ExecutionTaskBaseService._execute_script_via_ansible(execution, target_list, "echo hi\r\n", ScriptType.BAT)
+
+    module_args = fake_exec.adhoc.call_args.kwargs["module_args"]
+    assert "\r\n" in module_args
+
+
+def test_normalize_script_line_endings_bare_cr_and_idempotent():
+    """规范化覆盖老 Mac 裸 \\r；已是 LF 的脚本字节不变(避免误伤正常脚本)。"""
+    from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+
+    assert ExecutionTaskBaseService.normalize_script_line_endings("a\rb\r\nc", ScriptType.SHELL) == "a\nb\nc"
+    lf = "#!/bin/bash\necho hi\n"
+    assert ExecutionTaskBaseService.normalize_script_line_endings(lf, ScriptType.PYTHON) == lf
+    assert ExecutionTaskBaseService.normalize_script_line_endings("echo\r\n", ScriptType.POWERSHELL) == "echo\r\n"
+
+
 def test_local_branch_calls_execute_local_stream_with_topic():
     runner = _runner()
     target = {"node_id": "node-7", "name": "h1", "ip": "1.2.3.4"}
