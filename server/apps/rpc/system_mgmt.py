@@ -274,8 +274,8 @@ class SystemMgmt(object):
         return_data = self.client.run("verify_bk_token", bk_token=bk_token)
         return return_data
 
-    def verify_otp_code(self, username, otp_code):
-        return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code)
+    def verify_otp_code(self, username, otp_code, client_ip=""):
+        return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code, client_ip=client_ip)
         return return_data
 
     def verify_otp_code_by_user_id(self, user_id, otp_code):

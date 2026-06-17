@@ -1424,11 +1424,31 @@ def generate_qr_code_by_user_id(user_id):
 
 # 验证OTP代码
 @nats_client.register
-def verify_otp_code(username, otp_code):
-    user = User.objects.get(username=username)
+def verify_otp_code(username, otp_code, client_ip=""):
+    """
+    Verify OTP code for a user by username.
+
+    Requires client_ip for rate limiting. Falls back to empty string when not
+    provided (legacy callers), but rate limiting is still applied per IP+username.
+    """
+    # Check rate limit before any DB lookup
+    is_limited, remaining = check_rate_limit(client_ip, username)
+    if is_limited:
+        return {"result": False, "message": "Too many failed attempts. Please try again later."}
+
+    user = User.objects.filter(username=username).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    if not user.otp_secret:
+        return {"result": False, "message": "OTP not configured for this user"}
+
     totp = pyotp.TOTP(user.otp_secret)
     if totp.verify(otp_code):
+        reset_rate_limit(client_ip, username)
         return {"result": True, "message": "Verification successful"}
+
+    record_failed_attempt(client_ip, username)
     return {"result": False, "message": "Invalid OTP code"}
 
 
