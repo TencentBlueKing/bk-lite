@@ -149,13 +149,16 @@ class SystemMgmt(object):
         return_data = self.client.run("login", username=username, password=password)
         return return_data
 
-    def reset_pwd(self, username, domain, password):
+    def reset_pwd(self, username, domain, password, caller_token=""):
         """
         :param username: 用户名
-        :param domain: 用户名
+        :param domain: 域
         :param password: 密码
+        :param caller_token: 调用方 JWT token（必须与 username 对应的会话 token 一致）
         """
-        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password)
+        return_data = self.client.run(
+            "reset_pwd", username=username, domain=domain, password=password, caller_token=caller_token
+        )
         return return_data
 
     def revoke_token(self, token):

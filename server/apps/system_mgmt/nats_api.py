@@ -1246,12 +1246,26 @@ def login(username, password):
 
 
 @nats_client.register
-def reset_pwd(username, domain, password):
+def reset_pwd(username, domain, password, caller_token=""):
     """
     重置用户密码（NATS接口）
 
-    会进行密码复杂度校验
+    会进行密码复杂度校验，以及调用方身份校验——caller_token 必须是有效的
+    JWT 会话 token，且 token 所属用户必须与 username 一致（自助改密），
+    以阻止任意内网服务通过 NATS 总线篡改他人密码。
     """
+    # 调用方身份校验：验证 caller_token 有效，且属于请求的同一用户
+    if not caller_token:
+        return {"result": False, "message": "caller_token is required"}
+    try:
+        caller = _verify_token(caller_token)
+    except Exception:
+        return {"result": False, "message": "Unauthorized: invalid token"}
+    caller_domain = getattr(caller, "domain", "") or "domain.com"
+    target_domain = domain or "domain.com"
+    if caller.username != username or caller_domain != target_domain:
+        return {"result": False, "message": "Unauthorized: caller does not match target user"}
+
     filter_kwargs = {"username": username}
     if domain:
         filter_kwargs["domain"] = domain
