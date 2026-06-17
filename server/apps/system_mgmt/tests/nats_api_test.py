@@ -1498,3 +1498,43 @@ def test_reset_pwd_不同domain时拒绝(monkeypatch):
     result = reset_pwd("alice", "corp.com", "ValidPass1!", caller_token="alice.token")
     assert result["result"] is False
     assert "Unauthorized" in result["message"]
+
+
+@pytest.mark.django_db
+def test_search_opspilot_nats_channels_filters_by_source_and_bot():
+    """新增接口：只返回 opspilot 托管的 NATS 通道，支持按 bot_id 过滤、全局列举，带 bot_id/node_id。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import search_opspilot_nats_channels, sync_opspilot_nats_channels
+
+    # bot 7 两个托管通道
+    sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="BotA",
+        team=[2],
+        nodes=[{"node_id": "n1", "name": "NATS触发"}, {"node_id": "n2", "name": "NATS触发 1"}],
+    )
+    # bot 8 一个托管通道
+    sync_opspilot_nats_channels(bot_id=8, bot_name="BotB", team=[3], nodes=[{"node_id": "m1", "name": "入口"}])
+    # 一个用户手建的普通 NATS 通道（无 source），不应出现
+    Channel.objects.create(
+        name="manual", channel_type=ChannelChoices.NATS, config={"namespace": "bklite", "method_name": "x"}, team=[2], description=""
+    )
+
+    # 全局列举：只含 opspilot 托管（3 条），不含手建
+    all_res = search_opspilot_nats_channels()
+    assert all_res["result"] is True
+    names = {c["name"] for c in all_res["data"]}
+    assert "manual" not in names
+    assert len(all_res["data"]) == 3
+    # 返回路由字段
+    sample = all_res["data"][0]
+    assert set(sample.keys()) >= {"id", "name", "description", "team", "bot_id", "node_id"}
+
+    # 按 bot_id 过滤
+    bot7 = search_opspilot_nats_channels(bot_id=7)
+    assert {c["node_id"] for c in bot7["data"]} == {"n1", "n2"}
+    assert all(c["bot_id"] == 7 for c in bot7["data"])
+
+    # 按 teams 过滤（team 3 → 只 bot8）
+    team3 = search_opspilot_nats_channels(teams=[3])
+    assert {c["node_id"] for c in team3["data"]} == {"m1"}

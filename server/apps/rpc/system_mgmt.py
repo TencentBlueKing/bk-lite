@@ -156,9 +156,7 @@ class SystemMgmt(object):
         :param password: 密码
         :param caller_token: 调用方 JWT token（必须与 username 对应的会话 token 一致）
         """
-        return_data = self.client.run(
-            "reset_pwd", username=username, domain=domain, password=password, caller_token=caller_token
-        )
+        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password, caller_token=caller_token)
         return return_data
 
     def revoke_token(self, token):
@@ -216,6 +214,19 @@ class SystemMgmt(object):
         """
         return_data = self.client.run("search_groups", query_params=query_params)
         return return_data
+
+    def search_opspilot_nats_channels(self, teams=None, bot_id=None, include_children=False):
+        """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。
+        :param teams: 可选，组织 ID 列表；为空则跨团队全局列举
+        :param bot_id: 可选，仅返回该 Bot 的通道
+        :param include_children: 传 teams 时是否含子组织
+        """
+        return self.client.run(
+            "search_opspilot_nats_channels",
+            teams=teams,
+            bot_id=bot_id,
+            include_children=include_children,
+        )
 
     def search_users(self, query_params):
         """
