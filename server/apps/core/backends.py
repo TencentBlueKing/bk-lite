@@ -1,3 +1,4 @@
+import os
 from typing import Any, Dict, List, Optional, Set
 
 import pytz
@@ -23,11 +24,42 @@ COOKIE_CURRENT_TEAM = "current_team"
 CLIENT_ID_ENV_KEY = "CLIENT_ID"
 
 
+def _collect_ancestor_group_ids(seed_ids: List) -> Set[int]:
+    """
+    从 seed_ids 出发，沿 parent_id 链向上收集所有祖先组 ID（含自身）。
+
+    仅使用轻量级 values_list 查询（不加载角色关联），避免全表 prefetch。
+    返回的集合可用于后续有针对性地加载完整 Group 对象。
+
+    算法与 system_mgmt/nats_api.py 中的 _collect_ancestor_group_ids 保持一致。
+    """
+    if not seed_ids:
+        return set()
+    # 一次轻量查询：只取 (id, parent_id, allow_inherit_roles)，不加载角色关联
+    all_meta = {
+        row[0]: (row[1], row[2])
+        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
+    }
+    result: Set[int] = set()
+    stack = list(seed_ids)
+    while stack:
+        gid = stack.pop()
+        if gid in result:
+            continue
+        result.add(gid)
+        meta = all_meta.get(gid)
+        if meta:
+            parent_id, _allow_inherit = meta
+            if parent_id and parent_id not in result:
+                stack.append(parent_id)
+    return result
+
+
 class APISecretAuthBackend(ModelBackend):
     """API密钥认证后端"""
 
-    # 缓存配置
-    PERMISSION_CACHE_TTL = 60  # 权限缓存 TTL（秒）
+    # 缓存配置：默认 600s，可通过 API_TOKEN_PERMISSION_CACHE_TTL 环境变量覆盖
+    PERMISSION_CACHE_TTL = int(os.getenv("API_TOKEN_PERMISSION_CACHE_TTL", "600"))
     PERMISSION_CACHE_KEY_PREFIX = "api_token_permissions"
 
     def authenticate(self, request=None, username=None, password=None, api_token=None, **kwargs) -> Optional[User]:
@@ -148,8 +180,15 @@ class APISecretAuthBackend(ModelBackend):
         user_groups = user.group_list or []
 
         if user_groups:
-            # 单次查询所有组织，内存中完成递归，避免 N+1
-            all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+            # 两步有界查询，避免全表 prefetch（修复 thundering herd）：
+            # 1. 轻量 values_list 找出用户相关祖先组 ID（见 _collect_ancestor_group_ids）
+            # 2. 按 ID 集合有界加载含角色关联的 Group 对象
+            seed_ids = [gid.get("id") if isinstance(gid, dict) else gid for gid in user_groups if gid]
+            ancestor_ids = _collect_ancestor_group_ids(seed_ids)
+            all_groups = {
+                g.id: g
+                for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
+            }
             visited: Set[int] = set()
 
             def collect_roles(group_id: int) -> None:
@@ -172,12 +211,8 @@ class APISecretAuthBackend(ModelBackend):
                     if parent and parent.allow_inherit_roles:
                         collect_roles(parent_id)
 
-            for gid in user_groups:
-                # 处理 group_list 可能是 [{"id": 1}] 或 [1] 的情况
-                if isinstance(gid, dict):
-                    gid = gid.get("id")
-                if gid:
-                    collect_roles(gid)
+            for gid in seed_ids:
+                collect_roles(gid)
 
         return personal_role_ids | group_role_ids
 
