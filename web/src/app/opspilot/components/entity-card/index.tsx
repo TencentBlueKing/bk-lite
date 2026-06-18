@@ -32,6 +32,8 @@ interface EntityCardProps {
   onMenuClick: (action: string, entity: any) => void;
   redirectUrl: string;
   iconTypeMapping: [string, string];
+  // 组织行标签，默认 common.organization（"组织"）；studio 卡片传"管理组织"
+  teamLabel?: string;
 }
 
 const EntityCard: React.FC<EntityCardProps> = ({
@@ -51,7 +53,8 @@ const EntityCard: React.FC<EntityCardProps> = ({
   permissions,
   onMenuClick,
   redirectUrl,
-  iconTypeMapping
+  iconTypeMapping,
+  teamLabel
 }) => {
   const router = useRouter();
   const { t } = useTranslation();
@@ -200,7 +203,7 @@ const EntityCard: React.FC<EntityCardProps> = ({
                 </div>
                 <div className="flex items-end justify-end text-(--color-text-4) font-mini w-full text-right overflow-hidden">
                   <EllipsisWithTooltip
-                    text={`${t('common.organization')}: ${Array.isArray(team_name) ? team_name.join(',') : '--'}`}
+                    text={`${teamLabel || t('common.organization')}: ${Array.isArray(team_name) ? team_name.join(',') : '--'}`}
                     className="overflow-hidden whitespace-nowrap text-ellipsis"
                   />
                 </div>

@@ -641,15 +641,23 @@ async def execute_chat_flow(request, bot_id, node_id):
     # 验证Bot — 始终按已验证用户所属团队作用域解析 bot，所有客户端一致
     # (此前移动端基于可伪造的 User-Agent 绕过 team 校验，构成跨租户越权，已移除)
     user = msg
-    # 构建 team 过滤：用户所属团队 + OpsPilotGuest 顶级组（若有）
-    guest_group_ids = {
-        int(group["id"])
-        for group in getattr(user, "group_list", [])
-        if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
-    }
-    team_filter = Q(team__contains=[int(user.team)])
-    for gid in guest_group_ids:
-        team_filter |= Q(team__contains=[gid])
+    current_team = int(user.team)
+    # 构建 team 过滤：
+    # - 测试(is_test=True，管理页测试)：仅【管理组织】可发起。测试会回填管理画布、占用"同 bot
+    #   同时仅一个测试"的槽位，属管理活动，使用组织不得触发(即便经 API)。
+    # - 正常对话(is_test=False)：【使用组织】即可对话(管理组织因 team ⊆ usage_team 已被包含)，
+    #   外加 OpsPilotGuest 顶级组(嵌入/访客对话，维持原行为)。
+    if is_test:
+        team_filter = Q(team__contains=[current_team])
+    else:
+        guest_group_ids = {
+            int(group["id"])
+            for group in getattr(user, "group_list", [])
+            if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
+        }
+        team_filter = Q(usage_team__contains=[current_team])
+        for gid in guest_group_ids:
+            team_filter |= Q(team__contains=[gid])
 
     bot_query = Bot.objects.filter(Q(id=bot_id) & team_filter)
     if not is_test:
@@ -691,9 +699,7 @@ async def execute_chat_flow(request, bot_id, node_id):
 
         if is_test:
             has_running_test = await sync_to_async(
-                WorkFlowTaskResult.objects.filter(
-                    bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING, is_test=True
-                ).exists,
+                WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING, is_test=True).exists,
                 thread_sensitive=False,
             )()
             if has_running_test:

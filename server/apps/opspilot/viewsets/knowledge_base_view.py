@@ -54,7 +54,7 @@ class KnowledgeBaseViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            params["team"] = [int(request.COOKIES.get("current_team"))]
+            params["team"] = [self._parse_current_team_cookie(request)]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, params["team"])
         if "embed_model" not in params:

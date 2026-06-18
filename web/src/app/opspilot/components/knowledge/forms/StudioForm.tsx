@@ -15,16 +15,34 @@ interface StudioFormProps {
 const StudioForm: React.FC<StudioFormProps> = ({ form, initialValues, visible }) => {
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
+  // 管理组织当前值（用于锁定同步进使用组织）
+  const manageTeam: number[] = Form.useWatch('team', form) || [];
 
   useEffect(() => {
     if (!visible) return;
     if (initialValues) {
-      form.setFieldsValue(initialValues);
+      // 先 resetFields 清掉上一次编辑的残留（弹窗表单实例跨次打开复用），再回填当前 bot 的值
+      form.resetFields();
+      form.setFieldsValue({
+        ...initialValues,
+        // 显式重置使用组织，避免粘连上一次（未保存）的选择；后端未返回该字段时回退到管理组织（不变式 team ⊆ usage_team）
+        usage_team: initialValues.usage_team ?? initialValues.team ?? [],
+      });
     } else {
       form.resetFields();
       form.setFieldsValue({ bot_type: 3 });
     }
   }, [initialValues, visible]);
+
+  // 管理组织自动并入使用组织（team ⊆ usage_team），并在使用组织里锁定不可删除
+  useEffect(() => {
+    if (!visible) return;
+    const current: number[] = form.getFieldValue('usage_team') || [];
+    const merged = Array.from(new Set([...(manageTeam || []), ...current]));
+    if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      form.setFieldsValue({ usage_team: merged });
+    }
+  }, [JSON.stringify(manageTeam), visible]);
 
   return (
     <Form form={form} layout="vertical" name="studio_form">
@@ -40,11 +58,23 @@ const StudioForm: React.FC<StudioFormProps> = ({ form, initialValues, visible })
       </Form.Item>
       <Form.Item
         name="team"
-        label={t('studio.form.group')}
-        rules={[{ required: true, message: `${t('common.selectMsg')}${t('studio.form.group')}` }]}
+        label={t('studio.form.manageGroup')}
+        rules={[{ required: true, message: `${t('common.selectMsg')}${t('studio.form.manageGroup')}` }]}
         initialValue={selectedGroup ? [selectedGroup?.id] : []}
       >
-        <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('studio.form.group')}`} />
+        <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('studio.form.manageGroup')}`} />
+      </Form.Item>
+      <Form.Item
+        name="usage_team"
+        label={t('studio.form.usageGroup')}
+        tooltip={t('studio.form.usageGroupTip')}
+        rules={[{ required: true, message: `${t('common.selectMsg')}${t('studio.form.usageGroup')}` }]}
+        initialValue={selectedGroup ? [selectedGroup?.id] : []}
+      >
+        <GroupTreeSelect
+          placeholder={`${t('common.selectMsg')}${t('studio.form.usageGroup')}`}
+          lockedValues={manageTeam}
+        />
       </Form.Item>
       <Form.Item
         name="introduction"
