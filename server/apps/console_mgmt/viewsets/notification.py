@@ -1,3 +1,5 @@
+import os
+
 from django.db.models import BooleanField, Exists, OuterRef, Q
 from django.http import JsonResponse
 from django.utils import timezone
@@ -7,6 +9,8 @@ from rest_framework.response import Response
 
 from apps.console_mgmt.models import Notification, NotificationRead
 from apps.console_mgmt.serializers import NotificationSerializer
+
+MARK_ALL_READ_BATCH_SIZE = int(os.getenv("MARK_ALL_READ_BATCH_SIZE", 2000))
 
 
 class NotificationViewSet(viewsets.ModelViewSet):
@@ -92,32 +96,42 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(methods=["post"], detail=False)
     def mark_all_as_read(self, request):
-        """批量标记所有未读通知为已读（当前用户）"""
+        """批量标记所有未读通知为已读（当前用户）
+
+        集合运算全部留在 DB 侧，不将 ID 物化到 Python 内存：
+        1. UPDATE：将已存在但 is_read=False 的 NotificationRead 行直接更新；
+        2. bulk_create：对尚无 NotificationRead 行的通知批量插入（用子查询过滤）；
+        3. COUNT：用 DB 聚合取已标记数量，不再对 queryset 调用 len()。
+        """
         user = request.user
-        already_read = NotificationRead.objects.filter(
-            user=user, is_read=True,
-        ).values_list("notification_id", flat=True)
-        unread_ids = Notification.objects.exclude(id__in=already_read).values_list("id", flat=True)
-
         now = timezone.now()
-        existing = set(
-            NotificationRead.objects.filter(user=user, notification_id__in=unread_ids)
-            .values_list("notification_id", flat=True)
-        )
-        # 更新已有记录
-        if existing:
-            NotificationRead.objects.filter(
-                user=user, notification_id__in=existing, is_read=False,
-            ).update(is_read=True, read_at=now)
-        # 批量创建新记录
-        new_ids = set(unread_ids) - existing
-        if new_ids:
-            NotificationRead.objects.bulk_create([
-                NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now)
-                for nid in new_ids
-            ], ignore_conflicts=True)
 
-        return JsonResponse({"result": True, "message": f"已标记 {len(unread_ids)} 条通知为已读"})
+        # 步骤 1：更新已有的 is_read=False 记录（纯 DB UPDATE，不拉数据到内存）
+        # 排除 is_deleted=True 的行：软删除通知不应被 mark_all 触碰
+        updated_count = NotificationRead.objects.filter(
+            user=user, is_read=False, is_deleted=False,
+        ).update(is_read=True, read_at=now)
+
+        # 步骤 2：找出完全没有 NotificationRead 行的通知，批量插入
+        # 用子查询：exclude 掉已有任意 NotificationRead 的通知
+        existing_notification_ids = NotificationRead.objects.filter(user=user).values("notification_id")
+        new_notifications = Notification.objects.exclude(id__in=existing_notification_ids)
+
+        # 分批插入，避免单次 INSERT 过大
+        created_count = 0
+        batch = []
+        for nid in new_notifications.values_list("id", flat=True).iterator(chunk_size=MARK_ALL_READ_BATCH_SIZE):
+            batch.append(NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now))
+            if len(batch) >= MARK_ALL_READ_BATCH_SIZE:
+                NotificationRead.objects.bulk_create(batch, ignore_conflicts=True)
+                created_count += len(batch)
+                batch = []
+        if batch:
+            NotificationRead.objects.bulk_create(batch, ignore_conflicts=True)
+            created_count += len(batch)
+
+        total = updated_count + created_count
+        return JsonResponse({"result": True, "message": f"已标记 {total} 条通知为已读"})
 
     @action(methods=["post"], detail=False)
     def mark_batch_as_read(self, request):
