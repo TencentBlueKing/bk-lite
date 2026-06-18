@@ -12,22 +12,25 @@ from types import SimpleNamespace
 import logging
 
 from rest_framework import serializers
-from apps.core.utils.team_utils import get_current_team
+from apps.core.utils.team_utils import get_current_team as _get_current_team_str
 
 logger = logging.getLogger(__name__)
 
 
 def get_current_team(request, default=0):
-    """Parse ``current_team`` from *request.COOKIES* and return an ``int``.
+    """Parse ``current_team`` from request and return an ``int``.
+
+    Reads via ``apps.core.utils.team_utils.get_current_team`` so that
+    both browser-cookie and API-Key-injected team contexts are supported.
 
     Args:
         request: Django/DRF request object.
-        default: Value returned when the cookie is missing or non-numeric.
+        default: Value returned when the team is missing or non-numeric.
 
     Returns:
         int – the parsed team id, or *default*.
     """
-    raw = get_current_team(request, "")
+    raw = _get_current_team_str(request, "")
     if not raw:
         return default
     try:
