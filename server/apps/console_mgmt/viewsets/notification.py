@@ -1,5 +1,4 @@
-from django.db import models
-from django.db.models import BooleanField, Exists, OuterRef, Subquery, Value
+from django.db.models import BooleanField, Exists, OuterRef, Q
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -154,7 +153,7 @@ class NotificationViewSet(viewsets.ModelViewSet):
             notification=OuterRef("pk"),
             user=user,
         ).filter(
-            models.Q(is_deleted=True) | models.Q(is_read=True)
+            Q(is_deleted=True) | Q(is_read=True)
         )
         count = Notification.objects.exclude(Exists(deleted_or_read)).count()
         return JsonResponse({"result": True, "data": {"count": count}})
