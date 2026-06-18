@@ -9,6 +9,7 @@ Verifies:
 """
 
 import sys
+import time
 import types
 
 for _mod_name in ("oracledb", "pyodbc"):
@@ -100,13 +101,16 @@ async def _build_and_run(request, mock_llm_responses, tools=None, mock_llm_delay
 
     config = {"configurable": {"graph_request": request, "trace_id": "test"}}
 
-    with patch(
-        "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
-        return_value="You are a test assistant.",
-    ), patch(
-        "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
-        new_callable=AsyncMock,
-        return_value=False,
+    with (
+        patch(
+            "apps.opspilot.metis.llm.chain.node.TemplateLoader.render_template",
+            return_value="You are a test assistant.",
+        ),
+        patch(
+            "apps.opspilot.metis.llm.chain.node.is_interrupt_requested_async",
+            new_callable=AsyncMock,
+            return_value=False,
+        ),
     ):
         result = await graph.ainvoke(
             {"messages": [HumanMessage(content="test")]},
@@ -146,7 +150,6 @@ class TestTotalTimeout:
         ]
 
         # Add a small delay to simulate time passing
-        import time
 
         original_monotonic = time.monotonic
 

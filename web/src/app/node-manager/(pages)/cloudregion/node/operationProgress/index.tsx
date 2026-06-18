@@ -612,6 +612,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       type,
       form: {
         logs,
+        installerSummary:
+          normalizeControllerInstallResult(row.result)?.installer_summary,
         ip: row.ip,
         nodeName: row.node_name
       }
@@ -711,7 +713,8 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
             {
               ip: updatedNode.ip,
               nodeName: updatedNode.node_name
-            }
+            },
+            normalizeControllerInstallResult(updatedNode.result)?.installer_summary
           );
         }
       }

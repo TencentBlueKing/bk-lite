@@ -51,30 +51,30 @@ class FileDistributionRunner(ExecutionTaskBaseService):
         task_name: str,
     ):
         results = []
-        cancelled = False
-        with ThreadPoolExecutor(max_workers=min(self.MAX_WORKERS, len(target_list))) as pool:
-            futures = {
-                pool.submit(
-                    self.distribute_file_to_target, t, execution.target_source, files, target_path, execution.timeout, overwrite, execution.id
-                ): t
-                for t in target_list
-            }
-            for future in as_completed(futures):
-                target_info = futures[future]
-                try:
-                    result = future.result()
-                    results.append(result)
-                    logger.info(f"[{task_name}] 目标 {target_info.get('name')} 分发完成: status={result['status']}")
-                except Exception as e:
-                    logger.exception(f"[{task_name}] 目标 {target_info.get('name')} 分发异常: {e}")
-                    results.append(self.build_target_failed_result(target_info, str(e)))
+        workers = min(self.MAX_WORKERS, len(target_list)) or 1
+        for batch_start in range(0, len(target_list), workers):
+            batch = target_list[batch_start : batch_start + workers]
+            with ThreadPoolExecutor(max_workers=len(batch)) as pool:
+                futures = {
+                    pool.submit(
+                        self.distribute_file_to_target, t, execution.target_source, files, target_path, execution.timeout, overwrite, execution.id
+                    ): t
+                    for t in batch
+                }
+                for future in as_completed(futures):
+                    target_info = futures[future]
+                    try:
+                        result = future.result()
+                        results.append(result)
+                        logger.info(f"[{task_name}] 目标 {target_info.get('name')} 分发完成: status={result['status']}")
+                    except Exception as e:
+                        logger.exception(f"[{task_name}] 目标 {target_info.get('name')} 分发异常: {e}")
+                        results.append(self.build_target_failed_result(target_info, str(e)))
 
-                # 每收到一个结果后检查是否已取消，取消则取消剩余 futures
-                if not cancelled and self.is_cancelled(execution.id):
-                    cancelled = True
-                    logger.info(f"[{task_name}] 检测到取消，停止剩余目标: execution_id={execution.id}")
-                    for pending_future in futures:
-                        pending_future.cancel()
+            # 本批完成后检查是否已取消，取消则不再提交后续批次（不依赖 future.cancel 竞速）
+            if self.is_cancelled(execution.id):
+                logger.info(f"[{task_name}] 检测到取消，停止提交剩余目标: execution_id={execution.id}")
+                break
         return results
 
     def _handle_distribution_path_blocked(self, execution: JobExecution, target_list: list, task_name: str) -> bool:

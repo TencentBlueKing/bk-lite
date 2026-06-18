@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="zyxelRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#e8403a"/>
+      <stop offset="1" stop-color="#b51f1a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#zyxelRed)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34 42 L56 42 L34 72 L56 72"/>
+    <path d="M68 42 L80 56 L92 42 M80 56 L80 72"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="1">ZYXEL</text>
+</svg>

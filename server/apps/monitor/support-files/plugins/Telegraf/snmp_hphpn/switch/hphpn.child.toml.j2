@@ -1,0 +1,74 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_hphpn"
+        config_type = "hphpn"
+        brand = "hphpn"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- HP ProCurve CPU utilization (HP-ICF hpSwitchCpuStat, scalar %) ----
+    # 待现网核验：1.3.6.1.4.1.11.2.14.11.5.1.9.6.1.0（已是 0-100%）。用 table(measurement=device_cpu)+field usage → 指标 device_cpu_usage。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.11.2.14.11.5.1.9.6.1.0"
+        name = "usage"
+    # ---- HP ProCurve system memory (HP-ICF hpLocalMem table, used + total, bytes, per management module) ----
+    # 待现网核验：used hpLocalMemAllocBytes 1.3.6.1.4.1.11.2.14.11.5.1.1.2.1.1.1.7；total hpLocalMemTotalBytes ...1.1.1.5。
+    # 利用率在共享盘按 used/total 计算（多模块走表自动按 index 区分，sum 聚合）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.11.2.14.11.5.1.1.2.1.1.1.7"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.11.2.14.11.5.1.1.2.1.1.1.5"
+        name = "total"
+# ---- 温度/风扇/电源：HP 的温度走 ENTITY-SENSOR entPhySensorValue(需按 entPhySensorType 行过滤)、----
+# ---- 风扇/电源同在 hpicfSensorTable(fan+psu+temp 混表,需按 hpicfSensorObjectId/entPhysicalClass 行过滤区分)。----
+# ---- telegraf inputs.snmp 不能行级 类型/类 过滤 → 直采会把不同传感器混进同字段 → 标 N/A 不采(架构限制,同 mellanox/arista 温度)。----

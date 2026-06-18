@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="dellBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#1b6fc4"/>
+      <stop offset="1" stop-color="#0a4a86"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#dellBlue)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34 40 L34 72 L48 72 C60 72 60 40 48 40 Z"/>
+    <path d="M70 56 L92 56 M70 56 C70 47 78 47 80 52 M92 56 C92 65 84 65 82 60"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9.5" font-weight="700" fill="#ffffff" letter-spacing="0.5">DELL FORCE10</text>
+</svg>

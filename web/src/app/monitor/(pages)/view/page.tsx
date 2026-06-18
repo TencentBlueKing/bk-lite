@@ -9,6 +9,7 @@ import viewStyle from './index.module.scss';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import ViewList from './viewList';
 import ViewHive from './viewHive';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import { cloneDeep } from 'lodash';
 
 const Integration = () => {
@@ -67,9 +68,11 @@ const Integration = () => {
         };
       }
       acc[item.type].children.push({
-        title: (item.display_name || '--') + `(${item.instance_count || 0})`,
+        title: item.display_name || '--',
         label: item.name || '--',
         key: item.id,
+        icon: item.icon,
+        count: item.instance_count || 0,
         children: [],
       });
       return acc;
@@ -88,14 +91,16 @@ const Integration = () => {
 
   return (
     <div className={`${viewStyle.view} w-full`}>
-      <div className={viewStyle.tree}>
-        <TreeSelector
-          data={treeData}
-          defaultSelectedKey={defaultSelectObj as string}
-          loading={treeLoading}
-          onNodeSelect={handleObjectChange}
-        />
-      </div>
+      <ResizableSidebar collapseStorageKey="monitor.view.sidebarCollapsed">
+        <div className={viewStyle.tree}>
+          <TreeSelector
+            data={treeData}
+            defaultSelectedKey={defaultSelectObj as string}
+            loading={treeLoading}
+            onNodeSelect={handleObjectChange}
+          />
+        </div>
+      </ResizableSidebar>
       <div className={viewStyle.table}>
         {showTab && (
           <Segmented

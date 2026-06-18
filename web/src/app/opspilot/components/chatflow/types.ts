@@ -165,6 +165,7 @@ export interface ChatflowExecutionState {
   latestExecutionId: string;
   openPreview: () => void;
   closePreview: () => void;
+  stopExecution: () => void;
 }
 
 export interface ChatflowEditorProps {

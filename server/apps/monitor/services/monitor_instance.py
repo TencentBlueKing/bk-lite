@@ -1,8 +1,11 @@
+import os
 import re
 from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
@@ -18,6 +21,10 @@ from apps.monitor.models import (
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+
+# 实例列表页插件状态查询的最大并发度：每个插件的 status_query 是一次独立 VM 读，
+# 去重后并发拉取以消除「插件越多越慢」的串行 N+1。保守默认 8，可经 env 调。
+PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX_WORKERS", "8"))
 
 
 class InstanceSearch:
@@ -232,6 +239,12 @@ class InstanceSearch:
 
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
 
+        # 先去重各插件的 status_query 并并发拉取状态映射，避免在下面的插件循环里逐个串行发 VM 查询
+        status_map_by_query = self._batch_plugin_status_maps(
+            instance_id_keys,
+            {plugin.status_query for plugin in plugins},
+        )
+
         for plugin in plugins:
             # 添加翻译属性
             plugin_key_name = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
@@ -248,7 +261,7 @@ class InstanceSearch:
             legacy_plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
             plugin_map.setdefault(legacy_plugin_key, plugin_info)
 
-            status_map = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
+            status_map = status_map_by_query.get(plugin.status_query, {})
             plugin_status_map[plugin.id] = status_map
             if legacy_plugin_key_counts[legacy_plugin_key] == 1:
                 plugin_status_map[legacy_plugin_key] = status_map
@@ -422,6 +435,31 @@ class InstanceSearch:
                 for obj in results
             ],
         )
+
+    def _batch_plugin_status_maps(self, instance_id_keys, queries):
+        """并发拉取多个插件 status_query 的正常状态映射，返回 {query: status_map}。
+
+        每个 query 是一次独立的 VM 读，去重相同 query 后并发执行——结果与逐个串行查询完全一致，
+        只是把插件列表页的 N 次串行 VM 查询压成一批并发，消除「插件越多越慢」。
+        单个 query 失败降级为空映射、不影响其余 query（与原逐个调用各自独立的语义一致）。
+        """
+        unique_queries = [query for query in queries if query and str(query).strip()]
+        if not unique_queries:
+            return {}
+        max_workers = min(len(unique_queries), PLUGIN_STATUS_QUERY_MAX_WORKERS)
+        status_map_by_query = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_query = {
+                executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries
+            }
+            for future in as_completed(future_to_query):
+                query = future_to_query[future]
+                try:
+                    status_map_by_query[query] = future.result()
+                except Exception as exc:
+                    logger.warning("get_plugin_normal_status_map failed, query=%s, error=%s", query, exc)
+                    status_map_by_query[query] = {}
+        return status_map_by_query
 
     def get_plugin_normal_status_map(self, instance_id_keys, query):
         if not query or not str(query).strip():

@@ -1,5 +1,7 @@
 import uuid
 
+from django.db import transaction
+
 from apps.monitor.constants.alert_policy import AlertConstants
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import MonitorAlert, MonitorEvent, MonitorEventRawData
@@ -60,15 +62,23 @@ class EventAlertManager:
     def _create_raw_data_records(self, events_with_raw_data, event_objs):
         event_obj_map = {obj.id: obj for obj in event_objs}
 
-        raw_data_objects = []
-        for event_info in events_with_raw_data:
-            event_id = event_info["event_id"]
-            if event_id in event_obj_map or MonitorEvent.objects.filter(id=event_id).exists():
-                raw_data_objects.append(MonitorEventRawData(event_id=event_id, data=event_info["raw_data"]))
+        # event_obj_map 是本轮刚建/回查事件的权威集合；仅对不在其中的少数 id 做一次批量存在性兜底，
+        # 取代原来逐条 .exists() 的 N 次 SELECT（正常情况下 missing_ids 为空，零额外查询）
+        missing_ids = [info["event_id"] for info in events_with_raw_data if info["event_id"] not in event_obj_map]
+        existing_missing = set()
+        if missing_ids:
+            existing_missing = set(MonitorEvent.objects.filter(id__in=missing_ids).values_list("id", flat=True))
+
+        raw_data_objects = [
+            MonitorEventRawData(event_id=info["event_id"], data=info["raw_data"])
+            for info in events_with_raw_data
+            if info["event_id"] in event_obj_map or info["event_id"] in existing_missing
+        ]
 
         if raw_data_objects:
-            for raw_data_obj in raw_data_objects:
-                raw_data_obj.save()
+            # 逐行 save() 改批量 bulk_create——S3JSONField 的上传在 pre_save 完成（bulk_create 会调用 pre_save），
+            # 行为与 save() 一致，仅把 N 次 INSERT 压成批量
+            MonitorEventRawData.objects.bulk_create(raw_data_objects, batch_size=DatabaseConstants.BULK_CREATE_BATCH_SIZE)
             logger.info(f"Created {len(raw_data_objects)} raw data records for policy {self.policy.id}")
 
     def create_events_and_alerts(self, events):
@@ -94,48 +104,66 @@ class EventAlertManager:
                 new_alert_events.append(event)
 
         new_alerts = []
-        if new_alert_events:
-            new_alerts = self._create_alerts_from_events(new_alert_events)
+        upgraded_alerts = []
+        # 建告警 → 建事件 → 写原始数据 → 升级既有告警 全部包进一个事务，避免中途失败留下
+        # 「有告警无事件」的半截数据；通知改到事务提交后（on_commit）发出，保证通知永不早于事件落库。
+        with transaction.atomic():
+            if new_alert_events:
+                new_alerts = self._create_alerts_from_events(new_alert_events)
 
-            if len(new_alerts) != len(new_alert_events):
-                logger.error(f"Alert creation mismatch: expected {len(new_alert_events)}, got {len(new_alerts)} for policy {self.policy.id}")
+                if len(new_alerts) != len(new_alert_events):
+                    logger.error(f"Alert creation mismatch: expected {len(new_alert_events)}, got {len(new_alerts)} for policy {self.policy.id}")
 
-            alert_map = {self._build_alert_key(alert.metric_instance_id, alert.alert_type): alert for alert in new_alerts}
-            for event in new_alert_events:
-                alert = alert_map.get(
-                    self._build_alert_key(
-                        event.get("metric_instance_id", ""),
-                        self._get_event_alert_type(event),
+                alert_map = {self._build_alert_key(alert.metric_instance_id, alert.alert_type): alert for alert in new_alerts}
+                for event in new_alert_events:
+                    alert = alert_map.get(
+                        self._build_alert_key(
+                            event.get("metric_instance_id", ""),
+                            self._get_event_alert_type(event),
+                        )
                     )
+                    if alert:
+                        event["alert_id"] = alert.id
+                        event["_alert_obj"] = alert
+                    else:
+                        logger.error(f"Failed to get alert for event metric_instance {event.get('metric_instance_id')} in policy {self.policy.id}")
+                        event["alert_id"] = None
+
+            valid_events = [e for e in (new_alert_events + existing_alert_events) if e.get("alert_id")]
+
+            if len(valid_events) != len(new_alert_events) + len(existing_alert_events):
+                logger.warning(
+                    f"Filtered out {len(new_alert_events) + len(existing_alert_events) - len(valid_events)} "
+                    f"events without alert_id for policy {self.policy.id}"
                 )
-                if alert:
-                    event["alert_id"] = alert.id
-                    event["_alert_obj"] = alert
-                else:
-                    logger.error(f"Failed to get alert for event metric_instance {event.get('metric_instance_id')} in policy {self.policy.id}")
-                    event["alert_id"] = None
 
-        valid_events = [e for e in (new_alert_events + existing_alert_events) if e.get("alert_id")]
+            event_objs = self.create_events(valid_events)
 
-        if len(valid_events) != len(new_alert_events) + len(existing_alert_events):
-            logger.warning(
-                f"Filtered out {len(new_alert_events) + len(existing_alert_events) - len(valid_events)} "
-                f"events without alert_id for policy {self.policy.id}"
+            if existing_alert_events:
+                upgraded_alerts = self._update_existing_alerts_from_events(existing_alert_events) or []
+
+            logger.info(
+                f"Created events and alerts: "
+                f"{len(new_alert_events)} new alerts, "
+                f"{len(existing_alert_events)} existing alerts, "
+                f"{len(event_objs)} events created"
             )
 
-        event_objs = self.create_events(valid_events)
-
-        if existing_alert_events:
-            self._update_existing_alerts_from_events(existing_alert_events)
-
-        logger.info(
-            f"Created events and alerts: "
-            f"{len(new_alert_events)} new alerts, "
-            f"{len(existing_alert_events)} existing alerts, "
-            f"{len(event_objs)} events created"
-        )
+            self._schedule_notifications(new_alerts, upgraded_alerts)
 
         return event_objs, new_alerts
+
+    def _schedule_notifications(self, new_alerts, upgraded_alerts):
+        """把告警通知推迟到当前事务提交后发出，保证通知永不早于告警/事件落库。
+
+        在事务回滚时这些 on_commit 回调不会执行，因此也不会对未落库的数据发通知。
+        """
+        if not self.policy.notice:
+            return
+        if new_alerts:
+            transaction.on_commit(lambda: AlertLifecycleNotifier(self.policy).notify_alerts(new_alerts, action="created"))
+        if upgraded_alerts:
+            transaction.on_commit(lambda: AlertLifecycleNotifier(self.policy).notify_alerts(upgraded_alerts, action="upgraded"))
 
     def _get_alert_metric_instance_id(self, alert) -> str:
         if alert.metric_instance_id:
@@ -206,9 +234,7 @@ class EventAlertManager:
 
         logger.info(f"Created {len(new_alerts)} new alerts for policy {self.policy.id}")
 
-        if new_alerts and self.policy.notice:
-            AlertLifecycleNotifier(self.policy).notify_alerts(new_alerts, action="created")
-
+        # 通知由 create_events_and_alerts 在事务提交后统一发（_schedule_notifications），此处不再内联，避免通知早于事件落库
         return new_alerts
 
     def _format_dimension_str(self, dimensions: dict) -> str:
@@ -216,7 +242,7 @@ class EventAlertManager:
 
     def _update_existing_alerts_from_events(self, event_data_list):
         if not event_data_list:
-            return
+            return []
 
         alert_level_updates = []
 
@@ -248,5 +274,5 @@ class EventAlertManager:
             )
             logger.info(f"Updated {len(alert_level_updates)} alerts with higher severity levels")
 
-            if self.policy.notice:
-                AlertLifecycleNotifier(self.policy).notify_alerts(alert_level_updates, action="upgraded")
+        # 升级通知同样由 create_events_and_alerts 在事务提交后统一发（_schedule_notifications）
+        return alert_level_updates

@@ -50,6 +50,13 @@ const useEventApi = () => {
     return await post('/monitor/api/monitor_policy/bulk_create_from_templates/', data);
   };
 
+  const previewMonitorPolicy = async (
+    data: Record<string, unknown>,
+    config?: AxiosRequestConfig
+  ) => {
+    return await post('/monitor/api/monitor_policy/preview/', data, config);
+  };
+
   const getSystemChannelList = async () => {
     return await get('/monitor/api/system_mgmt/search_channel_list/');
   };
@@ -95,6 +102,7 @@ const useEventApi = () => {
     getMonitorPolicy,
     getPolicyTemplate,
     bulkCreatePoliciesFromTemplates,
+    previewMonitorPolicy,
     getSystemChannelList,
     patchMonitorPolicy,
     deleteMonitorPolicy,

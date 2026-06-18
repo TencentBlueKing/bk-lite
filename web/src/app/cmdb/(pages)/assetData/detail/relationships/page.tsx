@@ -12,6 +12,10 @@ import { useTranslation } from '@/utils/i18n';
 import AssoList from './list';
 import Topo from './topo';
 import NetworkTopo from './networkTopo';
+import RackElevation from './rackElevation';
+import RoomFloorPlan from './roomFloorPlan';
+import DeviceDetailDrawer from './deviceDetailDrawer';
+import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useCommon } from '@/app/cmdb/context/common';
 import { useSearchParams } from 'next/navigation';
@@ -27,12 +31,18 @@ const Ralationships = () => {
   const userList: UserItem[] = users.current;
   const assoListRef = useRef<AssoListRef>(null);
   const [isExpand, setIsExpand] = useState<boolean>(true);
-  const [activeTab, setActiveTab] = useState<string>('list');
+  const [activeTab, setActiveTab] = useState<string>(
+    searchParams.get('tab') || 'list'
+  );
   const modelId: string = searchParams.get('model_id') || '';
   const instId: string = searchParams.get('inst_id') || '';
+  const tabParam: string = searchParams.get('tab') || '';
 
   const { getTopoThemes } = useInstanceApi();
   const [themes, setThemes] = useState<string[]>([]);
+  // 机柜视图点设备：右侧抽屉展示详情（再从抽屉下钻到实例详情），与机房视图一致
+  const [device, setDevice] = useState<RackDevice | null>(null);
+  const [devOpen, setDevOpen] = useState<boolean>(false);
 
   useEffect(() => {
     if (!modelId) return;
@@ -50,11 +60,22 @@ const Ralationships = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [modelId]);
 
+  // 下钻进入时若带 tab 参数（如机房视图点机柜跳到机柜的「机柜视图」），自动选中该 Tab
+  useEffect(() => {
+    if (tabParam) setActiveTab(tabParam);
+  }, [tabParam, instId]);
+
   const segmentedOptions = [
     { label: t('list'), value: 'list' },
     { label: t('topo'), value: 'topo' },
     ...(themes.includes('network')
       ? [{ label: t('Model.networkTopo'), value: 'network' }]
+      : []),
+    ...(modelId === 'rack'
+      ? [{ label: t('Model.rackElevation'), value: 'rackView' }]
+      : []),
+    ...(modelId === 'server_room'
+      ? [{ label: t('Model.roomLayout'), value: 'roomView' }]
       : []),
   ];
 
@@ -122,6 +143,24 @@ const Ralationships = () => {
       {activeTab === 'network' && (
         <NetworkTopo modelId={modelId} instId={instId} />
       )}
+      {activeTab === 'rackView' && (
+        <RackElevation
+          modelId={modelId}
+          instId={instId}
+          onDeviceClick={(d) => {
+            setDevice(d);
+            setDevOpen(true);
+          }}
+        />
+      )}
+      {activeTab === 'roomView' && (
+        <RoomFloorPlan modelId={modelId} instId={instId} />
+      )}
+      <DeviceDetailDrawer
+        device={device}
+        open={devOpen}
+        onClose={() => setDevOpen(false)}
+      />
     </Spin>
   );
 };

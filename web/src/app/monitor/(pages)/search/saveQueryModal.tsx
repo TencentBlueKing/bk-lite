@@ -29,8 +29,10 @@ const transformToBackendFormat = (groups: QueryGroup[]): QueryGroupData[] => {
     id: group.id,
     name: group.name,
     object: group.object,
+    plugin: group.plugin,
     instance_ids: group.instanceIds,
     metric: group.metric,
+    legacy_metric_name: group.legacyMetricName || null,
     aggregation: group.aggregation,
     conditions: group.conditions
   }));

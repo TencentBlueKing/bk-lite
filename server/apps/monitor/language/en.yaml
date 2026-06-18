@@ -482,6 +482,27 @@ monitor_object_metric:
       name: Power Consumption
       desc: The power indicator is measured in watts and reflects the current power consumption of the device. This indicator helps evaluate the device's energy efficiency and power consumption trends. It facilitates the implementation of energy-saving policies and resource optimization.
   Loadbalance:
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the overall CPU utilization of the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second sample). Sustained high usage indicates heavy traffic-processing or SSL-offload load.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal) in bytes.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of memory currently used by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed) in bytes.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the overall memory utilization of the F5 BIG-IP, computed as used/total (100*used/total). Sustained high usage may be caused by oversized connection tables or memory leaks.
+    lb_current_connections:
+      name: Current Connections
+      desc: This metric reports the number of active client connections currently tracked by the F5 BIG-IP (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapidly rising count can indicate a traffic flood or connection-table pressure.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -524,18 +545,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -635,6 +707,78 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    firewall_pf_states:
+      name: PF State Table Entries
+      desc: This metric reports the current number of entries in the pfSense firewall pf state table (BEGEMOT-PF-MIB pfStateTableCount), roughly equal to the number of active connections. A rapidly rising count can indicate a connection flood or the state table approaching its limit.
+    firewall_active_connections:
+      name: Active Connections
+      desc: This metric reports the number of currently active connections on the WatchGuard firewall (WATCHGUARD-SYSTEM-STATISTICS-MIB wgSystemCurrActiveConns). A rapidly rising count can indicate a connection flood or connection-table pressure.
+    firewall_current_connections:
+      name: Current Connections
+      desc: This metric reports the number of entries currently in the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicCurrentConnCacheEntries). A rapidly rising count can indicate a connection flood or connection-table pressure.
+    firewall_max_connections:
+      name: Max Connections
+      desc: This metric reports the maximum number of connections supported by the SonicWall firewall connection cache (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicMaxConnCacheEntries). Combined with the current count it gauges remaining connection-table headroom.
+    firewall_nat_translations:
+      name: NAT Translations
+      desc: This metric reports the number of currently active NAT translation entries on the SonicWall firewall (SONICWALL-FIREWALL-IP-STATISTICS-MIB sonicNatTranslationCount). An abnormal rise can indicate NAT resource pressure or anomalous traffic.
+    firewall_session_utilization:
+      name: Session Utilization
+      desc: This metric reports the session-table utilization of the Palo Alto firewall (PAN-COMMON-MIB panSessionUtilization), the percentage of active sessions against the maximum session capacity. Approaching 100% means the session table is nearly exhausted and new connections may be dropped.
+    firewall_max_sessions:
+      name: Max Sessions
+      desc: This metric reports the maximum concurrent session capacity supported by the Palo Alto firewall (PAN-COMMON-MIB panSessionMax). Combined with the active session count it gauges remaining session headroom.
+    firewall_active_sessions_tcp:
+      name: Active TCP Sessions
+      desc: This metric reports the number of currently active TCP sessions on the Palo Alto firewall (PAN-COMMON-MIB panSessionActiveTcp). It helps analyse session composition and TCP load.
+    firewall_active_sessions_udp:
+      name: Active UDP Sessions
+      desc: This metric reports the number of currently active UDP sessions on the Palo Alto firewall (PAN-COMMON-MIB panSessionActiveUdp). It helps analyse session composition and UDP load.
+    firewall_active_sessions_icmp:
+      name: Active ICMP Sessions
+      desc: This metric reports the number of currently active ICMP sessions on the Palo Alto firewall (PAN-COMMON-MIB panSessionActiveICMP). An abnormal rise in ICMP sessions can indicate scanning or attack activity.
+    firewall_tcp_connections:
+      name: ASQ TCP Connections
+      desc: This metric reports the current number of TCP connections tracked by the Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). A rapidly rising count can indicate a connection flood or session-table pressure.
+    firewall_udp_connections:
+      name: ASQ UDP Connections
+      desc: This metric reports the current number of UDP connections tracked by the Stormshield firewall ASQ engine (STORMSHIELD-SNS-MIB). Combined with the TCP connection count it helps gauge overall session load and anomalies.
+    device_memory_free:
+      name: Free Memory
+      desc: This metric reports the amount of free physical memory in bytes on the firewall (Check Point CHECKPOINT-MIB memTotalReal64 minus memActiveReal64). Persistently low free memory can indicate rising memory pressure.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of used physical memory in bytes on the firewall, derived as total memory minus free memory. It helps gauge absolute memory consumption and pressure.
+    firewall_vpn_encrypted_pps:
+      name: VPN Encrypted Packets Rate
+      desc: This metric reports the rate of VPN-encrypted packets on the firewall in packets per second (Check Point CHECKPOINT-MIB encpktsPersec). It is useful for observing VPN encryption load and anomalous spikes.
+    firewall_vpn_decrypted_pps:
+      name: VPN Decrypted Packets Rate
+      desc: This metric reports the rate of VPN-decrypted packets on the firewall in packets per second (Check Point CHECKPOINT-MIB decpktsPersec). It is useful for observing VPN decryption load and anomalous spikes.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the overall CPU utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysCpuUsage). Sustained high CPU usage may indicate heavy traffic inspection load, attack activity or a control-plane bottleneck.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the overall memory utilization of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysMemUsage, reported directly as a percentage). When memory pressure is high the device may enter conserve mode and drop new sessions.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysMemCapacity, reported in KB and converted to bytes).
+    firewall_active_sessions:
+      name: IPv4 Active Sessions
+      desc: This metric reports the number of active IPv4 sessions currently tracked by the FortiGate firewall (FORTINET-FORTIGATE-MIB fgSysSesCount). A rapidly rising session count can indicate a connection flood or session-table exhaustion risk.
+    firewall_vpn_tunnels:
+      name: Active IPsec VPN Tunnels
+      desc: This metric reports the number of currently active IPsec VPN tunnels on the FortiGate firewall (FORTINET-FORTIGATE-MIB fgVpnTunnelUpCount). A sudden drop may indicate a VPN outage affecting site-to-site connectivity.
+    firewall_ha_mode:
+      name: HA Mode
+      desc: This metric reports the high-availability mode of the FortiGate firewall (FORTINET-FORTIGATE-MIB fgHaSystemMode) as standalone, active-active or active-passive. It helps confirm whether the expected HA topology is in effect.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -677,18 +821,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   ActiveMQ:
     activemq_topics_consumer_count:
       name: Topic Consumer Count
@@ -1000,6 +1195,9 @@ monitor_object_metric:
       desc: Percentage of busy threads relative to maximum threads, indicating thread
         resource utilization efficiency
   Website:
+    http_response_result_code:
+      name: Probe Result
+      desc: Identifies the probe result from the Telegraf http_response result_code field. 0 means success, while non-zero values represent response string mismatch, body read error, connection failure, timeout, DNS error, or response status code mismatch.
     http_node_success_rate:
       name: Node Success Rate
       desc: Calculate the 5-minute probe success rate for each probing node, reflecting the access experience in a specific region or network environment.
@@ -2014,24 +2212,18 @@ monitor_object_metric:
     interface_ifOutOctets:
       name: Interface Outgoing Traffic Rate
       desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second. Monitoring outgoing traffic is crucial for ensuring data transmission quality and optimizing network performance.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter. The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate.
     device_total_incoming_traffic:
       name: Device Total Incoming Traffic Rate
       desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second. By summing the incoming byte counts from multiple interfaces, this metric helps administrators obtain an overview of the device's incoming traffic, supporting overall traffic monitoring and capacity planning.
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
     device_cpu_usage:
       name: CPU Utilization
       desc: This metric reports the CPU utilization of the device control plane (typically the 5-minute average), as a percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays. Sourced from vendor-specific SNMP OIDs and normalized to a 0-100 percentage.
@@ -2044,6 +2236,9 @@ monitor_object_metric:
     device_memory_free:
       name: Memory Free
       desc: This metric reports the number of free bytes available in each memory pool of the device. Together with the used bytes it determines overall memory utilization; a persistently low free value indicates memory pressure on that pool.
+    device_memory_total:
+      name: Memory Total
+      desc: This metric reports the total memory capacity of the device. It is the denominator for memory utilization (some vendors compute (total - free) / total) and, together with free memory, reflects overall memory pressure.
     device_temperature_celsius:
       name: Temperature
       desc: This metric reports the temperature reading of each hardware sensor on the device, in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed.
@@ -2053,7 +2248,82 @@ monitor_object_metric:
     device_psu_state:
       name: Power Supply Status
       desc: This metric reports the operational state of each power supply unit on the device. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   Router:
+    device_cpu_usage:
+      name: CPU Usage
+      desc: This metric reports the average CPU utilization across the operating entities of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id). Sustained high usage indicates heavy forwarding or control-plane load.
+    device_memory_usage:
+      name: Memory Usage
+      desc: This metric reports the average memory utilization across the operating entities of the Juniper MX router (JUNIPER-MIB jnxOperatingBuffer, reported directly as a percentage). Sustained high usage may be caused by oversized routing tables or memory leaks.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate (HC)
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate (HC)
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -2096,18 +2366,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
@@ -3243,6 +3564,14 @@ monitor_object_metric_group:
     Base: Base
     Bandwidth: Bandwidth
     Status: Status
+    Router: Router
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   vCenter:
     Quantity: Quantity
   Oracle:
@@ -3273,6 +3602,14 @@ monitor_object_metric_group:
     Status: Status
     Bandwidth: Bandwidth
     Traffic: Traffic
+    Firewall: Firewall
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   VM:
     CPU: CPU
     Memory: Memory
@@ -3365,6 +3702,13 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   ElasticSearch:
     Base: Base
     Node: Node
@@ -3379,6 +3723,14 @@ monitor_object_metric_group:
     Bandwidth: Bandwidth
     Status: Status
     Packet Error: Packet Error
+    Loadbalance: Load Balance
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   Redis:
     Base: Base
     Memory: Memory
@@ -3526,14 +3878,128 @@ monitor_object_plugin:
       IF-MIB interface metrics, it collects Cisco private OIDs for device health
       including CPU utilization, memory pools, temperature sensors, fan and
       power-supply status.
+  Switch Huawei SNMP:
+    name: Huawei (Telegraf)
+    desc: Huawei-specific SNMP collection template for switches. In addition to standard
+      IF-MIB interface metrics, it collects Huawei private OIDs (HUAWEI-ENTITY-EXTENT-MIB)
+      for device health including CPU utilization, memory utilization, temperature
+      sensors and fan status. Huawei reports memory as a utilization percentage
+      directly and this template exposes no power-supply state OID.
+  Switch Aruba SNMP:
+    name: Aruba (Telegraf)
+    desc: Aruba-specific SNMP collection template for switches (ArubaOS-CX). In addition
+      to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for
+      device health including per-module CPU and memory utilization, temperature
+      sensors, fan and power-supply status. Aruba reports memory as a utilization
+      percentage directly; fan/psu states are normalized to the unified 1=normal
+      convention.
+  Switch Juniper SNMP:
+    name: Juniper (Telegraf)
+    desc: Juniper-specific SNMP collection template for switches (Junos). In addition
+      to standard IF-MIB interface metrics, it collects JUNIPER-MIB jnxOperating
+      private OIDs for device health including CPU and memory-buffer utilization,
+      temperature sensors, fan and power-supply status. Juniper reports memory as a
+      utilization percentage directly; the jnxOperatingState of fans/psus is
+      normalized to the unified 1=normal convention.
+  Switch Extreme SNMP:
+    name: Extreme (Telegraf)
+    desc: Extreme Networks-specific SNMP collection template for switches (EXOS). In
+      addition to standard IF-MIB interface metrics, it collects EXTREME-SYSTEM-MIB
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature, fan and power-supply status. Memory utilization is
+      computed as (total - free) / total; fan/psu states are normalized to the
+      unified 1=normal convention.
+  Switch Brocade SNMP:
+    name: Brocade (Telegraf)
+    desc: Brocade/Foundry-specific SNMP collection template for switches
+      (FastIron/NetIron). In addition to standard IF-MIB interface metrics, it
+      collects FOUNDRY-SN-AGENT-MIB private OIDs for device health including
+      1-minute average CPU utilization, dynamic memory utilization, chassis
+      temperature sensors, fan and power-supply status. Brocade reports CPU and
+      memory as utilization percentages directly; fan/psu states are normalized to
+      the unified 1=normal convention.
+  Switch Alcatel-Lucent SNMP:
+    name: Alcatel-Lucent (Telegraf)
+    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
+      switches. In addition to standard IF-MIB interface metrics, it collects
+      TIMETRA-CHASSIS-MIB private OIDs for device health including CPU utilization,
+      system memory pool (used/free bytes), hardware temperature sensors, fan and
+      power-supply status. Memory utilization is computed from used/(used+free);
+      fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal
+      convention.
+  Switch MikroTik SNMP:
+    name: MikroTik (Telegraf)
+    desc: MikroTik (RouterOS)-specific SNMP collection template for switches
+      (currently mounted under the Switch object). In addition to standard IF-MIB
+      interface metrics, it collects HOST-RESOURCES
+      and MIKROTIK-MIB OIDs for device health including per-core CPU utilization,
+      system memory (used/total), and board temperature. MikroTik exposes fan as raw
+      RPM and lacks a standardized power-supply state, so fan/psu health is not
+      collected (N/A). Memory utilization is computed from used/total.
+  Switch D-Link SNMP:
+    name: D-Link (Telegraf)
+    desc: D-Link DES/DGS-specific SNMP collection template for switches (EQUIPMENT-MIB,
+      enterprise 171). In addition to standard IF-MIB interface metrics, it collects
+      D-Link private OIDs for device health including CPU utilization, memory
+      utilization, temperature sensors, fan and power-supply status. D-Link reports
+      CPU and memory as utilization percentages directly; fan status is natively
+      1=normal and power-supply status is normalized to the unified 1=normal
+      convention.
+  Switch Netgear SNMP:
+    name: Netgear (Telegraf)
+    desc: Netgear (FASTPATH)-specific SNMP collection template for switches. In
+      addition to standard IF-MIB interface metrics, it collects FASTPATH-BOXSERVICES
+      private OIDs for device health including CPU utilization, system memory
+      (total/free), temperature sensors, fan and power-supply status. Memory
+      utilization is computed as (total - free) / total; fan and power-supply states
+      are natively 1=normal.
+  Switch TP-Link SNMP:
+    name: TP-Link (Telegraf)
+    desc: TP-Link (JetStream)-specific SNMP collection template for switches (TPLINK
+      private MIB, enterprise 11863). In addition to standard IF-MIB interface
+      metrics, it collects TP-Link private OIDs for device health including CPU and
+      memory utilization, both reported directly as percentages. TP-Link SMB switches
+      expose no temperature/fan/power-supply sensors, so those health items are not
+      collected (N/A).
+  Switch Zyxel SNMP:
+    name: Zyxel (Telegraf)
+    desc: Zyxel-specific SNMP collection template for switches (ZYXEL private MIB,
+      enterprise 890). In addition to standard IF-MIB interface metrics, it collects
+      Zyxel private OIDs for device health including CPU utilization (direct
+      percentage) and hardware temperature sensors. Zyxel exposes fan as raw RPM (not
+      a state) and this switch line has no memory-utilization or power-supply-state
+      OID, so those health items are not collected (N/A).
+  Switch QTech SNMP:
+    name: QTech (Telegraf)
+    desc: QTech (QSW)-specific SNMP collection template for switches (QTECH-MIB,
+      enterprise 27514). In addition to standard IF-MIB interface metrics, it collects
+      QTech private OIDs for device health including CPU utilization, system memory
+      (used/total), temperature, fan and power-supply status. Memory utilization is
+      computed from used/total; fan/psu states (native 0=normal) are normalized to
+      the unified 1=normal convention.
+  Switch Dell Force10 SNMP:
+    name: Dell Force10 (Telegraf)
+    desc: Dell Force10 (S-Series)-specific SNMP collection template for switches
+      (F10-S-SERIES-CHASSIS-MIB, enterprise 6027). In addition to standard IF-MIB
+      interface metrics, it collects Dell Force10 private OIDs for device health
+      including per-processor CPU and memory utilization, per-stack-unit temperature,
+      fan-tray and power-supply status. CPU and memory are reported directly as
+      percentages; fan/psu states are normalized to the unified 1=normal convention.
+  Switch HP ProCurve SNMP:
+    name: HP ProCurve (Telegraf)
+    desc: HP ProCurve / HP Networking-specific SNMP collection template for switches
+      (HP-ICF MIBs). In addition to standard IF-MIB interface metrics, it collects HP
+      private OIDs for device health including CPU utilization and system memory
+      (used/total). Temperature and fan/power-supply state live in HP's shared
+      ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering,
+      which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory
+      utilization is computed from used/total.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect switch traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use NetFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Switch Flow sFlow:
     name: Switch Flow Analysis (sFlow)
-    desc: Use sFlow to collect switch traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use sFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   WebLogic-JMX:
     name: WebLogic(JMX)
     desc: Through the WebLogic-JMX collector, regularly collect key WebLogic metrics,
@@ -3563,14 +4029,19 @@ monitor_object_plugin:
       key IF-MIB metrics from load balancer interfaces, including traffic volume,
       packet loss, and error counts.
     name: Load Balancer General (Telegraf)
+  Loadbalance F5 SNMP:
+    name: F5 (Telegraf)
+    desc: F5-specific SNMP collection template for F5 BIG-IP load balancers. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host
+      memory total/used and derived usage) and load-balancer-specific state (current
+      client connections). Memory usage is derived as used / total.
   Loadbalance Flow NetFlow:
     name: Load Balancer Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect load balancer traffic and convert it into normalized
-      device traffic metrics.
+    desc: Use NetFlow to collect load balancer traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Loadbalance Flow sFlow:
     name: Load Balancer Flow Analysis (sFlow)
-    desc: Use sFlow to collect load balancer traffic and convert it into normalized
-      device traffic metrics.
+    desc: Use sFlow to collect load balancer traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Bastion Host SNMP General:
     desc: The SNMP universal plugin is designed to monitor and manage bastion hosts
       via SNMP. It enables administrators to retrieve critical device information
@@ -3598,14 +4069,77 @@ monitor_object_plugin:
       key IF-MIB metrics from firewall interfaces, including traffic volume, packet
       loss, and error counts.
     name: Firewall General (Telegraf)
+  Firewall Fortinet SNMP:
+    name: Fortinet (Telegraf)
+    desc: Fortinet-specific SNMP collection template for FortiGate firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      FORTINET-FORTIGATE-MIB private OIDs for device health (CPU and memory utilization,
+      total memory) and firewall-specific state (IPv4 active sessions, active IPsec
+      VPN tunnels and HA mode). Memory is reported directly as a utilization percentage.
+  Firewall Check Point SNMP:
+    name: Check Point (Telegraf)
+    desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects CHECKPOINT-MIB private OIDs for device health (CPU utilization, real
+      memory total/free/used and derived usage) and firewall-specific VPN throughput
+      (encrypted and decrypted packets per second). Memory usage is derived as
+      (total - free) / total.
+  Firewall Stormshield SNMP:
+    name: Stormshield (Telegraf)
+    desc: Stormshield SNS-specific SNMP collection template for Stormshield Network
+      Security firewalls. In addition to standard IF-MIB interface metrics and 64-bit
+      HC traffic counters, it collects HOST-RESOURCES CPU load (averaged across cores),
+      UCD-SNMP real memory (total/free, used and derived usage) and STORMSHIELD-SNS-MIB
+      private OIDs for firewall-specific state (ASQ active TCP/UDP connections and
+      mature VPN tunnels). Memory usage is derived as (total - free) / total.
+  Firewall Palo Alto SNMP:
+    name: Palo Alto (Telegraf)
+    desc: Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In
+      addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it
+      collects HOST-RESOURCES CPU load (averaged across cores) and PAN-COMMON-MIB private
+      OIDs for firewall-specific session health (session-table utilization, active
+      sessions total/TCP/UDP/ICMP and maximum supported sessions). Memory and
+      temperature/fan/psu are not collected because PAN-OS exposes them only via
+      row-filtered hrStorage / entity-sensor tables that telegraf inputs.snmp cannot
+      filter.
+  Firewall SonicWall SNMP:
+    name: SonicWall (Telegraf)
+    desc: SonicWall-specific SNMP collection template for SonicOS firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      SONICWALL-FIREWALL-IP-STATISTICS-MIB private OIDs for device health (CPU and RAM
+      utilization, both reported directly as percentages) and firewall-specific state
+      (current and maximum connection-cache entries and NAT translation count).
+  Firewall WatchGuard SNMP:
+    name: WatchGuard (Telegraf)
+    desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
+      to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects
+      WATCHGUARD-SYSTEM-STATISTICS-MIB private OIDs for device health (CPU utilization)
+      and firewall-specific state (current active connections). Memory and
+      temperature/fan/psu are not collected because Fireware exposes no standard SNMP
+      memory-utilization scalar or sensor table that telegraf inputs.snmp can read
+      without row-level filtering.
+  Firewall pfSense SNMP:
+    name: pfSense (Telegraf)
+    desc: pfSense-specific SNMP collection template for pfSense (FreeBSD/pf) firewalls.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HOST-RESOURCES CPU load (averaged across cores) and the BEGEMOT-PF-MIB
+      pf state-table entry count (equivalent to active connections). Memory and
+      temperature/fan/psu are not collected because pfSense exposes memory only via
+      row-filtered hrStorage and has no standard sensor table.
+  Firewall OPNsense SNMP:
+    name: OPNsense (Telegraf)
+    desc: OPNsense-specific SNMP collection template for OPNsense (FreeBSD/pf) firewalls.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HOST-RESOURCES CPU load (averaged across cores) and the BEGEMOT-PF-MIB
+      pf state-table entry count (equivalent to active connections). Memory and
+      temperature/fan/psu are not collected because OPNsense exposes memory only via
+      row-filtered hrStorage and has no standard sensor table.
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect firewall traffic and convert it into normalized
-      device traffic metrics.
+    desc: Use NetFlow to collect firewall traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Firewall Flow sFlow:
     name: Firewall Flow Analysis (sFlow)
-    desc: Use sFlow to collect firewall traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use sFlow to collect firewall traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   SNMP Trap:
     desc: The SNMP Trap monitoring plugin is designed to receive and process alerts
       or status notifications (Trap messages) actively pushed by network devices,
@@ -3616,14 +4150,26 @@ monitor_object_plugin:
       key IF-MIB metrics from router interfaces, including traffic volume, packet
       loss, and error counts.
     name: Router General(Telegraf)
+  Router Juniper MX SNMP:
+    name: Juniper MX (Telegraf)
+    desc: Juniper MX-specific SNMP collection template for Juniper MX-series routers
+      (Junos). In addition to standard IF-MIB interface metrics and 64-bit HC traffic
+      counters, it collects JUNIPER-MIB jnxOperating private OIDs for device health
+      (CPU utilization and memory-buffer utilization, both reported as percentages and
+      averaged across routing-engine/FPC operating entities).
+  Router Huawei AR SNMP:
+    name: Huawei AR (Telegraf)
+    desc: Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP).
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HUAWEI-ENTITY-EXTENT-MIB private OIDs for device health (CPU and
+      memory utilization, both reported directly as percentages and averaged across
+      entities).
   Router Flow NetFlow:
     name: Router Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect router traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use NetFlow to collect router traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Router Flow sFlow:
     name: Router Flow Analysis (sFlow)
-    desc: Use sFlow to collect router traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use sFlow to collect router traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: The ActiveMQ plugin, based on JMX collection, acquires key performance metrics

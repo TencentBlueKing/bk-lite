@@ -13,7 +13,8 @@ from apps.monitor.views import system_mgmt as sm_view
 
 def test_view_get_user_all_passes_actor_context(monkeypatch):
     captured = {}
-    monkeypatch.setattr(sm_view, "_build_actor_context", lambda request: {"current_team": 7, "username": "u"})
+    actor_context = {"current_team": 7, "username": "u", "include_children": False}
+    monkeypatch.setattr(sm_view, "_build_actor_context", lambda request: actor_context)
     monkeypatch.setattr(
         sm_view.SystemMgmtUtils,
         "get_user_all",
@@ -25,7 +26,31 @@ def test_view_get_user_all_passes_actor_context(monkeypatch):
     sm_view.SystemMgmtView().get_user_all(request)
 
     # 视图必须把 actor_context 透传给 util（不再无作用域取全量）
-    assert captured["actor_context"] == {"current_team": 7, "username": "u"}
+    assert captured["actor_context"] == actor_context
+
+
+def test_view_get_user_all_passes_include_children(monkeypatch):
+    captured = {}
+    actor_context = {"current_team": 7, "username": "u", "include_children": True}
+    monkeypatch.setattr(sm_view, "_build_actor_context", lambda request: actor_context)
+    monkeypatch.setattr(
+        sm_view.SystemMgmtUtils,
+        "get_user_all",
+        staticmethod(
+            lambda actor_context=None, include_children=False, **kw: captured.update(
+                actor_context=actor_context,
+                include_children=include_children,
+            )
+            or []
+        ),
+    )
+    monkeypatch.setattr(sm_view.WebUtils, "response_success", staticmethod(lambda data: data))
+
+    request = types.SimpleNamespace(COOKIES={"current_team": "7", "include_children": "1"})
+    sm_view.SystemMgmtView().get_user_all(request)
+
+    assert captured["actor_context"] == actor_context
+    assert captured["include_children"] is True
 
 
 def test_util_get_user_all_routes_to_scoped(monkeypatch):

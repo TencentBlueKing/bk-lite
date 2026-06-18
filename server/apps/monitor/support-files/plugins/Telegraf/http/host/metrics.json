@@ -142,7 +142,7 @@
       "display_name": "Disk Total",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["mount"],
+      "dimensions": [{"name": "mount"}],
       "instance_id_keys": ["instance_id"],
       "description": "Total disk space in bytes per mount"
     },
@@ -153,7 +153,7 @@
       "display_name": "Disk Used",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["mount"],
+      "dimensions": [{"name": "mount"}],
       "instance_id_keys": ["instance_id"],
       "description": "Used disk space in bytes per mount"
     },
@@ -164,7 +164,7 @@
       "display_name": "Disk Usage",
       "data_type": "Number",
       "unit": "%",
-      "dimensions": ["mount"],
+      "dimensions": [{"name": "mount"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk usage percentage per mount"
     },
@@ -175,7 +175,7 @@
       "display_name": "Network RX Bytes",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network bytes received per interface"
     },
@@ -186,7 +186,7 @@
       "display_name": "Network TX Bytes",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network bytes transmitted per interface"
     },
@@ -197,7 +197,7 @@
       "display_name": "Network RX Errors",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network receive errors per interface"
     },
@@ -208,7 +208,7 @@
       "display_name": "Network TX Errors",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmit errors per interface"
     },
@@ -219,7 +219,7 @@
       "display_name": "Network Receive Packet Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network received packet rate over the past 5 minutes"
     },
@@ -230,7 +230,7 @@
       "display_name": "Network Transmit Packet Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmitted packet rate over the past 5 minutes"
     },
@@ -241,7 +241,7 @@
       "display_name": "Network Receive Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network received byte rate over the past 5 minutes"
     },
@@ -252,7 +252,7 @@
       "display_name": "Network Transmit Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmitted byte rate over the past 5 minutes"
     },
@@ -263,7 +263,7 @@
       "display_name": "Network Receive Error Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network receive error rate over the past 5 minutes"
     },
@@ -274,7 +274,7 @@
       "display_name": "Network Transmit Error Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmit error rate over the past 5 minutes"
     },
@@ -285,7 +285,7 @@
       "display_name": "Network Receive Drop Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network receive drop rate over the past 5 minutes"
     },
@@ -296,7 +296,7 @@
       "display_name": "Network Transmit Drop Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmit drop rate over the past 5 minutes"
     },
@@ -439,7 +439,7 @@
       "display_name": "Disk Free",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["mount"],
+      "dimensions": [{"name": "mount"}],
       "instance_id_keys": ["instance_id"],
       "description": "Free disk space in bytes"
     },
@@ -450,7 +450,7 @@
       "display_name": "Disk Inodes Usage",
       "data_type": "Number",
       "unit": "%",
-      "dimensions": ["mount"],
+      "dimensions": [{"name": "mount"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk inode usage percentage"
     },
@@ -461,7 +461,7 @@
       "display_name": "Network RX Packets",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network received packet counter"
     },
@@ -472,7 +472,7 @@
       "display_name": "Network TX Packets",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmitted packet counter"
     },
@@ -483,7 +483,7 @@
       "display_name": "Network RX Drops",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network receive drop counter"
     },
@@ -494,7 +494,7 @@
       "display_name": "Network TX Drops",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["interface"],
+      "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
       "description": "Network transmit drop counter"
     },
@@ -505,7 +505,7 @@
       "display_name": "Disk Reads",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["device"],
+      "dimensions": [{"name": "device"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk read counter"
     },
@@ -516,7 +516,7 @@
       "display_name": "Disk Writes",
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": ["device"],
+      "dimensions": [{"name": "device"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk write counter"
     },
@@ -527,7 +527,7 @@
       "display_name": "Disk Read Bytes",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["device"],
+      "dimensions": [{"name": "device"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk read bytes counter"
     },
@@ -538,7 +538,7 @@
       "display_name": "Disk Write Bytes",
       "data_type": "Number",
       "unit": "bytes",
-      "dimensions": ["device"],
+      "dimensions": [{"name": "device"}],
       "instance_id_keys": ["instance_id"],
       "description": "Disk write bytes counter"
     },

@@ -2,8 +2,8 @@
 import React, { useState, useEffect, useRef, useMemo, RefObject } from 'react';
 import { Select, Spin, Empty } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
+import useEventApi from '@/app/monitor/api/event';
 import LineChart from '@/app/monitor/components/charts/lineChart';
 import {
   ChartData,
@@ -14,11 +14,9 @@ import {
 } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
-import {
-  mergeViewQueryKeyValues,
-  renderChart
-} from '@/app/monitor/utils/common';
+import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
+import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 
 const { Option } = Select;
 
@@ -56,13 +54,14 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   fixedGroupByList = []
 }) => {
   const { t } = useTranslation();
-  const { get } = useApiClient();
   const { getInstanceList } = useMonitorApi();
+  const { previewMonitorPolicy } = useEventApi();
   const { findUnitNameById } = useUnitTransform();
   const [loading, setLoading] = useState<boolean>(false);
   const [instanceLoading, setInstanceLoading] = useState<boolean>(false);
   const [chartData, setChartData] = useState<ChartData[]>([]);
   const [unit, setUnit] = useState<string>('');
+  const [previewError, setPreviewError] = useState<string>('');
   const [selectedInstance, setSelectedInstance] = useState<string | null>(null);
   const [instances, setInstances] = useState<InstanceItem[]>([]);
   const [allInstances, setAllInstances] = useState<TableDataItem[]>([]);
@@ -133,140 +132,54 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
 
   // 判断是否可以查询
   const canQuery = useMemo(() => {
+    const sanitizedGroupBy = sanitizeGroupBy(groupBy);
     return !!(
       monitorObjId &&
       metric &&
+      algorithm &&
+      sanitizedGroupBy.length > 0 &&
       selectedInstance &&
       instances.length > 0
     );
-  }, [monitorObjId, metric, selectedInstance, instances.length]);
+  }, [monitorObjId, metric, algorithm, groupBy.length, selectedInstance, instances.length]);
 
   // 获取当前选中的指标信息
   const currentMetric = useMemo(() => {
     return metrics.find((item) => item.name === metric);
   }, [metrics, metric]);
 
-  // 将汇聚周期转换为秒
-  const getPeriodInSeconds = (): number => {
-    const periodValue = period || 5;
-    switch (periodUnit) {
-      case 'min':
-        return periodValue * 60;
-      case 'hour':
-        return periodValue * 3600;
-      case 'day':
-        return periodValue * 86400;
-      default:
-        return periodValue * 60;
-    }
-  };
-
-  // 获取汇聚周期的时间字符串（用于 PromQL）
-  const getPeriodString = (): string => {
-    const periodValue = period || 5;
-    switch (periodUnit) {
-      case 'min':
-        return `${periodValue}m`;
-      case 'hour':
-        return `${periodValue}h`;
-      case 'day':
-        return `${periodValue}d`;
-      default:
-        return `${periodValue}m`;
-    }
-  };
-
-  // 根据汇聚方式包装查询语句
-  const wrapQueryWithAlgorithm = (baseQuery: string): string => {
-    if (!algorithm) return baseQuery;
-    const periodStr = getPeriodString();
-    const groupByClause = groupBy?.length ? ` by (${groupBy.join(', ')})` : '';
-    // _over_time 函数需要时间范围参数
-    const overTimeFunctions = [
-      'sum_over_time',
-      'max_over_time',
-      'min_over_time',
-      'avg_over_time',
-      'last_over_time',
-      'count_over_time'
-    ];
-    if (overTimeFunctions.includes(algorithm)) {
-      // 例如: sum_over_time(metric{labels}[5m])
-      return `${algorithm}(${baseQuery}[${periodStr}])${groupByClause}`;
-    } else {
-      // 聚合函数如 sum, avg, max, min, count
-      // 例如: sum by (instance_id) (metric{labels})
-      return `${algorithm}${groupByClause}(${baseQuery})`;
-    }
-  };
-
-  // 构建查询参数
-  const getQueryParams = () => {
+  // 构建后端策略预览参数，PromQL 由后端统一构造
+  const getPreviewPayload = () => {
     if (!currentMetric || !selectedInstance) return null;
-    const metricQuery = currentMetric.query || '';
     const selectedInst = instances.find(
       (item) => item.instance_id === selectedInstance
     );
     if (!selectedInst) return null;
-    const queryList = [
-      {
-        keys: currentMetric.instance_id_keys || [],
-        values: selectedInst.instance_id_values
-      }
-    ];
-    let query = mergeViewQueryKeyValues(queryList);
-    // 添加条件维度
-    if (conditions?.length) {
-      const conditionQueries = conditions
-        .map((condition) => {
-          if (condition.name && condition.method && condition.value) {
-            return `${condition.name}${condition.method}"${condition.value}"`;
-          }
-          return '';
-        })
-        .filter(Boolean);
-      if (conditionQueries.length) {
-        if (query) {
-          query += ',';
-        }
-        query += conditionQueries.join(',');
-      }
-    }
-    // 基础查询语句（替换标签占位符）
-    const baseQuery = metricQuery.replace(/__\$labels__/g, query);
-    // 根据汇聚方式包装查询语句
-    const finalQuery = wrapQueryWithAlgorithm(baseQuery);
-    // 计算时间范围和步长
-    const periodInSeconds = getPeriodInSeconds();
-    const now = Date.now();
-    // 动态计算时间范围：基于汇聚周期的 30 倍
-    // 例如：5分钟周期 → 150分钟范围，1小时周期 → 30小时范围，1天周期 → 7天范围（受限制）
-    const dynamicDuration = periodInSeconds * 30 * 1000;
-    // 限制在 30 分钟到 7 天之间
-    const minDuration = 1800000; // 30 分钟
-    const maxDuration = 604800000; // 7 天
-    const duration = Math.max(
-      minDuration,
-      Math.min(dynamicDuration, maxDuration)
+    const filter = (conditions || []).filter(
+      (condition) => condition.name && condition.method && condition.value
     );
-    const startTime = now - duration;
-    const endTime = now;
-    // 动态计算目标点数：时间范围越短，点数越少
-    // 基准：1小时 → 30个点，按比例缩放，最少15个点，最多60个点
-    const basePoints = 30;
-    const baseDuration = 3600000; // 1 小时
-    const targetPoints = Math.round(basePoints * (duration / baseDuration));
-    const clampedPoints = Math.max(15, Math.min(targetPoints, 60));
-    // step = 时间范围 / 目标点数，但不能小于汇聚周期
-    const calculatedStep = Math.ceil(duration / 1000 / clampedPoints);
-    const step = Math.max(periodInSeconds, calculatedStep);
+    const sanitizedGroupBy = sanitizeGroupBy(groupBy);
     return {
-      query: finalQuery,
-      source_unit: currentMetric.unit || '',
-      unit: calculationUnit || '',
-      start: startTime,
-      end: endTime,
-      step
+      monitor_object: monitorObjId,
+      query_condition: {
+        type: 'metric',
+        metric_id: currentMetric.id,
+        filter
+      },
+      source,
+      period: {
+        type: periodUnit,
+        value: period || 5
+      },
+      algorithm,
+      group_by: sanitizedGroupBy,
+      metric_unit: currentMetric.unit || '',
+      calculation_unit: calculationUnit || '',
+      preview: {
+        instance_id: selectedInst.instance_id,
+        instance_id_values: selectedInst.instance_id_values,
+        duration_points: 30
+      }
     };
   };
 
@@ -305,11 +218,13 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   const fetchData = async () => {
     if (!canQuery) {
       setChartData([]);
+      setPreviewError('');
       return;
     }
-    const params = getQueryParams();
-    if (!params) {
+    const payload = getPreviewPayload();
+    if (!payload) {
       setChartData([]);
+      setPreviewError('');
       return;
     }
     // 取消之前的请求
@@ -319,40 +234,39 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     const currentRequestId = ++requestIdRef.current;
     try {
       setLoading(true);
-      const responseData = await get(
-        '/monitor/api/metrics_instance/query_range/',
-        {
-          params,
-          signal: abortController.signal
-        }
-      );
+      setPreviewError('');
+      const responseData = await previewMonitorPolicy(payload, {
+        signal: abortController.signal
+      });
       if (currentRequestId !== requestIdRef.current) {
         return;
       }
-      const data = responseData.data?.result || [];
-      const displayUnit = responseData.data?.unit || '';
+      const vmData = responseData?.data || {};
+      const data = vmData.data?.result || [];
+      const displayUnit = vmData.unit || '';
       setUnit(displayUnit);
       // 渲染图表数据
       const selectedInst = instances.find(
         (item) => item.instance_id === selectedInstance
       );
       // 判断 showInstName：groupBy 为空或 groupBy 的值都在固定列表中时为 true
-      const showInstName = groupBy.some((item) =>
+      const sanitizedGroupBy = sanitizeGroupBy(groupBy);
+      const showInstName = sanitizedGroupBy.some((item) =>
         fixedGroupByList.includes(item)
       );
-      let list = [
-        {
-          instance_id_values: selectedInst.instance_id_values,
-          instance_name: selectedInst.instance_name,
-          instance_id: selectedInst.instance_id,
-          instance_id_keys: currentMetric?.instance_id_keys || [],
-          dimensions: currentMetric?.dimensions || [],
-          title: currentMetric?.display_name || '--',
-          showInstName
-        }
-      ];
-      if (!selectedInst) {
-        list = [];
+      let list = [];
+      if (selectedInst) {
+        list = [
+          {
+            instance_id_values: selectedInst.instance_id_values,
+            instance_name: selectedInst.instance_name,
+            instance_id: selectedInst.instance_id,
+            instance_id_keys: currentMetric?.instance_id_keys || [],
+            dimensions: currentMetric?.dimensions || [],
+            title: currentMetric?.display_name || '--',
+            showInstName
+          }
+        ];
       }
       const _chartData = renderChart(data, list);
       setChartData(_chartData);
@@ -362,6 +276,11 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         currentRequestId === requestIdRef.current
       ) {
         setChartData([]);
+        setPreviewError(
+          error?.response?.data?.message ||
+            error?.message ||
+            t('common.error')
+        );
       }
     } finally {
       if (currentRequestId === requestIdRef.current) {
@@ -465,7 +384,11 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
       {/* 图表区域 */}
       <Spin spinning={loading}>
         <div className="h-[200px]">
-          {chartData.length > 0 ? (
+          {previewError ? (
+            <div className="h-full flex items-center justify-center text-[12px] text-[var(--color-text-3)] px-4 text-center">
+              {previewError}
+            </div>
+          ) : chartData.length > 0 ? (
             <LineChart
               data={chartData}
               unit={calculationUnit || unit}

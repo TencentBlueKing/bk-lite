@@ -11,6 +11,7 @@ import {
 import OperateDrawer from '@/app/node-manager/components/operate-drawer';
 import { ModalRef } from '@/app/node-manager/types';
 import {
+  InstallerEventSummary,
   LogStep,
   StatusConfig
 } from '@/app/node-manager/types/controller';
@@ -19,9 +20,11 @@ import {
   getInstallerFailureSuggestion,
   getInstallerProgressPercent,
   getInstallerProgressText,
+  getInstallerSummaryGuidance,
   getInstallerStepInfo,
   getInstallerStepLabel,
-  normalizeInstallerLogs
+  normalizeInstallerLogs,
+  normalizeInstallerSummary
 } from '@/app/node-manager/utils/installerProgress';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -37,6 +40,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
     const [groupVisible, setGroupVisible] = useState<boolean>(false);
     const [title, setTitle] = useState<string>('');
     const [logs, setLogs] = useState<LogStep[]>([]);
+    const [installerSummary, setInstallerSummary] =
+      useState<InstallerEventSummary | undefined>();
     const [nodeInfo, setNodeInfo] = useState({ ip: '', nodeName: '' });
 
     useImperativeHandle(ref, () => ({
@@ -44,6 +49,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
         setGroupVisible(true);
         setTitle(title || '');
         setLogs(normalizeInstallerLogs(form?.logs));
+        setInstallerSummary(normalizeInstallerSummary(form?.installerSummary));
         setNodeInfo({
           ip: form?.ip || '',
           nodeName: form?.nodeName || ''
@@ -51,9 +57,11 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       },
       updateLogs: (
         newLogs: LogStep[],
-        newNodeInfo?: { ip?: string; nodeName?: string }
+        newNodeInfo?: { ip?: string; nodeName?: string },
+        newInstallerSummary?: InstallerEventSummary
       ) => {
         setLogs(normalizeInstallerLogs(newLogs));
+        setInstallerSummary(normalizeInstallerSummary(newInstallerSummary));
         // 如果提供了新的节点信息，也更新它
         if (newNodeInfo) {
           setNodeInfo((prev) => ({
@@ -64,12 +72,14 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       },
       closeModal: () => {
         setGroupVisible(false);
+        setInstallerSummary(undefined);
         onClose?.();
       }
     }));
 
     const handleCancel = () => {
       setGroupVisible(false);
+      setInstallerSummary(undefined);
       onClose?.();
     };
 
@@ -117,6 +127,25 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       );
     };
 
+    const installerDetailSteps =
+      installerSummary?.steps?.length
+        ? installerSummary.steps
+        : logs.filter((log) => log.details?.installer_event);
+    const visibleLogs = logs.filter((log) => !log.details?.installer_event);
+    const displayLogs = visibleLogs.length ? visibleLogs : logs;
+    const summaryGuidance = getInstallerSummaryGuidance(t, installerSummary);
+    const shouldShowSummaryOnRun =
+      !!installerSummary &&
+      (installerDetailSteps.length > 0 ||
+        ['no_installer_events', 'incomplete_installer_events'].includes(
+          installerSummary.state || ''
+        ));
+    const shouldShowConnectivityGuidance =
+      !!summaryGuidance &&
+      ['installer_success_connectivity_pending', 'installer_success_connectivity_timeout'].includes(
+        installerSummary?.state || ''
+      );
+
     return (
       <div>
         <OperateDrawer
@@ -141,8 +170,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
             {/* 安装步骤 */}
             <Steps
               direction="vertical"
-              current={logs.length}
-              items={logs.map((log) => {
+              current={displayLogs.length}
+              items={displayLogs.map((log) => {
                 const statusConfig = getStatusConfig(log.status);
                 const stepProgress = log.details?.progress;
                 const progressPercent = getInstallerProgressPercent(stepProgress);
@@ -163,6 +192,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                 const failureGuidance = getInstallerFailureGuidance(t, {
                   steps: [log]
                 });
+                const isRunInstallerStep = log.action === 'run';
+                const isConnectivityStep = log.action === 'connectivity_check';
                 return {
                   status: statusConfig.stepStatus,
                   icon: statusConfig.icon,
@@ -245,6 +276,82 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                             {t('node-manager.cloudregion.node.nextAction')}:
                             {' '}
                             {failureGuidance.suggestion || failureSuggestion}
+                          </div>
+                        )}
+                        {isRunInstallerStep && shouldShowSummaryOnRun && (
+                          <div className="mt-[10px] border-t border-[var(--color-border-1)] pt-[10px]">
+                            <div className="flex flex-wrap items-center gap-[8px] text-[12px] text-[var(--color-text-2)]">
+                              <span>
+                                {t('node-manager.cloudregion.node.installerDetailProgress')}:
+                                {' '}
+                                {installerSummary?.completed_count ?? 0}
+                                /
+                                {installerSummary?.expected_count ?? installerDetailSteps.length}
+                              </span>
+                              {!!installerSummary?.duplicate_count && (
+                                <Tag bordered={false} color="warning" className="m-0">
+                                  {t('node-manager.cloudregion.node.installerDetailDuplicated')}:
+                                  {' '}
+                                  {installerSummary.duplicate_count}
+                                </Tag>
+                              )}
+                            </div>
+                            {!!installerSummary?.missing_steps?.length && (
+                              <div className="mt-[6px] text-[12px] text-[var(--color-warning)]">
+                                {t('node-manager.cloudregion.node.installerDetailMissing')}:
+                                {' '}
+                                {installerSummary.missing_steps
+                                  .map((step) => getInstallerStepLabel(t, step, step))
+                                  .join(', ')}
+                              </div>
+                            )}
+                            {summaryGuidance && (
+                              <div className="mt-[6px] text-[12px] text-[var(--color-text-2)]">
+                                {t('node-manager.cloudregion.node.nextAction')}:
+                                {' '}
+                                {summaryGuidance}
+                              </div>
+                            )}
+                            {!!installerDetailSteps.length && (
+                              <div className="mt-[8px] space-y-[6px]">
+                                {installerDetailSteps.map((step, index) => {
+                                  const detailStatusConfig = getStatusConfig(step.status);
+                                  return (
+                                    <div
+                                      key={`${step.action}-${index}`}
+                                      className="flex items-start justify-between gap-[8px] rounded-[4px] bg-[var(--color-fill-2)] px-[10px] py-[8px]"
+                                    >
+                                      <div className="min-w-0">
+                                        <div className="text-[12px] font-medium text-[var(--color-text-1)]">
+                                          {getInstallerStepLabel(
+                                            t,
+                                            step.details?.raw_step || step.action,
+                                            step.action
+                                          )}
+                                        </div>
+                                        <div className="mt-[2px] break-words text-[12px] text-[var(--color-text-3)]">
+                                          {step.message || '--'}
+                                        </div>
+                                      </div>
+                                      <Tag
+                                        className="m-0 shrink-0"
+                                        color={detailStatusConfig.tagColor}
+                                        bordered={false}
+                                      >
+                                        {detailStatusConfig.text}
+                                      </Tag>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        )}
+                        {isConnectivityStep && shouldShowConnectivityGuidance && (
+                          <div className="mt-[8px] text-[12px] text-[var(--color-text-2)]">
+                            {t('node-manager.cloudregion.node.nextAction')}:
+                            {' '}
+                            {summaryGuidance}
                           </div>
                         )}
                       </div>

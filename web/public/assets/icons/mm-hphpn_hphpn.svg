@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="hpGreen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#16a085"/>
+      <stop offset="1" stop-color="#0e7a63"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#hpGreen)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M34 44 L34 72 M34 44 L48 44 C56 44 56 58 48 58 L34 58"/>
+    <path d="M66 44 L66 72 M66 44 L80 44 C88 44 88 58 80 58 L66 58"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="9.5" font-weight="700" fill="#ffffff" letter-spacing="0.5">HP PROCURVE</text>
+</svg>

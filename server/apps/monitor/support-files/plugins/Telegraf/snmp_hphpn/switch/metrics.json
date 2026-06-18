@@ -1,0 +1,80 @@
+{
+  "plugin": "Switch HP ProCurve SNMP",
+  "plugin_desc": "HP ProCurve / HP Networking (HPN)-specific SNMP collection for switches (HP-ICF MIBs). In addition to standard IF-MIB interface metrics, it collects HP private OIDs for device health: CPU utilization and system memory (used/total). Temperature and fan/power-supply state live in HP's shared ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering, which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory utilization is computed from used/total.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_hphpn'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["device_cpu_usage", "device_memory_usage"],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "device_cpu_usage{instance_type='switch', __$labels__}",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the CPU utilization of the HP ProCurve / HP Networking device control plane (HP-ICF hpSwitchCpuStat), normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the number of bytes currently in use by the HP ProCurve / HP Networking system memory (HP-ICF hpLocalMemAllocBytes). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the total size in bytes of the HP ProCurve / HP Networking system memory (HP-ICF hpLocalMemTotalBytes). Together with the used bytes it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports overall memory utilization of the HP ProCurve / HP Networking device, computed as used / total * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}

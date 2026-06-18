@@ -8,6 +8,60 @@ import type { ParamItem } from '@/app/ops-analysis/types/dataSource';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 
 export type BindableParamType = 'string' | 'timeRange';
+export type UnifiedFilterInputMode = 'input' | 'select' | 'radio' | 'organization';
+
+const UNIFIED_FILTER_INPUT_MODES: UnifiedFilterInputMode[] = [
+  'input',
+  'select',
+  'radio',
+  'organization',
+];
+const OPTION_INPUT_MODES: UnifiedFilterInputMode[] = ['select', 'radio'];
+
+export const normalizeUnifiedFilterInputMode = (
+  inputMode?: string,
+): UnifiedFilterInputMode =>
+  UNIFIED_FILTER_INPUT_MODES.includes(inputMode as UnifiedFilterInputMode)
+    ? (inputMode as UnifiedFilterInputMode)
+    : 'input';
+
+export const isOptionInputMode = (inputMode?: string): boolean =>
+  OPTION_INPUT_MODES.includes(normalizeUnifiedFilterInputMode(inputMode));
+
+export const sanitizeUnifiedFilterDefinition = <T extends UnifiedFilterDefinition>(
+  definition: T,
+): T => {
+  if (definition.type === 'timeRange') {
+    const next = { ...definition };
+    delete next.inputMode;
+    delete next.options;
+    return next;
+  }
+
+  const inputMode = normalizeUnifiedFilterInputMode(definition.inputMode);
+  if (!isOptionInputMode(inputMode)) {
+    const next = { ...definition };
+    delete next.options;
+    return {
+      ...next,
+      inputMode,
+    };
+  }
+
+  const options = Array.isArray(definition.options) ? definition.options : [];
+  const optionValues = options.map((item) => item.value);
+  const defaultValue = typeof definition.defaultValue === 'string' &&
+    optionValues.includes(definition.defaultValue)
+    ? definition.defaultValue
+    : null;
+
+  return {
+    ...definition,
+    inputMode,
+    options,
+    defaultValue,
+  };
+};
 
 export const getFilterDefinitionId = (
   key: string,

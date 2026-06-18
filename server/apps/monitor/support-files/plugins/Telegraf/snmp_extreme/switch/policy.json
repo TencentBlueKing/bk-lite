@@ -1,0 +1,62 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Extreme SNMP",
+  "templates": [
+  {
+    "name": "Extreme交换机CPU使用率过高",
+    "alert_name": "交换机${resource_name} CPU 使用率过高",
+    "description": "监控 Extreme 设备控制平面的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+    "metric_name": "device_cpu_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  },
+  {
+    "name": "Extreme交换机内存使用率过高",
+    "alert_name": "交换机${resource_name} 内存使用率过高",
+    "description": "监控 Extreme 设备整体内存使用率，当超过阈值时触发告警，便于及时发现内存泄漏、表项过大或容量不足等问题，防止设备不稳定或分配失败。",
+    "metric_name": "device_memory_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  },
+  {
+    "name": "Extreme交换机温度过高",
+    "alert_name": "交换机${resource_name} 温度过高",
+    "description": "监控 Extreme 设备各硬件温度传感器读数，当温度超过安全阈值时触发告警，提示可能存在风扇故障、散热不良或环境过热，避免触发热保护或硬件损坏。",
+    "metric_name": "device_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 70, "method": ">" },
+        { "level": "error", "value": 60, "method": ">" },
+        { "level": "warning", "value": 50, "method": ">" }
+    ]
+  },
+  {
+    "name": "Extreme交换机风扇异常",
+    "alert_name": "交换机${resource_name} 风扇 ${metric_descr} 状态异常",
+    "description": "监控 Extreme 设备各散热风扇的运行状态（已归一化为 1=正常）。任何非正常状态都表示散热故障，可能迅速导致过热，应立即排查处理。",
+    "metric_name": "device_fan_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  },
+  {
+    "name": "Extreme交换机电源异常",
+    "alert_name": "交换机${resource_name} 电源 ${metric_descr} 状态异常",
+    "description": "监控 Extreme 设备各电源模块的运行状态（已归一化为 1=正常）。任何非正常状态表示电源冗余缺失或硬件故障，应尽快修复以恢复冗余能力。",
+    "metric_name": "device_psu_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  }
+  ]
+}

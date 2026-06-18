@@ -1,9 +1,12 @@
+import asyncio
 import json
+import threading
 
 import pytest
 from django.utils import timezone
 from rest_framework import status
 
+from apps.log.models import CollectInstance, CollectInstanceOrganization, CollectType
 from apps.log.models.log_group import LogGroup, LogGroupOrganization, SearchCondition
 from apps.log.serializers.policy import AlertSerializer
 from apps.log.utils.log_group import LogGroupQueryBuilder
@@ -684,6 +687,58 @@ def test_field_values_endpoint_uses_explicit_log_groups(api_client, authenticate
 
 
 @pytest.mark.django_db
+def test_creation_field_discovery_does_not_require_existing_log_group_instance_permission(
+    api_client, authenticated_user, mocker, settings, monkeypatch
+):
+    settings.LICENSE_MGMT_ENABLED = False
+    monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
+    collect_type = CollectType.objects.create(
+        name="file", collector="Vector", icon="file"
+    )
+    instance = CollectInstance.objects.create(
+        id="instance-1", name="instance-1", collect_type=collect_type
+    )
+    CollectInstanceOrganization.objects.create(collect_instance=instance, organization=1)
+    _mock_group_permission(mocker, teams=[1], instance_ids=[])
+    field_names_mock = mocker.patch(
+        "apps.log.views.collect_config.SearchService.all_field_names",
+        return_value=["host.name"],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get(
+        "/api/v1/log/collect_types/all_attrs/?scope=log_group_create&query=level:error",
+    )
+
+    assert response.status_code == status.HTTP_200_OK
+    assert response.json()["data"] == ["host.name"]
+    field_names_mock.assert_called_once()
+    call_args = field_names_mock.call_args.args
+    assert 'instance_id:"instance-1"' in call_args[0]
+    assert call_args[3] == []
+
+
+@pytest.mark.django_db
+def test_normal_field_discovery_still_requires_accessible_log_group_scope(
+    api_client, authenticated_user, mocker, settings, monkeypatch
+):
+    settings.LICENSE_MGMT_ENABLED = False
+    monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
+    _mock_group_permission(mocker, teams=[1], instance_ids=[])
+    field_names_mock = mocker.patch(
+        "apps.log.views.collect_config.SearchService.all_field_names",
+        return_value=["host.name"],
+    )
+
+    api_client.cookies["current_team"] = "1"
+    response = api_client.get("/api/v1/log/collect_types/all_attrs/?query=level:error")
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert "当前组织暂无可用的日志分组权限" in response.json()["message"]
+    field_names_mock.assert_not_called()
+
+
+@pytest.mark.django_db
 def test_hits_endpoint_uses_explicit_log_groups(api_client, authenticated_user, mocker):
     LogGroup.objects.create(id="g-1", name="Group 1", rule={"mode": "AND", "conditions": [{"field": "app", "op": "==", "value": "demo"}]})
     LogGroupOrganization.objects.create(log_group_id="g-1", organization=1)
@@ -835,3 +890,78 @@ def test_alert_snapshots_returns_data_for_authorized_policy(api_client, authenti
     assert response.status_code == status.HTTP_200_OK
     assert response.json()["data"]["alert_info"]["id"] == alert.id
     assert response.json()["data"]["snapshot_info"]["snapshot_count"] == 1
+
+
+# ---------------------------------------------------------------------------
+# Issue #3359: tail_async 的 iter_lines 必须在线程池中运行，不得阻塞事件循环
+# ---------------------------------------------------------------------------
+
+class _BlockingStreamResponse:
+    """
+    模拟一个"第一行来得很慢"的流式响应：
+    iter_lines() 在产出第一行前会用 threading.Event.wait() 阻塞约 0.1s。
+    若 iter_lines 仍在事件循环线程里调用，事件循环会被阻塞，
+    同期调度的并发协程就无法运行，counter 不会递增。
+    修复后，iter_lines 在独立线程中运行，事件循环自由调度，counter 可以递增。
+    """
+
+    status_code = 200
+
+    def __init__(self, lines, block_secs=0.1):
+        self._lines = lines
+        self._block_secs = block_secs
+        self.encoding = "utf-8"
+
+    def raise_for_status(self):
+        pass
+
+    def iter_lines(self, chunk_size=None, decode_unicode=False):
+        import time
+        time.sleep(self._block_secs)  # 模拟等待网络数据的阻塞
+        yield from self._lines
+
+    def close(self):
+        pass
+
+
+@pytest.mark.asyncio
+async def test_tail_async_iter_lines_runs_in_thread_not_event_loop(mocker):
+    """
+    验证修复：iter_lines 的阻塞等待必须在线程池里发生，事件循环在此期间
+    应能调度其他协程（counter 递增）。
+    若把修复 revert（直接 for line in response.iter_lines(...)），
+    事件循环在 iter_lines 阻塞期间被冻结，counter 不会递增，断言失败。
+    """
+    lines = ["line1", "line2", "line3"]
+    fake_resp = _BlockingStreamResponse(lines, block_secs=0.1)
+
+    mocker.patch(
+        "apps.log.utils.query_log.requests.post",
+        return_value=fake_resp,
+    )
+
+    api = VictoriaMetricsAPI()
+
+    # 并发协程：在 tail_async 运行期间尽量多递增 counter
+    counter = 0
+
+    async def increment_counter():
+        nonlocal counter
+        for _ in range(200):
+            counter += 1
+            await asyncio.sleep(0)
+
+    collected = []
+    counter_task = asyncio.create_task(increment_counter())
+
+    async for line in api.tail_async("*"):
+        collected.append(line)
+
+    await counter_task
+
+    # 修复后：iter_lines 在线程里阻塞，事件循环自由调度，counter 应已递增
+    assert collected == ["line1", "line2", "line3"], f"收到的行不匹配: {collected}"
+    assert counter > 0, (
+        "counter 未递增——iter_lines 仍在事件循环线程里阻塞，事件循环被冻结。"
+        "这说明修复未生效（iter_lines 没有被卸载到线程池）。"
+    )

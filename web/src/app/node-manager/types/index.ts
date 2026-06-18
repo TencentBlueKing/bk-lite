@@ -1,4 +1,4 @@
-import { LogStep } from './controller';
+import { InstallerEventSummary, LogStep } from './controller';
 
 interface TableDataItem {
   id?: string | number;
@@ -29,7 +29,8 @@ interface ModalRef {
   showModal: (config: ModalConfig) => void;
   updateLogs?: (
     logs: LogStep[],
-    newNodeInfo?: { ip?: string; nodeName?: string }
+    newNodeInfo?: { ip?: string; nodeName?: string },
+    installerSummary?: InstallerEventSummary
   ) => void;
 }
 

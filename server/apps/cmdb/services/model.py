@@ -511,7 +511,13 @@ class ModelManage(object):
         data.update(attrs=json.dumps(attrs), unique_rules="[]")
 
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(MODEL, [])
+            # 仅查询与新模型存在唯一性冲突可能的节点（model_id 或 model_name 匹配），
+            # 避免全量加载所有 MODEL 节点做内存比对（O(N) → O(冲突候选数)）。
+            conflict_filter = [
+                {"field": "model_id", "type": "str=", "value": data.get("model_id", "")},
+                {"field": "model_name", "type": "str=", "value": data.get("model_name", "")},
+            ]
+            exist_items, _ = ag.query_entity(MODEL, conflict_filter, param_type="OR")
             result = ag.create_entity(MODEL, data, CREATE_MODEL_CHECK_ATTR, exist_items)
             classification_info = ClassificationManage.search_model_classification_info(data["classification_id"])
             _ = ag.create_edge(
@@ -671,7 +677,13 @@ class ModelManage(object):
 
         # 一次性创建模型（包含所有属性）
         with GraphClient() as ag:
-            exist_items, _ = ag.query_entity(MODEL, [])
+            # 仅查询与新模型存在唯一性冲突可能的节点（model_id 或 model_name 匹配），
+            # 避免全量加载所有 MODEL 节点做内存比对（O(N) → O(冲突候选数)）。
+            conflict_filter = [
+                {"field": "model_id", "type": "str=", "value": new_model_data.get("model_id", "")},
+                {"field": "model_name", "type": "str=", "value": new_model_data.get("model_name", "")},
+            ]
+            exist_items, _ = ag.query_entity(MODEL, conflict_filter, param_type="OR")
             new_model = ag.create_entity(MODEL, new_model_data, CREATE_MODEL_CHECK_ATTR, exist_items)
 
             # 创建模型与分类的关联

@@ -3,8 +3,6 @@
     overflow: hidden;
 
     .tree {
-        width: 210px;
-        min-width: 210px;
         display: flex;
         flex-direction: column;
         height: calc(100vh - 146px);
@@ -19,11 +17,11 @@
     }
 
     .table {
-        width: calc(100vw - 250px);
+        flex: 1;
+        min-width: 0;
         background: var(--color-bg-1);
         height: calc(100vh - 146px);
         padding: 20px;
-        margin-left: 10px;
 
         .search {
             display: flex;

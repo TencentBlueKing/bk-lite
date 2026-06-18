@@ -41,6 +41,14 @@
         oid = "1.3.6.1.2.1.2.2.1.2"
         name = "ifDescr"
         is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
     # ---- Cisco CPU utilization (CISCO-PROCESS-MIB cpmCPUTotal5minRev) ----
     [[inputs.snmp.table]]
         name = "device_cpu"

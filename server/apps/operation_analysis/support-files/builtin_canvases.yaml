@@ -18,7 +18,7 @@ meta:
     namespaces: 1
 dashboards:
 - key: dashboard::CMDB仪表盘_内置
-  name: CMDB仪表盘_内置
+  name: CMDB仪表盘
   desc: CMDB仪表盘
   other:
     timeSelector:
@@ -26,14 +26,13 @@ dashboards:
       rangePickerVaule: null
   view_sets:
   - h: 3
-    i: 47c8e06b-2023-4f5d-8ca9-e718983234bb
     w: 2
     x: 4
     y: 0
+    id: 47c8e06b-2023-4f5d-8ca9-e718983234bb
     name: cmdb模型分类总数统计
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: CMDB 已定义的模型分类总数
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
@@ -47,14 +46,13 @@ dashboards:
       - color: '#366ce4'
         value: '0'
   - h: 3
-    i: 1a884812-9fd1-4e01-bd95-ef93e58470bf
     w: 2
     x: 0
     y: 0
+    id: 1a884812-9fd1-4e01-bd95-ef93e58470bf
     name: cmdb模型总数统计
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: CMDB 已定义的模型总数
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
@@ -68,14 +66,13 @@ dashboards:
       - color: '#366ce4'
         value: '0'
   - h: 3
-    i: be09cec0-aac6-4d9e-b44c-d7f7e2d75aee
     w: 2
     x: 2
     y: 0
+    id: be09cec0-aac6-4d9e-b44c-d7f7e2d75aee
     name: cmdb实例总数统计
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: CMDB 纳管的实例总数
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
@@ -89,14 +86,13 @@ dashboards:
       - color: '#366ce4'
         value: '0'
   - h: 5
-    i: 08bebde0-1772-4199-8248-016c30bd2b23
     w: 6
     x: 6
     y: 8
+    id: 08bebde0-1772-4199-8248-016c30bd2b23
     name: 主机操作系统分布
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 主机实例按操作系统类型的分布
     valueConfig:
       chartType: pie
       dataSource: 主机操作系统分布::get_instance_group_by
@@ -112,14 +108,13 @@ dashboards:
         alias_name: 分组字段
         filterType: fixed
   - h: 5
-    i: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
     w: 6
     x: 0
     y: 3
+    id: 4df1fa2e-a38d-48e9-b6ca-a16f91f768eb
     name: CMDB 变更趋势
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 时间范围内实例的新增、修改、删除趋势
     valueConfig:
       chartType: line
       dataSource: CMDB 变更趋势::cmdb/get_change_trend
@@ -142,14 +137,13 @@ dashboards:
         alias_name: 模型ID
         filterType: params
   - h: 5
-    i: 7951c963-9fd3-40a4-8169-9463676bdc07
     w: 6
     x: 0
     y: 8
+    id: 7951c963-9fd3-40a4-8169-9463676bdc07
     name: 模型实例统计
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 各模型下的实例数量明细
     valueConfig:
       chartType: table
       dataSource: 模型实例统计::get_model_inst_statistics
@@ -173,14 +167,13 @@ dashboards:
           visible: true
       dataSourceParams: []
   - h: 3
-    i: 8461bad1-524b-499c-aebb-af9ed980aa14
     w: 2
     x: 6
     y: 0
+    id: 8461bad1-524b-499c-aebb-af9ed980aa14
     name: 非空模型数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 实例数大于 0 的模型数量
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
@@ -194,14 +187,13 @@ dashboards:
       - color: '#366CE4'
         value: '0'
   - h: 3
-    i: c02d6a5c-39bf-46e2-95b8-f4f4d46e1352
     w: 2
     x: 8
     y: 0
+    id: c02d6a5c-39bf-46e2-95b8-f4f4d46e1352
     name: 空模型数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 尚无实例的模型数量
     valueConfig:
       chartType: single
       dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
@@ -216,14 +208,13 @@ dashboards:
         value: '0'
       dataSourceParams: []
   - h: 3
-    i: 7e5070ee-514c-4247-997b-aaad9ee81382
     w: 2
     x: 10
     y: 0
+    id: 7e5070ee-514c-4247-997b-aaad9ee81382
     name: 模型覆盖率
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 非空模型在全部模型中的占比
     valueConfig:
       unit: '%'
       chartType: single
@@ -238,14 +229,13 @@ dashboards:
       - color: '#366CE4'
         value: '0'
   - h: 3
-    i: dcbe080f-5973-4215-9ae4-d4c6c1ffd1af
     w: 2
     x: 0
     y: 13
+    id: dcbe080f-5973-4215-9ae4-d4c6c1ffd1af
     name: 采集任务总数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 已配置的采集任务总数
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -259,14 +249,13 @@ dashboards:
       - color: '#366CE4'
         value: '0'
   - h: 3
-    i: 6fb9eb5e-81cc-4888-b484-6bead0b7ea64
     w: 2
     x: 2
     y: 13
+    id: 6fb9eb5e-81cc-4888-b484-6bead0b7ea64
     name: 周期任务数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 开启周期巡检的采集任务数
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -280,14 +269,13 @@ dashboards:
       - color: '#366CE4'
         value: '0'
   - h: 3
-    i: e86497c6-99d1-4245-a925-7d941416d384
     w: 2
     x: 4
     y: 13
+    id: e86497c6-99d1-4245-a925-7d941416d384
     name: 采集成功任务数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 最近一次执行成功的任务数
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -302,14 +290,13 @@ dashboards:
         value: '0'
       dataSourceParams: []
   - h: 3
-    i: 81fb3757-8c04-4e2c-b603-69372e11168c
     w: 2
     x: 6
     y: 13
+    id: 81fb3757-8c04-4e2c-b603-69372e11168c
     name: 运行中任务数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 当前正在执行的采集任务数
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -324,14 +311,13 @@ dashboards:
         value: '0'
       dataSourceParams: []
   - h: 3
-    i: e85bcf55-fe23-4e75-bccb-7f68528ddd4a
     w: 2
     x: 8
     y: 13
+    id: e85bcf55-fe23-4e75-bccb-7f68528ddd4a
     name: 超时任务数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 最近一次执行超时的任务数
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -346,14 +332,13 @@ dashboards:
         value: '0'
       dataSourceParams: []
   - h: 3
-    i: db83c45b-4476-47a9-bd6f-944159fbd476
     w: 2
     x: 10
     y: 13
+    id: db83c45b-4476-47a9-bd6f-944159fbd476
     name: 从未执行的任务数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 创建后从未执行过的任务数
     valueConfig:
       chartType: single
       dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
@@ -368,13 +353,12 @@ dashboards:
         value: '0'
       dataSourceParams: []
   - h: 5
-    i: cef91805-bf1d-4909-a112-4c6a5d7b5823
     w: 6
     x: 6
     y: 3
+    id: cef91805-bf1d-4909-a112-4c6a5d7b5823
     name: CMDB模型实例TOP 5
-    moved: false
-    static: false
+    itemType: widget
     description: 查询实例数最多的模型排行
     valueConfig:
       chartType: topN
@@ -394,12 +378,12 @@ dashboards:
         filterType: params
   refs:
     datasource_keys:
-    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
     - CMDB 变更趋势::cmdb/get_change_trend
-    - 主机操作系统分布::get_instance_group_by
-    - 模型实例统计::get_model_inst_statistics
-    - CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
     - CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
+    - CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
+    - 主机操作系统分布::get_instance_group_by
+    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+    - 模型实例统计::get_model_inst_statistics
     namespace_keys: []
   filters:
   - id: time__timeRange
@@ -413,40 +397,18 @@ dashboards:
       start: '2026-03-23T06:10:42.171Z'
       selectValue: 43200
 - key: dashboard::统一告警中心仪表盘_内置
-  name: 统一告警中心仪表盘_内置
+  name: 统一告警中心仪表盘
   desc: ''
   other: {}
   view_sets:
   - h: 3
-    i: d0a485b5-9f7c-46ae-9c42-717aa5fca81b
-    w: 3
-    x: 3
-    y: 0
-    name: 告警总数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::alert/get_alert_statistics
-      selectedFields:
-      - total_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '20000'
-      - color: '#EAB839'
-        value: '10000'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: 99ff96a3-2055-4932-b882-bc2b896cc1e7
     w: 3
     x: 0
     y: 0
+    id: 99ff96a3-2055-4932-b882-bc2b896cc1e7
     name: 告警事件总数
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 统计周期内接收的原始事件总数
     valueConfig:
       chartType: single
       dataSource: 告警统计概览::alert/get_alert_statistics
@@ -460,35 +422,93 @@ dashboards:
       - color: '#366CE4'
         value: '0'
   - h: 3
-    i: 5c2735d3-5449-4d29-871d-545eaf7b24b9
     w: 3
-    x: 9
-    y: 3
-    name: 会话告警占比
-    moved: false
-    static: false
-    description: 会话类告警在全部告警中的占比
+    x: 3
+    y: 0
+    id: d0a485b5-9f7c-46ae-9c42-717aa5fca81b
+    name: 告警总数
+    itemType: widget
+    description: 统计周期内产生的告警总数
     valueConfig:
-      unit: '%'
       chartType: single
       dataSource: 告警统计概览::alert/get_alert_statistics
       selectedFields:
-      - session_alert_rate
+      - total_count
       thresholdColors:
       - color: '#fd666d'
-        value: '7000'
-      - color: '#000000'
-        value: '3000'
-      - color: '#000000'
+        value: '20000'
+      - color: '#EAB839'
+        value: '10000'
+      - color: '#366CE4'
         value: '0'
   - h: 3
-    i: 00529616-16d3-4be3-8a7f-463a175f8c53
+    w: 3
+    x: 6
+    y: 0
+    id: 8b710945-88a5-42d3-8fdd-a52507f54fe4
+    name: 事故总数
+    itemType: widget
+    description: 由告警升级形成的事故总数
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::alert/get_alert_statistics
+      selectedFields:
+      - incident_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 0
+    id: 02ed505a-d71b-4bbc-82c8-4a5338596c37
+    name: 活跃告警数
+    itemType: widget
+    description: 当前未关闭的活跃告警数
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::alert/get_alert_statistics
+      selectedFields:
+      - active_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams: []
+  - h: 3
+    w: 3
+    x: 0
+    y: 3
+    id: 0488514c-4381-408f-95c3-a645b010bdb1
+    name: 自动恢复告警数
+    itemType: widget
+    description: 自动恢复状态的告警数
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::alert/get_alert_statistics
+      selectedFields:
+      - auto_recovery_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
     w: 3
     x: 3
     y: 3
+    id: 00529616-16d3-4be3-8a7f-463a175f8c53
     name: 自动恢复占比
-    moved: false
-    static: false
+    itemType: widget
     description: 自动恢复状态告警在全部告警中的占比
     valueConfig:
       unit: '%'
@@ -503,15 +523,55 @@ dashboards:
         value: '30'
       - color: '#000000'
         value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 3
+    id: f6ddd2a0-2adc-4e20-9513-f6ebb7426211
+    name: 聚合倍率
+    itemType: widget
+    description: 事件总数 / 告警总数，用于反映事件聚合程度
+    valueConfig:
+      chartType: single
+      dataSource: 告警统计概览::alert/get_alert_statistics
+      selectedFields:
+      - aggregation_ratio
+      thresholdColors:
+      - color: '#fd666d'
+        value: '700'
+      - color: '#000000'
+        value: '300'
+      - color: '#000000'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 3
+    id: 5c2735d3-5449-4d29-871d-545eaf7b24b9
+    name: 会话告警占比
+    itemType: widget
+    description: 会话类告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 告警统计概览::alert/get_alert_statistics
+      selectedFields:
+      - session_alert_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '7000'
+      - color: '#000000'
+        value: '3000'
+      - color: '#000000'
+        value: '0'
   - h: 5
-    i: 586576ee-f427-4c56-9e8a-6777c95c1290
     w: 7
     x: 0
     y: 6
+    id: 586576ee-f427-4c56-9e8a-6777c95c1290
     name: 告警趋势数据
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 告警数量随时间的变化趋势
     valueConfig:
       chartType: line
       dataSource: 告警趋势数据::get_alert_trend_data
@@ -529,14 +589,13 @@ dashboards:
         alias_name: time
         filterType: filter
   - h: 5
-    i: 85bfbc48-c2b7-4621-99ca-621818d656f9
     w: 5
     x: 7
     y: 6
+    id: 85bfbc48-c2b7-4621-99ca-621818d656f9
     name: 告警等级分布
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 活跃告警按告警等级的分布
     valueConfig:
       chartType: pie
       dataSource: 告警等级分布::get_alert_level_distribution
@@ -546,15 +605,344 @@ dashboards:
         value: active
         alias_name: 过滤条件
         filterType: params
-  - h: 8
-    i: 739e9aab-809e-42c6-901a-ca6d664db676
+  - h: 6
+    w: 6
+    x: 0
+    y: 11
+    id: ad522899-2fc5-4b7a-875e-19004c33a425
+    name: 告警源事件数 TOP 5
+    itemType: widget
+    description: 事件数最多的告警源排行
+    valueConfig:
+      chartType: topN
+      dataSource: 告警源事件数 TOP N::alert/get_alert_source_event_top
+      topNLabelField: '0'
+      topNValueField: '1'
+      dataSourceParams:
+      - name: limit
+        type: string
+        value: '5'
+        alias_name: 限制
+        filterType: params
+  - h: 3
+    w: 3
+    x: 6
+    y: 11
+    id: e7b15832-9734-4eff-ae1b-96dc5148d286
+    name: 告警源总数
+    itemType: widget
+    description: 已接入的告警源总数
+    valueConfig:
+      compare: false
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - total_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 11
+    id: 190cbce2-33d1-4755-a85d-ea781c898920
+    name: 已启用告警源数
+    itemType: widget
+    description: 处于启用状态的告警源数
+    valueConfig:
+      compare: false
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - enabled_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 14
+    id: 083e3d04-08d6-4100-9d02-6bdb4a4e5a6f
+    name: 活跃告警源数
+    itemType: widget
+    description: 近期有事件上报的告警源数
+    valueConfig:
+      compare: false
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - active_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 14
+    id: a3538b40-7c46-475d-a3d9-927b8f2d7098
+    name: 告警源启用率
+    itemType: widget
+    description: 已启用告警源在全部告警源中的占比
+    valueConfig:
+      unit: '%'
+      compare: false
+      chartType: single
+      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - enabled_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '200'
+      - color: '#EAB839'
+        value: '100'
+      - color: '#366CE4'
+        value: '0'
+  - h: 6
+    w: 6
+    x: 0
+    y: 17
+    id: 80a6b436-a8c3-44f0-a054-905fb3f08a3d
+    name: 按渠道通知成功率
+    itemType: widget
+    description: 各通知渠道的通知成功率对比
+    valueConfig:
+      chartType: bar
+      dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
+      filterBindings:
+        time__timeRange: true
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    w: 3
+    x: 6
+    y: 20
+    id: af0ee431-54a4-4fcb-8ae4-43a7666a5aed
+    name: 通知失败数
+    itemType: widget
+    description: 统计周期内发送失败的通知数
+    valueConfig:
+      compare: true
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - failed_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 20
+    id: 38cbdb62-671c-48a6-a883-2c41a97882f2
+    name: 通知失败率
+    itemType: widget
+    description: 发送失败的通知在全部通知中的占比
+    valueConfig:
+      unit: '%'
+      compare: true
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: false
+      selectedFields:
+      - failed_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 0
+    y: 23
+    id: 9fb91936-d18b-4583-b14b-d9ae04d6bb10
+    name: 缺少规则ID事件占比
+    itemType: widget
+    description: 缺少规则 ID 的告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      compare: false
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - missing_rule_id_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 3
+    y: 23
+    id: aede04f0-83f3-4fc6-b804-a2772c640623
+    name: 缺少资源ID事件占比
+    itemType: widget
+    description: 缺少资源 ID 的告警在全部告警中的占比
+    valueConfig:
+      unit: '%'
+      compare: false
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - missing_resource_id_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '700'
+      - color: '#EAB839'
+        value: '300'
+      - color: '#366CE4'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 17
+    id: 063b6d01-ec91-4218-b6ad-9f34c82ea94b
+    name: 通知成功数
+    itemType: widget
+    description: 统计周期内发送成功的通知数
+    valueConfig:
+      compare: true
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - success_count
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 17
+    id: fb51e119-3763-4a99-844f-274fa6c50577
+    name: 通知成功率
+    itemType: widget
+    description: 成功发送的通知在全部通知中的占比
+    valueConfig:
+      compare: true
+      chartType: single
+      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - success_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 23
+    id: 356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87
+    name: 缺少指标项事件占比
+    itemType: widget
+    description: 缺少指标项的事件在全部事件中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - missing_item_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '700'
+      - color: '#EAB839'
+        value: '300'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 3
+    w: 3
+    x: 9
+    y: 23
+    id: 8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6
+    name: 缺少外部事件ID占比
+    itemType: widget
+    description: 缺少外部事件 ID 的事件在全部事件中的占比
+    valueConfig:
+      unit: '%'
+      chartType: single
+      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
+      filterBindings:
+        time__timeRange: true
+      selectedFields:
+      - missing_external_id_rate
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#366CE4'
+        value: '0'
+      dataSourceParams:
+      - name: time
+        type: timeRange
+        value: 10080
+        alias_name: 时间
+        filterType: params
+  - h: 6
     w: 12
     x: 0
     y: 26
+    id: 739e9aab-809e-42c6-901a-ca6d664db676
     name: 活跃告警 TOP 10
-    moved: false
-    static: false
-    description: ''
+    itemType: widget
+    description: 持续时间最长的活跃告警排行
     valueConfig:
       chartType: table
       dataSource: 活跃告警 TOP N::get_active_alert_top
@@ -594,446 +982,17 @@ dashboards:
         value: '10'
         alias_name: 返回数量
         filterType: params
-  - h: 5
-    i: ad522899-2fc5-4b7a-875e-19004c33a425
-    w: 6
-    x: 0
-    y: 11
-    name: 告警源事件数 TOP 5
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: topN
-      dataSource: 告警源事件数 TOP N::alert/get_alert_source_event_top
-      topNLabelField: '0'
-      topNValueField: '1'
-      dataSourceParams:
-      - name: limit
-        type: string
-        value: '5'
-        alias_name: 限制
-        filterType: params
-  - h: 3
-    i: 0488514c-4381-408f-95c3-a645b010bdb1
-    w: 3
-    x: 0
-    y: 3
-    name: 自动恢复告警数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::alert/get_alert_statistics
-      selectedFields:
-      - auto_recovery_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: e7b15832-9734-4eff-ae1b-96dc5148d286
-    w: 3
-    x: 6
-    y: 11
-    name: 告警源总数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      compare: false
-      chartType: single
-      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - total_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: a3538b40-7c46-475d-a3d9-927b8f2d7098
-    w: 3
-    x: 9
-    y: 14
-    name: 告警源启用率
-    moved: false
-    static: false
-    description: 已启用告警源在全部告警源中的占比
-    valueConfig:
-      unit: '%'
-      compare: false
-      chartType: single
-      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - enabled_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '200'
-      - color: '#EAB839'
-        value: '100'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: 083e3d04-08d6-4100-9d02-6bdb4a4e5a6f
-    w: 3
-    x: 6
-    y: 14
-    name: 活跃告警源数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      compare: false
-      chartType: single
-      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - active_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 4
-    i: 063b6d01-ec91-4218-b6ad-9f34c82ea94b
-    w: 3
-    x: 6
-    y: 22
-    name: 通知成功数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      compare: true
-      chartType: single
-      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - success_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#67a567'
-        value: '0'
-  - h: 5
-    i: af0ee431-54a4-4fcb-8ae4-43a7666a5aed
-    w: 3
-    x: 6
-    y: 17
-    name: 通知失败数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      compare: true
-      chartType: single
-      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - failed_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 5
-    i: 38cbdb62-671c-48a6-a883-2c41a97882f2
-    w: 3
-    x: 9
-    y: 17
-    name: 通知失败率
-    moved: false
-    static: false
-    description: 发送失败的通知在全部通知中的占比
-    valueConfig:
-      unit: '%'
-      compare: true
-      chartType: single
-      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
-      filterBindings:
-        time__timeRange: false
-      selectedFields:
-      - failed_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 4
-    i: 80a6b436-a8c3-44f0-a054-905fb3f08a3d
-    w: 6
-    x: 0
-    y: 16
-    name: 按渠道通知成功率
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: bar
-      dataSource: 按渠道通知成功率::alert/get_notification_channel_stats
-      filterBindings:
-        time__timeRange: true
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
-  - h: 3
-    i: aede04f0-83f3-4fc6-b804-a2772c640623
-    w: 3
-    x: 3
-    y: 23
-    name: 缺少资源ID事件占比
-    moved: false
-    static: false
-    description: 缺少资源 ID 的告警在全部告警中的占比
-    valueConfig:
-      unit: '%'
-      compare: false
-      chartType: single
-      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - missing_resource_id_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '700'
-      - color: '#EAB839'
-        value: '300'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: 9fb91936-d18b-4583-b14b-d9ae04d6bb10
-    w: 3
-    x: 0
-    y: 23
-    name: 缺少规则ID事件占比
-    moved: false
-    static: false
-    description: 缺少规则 ID 的告警在全部告警中的占比
-    valueConfig:
-      unit: '%'
-      compare: false
-      chartType: single
-      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - missing_rule_id_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: 8c4c5cb4-dfd9-4b01-9baa-33a9f758a4b6
-    w: 3
-    x: 3
-    y: 20
-    name: 缺少外部事件ID占比
-    moved: false
-    static: false
-    description: 缺少外部事件 ID 的事件在全部事件中的占比
-    valueConfig:
-      unit: '%'
-      chartType: single
-      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - missing_external_id_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
-  - h: 3
-    i: 356ec2d9-0bf2-4d03-aa0b-dda3d9d7cf87
-    w: 3
-    x: 0
-    y: 20
-    name: 缺少指标项事件占比
-    moved: false
-    static: false
-    description: 缺少指标项的事件在全部事件中的占比
-    valueConfig:
-      unit: '%'
-      chartType: single
-      dataSource: 数据完整性（缺失率）::alert/get_alert_data_quality
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - missing_item_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '700'
-      - color: '#EAB839'
-        value: '300'
-      - color: '#366CE4'
-        value: '0'
-      dataSourceParams:
-      - name: time
-        type: timeRange
-        value: 10080
-        alias_name: 时间
-        filterType: params
-  - h: 3
-    i: f6ddd2a0-2adc-4e20-9513-f6ebb7426211
-    w: 3
-    x: 6
-    y: 3
-    name: 聚合倍率
-    moved: false
-    static: false
-    description: 事件总数 / 告警总数，用于反映事件聚合程度
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::alert/get_alert_statistics
-      selectedFields:
-      - aggregation_ratio
-      thresholdColors:
-      - color: '#fd666d'
-        value: '700'
-      - color: '#000000'
-        value: '300'
-      - color: '#000000'
-        value: '0'
-  - h: 3
-    i: 8b710945-88a5-42d3-8fdd-a52507f54fe4
-    w: 3
-    x: 6
-    y: 0
-    name: 事故总数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::alert/get_alert_statistics
-      selectedFields:
-      - incident_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 3
-    i: 02ed505a-d71b-4bbc-82c8-4a5338596c37
-    w: 3
-    x: 9
-    y: 0
-    name: 活跃告警数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      chartType: single
-      dataSource: 告警统计概览::alert/get_alert_statistics
-      selectedFields:
-      - active_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-      dataSourceParams: []
-  - h: 3
-    i: 190cbce2-33d1-4755-a85d-ea781c898920
-    w: 3
-    x: 9
-    y: 11
-    name: 已启用告警源数
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      compare: false
-      chartType: single
-      dataSource: 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - enabled_count
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#366CE4'
-        value: '0'
-  - h: 4
-    i: fb51e119-3763-4a99-844f-274fa6c50577
-    w: 3
-    x: 9
-    y: 22
-    name: 通知成功率
-    moved: false
-    static: false
-    description: ''
-    valueConfig:
-      compare: true
-      chartType: single
-      dataSource: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
-      filterBindings:
-        time__timeRange: true
-      selectedFields:
-      - success_rate
-      thresholdColors:
-      - color: '#fd666d'
-        value: '70'
-      - color: '#EAB839'
-        value: '30'
-      - color: '#67a567'
-        value: '0'
   refs:
     datasource_keys:
+    - 告警源事件数 TOP N::alert/get_alert_source_event_top
+    - 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
     - 告警等级分布::get_alert_level_distribution
     - 告警统计概览::alert/get_alert_statistics
     - 告警趋势数据::get_alert_trend_data
-    - 告警源事件数 TOP N::alert/get_alert_source_event_top
-    - 告警源总数/启用率/活跃数::alert/get_alert_source_statistics
     - 按渠道通知成功率::alert/get_notification_channel_stats
     - 数据完整性（缺失率）::alert/get_alert_data_quality
-    - 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
     - 活跃告警 TOP N::get_active_alert_top
+    - 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
     namespace_keys: []
   filters:
   - id: time__timeRange
@@ -1047,100 +1006,705 @@ dashboards:
       start: '2026-04-18T09:16:29.990Z'
       selectValue: 43200
 - key: dashboard::监控中心仪表盘_内置
-  name: 监控中心仪表盘_内置
+  name: 监控中心仪表盘
   desc: 监控中心资源/能力/告警总览
   other:
     timeSelector:
       selectValue: 10080
       rangePickerVaule: null
   view_sets:
-  # ===== 资源概览 (y=0..5, 一行 3 个，w=4 大卡) =====
-  - {h: 3, w: 4, x: 0, y: 0, i: mon-stat-r01, name: 监控对象总数, moved: false, static: false, description: '系统已定义的全部监控对象',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_object_total],
-       thresholdColors: [{color: '#366ce4', value: '70'}, {color: '#366ce4', value: '30'}, {color: '#366ce4', value: '0'}]}}
-  - {h: 3, w: 4, x: 4, y: 0, i: mon-stat-r02, name: 可见监控对象数, moved: false, static: false, description: '当前用户可见的监控对象',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_object_visible],
-       thresholdColors: [{color: '#366ce4', value: '70'}, {color: '#366ce4', value: '30'}, {color: '#366ce4', value: '0'}]}}
-  - {h: 3, w: 4, x: 8, y: 0, i: mon-stat-r03, name: 监控对象分类数, moved: false, static: false, description: '对象按类型划分的分类数',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_object_category],
-       thresholdColors: [{color: '#366ce4', value: '70'}, {color: '#366ce4', value: '30'}, {color: '#366ce4', value: '0'}]}}
-  - {h: 3, w: 4, x: 0, y: 3, i: mon-stat-r04, name: 监控实例总数, moved: false, static: false, description: '接入监控的实例总数',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_instance_total],
-       thresholdColors: [{color: '#366ce4', value: '70'}, {color: '#366ce4', value: '30'}, {color: '#366ce4', value: '0'}]}}
-  - {h: 3, w: 4, x: 4, y: 3, i: mon-stat-r05, name: 活跃实例数, moved: false, static: false, description: '当前启用中的监控实例',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_instance_active],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 4, x: 8, y: 3, i: mon-stat-r06, name: 停用实例数, moved: false, static: false, description: '当前已停用的监控实例',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [monitor_instance_inactive],
-       thresholdColors: [{color: '#EAB839', value: '70'}, {color: '#EAB839', value: '30'}, {color: '#EAB839', value: '0'}]}}
-  # ===== 能力概览 (y=6..8, 一行 6 个，w=2 紧凑) =====
-  - {h: 3, w: 2, x: 0,  y: 6, i: mon-stat-c01, name: 监控插件总数, moved: false, static: false, description: '已注册的监控插件总数',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [plugin_total],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 2, x: 2,  y: 6, i: mon-stat-c02, name: 内置插件数, moved: false, static: false, description: '系统预置的标准插件',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [plugin_builtin],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 2, x: 4,  y: 6, i: mon-stat-c03, name: 自定义插件数, moved: false, static: false, description: '用户自定义的扩展插件',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [plugin_custom],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 2, x: 6,  y: 6, i: mon-stat-c04, name: 指标定义总数, moved: false, static: false, description: '系统已定义的指标条目',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [metric_total],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 2, x: 8,  y: 6, i: mon-stat-c05, name: 指标分组总数, moved: false, static: false, description: '指标分组的数量',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [metric_group_total],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 2, x: 10, y: 6, i: mon-stat-c06, name: 采集配置总数, moved: false, static: false, description: '已配置的采集任务总数',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [collect_config_total],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  # ===== 告警概览 (y=9.., 一行 4 个，w=3 标准) =====
-  - {h: 3, w: 3, x: 0, y: 9, i: mon-stat-a01, name: 当前告警总数, moved: false, static: false, description: '尚未处理的活跃告警',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [alert_current],
-       thresholdColors: [{color: '#fd666d', value: '70'}, {color: '#fd666d', value: '30'}, {color: '#fd666d', value: '0'}]}}
-  - {h: 3, w: 3, x: 3, y: 9, i: mon-stat-a02, name: 历史告警总数, moved: false, static: false, description: '系统累计产生的告警',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [alert_history],
-       thresholdColors: [{color: '#fd9c40', value: '70'}, {color: '#fd9c40', value: '30'}, {color: '#fd9c40', value: '0'}]}}
-  - {h: 3, w: 3, x: 6, y: 9, i: mon-stat-a03, name: 今日新增告警数, moved: false, static: false, description: '今日 0 点起新产生的告警',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [alert_today],
-       thresholdColors: [{color: '#fd666d', value: '70'}, {color: '#fd666d', value: '30'}, {color: '#fd666d', value: '0'}]}}
-  - {h: 3, w: 3, x: 9, y: 9, i: mon-stat-a04, name: 告警策略总数, moved: false, static: false, description: '已配置的告警策略总数',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [policy_total],
-       thresholdColors: [{color: '#fd9c40', value: '70'}, {color: '#fd9c40', value: '30'}, {color: '#fd9c40', value: '0'}]}}
-  - {h: 3, w: 3, x: 0, y: 12, i: mon-stat-a05, name: 启用策略数, moved: false, static: false, description: '处于启用状态的策略',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [policy_enabled],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 3, x: 3, y: 12, i: mon-stat-a06, name: 禁用策略数, moved: false, static: false, description: '处于禁用状态的策略',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [policy_disabled],
-       thresholdColors: [{color: '#EAB839', value: '70'}, {color: '#EAB839', value: '30'}, {color: '#EAB839', value: '0'}]}}
-  - {h: 3, w: 3, x: 6, y: 12, i: mon-stat-a07, name: 阈值策略数, moved: false, static: false, description: '配置了阈值条件的策略',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [policy_threshold],
-       thresholdColors: [{color: '#fd9c40', value: '70'}, {color: '#fd9c40', value: '30'}, {color: '#fd9c40', value: '0'}]}}
-  - {h: 3, w: 3, x: 9, y: 12, i: mon-stat-a08, name: 无数据策略数, moved: false, static: false, description: '启用无数据检测的策略',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [policy_no_data],
-       thresholdColors: [{color: '#EAB839', value: '70'}, {color: '#EAB839', value: '30'}, {color: '#EAB839', value: '0'}]}}
-  - {h: 3, w: 3, x: 0, y: 15, i: mon-stat-a09, name: 已恢复告警数, moved: false, static: false, description: '已自动恢复的告警',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [alert_recovered],
-       thresholdColors: [{color: '#67a567', value: '70'}, {color: '#67a567', value: '30'}, {color: '#67a567', value: '0'}]}}
-  - {h: 3, w: 3, x: 3, y: 15, i: mon-stat-a10, name: 已关闭告警数, moved: false, static: false, description: '已被人工关闭的告警',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [alert_closed],
-       thresholdColors: [{color: '#bfbfbf', value: '70'}, {color: '#bfbfbf', value: '30'}, {color: '#bfbfbf', value: '0'}]}}
-  - {h: 3, w: 3, x: 6, y: 15, i: mon-stat-a11, name: 监控事件总数, moved: false, static: false, description: '累计产生的监控事件',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [event_total],
-       thresholdColors: [{color: '#9254de', value: '70'}, {color: '#9254de', value: '30'}, {color: '#9254de', value: '0'}]}}
-  - {h: 3, w: 3, x: 9, y: 15, i: mon-stat-a12, name: 今日新增事件数, moved: false, static: false, description: '今日 0 点起新增的事件',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [event_today],
-       thresholdColors: [{color: '#9254de', value: '70'}, {color: '#9254de', value: '30'}, {color: '#9254de', value: '0'}]}}
-  - {h: 3, w: 3, x: 0, y: 18, i: mon-stat-a13, name: 告警快照总数, moved: false, static: false, description: '告警全周期快照记录',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [alert_snapshot_total],
-       thresholdColors: [{color: '#36cfc9', value: '70'}, {color: '#36cfc9', value: '30'}, {color: '#36cfc9', value: '0'}]}}
-  - {h: 3, w: 3, x: 3, y: 18, i: mon-stat-a14, name: 无数据基准总数, moved: false, static: false, description: '无数据检测的实例基准',
-     valueConfig: {chartType: single, dataSource: '监控中心总览统计::monitor/get_monitor_statistics', selectedFields: [no_data_baseline_total],
-       thresholdColors: [{color: '#36cfc9', value: '70'}, {color: '#36cfc9', value: '30'}, {color: '#36cfc9', value: '0'}]}}
+  - h: 3
+    w: 4
+    x: 0
+    y: 0
+    id: mon-stat-r01
+    name: 监控对象总数
+    itemType: widget
+    description: 系统已定义的全部监控对象
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - monitor_object_total
+      thresholdColors:
+      - color: '#366ce4'
+        value: '70'
+      - color: '#366ce4'
+        value: '30'
+      - color: '#366ce4'
+        value: '0'
+  - h: 3
+    w: 4
+    x: 4
+    y: 0
+    id: mon-stat-r02
+    name: 可见监控对象数
+    itemType: widget
+    description: 当前用户可见的监控对象
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - monitor_object_visible
+      thresholdColors:
+      - color: '#366ce4'
+        value: '70'
+      - color: '#366ce4'
+        value: '30'
+      - color: '#366ce4'
+        value: '0'
+  - h: 3
+    w: 4
+    x: 8
+    y: 0
+    id: mon-stat-r03
+    name: 监控对象分类数
+    itemType: widget
+    description: 对象按类型划分的分类数
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - monitor_object_category
+      thresholdColors:
+      - color: '#366ce4'
+        value: '70'
+      - color: '#366ce4'
+        value: '30'
+      - color: '#366ce4'
+        value: '0'
+  - h: 3
+    w: 4
+    x: 0
+    y: 3
+    id: mon-stat-r04
+    name: 监控实例总数
+    itemType: widget
+    description: 接入监控的实例总数
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - monitor_instance_total
+      thresholdColors:
+      - color: '#366ce4'
+        value: '70'
+      - color: '#366ce4'
+        value: '30'
+      - color: '#366ce4'
+        value: '0'
+  - h: 3
+    w: 4
+    x: 4
+    y: 3
+    id: mon-stat-r05
+    name: 活跃实例数
+    itemType: widget
+    description: 当前启用中的监控实例
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - monitor_instance_active
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 4
+    x: 8
+    y: 3
+    id: mon-stat-r06
+    name: 停用实例数
+    itemType: widget
+    description: 当前已停用的监控实例
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - monitor_instance_inactive
+      thresholdColors:
+      - color: '#EAB839'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#EAB839'
+        value: '0'
+  - h: 3
+    w: 2
+    x: 0
+    y: 6
+    id: mon-stat-c01
+    name: 监控插件总数
+    itemType: widget
+    description: 已注册的监控插件总数
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - plugin_total
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 2
+    x: 2
+    y: 6
+    id: mon-stat-c02
+    name: 内置插件数
+    itemType: widget
+    description: 系统预置的标准插件
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - plugin_builtin
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 2
+    x: 4
+    y: 6
+    id: mon-stat-c03
+    name: 自定义插件数
+    itemType: widget
+    description: 用户自定义的扩展插件
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - plugin_custom
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 2
+    x: 6
+    y: 6
+    id: mon-stat-c04
+    name: 指标定义总数
+    itemType: widget
+    description: 系统已定义的指标条目
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - metric_total
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 2
+    x: 8
+    y: 6
+    id: mon-stat-c05
+    name: 指标分组总数
+    itemType: widget
+    description: 指标分组的数量
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - metric_group_total
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 2
+    x: 10
+    y: 6
+    id: mon-stat-c06
+    name: 采集配置总数
+    itemType: widget
+    description: 已配置的采集任务总数
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - collect_config_total
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 0
+    y: 9
+    id: mon-stat-a01
+    name: 当前告警总数
+    itemType: widget
+    description: 尚未处理的活跃告警
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - alert_current
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#fd666d'
+        value: '30'
+      - color: '#fd666d'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 3
+    y: 9
+    id: mon-stat-a02
+    name: 历史告警总数
+    itemType: widget
+    description: 系统累计产生的告警
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - alert_history
+      thresholdColors:
+      - color: '#fd9c40'
+        value: '70'
+      - color: '#fd9c40'
+        value: '30'
+      - color: '#fd9c40'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 9
+    id: mon-stat-a03
+    name: 今日新增告警数
+    itemType: widget
+    description: 今日 0 点起新产生的告警
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - alert_today
+      thresholdColors:
+      - color: '#fd666d'
+        value: '70'
+      - color: '#fd666d'
+        value: '30'
+      - color: '#fd666d'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 9
+    id: mon-stat-a04
+    name: 告警策略总数
+    itemType: widget
+    description: 已配置的告警策略总数
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - policy_total
+      thresholdColors:
+      - color: '#fd9c40'
+        value: '70'
+      - color: '#fd9c40'
+        value: '30'
+      - color: '#fd9c40'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 0
+    y: 12
+    id: mon-stat-a05
+    name: 启用策略数
+    itemType: widget
+    description: 处于启用状态的策略
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - policy_enabled
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 3
+    y: 12
+    id: mon-stat-a06
+    name: 禁用策略数
+    itemType: widget
+    description: 处于禁用状态的策略
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - policy_disabled
+      thresholdColors:
+      - color: '#EAB839'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#EAB839'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 12
+    id: mon-stat-a07
+    name: 阈值策略数
+    itemType: widget
+    description: 配置了阈值条件的策略
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - policy_threshold
+      thresholdColors:
+      - color: '#fd9c40'
+        value: '70'
+      - color: '#fd9c40'
+        value: '30'
+      - color: '#fd9c40'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 12
+    id: mon-stat-a08
+    name: 无数据策略数
+    itemType: widget
+    description: 启用无数据检测的策略
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - policy_no_data
+      thresholdColors:
+      - color: '#EAB839'
+        value: '70'
+      - color: '#EAB839'
+        value: '30'
+      - color: '#EAB839'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 0
+    y: 15
+    id: mon-stat-a09
+    name: 已恢复告警数
+    itemType: widget
+    description: 已自动恢复的告警
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - alert_recovered
+      thresholdColors:
+      - color: '#67a567'
+        value: '70'
+      - color: '#67a567'
+        value: '30'
+      - color: '#67a567'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 3
+    y: 15
+    id: mon-stat-a10
+    name: 已关闭告警数
+    itemType: widget
+    description: 已被人工关闭的告警
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - alert_closed
+      thresholdColors:
+      - color: '#bfbfbf'
+        value: '70'
+      - color: '#bfbfbf'
+        value: '30'
+      - color: '#bfbfbf'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 6
+    y: 15
+    id: mon-stat-a11
+    name: 监控事件总数
+    itemType: widget
+    description: 累计产生的监控事件
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - event_total
+      thresholdColors:
+      - color: '#9254de'
+        value: '70'
+      - color: '#9254de'
+        value: '30'
+      - color: '#9254de'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 9
+    y: 15
+    id: mon-stat-a12
+    name: 今日新增事件数
+    itemType: widget
+    description: 今日 0 点起新增的事件
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - event_today
+      thresholdColors:
+      - color: '#9254de'
+        value: '70'
+      - color: '#9254de'
+        value: '30'
+      - color: '#9254de'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 0
+    y: 18
+    id: mon-stat-a13
+    name: 告警快照总数
+    itemType: widget
+    description: 告警全周期快照记录
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - alert_snapshot_total
+      thresholdColors:
+      - color: '#36cfc9'
+        value: '70'
+      - color: '#36cfc9'
+        value: '30'
+      - color: '#36cfc9'
+        value: '0'
+  - h: 3
+    w: 3
+    x: 3
+    y: 18
+    id: mon-stat-a14
+    name: 无数据基准总数
+    itemType: widget
+    description: 无数据检测的实例基准
+    valueConfig:
+      chartType: single
+      dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+      selectedFields:
+      - no_data_baseline_total
+      thresholdColors:
+      - color: '#36cfc9'
+        value: '70'
+      - color: '#36cfc9'
+        value: '30'
+      - color: '#36cfc9'
+        value: '0'
   refs:
     datasource_keys:
     - 监控中心总览统计::monitor/get_monitor_statistics
     namespace_keys: []
   filters: []
-topologies: []
+topologies:
+- key: topology::运营健康拓扑_内置
+  name: 运营健康拓扑_内置
+  desc: CMDB / 监控中心 / 告警中心 三中心运营健康总览拓扑
+  other: {}
+  view_sets:
+    nodes:
+    - id: ht-hub
+      type: text
+      name: 平台运营健康总览
+      position: {x: 470, y: 20}
+      zIndex: 2
+      styleConfig: {fontSize: 18, fontWeight: bold, textColor: '#1f1f1f', backgroundColor: '#e6f0ff', borderColor: '#366ce4'}
+    - id: ht-cmdb-hdr
+      type: text
+      name: CMDB 资产
+      position: {x: 100, y: 150}
+      zIndex: 1
+      styleConfig: {fontSize: 15, fontWeight: bold, textColor: '#ffffff', backgroundColor: '#366ce4', borderColor: '#366ce4'}
+    - id: ht-mon-hdr
+      type: text
+      name: 监控中心
+      position: {x: 470, y: 150}
+      zIndex: 1
+      styleConfig: {fontSize: 15, fontWeight: bold, textColor: '#ffffff', backgroundColor: '#67a567', borderColor: '#67a567'}
+    - id: ht-alert-hdr
+      type: text
+      name: 告警中心
+      position: {x: 840, y: 150}
+      zIndex: 1
+      styleConfig: {fontSize: 15, fontWeight: bold, textColor: '#ffffff', backgroundColor: '#fd666d', borderColor: '#fd666d'}
+    - id: ht-cmdb-inst
+      type: single-value
+      name: 实例总数
+      position: {x: 30, y: 280}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+        selectedFields: [instance_count]
+      styleConfig:
+        thresholdColors:
+        - {color: '#366ce4', value: '0'}
+    - id: ht-cmdb-model
+      type: single-value
+      name: 模型总数
+      position: {x: 180, y: 280}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+        selectedFields: [model_count]
+      styleConfig:
+        thresholdColors:
+        - {color: '#366ce4', value: '0'}
+    - id: ht-cmdb-cov
+      type: single-value
+      name: 模型覆盖率
+      unit: '%'
+      position: {x: 105, y: 400}
+      zIndex: 1
+      valueConfig:
+        unit: '%'
+        chartType: single
+        dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+        selectedFields: [model_coverage_rate]
+      styleConfig:
+        thresholdColors:
+        - {color: '#67a567', value: '80'}
+        - {color: '#EAB839', value: '50'}
+        - {color: '#fd666d', value: '0'}
+    - id: ht-mon-inst
+      type: single-value
+      name: 监控实例
+      position: {x: 400, y: 280}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+        selectedFields: [monitor_instance_total]
+      styleConfig:
+        thresholdColors:
+        - {color: '#67a567', value: '0'}
+    - id: ht-mon-alert
+      type: single-value
+      name: 当前告警
+      position: {x: 550, y: 280}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+        selectedFields: [alert_current]
+      styleConfig:
+        thresholdColors:
+        - {color: '#fd666d', value: '1'}
+        - {color: '#67a567', value: '0'}
+    - id: ht-mon-policy
+      type: single-value
+      name: 告警策略
+      position: {x: 475, y: 400}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
+        selectedFields: [policy_total]
+      styleConfig:
+        thresholdColors:
+        - {color: '#67a567', value: '0'}
+    - id: ht-alert-active
+      type: single-value
+      name: 活跃告警
+      position: {x: 770, y: 280}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        selectedFields: [active_count]
+      styleConfig:
+        thresholdColors:
+        - {color: '#fd666d', value: '1'}
+        - {color: '#67a567', value: '0'}
+    - id: ht-alert-total
+      type: single-value
+      name: 告警总数
+      position: {x: 920, y: 280}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        selectedFields: [total_count]
+      styleConfig:
+        thresholdColors:
+        - {color: '#fd9c40', value: '0'}
+    - id: ht-alert-event
+      type: single-value
+      name: 事件总数
+      position: {x: 845, y: 400}
+      zIndex: 1
+      valueConfig:
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        selectedFields: [event_count]
+      styleConfig:
+        thresholdColors:
+        - {color: '#9254de', value: '0'}
+    edges:
+    - {id: ht-e-hub-cmdb, source: ht-hub, target: ht-cmdb-hdr, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-hub-mon, source: ht-hub, target: ht-mon-hdr, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-hub-alert, source: ht-hub, target: ht-alert-hdr, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-cmdb-inst, source: ht-cmdb-hdr, target: ht-cmdb-inst, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-cmdb-model, source: ht-cmdb-hdr, target: ht-cmdb-model, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-cmdb-cov, source: ht-cmdb-hdr, target: ht-cmdb-cov, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-mon-inst, source: ht-mon-hdr, target: ht-mon-inst, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-mon-alert, source: ht-mon-hdr, target: ht-mon-alert, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-mon-policy, source: ht-mon-hdr, target: ht-mon-policy, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-alert-active, source: ht-alert-hdr, target: ht-alert-active, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-alert-total, source: ht-alert-hdr, target: ht-alert-total, lineType: common_line, arrowDirection: single}
+    - {id: ht-e-alert-event, source: ht-alert-hdr, target: ht-alert-event, lineType: common_line, arrowDirection: single}
+    filters: []
+    viewport: {}
+  refs:
+    datasource_keys:
+    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
+    - 监控中心总览统计::monitor/get_monitor_statistics
+    - 告警统计概览::alert/get_alert_statistics
+    namespace_keys:
+    - 默认命名空间
 architectures: []
 datasources:
 - key: CMDB 变更趋势::cmdb/get_change_trend
@@ -1554,7 +2118,31 @@ datasources:
   - key: alert_id
     title: 告警 ID
     value_type: string
-    description: ''
+    description: 告警唯一标识
+  - key: title
+    title: 告警标题
+    value_type: string
+    description: 告警标题
+  - key: level
+    title: 告警级别
+    value_type: string
+    description: 告警级别（致命/严重/预警/提醒）
+  - key: status
+    title: 状态
+    value_type: string
+    description: 告警状态
+  - key: duration_seconds
+    title: 持续时长(秒)
+    value_type: number
+    description: 告警从创建至今的持续秒数
+  - key: created_at
+    title: 创建时间
+    value_type: string
+    description: 告警创建时间
+  - key: resource_name
+    title: 资源名称
+    value_type: string
+    description: 关联资源名称
   namespace_keys:
   - 默认命名空间
 - key: 通知总数/成功率/失败率/按渠道分组::alert/get_notification_statistics
@@ -1602,7 +2190,7 @@ datasources:
   is_active: true
   params: []
   tags:
-  - monitor
+  - 监控
   chart_type:
   - single
   field_schema:

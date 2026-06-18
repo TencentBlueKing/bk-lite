@@ -58,6 +58,14 @@ export const useFirewallConfig = () => {
     },
     collectTypes: {
       'Firewall SNMP General': 'snmp',
+      'Firewall Fortinet SNMP': 'snmp_fortinet',
+      'Firewall Check Point SNMP': 'snmp_checkpoint',
+      'Firewall Stormshield SNMP': 'snmp_stormshield',
+      'Firewall Palo Alto SNMP': 'snmp_paloalto',
+      'Firewall SonicWall SNMP': 'snmp_sonicwall',
+      'Firewall WatchGuard SNMP': 'snmp_watchguard',
+      'Firewall pfSense SNMP': 'snmp_pfsense',
+      'Firewall OPNsense SNMP': 'snmp_opnsense',
       'Firewall Flow NetFlow': 'netflow',
       'Firewall Flow sFlow': 'sflow'
     }
