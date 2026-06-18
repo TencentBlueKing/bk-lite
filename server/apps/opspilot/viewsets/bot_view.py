@@ -129,12 +129,14 @@ class BotViewSet(PinMixin, AuthViewSet):
         team = data.get("team", []) or [current_team]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, team)
+        # 使用组织：默认并入管理组织（不变式 team ⊆ usage_team）；额外使用组织需单独校验权限
+        usage_team = data.get("usage_team") or []
+        self._validate_org_field_permission(request, [org for org in usage_team if org not in team])
         bot_obj = Bot.objects.create(
             name=data.get("name"),
             introduction=data.get("introduction"),
             team=team,
-            # 使用组织初始 = 管理组织（不变式 team ⊆ usage_team），新建后管理组织即具备使用权
-            usage_team=list(team),
+            usage_team=_merge_usage_team(team, usage_team),
             channels=[],
             created_by=request.user.username,
             replica_count=data.get("replica_count") or 1,
@@ -170,8 +172,13 @@ class BotViewSet(PinMixin, AuthViewSet):
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 setattr(obj, key, data[key])
-        if "team" in data:
-            # 管理组织变更后维持不变式 team ⊆ usage_team（管理组织并入使用组织、不可删）
+        if "usage_team" in data:
+            # 使用组织：管理组织恒并入且不可删除；额外的使用组织需校验权限
+            extra_orgs = [org for org in (data["usage_team"] or []) if org not in obj.team]
+            self._validate_org_field_permission(request, extra_orgs)
+            obj.usage_team = _merge_usage_team(obj.team, data["usage_team"])
+        elif "team" in data:
+            # 仅管理组织变更：维持不变式 team ⊆ usage_team
             obj.usage_team = _merge_usage_team(obj.team, obj.usage_team)
         if node_port:
             obj.node_port = node_port

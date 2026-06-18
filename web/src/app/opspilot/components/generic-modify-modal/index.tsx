@@ -32,6 +32,12 @@ const GenericModifyModal: React.FC<GenericModifyModalProps> = ({ visible, onCanc
     }
   };
 
+  const handleCancel = () => {
+    // 取消时清空表单，避免下次打开粘连上一次（未保存）的编辑内容
+    form.resetFields();
+    onCancel();
+  };
+
   const renderForm = () => {
     if (formType === 'skill') {
       return <SkillForm form={form} initialValues={initialValues} visible={visible} />;
@@ -49,7 +55,7 @@ const GenericModifyModal: React.FC<GenericModifyModalProps> = ({ visible, onCanc
       title={initialValues ? t('common.edit') : t('common.add')}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      onCancel={onCancel}
+      onCancel={handleCancel}
       onOk={handleConfirm}
       confirmLoading={confirmLoading}
     >
