@@ -60,6 +60,7 @@ export const useRouterConfig = () => {
       'Router SNMP General': 'snmp',
       'Router Juniper MX SNMP': 'snmp_juniper_mx',
       'Router Huawei AR SNMP': 'snmp_huawei_ar',
+      'Router Vyatta SNMP': 'snmp_vyatta',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

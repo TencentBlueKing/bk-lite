@@ -2156,6 +2156,15 @@ monitor_object_metric:
       name: Power Supply Status
       desc: This metric reports the operational state of each power supply unit on the device. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly.
   Router:
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB memTotalReal, reported in KB and converted to bytes).
+    device_memory_free:
+      name: Free Memory
+      desc: This metric reports the amount of free physical memory in bytes on the router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes). Persistently low free memory can indicate rising memory pressure.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of used physical memory in bytes on the router, derived as total memory minus free memory. It helps gauge absolute memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
       desc: This metric reports the average CPU utilization across the operating entities of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id). Sustained high usage indicates heavy forwarding or control-plane load.
@@ -3935,6 +3944,13 @@ monitor_object_plugin:
       it collects HUAWEI-ENTITY-EXTENT-MIB private OIDs for device health (CPU and
       memory utilization, both reported directly as percentages and averaged across
       entities).
+  Router Vyatta SNMP:
+    name: Vyatta (Telegraf)
+    desc: Vyatta/VyOS-specific SNMP collection template for Vyatta/VyOS (Linux) routers.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HOST-RESOURCES CPU load (averaged across cores) and UCD-SNMP real
+      memory (total/free, used and derived usage). Memory usage is derived as
+      (total - free) / total.
   Router Flow NetFlow:
     name: Router Flow Analysis (NetFlow)
     desc: Use NetFlow to collect router traffic and convert it into normalized device
