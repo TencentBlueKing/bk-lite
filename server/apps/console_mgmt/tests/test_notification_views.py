@@ -105,6 +105,41 @@ class TestMarkActions:
         assert resp.json()["result"] is True
         assert _list(client.get(BASE, {"unread_only": "true"})) == []
 
+    def test_mark_all_as_read_同时处理既有未读行与新行(self, user_client):
+        """验证 DB 侧集合运算正确性：
+        - 已有 is_read=False 的 NotificationRead 行必须被 UPDATE；
+        - 尚无 NotificationRead 行的通知必须被 INSERT；
+        - 返回的已标记数量 = 两者之和。
+        revert-fail 准则：若去掉 UPDATE 步骤，n2_read 仍为 False，断言失败。
+        """
+        user, client = user_client
+        n1 = NotificationFactory()  # 有 NotificationRead(is_read=False) 的情况
+        n2 = NotificationFactory()  # 完全无 NotificationRead 行的情况
+        n3 = NotificationFactory()  # 已经 is_read=True，不应计入
+
+        NotificationRead.objects.create(notification=n1, user=user, is_read=False)
+        NotificationRead.objects.create(notification=n3, user=user, is_read=True)
+
+        resp = client.post(f"{BASE}mark_all_as_read/")
+        data = resp.json()
+        assert data["result"] is True
+        # n1(UPDATE) + n2(INSERT) = 2；n3 已读不重复计
+        assert "2" in data["message"]
+
+        # DB 状态验证
+        assert NotificationRead.objects.get(notification=n1, user=user).is_read is True
+        assert NotificationRead.objects.get(notification=n2, user=user).is_read is True
+
+    def test_mark_all_as_read_已全部已读时无操作(self, user_client):
+        """所有通知均已有 is_read=True 行时，返回 0 条已标记。"""
+        user, client = user_client
+        n = NotificationFactory()
+        NotificationRead.objects.create(notification=n, user=user, is_read=True)
+
+        resp = client.post(f"{BASE}mark_all_as_read/")
+        assert resp.json()["result"] is True
+        assert "0" in resp.json()["message"]
+
     def test_unread_count_排除已读与已删除(self, user_client):
         _, client = user_client
         read = NotificationFactory()
