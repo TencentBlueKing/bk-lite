@@ -124,7 +124,7 @@ class TestMarkActions:
         data = resp.json()
         assert data["result"] is True
         # n1(UPDATE) + n2(INSERT) = 2；n3 已读不重复计
-        assert "2" in data["message"]
+        assert "已标记 2 条" in data["message"]
 
         # DB 状态验证
         assert NotificationRead.objects.get(notification=n1, user=user).is_read is True
@@ -138,7 +138,7 @@ class TestMarkActions:
 
         resp = client.post(f"{BASE}mark_all_as_read/")
         assert resp.json()["result"] is True
-        assert "0" in resp.json()["message"]
+        assert "已标记 0 条" in resp.json()["message"]
 
     def test_unread_count_排除已读与已删除(self, user_client):
         _, client = user_client

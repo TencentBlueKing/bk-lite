@@ -10,6 +10,8 @@ from rest_framework.response import Response
 from apps.console_mgmt.models import Notification, NotificationRead
 from apps.console_mgmt.serializers import NotificationSerializer
 
+MARK_ALL_READ_BATCH_SIZE = int(os.getenv("MARK_ALL_READ_BATCH_SIZE", 2000))
+
 
 class NotificationViewSet(viewsets.ModelViewSet):
     """通知消息视图集（按用户隔离已读/删除状态）"""
@@ -105,8 +107,9 @@ class NotificationViewSet(viewsets.ModelViewSet):
         now = timezone.now()
 
         # 步骤 1：更新已有的 is_read=False 记录（纯 DB UPDATE，不拉数据到内存）
+        # 排除 is_deleted=True 的行：软删除通知不应被 mark_all 触碰
         updated_count = NotificationRead.objects.filter(
-            user=user, is_read=False,
+            user=user, is_read=False, is_deleted=False,
         ).update(is_read=True, read_at=now)
 
         # 步骤 2：找出完全没有 NotificationRead 行的通知，批量插入
@@ -114,13 +117,12 @@ class NotificationViewSet(viewsets.ModelViewSet):
         existing_notification_ids = NotificationRead.objects.filter(user=user).values("notification_id")
         new_notifications = Notification.objects.exclude(id__in=existing_notification_ids)
 
-        # 分批插入，避免单次 INSERT 过大（每批最多 MAX_BATCH 条）
-        MAX_BATCH = int(os.getenv("MARK_ALL_READ_BATCH_SIZE", 2000))
+        # 分批插入，避免单次 INSERT 过大
         created_count = 0
         batch = []
-        for nid in new_notifications.values_list("id", flat=True).iterator(chunk_size=MAX_BATCH):
+        for nid in new_notifications.values_list("id", flat=True).iterator(chunk_size=MARK_ALL_READ_BATCH_SIZE):
             batch.append(NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now))
-            if len(batch) >= MAX_BATCH:
+            if len(batch) >= MARK_ALL_READ_BATCH_SIZE:
                 NotificationRead.objects.bulk_create(batch, ignore_conflicts=True)
                 created_count += len(batch)
                 batch = []
