@@ -192,18 +192,33 @@ class AlertSourceAdapter(ABC):
     def create_events(self, add_events):
         """将原始告警数据转换为Event对象"""
         events = []
+        skipped_missing = 0  # 预期内丢弃：缺必填字段
+        errored = 0  # 非预期错误：转换异常
         for add_event in add_events:
             try:
                 event = self._transform_alert_to_event(add_event)
                 if event is None:
                     # 缺少必填字段（如 title）→ 丢弃，避免构造出 start_time=None 的空事件，
                     # 否则会在 bulk_create 时因 NOT NULL 约束令整批写入失败。
+                    skipped_missing += 1
                     logger.warning("[AlertSource] 事件缺少必填字段，已跳过: %s", add_event)
                     continue
                 self.add_base_fields(event, add_event)
                 events.append(event)
             except Exception as e:
+                errored += 1
                 logger.error("[AlertSource] 事件转换失败: %s, error: %s", add_event, e, exc_info=True)
+        # D3：让接入过程中的丢弃可观测，区分"预期跳过"与"非预期错误"，避免静默丢数据。
+        if skipped_missing or errored:
+            logger.warning(
+                "[AlertSource] 接入丢弃统计: source_id=%s received=%s transformed=%s skipped_missing=%s errored=%s",
+                self.alert_source.source_id, len(add_events), len(events), skipped_missing, errored,
+            )
+        else:
+            logger.info(
+                "[AlertSource] 接入转换完成: source_id=%s received=%s transformed=%s",
+                self.alert_source.source_id, len(add_events), len(events),
+            )
         bulk_events = self.bulk_save_events(events)
         return bulk_events
 
