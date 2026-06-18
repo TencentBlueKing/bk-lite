@@ -279,6 +279,9 @@ monitor_object_metric:
     system_load15:
       name: 15分钟平均负载
       desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    system_uptime:
+      name: 系统运行时长
+      desc: 表示主机自上次启动以来的持续运行时间（秒），用于观察主机稳定性和识别异常重启。
     host_cpu_core_count:
       name: CPU核心数
       desc: 表示主机可用的逻辑 CPU 核心数量，用于评估计算资源规模和容量基线。
@@ -297,18 +300,30 @@ monitor_object_metric:
     diskio_writes_rate:
       name: 磁盘写入IOPS
       desc: 表示磁盘每秒完成的写入操作次数，用于衡量写入请求的并发强度和 I/O 压力。
+    diskio_writes_total:
+      name: 磁盘写入次数
+      desc: 表示磁盘设备累计完成的写入操作次数，用于分析写入负载总量和变化趋势。
     diskio_write_bytes_rate:
       name: 磁盘写入速率
       desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
+    diskio_write_bytes_total:
+      name: 磁盘写入字节数
+      desc: 表示磁盘设备累计写入的数据量（字节），用于分析磁盘写入流量规模。
     disk_write_latency:
       name: 磁盘写入延迟
       desc: 表示单次磁盘写入操作的平均耗时，用于分析磁盘写入性能及响应能力。
     diskio_reads_rate:
       name: 磁盘读出IOPS
       desc: 表示磁盘每秒完成的读取操作次数，用于衡量读请求的并发程度和 I/O 压力。
+    diskio_reads_total:
+      name: 磁盘读取次数
+      desc: 表示磁盘设备累计完成的读取操作次数，用于分析读取负载总量和变化趋势。
     diskio_read_bytes_rate:
       name: 磁盘读出速率
       desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
+    diskio_read_bytes_total:
+      name: 磁盘读取字节数
+      desc: 表示磁盘设备累计读取的数据量（字节），用于分析磁盘读取流量规模。
     disk_read_latency:
       name: 磁盘读出延迟
       desc: 表示单次磁盘读取操作的平均耗时，用于分析磁盘读取性能和访问延迟。
@@ -381,9 +396,15 @@ monitor_object_metric:
     net_packets_recv_rate:
       name: 网络接收包速率
       desc: 表示网络接口单位时间内接收的数据包数量，用于衡量网络包级流量情况。
+    net_packets_recv_total:
+      name: 网络接收包数
+      desc: 表示网络接口累计接收的数据包数量，用于分析网络接收流量规模。
     net_packets_sent_rate:
       name: 网络发送包速率
       desc: 表示网络接口单位时间内发送的数据包数量。
+    net_packets_sent_total:
+      name: 网络发送包数
+      desc: 表示网络接口累计发送的数据包数量，用于分析网络发送流量规模。
     net_bytes_recv_rate:
       name: 网络接收吞吐速率
       desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
@@ -411,9 +432,15 @@ monitor_object_metric:
     net_drop_in_rate:
       name: 网络接收丢包速率
       desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
+    net_drop_in_total:
+      name: 网络接收丢包数
+      desc: 表示网络接口累计丢弃的接收数据包数量，用于定位链路拥塞、缓冲区不足或驱动异常。
     net_drop_out_rate:
       name: 网络发送丢包速率
       desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    net_drop_out_total:
+      name: 网络发送丢包数
+      desc: 表示网络接口累计丢弃的发送数据包数量，用于辅助排查网络发送路径异常。
     nvidia_smi_memory_total:
       name: GPU显存总容量
       desc: 表示 GPU 可用的显存总容量，是 GPU 资源评估的基础指标。
@@ -3501,8 +3528,10 @@ monitor_object_metric_group:
     Disk IO: 磁盘 IO
     Disk: 磁盘
     Process: 进程
+    Processes: 进程
     Memory: 内存
     Net: 网络
+    Network: 网络
     Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: 数据包
