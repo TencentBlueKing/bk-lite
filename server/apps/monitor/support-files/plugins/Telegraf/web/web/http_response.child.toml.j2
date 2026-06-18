@@ -2,6 +2,7 @@
     startup_error_behavior = "retry"
     urls = ["{{ url }}"]
     interval = "{{ interval }}s"
+    insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}
     [inputs.http_response.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"

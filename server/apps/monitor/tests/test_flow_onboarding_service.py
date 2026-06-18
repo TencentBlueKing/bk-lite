@@ -1,6 +1,7 @@
 import pytest
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
+from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.models.monitor_object import (
     MonitorInstance,
@@ -10,6 +11,7 @@ from apps.monitor.models.monitor_object import (
 )
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
 from apps.monitor.services.manual_collect import ManualCollectService
+from apps.monitor.utils.dimension import build_safe_instance_id
 
 
 def _create_child_default_metric(parent_object: MonitorObject, child_name: str = "SwitchPort") -> MonitorObject:
@@ -96,6 +98,7 @@ def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
     )
 
     instance = MonitorInstance.objects.get(id=result["instance_id"])
+    assert result["instance_id"] == str((build_safe_instance_id(1, "10.0.0.12"),))
     assert instance.monitor_object_id == switch_object.id
     assert instance.name == "Core Switch"
     assert instance.cloud_region_id == 1
@@ -106,6 +109,81 @@ def test_create_or_bind_flow_asset_creates_monitor_side_asset(db):
     assert set(
         MonitorInstanceOrganization.objects.filter(monitor_instance_id=instance.id).values_list("organization", flat=True)
     ) == {1, 2}
+
+
+def test_create_or_bind_flow_asset_reuses_network_device_safe_id_created_by_other_plugin(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    logical_id = build_safe_instance_id(1, "10.0.0.12")
+    existing = MonitorInstance.objects.create(
+        id=str((logical_id,)),
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+    )
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="netflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1],
+    )
+
+    existing.refresh_from_db()
+    assert result["instance_id"] == existing.id
+    assert existing.cloud_region_id == 1
+    assert existing.ip == "10.0.0.12"
+    assert existing.enabled_protocols == ["netflow"]
+
+
+def test_create_or_bind_flow_asset_migrates_legacy_flow_storage_key(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    child_object = _create_child_default_metric(switch_object)
+    legacy_id = f"('flow:{switch_object.id}:1:10.0.0.12',)"
+    legacy_logical_id = f"flow:{switch_object.id}:1:10.0.0.12"
+    instance = MonitorInstance.objects.create(
+        id=legacy_id,
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        enabled_protocols=["netflow"],
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance.id, organization=1)
+    CollectConfig.objects.create(
+        id="legacy-flow-config",
+        monitor_instance=instance,
+        collector="Telegraf",
+        collect_type="netflow",
+        config_type="flow",
+        file_type="toml",
+    )
+    MonitorObjectOrganizationRule.objects.create(
+        name=f"{child_object.name}-{legacy_logical_id}",
+        monitor_object_id=child_object.id,
+        monitor_instance_id=instance.id,
+        organizations=[1],
+        rule={"filter": [{"name": "instance_id", "method": "=", "value": legacy_logical_id}]},
+    )
+
+    result = FlowOnboardingService.create_or_bind_asset(
+        monitor_object_id=switch_object.id,
+        protocol="sflow",
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        name="Core Switch",
+        organizations=[1],
+    )
+
+    new_logical_id = build_safe_instance_id(1, "10.0.0.12")
+    new_storage_key = str((new_logical_id,))
+    assert result["instance_id"] == new_storage_key
+    assert not MonitorInstance.objects.filter(id=legacy_id).exists()
+    assert MonitorInstanceOrganization.objects.filter(monitor_instance_id=new_storage_key, organization=1).exists()
+    assert CollectConfig.objects.filter(id="legacy-flow-config", monitor_instance_id=new_storage_key).exists()
+    rule = MonitorObjectOrganizationRule.objects.get(monitor_instance_id=new_storage_key)
+    assert rule.name == f"{child_object.name}-{new_logical_id}"
+    assert rule.rule["filter"][0]["value"] == new_logical_id
 
 
 def test_create_or_bind_flow_asset_restores_soft_deleted_asset(db, monkeypatch):

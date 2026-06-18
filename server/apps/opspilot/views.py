@@ -691,7 +691,9 @@ async def execute_chat_flow(request, bot_id, node_id):
 
         if is_test:
             has_running_test = await sync_to_async(
-                WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists,
+                WorkFlowTaskResult.objects.filter(
+                    bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING, is_test=True
+                ).exists,
                 thread_sensitive=False,
             )()
             if has_running_test:

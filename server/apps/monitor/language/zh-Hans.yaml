@@ -494,18 +494,6 @@ monitor_object_metric:
     device_total_incoming_traffic:
       desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率，单位为兆字节每秒（MB/s）。通过对多个接口的接收字节进行汇总计算，帮助管理员获取整个设备的接收流量情况，从而支持总体流量监控以及容量规划。
       name: 设备接收总流量速率
-    device_total_incoming_netflow_traffic:
-      name: 设备 NetFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_netflow_traffic:
-      name: 设备 NetFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_incoming_sflow_traffic:
-      name: 设备 sFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_sflow_traffic:
-      name: 设备 sFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
     interface_ifOutOctets:
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
       name: 接口发送流量速率
@@ -518,6 +506,69 @@ monitor_object_metric:
     snmp_uptime:
       name: 系统运行时间
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
+    device_flow_bytes_rate:
+      name: 设备 Flow 总流量速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+    device_flow_packets_rate:
+      name: 设备 Flow 总包速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+    device_flow_in_bytes_rate:
+      name: 设备 Flow 入方向流量速率
+      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+    device_flow_out_bytes_rate:
+      name: 设备 Flow 出方向流量速率
+      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+    device_flow_in_packets_rate:
+      name: 设备 Flow 入方向包速率
+      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+    device_flow_out_packets_rate:
+      name: 设备 Flow 出方向包速率
+      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+    device_flow_avg_packet_size:
+      name: 设备 Flow 平均包大小
+      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+    device_flow_effective_sampling_rate:
+      name: 设备 Flow 生效采样率
+      desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
+    device_flow_interface_bytes_rate:
+      name: 接口 Flow 流量速率
+      desc: 按接口和方向聚合的 Flow 流量速率，用于定位接口维度的流量热点。
+    device_flow_interface_packets_rate:
+      name: 接口 Flow 包速率
+      desc: 按接口和方向聚合的 Flow 包速率，用于定位接口维度的包量热点。
+    device_flow_top_interfaces_by_bytes:
+      name: Top 接口 Flow 流量速率
+      desc: 按流量速率排序的接口 Flow 排行，用于快速发现高流量接口。
+    device_flow_protocol_bytes_rate:
+      name: 协议 Flow 流量速率
+      desc: 按协议聚合的 Flow 流量速率，用于识别 TCP、UDP、ICMP 等协议流量占比。
+    device_flow_protocol_packets_rate:
+      name: 协议 Flow 包速率
+      desc: 按协议聚合的 Flow 包速率，用于识别协议层面的包量异常。
+    device_flow_dst_port_bytes_rate:
+      name: 目的端口 Flow 流量速率
+      desc: 按目的端口聚合的 Flow 流量速率，用于分析应用或服务端口流量热点。
+    device_flow_dst_port_packets_rate:
+      name: 目的端口 Flow 包速率
+      desc: 按目的端口聚合的 Flow 包速率，用于分析应用或服务端口包量热点。
+    device_flow_src_port_bytes_rate:
+      name: 源端口 Flow 流量速率
+      desc: 按源端口聚合的 Flow 流量速率，用于辅助分析客户端侧端口流量分布。
+    device_flow_top_src_bytes_rate:
+      name: Top 源地址 Flow 流量速率
+      desc: 按源地址聚合并排序的 Flow 流量速率，用于发现主要流量来源。
+    device_flow_top_dst_bytes_rate:
+      name: Top 目的地址 Flow 流量速率
+      desc: 按目的地址聚合并排序的 Flow 流量速率，用于发现主要流量去向。
+    device_flow_top_src_packets_rate:
+      name: Top 源地址 Flow 包速率
+      desc: 按源地址聚合并排序的 Flow 包速率，用于发现包量异常来源。
+    device_flow_top_dst_packets_rate:
+      name: Top 目的地址 Flow 包速率
+      desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_conversation_bytes_rate:
+      name: Top 会话 Flow 流量速率
+      desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: 线程池中的线程数
@@ -706,18 +757,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
-    device_total_incoming_netflow_traffic:
-      name: 设备 NetFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_netflow_traffic:
-      name: 设备 NetFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_incoming_sflow_traffic:
-      name: 设备 sFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_sflow_traffic:
-      name: 设备 sFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_flow_bytes_rate:
+      name: 设备 Flow 总流量速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+    device_flow_packets_rate:
+      name: 设备 Flow 总包速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+    device_flow_in_bytes_rate:
+      name: 设备 Flow 入方向流量速率
+      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+    device_flow_out_bytes_rate:
+      name: 设备 Flow 出方向流量速率
+      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+    device_flow_in_packets_rate:
+      name: 设备 Flow 入方向包速率
+      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+    device_flow_out_packets_rate:
+      name: 设备 Flow 出方向包速率
+      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+    device_flow_avg_packet_size:
+      name: 设备 Flow 平均包大小
+      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+    device_flow_effective_sampling_rate:
+      name: 设备 Flow 生效采样率
+      desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
+    device_flow_interface_bytes_rate:
+      name: 接口 Flow 流量速率
+      desc: 按接口和方向聚合的 Flow 流量速率，用于定位接口维度的流量热点。
+    device_flow_interface_packets_rate:
+      name: 接口 Flow 包速率
+      desc: 按接口和方向聚合的 Flow 包速率，用于定位接口维度的包量热点。
+    device_flow_top_interfaces_by_bytes:
+      name: Top 接口 Flow 流量速率
+      desc: 按流量速率排序的接口 Flow 排行，用于快速发现高流量接口。
+    device_flow_protocol_bytes_rate:
+      name: 协议 Flow 流量速率
+      desc: 按协议聚合的 Flow 流量速率，用于识别 TCP、UDP、ICMP 等协议流量占比。
+    device_flow_protocol_packets_rate:
+      name: 协议 Flow 包速率
+      desc: 按协议聚合的 Flow 包速率，用于识别协议层面的包量异常。
+    device_flow_dst_port_bytes_rate:
+      name: 目的端口 Flow 流量速率
+      desc: 按目的端口聚合的 Flow 流量速率，用于分析应用或服务端口流量热点。
+    device_flow_dst_port_packets_rate:
+      name: 目的端口 Flow 包速率
+      desc: 按目的端口聚合的 Flow 包速率，用于分析应用或服务端口包量热点。
+    device_flow_src_port_bytes_rate:
+      name: 源端口 Flow 流量速率
+      desc: 按源端口聚合的 Flow 流量速率，用于辅助分析客户端侧端口流量分布。
+    device_flow_top_src_bytes_rate:
+      name: Top 源地址 Flow 流量速率
+      desc: 按源地址聚合并排序的 Flow 流量速率，用于发现主要流量来源。
+    device_flow_top_dst_bytes_rate:
+      name: Top 目的地址 Flow 流量速率
+      desc: 按目的地址聚合并排序的 Flow 流量速率，用于发现主要流量去向。
+    device_flow_top_src_packets_rate:
+      name: Top 源地址 Flow 包速率
+      desc: 按源地址聚合并排序的 Flow 包速率，用于发现包量异常来源。
+    device_flow_top_dst_packets_rate:
+      name: Top 目的地址 Flow 包速率
+      desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_conversation_bytes_rate:
+      name: Top 会话 Flow 流量速率
+      desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
   ActiveMQ:
     activemq_topics_consumer_count:
       name: 主题消费者数量
@@ -1012,6 +1114,9 @@ monitor_object_metric:
       name: 线程池利用率
       desc: 当前忙碌线程数占最大线程数的百分比，反映线程资源使用效率
   Website:
+    http_response_result_code:
+      name: 拨测结果
+      desc: 根据 Telegraf http_response 的 result_code 字段识别拨测结果，0 表示成功，非 0 表示响应内容不匹配、响应体读取失败、连接失败、超时、DNS 错误或响应状态码不匹配等异常。
     http_node_success_rate:
       name: 单点成功率
       desc: 统计每个拨测节点5分钟的拨测成功率，用于反映特定地域或网络环境下的访问情况。
@@ -1851,18 +1956,6 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
-    device_total_incoming_netflow_traffic:
-      name: 设备 NetFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_netflow_traffic:
-      name: 设备 NetFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_incoming_sflow_traffic:
-      name: 设备 sFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_sflow_traffic:
-      name: 设备 sFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
     device_cpu_usage:
       name: CPU 使用率
       desc: 该指标表示设备控制平面的 CPU 使用率（通常为 5 分钟平均值），单位为百分比。CPU 持续偏高可能意味着控制平面过载、路由震荡或异常流量，会导致管理响应变慢或转发延迟。数据来源于各品牌私有 SNMP OID，并归一化为 0-100 的百分比。
@@ -1887,6 +1980,69 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
+    device_flow_bytes_rate:
+      name: 设备 Flow 总流量速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+    device_flow_packets_rate:
+      name: 设备 Flow 总包速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+    device_flow_in_bytes_rate:
+      name: 设备 Flow 入方向流量速率
+      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+    device_flow_out_bytes_rate:
+      name: 设备 Flow 出方向流量速率
+      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+    device_flow_in_packets_rate:
+      name: 设备 Flow 入方向包速率
+      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+    device_flow_out_packets_rate:
+      name: 设备 Flow 出方向包速率
+      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+    device_flow_avg_packet_size:
+      name: 设备 Flow 平均包大小
+      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+    device_flow_effective_sampling_rate:
+      name: 设备 Flow 生效采样率
+      desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
+    device_flow_interface_bytes_rate:
+      name: 接口 Flow 流量速率
+      desc: 按接口和方向聚合的 Flow 流量速率，用于定位接口维度的流量热点。
+    device_flow_interface_packets_rate:
+      name: 接口 Flow 包速率
+      desc: 按接口和方向聚合的 Flow 包速率，用于定位接口维度的包量热点。
+    device_flow_top_interfaces_by_bytes:
+      name: Top 接口 Flow 流量速率
+      desc: 按流量速率排序的接口 Flow 排行，用于快速发现高流量接口。
+    device_flow_protocol_bytes_rate:
+      name: 协议 Flow 流量速率
+      desc: 按协议聚合的 Flow 流量速率，用于识别 TCP、UDP、ICMP 等协议流量占比。
+    device_flow_protocol_packets_rate:
+      name: 协议 Flow 包速率
+      desc: 按协议聚合的 Flow 包速率，用于识别协议层面的包量异常。
+    device_flow_dst_port_bytes_rate:
+      name: 目的端口 Flow 流量速率
+      desc: 按目的端口聚合的 Flow 流量速率，用于分析应用或服务端口流量热点。
+    device_flow_dst_port_packets_rate:
+      name: 目的端口 Flow 包速率
+      desc: 按目的端口聚合的 Flow 包速率，用于分析应用或服务端口包量热点。
+    device_flow_src_port_bytes_rate:
+      name: 源端口 Flow 流量速率
+      desc: 按源端口聚合的 Flow 流量速率，用于辅助分析客户端侧端口流量分布。
+    device_flow_top_src_bytes_rate:
+      name: Top 源地址 Flow 流量速率
+      desc: 按源地址聚合并排序的 Flow 流量速率，用于发现主要流量来源。
+    device_flow_top_dst_bytes_rate:
+      name: Top 目的地址 Flow 流量速率
+      desc: 按目的地址聚合并排序的 Flow 流量速率，用于发现主要流量去向。
+    device_flow_top_src_packets_rate:
+      name: Top 源地址 Flow 包速率
+      desc: 按源地址聚合并排序的 Flow 包速率，用于发现包量异常来源。
+    device_flow_top_dst_packets_rate:
+      name: Top 目的地址 Flow 包速率
+      desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_conversation_bytes_rate:
+      name: Top 会话 Flow 流量速率
+      desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
   Router:
     device_cpu_usage:
       name: CPU 使用率
@@ -1942,18 +2098,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: 设备发送总流量速率
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
-    device_total_incoming_netflow_traffic:
-      name: 设备 NetFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_netflow_traffic:
-      name: 设备 NetFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 NetFlow 流记录计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_incoming_sflow_traffic:
-      name: 设备 sFlow 接收总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的接收总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
-    device_total_outgoing_sflow_traffic:
-      name: 设备 sFlow 发送总流量速率
-      desc: 此指标表示整个设备在过去5分钟内基于 sFlow 采样计算出的发送总字节流量平均速率，单位为字节每秒，可用于容量规划和流量排障。
+    device_flow_bytes_rate:
+      name: 设备 Flow 总流量速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+    device_flow_packets_rate:
+      name: 设备 Flow 总包速率
+      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+    device_flow_in_bytes_rate:
+      name: 设备 Flow 入方向流量速率
+      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+    device_flow_out_bytes_rate:
+      name: 设备 Flow 出方向流量速率
+      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+    device_flow_in_packets_rate:
+      name: 设备 Flow 入方向包速率
+      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+    device_flow_out_packets_rate:
+      name: 设备 Flow 出方向包速率
+      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+    device_flow_avg_packet_size:
+      name: 设备 Flow 平均包大小
+      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+    device_flow_effective_sampling_rate:
+      name: 设备 Flow 生效采样率
+      desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
+    device_flow_interface_bytes_rate:
+      name: 接口 Flow 流量速率
+      desc: 按接口和方向聚合的 Flow 流量速率，用于定位接口维度的流量热点。
+    device_flow_interface_packets_rate:
+      name: 接口 Flow 包速率
+      desc: 按接口和方向聚合的 Flow 包速率，用于定位接口维度的包量热点。
+    device_flow_top_interfaces_by_bytes:
+      name: Top 接口 Flow 流量速率
+      desc: 按流量速率排序的接口 Flow 排行，用于快速发现高流量接口。
+    device_flow_protocol_bytes_rate:
+      name: 协议 Flow 流量速率
+      desc: 按协议聚合的 Flow 流量速率，用于识别 TCP、UDP、ICMP 等协议流量占比。
+    device_flow_protocol_packets_rate:
+      name: 协议 Flow 包速率
+      desc: 按协议聚合的 Flow 包速率，用于识别协议层面的包量异常。
+    device_flow_dst_port_bytes_rate:
+      name: 目的端口 Flow 流量速率
+      desc: 按目的端口聚合的 Flow 流量速率，用于分析应用或服务端口流量热点。
+    device_flow_dst_port_packets_rate:
+      name: 目的端口 Flow 包速率
+      desc: 按目的端口聚合的 Flow 包速率，用于分析应用或服务端口包量热点。
+    device_flow_src_port_bytes_rate:
+      name: 源端口 Flow 流量速率
+      desc: 按源端口聚合的 Flow 流量速率，用于辅助分析客户端侧端口流量分布。
+    device_flow_top_src_bytes_rate:
+      name: Top 源地址 Flow 流量速率
+      desc: 按源地址聚合并排序的 Flow 流量速率，用于发现主要流量来源。
+    device_flow_top_dst_bytes_rate:
+      name: Top 目的地址 Flow 流量速率
+      desc: 按目的地址聚合并排序的 Flow 流量速率，用于发现主要流量去向。
+    device_flow_top_src_packets_rate:
+      name: Top 源地址 Flow 包速率
+      desc: 按源地址聚合并排序的 Flow 包速率，用于发现包量异常来源。
+    device_flow_top_dst_packets_rate:
+      name: Top 目的地址 Flow 包速率
+      desc: 按目的地址聚合并排序的 Flow 包速率，用于发现包量异常目标。
+    device_flow_top_conversation_bytes_rate:
+      name: Top 会话 Flow 流量速率
+      desc: 按源地址、目的地址、协议和目的端口聚合的会话流量排行，用于定位主要通信关系。
   Consul:
     consul_health_checks_passing:
       name: 健康检查通过数
@@ -3016,6 +3223,13 @@ monitor_object_metric_group:
     Bandwidth: 带宽
     Status: 状态
     Router: 路由器
+    Traffic Overview: 流量总览
+    Sampling: 采样率
+    Interface Traffic: 接口流量
+    Protocol: 协议
+    Application Port: 应用端口
+    Endpoint: 端点
+    Conversation: 会话
   vCenter:
     Quantity: 数量
   Oracle:
@@ -3047,6 +3261,13 @@ monitor_object_metric_group:
     Bandwidth: 带宽
     Traffic: 流量
     Firewall: 防火墙
+    Traffic Overview: 流量总览
+    Sampling: 采样率
+    Interface Traffic: 接口流量
+    Protocol: 协议
+    Application Port: 应用端口
+    Endpoint: 端点
+    Conversation: 会话
   VM:
     CPU: CPU
     Memory: 内存
@@ -3139,6 +3360,13 @@ monitor_object_metric_group:
     Memory: 内存
     Temperature: 温度
     Hardware Status: 硬件状态
+    Traffic Overview: 流量总览
+    Sampling: 采样率
+    Interface Traffic: 接口流量
+    Protocol: 协议
+    Application Port: 应用端口
+    Endpoint: 端点
+    Conversation: 会话
   ElasticSearch:
     Base: 集群健康
     Node: 节点资源
@@ -3154,6 +3382,13 @@ monitor_object_metric_group:
     Status: 状态
     Packet Error: 数据包错误
     Loadbalance: 负载均衡
+    Traffic Overview: 流量总览
+    Sampling: 采样率
+    Interface Traffic: 接口流量
+    Protocol: 协议
+    Application Port: 应用端口
+    Endpoint: 端点
+    Conversation: 会话
   Redis:
     Base: 基础
     Memory: 内存
@@ -3327,10 +3562,10 @@ monitor_object_plugin:
     desc: HP ProCurve / HP Networking 交换机专用 SNMP 采集模板（HP-ICF MIB）。在标准 IF-MIB 接口指标之外，额外采集 HP 私有 OID 的设备健康指标：CPU 使用率与系统内存（已用/总量）。温度与风扇/电源状态位于 HP 的 ENTITY-SENSOR / hpicfSensorTable 混合表、需按行类型/类过滤（telegraf inputs.snmp 无法实现），故不采集（N/A）。内存使用率按 used/total 计算。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
-    desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 NetFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Switch Flow sFlow:
     name: 交换机流量分析（sFlow）
-    desc: 使用 sFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   WebLogic-JMX:
     name: WebLogic（JMX）
     desc: 通过WebLogic-JMX采集器定期收集WebLogic关键指标，包括线程池、连接池、内存、EJB、Servlet、JMS 性能及 Web 服务响应时间等。
@@ -3354,10 +3589,10 @@ monitor_object_plugin:
     desc: 面向 F5 BIG-IP 负载均衡的 F5 专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 F5-BIGIP-SYSTEM-MIB 私有 OID 的设备健康（主机 CPU 使用率、主机内存 总量/已用及推算使用率）与负载均衡特有状态（当前客户端连接数）。内存使用率按 已用/总量 推算。
   Loadbalance Flow NetFlow:
     name: 负载均衡流量分析（NetFlow）
-    desc: 使用 NetFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 NetFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Loadbalance Flow sFlow:
     name: 负载均衡流量分析（sFlow）
-    desc: 使用 sFlow 对负载均衡设备进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -3399,10 +3634,10 @@ monitor_object_plugin:
     desc: 面向 OPNsense（FreeBSD/pf）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 BEGEMOT-PF-MIB 的 pf 状态表条目数（等价活动连接数）。内存与温度/风扇/电源不采集——OPNsense 内存仅经需行级过滤的 hrStorage 暴露、且无标准传感器表。
   Firewall Flow NetFlow:
     name: 防火墙流量分析（NetFlow）
-    desc: 使用 NetFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 NetFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Firewall Flow sFlow:
     name: 防火墙流量分析（sFlow）
-    desc: 使用 sFlow 对防火墙进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   SNMP Trap:
     desc: SNMP Trap监控插件用于接收和处理网络设备主动推送的报警或状态通知（Trap消息），以实现实时监控和故障告警。
     name: SNMP Trap
@@ -3417,10 +3652,10 @@ monitor_object_plugin:
     desc: 面向 Huawei AR 系列路由器（VRP）的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HUAWEI-ENTITY-EXTENT-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为百分比直报，按各实体取平均）。
   Router Flow NetFlow:
     name: 路由器流量分析（NetFlow）
-    desc: 使用 NetFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 NetFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Router Flow sFlow:
     name: 路由器流量分析（sFlow）
-    desc: 使用 sFlow 对路由器进行流量分析采集，并转换为标准化设备流量指标。
+    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: 该 ActiveMQ 插件基于 JMX 采集，可获取消息队列、连接池、消息吞吐量等关键性能指标，实时监控消息处理效率与资源使用情况，助力优化系统性能，保障服务稳定。

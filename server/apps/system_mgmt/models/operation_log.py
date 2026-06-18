@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import JSONField
 
 from apps.core.models.time_info import TimeInfo
 
@@ -35,6 +36,9 @@ class OperationLog(TimeInfo):
     action_type = models.CharField("Action Type", max_length=20, choices=ACTION_CHOICES, db_index=True)
     summary = models.TextField("Summary", blank=True, default="")
     domain = models.CharField("Domain", max_length=100, default="domain.com", db_index=True)
+    target_type = models.CharField("Target Type", max_length=50, blank=True, default="", db_index=True)
+    target_id = models.CharField("Target ID", max_length=100, blank=True, default="", db_index=True)
+    detail = JSONField("Detail", default=dict, blank=True)
 
     class Meta:
         verbose_name = "Operation Log"
@@ -60,4 +64,7 @@ class OperationLog(TimeInfo):
             "summary",
             "domain",
             "created_at",
+            "target_type",
+            "target_id",
+            "detail",
         ]

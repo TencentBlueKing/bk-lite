@@ -4,14 +4,14 @@ import type { SimpleDashboardConfig } from '../common/simple-dashboard-core';
 // (与「全量指标」视图一致)。仪表盘必须用同款表达式,不能直接查裸指标名 http_node_success_rate
 // ——后者只有预置种子数据(website_01/02/03)才有存储序列,真实下发实例查不到 → 三卡片无数据。
 const SUCCESS_RATE_EXPR =
-  'avg(count_over_time(http_response_result_type{result="success",__$labels__}[5m]) / count_over_time(http_response_result_type{__$labels__}[5m]) * 100)';
+  'avg((sum without (result) (count_over_time(http_response_result_type{result="success",__$labels__}[5m])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[5m])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[5m])) * 100)';
 
 export const WEBSITE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   routeKey: 'website',
   pageTitle: '网站监控仪表盘',
   objectFallbackName: '网站',
   instanceType: 'web',
-  collectionStatusQuery: "count({instance_type='web', collect_type='web', __$labels__}) by (instance_id)",
+  collectionStatusQuery: "count(http_response_result_type{instance_type='web', collect_type='web', result='success', __$labels__}) by (instance_id)",
   metaItems: ['Telegraf', 'web'],
   metrics: [
     {

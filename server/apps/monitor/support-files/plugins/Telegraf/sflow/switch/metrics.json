@@ -1,6 +1,6 @@
 {
   "plugin": "Switch Flow sFlow",
-  "plugin_desc": "Collect switch traffic from sFlow and convert it into normalized device traffic metrics.",
+  "plugin_desc": "sFlow flow analysis template for switch devices. It maps exporter traffic to monitored assets, normalizes sampling rate, and provides overview, interface, protocol, port, endpoint, and conversation metrics.",
   "status_query": "any({instance_type='switch', collect_type='sflow'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",
@@ -11,35 +11,373 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "device_total_incoming_sflow_traffic",
-    "device_total_outgoing_sflow_traffic"
+    "device_flow_bytes_rate",
+    "device_flow_packets_rate",
+    "device_flow_in_bytes_rate",
+    "device_flow_out_bytes_rate",
+    "device_flow_in_packets_rate",
+    "device_flow_out_packets_rate",
+    "device_flow_avg_packet_size",
+    "device_flow_effective_sampling_rate"
   ],
   "metrics": [
     {
-      "metric_group": "Traffic",
-      "name": "device_total_incoming_sflow_traffic",
-      "query": "sum(flow_bytes_in{instance_type='switch', collect_type='sflow', __$labels__} * label_value(flow_bytes_in{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
-      "display_name": "Device Total Incoming sFlow Traffic Rate",
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_bytes_rate",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized incoming traffic from sFlow flow data."
+      "description": "Total normalized Flow traffic rate for the device."
     },
     {
-      "metric_group": "Traffic",
-      "name": "device_total_outgoing_sflow_traffic",
-      "query": "sum(flow_bytes_out{instance_type='switch', collect_type='sflow', __$labels__} * label_value(flow_bytes_out{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
-      "display_name": "Device Total Outgoing sFlow Traffic Rate",
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_packets_rate",
+      "query": "sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Total normalized Flow packet rate for the device."
+    },
+    {
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_in_bytes_rate",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "display_name": "Device Inbound Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized outgoing traffic from sFlow flow data."
+      "description": "Normalized inbound Flow traffic rate for the device."
+    },
+    {
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_out_bytes_rate",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "display_name": "Device Outbound Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized outbound Flow traffic rate for the device."
+    },
+    {
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_in_packets_rate",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "display_name": "Device Inbound Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized inbound Flow packet rate for the device."
+    },
+    {
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_out_packets_rate",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "display_name": "Device Outbound Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized outbound Flow packet rate for the device."
+    },
+    {
+      "metric_group": "Traffic Overview",
+      "name": "device_flow_avg_packet_size",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Flow Average Packet Size",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Average packet size calculated from normalized Flow bytes and packets."
+    },
+    {
+      "metric_group": "Sampling",
+      "name": "device_flow_effective_sampling_rate",
+      "query": "avg(label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "display_name": "Device Flow Effective Sampling Rate",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Effective sampling rate used for Flow traffic normalization."
+    },
+    {
+      "metric_group": "Interface Traffic",
+      "name": "device_flow_interface_bytes_rate",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
+      "display_name": "Interface Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        },
+        {
+          "name": "direction",
+          "description": "direction"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow traffic rate grouped by interface and direction."
+    },
+    {
+      "metric_group": "Interface Traffic",
+      "name": "device_flow_interface_packets_rate",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
+      "display_name": "Interface Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        },
+        {
+          "name": "direction",
+          "description": "direction"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow packet rate grouped by interface and direction."
+    },
+    {
+      "metric_group": "Interface Traffic",
+      "name": "device_flow_top_interfaces_by_bytes",
+      "query": "topk(10, sum(label_replace(label_replace(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface) + sum(label_replace(label_replace(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface))",
+      "display_name": "Top Interfaces by Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "interface",
+          "description": "interface"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top interfaces by normalized Flow traffic rate."
+    },
+    {
+      "metric_group": "Protocol",
+      "name": "device_flow_protocol_bytes_rate",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol)",
+      "display_name": "Protocol Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "protocol",
+          "description": "protocol"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow traffic rate grouped by protocol."
+    },
+    {
+      "metric_group": "Protocol",
+      "name": "device_flow_protocol_packets_rate",
+      "query": "sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol)",
+      "display_name": "Protocol Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "protocol",
+          "description": "protocol"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow packet rate grouped by protocol."
+    },
+    {
+      "metric_group": "Application Port",
+      "name": "device_flow_dst_port_bytes_rate",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst_port)",
+      "display_name": "Destination Port Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "dst_port",
+          "description": "dst_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow traffic rate grouped by destination port."
+    },
+    {
+      "metric_group": "Application Port",
+      "name": "device_flow_dst_port_packets_rate",
+      "query": "sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst_port)",
+      "display_name": "Destination Port Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "dst_port",
+          "description": "dst_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow packet rate grouped by destination port."
+    },
+    {
+      "metric_group": "Application Port",
+      "name": "device_flow_src_port_bytes_rate",
+      "query": "sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src_port)",
+      "display_name": "Source Port Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "src_port",
+          "description": "src_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Normalized Flow traffic rate grouped by source port."
+    },
+    {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_src_bytes_rate",
+      "query": "topk(10, sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src))",
+      "display_name": "Top Source Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "src",
+          "description": "src"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top source addresses by normalized Flow traffic rate."
+    },
+    {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_dst_bytes_rate",
+      "query": "topk(10, sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst))",
+      "display_name": "Top Destination Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "dst",
+          "description": "dst"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top destination addresses by normalized Flow traffic rate."
+    },
+    {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_src_packets_rate",
+      "query": "topk(10, sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src))",
+      "display_name": "Top Source Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "src",
+          "description": "src"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top source addresses by normalized Flow packet rate."
+    },
+    {
+      "metric_group": "Endpoint",
+      "name": "device_flow_top_dst_packets_rate",
+      "query": "topk(10, sum(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst))",
+      "display_name": "Top Destination Flow Packet Rate",
+      "data_type": "Number",
+      "unit": "pps",
+      "dimensions": [
+        {
+          "name": "dst",
+          "description": "dst"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top destination addresses by normalized Flow packet rate."
+    },
+    {
+      "metric_group": "Conversation",
+      "name": "device_flow_top_conversation_bytes_rate",
+      "query": "topk(10, sum(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='switch', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, dst, protocol, dst_port))",
+      "display_name": "Top Conversation Flow Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "src",
+          "description": "src"
+        },
+        {
+          "name": "dst",
+          "description": "dst"
+        },
+        {
+          "name": "protocol",
+          "description": "protocol"
+        },
+        {
+          "name": "dst_port",
+          "description": "dst_port"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Top conversations by normalized Flow traffic rate."
     }
   ]
 }

@@ -1498,3 +1498,105 @@ def test_reset_pwd_不同domain时拒绝(monkeypatch):
     result = reset_pwd("alice", "corp.com", "ValidPass1!", caller_token="alice.token")
     assert result["result"] is False
     assert "Unauthorized" in result["message"]
+
+
+@pytest.mark.django_db
+def test_search_opspilot_nats_channels_filters_by_source_and_bot():
+    """新增接口：只返回 opspilot 托管的 NATS 通道，支持按 bot_id 过滤、全局列举，带 bot_id/node_id。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import search_opspilot_nats_channels, sync_opspilot_nats_channels
+
+    # bot 7 两个托管通道
+    sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="BotA",
+        team=[2],
+        nodes=[{"node_id": "n1", "name": "NATS触发"}, {"node_id": "n2", "name": "NATS触发 1"}],
+    )
+    # bot 8 一个托管通道
+    sync_opspilot_nats_channels(bot_id=8, bot_name="BotB", team=[3], nodes=[{"node_id": "m1", "name": "入口"}])
+    # 一个用户手建的普通 NATS 通道（无 source），不应出现
+    Channel.objects.create(
+        name="manual", channel_type=ChannelChoices.NATS, config={"namespace": "bklite", "method_name": "x"}, team=[2], description=""
+    )
+
+    # 全局列举：只含 opspilot 托管（3 条），不含手建
+    all_res = search_opspilot_nats_channels()
+    assert all_res["result"] is True
+    names = {c["name"] for c in all_res["data"]}
+    assert "manual" not in names
+    assert len(all_res["data"]) == 3
+    # 返回路由字段
+    sample = all_res["data"][0]
+    assert set(sample.keys()) >= {"id", "name", "description", "team", "bot_id", "node_id"}
+
+    # 按 bot_id 过滤
+    bot7 = search_opspilot_nats_channels(bot_id=7)
+    assert {c["node_id"] for c in bot7["data"]} == {"n1", "n2"}
+    assert all(c["bot_id"] == 7 for c in bot7["data"])
+
+    # 按 teams 过滤（team 3 → 只 bot8）
+    team3 = search_opspilot_nats_channels(teams=[3])
+    assert {c["node_id"] for c in team3["data"]} == {"m1"}
+
+
+def test_wechat_user_register_uses_select_for_update_inside_transaction(monkeypatch):
+    """
+    验证 wechat_user_register 的 RMW 操作受 select_for_update 保护。
+    若将修复代码 revert（去掉 transaction.atomic + select_for_update），本测试必须失败。
+    """
+    import threading
+    from unittest.mock import MagicMock, patch, call
+    from apps.system_mgmt.nats_api import wechat_user_register
+
+    select_for_update_called = threading.Event()
+    atomic_entered = threading.Event()
+
+    # 拦截 User.objects.select_for_update() 调用链
+    original_user_objects = nats_api.User.objects
+
+    class _SFUQuerSet:
+        """模拟 select_for_update() 返回的 queryset，支持 get_or_create"""
+        def get_or_create(self, username, defaults=None):
+            select_for_update_called.set()
+            # 构造最小 User 对象
+            user = MagicMock()
+            user.group_list = []
+            user.role_list = []
+            user.last_login = None
+            user.id = 1
+            user.username = username
+            user.display_name = defaults.get("display_name", "") if defaults else ""
+            user.locale = "zh-Hans"
+            user.timezone = "Asia/Shanghai"
+            return user, True
+
+    class _FakeUserObjects:
+        def select_for_update(self):
+            return _SFUQuerSet()
+
+        def get_or_create(self, *args, **kwargs):
+            # 未经 select_for_update 直接调用——不应发生
+            return MagicMock(group_list=[], role_list=[]), True
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeUserObjects())
+
+    # 让 Group / Role 查询返回空，简化测试
+    monkeypatch.setattr(nats_api.Group, "objects", MagicMock(**{
+        "filter.return_value.first.return_value": None,
+    }))
+    monkeypatch.setattr(nats_api.Role, "objects", MagicMock(**{
+        "filter.return_value.values_list.return_value": [],
+    }))
+
+    # 屏蔽 JWT 签名
+    monkeypatch.setattr(nats_api, "_build_jwt_payload", lambda user_id: {})
+    import jwt as _jwt
+    monkeypatch.setattr(_jwt, "encode", lambda **kwargs: "fake-token")
+
+    result = wechat_user_register("wx_test_race", "测试用户")
+
+    assert result["result"] is True, "wechat_user_register 应返回 result=True"
+    assert select_for_update_called.is_set(), (
+        "select_for_update() 未被调用——RMW 操作缺少悲观锁，并发时会丢失更新（issue #3460）"
+    )

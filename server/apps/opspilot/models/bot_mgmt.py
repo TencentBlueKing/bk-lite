@@ -285,6 +285,7 @@ class WorkFlowTaskResult(models.Model):
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
     execute_type = models.CharField(max_length=50, default="restful")
+    is_test = models.BooleanField(default=False, db_index=True, verbose_name="是否测试执行")
 
 
 class WorkflowAttachmentAsset(models.Model):

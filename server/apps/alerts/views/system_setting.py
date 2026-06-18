@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import SystemSettingModelFilter
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.serializers import SystemSettingModelSerializer
 from apps.core.decorators.api_permission import HasPermission
@@ -68,7 +68,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             "target_id": serializer.data["key"],
             "overview": f"创建系统配置: key:{serializer.data['key']}"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -98,7 +98,7 @@ class SystemSettingModelViewSet(ModelViewSet):
             "target_id": instance.key,
             "overview": f"修改系统配置: key:{instance.key}"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
 
         self.perform_update(serializer)
         return WebUtils.response_success(serializer.data)

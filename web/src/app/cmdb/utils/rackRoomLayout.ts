@@ -1,19 +1,19 @@
 import type { RoomLayoutData } from '@/app/cmdb/types/rackRoom';
 
-// 科技写实主题色板（深色背景 + 霓虹描边）
+// 主题色板（白色系，与周边页面一致；accent 蓝为主色）
 export const TECH = {
-  bg0: '#0a0f1c',
-  bg1: '#0e1424',
-  panel: '#111a2e',
-  panelHi: '#16223c',
-  line: 'rgba(86,160,255,0.16)',
-  lineHi: 'rgba(120,190,255,0.5)',
-  cyan: '#3fd0ff',
-  text: '#dbe6ff',
-  textDim: '#7e92bd',
-  ok: '#36e6a0',
-  warn: '#ffb547',
-  danger: '#ff5a6a',
+  bg0: '#ffffff',
+  bg1: '#f6f8fc',
+  panel: '#ffffff',
+  panelHi: '#eef3fb',
+  line: 'rgba(23,54,106,0.12)',
+  lineHi: 'rgba(23,54,106,0.26)',
+  cyan: '#2f74e6',
+  text: '#1f2a3d',
+  textDim: '#7c8aa6',
+  ok: '#1f9d6b',
+  warn: '#d9871a',
+  danger: '#e24b4a',
 };
 
 // 机柜类型枚举 → 主色（普通/网络/存储/配电/配线/其他）
