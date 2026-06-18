@@ -12,7 +12,7 @@ from apps.alerts.constants import PERMISSION_ALERT, PERMISSION_INCIDENT
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import IncidentModelFilter
 from apps.alerts.models.models import Alert, Incident
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.serializers import AlertModelSerializer, IncidentModelSerializer
 from apps.alerts.service.incident_operator import IncidentOperator
 from apps.alerts.utils.operator_scope import normalize_usernames
@@ -229,7 +229,7 @@ class IncidentModelViewSet(AuthViewSet):
             "target_id": serializer.data["incident_id"],
             "overview": f"手动创建事故[{serializer.data['title']}]",
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
 
         headers = self.get_success_headers(serializer.data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
@@ -277,7 +277,7 @@ class IncidentModelViewSet(AuthViewSet):
             "target_id": instance.incident_id,
             "overview": f"手动修改事故[{instance.title}]",
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
 
         return Response(serializer.data)
 
@@ -305,7 +305,7 @@ class IncidentModelViewSet(AuthViewSet):
             "target_id": instance.incident_id,
             "overview": f"手动删除事故[{instance.title}]",
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return Response(status=status.HTTP_204_NO_CONTENT)
 
     @HasPermission("Incidents-Edit")
@@ -382,7 +382,7 @@ class IncidentModelViewSet(AuthViewSet):
         new_alert_ids = set(alert_ids) - already_in_incident
         if new_alert_ids:
             instance.alert.add(*new_alert_ids)
-            OperatorLog.objects.create(
+            record_operator_log(
                 action=LogAction.MODIFY,
                 target_type=LogTargetType.INCIDENT,
                 operator=request.user.username,
@@ -422,7 +422,7 @@ class IncidentModelViewSet(AuthViewSet):
 
         if to_remove:
             instance.alert.remove(*to_remove)
-            OperatorLog.objects.create(
+            record_operator_log(
                 action=LogAction.MODIFY,
                 target_type=LogTargetType.INCIDENT,
                 operator=request.user.username,

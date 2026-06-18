@@ -9,6 +9,7 @@ from apps.cmdb.constants.constants import (
     VIEW,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
+from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
@@ -576,6 +577,10 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             attr_id = request.data.get("attr_id")
             new_options = request.data.get("option", [])
             ModelManage.update_enum_instances_display(model_id, attr_id, new_options)
+        elif is_file_attr_type(attr_type):
+            # 附件/图片字段：回填历史实例的文件名词干 _display，使其可被全文检索命中
+            attr_id = request.data.get("attr_id")
+            ModelManage.rebuild_file_instances_display(model_id, attr_id)
 
         return WebUtils.response_success(result)
 

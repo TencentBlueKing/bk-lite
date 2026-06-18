@@ -16,6 +16,7 @@ import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
+import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 
 const { Option } = Select;
 
@@ -131,11 +132,12 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
 
   // 判断是否可以查询
   const canQuery = useMemo(() => {
+    const sanitizedGroupBy = sanitizeGroupBy(groupBy);
     return !!(
       monitorObjId &&
       metric &&
       algorithm &&
-      groupBy.length > 0 &&
+      sanitizedGroupBy.length > 0 &&
       selectedInstance &&
       instances.length > 0
     );
@@ -156,6 +158,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     const filter = (conditions || []).filter(
       (condition) => condition.name && condition.method && condition.value
     );
+    const sanitizedGroupBy = sanitizeGroupBy(groupBy);
     return {
       monitor_object: monitorObjId,
       query_condition: {
@@ -169,7 +172,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         value: period || 5
       },
       algorithm,
-      group_by: groupBy,
+      group_by: sanitizedGroupBy,
       metric_unit: currentMetric.unit || '',
       calculation_unit: calculationUnit || '',
       preview: {
@@ -247,7 +250,8 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         (item) => item.instance_id === selectedInstance
       );
       // 判断 showInstName：groupBy 为空或 groupBy 的值都在固定列表中时为 true
-      const showInstName = groupBy.some((item) =>
+      const sanitizedGroupBy = sanitizeGroupBy(groupBy);
+      const showInstName = sanitizedGroupBy.some((item) =>
         fixedGroupByList.includes(item)
       );
       let list = [];

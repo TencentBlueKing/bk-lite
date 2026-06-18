@@ -1133,6 +1133,52 @@ class ModelManage(object):
         return updated_count
 
     @staticmethod
+    def rebuild_file_instances_display(model_id: str, attr_id: str):
+        """回填/重算附件/图片字段所有实例的 _display 冗余字段（文件名词干）。
+
+        用于模型字段变更时确保历史实例也有可被全文检索命中的冗余字段。
+        文件名词干由实例自身的文件数据决定（不依赖模型配置），故重算即幂等回填。
+
+        Args:
+            model_id: 模型ID
+            attr_id: 文件字段属性ID
+
+        Returns:
+            int: 回填/更新的实例数量
+        """
+        from apps.cmdb.display_field import DisplayFieldConverter
+
+        updated_count = 0
+        display_field_id = f"{attr_id}_display"
+
+        try:
+            with GraphClient() as ag:
+                instances, _ = ag.query_entity(INSTANCE, [{"field": "model_id", "type": "str=", "value": model_id}])
+
+                for instance in instances:
+                    # 仅处理含该文件字段值的实例
+                    if attr_id in instance and instance[attr_id]:
+                        new_display_value = DisplayFieldConverter.convert_file(instance[attr_id])
+                        update_data = {display_field_id: new_display_value}
+                        ag.batch_update_node_properties(INSTANCE, [instance["_id"]], update_data)
+                        updated_count += 1
+
+                if updated_count > 0:
+                    logger.info(
+                        f"[rebuild_file_instances_display] 已回填 {updated_count} 个实例的 {display_field_id} 字段, "
+                        f"模型: {model_id}, 字段: {attr_id}"
+                    )
+
+        except Exception as e:
+            logger.error(
+                f"[rebuild_file_instances_display] 回填文件 _display 字段失败: 模型={model_id}, 字段={attr_id}, 错误={e}",
+                exc_info=True,
+            )
+            # 不抛出异常，避免中断主流程
+
+        return updated_count
+
+    @staticmethod
     def delete_model_attr(model_id: str, attr_id: str, username: str = "admin"):
         """
         删除模型属性

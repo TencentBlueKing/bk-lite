@@ -22,6 +22,7 @@ from apps.cmdb.utils.base import (
     get_organization_and_children_ids,
 )
 from apps.cmdb.services.topology_theme import get_topo_themes
+from apps.cmdb.services.rack_room import get_room_layout, get_rack_layout
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -1024,6 +1025,50 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             permission_map=permissions_map,
             user=request.user,
         )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"room_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def room_layout(self, request, model_id: str, inst_id: int):
+        """机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率，供平面图布局。"""
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = get_room_layout(int(inst_id), permission_map=permissions_map, user=request.user)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"rack_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def rack_layout(self, request, model_id: str, inst_id: int):
+        """机柜正视 U 图：返回机柜 u_count 及其 contains 设备的 U 位排布。"""
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = get_rack_layout(int(inst_id), permission_map=permissions_map, user=request.user)
         return WebUtils.response_success(result)
 
     @action(

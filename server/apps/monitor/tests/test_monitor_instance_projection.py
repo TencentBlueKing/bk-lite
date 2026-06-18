@@ -10,6 +10,7 @@ from apps.monitor.models import (
 from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.services.monitor_instance import InstanceSearch
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.dimension import build_safe_instance_id
 
 
 def test_monitor_object_service_projects_flow_asset_fields_for_existing_asset_prefill(db):
@@ -209,6 +210,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
 
 
 def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promql(db, monkeypatch):
+    logical_id = build_safe_instance_id(1, "10.10.41.149")
     monitor_object = MonitorObject.objects.create(
         name="Switch",
         display_name="Switch",
@@ -222,13 +224,13 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
         metric_group=metric_group,
         name="device_total_incoming_netflow_traffic",
         query=(
-            "sum(flow_bytes_in{instance_type='switch', collect_type='netflow', __$labels__}) "
+            "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', __$labels__}) "
             "by (instance_id)"
         ),
         instance_id_keys=["instance_id"],
     )
     instance = MonitorInstance.objects.create(
-        id="('flow:15:1:10.10.41.149',)",
+        id=str((logical_id,)),
         name="NetFlow-10.10.41.149",
         monitor_object_id=monitor_object.id,
         cloud_region_id=1,
@@ -247,7 +249,7 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
                         "result": [
                             {
                                 "metric": {
-                                    "instance_id": "flow:15:1:10.10.41.149",
+                                    "instance_id": logical_id,
                                     "agent_id": "172.18.0.19-1",
                                 },
                                 "value": [1781234567, "1"],
@@ -270,6 +272,6 @@ def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promq
 
     assert data["count"] == 1
     assert captured_queries[1] == (
-        "sum(flow_bytes_in{instance_type='switch', collect_type='netflow', "
-        'instance_id=~"flow:15:1:10\\\\.10\\\\.41\\\\.149"}) by (instance_id)'
+        "sum(netflow_in_bytes{instance_type='switch', collect_type='netflow', "
+        f'instance_id=~"{logical_id}"}}) by (instance_id)'
     )

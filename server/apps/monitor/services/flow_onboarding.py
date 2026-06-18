@@ -3,11 +3,11 @@ from django.db.models import Q
 
 from apps.core.exceptions.base_app_exception import BaseAppException, ValidationAppException
 from apps.core.logger import monitor_logger as logger
-from apps.monitor.models import MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorInstanceOrganization, MonitorObject, MonitorObjectOrganizationRule
 from apps.monitor.services.flow_sampling import FlowSamplingService
 from apps.monitor.services.manual_collect import ManualCollectService
 from apps.monitor.services.monitor_object import MonitorObjectService
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import build_safe_instance_id, parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -50,6 +50,7 @@ class FlowOnboardingService:
                 organizations=organizations,
                 instance_id=instance_id,
                 allow_deleted_instance_reuse=allow_deleted_instance_reuse,
+                conflict_permission_checker=conflict_permission_checker,
             )
             previous_cloud_region_id = instance.cloud_region_id
             restoring_deleted = instance.is_deleted
@@ -171,6 +172,7 @@ class FlowOnboardingService:
         organizations,
         instance_id=None,
         allow_deleted_instance_reuse=False,
+        conflict_permission_checker=None,
     ):
         if instance_id:
             return cls._get_instance(
@@ -187,12 +189,19 @@ class FlowOnboardingService:
             for_update=True,
         )
         if instance:
-            return instance, False
+            return cls._ensure_asset_storage_key(instance), False
+
+        cls._ensure_tuple_available(
+            cloud_region_id=cloud_region_id,
+            ip=ip,
+            exclude_instance_id=None,
+            conflict_permission_checker=conflict_permission_checker,
+        )
 
         result = cls._normalize_duplicate_name_conflict(
             ManualCollectService.create_manual_collect_instance,
             {
-                "id": cls._build_asset_key(monitor_object_id, cloud_region_id, ip),
+                "id": cls._build_asset_key(cloud_region_id, ip),
                 "name": name,
                 "monitor_object_id": monitor_object_id,
                 "cloud_region_id": cloud_region_id,
@@ -225,6 +234,19 @@ class FlowOnboardingService:
             ip=ip,
             for_update=for_update,
         )
+        if instance:
+            return instance
+        storage_key = str((cls._build_asset_key(cloud_region_id, ip),))
+        queryset = MonitorInstance.objects.filter(
+            id=storage_key,
+            monitor_object_id=monitor_object_id,
+        ).order_by("created_at")
+        if for_update:
+            queryset = queryset.select_for_update()
+        instance = queryset.filter(is_deleted=False).first()
+        if instance:
+            return instance
+        instance = queryset.filter(is_deleted=True).first()
         if instance:
             return instance
         return cls.find_existing_asset(
@@ -380,8 +402,75 @@ class FlowOnboardingService:
         return cls.DEFAULT_FALLBACK_SAMPLING_RATE
 
     @staticmethod
-    def _build_asset_key(monitor_object_id, cloud_region_id, ip):
-        return f"flow:{monitor_object_id}:{cloud_region_id}:{ip}"
+    def _build_asset_key(cloud_region_id, ip):
+        return build_safe_instance_id(cloud_region_id, ip)
+
+    @classmethod
+    def _ensure_asset_storage_key(cls, instance):
+        if not instance.cloud_region_id or not instance.ip:
+            return instance
+
+        current_logical_id = str(parse_instance_id(instance.id)[0])
+        if not current_logical_id.startswith("flow:"):
+            return instance
+
+        target_logical_id = cls._build_asset_key(instance.cloud_region_id, instance.ip)
+        target_storage_key = str((target_logical_id,))
+        if instance.id == target_storage_key:
+            return instance
+
+        if MonitorInstance.objects.filter(id=target_storage_key).exists():
+            raise ValidationAppException("Flow asset already exists")
+
+        field_values = {
+            field.name: getattr(instance, field.name)
+            for field in MonitorInstance._meta.concrete_fields
+            if not field.primary_key
+        }
+        field_values["id"] = target_storage_key
+        migrated = MonitorInstance.objects.create(**field_values)
+        cls._move_asset_references(
+            old_storage_key=instance.id,
+            old_logical_id=current_logical_id,
+            new_storage_key=target_storage_key,
+            new_logical_id=target_logical_id,
+        )
+        instance.delete()
+        return migrated
+
+    @staticmethod
+    def _move_asset_references(*, old_storage_key, old_logical_id, new_storage_key, new_logical_id):
+        MonitorInstanceOrganization.objects.filter(monitor_instance_id=old_storage_key).update(
+            monitor_instance_id=new_storage_key
+        )
+        CollectConfig.objects.filter(monitor_instance_id=old_storage_key).update(monitor_instance_id=new_storage_key)
+
+        for rule in MonitorObjectOrganizationRule.objects.filter(monitor_instance_id=old_storage_key):
+            rule.monitor_instance_id = new_storage_key
+            rule.name = rule.name.replace(old_logical_id, new_logical_id)
+            rule.rule = FlowOnboardingService._replace_rule_instance_id(
+                rule.rule,
+                old_logical_id=old_logical_id,
+                new_logical_id=new_logical_id,
+            )
+            rule.save(update_fields=["monitor_instance_id", "name", "rule"])
+
+    @staticmethod
+    def _replace_rule_instance_id(rule, *, old_logical_id, new_logical_id):
+        if not isinstance(rule, dict):
+            return rule
+
+        updated_rule = dict(rule)
+        filters = updated_rule.get("filter")
+        if isinstance(filters, list):
+            updated_filters = []
+            for item in filters:
+                if isinstance(item, dict) and item.get("name") == "instance_id" and item.get("value") == old_logical_id:
+                    updated_filters.append({**item, "value": new_logical_id})
+                else:
+                    updated_filters.append(item)
+            updated_rule["filter"] = updated_filters
+        return updated_rule
 
     @staticmethod
     def _schedule_region_refresh(*cloud_region_ids):
