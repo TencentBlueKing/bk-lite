@@ -346,16 +346,37 @@ class AuthBackend(ModelBackend):
             domain = user_info.get("domain", "domain.com")
             user, created = User._default_manager.get_or_create(username=username, domain=domain)
             is_superuser = self.get_is_superuser(request, user_info)
-            # 更新用户基本信息
-            user.email = user_info.get("email", "")
-            user.is_superuser = is_superuser
-            user.is_staff = user.is_superuser
-            user.is_active = True
-            user.group_list = user_info.get("group_list", [])
-            user.roles = user_info.get("roles", [])
-            user.locale = user_info.get("locale", DEFAULT_LOCALE)
-            user.save()
-            # 设置运行时属性
+            # 计算各字段新值
+            new_email = user_info.get("email", "")
+            new_group_list = user_info.get("group_list", [])
+            new_roles = user_info.get("roles", [])
+            new_locale = user_info.get("locale", DEFAULT_LOCALE)
+            # 仅在有字段实际变化时才写库，避免认证热路径产生无谓 DB UPDATE
+            update_fields = []
+            if user.email != new_email:
+                user.email = new_email
+                update_fields.append("email")
+            if user.is_superuser != is_superuser:
+                user.is_superuser = is_superuser
+                update_fields.append("is_superuser")
+            if user.is_staff != is_superuser:
+                user.is_staff = is_superuser
+                update_fields.append("is_staff")
+            if not user.is_active:
+                user.is_active = True
+                update_fields.append("is_active")
+            if user.group_list != new_group_list:
+                user.group_list = new_group_list
+                update_fields.append("group_list")
+            if user.roles != new_roles:
+                user.roles = new_roles
+                update_fields.append("roles")
+            if user.locale != new_locale:
+                user.locale = new_locale
+                update_fields.append("locale")
+            if created or update_fields:
+                user.save(update_fields=update_fields if not created else None)
+            # 设置运行时属性（不持久化到 DB）
             user.timezone = user_info.get("timezone", "Asia/Shanghai")
             user.rules = rules
             user.permission = {key: set(value) for key, value in user_info.get("permission", {}).items()}
