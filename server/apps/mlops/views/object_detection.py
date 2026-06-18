@@ -1350,6 +1350,20 @@ class ObjectDetectionServingViewSet(TeamModelViewSet):
         if not isinstance(images, list):
             return Response({"error": "images 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST)
 
+        max_image_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_IMAGE_BATCH_SIZE", "100"))
+        if len(images) > max_image_batch_size:
+            return Response(
+                {"error": f"批量预测上限为 {max_image_batch_size} 张，当前请求包含 {len(images)} 张"},
+                status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+            )
+        max_image_bytes = int(os.getenv("MLOPS_PREDICT_MAX_IMAGE_BYTES", str(10 * 1024 * 1024)))
+        for item in images:
+            if isinstance(item, str) and len(item) > max_image_bytes:
+                return Response(
+                    {"error": f"单张图片 base64 长度超过上限 {max_image_bytes} 字节"},
+                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+
         try:
             payload = {"images": images}
             if config is not None:
