@@ -95,7 +95,7 @@ class TestOpenaiCompletions:
     def test_valid_token_proceeds_non_stream(self, request_factory, mocker):
         user = SimpleNamespace(username="alice", domain="d", team=1, locale="en")
         mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
-        skill_obj = SimpleNamespace(id=7, name="skill")
+        skill_obj = SimpleNamespace(id=7, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         params = {"user_message": "hi"}
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
         sentinel = object()
@@ -133,7 +133,7 @@ class TestLobeSkillExecute:
 
     def test_valid_token_proceeds_and_persists_history(self, request_factory, mocker):
         mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill")
+        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         params = {"user_message": "hello"}
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
         hook = mocker.patch.object(views, "_lobe_persist_history", return_value="history_log")
@@ -153,7 +153,7 @@ class TestLobeSkillExecute:
 
     def test_valid_token_stream_path(self, request_factory, mocker):
         mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill")
+        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, {"user_message": "hi"}, None))
         mocker.patch.object(views, "_lobe_persist_history", return_value=None)
         sentinel = object()
@@ -260,9 +260,11 @@ class TestExecuteChatFlow:
         """正常对话(is_test=False)按【使用组织】过滤；伪造移动端 UA 不能绕过团队作用域。"""
         user = SimpleNamespace(username="alice", domain="d", team=99, locale="en")
         mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
+        # 解析不到 bot -> 走拒绝分支，不进异步下游。视图在 .first() 前会链式 .filter(online=True)，
+        # 因此 queryset mock 需自返回，末端 .first() 返回 None。
         qs = mocker.MagicMock()
-        qs.filter.return_value = qs  # .filter(online=True) 链式返回自身
-        qs.first.return_value = None  # 解析不到 bot -> 走拒绝分支，不进异步下游
+        qs.filter.return_value = qs
+        qs.first.return_value = None
         bot_filter = mocker.patch.object(views.Bot.objects, "filter", return_value=qs)
         engine = mocker.patch.object(views, "create_chat_flow_engine")
 
