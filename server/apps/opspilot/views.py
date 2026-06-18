@@ -38,6 +38,7 @@ from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
+from apps.core.utils.team_utils import get_current_team
 
 
 def parse_json_body(request, default=None):
@@ -634,7 +635,7 @@ async def execute_chat_flow(request, bot_id, node_id):
 
     # 验证token
     token = extract_api_token(request)
-    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg)
 
@@ -747,7 +748,7 @@ def interrupt_chat_flow_execution(request):
     execution_id = validated["execution_id"]
 
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg)
     user = msg
@@ -802,7 +803,7 @@ def submit_approval(request):
 
     # 认证：要求有效 Token
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg, status=401)
     user = msg
@@ -867,7 +868,7 @@ def submit_choice(request):
 
     # 认证：要求有效 Token
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg, status=401)
     user = msg

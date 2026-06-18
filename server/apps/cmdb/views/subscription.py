@@ -9,6 +9,7 @@ from rest_framework import viewsets
 from rest_framework.decorators import action
 
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class SubscriptionViewSet(viewsets.ModelViewSet):
@@ -20,7 +21,7 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     pagination_class = CustomPageNumberPagination
 
     def get_queryset(self):
-        current_team = self.request.COOKIES.get("current_team")
+        current_team = get_current_team(self.request)
         if current_team in (None, ""):
             return SubscriptionRule.objects.none()
         try:
@@ -124,5 +125,5 @@ class SubscriptionViewSet(viewsets.ModelViewSet):
     def _check_manage_permission(rule: SubscriptionRule, request) -> bool:
         """检查当前用户是否有权限管理指定规则。"""
         return check_subscription_manage_permission(
-            rule.organization, request.COOKIES.get("current_team")
+            rule.organization, get_current_team(request)
         )

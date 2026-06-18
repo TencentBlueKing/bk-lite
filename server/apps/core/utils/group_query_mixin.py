@@ -4,6 +4,7 @@
 """
 
 from apps.core.logger import logger
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
 
@@ -41,8 +42,8 @@ class GroupQueryMixin:
         :param include_children: 是否包含子组织，如果为None则从请求参数中获取
         :return: 组织ID列表
         """
-        # 1. 获取当前选中的组织ID（从cookies中获取）
-        current_team = request.COOKIES.get("current_team")
+        # 1. 获取当前选中的组织ID（优先读 API Key 注入属性，回退到 cookie）
+        current_team = get_current_team(request)
         if not current_team:
             logger.warning("未找到current_team参数，返回空组织列表")
             return []

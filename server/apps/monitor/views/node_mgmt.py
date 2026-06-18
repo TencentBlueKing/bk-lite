@@ -9,10 +9,11 @@ from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.utils.pagination import parse_page_params
 from apps.monitor.utils.node_selector import merge_node_query_with_selector
+from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 
@@ -75,7 +76,7 @@ class NodeMgmtView(ViewSet):
         logger.debug(
             "batch_setting_node_child_config called by user=%s, current_team=%s",
             request.user.username,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
         )
         InstanceConfigService.create_monitor_instance_by_node_mgmt(request.data, actor_context)
         return WebUtils.response_success()

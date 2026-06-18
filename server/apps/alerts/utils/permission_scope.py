@@ -5,10 +5,11 @@ from rest_framework.exceptions import PermissionDenied
 from apps.alerts.constants.constants import LogTargetType
 from apps.alerts.models.models import Alert, Incident
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.utils.team_utils import get_current_team
 
 
 def get_current_team_from_request(request, required=False):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         return None if not required else 0
     try:

@@ -7,6 +7,7 @@ from django_filters import FilterSet
 
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.operation_analysis.constants.constants import APP_NAME
+from apps.core.utils.team_utils import get_current_team
 
 
 class GroupPermissionMixin:
@@ -47,7 +48,7 @@ class GroupPermissionMixin:
         #     return True, None
 
         # 获取当前选中的组织
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
 
         if not current_team:
             return False, None
@@ -187,7 +188,7 @@ class BaseGroupFilter(FilterSet):
         # if not is_valid:
         #     return queryset.none()
         #
-        # current_team = request.COOKIES.get("current_team")
+        # current_team = get_current_team(request)
         # _permission_key = self.permission_key()
         #
         # # 应用组织过滤

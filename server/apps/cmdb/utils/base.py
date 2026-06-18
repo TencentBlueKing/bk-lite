@@ -5,6 +5,7 @@
 from apps.core.logger import cmdb_logger as logger
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.cmdb.constants.constants import PERMISSION_TASK
+from apps.core.utils.team_utils import get_current_team
 
 
 def get_cmdb_rules(request, permission_key=PERMISSION_TASK) -> dict:
@@ -134,7 +135,7 @@ def get_current_team_from_request(request, required: bool = True) -> int:
     """
     从请求 Cookie 中获取 current_team，并做严格校验。
     """
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         if required:
             raise BaseAppException("缺少 current_team 参数")
