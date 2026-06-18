@@ -19,6 +19,7 @@ from apps.alerts.constants import (
     HeartbeatCheckMode,
     HeartbeatActivationMode,
 )
+from apps.alerts.constants.constants import EventStatus
 from apps.alerts.aggregation.strategy.matcher import StrategyMatcher
 from apps.alerts.aggregation.window.factory import WindowFactory
 from apps.alerts.aggregation.query.builder import SQLBuilder
@@ -131,6 +132,9 @@ class AggregationProcessor:
         events = Event.objects.filter(
             received_at__gte=cutoff_time,
             action=EventAction.CREATED,
+        ).exclude(
+            # 被屏蔽事件不参与聚合建警（事件级·不建警）
+            status=EventStatus.SHIELD,
         )
         logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())
 
@@ -617,6 +621,13 @@ class AggregationProcessor:
         if not fingerprint:
             return
         global_level = [str(i["level_id"]) for i in alert_levels]
+        if not global_level:
+            # 未配置 ALERT 类型 Level 时无法判定严重/普通级别，跳过标题改写，避免 IndexError。
+            logger.warning("[AlertAggregation] 未配置 ALERT 类型 Level，跳过指纹标题规范化")
+            result["fingerprint"] = str_to_md5(
+                fingerprint.split("|", 1)[1] if "|" in fingerprint else fingerprint
+            )
+            return
         raw_fingerprint = fingerprint.split("|", 1)[1] if "|" in fingerprint else fingerprint
         now_level = result["alert_level"]
         event_count = int(result.get("event_count") or 0)

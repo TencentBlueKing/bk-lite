@@ -669,7 +669,7 @@ def test_rich_event_enabled_calls_enrich(event_levels, restful_source, monkeypat
     adapter = RestFulAdapter(alert_source=restful_source)
     adapter.enable_rich_event = True
     called = {}
-    monkeypatch.setattr(adapter, "enrich_event", lambda data: called.setdefault("yes", True))
+    monkeypatch.setattr(adapter, "enrich_event", lambda data, cache=None: called.setdefault("yes", True))
     adapter.rich_event({"labels": {}})
     assert called.get("yes") is True
 
@@ -693,6 +693,71 @@ def test_resolve_recovery_external_id_ambiguous_returns_none(event_levels, restf
                      start_time=timezone.now(), event_id="REC", action=EventAction.RECOVERY,
                      item="cpu", resource_name="host1")
     assert adapter.resolve_recovery_external_id(recovery) is None
+
+
+@pytest.mark.django_db
+def test_create_events_skips_event_missing_title_without_poisoning_batch(event_levels, restful_source):
+    """缺 title 的事件应被跳过（不会构造 start_time=None 的空事件令整批 bulk_create 失败）。
+
+    回归 1-1：同批内的合法事件仍正常入库。
+    """
+    adapter = RestFulAdapter(alert_source=restful_source, secret="src-secret")
+    add_events = [
+        {"level": "0", "item": "cpu", "resource_type": "host", "resource_id": "1", "resource_name": "h1"},  # 缺 title
+        {"title": "ok", "level": "0", "item": "mem", "resource_type": "host", "resource_id": "2", "resource_name": "h2"},
+    ]
+    adapter.create_events(add_events)
+
+    assert Event.objects.count() == 1
+    assert Event.objects.filter(title="ok").exists()
+
+
+@pytest.mark.django_db
+def test_synthesized_start_time_dedup_key_truncated_to_minute(event_levels, restful_source):
+    """1-2:源未提供时间、系统补 now() 时，幂等键按分钟截断。
+
+    同分钟内不同秒 → 同键（重复推送去重）；源自带时间则不截断（保 re-fire 识别）。
+    """
+    from apps.alerts.constants.constants import EventAction
+
+    base = timezone.now().replace(second=0, microsecond=0)
+
+    def _evt(seconds, synthesized):
+        e = Event(
+            source=restful_source, action=EventAction.CREATED, external_id="ext-dedup",
+            push_source_id="default", start_time=base + datetime.timedelta(seconds=seconds),
+        )
+        e._start_time_synthesized = synthesized
+        return e
+
+    # 系统补全 → 同分钟内不同秒 → 同键
+    assert AlertSourceAdapter.build_ingress_dedup_key(_evt(5, True)) == \
+        AlertSourceAdapter.build_ingress_dedup_key(_evt(50, True))
+
+    # 源自带时间 → 不截断 → 不同秒不同键（恢复后再触发可建新事件）
+    assert AlertSourceAdapter.build_ingress_dedup_key(_evt(5, False)) != \
+        AlertSourceAdapter.build_ingress_dedup_key(_evt(50, False))
+
+
+@pytest.mark.django_db
+def test_authenticate_team_secret_but_unresolvable_team_raises(event_levels):
+    """secret 命中 team_secrets 但无法解析归属组织（源级 secret 与 token 内不一致）→ 拒绝。
+
+    回归 1-3：避免产生 team=[] 的孤儿事件。
+    """
+    from apps.alerts.error import AuthenticationSourceError
+    from apps.alerts.utils.util import encode_team_secret
+
+    # token 内编码的 source_secret 与告警源当前 secret 不一致（如 secret 轮换后未重算 team_secrets）
+    stale_token = encode_team_secret("OLD-src-secret", "5")
+    source = AlertSource.objects.create(
+        name="s", source_id="s-stale", source_type="restful", secret="NEW-src-secret",
+        team_secrets={"5": stale_token}, config={"event_fields_mapping": {}},
+    )
+    adapter = RestFulAdapter(alert_source=source, secret=stale_token)
+    assert adapter.resolved_team == []
+    with pytest.raises(AuthenticationSourceError):
+        adapter.authenticate()
 
 
 @pytest.mark.django_db

@@ -30,11 +30,14 @@ from apps.rpc.cmdb import CMDB
 class AlertSourceAdapter(ABC):
     """告警源适配器基类"""
 
-    def __init__(self, alert_source: AlertSource, secret: str = None, events: List = [], trusted_internal: bool = False):
+    def __init__(self, alert_source: AlertSource, secret: str = None, events: Optional[List] = None, trusted_internal: bool = False):
         self.alert_source = alert_source
         self.config = alert_source.config
         self.secret = secret
-        self.events = events
+        self.events = events or []
+        # 单次接入过程内的 CMDB 富化缓存，按 (resource_type, resource_id|resource_name) 去重，
+        # 避免同一资源的多条事件重复发起 CMDB RPC（N+1）。
+        self._enrich_cache: Dict[str, Any] = {}
         # 可信内部推送（如监控中心经 NATS 内部源直推）：采信 event 自带的 organizations 作为归属组织，
         # 不走组织级 secret 解析。仅影响内部通道，外部告警源安全模型不变。
         self.trusted_internal = trusted_internal
@@ -89,8 +92,16 @@ class AlertSourceAdapter(ABC):
         return str(max(instance)), [str(i) for i in instance]
 
     def authenticate(self) -> bool:
-        # 这里可以实现一些通用的认证逻辑
+        # 契约：认证通过返回 True，否则抛 AuthenticationSourceError（不会返回 False）。
         if self.secret in self.team_secrets:
+            # secret 命中 team_secrets，但无法据此解析归属组织（如源级 secret 轮换后
+            # team_secrets 未同步重算）→ 拒绝，避免产生 team=[] 的孤儿事件。
+            if not self.resolved_team:
+                logger.warning(
+                    "[AlertSource] secret 命中 team_secrets 但无法解析归属组织，拒绝接入: source_id=%s",
+                    self.alert_source.source_id,
+                )
+                raise AuthenticationSourceError("Authentication failed: cannot resolve team for secret")
             return True
         # SNMP Trap 暂不参与组织级 secret 路由：bridge 用源级 secret 接入即可，事件统一归默认组织。
         # 后续迭代再做按 trap 内容/节点的精细归属，参考日志模块的 LogGroup 规则模型。
@@ -173,9 +184,10 @@ class AlertSourceAdapter(ABC):
 
     @staticmethod
     def add_start_time(data):
-        if "start_time" not in data:
-            # 如果没有开始时间，默认使用当前时间
+        if "start_time" not in data or not data.get("start_time"):
+            # 如果没有开始时间，默认使用当前时间，并标记为"系统补全"（供幂等键按分钟截断，见 1-2）
             data["start_time"] = timezone.now()
+            data["_start_time_synthesized"] = True
 
     def create_events(self, add_events):
         """将原始告警数据转换为Event对象"""
@@ -183,6 +195,11 @@ class AlertSourceAdapter(ABC):
         for add_event in add_events:
             try:
                 event = self._transform_alert_to_event(add_event)
+                if event is None:
+                    # 缺少必填字段（如 title）→ 丢弃，避免构造出 start_time=None 的空事件，
+                    # 否则会在 bulk_create 时因 NOT NULL 约束令整批写入失败。
+                    logger.warning("[AlertSource] 事件缺少必填字段，已跳过: %s", add_event)
+                    continue
                 self.add_base_fields(event, add_event)
                 events.append(event)
             except Exception as e:
@@ -342,7 +359,20 @@ class AlertSourceAdapter(ABC):
         if getattr(event, "ingest_key", None):
             return event.ingest_key
 
-        ingest_key = event.calculate_ingest_key()
+        start_time = getattr(event, "start_time", None)
+        if getattr(event, "_start_time_synthesized", False) and start_time is not None:
+            # 1-2：源未提供时间、由系统补 now() 时，把用于幂等键的时间截断到分钟，
+            # 使同一分钟内的重复推送去重（治无时间戳源的事件表膨胀），
+            # 跨分钟的 re-fire 仍因时间不同而能建出新事件。存储的 start_time 不受影响。
+            start_time = start_time.replace(second=0, microsecond=0)
+
+        ingest_key = Event.build_ingest_key(
+            getattr(event, "source_id", None) or getattr(getattr(event, "source", None), "id", None),
+            getattr(event, "push_source_id", None),
+            getattr(event, "external_id", None),
+            getattr(event, "action", None),
+            start_time,
+        )
         event.ingest_key = ingest_key
         return ingest_key
 
@@ -435,7 +465,10 @@ class AlertSourceAdapter(ABC):
             try:
                 Event.objects.bulk_create(event_batch, ignore_conflicts=True)
             except IntegrityError:
-                logger.warning("Bulk create hit ingest_key unique conflict, treating as idempotent retry.", exc_info=True)
+                # 命中数据库约束（通常是 ingest_key 唯一约束的并发重复写入）。
+                # 注意：ignore_conflicts 只忽略唯一冲突，NOT NULL 等约束仍会触发此异常并丢弃整批，
+                # 因此上游已确保事件必填字段完整（见 create_events 跳过空事件）。
+                logger.warning("Bulk create hit DB constraint (likely ingest_key conflict); treating as idempotent retry.", exc_info=True)
             # 收集所有 event_id 用于后续查询
             all_event_ids.extend([e.event_id for e in event_batch])
 
@@ -457,15 +490,17 @@ class AlertSourceAdapter(ABC):
         if not self.enable_rich_event:
             return
         try:
-            self.enrich_event(event)
+            self.enrich_event(event, cache=self._enrich_cache)
         except Exception as e:
             logger.error("[AlertSource] 事件富化失败: %s", e, exc_info=True)
 
     @staticmethod
-    def enrich_event(event):
+    def enrich_event(event, cache: Optional[Dict[str, Any]] = None):
         """
         对单个事件进行丰富处理
         查询cmdb nats获取信息
+
+        cache: 单次接入过程内的资源富化缓存，命中则不再发起 CMDB RPC，缓解 N+1。
         """
         params = {}
         resource_type = event.get("resource_type", None)
@@ -481,18 +516,32 @@ class AlertSourceAdapter(ABC):
         else:
             return
 
+        cache_key = f"{resource_type}|{resource_id or ''}|{resource_name or ''}"
+        if cache is not None and cache_key in cache:
+            cmdb_instance = cache[cache_key]
+            if cmdb_instance:
+                event["labels"].update(cmdb_instance)
+            return
+
         try:
             cmdb_instance = CMDB().search_instances(params=params)
+            if cache is not None:
+                cache[cache_key] = cmdb_instance
             # 将cmdb实例信息添加到事件中
             event["labels"].update(cmdb_instance)
         except Exception as err:
             logger.error("[AlertSource] CMDB search_instances 调用失败", exc_info=True)
 
-    def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Event:
-        """将单个告警数据转换为Event对象"""
+    def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Optional[Event]:
+        """将单个告警数据转换为Event对象；缺少必填字段时返回 None。"""
         data = self.mapping_fields_to_event(add_event)
+        if not data:
+            return None
+        # 取出"系统补全 start_time"标记（非模型字段，不能传入 Event(**data)）
+        synthesized = data.pop("_start_time_synthesized", False)
         self.rich_event(data)
         event = Event(**data)
+        event._start_time_synthesized = synthesized
         return event
 
     @staticmethod
@@ -552,8 +601,12 @@ class AlertSourceAdapter(ABC):
         if not bulk_events:
             return
 
+        # 先执行屏蔽：命中事件置 SHIELD。必须在即时旁路之前，否则被屏事件会先建出即时告警。
+        self.event_operator(bulk_events)
+
         # 即时告警旁路：与下方现有聚合主路径并行。dispatch 自身吞掉全部异常，
         # 永不阻断主流程；未配置 INSTANT 策略时直接 no-op，零开销。
+        # dispatch 内部会跳过已被屏蔽（status=SHIELD）的事件（事件级·不建警）。
         try:
             from apps.alerts.aggregation.processor.instant_dispatcher import (
                 InstantAlertDispatcher,
@@ -563,7 +616,6 @@ class AlertSourceAdapter(ABC):
         except Exception:  # noqa
             logger.exception("instant dispatch invocation failed; main pipeline continues")
 
-        self.event_operator(bulk_events)
         self.handle_recovery_events(bulk_events)
 
     @staticmethod

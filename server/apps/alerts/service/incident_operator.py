@@ -144,7 +144,7 @@ class IncidentOperator:
                 "operator": self.user,
                 "operator_object": "事故处理-关闭",
                 "target_id": incident.incident_id,
-                "overview": f"事故确认, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.PROCESSING]} -> {self.status_map[IncidentStatus.CLOSED]}"
+                "overview": f"事故关闭, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.PROCESSING]} -> {self.status_map[IncidentStatus.CLOSED]}"
             }
             self.operator_log(log_data)
 
@@ -185,7 +185,7 @@ class IncidentOperator:
                 "operator": self.user,
                 "operator_object": "事故处理-重新打开",
                 "target_id": incident.incident_id,
-                "overview": f"事故确认, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.CLOSED]} -> {self.status_map[IncidentStatus.PROCESSING]}"
+                "overview": f"事故重新打开, 事故[{incident.title}]状态变更: {self.status_map[IncidentStatus.CLOSED]} -> {self.status_map[IncidentStatus.PROCESSING]}"
             }
             self.operator_log(log_data)
 

@@ -26,7 +26,7 @@ from apps.alerts.constants import (
     INSTANT_STRATEGY_CACHE_TTL,
     INSTANT_SYNC_THRESHOLD,
 )
-from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus
+from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus, EventStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.utils.permission_scope import normalize_team_ids
@@ -232,8 +232,11 @@ def _trigger_dispatch_async(alert_ids: List[str]) -> None:
     if not alert_ids:
         return
     try:
+        # 用符号引用任务名，避免硬编码字符串在重命名/挪模块时静默失效
+        from apps.alerts.tasks import async_auto_assignment_for_alerts
+
         current_app.send_task(
-            "apps.alerts.tasks.tasks.async_auto_assignment_for_alerts",
+            async_auto_assignment_for_alerts.name,
             args=[alert_ids],
         )
     except Exception:
@@ -268,6 +271,19 @@ class InstantAlertDispatcher:
             if not events:
                 return
 
+            # 跳过已被屏蔽的事件（事件级·不建警）。屏蔽在 main() 中先于 dispatch 执行，
+            # 但更新落在 DB，内存对象 status 仍为旧值，故按 event_id 回查最新 SHIELD 状态。
+            shielded_ids = set(
+                Event.objects.filter(
+                    event_id__in=[e.event_id for e in events],
+                    status=EventStatus.SHIELD,
+                ).values_list("event_id", flat=True)
+            )
+            if shielded_ids:
+                events = [e for e in events if e.event_id not in shielded_ids]
+                if not events:
+                    return
+
             hits = InstantAlertDispatcher._collect_hits(events, strategies)
             if not hits:
                 return
@@ -289,9 +305,9 @@ class InstantAlertDispatcher:
                     {"strategy_id": h.strategy_id, "event_id": h.event_id} for h in hits
                 ]
                 try:
-                    current_app.send_task(
-                        "apps.alerts.tasks.tasks.build_instant_alerts", args=[payload]
-                    )
+                    from apps.alerts.tasks import build_instant_alerts
+
+                    current_app.send_task(build_instant_alerts.name, args=[payload])
                     logger.info("instant async enqueued hits=%s", len(payload))
                 except Exception:
                     logger.exception("instant async send_task failed; fallback to sync")
