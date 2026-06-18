@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import SystemSettingModelFilter
 from apps.alerts.utils.operator_log import record_operator_log
+from apps.alerts.utils.system_mgmt_util import SystemMgmtUtils
 from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.serializers import SystemSettingModelSerializer
 from apps.core.decorators.api_permission import HasPermission
@@ -221,12 +222,11 @@ class SystemSettingModelViewSet(ModelViewSet):
     @action(methods=['get'], detail=False, url_path='get_channel_list')
     def get_channel_list(self, request):
         """
-        获取告警通知通道列表: 存在配置
+        获取告警通知通道列表: 排除普通 nats（内部直推），但并入 OpsPilot 托管的 NATS 触发通道。
         """
+        from apps.system_mgmt.models.channel import Channel
 
         result = []
-
-        from apps.system_mgmt.models.channel import Channel
 
         channel_list = Channel.objects.exclude(channel_type="nats")
         for channel in channel_list:
@@ -235,6 +235,16 @@ class SystemSettingModelViewSet(ModelViewSet):
                     "id": channel.id,
                     "name": f"{channel.name}【{channel.get_channel_type_display()}】",
                     "channel_type": channel.channel_type,
+                }
+            )
+
+        # 并入 OpsPilot 托管的 NATS 触发通道（普通 nats 仍排除）
+        for ch in SystemMgmtUtils.search_opspilot_nats_channels():
+            result.append(
+                {
+                    "id": ch["id"],
+                    "name": ch["name"],
+                    "channel_type": "nats",
                 }
             )
 
