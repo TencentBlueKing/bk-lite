@@ -94,7 +94,7 @@ class TestOpenaiCompletions:
     def test_valid_token_proceeds_non_stream(self, request_factory, mocker):
         user = SimpleNamespace(username="alice", domain="d", team=1, locale="en")
         mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
-        skill_obj = SimpleNamespace(id=7, name="skill")
+        skill_obj = SimpleNamespace(id=7, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         params = {"user_message": "hi"}
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
         sentinel = object()
@@ -132,7 +132,7 @@ class TestLobeSkillExecute:
 
     def test_valid_token_proceeds_and_persists_history(self, request_factory, mocker):
         mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill")
+        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         params = {"user_message": "hello"}
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
         hook = mocker.patch.object(views, "_lobe_persist_history", return_value="history_log")
@@ -152,7 +152,7 @@ class TestLobeSkillExecute:
 
     def test_valid_token_stream_path(self, request_factory, mocker):
         mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill")
+        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, {"user_message": "hi"}, None))
         mocker.patch.object(views, "_lobe_persist_history", return_value=None)
         sentinel = object()
@@ -207,9 +207,7 @@ class TestSkillExecute:
         qs = mocker.MagicMock()
         qs.first.return_value = bot
         mocker.patch.object(views.Bot.objects, "filter", return_value=qs)
-        exec_skill = mocker.patch.object(
-            views.SkillExecuteService, "execute_skill", return_value={"content": "ok"}
-        )
+        exec_skill = mocker.patch.object(views.SkillExecuteService, "execute_skill", return_value={"content": "ok"})
 
         request = _make_request(
             request_factory,
@@ -247,8 +245,11 @@ class TestExecuteChatFlow:
     async def test_bot_outside_team_not_resolvable(self, request_factory, mocker):
         user = SimpleNamespace(username="alice", domain="d", team=99, locale="en")
         mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
-        # Scoped filter resolves no bot -> rejected with "No bot online"
+        # Scoped filter resolves no bot -> rejected with "No bot online".
+        # The view chains .filter(online=True) before .first(), so the queryset
+        # mock is self-returning and the terminal .first() yields None.
         qs = mocker.MagicMock()
+        qs.filter.return_value = qs
         qs.first.return_value = None
         bot_filter = mocker.patch.object(views.Bot.objects, "filter", return_value=qs)
         engine = mocker.patch.object(views, "create_chat_flow_engine")
@@ -265,10 +266,13 @@ class TestExecuteChatFlow:
         assert resp.status_code == 200
         assert json.loads(resp.content)["result"] is False
         engine.assert_not_called()
-        # Scoping filter must include the validated user's team.
-        _, called_kwargs = bot_filter.call_args
-        assert called_kwargs["team__contains"] == 99
-        assert called_kwargs["id"] == 1
+        # Bot resolution is scoped by id + the validated user's team, passed as a
+        # single positional Q(id=...) & Q(team__contains=[team]); the spoofable
+        # mobile UA must not loosen it.
+        (scope_q,), _ = bot_filter.call_args
+        scope = dict(scope_q.children)
+        assert scope["id"] == 1
+        assert scope["team__contains"] == [99]
 
 
 # --------------------------------------------------------------------------- #
