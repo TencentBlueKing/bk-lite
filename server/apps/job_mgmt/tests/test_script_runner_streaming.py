@@ -4,6 +4,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from apps.job_mgmt.constants import ExecutionStatus, ScriptType, TargetSource
+from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 
 pytestmark = pytest.mark.unit
@@ -74,8 +75,6 @@ def test_crlf_normalized_for_ansible_shell_path():
     回归 #3404：dd4508928 只在 sidecar(SSH/local_stream) 路径规范化，遗漏了
     手动目标 + Ansible 驱动这条先于 sidecar 返回的下发路径。
     """
-    from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
-
     execution = MagicMock()
     execution.id = 99
     execution.timeout = 60
@@ -100,8 +99,6 @@ def test_crlf_normalized_for_ansible_shell_path():
 
 def test_crlf_preserved_for_ansible_bat_path():
     """Windows 原生脚本(bat)经 Ansible(win_shell)下发时保留 CRLF，不做规范化。"""
-    from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
-
     execution = MagicMock()
     execution.id = 99
     execution.timeout = 60
@@ -123,8 +120,6 @@ def test_crlf_preserved_for_ansible_bat_path():
 
 def test_normalize_script_line_endings_bare_cr_and_idempotent():
     """规范化覆盖老 Mac 裸 \\r；已是 LF 的脚本字节不变(避免误伤正常脚本)。"""
-    from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
-
     assert ExecutionTaskBaseService.normalize_script_line_endings("a\rb\r\nc", ScriptType.SHELL) == "a\nb\nc"
     lf = "#!/bin/bash\necho hi\n"
     assert ExecutionTaskBaseService.normalize_script_line_endings(lf, ScriptType.PYTHON) == lf
