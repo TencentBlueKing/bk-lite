@@ -70,7 +70,7 @@ apiClient.interceptors.response.use(
 
     if (error.response) {
       const { status } = error.response;
-      const messageText = error.response?.data?.message;
+      const messageText = error.response?.data?.message ?? error.response?.data?.error;
       if (status === 460) {
         void forceLogoutAndRedirect();
         return Promise.reject(error);
