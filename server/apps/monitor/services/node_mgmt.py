@@ -15,7 +15,7 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     Metric,
 )
-from apps.monitor.utils.dimension import parse_instance_id, normalize_instance_identity
+from apps.monitor.utils.dimension import build_safe_instance_id, parse_instance_id, normalize_instance_identity
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
@@ -32,6 +32,7 @@ class InstanceConfigService:
         "Node": "node_status_condition",
     }
     _HOST_MONITOR_OBJECT_NAME = "Host"
+    _NETWORK_DEVICE_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
 
     @staticmethod
     def _build_permission_data(actor_context):
@@ -644,6 +645,11 @@ class InstanceConfigService:
         return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
 
     @staticmethod
+    def _should_use_network_device_identity_adapter(monitor_object_name: str) -> bool:
+        """判断当前监控对象是否为网络设备，网络设备接入需要跨插件统一实例ID。"""
+        return monitor_object_name in InstanceConfigService._NETWORK_DEVICE_MONITOR_OBJECT_NAMES
+
+    @staticmethod
     def _prepare_host_identity_instances(instances: list) -> list:
         """对 Host 实例列表应用 identity adapter，统一 storage/logical/raw 三层 ID。
 
@@ -668,6 +674,46 @@ class InstanceConfigService:
                 }
             )
         return prepared
+
+    @staticmethod
+    def _prepare_network_device_identity_instances(instances: list) -> list:
+        """对网络设备实例应用 identity adapter，按云区域和 IP 统一跨插件实例ID。"""
+        prepared = []
+        for instance in instances:
+            cloud_region, ip = InstanceConfigService._extract_network_device_identity_parts(instance)
+            identity = normalize_instance_identity(build_safe_instance_id(cloud_region, ip))
+            prepared.append(
+                {
+                    **instance,
+                    "raw_instance_id": instance.get("instance_id"),
+                    "logical_instance_value": identity["logical_instance_value"],
+                    "storage_instance_key": identity["storage_instance_key"],
+                    "instance_id": identity["storage_instance_key"],
+                }
+            )
+        return prepared
+
+    @staticmethod
+    def _extract_network_device_identity_parts(instance: dict) -> tuple:
+        cloud_region = instance.get("cloud_region_id") or instance.get("cloud_region")
+        ip = instance.get("ip")
+        raw_instance_id = str(instance.get("instance_id") or "").strip()
+
+        if (not cloud_region or not ip) and raw_instance_id:
+            colon_parts = raw_instance_id.split(":")
+            if len(colon_parts) >= 3:
+                cloud_region = cloud_region or colon_parts[0]
+                ip = ip or colon_parts[-1]
+
+            underscore_parts = raw_instance_id.split("_")
+            if len(underscore_parts) >= 2:
+                cloud_region = cloud_region or underscore_parts[0]
+                ip = ip or underscore_parts[-1]
+
+        if not cloud_region or not ip:
+            raise ValueError("network device instance requires cloud_region and ip")
+
+        return cloud_region, ip
 
     @staticmethod
     def _validate_expected_collect_configs(instances, configs, monitor_plugin_id, collect_type):
@@ -721,13 +767,19 @@ class InstanceConfigService:
             actor_context,
         )
 
-        # 对 Host 对象应用 identity adapter，统一 storage/logical/raw 三层 ID
+        # 对需要统一实例身份的对象应用 identity adapter，统一 storage/logical/raw 三层 ID
         monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
         monitor_object_name = monitor_object.name if monitor_object else ""
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
+        elif InstanceConfigService._should_use_network_device_identity_adapter(monitor_object_name):
+            try:
+                prepared_instances = InstanceConfigService._prepare_network_device_identity_instances(sanitized_instances)
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")

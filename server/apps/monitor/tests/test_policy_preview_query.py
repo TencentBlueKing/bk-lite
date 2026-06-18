@@ -227,6 +227,26 @@ def test_policy_preview_surfaces_victoriametrics_error(monkeypatch):
         module.PolicyPreviewService(payload).preview()
 
 
+def test_policy_preview_filters_empty_group_by_values(monkeypatch):
+    metric = types.SimpleNamespace(
+        query='cpu_usage_idle{__$labels__}',
+        unit="percent",
+        instance_id_keys=["instance_id"],
+    )
+    module = _load_policy_preview_service(monkeypatch, metric)
+    payload = {
+        "query_condition": {"type": "metric", "metric_id": 10, "filter": []},
+        "period": {"type": "min", "value": 5},
+        "algorithm": "sum_over_time",
+        "group_by": ["instance_id", None, ""],
+        "preview": {"instance_id": "host-1", "instance_id_values": ["abc"]},
+    }
+
+    result = module.PolicyPreviewService(payload).preview()
+
+    assert result["query"] == 'any(sum_over_time(cpu_usage_idle{instance_id=~"abc"}[5m])) by (instance_id)'
+
+
 def test_monitor_policy_preview_action_delegates_to_preview_service(monkeypatch):
     module = importlib.import_module("apps.monitor.views.monitor_policy")
     service_calls = []

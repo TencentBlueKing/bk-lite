@@ -62,7 +62,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
   const [passwordModalVisible, setPasswordModalVisible] = useState(false);
   const [countdown, setCountdown] = useState(0);
   const [userInfo, setUserInfo] = useState<any>({});
-  const [hashedCode, setHashedCode] = useState<string>('');
+  const [currentEmail, setCurrentEmail] = useState<string>('');
   const [verifyPasswordFor, setVerifyPasswordFor] = useState<'email' | 'password'>('email');
   const [verifyCodeAttempts, setVerifyCodeAttempts] = useState(0);
   const MAX_VERIFY_ATTEMPTS = 10;
@@ -168,11 +168,9 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
   const handleSendVerificationCode = async (email: string) => {
     try {
       setSendVerifyCodeLoading(true);
-      const data = await post('/console_mgmt/send_email_code/', { email });
+      await post('/console_mgmt/send_email_code/', { email });
       setSendVerifyCodeLoading(false);
-      if (data?.hashed_code) {
-        setHashedCode(data.hashed_code);
-      }
+      setCurrentEmail(email);
       message.success(t('userInfo.verificationCodeSent'));
       setCountdown(90);
       setVerifyCodeAttempts(0);
@@ -195,7 +193,7 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
     try {
       setEmailChangeLoading(true);
       await post('/console_mgmt/validate_email_code/', {
-        hashed_code: hashedCode,
+        email: currentEmail,
         input_code: values.verificationCode
       });
       setUserInfo((pre: any) => ({

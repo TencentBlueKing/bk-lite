@@ -30,6 +30,12 @@ export const useInstanceApi = () => {
       }`
     );
 
+  const getRoomLayout = (modelId: string, instId: string) =>
+    get(`/cmdb/api/instance/room_layout/${modelId}/${instId}/`);
+
+  const getRackLayout = (modelId: string, instId: string) =>
+    get(`/cmdb/api/instance/rack_layout/${modelId}/${instId}/`);
+
   // 获取实例详情
   const getInstanceDetail = (instanceId: string) =>
     get(`/cmdb/api/instance/${instanceId}/`);
@@ -122,6 +128,8 @@ export const useInstanceApi = () => {
     topoSearchInstances,
     getTopoThemes,
     getNetworkTopo,
+    getRoomLayout,
+    getRackLayout,
     getInstanceDetail,
     createInstance,
     updateInstance,

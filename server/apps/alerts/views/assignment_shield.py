@@ -11,7 +11,7 @@ from apps.alerts.serializers import AlertAssignmentModelSerializer, AlertShieldM
 from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask, AlertShield
 from apps.core.logger import alert_logger as logger
 from django.db import transaction
@@ -47,7 +47,7 @@ class AlertAssignmentModelViewSet(ModelViewSet):
             "target_id": serializer.data["id"],
             "overview": f"创建告警分派策略[{serializer.data['name']}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @HasPermission("alert_assign-Edit")
@@ -62,7 +62,7 @@ class AlertAssignmentModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"修改告警分派策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return super().update(request, *args, **kwargs)
 
     @HasPermission("alert_assign-Delete")
@@ -77,7 +77,7 @@ class AlertAssignmentModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"删除告警分派策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -161,7 +161,7 @@ class AlertShieldModelViewSet(ModelViewSet):
             "target_id": serializer.data["id"],
             "overview": f"创建告警屏蔽策略[{serializer.data['name']}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @HasPermission("shield_strategy-Edit")
@@ -176,7 +176,7 @@ class AlertShieldModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"修改告警屏蔽策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return super().update(request, *args, **kwargs)
 
     @HasPermission("shield_strategy-Delete")
@@ -191,6 +191,6 @@ class AlertShieldModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"删除告警屏蔽策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

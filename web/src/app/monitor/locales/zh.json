@@ -643,7 +643,7 @@
         "lastSeenAt": "最近上报时间",
         "effectiveSamplingRate": "生效采样率",
         "samplingRateSource": "采样率来源",
-        "viewAssetList": "查看监控视图",
+        "viewAssetList": "查看实例列表",
         "addAnotherAsset": "再接入一个资产",
         "backToTemplateList": "返回模板列表"
       },
