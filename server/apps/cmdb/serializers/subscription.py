@@ -3,6 +3,7 @@ from rest_framework import serializers
 from apps.cmdb.constants.subscription import FilterType, TriggerType
 from apps.cmdb.models.subscription_rule import SubscriptionRule
 from apps.cmdb.utils.subscription_utils import check_subscription_manage_permission
+from apps.core.utils.team_utils import get_current_team
 
 
 class SubscriptionRuleSerializer(serializers.ModelSerializer):
@@ -49,7 +50,7 @@ class SubscriptionRuleSerializer(serializers.ModelSerializer):
         if not request:
             return False
         return check_subscription_manage_permission(
-            obj.organization, request.COOKIES.get("current_team")
+            obj.organization, get_current_team(request)
         )
 
     def validate_name(self, value):

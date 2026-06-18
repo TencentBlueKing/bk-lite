@@ -3,6 +3,7 @@ from rest_framework.viewsets import ViewSet
 
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.core.utils.team_utils import get_current_team
 
 
 class NodeViewSet(ViewSet):
@@ -24,7 +25,7 @@ class NodeViewSet(ViewSet):
                 permission_data={
                     "username": request.user.username,
                     "domain": request.user.domain,
-                    "current_team": request.COOKIES.get("current_team"),
+                    "current_team": get_current_team(request),
                 },
             )
         )

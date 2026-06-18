@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import logging
 
 from rest_framework import serializers
+from apps.core.utils.team_utils import get_current_team
 
 logger = logging.getLogger(__name__)
 
@@ -26,7 +27,7 @@ def get_current_team(request, default=0):
     Returns:
         int – the parsed team id, or *default*.
     """
-    raw = request.COOKIES.get("current_team", "")
+    raw = get_current_team(request, "")
     if not raw:
         return default
     try:

@@ -9,6 +9,7 @@ from apps.job_mgmt.filters.dangerous_path import DangerousPathFilter
 from apps.job_mgmt.models import DangerousPath
 from apps.job_mgmt.serializers.dangerous_path import DangerousPathCreateSerializer, DangerousPathSerializer, DangerousPathUpdateSerializer
 from apps.job_mgmt.views.dangerous_base import BaseDangerousItemViewSet
+from apps.core.utils.team_utils import get_current_team
 
 
 class DangerousPathViewSet(BaseDangerousItemViewSet):
@@ -47,7 +48,7 @@ class DangerousPathViewSet(BaseDangerousItemViewSet):
     @action(detail=False, methods=["GET"])
     def enabled_paths(self, request):
         """获取当前组启用的所有高危路径规则"""
-        current_team = int(request.COOKIES.get("current_team", 0))
+        current_team = int(get_current_team(request, 0))
         paths = DangerousPath.objects.filter(is_enabled=True, team__contains=current_team)
 
         result = {

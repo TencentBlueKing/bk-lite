@@ -5,6 +5,7 @@ from dataclasses import dataclass
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
 from apps.log.constants.permission import PermissionConstants
 from apps.log.models.log_group import LogGroup
+from apps.core.utils.team_utils import get_current_team
 
 
 @dataclass
@@ -22,7 +23,7 @@ class LogAccessScope:
 class LogAccessScopeService:
     @staticmethod
     def _get_current_team(request):
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if current_team in (None, ""):
             raise ValueError("当前组织信息不存在，请重新登录")
         return current_team

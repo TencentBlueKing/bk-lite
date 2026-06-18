@@ -1,6 +1,7 @@
 from django.db.models import Count, F, Q
 
 from apps.core.utils.permission_utils import get_instance_permission_map, get_permission_rules, permission_filter
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.web_utils import WebUtils
 from apps.node_mgmt.constants.node import NodeConstants
 from apps.node_mgmt.models.sidecar import ChildConfig, CollectorConfiguration, Node
@@ -32,7 +33,7 @@ def normalize_orgs(values):
 
 def get_node_permission(request):
     include_children = request.COOKIES.get("include_children", "0") == "1"
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     user = get_request_user(request)
 
     if current_team in (None, "") or user is None:
