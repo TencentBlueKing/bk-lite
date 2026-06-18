@@ -135,7 +135,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
-        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
+        params["team"] = params.get("team", []) or [self._parse_current_team_cookie(request)]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])

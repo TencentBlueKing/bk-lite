@@ -2,15 +2,9 @@ import json
 from typing import Any, Dict, Literal, Optional
 
 from langchain_core.runnables import RunnableConfig
-from mysql.connector import Error, connect
+from mysql.connector import connect
 
-from apps.opspilot.metis.llm.tools.common.credentials import (
-    CredentialItem,
-    CredentialValidationError,
-    NormalizedCredentials,
-    execute_with_credentials,
-    normalize_credentials,
-)
+from apps.opspilot.metis.llm.tools.common.credentials import CredentialItem, CredentialValidationError, NormalizedCredentials, normalize_credentials
 
 MYSQL_INSTANCE_FIELDS = (
     "id",

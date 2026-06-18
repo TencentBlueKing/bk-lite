@@ -59,6 +59,8 @@ def get_user_info(bot_id, input_channel, sender_id):
         except Exception as e:
             logger.error(f"获取钉钉用户信息失败: {e}")
             name = sender_id
+        finally:
+            client.close()
     elif input_channel == "wechat_official_account":
         channel_obj = BotChannel.objects.get(bot_id=bot_id, channel_type=ChannelChoices.WECHAT_OFFICIAL_ACCOUNT)
         conf = channel_obj.decrypted_channel_config

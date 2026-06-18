@@ -3,6 +3,7 @@ from django_filters import filters
 from django_filters.rest_framework import FilterSet
 from rest_framework import mixins
 from rest_framework.decorators import action
+from rest_framework.exceptions import NotFound, ValidationError
 from rest_framework.response import Response
 from rest_framework.viewsets import GenericViewSet
 
@@ -40,27 +41,34 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         queryset = queryset.filter(bot_work_flow__bot__team__contains=[current_team])
         return queryset
 
-    def _resolve_execution_context(self, execution_id: str, task_result_id: str):
-        """解析 execution_id 与 task_result 上下文"""
-        if not execution_id and not task_result_id:
-            return None, None, Response({"detail": "execution_id或id参数至少提供一个。"}, status=400)
+    def _authorize_execution(self, execution_id: str, task_result_id: str):
+        """解析并按当前 team 鉴权执行上下文。
 
-        task_result = None
+        通过 team 作用域的 get_queryset() 解析 WorkFlowTaskResult，确保只有当前 team
+        拥有的执行实例可被访问（WorkFlowTaskNodeResult 自身无 team 字段，只能经同
+        execution_id 的 WorkFlowTaskResult → bot.team 判定归属）。找不到（不存在 / 属于
+        他团队）一律 404，两种情况不区分，避免 execution_id 存在性枚举。
+
+        返回 (authorized_execution_id, task_result)。
+        """
+        scoped = self.get_queryset()  # 内含 _validate_current_team_permission + team 过滤
         if task_result_id:
-            task_result = WorkFlowTaskResult.objects.filter(id=task_result_id).first()
+            task_result = scoped.filter(id=task_result_id).first()
             if not task_result:
-                return None, None, Response({"detail": "未找到对应的workflow_task_result记录。"}, status=404)
-
+                raise NotFound("未找到对应的执行记录。")
             if execution_id and task_result.execution_id != execution_id:
-                return None, None, Response({"detail": "execution_id与id不匹配。"}, status=400)
-
-        if not execution_id and task_result:
+                raise NotFound("execution_id 与 id 不匹配。")
             execution_id = task_result.execution_id
+        elif execution_id:
+            task_result = scoped.filter(execution_id=execution_id).first()
+            if not task_result:
+                raise NotFound("未找到对应的执行记录。")
+        else:
+            raise ValidationError("execution_id 或 id 参数至少提供一个。")
 
-        if not task_result and execution_id:
-            task_result = WorkFlowTaskResult.objects.filter(execution_id=execution_id).order_by("-id").first()
-
-        return execution_id, task_result, None
+        if not execution_id:
+            raise NotFound("执行记录缺少有效的 execution_id。")
+        return execution_id, task_result
 
     @staticmethod
     def _build_node_filters(execution_id: str, task_result=None, node_id: str = ""):
@@ -107,12 +115,8 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         if not execution_id:
             return Response({"detail": "execution_id参数是必需的。"}, status=400)
 
-        # 验证 execution_id 对应的 task_result 属于用户有权限访问的 bot
-        task_result = WorkFlowTaskResult.objects.filter(execution_id=execution_id).select_related("bot_work_flow__bot").first()
-        if task_result:
-            bot = task_result.bot_work_flow.bot if task_result.bot_work_flow else None
-            if bot:
-                self._validate_bot_permission(request, bot.id)
+        # 按当前 team 鉴权 execution_id（非本团队 / 不存在 → 404），再用已鉴权的 id 查节点
+        execution_id, _task_result = self._authorize_execution(execution_id, "")
 
         node_results = (
             WorkFlowTaskNodeResult.objects.filter(execution_id=execution_id)
@@ -140,13 +144,8 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         execution_id = request.query_params.get("execution_id", "")
         task_result_id = request.query_params.get("id", "")
 
-        execution_id, task_result, error_response = self._resolve_execution_context(execution_id, task_result_id)
-        if error_response:
-            return error_response
-
-        # 验证 task_result 对应的 bot 权限
-        if task_result and task_result.bot_work_flow and task_result.bot_work_flow.bot:
-            self._validate_bot_permission(request, task_result.bot_work_flow.bot.id)
+        # 按当前 team 鉴权（非本团队 / 不存在 → 404），节点查询基于已鉴权的 execution_id
+        execution_id, task_result = self._authorize_execution(execution_id, task_result_id)
 
         node_filters = self._build_node_filters(execution_id, task_result)
 
@@ -169,9 +168,8 @@ class WorkFlowTaskResultViewSet(TeamPermissionMixin, mixins.ListModelMixin, mixi
         if not node_id:
             return Response({"detail": "node_id参数是必需的。"}, status=400)
 
-        execution_id, task_result, error_response = self._resolve_execution_context(execution_id, task_result_id)
-        if error_response:
-            return error_response
+        # 按当前 team 鉴权（非本团队 / 不存在 → 404），节点查询基于已鉴权的 execution_id
+        execution_id, task_result = self._authorize_execution(execution_id, task_result_id)
 
         node_filters = self._build_node_filters(execution_id, task_result, node_id=node_id)
 
