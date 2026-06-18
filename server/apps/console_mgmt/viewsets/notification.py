@@ -1,4 +1,4 @@
-from django.db.models import BooleanField, Exists, OuterRef, Subquery, Value
+from django.db.models import BooleanField, Exists, OuterRef, Q
 from django.http import JsonResponse
 from django.utils import timezone
 from rest_framework import status, viewsets
@@ -147,18 +147,13 @@ class NotificationViewSet(viewsets.ModelViewSet):
 
     @action(methods=["get"], detail=False)
     def unread_count(self, request):
-        """获取当前用户的未读通知数量"""
+        """获取当前用户的未读通知数量（单次 SQL：用 Exists 子查询替代三次独立查询）"""
         user = request.user
-        # 排除已删除的
-        deleted_ids = NotificationRead.objects.filter(
-            user=user, is_deleted=True,
-        ).values_list("notification_id", flat=True)
-        read_ids = NotificationRead.objects.filter(
-            user=user, is_read=True,
-        ).values_list("notification_id", flat=True)
-        count = Notification.objects.exclude(
-            id__in=deleted_ids,
-        ).exclude(
-            id__in=read_ids,
-        ).count()
+        deleted_or_read = NotificationRead.objects.filter(
+            notification=OuterRef("pk"),
+            user=user,
+        ).filter(
+            Q(is_deleted=True) | Q(is_read=True)
+        )
+        count = Notification.objects.exclude(Exists(deleted_or_read)).count()
         return JsonResponse({"result": True, "data": {"count": count}})
