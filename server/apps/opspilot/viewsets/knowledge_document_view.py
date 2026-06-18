@@ -25,10 +25,7 @@ from apps.opspilot.models import (
     WebPageKnowledge,
 )
 from apps.opspilot.serializers import KnowledgeDocumentSerializer
-from apps.opspilot.serializers.request_serializers import (
-    BatchTrainRequestSerializer,
-    DeleteChunksRequestSerializer,
-)
+from apps.opspilot.serializers.request_serializers import BatchTrainRequestSerializer, DeleteChunksRequestSerializer
 from apps.opspilot.services.knowledge_search_service import KnowledgeSearchService
 from apps.opspilot.tasks import general_embed, general_embed_by_document_list
 from apps.opspilot.utils.chunk_helper import ChunkHelper
@@ -116,7 +113,7 @@ class KnowledgeDocumentViewSet(TeamPermissionMixin, LanguageViewSet):
         if not scoped_ids:
             return JsonResponse({"result": True})
         KnowledgeDocument.objects.filter(id__in=scoped_ids).update(train_status=DocumentStatus.TRAINING)
-        general_embed(scoped_ids, request.user.username, request.user.domain, delete_qa_pairs)
+        general_embed.delay(scoped_ids, request.user.username, request.user.domain, delete_qa_pairs)
         return JsonResponse({"result": True})
 
     @action(methods=["GET"], detail=False)

@@ -117,7 +117,11 @@ class BaseChatFlowUtils(ABC):
 
         # 处理执行结果
         if isinstance(result, dict):
-            reply_text = result.get("content") or result.get("data") or str(result)
+            if result.get("success") is False:
+                # 工作流失败：返回可读的失败消息，而非把内部错误结构(dict)整体 str() 发给用户
+                reply_text = result.get("last_message") or result.get("error") or "处理失败，请稍后重试"
+            else:
+                reply_text = result.get("content") or result.get("data") or result.get("last_message") or str(result)
         else:
             reply_text = str(result) if result else "处理完成"
 

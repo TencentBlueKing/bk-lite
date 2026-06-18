@@ -22,7 +22,11 @@ def generate_workflow_attachment_download_token():
 class Bot(MaintainerInfo):
     name = models.CharField(max_length=255, verbose_name="名称")
     introduction = models.TextField(blank=True, null=True, verbose_name="描述")
-    team = models.JSONField(default=list)
+    team = models.JSONField(default=list)  # 管理组织：工作台可见/编辑/删除/授权使用组织
+    # 使用组织：仅能调用 execute_chat_flow 进行对话/接口请求，不能在工作台查看/编辑/删除。
+    # 不变式 team ⊆ usage_team：管理组织恒为使用组织子集（新建时并入、授权时不可删），
+    # 因此管理组织天然具备使用权。
+    usage_team = models.JSONField(default=list, verbose_name="使用组织")
     channels = models.JSONField(default=list)
     rasa_model = models.ForeignKey("RasaModel", on_delete=models.CASCADE, verbose_name="模型", blank=True, null=True)
     llm_skills = models.ManyToManyField("LLMSkill", verbose_name="LLM技能", blank=True)

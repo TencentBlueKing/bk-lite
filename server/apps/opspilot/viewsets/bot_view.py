@@ -41,6 +41,15 @@ def _schedule_memory_write_cache_flush(workflow: BotWorkFlow, old_flow_json, new
         )
 
 
+def _merge_usage_team(team, usage_team):
+    """保证不变式 team ⊆ usage_team：管理组织恒在使用组织内、去重、保持顺序（管理组织在前）。"""
+    merged = list(team or [])
+    for org in usage_team or []:
+        if org not in merged:
+            merged.append(org)
+    return merged
+
+
 class BotFilter(FilterSet):
     name = filters.CharFilter(field_name="name", lookup_expr="icontains")
     bot_type = filters.CharFilter(method="filter_bot_type")
@@ -124,6 +133,8 @@ class BotViewSet(PinMixin, AuthViewSet):
             name=data.get("name"),
             introduction=data.get("introduction"),
             team=team,
+            # 使用组织初始 = 管理组织（不变式 team ⊆ usage_team），新建后管理组织即具备使用权
+            usage_team=list(team),
             channels=[],
             created_by=request.user.username,
             replica_count=data.get("replica_count") or 1,
@@ -159,6 +170,9 @@ class BotViewSet(PinMixin, AuthViewSet):
         for key in self.UPDATABLE_FIELDS:
             if key in data:
                 setattr(obj, key, data[key])
+        if "team" in data:
+            # 管理组织变更后维持不变式 team ⊆ usage_team（管理组织并入使用组织、不可删）
+            obj.usage_team = _merge_usage_team(obj.team, obj.usage_team)
         if node_port:
             obj.node_port = node_port
         if rasa_model:
@@ -190,6 +204,36 @@ class BotViewSet(PinMixin, AuthViewSet):
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
             log_operation(request, "update", "opspilot", f"编辑工作台: {obj.name}")
+        return response
+
+    @HasPermission("bot_settings-Edit")
+    @action(methods=["POST"], detail=True)
+    def authorize_usage_team(self, request, pk=None):
+        """授权使用组织：管理组织把 bot 开放给其它组织进行对话（不授予管理权）。
+
+        三重防护：get_object()（team 作用域，非管理组织取不到 → 404）+ get_has_permission
+        （管理编辑权）+ _validate_org_field_permission（只能授权授权人有权限的新增组织）。
+        管理组织恒并入 usage_team 且不可删除（不变式 team ⊆ usage_team）。
+        请求体 usage_team 为期望的完整使用组织列表（含管理组织），后端强制并入 team。
+        """
+        obj: Bot = self.get_object()
+        if not request.user.is_superuser:
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
+            if not has_permission:
+                msg = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                return JsonResponse({"result": False, "message": msg})
+        requested = request.data.get("usage_team", []) or []
+        # 仅校验“新增的非管理组织”——管理组织是授权人本就管理的、且恒不可删
+        extra_orgs = [org for org in requested if org not in obj.team]
+        self._validate_org_field_permission(request, extra_orgs)
+        obj.usage_team = _merge_usage_team(obj.team, requested)
+        obj.updated_by = request.user.username
+        obj.save()
+        response = JsonResponse({"result": True, "data": {"usage_team": obj.usage_team}})
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "update", "opspilot", f"授权使用组织: {obj.name}")
         return response
 
     @HasPermission("bot_channel-View")

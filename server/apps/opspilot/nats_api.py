@@ -205,7 +205,7 @@ def consume_bot_event(kwargs):
             conversation=kwargs["text"] or "",
             citing_knowledge=citing_knowledge,
         )
-    except (KeyError, ValueError, TypeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
+    except (KeyError, ValueError, TypeError, AttributeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
         # 预期内的数据/解析错误：记录详细堆栈并向 NATS 调用方回传失败结果，
         # 避免对话历史被静默丢弃。
         logger.exception(f"对话历史保存失败: {e}, 传入参数如下：{kwargs}")
