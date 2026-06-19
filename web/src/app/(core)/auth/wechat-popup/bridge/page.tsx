@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useSearchParams } from 'next/navigation';
 import { signIn } from 'next-auth/react';
 import { AUTH_POPUP_SUCCESS_MESSAGE, buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from '@/utils/authRedirect';
@@ -11,6 +11,7 @@ export default function WechatPopupBridgePage() {
   const callbackUrl = searchParams.get('callbackUrl') || '/';
   const thirdLogin = resolveThirdLoginFlag(searchParams.get('thirdLogin'));
   const code = searchParams.get('code') || '';
+  const [loginError, setLoginError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!code) {
@@ -84,8 +85,26 @@ export default function WechatPopupBridgePage() {
 
     void completeWechatPopupLogin().catch((error) => {
       console.error('Failed to complete wechat popup login:', error);
+      setLoginError((error as Error)?.message || '微信登录失败，请关闭弹窗后重试');
     });
   }, [callbackUrl, code, thirdLogin]);
+
+  if (loginError) {
+    return (
+      <div className="flex min-h-screen items-center justify-center px-6 text-center">
+        <div>
+          <div className="text-lg font-semibold text-(--color-text-1)">微信登录失败</div>
+          <div className="mt-2 text-sm text-(--color-text-3)">{loginError}</div>
+          <button
+            className="mt-4 rounded px-4 py-2 text-sm text-(--color-primary) underline"
+            onClick={() => window.close()}
+          >
+            关闭并重试
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="flex min-h-screen items-center justify-center px-6 text-center">
