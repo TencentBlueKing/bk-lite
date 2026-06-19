@@ -527,7 +527,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
   { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
-  { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' }
+  { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
+  { match: /\bzte\b|zxr10/i, label: 'ZTE', icon: 'mm-zte_zte' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

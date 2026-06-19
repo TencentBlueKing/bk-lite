@@ -3352,6 +3352,9 @@ monitor_object_plugin:
   Switch Ruijie SNMP:
     name: 锐捷 Ruijie（Telegraf）
     desc: 锐捷 Ruijie 交换机专用 SNMP 采集模板（RUIJIE-PROCESS/MEMORY/SYSTEM MIB，IANA PEN 4881）。在标准 IF-MIB 接口指标之外，额外采集锐捷私有 OID 的全套设备健康指标：CPU 使用率（ruijieNodeCPUTotal5min）、系统内存（容量/已用，KB）、机箱温度（ruijieSystemMultipleTemperatureCurrent）、风扇状态（ruijieSystemFanStatus）与电源状态（ruijieSystemElectricalInformationStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。
+  Switch ZTE SNMP:
+    name: 中兴 ZTE（Telegraf）
+    desc: 中兴 ZTE ZXR10 系列交换机专用 SNMP 采集模板（ZXR10-MIB，IANA PEN 3902）。在标准 IF-MIB 接口指标之外，额外采集中兴私有 OID 的设备健康指标：各 unit CPU 使用率（zxr10SystemCpuUtility5m）与内存使用率（zxr10SystemMemUsed，直接百分比）。ZXR10-MIB 系统表无温度/风扇/电源传感器（这些在面向接入网 OLT 的 ZTE-AN-ENVMON-MIB 中、非 ZXR10 交换机），故不采集（N/A）。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

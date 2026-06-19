@@ -3834,6 +3834,15 @@ monitor_object_plugin:
       (ruijieSystemElectricalInformationStatus). Fan/PSU raw codes are normalized via
       telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed
       from used/total.
+  Switch ZTE SNMP:
+    name: ZTE (Telegraf)
+    desc: ZTE ZXR10-series switch-specific SNMP collection template (ZXR10-MIB, IANA
+      PEN 3902). In addition to standard IF-MIB interface metrics, it collects ZTE
+      private OIDs for device health including per-unit CPU utilization
+      (zxr10SystemCpuUtility5m) and memory utilization (zxr10SystemMemUsed, a direct
+      percent-used value). The ZXR10-MIB system table exposes no temperature/fan/power
+      sensors (those live in ZTE-AN-ENVMON-MIB for the access-node/OLT line, not the
+      ZXR10 switch), so those are not collected (N/A).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
