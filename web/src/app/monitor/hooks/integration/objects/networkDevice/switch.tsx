@@ -125,6 +125,7 @@ export const useSwitchConfig = () => {
       'Switch HP ProCurve SNMP': 'snmp_hphpn',
       'Switch Datacom SNMP': 'snmp_datacom',
       'Switch Eltex SNMP': 'snmp_eltex',
+      'Switch SNR SNMP': 'snmp_snr',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }

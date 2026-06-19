@@ -523,7 +523,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
   { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' },
   { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
-  { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' }
+  { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' },
+  { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

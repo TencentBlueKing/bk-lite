@@ -3790,6 +3790,16 @@ monitor_object_plugin:
       2=fault. Memory utilization is computed from (total-free)/total. This is the
       first switch brand exposing real temperature/fan/PSU because Eltex provides them
       as typed value columns (no per-row type filtering needed).
+  Switch SNR SNMP:
+    name: SNR (Telegraf)
+    desc: SNR (NAG) switch-specific SNMP collection template (NAG-MIB, IANA PEN 40418).
+      In addition to standard IF-MIB interface metrics, it collects SNR private OIDs
+      for device health including per-slot CPU utilization (sysCpuUsage), system memory
+      (total/used), chassis temperature (sysTemperature, a dedicated typed column) and
+      fan state (sysFanStatus). Fan raw codes (0=Normal / 1=Abnormal) are normalized
+      via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is
+      computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
+      object, so PSU is not collected (N/A).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

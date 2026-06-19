@@ -1,0 +1,102 @@
+{
+  "plugin": "Switch SNR SNMP",
+  "plugin_desc": "SNR (NAG) switch-specific SNMP collection (NAG-MIB, IANA PEN 40418). In addition to standard IF-MIB interface metrics, it collects SNR private OIDs for device health: per-slot CPU utilization (sysCpuUsage), system memory (total/used), chassis temperature (sysTemperature, dedicated typed column) and fan state (sysFanStatus). Fan raw codes (0=Normal, 1=Abnormal) are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state object, so PSU is not collected (N/A).",
+  "status_query": "any({instance_type='switch', collect_type='snmp_snr'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["device_cpu_usage", "device_memory_usage", "device_temperature_celsius", "device_fan_state"],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the CPU utilization of the SNR (NAG) device control plane (NAG-MIB sysCpuUsage), averaged across slots and normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the total size in bytes of the SNR (NAG) system memory (NAG-MIB sysMemorySize). Together with the used bytes it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the number of bytes currently in use by the SNR (NAG) system memory (NAG-MIB sysMemoryBusy). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports overall memory utilization of the SNR (NAG) device, computed as used / total * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the SNR (NAG) device (NAG-MIB sysTemperature, a dedicated typed temperature column), aggregated as the maximum across slots. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric reports the fan state of the SNR (NAG) device (NAG-MIB sysFanStatus, raw 0=Normal / 1=Abnormal), normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across fans so any faulty fan surfaces. A value greater than 1 indicates a fan failure that can lead to overheating."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}
