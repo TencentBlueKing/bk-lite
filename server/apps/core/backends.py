@@ -1,4 +1,5 @@
 import os
+import re
 from typing import Any, Dict, List, Optional, Set
 
 import pytz
@@ -317,21 +318,50 @@ class AuthBackend(ModelBackend):
             logger.error(f"Failed to get user rules for {username}: {e}")
             return {}
 
-    @staticmethod
-    def get_is_superuser(request, user_info) -> bool:
+    # URL 前缀 → 角色名前缀映射（仅对命名不一致的应用需要映射）
+    _APP_NAME_MAP = {
+        "system_mgmt": "system-manager",
+        "node_mgmt": "node",
+        "console_mgmt": "ops-console",
+        "operation_analysis": "ops-analysis",
+        "job_mgmt": "job",
+    }
+
+    # 匹配 /api/v1/<app_name>/ 格式的路径（锚定起始 /）
+    _API_V1_PATH_RE = re.compile(r"^/api/v1/([^/]+)/")
+
+    @classmethod
+    def _extract_app_name_from_request(cls, request) -> str:
+        """从请求中提取应用名。
+
+        优先使用 request.resolver_match.route（Django 路由解析后的稳定路由前缀），
+        其次使用锚定正则对 request.path 做匹配。
+        两种方式均锚定路径起点，避免多段 api/v1/ 被末段覆盖的问题。
+        """
+        # 优先：使用已路由解析的 route（process_view 阶段 resolver_match 已就绪）
+        resolver_match = getattr(request, "resolver_match", None)
+        if resolver_match is not None:
+            route = getattr(resolver_match, "route", None)
+            # route 格式：'api/v1/<app_name>/...' （不含前导 /）；仅在为字符串时使用
+            if isinstance(route, str) and route:
+                m = re.match(r"^api/v1/([^/]+)/", route)
+                if m:
+                    return m.group(1)
+
+        # 兜底：对 request.path 做锚定正则匹配
+        m = cls._API_V1_PATH_RE.match(request.path)
+        return m.group(1) if m else ""
+
+    @classmethod
+    def get_is_superuser(cls, request, user_info) -> bool:
         """检查用户是否为超级用户"""
         is_superuser = bool(user_info.get("is_superuser", False))
         if is_superuser:
             return True
-        app_name = request.path.split("api/v1/")[-1].split("/", 1)[0]
-        app_name_map = {
-            "system_mgmt": "system-manager",
-            "node_mgmt": "node",
-            "console_mgmt": "ops-console",
-            "operation_analysis": "ops-analysis",
-            "job_mgmt": "job",
-        }
-        app_name = app_name_map.get(app_name, app_name)
+        app_name = cls._extract_app_name_from_request(request)
+        if not app_name:
+            return False
+        app_name = cls._APP_NAME_MAP.get(app_name, app_name)
         app_admin = f"{app_name}--admin"
         return app_admin in user_info.get("roles", [])
 
