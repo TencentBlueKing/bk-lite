@@ -3823,6 +3823,17 @@ monitor_object_plugin:
       (N/A); the BOXSERVICES MIB has no power-supply state object, so PSU is also N/A.
       Applies to EdgeSwitch/UniFi wired switches; airOS/UniFi wireless APs are a
       different object and out of scope.
+  Switch Ruijie SNMP:
+    name: Ruijie (Telegraf)
+    desc: Ruijie switch-specific SNMP collection template (RUIJIE-PROCESS/MEMORY/SYSTEM
+      MIBs, IANA PEN 4881). In addition to standard IF-MIB interface metrics, it
+      collects Ruijie private OIDs for the full device-health set including CPU
+      utilization (ruijieNodeCPUTotal5min), system memory (size/used, KB), chassis
+      temperature (ruijieSystemMultipleTemperatureCurrent), fan state
+      (ruijieSystemFanStatus) and power-supply state
+      (ruijieSystemElectricalInformationStatus). Fan/PSU raw codes are normalized via
+      telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed
+      from used/total.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
