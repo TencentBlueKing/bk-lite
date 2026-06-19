@@ -3334,6 +3334,12 @@ monitor_object_plugin:
   Switch HP ProCurve SNMP:
     name: HP ProCurve（Telegraf）
     desc: HP ProCurve / HP Networking 交换机专用 SNMP 采集模板（HP-ICF MIB）。在标准 IF-MIB 接口指标之外，额外采集 HP 私有 OID 的设备健康指标：CPU 使用率与系统内存（已用/总量）。温度与风扇/电源状态位于 HP 的 ENTITY-SENSOR / hpicfSensorTable 混合表、需按行类型/类过滤（telegraf inputs.snmp 无法实现），故不采集（N/A）。内存使用率按 used/total 计算。
+  Switch Datacom SNMP:
+    name: Datacom（Telegraf）
+    desc: Datacom DmOS 交换机专用 SNMP 采集模板（DMOS-SYSMON-MIB，IANA PEN 3709）。在标准 IF-MIB 接口指标之外，额外采集 Datacom 私有 OID 的设备健康指标：各 slot CPU 负载（cpuLoadOneMinuteActive）与系统内存（已用/总量，字节）。DmOS SYSMON MIB 仅含 CPU 与内存子树；温度/风扇/电源对象只在旧 DMswitch-MIB（与 DmOS 不兼容）中存在，故不采集（N/A）。CPU 使用率按各 slot 平均，内存使用率按 used/total 计算。
+  Switch Eltex SNMP:
+    name: Eltex（Telegraf）
+    desc: Eltex MES 系列交换机专用 SNMP 采集模板（基于 RADLAN/Marvell MIB + ELTEX 私有 OID，IANA PEN 89/35265）。在标准 IF-MIB 接口指标之外，额外采集 Eltex 私有 OID 的设备健康指标：CPU 使用率（rlCpuUtilDuringLast5Minutes）、系统内存（总量/空闲）、机箱温度（rlPhdUnitEnvParamTempSensorValue 专用温度列）、风扇状态（rlEnvMonFanState）与电源状态（rlPhdUnitEnvParamMainPSStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 (total-free)/total 计算。这是首个采集真实温度/风扇/电源的交换机品牌（Eltex 以专用值列暴露，无需行级类型过滤）。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

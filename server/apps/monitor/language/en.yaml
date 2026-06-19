@@ -3768,6 +3768,28 @@ monitor_object_plugin:
       ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering,
       which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory
       utilization is computed from used/total.
+  Switch Datacom SNMP:
+    name: Datacom (Telegraf)
+    desc: Datacom DmOS-specific SNMP collection template for switches (DMOS-SYSMON-MIB,
+      IANA PEN 3709). In addition to standard IF-MIB interface metrics, it collects
+      Datacom private OIDs for device health including per-slot CPU load
+      (cpuLoadOneMinuteActive) and system memory (used/total bytes). The DmOS SYSMON
+      MIB only models CPU and memory subtrees; temperature/fan/power-supply objects
+      exist only in the legacy DMswitch-MIB (incompatible with DmOS) and are not
+      collected here (N/A). CPU utilization is averaged across slots; memory
+      utilization is computed from used/total.
+  Switch Eltex SNMP:
+    name: Eltex (Telegraf)
+    desc: Eltex MES-series switch-specific SNMP collection template (RADLAN/Marvell-based
+      MIBs plus ELTEX private OIDs, IANA PEN 89/35265). In addition to standard IF-MIB
+      interface metrics, it collects Eltex private OIDs for device health including
+      CPU utilization (rlCpuUtilDuringLast5Minutes), system memory (total/free),
+      chassis temperature (rlPhdUnitEnvParamTempSensorValue, a dedicated typed column),
+      fan state (rlEnvMonFanState) and power-supply state (rlPhdUnitEnvParamMainPSStatus).
+      Fan/PSU raw codes are normalized via telegraf processors.enum to 1=healthy /
+      2=fault. Memory utilization is computed from (total-free)/total. This is the
+      first switch brand exposing real temperature/fan/PSU because Eltex provides them
+      as typed value columns (no per-row type filtering needed).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

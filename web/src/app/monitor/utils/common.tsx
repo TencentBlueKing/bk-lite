@@ -521,7 +521,9 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
   { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
-  { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' }
+  { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' },
+  { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
+  { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。
