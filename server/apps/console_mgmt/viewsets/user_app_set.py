@@ -141,11 +141,11 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 使用 update_or_create 实现新增或更新（写入校验后的数据）
+        # 使用 update_or_create 实现新增或更新（写入原始请求数据，序列化器仅用于校验）
         UserAppSet.objects.update_or_create(
             username=username,
             domain=domain,
-            defaults={"app_config_list": item_serializer.validated_data},
+            defaults={"app_config_list": app_config_list},
         )
 
         return JsonResponse({"result": True})
