@@ -6,6 +6,7 @@ error:
   user_id_required: User ID cannot be empty
   user_not_found: User not found
   password_required: Password cannot be empty
+  invalid_json_format: Invalid JSON format
 email:
   verification_code_validity: The verification code is valid for 10 minutes, please
     use it in time.
