@@ -10,6 +10,7 @@ console_mgmt get_user_group_paths 按需加载规格测试。
 """
 
 import importlib.util
+import pathlib
 import sys
 import types
 from unittest.mock import MagicMock, call, patch
@@ -74,9 +75,10 @@ def _load_views():
     _install("apps.system_mgmt.utils.group_utils", GroupUtils=MagicMock())
     _install("apps.system_mgmt.utils.operation_log_utils", log_operation=MagicMock())
 
+    _views_path = pathlib.Path(__file__).parent.parent / "views.py"
     spec = importlib.util.spec_from_file_location(
         "console_mgmt_views_group_paths",
-        "/Users/justin/bklite-loops/wt-issue-scan/server/apps/console_mgmt/views.py",
+        str(_views_path),
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)
@@ -122,7 +124,7 @@ class TestGetUserGroupPaths:
             result = _views.get_user_group_paths([1])
 
         # 核心断言：不得调用 .all()
-        mock_group_qs.all.assert_not_called(), "修复后不得使用全表 Group.objects.all()"
+        mock_group_qs.all.assert_not_called()
 
     def test_空列表直接返回空(self):
         """user_group_list 为空时应直接返回 []，不触发任何 DB 查询。"""
