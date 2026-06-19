@@ -348,3 +348,50 @@ def test_synthetic_find_active_alert_none():
 
     strategy = _missing_strategy()
     assert SyntheticAlertBuilder.find_active_alert(strategy) is None
+
+
+# --------------------------------------------------------------------------
+# R3-1: 屏蔽事件不得进入聚合
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_excludes_shielded(source):
+    from apps.alerts.constants.constants import EventStatus
+
+    now = timezone.now()
+    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now,
+                         event_id="E-ok", action=EventAction.CREATED)
+    Event.objects.create(source=source, raw_data={}, title="t", level="0", start_time=now,
+                         event_id="E-shield", action=EventAction.CREATED, status=EventStatus.SHIELD)
+    strategy = AlarmStrategy.objects.create(name="s", strategy_type="smart_denoise", params={"window_size": 60})
+
+    events = AggregationProcessor.get_events_for_strategy(strategy, now)
+    ids = set(events.values_list("event_id", flat=True))
+
+    assert "E-ok" in ids
+    assert "E-shield" not in ids
+
+
+# --------------------------------------------------------------------------
+# R4-1: 缺失检测告警需触发自动分派
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_trigger_missing_alert_schedules_auto_assignment(source):
+    from unittest import mock
+
+    strategy = _missing_strategy()
+    proc = AggregationProcessor()
+    # on_commit 在测试事务内不会自然触发，这里改为立即执行回调以验证调度
+    with mock.patch(
+        "apps.alerts.aggregation.processor.aggregation_processor.transaction.on_commit",
+        side_effect=lambda fn: fn(),
+    ), mock.patch.object(AggregationProcessor, "_schedule_auto_assignment") as scheduled:
+        proc._trigger_missing_alert(strategy, strategy.params, timezone.now(), None)
+
+    scheduled.assert_called_once()
+    alert_ids = scheduled.call_args.args[0]
+    assert isinstance(alert_ids, list) and len(alert_ids) == 1
+    assert alert_ids[0].startswith("ALERT-")

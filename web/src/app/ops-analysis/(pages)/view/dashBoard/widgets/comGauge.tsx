@@ -10,6 +10,7 @@ import {
   extractComparableValue,
   toComparableNumber,
 } from '@/app/ops-analysis/utils/compareQuery';
+import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 
 interface ComGaugeProps {
   rawData: unknown;
@@ -80,14 +81,21 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   const thresholds = config?.thresholdColors || [];
   const hasData = numericValue !== null;
 
-  const color = getColorByThreshold(numericValue, thresholds, '#366CE4');
+  // 值映射：命中颜色覆盖阈值色；命中文本替换中心展示
+  const valueMapping = applyValueMapping(numericValue, config?.valueMappings);
+  const color =
+    valueMapping?.color || getColorByThreshold(numericValue, thresholds, '#366CE4');
 
-  const displayValue = formatDisplayValue(
-    numericValue,
-    config?.unit,
-    config?.decimalPlaces,
-    config?.conversionFactor,
-  );
+  const displayValue =
+    valueMapping?.text !== undefined
+      ? valueMapping.text
+      : formatDisplayValue(
+        numericValue,
+        config?.unit,
+        config?.decimalPlaces,
+        config?.conversionFactor,
+        config?.unitId,
+      );
 
   useEffect(() => {
     if (!loading) {

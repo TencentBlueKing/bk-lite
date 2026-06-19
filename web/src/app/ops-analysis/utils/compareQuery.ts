@@ -151,6 +151,9 @@ export const extractComparableValue = (
     if (typeof extracted === 'number' || typeof extracted === 'string') {
       return extracted;
     }
+    // 明确指定了字段但其值非数字/字符串（如 null）→ 返回 null，
+    // 不回退到对象里的其它字段（否则会错误地显示别的字段值，且 null 值映射失效）
+    return null;
   }
 
   if (typeof data === 'number' || typeof data === 'string') {

@@ -12,6 +12,7 @@ import {
   formatDisplayValue,
   ThresholdColorConfig,
 } from '@/app/ops-analysis/utils/thresholdUtils';
+import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
 import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import {
@@ -202,6 +203,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     undefined,
     config?.decimalPlaces,
     config?.conversionFactor,
+    config?.unitId,
   );
   const unitText = config?.unit?.trim() || '';
   const fallbackSparklineSeed = useMemo(
@@ -330,7 +332,10 @@ const ComSingle: React.FC<ComSingleProps> = ({
     };
   }, [showSparkline]);
 
-  const metricColor = color || chartTheme.singleValueColor;
+  // 值映射：命中时覆盖展示文本与颜色（优先于数值/阈值色）
+  const valueMappingResult = applyValueMapping(rawValue, config?.valueMappings);
+  const metricColor =
+    valueMappingResult?.color || color || chartTheme.singleValueColor;
   const compareTextColor =
     changePercent === null
       ? chartTheme.singleValueMetaColor
@@ -362,7 +367,13 @@ const ComSingle: React.FC<ComSingleProps> = ({
     ),
   );
   const sparklineTrendColor = config?.compare ? compareTextColor : metricColor;
-  const unitLabel = displayUnit || unitText;
+  // 命中值映射文本时，用映射文本替换数值并隐藏单位
+  const shownMainValue =
+    valueMappingResult?.text !== undefined
+      ? valueMappingResult.text
+      : displayMainValue;
+  const unitLabel =
+    valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
   const valueGap = unitLabel
     ? Math.min(
       MAX_UNIT_GAP,
@@ -435,7 +446,11 @@ const ComSingle: React.FC<ComSingleProps> = ({
     );
   }
 
-  if (!isDataReady || rawValue === null) {
+  // 命中值映射文本（如 null→"无数据"）时仍正常展示，不走空态
+  if (
+    (!isDataReady || rawValue === null) &&
+    valueMappingResult?.text === undefined
+  ) {
     return (
       <div className="h-full flex flex-col items-center justify-center">
         <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
@@ -462,7 +477,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
                 textShadow: chartTheme.singleValueGlow,
               }}
             >
-              <span>{displayMainValue}</span>
+              <span>{shownMainValue}</span>
               {unitLabel ? (
                 <span
                   className="shrink-0 font-medium leading-none"
@@ -486,7 +501,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
                 letterSpacing: 0,
               }}
             >
-              <span>{displayMainValue}</span>
+              <span>{shownMainValue}</span>
               {unitLabel ? (
                 <span
                   className="shrink-0 font-medium leading-none"

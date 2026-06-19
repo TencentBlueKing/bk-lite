@@ -6,6 +6,9 @@ import ComTable from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comTable
 import ComSingle from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comSingle';
 import ComTopN from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comTopN';
 import ComGauge from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comGauge';
+import ComBarGauge from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comBarGauge';
+import ComStateTimeline from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comStateTimeline';
+import ComText from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comText';
 import EventTable from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/eventTable/eventTable';
 
 export const widgetRegistry: Record<string, ComponentType<any>> = {
@@ -16,6 +19,9 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   single: ComSingle,
   topN: ComTopN,
   gauge: ComGauge,
+  barGauge: ComBarGauge,
+  stateTimeline: ComStateTimeline,
+  text: ComText,
   eventTable: EventTable,
 };
 

@@ -375,6 +375,17 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             path = instance.rest_api
         else:
             namespace, path = instance.rest_api.split("/", 1)
+
+        # 演示静态数据源（已注释，仅用于无 NATS 时本地预览组件效果，勿提交启用）：
+        # namespace=="demo" 时短路返回固定数据，无需 NATS。取消下方注释即可恢复。
+        # if namespace == "demo":
+        #     from apps.operation_analysis.common.demo_source import get_demo_source_data
+        #
+        #     demo_data = get_demo_source_data(path, params)
+        #     if demo_data is not None:
+        #         return Response(demo_data)
+        #     return _build_error_response("演示数据源不存在", status.HTTP_404_NOT_FOUND)
+
         client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list, request=request)
         try:
             result = _normalize_downstream_result(client.get_data())
