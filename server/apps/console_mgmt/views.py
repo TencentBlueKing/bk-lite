@@ -117,13 +117,17 @@ def init_user_set(request):
 
 
 def update_user_base_info(request):
-    params = json.loads(request.body)
-    username = request.user.username
-    domain = request.user.domain
-
     # 获取用户语言设置
     locale = getattr(request.user, "locale", "en")
     loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        params = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")}, status=400)
+
+    username = request.user.username
+    domain = request.user.domain
     try:
         # 通过username和domain获取用户
         user = User.objects.get(username=username, domain=domain)
@@ -143,14 +147,18 @@ def update_user_base_info(request):
 
 
 def validate_pwd(request):
-    body = json.loads(request.body)
-    password = body.get("password")
-    username = request.user.username
-    domain = request.user.domain
-
     # 获取用户语言设置
     locale = getattr(request.user, "locale", "en")
     loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")}, status=400)
+
+    password = body.get("password")
+    username = request.user.username
+    domain = request.user.domain
 
     if not password:
         return JsonResponse({"result": False, "message": loader.get("error.password_required", "Password cannot be empty")})
