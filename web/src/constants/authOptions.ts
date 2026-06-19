@@ -1,9 +1,9 @@
 import CredentialsProvider from "next-auth/providers/credentials";
+import type { NextAuthOptions } from "next-auth";
 import type {JWT} from "next-auth/jwt";
 import {normalizeLocale, normalizeTimezone} from "@/utils/userPreferences";
 import WeChatProvider from "../lib/wechatProvider";
 
-type AuthOptions = any;
 type ExtendedJWT = JWT & { timezone?: string };
 
 const buildAuthUser = (userData: any) => ({
@@ -92,7 +92,7 @@ async function getWeChatConfig() {
   }
 }
 
-export async function getAuthOptions(): Promise<AuthOptions> {
+export async function getAuthOptions(): Promise<NextAuthOptions> {
   const wechatConfig = await getWeChatConfig();
   
   const providers = [
@@ -179,26 +179,27 @@ export async function getAuthOptions(): Promise<AuthOptions> {
       maxAge: 60 * 60 * 24,
     },
     callbacks: {
-      async jwt({ token, user, account, trigger, session }: { token: ExtendedJWT; user: any; account: any; trigger?: string; session?: any }) {
+      async jwt({ token, user, account, trigger, session }) {
+        const extToken = token as ExtendedJWT;
         if (user) {
-          return applyUserToToken(token, user, account);
+          return applyUserToToken(extToken, user, account);
         }
 
         if (trigger === 'update' && session) {
-          return applySessionUpdateToToken(token, session);
+          return applySessionUpdateToToken(extToken, session);
         }
 
-        return token;
+        return extToken;
       },
-      async session({ session, token }: { session: any; token: ExtendedJWT }) {
-        return buildSessionFromToken(session, token);
+      async session({ session, token }) {
+        return buildSessionFromToken(session, token as ExtendedJWT);
       },
     },
   };
 }
 
 // For backward compatibility, keep a default authOptions, but only include basic CredentialsProvider
-export const authOptions: AuthOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -268,19 +269,20 @@ export const authOptions: AuthOptions = {
     maxAge: 60 * 60 * 24,
   },
   callbacks: {
-    async jwt({ token, user, account, trigger, session }: { token: ExtendedJWT; user: any; account: any; trigger?: string; session?: any }) {
+    async jwt({ token, user, account, trigger, session }) {
+      const extToken = token as ExtendedJWT;
       if (user) {
-        return applyUserToToken(token, user, account);
+        return applyUserToToken(extToken, user, account);
       }
 
       if (trigger === 'update' && session) {
-        return applySessionUpdateToToken(token, session);
+        return applySessionUpdateToToken(extToken, session);
       }
 
-      return token;
+      return extToken;
     },
-    async session({ session, token }: { session: any; token: ExtendedJWT }) {
-      return buildSessionFromToken(session, token);
+    async session({ session, token }) {
+      return buildSessionFromToken(session, token as ExtendedJWT);
     },
   },
 };
