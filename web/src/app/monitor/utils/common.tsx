@@ -525,7 +525,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
   { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' },
   { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' },
-  { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' }
+  { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
+  { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

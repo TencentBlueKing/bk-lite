@@ -3346,6 +3346,9 @@ monitor_object_plugin:
   Switch Parks SNMP:
     name: Parks（Telegraf）
     desc: Parks PK700 系列交换机专用 SNMP 采集模板（PARKS-PK700 MIB，IANA PEN 50224）。在标准 IF-MIB 接口指标之外，额外采集 Parks 私有 OID 的设备健康指标：CPU 使用率（cpuUsage）、内存使用率（直接百分比标量）与机箱主芯片温度（mainChipTemperature）。PARKS-PK700 MIB 无独立风扇/电源状态对象，故不采集（N/A）；SFP 光功率/模块温度属端口级诊断、非设备级健康，本插件亦不采。
+  Switch Ubiquiti SNMP:
+    name: Ubiquiti（Telegraf）
+    desc: Ubiquiti EdgeSwitch 专用 SNMP 采集模板（EdgeSwitch-SWITCHING-MIB + EdgeSwitch-BOXSERVICES-PRIVATE-MIB，IANA PEN 4413，Broadcom FASTPATH）。在标准 IF-MIB 接口指标之外，额外采集 EdgeSwitch 私有 OID 的设备健康指标：系统内存（可用/空闲，KB）、机箱温度（boxServicesTempSensorTemperature）与风扇状态（boxServicesFanItemState）。风扇原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 (total-free)/total 计算。CPU 仅以逐进程表（agentSwitchCpuProcessTable）暴露、无设备级聚合标量，telegraf inputs.snmp 无法归约，故不采集（N/A）；BOXSERVICES MIB 无电源（PSU）状态对象，故电源亦 N/A。适用于 EdgeSwitch/UniFi 有线交换机；airOS/UniFi 无线 AP 属另一对象、超出范围。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

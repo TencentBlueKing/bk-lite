@@ -3809,6 +3809,20 @@ monitor_object_plugin:
       (mainChipTemperature). The PARKS-PK700 MIB exposes no fan or power-supply state
       object, so those are not collected (N/A); per-SFP optical power/temperature are
       port-level diagnostics, not device health, and are also omitted.
+  Switch Ubiquiti SNMP:
+    name: Ubiquiti (Telegraf)
+    desc: Ubiquiti EdgeSwitch-specific SNMP collection template (EdgeSwitch-SWITCHING-MIB
+      plus EdgeSwitch-BOXSERVICES-PRIVATE-MIB, IANA PEN 4413, Broadcom FASTPATH). In
+      addition to standard IF-MIB interface metrics, it collects EdgeSwitch private
+      OIDs for device health including system memory (available/free, KB), chassis
+      temperature (boxServicesTempSensorTemperature) and fan state
+      (boxServicesFanItemState). Fan raw codes are normalized via telegraf
+      processors.enum to 1=healthy / 2=fault. Memory utilization is computed from
+      (total-free)/total. CPU is exposed only as a per-process table with no aggregate
+      device-CPU scalar that telegraf inputs.snmp can reduce, so CPU is not collected
+      (N/A); the BOXSERVICES MIB has no power-supply state object, so PSU is also N/A.
+      Applies to EdgeSwitch/UniFi wired switches; airOS/UniFi wireless APs are a
+      different object and out of scope.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
