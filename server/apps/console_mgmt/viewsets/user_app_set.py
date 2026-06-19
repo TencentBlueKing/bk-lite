@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 
 from apps.console_mgmt.models import UserAppSet
 from apps.console_mgmt.serializers import UserAppSetSerializer
+from apps.console_mgmt.serializers.user_app_set import AppConfigItemSerializer
 from apps.core.utils.loader import LanguageLoader
 from apps.system_mgmt.models import App
 
@@ -132,11 +133,19 @@ class UserAppSetViewSet(viewsets.ModelViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # 使用 update_or_create 实现新增或更新
+        # 结构校验：确保每个条目符合 AppConfigItem 契约
+        item_serializer = AppConfigItemSerializer(data=app_config_list, many=True)
+        if not item_serializer.is_valid():
+            return JsonResponse(
+                {"result": False, "message": item_serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+
+        # 使用 update_or_create 实现新增或更新（写入校验后的数据）
         UserAppSet.objects.update_or_create(
             username=username,
             domain=domain,
-            defaults={"app_config_list": app_config_list},
+            defaults={"app_config_list": item_serializer.validated_data},
         )
 
         return JsonResponse({"result": True})
