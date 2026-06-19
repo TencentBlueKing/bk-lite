@@ -17,6 +17,7 @@ from sanic import response
 from core.credential_state_cache import CredentialStateCache
 from core.task_queue import get_task_queue
 from plugins.base_utils import expand_ip_range
+from tasks.collectors.host_collector import _escape_prometheus_label_value
 
 collect_router = Blueprint("collect", url_prefix="/collect")
 
@@ -355,7 +356,7 @@ async def collect(request):
         error_lines = [
             "# HELP collection_request_error Collection request error",
             "# TYPE collection_request_error gauge",
-            f'collection_request_error{{model_id="",instance_id="{instance_id}",error="model_id is Null"}} 1 {current_timestamp}'
+            f'collection_request_error{{model_id="",instance_id="{_escape_prometheus_label_value(instance_id or "")}",error="model_id is Null"}} 1 {current_timestamp}'
         ]
 
         return response.raw(
@@ -395,7 +396,7 @@ async def collect(request):
                 error_lines = [
                     "# HELP collection_request_error Collection request error",
                     "# TYPE collection_request_error gauge",
-                    f'collection_request_error{{model_id="{model_id}",error="Failed to parse hosts parameter"}} 1 {current_timestamp}'
+                    f'collection_request_error{{model_id="{_escape_prometheus_label_value(model_id)}",error="Failed to parse hosts parameter"}} 1 {current_timestamp}'
                 ]
                 return response.raw(
                     "\n".join(error_lines) + "\n",
@@ -470,7 +471,7 @@ async def collect(request):
             prometheus_lines = [
                 "# HELP collection_batch_accepted Indicates that collection batch was accepted",
                 "# TYPE collection_batch_accepted gauge",
-                f'collection_batch_accepted{{model_id="{model_id}",batch_id="{batch_id}",total="{len(expanded_tasks)}",queued="{success_count}",failed="{failed_count}"}} 1 {current_timestamp}'
+                f'collection_batch_accepted{{model_id="{_escape_prometheus_label_value(model_id)}",batch_id="{batch_id}",total="{len(expanded_tasks)}",queued="{success_count}",failed="{failed_count}"}} 1 {current_timestamp}'
             ]
             
             return response.raw(
@@ -499,7 +500,7 @@ async def collect(request):
             prometheus_lines = [
                 "# HELP collection_request_accepted Indicates that collection request was accepted",
                 "# TYPE collection_request_accepted gauge",
-                f'collection_request_accepted{{model_id="{model_id}",task_id="{task_info["task_id"]}",status="{task_status}"}} 1 {current_timestamp}'
+                f'collection_request_accepted{{model_id="{_escape_prometheus_label_value(model_id)}",task_id="{task_info["task_id"]}",status="{task_status}"}} 1 {current_timestamp}'
             ]
             
             return response.raw(
@@ -520,7 +521,7 @@ async def collect(request):
         error_lines = [
             "# HELP collection_request_error Collection request error",
             "# TYPE collection_request_error gauge",
-            f'collection_request_error{{model_id="{model_id}",error="{str(e)}"}} 1 {current_timestamp}'
+            f'collection_request_error{{model_id="{_escape_prometheus_label_value(model_id)}",error="{_escape_prometheus_label_value(str(e))}"}} 1 {current_timestamp}'
         ]
 
         return response.raw(
