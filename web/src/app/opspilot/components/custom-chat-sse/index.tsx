@@ -108,12 +108,16 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS
+// Sanitize HTML to prevent XSS and CSS injection.
+// SECURITY: 'style' tag (block CSS) is intentionally excluded — allowing it enables CSS injection
+// via LLM prompt injection (e.g. `<style>*{background:url(//attacker.com)}</style>`).
+// Inline 'style' attribute is kept in ALLOWED_ATTR as it is used by guide/reference link renderers.
+// ALLOW_DATA_ATTR is false; all required data-* attributes are listed explicitly in ALLOWED_ATTR.
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: true,
+    ALLOW_DATA_ATTR: false,
   });
 };
 
