@@ -6,6 +6,7 @@ error:
   user_id_required: 用户ID不能为空
   user_not_found: 用户不存在
   password_required: 密码不能为空
+  invalid_json_format: 请求体格式错误，请发送合法的 JSON
 email:
   verification_code_validity: 验证码有效期为10分钟,请及时使用。
   verification_code_body: 您的验证码是
