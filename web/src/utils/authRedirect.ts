@@ -34,11 +34,18 @@ function appendTokenToRelativeUrl(targetUrl: string, token: string): string {
   return `${pathname}${nextSearch ? `?${nextSearch}` : ''}${hash}`;
 }
 
-function isSameOriginUrl(targetUrl: string): boolean {
+function isSameOriginUrl(targetUrl: string, knownOrigin?: string): boolean {
   try {
     const parsed = new URL(targetUrl);
+    // Prefer an explicitly supplied origin (e.g. derived from request headers in
+    // server components) over window.location.origin so that this function works
+    // correctly in both SSR and client-side contexts.
     const currentOrigin =
-      typeof window !== 'undefined' ? window.location.origin : '';
+      knownOrigin ?? (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!currentOrigin) {
+      // No origin available (SSR without explicit origin) — cannot validate, reject.
+      return false;
+    }
     return parsed.origin === currentOrigin;
   } catch {
     return false;
@@ -49,6 +56,7 @@ export function buildThirdLoginCallbackUrl(
   callbackUrl?: string,
   token?: string,
   thirdLogin?: string | boolean | null,
+  currentOrigin?: string,
 ): string {
   const targetUrl = callbackUrl || '/';
 
@@ -70,10 +78,11 @@ export function buildThirdLoginCallbackUrl(
     // Reject absolute URLs (including protocol-relative) pointing to a
     // different origin to prevent open redirect attacks that could exfiltrate
     // the auth token to an attacker-controlled server.
-    if (isProtocolRelative || !isSameOriginUrl(targetUrl)) {
+    if (isProtocolRelative || !isSameOriginUrl(targetUrl, currentOrigin)) {
       console.warn(
         'buildThirdLoginCallbackUrl: cross-origin callbackUrl rejected, falling back to "/"',
-        targetUrl,
+        // Log only the origin portion to avoid echoing attacker-controlled path/query into logs.
+        (() => { try { return new URL(targetUrl).origin; } catch { return '[invalid URL]'; } })(),
       );
       return '/';
     }
