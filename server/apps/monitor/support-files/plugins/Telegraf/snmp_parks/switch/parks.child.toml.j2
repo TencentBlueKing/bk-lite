@@ -1,0 +1,77 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_parks"
+        config_type = "parks"
+        brand = "parks"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Parks PK700 CPU (PARKS-PK700 cpuUsage, %, PEN 50224) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.50224.3.1.1.17（%，snmprec .0=4）。device_cpu_usage avg() by instance_id。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50224.3.1.1.17"
+        name = "usage"
+    # ---- Parks PK700 memory (PARKS-PK700 memory percent used, 直接 %, 标量) ----
+    # 待现网核验：1.3.6.1.4.1.50224.3.1.1.18.0（直接利用率%，snmprec=34）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50224.3.1.1.18.0"
+        name = "usage"
+    # ---- Parks PK700 chassis chip temperature (PARKS-PK700 mainChipTemperature, °C) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.50224.3.1.1.23（°C，snmprec .0=0，专用温度列）。device_temperature_celsius max()。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.50224.3.1.1.23"
+        name = "celsius"
+# ---- 风扇/电源：PARKS-PK700 MIB 无独立风扇/电源状态对象(仅 CPU/内存/温度 + SFP 光模块诊断)。----
+# ---- 风扇/电源 → N/A(MIB 不提供)。SFP 光功率/模块温度按端口诊断,非设备级健康,本插件不采。----

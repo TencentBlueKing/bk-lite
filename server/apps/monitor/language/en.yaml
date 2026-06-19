@@ -3800,6 +3800,15 @@ monitor_object_plugin:
       via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is
       computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
       object, so PSU is not collected (N/A).
+  Switch Parks SNMP:
+    name: Parks (Telegraf)
+    desc: Parks PK700-series switch-specific SNMP collection template (PARKS-PK700 MIB,
+      IANA PEN 50224). In addition to standard IF-MIB interface metrics, it collects
+      Parks private OIDs for device health including CPU utilization (cpuUsage), memory
+      utilization (a direct percent-used scalar) and chassis chip temperature
+      (mainChipTemperature). The PARKS-PK700 MIB exposes no fan or power-supply state
+      object, so those are not collected (N/A); per-SFP optical power/temperature are
+      port-level diagnostics, not device health, and are also omitted.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
