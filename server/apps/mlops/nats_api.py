@@ -199,7 +199,7 @@ def get_mlops_module_data(module, child_module, page, page_size, group_id):
     if entry is None:
         return {"result": False, "message": f"未知子模块：{module}/{child_module}"}
 
-    page_size = min(int(page_size), MAX_PAGE_SIZE)
+    page_size = max(1, min(int(page_size), MAX_PAGE_SIZE))
 
     model, team_lookup = entry
     queryset = model.objects.filter(**{f"{team_lookup}__contains": int(group_id)})

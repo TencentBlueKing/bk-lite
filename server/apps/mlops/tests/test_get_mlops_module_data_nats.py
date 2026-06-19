@@ -194,17 +194,45 @@ class TestGetMlopsModuleDataValidation(unittest.TestCase):
         sl = slices_seen[0]
         self.assertEqual(sl.stop, _MAX_PAGE_SIZE, f"page_size should be capped at {_MAX_PAGE_SIZE}, got {sl.stop}")
 
-    def test_page_size_negative_does_not_crash(self):
-        """page_size=-1 must not cause unbounded query (min clamps to -1 which slices nothing, and no exception)."""
-        result = _get_mlops_module_data(
-            module="no_such_module",
-            child_module="anything",
-            page=1,
-            page_size=-1,
-            group_id=1,
-        )
-        # Unknown module guard fires first; important thing is no uncaught exception
-        self.assertFalse(result["result"])
+    def test_page_size_negative_clamped_to_one(self):
+        """page_size=-1 must be clamped to 1 (not -1) to avoid Django negative-index AssertionError."""
+        slices_seen = []
+
+        fake_qs = MagicMock()
+        fake_qs.count.return_value = 0
+
+        class FakeValuesQS:
+            def __getitem__(self, sl):
+                slices_seen.append(sl)
+                return []
+
+        fake_qs.values.return_value = FakeValuesQS()
+
+        fake_model = MagicMock()
+        fake_model.objects.filter.return_value = fake_qs
+
+        original_registry = _nats_api._get_module_registry
+
+        def patched_registry():
+            reg = original_registry()
+            reg["dataset"]["anomaly_detection_dataset"] = (fake_model, "team")
+            return reg
+
+        with patch.object(_nats_api, "_get_module_registry", patched_registry):
+            result = _get_mlops_module_data(
+                module="dataset",
+                child_module="anomaly_detection_dataset",
+                page=1,
+                page_size=-1,
+                group_id=1,
+            )
+
+        # Must succeed (not raise AssertionError from Django negative slice)
+        self.assertTrue(result["result"])
+        # page_size must be clamped to at least 1, so end = 1 * 1 = 1 (non-negative)
+        self.assertEqual(len(slices_seen), 1)
+        sl = slices_seen[0]
+        self.assertGreaterEqual(sl.stop, 0, "end index must be non-negative to avoid Django AssertionError")
 
     def test_valid_request_returns_result_true(self):
         """Valid module/child_module returns result=True with count and items."""
