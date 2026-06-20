@@ -15,6 +15,8 @@ export default function WechatPopupBridgePage() {
 
   useEffect(() => {
     if (!code) {
+      const oauthError = searchParams.get('error');
+      setLoginError(oauthError ? `微信授权失败：${oauthError}` : '未获取到微信授权码，请关闭弹窗后重试');
       return;
     }
 
@@ -87,7 +89,7 @@ export default function WechatPopupBridgePage() {
       console.error('Failed to complete wechat popup login:', error);
       setLoginError((error as Error)?.message || '微信登录失败，请关闭弹窗后重试');
     });
-  }, [callbackUrl, code, thirdLogin]);
+  }, [callbackUrl, code, searchParams, thirdLogin]);
 
   if (loginError) {
     return (
