@@ -108,8 +108,15 @@ def init_user_set(request):
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})
 
+    group_name_value = kwargs.get("group_name")
+    if not group_name_value:
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.group_name_required", "group_name is required")},
+            status=400,
+        )
+
     client = SystemMgmt()
-    res = client.init_user_default_attributes(user.id, kwargs["group_name"], group_list[0]["id"])
+    res = client.init_user_default_attributes(user.id, group_name_value, group_list[0]["id"])
     if not res["result"]:
         return JsonResponse(res)
     log_operation(request, "create", "console_mgmt", f"初始化用户设置: {request.user.username}")
