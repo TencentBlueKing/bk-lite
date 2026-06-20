@@ -2155,6 +2155,9 @@ monitor_object_metric:
     device_psu_state:
       name: Power Supply Status
       desc: This metric reports the operational state of each power supply unit on the device. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly.
+    device_fan_speed:
+      name: Fan Speed
+      desc: This metric reports the fan rotation speed (RPM) of the device, taken as the maximum across fans. Abnormally low or zero RPM indicates a stalled or failed fan and a risk of overheating; abnormally high RPM may indicate the device is compensating for high temperature. For devices that expose only fan speed without a fan-state enum, speed is the only signal of fan health.
   Router:
     device_memory_total:
       name: Total Memory
@@ -3843,6 +3846,17 @@ monitor_object_plugin:
       percent-used value). The ZXR10-MIB system table exposes no temperature/fan/power
       sensors (those live in ZTE-AN-ENVMON-MIB for the access-node/OLT line, not the
       ZXR10 switch), so those are not collected (N/A).
+  Switch FiberHome SNMP:
+    name: FiberHome (Telegraf)
+    desc: FiberHome switch-specific SNMP collection template (WRI-CPU/MEMORY/TEMPERATURE/POWER
+      MIBs, IANA PEN 3807). In addition to standard IF-MIB interface metrics, it
+      collects FiberHome private OIDs for device health including CPU utilization
+      (cpuUsage, precision-100), system memory (alloc/total bytes), chassis temperature
+      (temperatureValue) and power-supply state (powerState, where 0=Normal). Fan is
+      exposed only as fan speed (RPM) with no fan-state enum, so fan state is not
+      collected (N/A); fan speed and voltage are new-metric candidates for later
+      enrichment. PSU raw codes are normalized via telegraf processors.enum to 1=healthy
+      / 2=fault. Memory utilization is computed from used/total.
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device

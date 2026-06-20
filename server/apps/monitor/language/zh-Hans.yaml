@@ -1887,6 +1887,9 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 该指标表示设备各电源模块的运行状态。非正常状态表示电源冗余缺失或硬件故障；在具备冗余电源的设备上，单个故障可能不会立即中断业务，但会失去冗余，需尽快修复。
+    device_fan_speed:
+      name: 风扇转速
+      desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
   Router:
     device_memory_total:
       name: 内存总量
@@ -3355,6 +3358,9 @@ monitor_object_plugin:
   Switch ZTE SNMP:
     name: 中兴 ZTE（Telegraf）
     desc: 中兴 ZTE ZXR10 系列交换机专用 SNMP 采集模板（ZXR10-MIB，IANA PEN 3902）。在标准 IF-MIB 接口指标之外，额外采集中兴私有 OID 的设备健康指标：各 unit CPU 使用率（zxr10SystemCpuUtility5m）与内存使用率（zxr10SystemMemUsed，直接百分比）。ZXR10-MIB 系统表无温度/风扇/电源传感器（这些在面向接入网 OLT 的 ZTE-AN-ENVMON-MIB 中、非 ZXR10 交换机），故不采集（N/A）。
+  Switch FiberHome SNMP:
+    name: 烽火 FiberHome（Telegraf）
+    desc: 烽火 FiberHome 交换机专用 SNMP 采集模板（WRI-CPU/MEMORY/TEMPERATURE/POWER MIB，IANA PEN 3807）。在标准 IF-MIB 接口指标之外，额外采集烽火私有 OID 的设备健康指标：CPU 使用率（cpuUsage，精度100）、系统内存（已分配/总量，字节）、机箱温度（temperatureValue）与电源状态（powerState，0=正常）。风扇仅提供转速（RPM）无状态枚举，故风扇状态不采集（N/A）；风扇转速与电压为后续增补的新指标候选。电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

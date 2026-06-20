@@ -1,0 +1,149 @@
+{
+  "plugin": "Switch FiberHome SNMP",
+  "plugin_desc": "FiberHome (烽火) switch-specific SNMP collection (WRI-CPU/MEMORY/TEMPERATURE/POWER MIBs, IANA PEN 3807). In addition to standard IF-MIB interface metrics, it collects FiberHome private OIDs for device health: CPU utilization (cpuUsage, precision-100), system memory (alloc/total bytes), chassis temperature (temperatureValue) and power-supply state (powerState, where 0=Normal). Fan is exposed only as fan speed (RPM) with no fan-state enum, so fan state is not collected (N/A); fan speed and voltage are additional new-metric candidates left for later enrichment. PSU raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from used/total.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_fiberhome'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_psu_state",
+    "device_fan_speed"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id) / 100",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the FiberHome device control plane (WRI-CPU-MIB cpuUsage, reported at precision-100 and scaled down by 100), averaged across CPUs and normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total size in bytes of the FiberHome system memory pool (WRI-MEMORY-MIB memoryPoolTotalBytes). Together with the used bytes it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of bytes currently allocated in the FiberHome system memory pool (WRI-MEMORY-MIB memoryPoolAllocBytesNum). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the FiberHome device, computed as used / total * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the FiberHome device (WRI-TEMPERATURE-MIB temperatureValue, a dedicated typed temperature column), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply state of the FiberHome device (WRI-POWER-MIB powerState, raw 0=Normal / 1=Insufficient / 2=Overload), normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any failed PSU surfaces. A value greater than 1 indicates a power-supply problem."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_speed",
+      "query": "max(device_fan_speed{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan Speed",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the fan rotation speed in RPM of the FiberHome device (FAN-MIB fanCtrlSpeed), taken as the maximum across fans. Abnormally low or zero RPM indicates a stalled/failed fan and impending overheating; abnormally high RPM can indicate the device is compensating for high temperature."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}

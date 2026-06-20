@@ -130,6 +130,7 @@ export const useSwitchConfig = () => {
       'Switch Ubiquiti SNMP': 'snmp_ubiquiti',
       'Switch Ruijie SNMP': 'snmp_ruijie',
       'Switch ZTE SNMP': 'snmp_zte',
+      'Switch FiberHome SNMP': 'snmp_fiberhome',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }
