@@ -275,5 +275,12 @@ export async function* tauriApiStream(
     unlistenChunk();
     unlistenEnd();
     unlistenError();
+
+    // 通知 Rust 侧取消流（若流已自然结束则 Rust 侧会静默忽略）
+    try {
+      await invoke('cancel_stream', { streamId });
+    } catch {
+      // 忽略取消命令本身的错误（如 Rust 侧已结束）
+    }
   }
 }
