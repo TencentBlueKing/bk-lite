@@ -100,27 +100,34 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     // Initialize StateMachine
     stateMachineRef.current = new StateMachine('idle');
-    stateMachineRef.current.on((event) => {
+    const unsubscribeState = stateMachineRef.current.on((event) => {
       onStateChange?.(event.to);
     });
 
     // Initialize SSEHandler - 不再需要，我们用 fetch 直接处理
     // Initialize AGUIHandler (默认启用)
     aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: true });
-    setupAGUIEventHandlers();
+    const aguiSubscription = setupAGUIEventHandlers();
 
     // Load previous session
     const session = sessionManagerRef.current.initSession();
     if (session && session.messages.length > 0) {
       setMessages(session.messages);
     }
+
+    return () => {
+      aguiSubscription?.unsubscribe();
+      aguiHandlerRef.current?.destroy();
+      unsubscribeState();
+      stateMachineRef.current?.destroy();
+    };
   }, []);
 
   // Setup AG-UI event handlers
   const setupAGUIEventHandlers = () => {
     if (!aguiHandlerRef.current) return;
 
-    aguiHandlerRef.current.getEventStream().subscribe((event: AGUIEvent) => {
+    return aguiHandlerRef.current.getEventStream().subscribe((event: AGUIEvent) => {
       handleAGUIEvent(event);
     });
   };
