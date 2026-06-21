@@ -97,3 +97,23 @@ def test_viewset_list_create_delete(superuser_client):
     # 删除 — renderer changes 204 DELETE → 200
     resp = superuser_client.delete(f"/api/v1/alerts/api/enrichment/{rule_id}/")
     assert resp.status_code in (200, 204), resp.content
+
+
+# ============================================================
+# Task 5: metrics action 采纳漏斗
+# ============================================================
+
+@pytest.mark.django_db
+def test_metrics_reports_adoption_funnel(superuser_client):
+    from apps.alerts.models.enrichment import EnrichmentRule
+    EnrichmentRule.objects.create(name="内置-CMDB资源丰富", provider_type="cmdb", is_active=True)
+    EnrichmentRule.objects.create(name="用户自建规则", provider_type="cmdb", is_active=False)
+
+    resp = superuser_client.get("/api/v1/alerts/api/enrichment/metrics/")
+    assert resp.status_code == 200
+    data = resp.data
+    assert data["total_rules"] == 2
+    assert data["active_rules"] == 1
+    assert data["user_created_rules"] == 1   # 排除"内置-"前缀
+    assert "enriched_alert_ratio" in data
+    assert 0.0 <= data["enriched_alert_ratio"] <= 1.0
