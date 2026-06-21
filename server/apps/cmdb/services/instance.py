@@ -1037,12 +1037,19 @@ class InstanceManage(object):
             except BaseAppException as e:
                 if e.message == "edge already exists":
                     raise BaseAppException("instance association repetition")
+                # 其它图层异常必须原样抛出，否则下方 edge 未赋值会 UnboundLocalError 掩盖真实错误
+                raise
 
         asso_info = InstanceManage.instance_association_by_asso_id(edge["_id"])
+        # 端点实体可能未完全解析（如接口↔接口的并行边场景，query_edge_by_id 偶发回空端点），
+        # 这里全部用 .get 兜底，避免拼接变更记录文案时 KeyError 让整个关联创建 500
+        src_info = asso_info.get("src") or {}
+        dst_info = asso_info.get("dst") or {}
         message = (
-            f"创建模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: {asso_info['src']['inst_name']} "
-            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: "
-            f"{asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+            f"创建模型关联关系. 原模型: {src_info.get('model_id', '')} "
+            f"原模型实例: {src_info.get('inst_name') or src_info.get('ip_addr', '')} "
+            f"目标模型ID: {dst_info.get('model_id', '')} 目标模型实例: "
+            f"{dst_info.get('inst_name') or dst_info.get('ip_addr', '')}"
         )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
@@ -1080,11 +1087,14 @@ class InstanceManage(object):
         with GraphClient() as ag:
             ag.delete_edge(asso_id)
 
+        # 同 create：端点实体可能未完全解析，全部 .get 兜底避免 KeyError
+        src_info = asso_info.get("src") or {}
+        dst_info = asso_info.get("dst") or {}
         message = (
-            f"删除模型关联关系. 原模型: {asso_info['src']['model_id']} 原模型实例: "
-            f"{asso_info['src'].get('inst_name') or asso_info['src'].get('ip_addr', '')} "
-            f"目标模型ID: {asso_info['dst']['model_id']} 目标模型实例: "
-            f"{asso_info['dst'].get('inst_name') or asso_info['dst'].get('ip_addr', '')}"
+            f"删除模型关联关系. 原模型: {src_info.get('model_id', '')} 原模型实例: "
+            f"{src_info.get('inst_name') or src_info.get('ip_addr', '')} "
+            f"目标模型ID: {dst_info.get('model_id', '')} 目标模型实例: "
+            f"{dst_info.get('inst_name') or dst_info.get('ip_addr', '')}"
         )
         create_change_record_by_asso(
             INSTANCE_ASSOCIATION,
