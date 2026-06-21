@@ -119,6 +119,17 @@ class AlertBuilder:
         return None
 
     @staticmethod
+    def _merge_enrichment(events) -> dict:
+        """按命名空间合并成员事件 enrichment：首条非空者优先。"""
+        merged = {}
+        for event in events:
+            data = getattr(event, "enrichment", None) or {}
+            for namespace, payload in data.items():
+                if namespace not in merged and payload:
+                    merged[namespace] = payload
+        return merged
+
+    @staticmethod
     def _get_consistent_labels(events: List[Event]) -> Dict[str, Any]:
         if not events:
             return {}
@@ -144,6 +155,7 @@ class AlertBuilder:
                 "resource_type": None,
                 "item": None,
                 "labels": {},
+                "enrichment": {},
             }
 
         return {
@@ -162,7 +174,8 @@ class AlertBuilder:
             "item": AlertBuilder._get_unique_scalar_value(
                 [event.item for event in event_list]
             ),
-                "labels": AlertBuilder._get_consistent_labels(event_list),
+            "labels": AlertBuilder._get_consistent_labels(event_list),
+            "enrichment": AlertBuilder._merge_enrichment(event_list),
         }
 
     @staticmethod
@@ -268,6 +281,7 @@ class AlertBuilder:
             first_event_time=result["first_event_time"],
             last_event_time=result["last_event_time"],
             labels=standard_fields["labels"],
+            enrichment=standard_fields["enrichment"],
             item=standard_fields["item"],
             resource_id=standard_fields["resource_id"],
             resource_name=standard_fields["resource_name"],
@@ -344,6 +358,7 @@ class AlertBuilder:
         alert.resource_type = standard_fields["resource_type"]
         alert.item = standard_fields["item"]
         alert.labels = standard_fields["labels"]
+        alert.enrichment = standard_fields["enrichment"]
         alert.dimensions = dimensions
         alert.save(
             update_fields=[
@@ -357,6 +372,7 @@ class AlertBuilder:
                 "resource_type",
                 "item",
                 "labels",
+                "enrichment",
                 "dimensions",
             ]
         )
