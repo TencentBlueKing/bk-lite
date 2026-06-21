@@ -5,6 +5,9 @@ error:
   verification_code_incorrect: 验证码错误
   user_id_required: 用户ID不能为空
   user_not_found: 用户不存在
+  not_first_login: 用户已完成初始化
+  parse_request_failed: 请求体解析失败
+  group_name_required: group_name 不能为空
   password_required: 密码不能为空
   invalid_json_format: 请求体格式错误，请发送合法的 JSON
 email:
