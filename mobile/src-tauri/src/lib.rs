@@ -2,7 +2,6 @@ mod api_proxy;
 mod permissions;
 
 use api_proxy::{api_proxy, simple_api_proxy, api_stream_proxy};
-use permissions::{check_microphone_permission, request_microphone_permission};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -12,8 +11,6 @@ pub fn run() {
       api_proxy,
       simple_api_proxy,
       api_stream_proxy,
-      check_microphone_permission,
-      request_microphone_permission
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

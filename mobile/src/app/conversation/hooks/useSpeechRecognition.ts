@@ -1,6 +1,5 @@
 import { useRef, useState } from 'react';
 import { Toast } from 'antd-mobile';
-import { invoke } from '@tauri-apps/api/core';
 
 interface UseSpeechRecognitionReturn {
     recognizedText: string;
@@ -90,20 +89,10 @@ export const useSpeechRecognition = (
         }
     };
 
-    // 检查麦克风权限 (Tauri 环境)
-    const checkMicrophonePermissionTauri = async (): Promise<boolean> => {
-        try {
-            const result = await invoke('check_microphone_permission');
-            console.log('Tauri 麦克风权限检查结果:', result);
-            return true; // Tauri 环境下由原生层处理
-        } catch (error) {
-            console.error('Tauri 权限检查失败:', error);
-            return false;
-        }
-    };
-
-    // 检查麦克风权限 (Web 环境)
-    const checkMicrophonePermissionWeb = async (): Promise<boolean> => {
+    // 检查麦克风权限（通过 getUserMedia，同时适用于 Web 和 Tauri/Android 环境）
+    // 在 Android Tauri 中，getUserMedia 会经由 WebChromeClient.onPermissionRequest
+    // 触发系统标准权限弹窗，无需额外的 IPC 命令。
+    const checkMicrophonePermission = async (): Promise<boolean> => {
         try {
             if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
                 console.log('浏览器不支持 MediaDevices API');
@@ -119,32 +108,10 @@ export const useSpeechRecognition = (
         }
     };
 
-    // 检查麦克风权限
-    const checkMicrophonePermission = async (): Promise<boolean> => {
-        // 检测是否在 Tauri 环境中
-        const isTauri = '__TAURI__' in window;
-
-        if (isTauri) {
-            return await checkMicrophonePermissionTauri();
-        } else {
-            return await checkMicrophonePermissionWeb();
-        }
-    };
-
-    // 静默检查麦克风权限状态(不会触发权限弹窗)
+    // 静默检查麦克风权限状态（不会触发权限弹窗）
     const checkMicrophonePermissionSilent = async (): Promise<boolean> => {
         try {
-            // 检测是否在 Tauri 环境中
-            const isTauri = '__TAURI__' in window;
-
-            if (isTauri) {
-                // Tauri 环境下直接返回 true，由原生层处理
-                return true;
-            }
-
-            // Web 环境：尝试多种方式检测权限
-
-            // 方法1: 使用 Permissions API 查询权限状态(不会触发弹窗)
+            // 方法1: 使用 Permissions API 查询权限状态（不会触发弹窗）
             if (navigator.permissions && navigator.permissions.query) {
                 try {
                     const result = await navigator.permissions.query({ name: 'microphone' as PermissionName });
