@@ -35,3 +35,20 @@ def test_serializer_rejects_bad_on_multiple():
     s = EnrichmentRuleModelSerializer(data={"name": "x", "on_multiple": "nonsense"})
     assert not s.is_valid()
     assert "on_multiple" in s.errors
+
+
+# ============================================================
+# Task 2: EnrichmentRuleModelFilter
+# ============================================================
+
+@pytest.mark.django_db
+def test_filter_by_name_icontains():
+    from apps.alerts.models.enrichment import EnrichmentRule
+    from apps.alerts.filters.enrichment import EnrichmentRuleModelFilter
+    EnrichmentRule.objects.create(name="CMDB资源丰富", provider_type="cmdb")
+    EnrichmentRule.objects.create(name="其它规则", provider_type="cmdb")
+    f = EnrichmentRuleModelFilter(
+        data={"name": "cmdb"}, queryset=EnrichmentRule.objects.all()
+    )
+    assert f.qs.count() == 1
+    assert f.qs.first().name == "CMDB资源丰富"
