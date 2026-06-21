@@ -77,6 +77,8 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const isMountedRef = useRef<boolean>(true);
 
   // Cache avatar elements to prevent re-fetching on every render
   const botAvatar = React.useMemo(
@@ -91,6 +93,8 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
   // Initialize core components
   useEffect(() => {
+    isMountedRef.current = true;
+
     // Initialize SessionManager
     sessionManagerRef.current = new SessionManager({
       enableStorage,
@@ -114,6 +118,12 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     if (session && session.messages.length > 0) {
       setMessages(session.messages);
     }
+
+    return () => {
+      // On unmount: mark as unmounted and abort any in-flight SSE stream
+      isMountedRef.current = false;
+      abortControllerRef.current?.abort();
+    };
   }, []);
 
   // Setup AG-UI event handlers
@@ -802,16 +812,22 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         const headers: HeadersInit = {
           'Content-Type': 'application/json',
         };
-        
+
         // Add Authorization header if apiKey is provided
         if (apiKey) {
           headers['Authorization'] = `Bearer ${apiKey}`;
         }
-        
+
+        // Abort any previous in-flight stream before starting a new one
+        abortControllerRef.current?.abort();
+        abortControllerRef.current = new AbortController();
+        const { signal } = abortControllerRef.current;
+
         const response = await fetch(sseUrl, {
           method: 'POST',
           headers,
           body: JSON.stringify(requestBody),
+          signal,
         });
 
         if (!response.ok || !response.body) {
@@ -821,12 +837,15 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         // Process SSE stream
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
-        
+
         try {
           while (true) {
             const { done, value: chunk } = await reader.read();
-            if (done) {
-              console.log('✅ Stream complete');
+            // Stop if stream ended or component has unmounted
+            if (done || !isMountedRef.current) {
+              if (done) {
+                console.log('✅ Stream complete');
+              }
               // Ensure loading state is reset when stream completes
               setIsLoading(false);
               setIsThinking(false);
@@ -843,7 +862,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
                 if (dataStr.trim()) {
                   try {
                     const data = JSON.parse(dataStr);
-                    
+
                     // Process through AG-UI handler
                     if (aguiHandlerRef.current) {
                       const result = aguiHandlerRef.current.processSSEData(data);
@@ -863,9 +882,17 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
             }
           }
         } catch (streamError) {
-          console.error('Error reading stream:', streamError);
-          setIsLoading(false);
-          setIsThinking(false);
+          // AbortError is expected when the component unmounts or a new message is sent;
+          // do not treat it as an application error
+          if (streamError instanceof Error && streamError.name === 'AbortError') {
+            console.log('🛑 Stream aborted');
+          } else {
+            console.error('Error reading stream:', streamError);
+          }
+          if (isMountedRef.current) {
+            setIsLoading(false);
+            setIsThinking(false);
+          }
         }
       } else {
         // Simulate response for demo
@@ -882,9 +909,16 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         }, 1000);
       }
     } catch (error) {
+      // AbortError is not a user-visible error; swallow it silently
+      if (error instanceof Error && error.name === 'AbortError') {
+        console.log('🛑 Fetch aborted');
+        return;
+      }
       console.error('Error sending message:', error);
       onError?.(error as Error);
-      setIsLoading(false);
+      if (isMountedRef.current) {
+        setIsLoading(false);
+      }
     }
   }, [isLoading, sseUrl, customData, addMessage, onError, aguiHandlerRef, uploadedImages]);
 
