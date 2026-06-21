@@ -685,11 +685,24 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    const MAX_IMAGE_SIZE = parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE || '4194304', 10); // 默认 4MB
     const readers: Promise<string>[] = [];
 
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
+
+      if (file.size > MAX_IMAGE_SIZE) {
+        const limitMB = MAX_IMAGE_SIZE / 1024 / 1024;
+        addMessage({
+          id: generateId(),
+          type: 'text',
+          content: `❌ 图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`,
+          sender: 'bot',
+          timestamp: Date.now(),
+        });
+        continue;
+      }
 
       const reader = new FileReader();
       const promise = new Promise<string>((resolve) => {
@@ -708,7 +721,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     // Reset input
     e.target.value = '';
-  }, []);
+  }, [addMessage]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
@@ -720,12 +733,24 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     const items = e.clipboardData?.items;
     if (!items) return;
 
+    const MAX_IMAGE_SIZE = parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE || '4194304', 10); // 默认 4MB
     const imageFiles: File[] = [];
     for (let i = 0; i < items.length; i++) {
       const item = items[i];
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) {
+          if (file.size > MAX_IMAGE_SIZE) {
+            const limitMB = MAX_IMAGE_SIZE / 1024 / 1024;
+            addMessage({
+              id: generateId(),
+              type: 'text',
+              content: `❌ 粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`,
+              sender: 'bot',
+              timestamp: Date.now(),
+            });
+            continue;
+          }
           imageFiles.push(file);
         }
       }
@@ -733,7 +758,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     if (imageFiles.length > 0) {
       e.preventDefault(); // 阻止默认粘贴行为
-      
+
       const readers: Promise<string>[] = imageFiles.map(file => {
         return new Promise<string>((resolve) => {
           const reader = new FileReader();
@@ -749,7 +774,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         setUploadedImages((prev) => [...prev, ...results]);
       });
     }
-  }, []);
+  }, [addMessage]);
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
