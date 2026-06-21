@@ -145,6 +145,25 @@ export interface NotifyOption {
   value: string;
 }
 
+export interface EnrichmentProjectionItem {
+  source: string;
+  as?: string;
+}
+
+export interface EnrichmentRuleListItem {
+  id: number;
+  name: string;
+  is_active: boolean;
+  match_rules: any[];
+  provider_type: string;
+  input_binding: Record<string, string>;
+  provider_config: Record<string, any>;
+  output_projection: EnrichmentProjectionItem[];
+  on_multiple: 'first' | 'merge' | 'list';
+  namespace: string;
+  created_at: string;
+}
+
 export interface LevelFormItem {
   id?: number;
   level_id: number;
