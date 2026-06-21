@@ -256,6 +256,32 @@ def build_snmp_trap_source_config():
     return config
 
 
+# 内置丰富规则预设
+BUILTIN_ENRICHMENT_RULES = [
+    {
+        "name": "内置-CMDB资源丰富",
+        "provider_type": "cmdb",
+        "input_binding": {"model_id": "resource_type", "_id": "resource_id"},
+        "provider_config": {},
+        "output_projection": [],
+        "on_multiple": "first",
+        "namespace": "cmdb",
+        "match_rules": [],
+        "is_active": True,
+    }
+]
+
+
+def init_enrichment_rules():
+    """幂等初始化内置丰富规则（按 name update_or_create）。"""
+    from apps.alerts.models.enrichment import EnrichmentRule
+
+    for rule_data in BUILTIN_ENRICHMENT_RULES:
+        name = rule_data["name"]
+        defaults = {k: v for k, v in rule_data.items() if k != "name"}
+        EnrichmentRule.objects.update_or_create(name=name, defaults=defaults)
+
+
 # 内置告警源配置
 BUILTIN_ALERT_SOURCES = [
     {
