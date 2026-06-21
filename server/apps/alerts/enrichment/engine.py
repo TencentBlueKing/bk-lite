@@ -1,3 +1,5 @@
+import hashlib
+import json
 import logging
 from typing import Dict, List, Optional
 
@@ -12,7 +14,8 @@ logger = logging.getLogger(__name__)
 
 MAX_KEYS_PER_BATCH = 500
 CACHE_TTL_SECONDS = 60
-_MISS = {"__enrich_miss__": True}
+# 负缓存哨兵：用字符串而非 dict，避免可变默认值和 == 比较歧义
+_MISS = "__enrich_miss__"
 
 
 class EnrichmentEngine:
@@ -26,8 +29,15 @@ class EnrichmentEngine:
         return list(EnrichmentRule.objects.filter(is_active=True))
 
     @staticmethod
-    def _cache_key(provider_type, binding_key) -> str:
-        return "enrich:" + provider_type + ":" + "|".join(f"{k}={v}" for k, v in binding_key)
+    def _cache_key(provider_type, provider_config, binding_key) -> str:
+        """构造确定性缓存键，纳入 provider_config 避免不同配置碰撞。"""
+        raw = json.dumps(
+            {"pt": provider_type, "cfg": provider_config, "key": list(binding_key)},
+            sort_keys=True,
+            ensure_ascii=False,
+        )
+        digest = hashlib.md5(raw.encode("utf-8")).hexdigest()
+        return "enrich:" + digest
 
     def enrich_batch(self, events: List[Dict]) -> None:
         try:
@@ -65,10 +75,11 @@ class EnrichmentEngine:
             all_keys = all_keys[:MAX_KEYS_PER_BATCH]
 
         # 2. 查缓存（含负结果）
+        provider_config = rule.provider_config
         records_by_key: Dict = {}
         miss_keys = []
         for bkey in all_keys:
-            cached = cache.get(self._cache_key(provider_type, bkey))
+            cached = cache.get(self._cache_key(provider_type, provider_config, bkey))
             if cached == _MISS:
                 records_by_key[bkey] = []
             elif cached is not None:
@@ -80,14 +91,14 @@ class EnrichmentEngine:
         if miss_keys:
             provider = get_provider(provider_type)
             try:
-                fetched = provider.fetch_batch(miss_keys, rule.provider_config)
+                fetched = provider.fetch_batch(miss_keys, provider_config)
             except Exception:
                 logger.error("[Enrichment] Provider 查询失败 provider_type=%s", provider_type, exc_info=True)
                 fetched = {}
             for bkey in miss_keys:
                 recs = fetched.get(bkey) or []
                 records_by_key[bkey] = recs
-                cache.set(self._cache_key(provider_type, bkey), recs or _MISS, CACHE_TTL_SECONDS)
+                cache.set(self._cache_key(provider_type, provider_config, bkey), recs or _MISS, CACHE_TTL_SECONDS)
 
         # 4. 投影写回
         for bkey in all_keys:
