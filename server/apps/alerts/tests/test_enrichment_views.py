@@ -52,3 +52,48 @@ def test_filter_by_name_icontains():
     )
     assert f.qs.count() == 1
     assert f.qs.first().name == "CMDB资源丰富"
+
+
+# ============================================================
+# Task 3 + 4: EnrichmentRuleModelViewSet CRUD 集成测试
+# ============================================================
+
+@pytest.fixture
+def superuser_client(authenticated_user):
+    """api_client with is_superuser=True so HasPermission is bypassed."""
+    from rest_framework.test import APIClient
+    authenticated_user.is_superuser = True
+    client = APIClient()
+    client.force_authenticate(user=authenticated_user)
+    return client
+
+
+@pytest.mark.django_db
+def test_viewset_list_create_delete(superuser_client):
+    # 创建
+    payload = {
+        "name": "视图测试规则", "is_active": True, "match_rules": [],
+        "provider_type": "cmdb",
+        "input_binding": {"model_id": "resource_type", "_id": "resource_id"},
+        "provider_config": {}, "output_projection": [], "on_multiple": "first",
+        "namespace": "cmdb",
+    }
+    resp = superuser_client.post("/api/v1/alerts/api/enrichment/", payload, format="json")
+    assert resp.status_code == 201, resp.content
+    rule_id = resp.data["id"]
+
+    # 列表 — CustomPageNumberPagination returns {"count": n, "items": [...]} under data key
+    # when no page_size param, paginate_queryset returns None → no pagination wrapper
+    resp = superuser_client.get("/api/v1/alerts/api/enrichment/")
+    assert resp.status_code == 200
+    data = resp.data
+    # Without page_size, pagination is skipped; data is a list
+    if isinstance(data, dict):
+        names = [r["name"] for r in (data.get("items") or data.get("results") or [])]
+    else:
+        names = [r["name"] for r in data]
+    assert "视图测试规则" in names
+
+    # 删除 — renderer changes 204 DELETE → 200
+    resp = superuser_client.delete(f"/api/v1/alerts/api/enrichment/{rule_id}/")
+    assert resp.status_code in (200, 204), resp.content
