@@ -30,7 +30,7 @@ FAKE_ECS = [
 
 
 def _make_manager():
-    from plugins.inputs.huaweicloud.huaweicloud_info import HuaweiCloudManager
+    from plugins.inputs.hwcloud.huaweicloud_info import HuaweiCloudManager
 
     return HuaweiCloudManager(
         params={

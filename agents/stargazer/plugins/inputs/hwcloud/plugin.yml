@@ -1,4 +1,4 @@
-name: huaweicloud
+name: hwcloud
 version: "1.0.0"
 category: cloud
 
@@ -21,7 +21,7 @@ executors:
 
     # Python 采集器
     collector:
-      module: plugins.inputs.huaweicloud.huaweicloud_info
+      module: plugins.inputs.hwcloud.huaweicloud_info
       class: HuaweiCloudManager
 
 # 默认执行器
