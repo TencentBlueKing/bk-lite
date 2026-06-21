@@ -500,7 +500,7 @@ async def collect(request):
             prometheus_lines = [
                 "# HELP collection_request_accepted Indicates that collection request was accepted",
                 "# TYPE collection_request_accepted gauge",
-                f'collection_request_accepted{{model_id="{_escape_prometheus_label_value(model_id)}",task_id="{task_info["task_id"]}",status="{task_status}"}} 1 {current_timestamp}'
+                f'collection_request_accepted{{model_id="{_escape_prometheus_label_value(model_id)}",task_id="{_escape_prometheus_label_value(task_info["task_id"])}",status="{_escape_prometheus_label_value(task_status)}"}} 1 {current_timestamp}'
             ]
             
             return response.raw(
