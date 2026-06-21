@@ -117,3 +117,50 @@ def test_metrics_reports_adoption_funnel(superuser_client):
     assert data["user_created_rules"] == 1   # 排除"内置-"前缀
     assert "enriched_alert_ratio" in data
     assert 0.0 <= data["enriched_alert_ratio"] <= 1.0
+
+
+# ============================================================
+# Task 6: enrichment 字段在 Alert/Event API 可读
+# ============================================================
+
+@pytest.mark.django_db
+def test_alert_serializer_exposes_enrichment_readable(authenticated_user):
+    """钉死 enrichment 字段在 Alert 序列化器中可读（非 write_only）。"""
+    from unittest.mock import patch, MagicMock
+    from apps.alerts.serializers.alert import AlertModelSerializer
+    from apps.alerts.models.models import Alert
+
+    request = MagicMock()
+    request.user = authenticated_user
+    request.COOKIES = {"current_team": "0"}
+
+    empty_rules = {"team": [], "instance": []}
+    with patch("apps.core.utils.serializers.get_permission_rules", return_value=empty_rules):
+        alert = Alert(enrichment={"cmdb": {"owner": "alice"}})
+        data = AlertModelSerializer(alert, context={"request": request}).data
+    assert data.get("enrichment") == {"cmdb": {"owner": "alice"}}
+
+
+@pytest.mark.django_db
+def test_event_serializer_exposes_enrichment_readable(authenticated_user):
+    """钉死 enrichment 字段在 Event 序列化器中可读（非 write_only）。"""
+    from unittest.mock import patch, MagicMock, PropertyMock
+    from apps.alerts.serializers.event import EventModelSerializer
+    from apps.alerts.models.models import Event
+
+    request = MagicMock()
+    request.user = authenticated_user
+    request.COOKIES = {"current_team": "0"}
+
+    empty_rules = {"team": [], "instance": []}
+    # Mock source on an Event instance to avoid RelatedObjectDoesNotExist
+    event = MagicMock(spec=Event)
+    event.enrichment = {"cmdb": {"owner": "alice"}}
+    event.source.name = "test-source"
+    # Make it look like a model instance for the serializer
+    event._state = MagicMock()
+    event.pk = None
+
+    with patch("apps.core.utils.serializers.get_permission_rules", return_value=empty_rules):
+        data = EventModelSerializer(event, context={"request": request}).data
+    assert data.get("enrichment") == {"cmdb": {"owner": "alice"}}
