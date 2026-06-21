@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Toast, Popover, ImageViewer } from 'antd-mobile';
 import { Sender } from '@ant-design/x';
 import { AddOutline, ExclamationCircleFill } from 'antd-mobile-icons';
@@ -53,11 +53,52 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     const [fileBase64Data, setFileBase64Data] = useState<Record<number, string>>({}); // 存储每个文件的base64数据
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
     const [currentPreviewImage, setCurrentPreviewImage] = useState<string>('');
+    // 持有预览 URL 引用，以便在 ImageViewer 关闭时释放
+    const previewUrlRef = useRef<string>('');
+    // 持有每个已选文件的 Blob URL，避免每次渲染重新创建（file 对象引用不变时复用）
+    const fileBlobUrlsRef = useRef<Map<File, string>>(new Map());
+
+    // 当 selectedFiles 变化时，清理已移除文件的 Blob URL
+    useEffect(() => {
+        const currentMap = fileBlobUrlsRef.current;
+        currentMap.forEach((url, file) => {
+            if (!selectedFiles.includes(file)) {
+                URL.revokeObjectURL(url);
+                currentMap.delete(file);
+            }
+        });
+    }, [selectedFiles]);
+
+    // 组件卸载时释放所有持有的 Blob URL
+    useEffect(() => {
+        const currentMap = fileBlobUrlsRef.current;
+        return () => {
+            currentMap.forEach((url) => URL.revokeObjectURL(url));
+            currentMap.clear();
+            if (previewUrlRef.current) {
+                URL.revokeObjectURL(previewUrlRef.current);
+            }
+        };
+    }, []);
+
+    // 获取（或创建并缓存）文件对应的 Blob URL
+    const getFileBlobUrl = (file: File): string => {
+        const map = fileBlobUrlsRef.current;
+        if (!map.has(file)) {
+            map.set(file, URL.createObjectURL(file));
+        }
+        return map.get(file)!;
+    };
 
     // 处理图片点击预览
     const handleImagePreview = (file: File, e: React.MouseEvent) => {
         e.stopPropagation();
-        const imageUrl = URL.createObjectURL(file);
+        // 释放上一个预览 URL（若与文件缓存不同）
+        if (previewUrlRef.current && previewUrlRef.current !== fileBlobUrlsRef.current.get(file)) {
+            URL.revokeObjectURL(previewUrlRef.current);
+        }
+        const imageUrl = getFileBlobUrl(file);
+        previewUrlRef.current = imageUrl;
         setCurrentPreviewImage(imageUrl);
         setImageViewerVisible(true);
     };
@@ -457,7 +498,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                                 <div className="w-full h-full relative border border-[var(--color-border)] rounded-lg overflow-hidden">
                                     {file.type.startsWith('image/') ? (
                                         <img
-                                            src={URL.createObjectURL(file)}
+                                            src={getFileBlobUrl(file)}
                                             alt={file.name}
                                             className="w-full h-full object-cover cursor-pointer"
                                             onClick={(e) => handleImagePreview(file, e)}
@@ -753,7 +794,14 @@ export const CustomInput: React.FC<CustomInputProps> = ({
             <ImageViewer
                 image={currentPreviewImage}
                 visible={imageViewerVisible}
-                onClose={() => setImageViewerVisible(false)}
+                onClose={() => {
+                    setImageViewerVisible(false);
+                    // 预览 URL 若不在文件缓存中（例如单独创建的），立即释放
+                    if (previewUrlRef.current && !Array.from(fileBlobUrlsRef.current.values()).includes(previewUrlRef.current)) {
+                        URL.revokeObjectURL(previewUrlRef.current);
+                        previewUrlRef.current = '';
+                    }
+                }}
             />
         </div>
     );
