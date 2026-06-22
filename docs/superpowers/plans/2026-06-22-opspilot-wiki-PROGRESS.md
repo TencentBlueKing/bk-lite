@@ -45,7 +45,8 @@
 ### P1 文件/网页解析 ✅(真实 MinIO 已验证)
 - `material_service.extract_text` 按类型/扩展名分派:
   - **OCR-free 文件** `.txt/.md/.csv/.xlsx/.xls`(Text/Markdown/Excel loader)——**真实 MinIO 往返集成测试通过**(上传 xlsx→读回解析)
-  - **OCR 文件** `.pdf/.docx/.pptx/图片`:惰性导入 OCR loader + 从 OCRProvider 经 OcrManager 构建 OCR;**分派与构建已接通并 stub 测试**,无 OCRProvider 时优雅返回空串(当前环境 OCRProvider 为空,真解析需配置)
+  - **文档型** `.pdf/.docx/.pptx`:loader 经 fitz/python-docx/python-pptx **原生抽取文本,无需 OCR 服务**(OCR 仅在已配置时增强内嵌图片);**真实 .docx 抽取测试通过**(ocr=None)。惰性导入 + 缺依赖优雅降级
+  - **纯图片** `.png/.jpg/.jpeg`:内容仅图像,**必须 OCR**;无 OCRProvider 返回空串
   - **网页** `web`:HTTP 抓取 + 标准库剥离 HTML 为文本(基础版,不含 JS/图片 OCR),抓取失败优雅降级
 - 定时刷新:`tasks.wiki_refresh_web_materials_task`(Celery,可挂 beat)重抓 web 资料,内容变更触发安全更新
 
@@ -72,7 +73,7 @@
 
 代码已全部就位并测试;以下两项只受真实外部依赖限制,我无法在此环境代为执行:
 
-1. **真实 OCR 解析**:`.pdf/.docx/.pptx/图片` 的分派 + OCR 构建(OcrManager)已接通并 stub 测试;真解析需一个**可达的 OCR 服务**(当前环境 OCRProvider 为空、嵌入/OCR 上游 502)。配好 OCRProvider + 服务即生效。
+1. **纯图片 OCR**:`.png/.jpg/.jpeg`(及文档内嵌图片的增强)需一个**可达的 OCR 服务**(当前环境 OCRProvider 为空)。注意:**pdf/docx/pptx 的文本已可无 OCR 抽取**,仅"图片内容"这一子集需要 OCR 服务。
 2. **前端交互冒烟**:需在主仓库跑 dev server(worktree Turbopack 拒绝跨根 node_modules 软链);已全程 eslint + 作用域 tsc 校验。
 
 > 其余原"受阻"项已转为代码完成:beat 周期已在 `config.py` 注册;`wiki_list` 已写入 `support-files/system_mgmt/menus/opspilot.json`(由 `init_realm_resource` 注册);语义检索持久化索引已实现(pgvector 仅为可选扩规模)。
