@@ -27,9 +27,11 @@
 - `services/wiki/retrieval_service.py`:关键词检索(CJK 分词)+ 问答试用(引用可追溯);KB `search`/`qa` 动作
 - `services/wiki/overview_service.py`:概览健康摘要(页面/资料/构建/检查/关系统计 + 贡献分布 + 图谱社区/枢纽);KB `overview` 动作
 
-### P4 多智能体复用(可复用单元)✅
-- `services/wiki/wiki_context_service.py`:跨知识库上下文提供器(供技能/智能体注入提示词);KB `context` 动作
-- 余:把 `build_context` 接回 chat chain / 技能执行处(需探查 SSE/技能执行路径,见待办)
+### P4 多智能体复用 ✅(已接回聊天链)
+- `services/wiki/wiki_context_service.py`:跨知识库上下文提供器 + `augment_prompt`(注入系统提示并回传引用);KB `context` 动作
+- **接回聊天链**:`LLMSkill.wiki_knowledge_bases`(M2M,迁移 `0061`)+ 序列化器暴露;`get_skill_and_params` 传 `wiki_kb_ids`;`chat_service.format_chat_server_kwargs` 检索并注入系统提示、`wiki_citations` 入 extra_config(无选库/无命中零副作用)
+- 回归:`test_llm_viewset_views` / `test_views_auth_entrypoints_views` / `test_chat_service_k8s_instance_selection` 共 46 passed,`manage.py check` 无问题
+- 余:前端技能配置 UI 增加"选择 Wiki 知识库"(前端工作);引用在回答中的前端展示
 
 ### P5 关系图谱(装配 + 洞察)✅
 - `services/wiki/graph_service.py`:图装配 + 连通分量社区 + 孤立/枢纽洞察;KB `graph` 动作
