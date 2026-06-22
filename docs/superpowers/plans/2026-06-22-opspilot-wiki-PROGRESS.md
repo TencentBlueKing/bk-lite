@@ -93,7 +93,10 @@
 
 LLM / 语义检索 / 图片 OCR 均已**真实端到端验证**(上方);仅剩:
 
-1. **前端浏览器点击冒烟**:worktree 前端运行时**结构性跑不起**——dev server(Turbopack/webpack)与 Storybook 三次尝试均崩在 web `node_modules`/`prepare-enterprise`(缺 `fs-extra`)。代码已全程 eslint + 作用域 tsc 校验。此为你既定流程「前端冒烟去主仓库」,需在主仓库(依赖完整)对 `/opspilot/wiki` 点验。
+1. **前端浏览器点击冒烟**:精确诊断如下——
+   - 在 kb-remove/web 起 `next dev`(Next 16,externalDir 实验已开,**能容忍跨根 node_modules 软链**)→ **dev server 成功启动(Ready in 62.6s)**,`/opspilot/wiki` 路由**编译通过**(我的 wiki 代码无编译错误)。
+   - 但**所有页面 500**,原因是 worktree 安装产物:`src/app/cmdb`(及其他模块)下的嵌套 `.pnpm` node_modules 被 App Router 误当成路由 → `Conflicting routes at /cmdb/node_modules/.pnpm/.../lucide-react/.../icons`。**这与 wiki 代码无关**(是 cmdb 的依赖),主仓库(依赖 hoist、无嵌套)不存在此问题。
+   - 结论:**worktree 前端可启动、wiki 路由可编译,但页面渲染被无关模块的嵌套 node_modules 路由冲突 500**。真实点击冒烟需在主仓库(干净 hoist 安装)对 `/opspilot/wiki` 进行。代码已全程 eslint + 作用域 tsc 校验、且在 dev server 下编译通过。
 
 > 其余原"受阻"项均已**真实验证或完成**:LLM 构建/问答/摘要/Purpose 生成(模型 130)、语义检索/分块/混合(真实向量,api.v36.cm 嵌入)、图片 OCR(api.v36.cm gpt-4o vision)全部**真实端到端跑通**;beat 周期已注册;`wiki_list` 已入菜单;两步构建/Louvain/PageChunk/版本 diff 已补齐。pgvector 为多 DB 可移植性故意不作默认(JSON+余弦跨 7 种库,pgvector 仅 Postgres 专属可选)。
 
