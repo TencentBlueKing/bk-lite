@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.opspilot.models import BuildRecord, KnowledgePage, Material, WikiKnowledgeBase
+from apps.opspilot.models import BuildRecord, KnowledgePage, Material, PageVersion, WikiKnowledgeBase
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
@@ -72,6 +72,12 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
 
     def get_body(self, obj):
         return obj.current_version.body if obj.current_version_id else ""
+
+
+class PageVersionSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = PageVersion
+        fields = ["id", "page", "no", "body", "change_type", "is_current", "created_by", "created_at"]
 
 
 class BuildRecordSerializer(serializers.ModelSerializer):

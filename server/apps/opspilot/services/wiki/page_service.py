@@ -1,0 +1,70 @@
+"""知识页面版本管理:人工创建/编辑/恢复都生成新版本,当前有效版本始终明确。
+
+对应 spec §8(页面编辑)、§9(版本管理:每次变化生成新版本,可比较与恢复)。
+"""
+
+from django.db import transaction
+
+from apps.opspilot.models import KnowledgePage, PageVersion
+
+
+def _next_no(page):
+    last = page.page_versions.order_by("-no").first()
+    return (last.no + 1) if last else 1
+
+
+@transaction.atomic
+def _new_current_version(page, body, change_type, created_by, meta_snapshot=None):
+    """创建一个新版本并置为当前,旧的当前版本取消 is_current。"""
+    page.page_versions.filter(is_current=True).update(is_current=False)
+    version = PageVersion.objects.create(
+        page=page,
+        no=_next_no(page),
+        body=body,
+        change_type=change_type,
+        is_current=True,
+        created_by=created_by or "",
+        meta_snapshot=meta_snapshot or {},
+    )
+    page.current_version = version
+    page.save(update_fields=["current_version", "updated_at"])
+    return version
+
+
+@transaction.atomic
+def create_manual_page(knowledge_base, page_type, title, body="", tags=None, created_by=""):
+    """人工创建知识页面(贡献来源=human)。"""
+    page = KnowledgePage.objects.create(
+        knowledge_base=knowledge_base,
+        page_type=page_type,
+        title=title,
+        tags=tags or [],
+        contribution="human",
+        update_method="human_edit",
+        created_by=created_by or "",
+    )
+    _new_current_version(page, body=body, change_type="human_edit", created_by=created_by)
+    return page
+
+
+@transaction.atomic
+def edit_page(page, body=None, title=None, tags=None, updated_by=""):
+    """人工编辑页面:更新元数据并生成新版本。AI 页面被人工编辑后贡献来源升级为 mixed。"""
+    if title is not None:
+        page.title = title
+    if tags is not None:
+        page.tags = tags
+    if page.contribution == "ai":
+        page.contribution = "mixed"
+    page.update_method = "human_edit"
+    page.updated_by = updated_by or ""
+    page.save(update_fields=["title", "tags", "contribution", "update_method", "updated_by", "updated_at"])
+    new_body = body if body is not None else (page.current_version.body if page.current_version_id else "")
+    return _new_current_version(page, body=new_body, change_type="human_edit", created_by=updated_by)
+
+
+@transaction.atomic
+def restore_version(page, version_id, operator=""):
+    """恢复历史版本:复制其正文为新版本(change_type=restore),不删除历史。"""
+    target = page.page_versions.get(id=version_id)
+    return _new_current_version(page, body=target.body, change_type="restore", created_by=operator)
