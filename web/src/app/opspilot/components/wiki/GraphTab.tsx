@@ -6,6 +6,7 @@ import type { ColumnsType } from 'antd/es/table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { GraphEdge, WikiGraph } from '@/app/opspilot/types/wiki';
+import GraphCanvas from '@/app/opspilot/components/wiki/GraphCanvas';
 
 const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
@@ -103,6 +104,11 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           </Card>
         </Col>
       </Row>
+      {!!graph.nodes.length && (
+        <Card className="mb-4" size="small">
+          <GraphCanvas nodes={graph.nodes} edges={graph.edges} />
+        </Card>
+      )}
       <Card title="Communities" className="mb-4" size="small">
         <List
           size="small"
