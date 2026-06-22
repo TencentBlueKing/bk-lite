@@ -6,6 +6,7 @@ from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.check_service import scan_health
 from apps.opspilot.services.wiki.graph_service import build_graph
+from apps.opspilot.services.wiki.overview_service import get_overview
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
 from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
@@ -123,6 +124,12 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         """返回知识图谱:节点 + 边 + 连通分量社区 + 洞察。"""
         kb = self.get_object()
         return JsonResponse({"result": True, "data": build_graph(kb)})
+
+    @action(methods=["GET"], detail=True)
+    def overview(self, request, pk=None):
+        """概览工作区:页面/资料/构建/检查/关系统计 + 健康摘要。"""
+        kb = self.get_object()
+        return JsonResponse({"result": True, "data": get_overview(kb)})
 
     @action(methods=["POST"], detail=False)
     def context(self, request):
