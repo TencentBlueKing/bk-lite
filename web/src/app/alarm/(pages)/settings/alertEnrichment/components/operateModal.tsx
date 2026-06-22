@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Drawer, Form, Input, Select, Button, Space, message } from 'antd';
+import { Drawer, Form, Input, Select, Button, Space, message, Radio } from 'antd';
 import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
@@ -32,10 +32,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const { createEnrichment, updateEnrichment } = useSettingApi();
   const [form] = Form.useForm();
   const [submitLoading, setSubmitLoading] = useState(false);
+  const [filterType, setFilterType] = useState<'all' | 'filter'>('all');
   const isEdit = !!currentRow;
 
   const handleClose = () => {
     form.resetFields();
+    setFilterType('all');
     onClose();
   };
 
@@ -58,8 +60,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
           as: p.as || '',
         })),
       });
+      setFilterType(currentRow.match_rules?.length ? 'filter' : 'all');
     } else {
       form.resetFields();
+      setFilterType('all');
       form.setFieldsValue({
         provider_type: 'cmdb',
         namespace: 'cmdb',
@@ -87,15 +91,21 @@ const OperateModal: React.FC<OperateModalProps> = ({
           r.as ? { source: r.source, as: r.as } : { source: r.source }
         );
 
-      // 清理未填全的匹配条件行；若全部未填则为空 = 对全部事件生效
-      const match_rules = (values.match_rules || [])
-        .map((group: any[]) =>
-          (group || []).filter(
-            (it: any) =>
-              it?.key && it?.operator && it?.value !== undefined && it?.value !== ''
-          )
-        )
-        .filter((group: any[]) => group.length > 0);
+      // 「全部」=> 空，对全部事件生效；「筛选」=> 清理未填全的条件行
+      const match_rules =
+        filterType === 'filter'
+          ? (values.match_rules || [])
+            .map((group: any[]) =>
+              (group || []).filter(
+                (it: any) =>
+                  it?.key &&
+                  it?.operator &&
+                  it?.value !== undefined &&
+                  it?.value !== ''
+              )
+            )
+            .filter((group: any[]) => group.length > 0)
+          : [];
 
       const payload = {
         name: values.name,
@@ -179,12 +189,28 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </Form.Item>
 
         <Form.Item
-          name="match_rules"
           label={t('settings.enrichmentMatchRules')}
           tooltip={t('settings.enrichmentMatchRulesTip')}
+          className="mb-2"
         >
-          <MatchRule levelType="event" />
+          <Radio.Group
+            value={filterType}
+            onChange={(e) => setFilterType(e.target.value)}
+            size="small"
+          >
+            <Radio.Button value="all">
+              {t('settings.enrichmentScopeAll')}
+            </Radio.Button>
+            <Radio.Button value="filter">
+              {t('settings.enrichmentScopeFilter')}
+            </Radio.Button>
+          </Radio.Group>
         </Form.Item>
+        {filterType === 'filter' && (
+          <Form.Item name="match_rules" className="mb-4">
+            <MatchRule levelType="event" />
+          </Form.Item>
+        )}
 
         <Form.Item label={t('settings.enrichmentInputBinding')} required>
           <Form.List name="input_binding">
