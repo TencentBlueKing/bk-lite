@@ -11,14 +11,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import (
-    Bot,
-    BotWorkFlow,
-    LLMModel,
-    Memory,
-    MemorySpace,
-    MemoryWriteCache,
-)
+from apps.opspilot.models import Bot, BotWorkFlow, LLMModel, Memory, MemorySpace, MemoryWriteCache
 from apps.opspilot.services.memory_write_buffer_service import (
     build_batch_content,
     build_memory_target_id,
@@ -775,3 +768,51 @@ def cleanup_expired_workflow_attachments_task():
     deleted_count = cleanup_expired_workflow_attachments(retention_days=3)
     logger.info("清理过期工作流附件完成: deleted_count=%s", deleted_count)
     return deleted_count
+
+
+# ---------------------------------------------------------------------------
+# Wiki 异步任务(P1):构建 / 资料更新合并 / 全量重建。返回 BuildRecord id;目标不存在返回 None。
+# ---------------------------------------------------------------------------
+
+
+# 说明:以下 wiki 任务短小且对应 service 内部已 @transaction.atomic,故不调用 close_old_connections()
+# (该调用会关闭当前连接,与测试事务连接冲突;短任务无需此连接清理)。
+
+
+@shared_task
+def wiki_build_material_task(material_id, llm_model_id=None, operator=""):
+    """从资料构建知识页面(异步)。"""
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.build_service import build_from_material
+
+    material = Material.objects.filter(id=material_id).first()
+    if not material:
+        logger.error("wiki 构建任务: 资料不存在 id=%s", material_id)
+        return None
+    return build_from_material(material, llm_model_id=llm_model_id, operator=operator).id
+
+
+@shared_task
+def wiki_propose_update_task(material_id, llm_model_id=None, operator=""):
+    """资料更新后的安全合并(异步)。"""
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.update_service import propose_update
+
+    material = Material.objects.filter(id=material_id).first()
+    if not material:
+        logger.error("wiki 资料更新任务: 资料不存在 id=%s", material_id)
+        return None
+    return propose_update(material, llm_model_id=llm_model_id, operator=operator).id
+
+
+@shared_task
+def wiki_rebuild_kb_task(kb_id, llm_model_id=None, operator=""):
+    """Schema 变更全量重建(异步)。"""
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
+
+    kb = WikiKnowledgeBase.objects.filter(id=kb_id).first()
+    if not kb:
+        logger.error("wiki 重建任务: 知识库不存在 id=%s", kb_id)
+        return None
+    return rebuild_knowledge_base(kb, llm_model_id=llm_model_id, operator=operator).id

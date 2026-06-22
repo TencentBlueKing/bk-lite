@@ -33,17 +33,19 @@
 - 回归:`test_llm_viewset_views` / `test_views_auth_entrypoints_views` / `test_chat_service_k8s_instance_selection` 共 46 passed,`manage.py check` 无问题
 - 余:前端技能配置 UI 增加"选择 Wiki 知识库"(前端工作);引用在回答中的前端展示
 
-### P5 关系图谱(装配 + 洞察)✅
-- `services/wiki/graph_service.py`:图装配 + 连通分量社区 + 孤立/枢纽洞察;KB `graph` 动作
-- 余:Louvain 社区发现 + 4 信号关联度加权(需 networkx/python-louvain)
+### P5 关系图谱(装配 + 洞察 + 加权社区)✅
+- `services/wiki/graph_service.py`:`build_graph`(连通分量社区 + 孤立/枢纽洞察)+ `analyze_graph`(4 信号关联度加权 + **标签传播社区**,Louvain 的无依赖替代);KB `graph`/`graph_analysis` 动作
 
-> 测试合计 44 passed(`apps/opspilot/tests/wiki/`)。
+### P6 全量重建 ✅(非向量部分)
+- `services/wiki/rebuild_service.py`:Schema 变更全量重建(归档旧 AI 页 / 保留并标记人工页 schema_changed / 按新 Schema 重生成);KB `rebuild` 动作 + Celery 任务 `wiki_rebuild_kb_task`
 
-## 待办(剩余 —— 受基础设施/前端环境/需探查约束,非单会话可净完成)
+### P1 异步 ✅
+- `tasks.py`:`wiki_build_material_task` / `wiki_propose_update_task` / `wiki_rebuild_kb_task`(Celery);material `build` 支持 `async=true` 走异步
 
-- **P1 余下(需基础设施)**:文件/网页/OCR 解析(loader 已就绪,需接 OCRProvider + 从 MinIO 读取;worktree 缺 MinIO env 无法联测)、Celery 异步构建(需 broker)
-- **P4 接回(需探查)**:在聊天链 / 技能执行处调用 `build_context` 注入,改动 SSE 执行路径(风险较高,需先探查)
-- **P5 增强**:Louvain + 4 信号关联度(需 networkx/python-louvain 依赖)
+## 待办(剩余 —— 受基础设施 / 前端环境约束,非本环境可净完成)
+
+- **文件/网页/OCR 解析(P1)**:loader 已就绪,需接 OCRProvider + 从 MinIO 读取(worktree 缺 MinIO env 无法联测)
+- **pgvector 语义检索 + 网页定时刷新(P6)**:需 pgvector 扩展 + 嵌入模型 + 网络抓取
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 

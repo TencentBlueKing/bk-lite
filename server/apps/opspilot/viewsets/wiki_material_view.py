@@ -60,12 +60,18 @@ class WikiMaterialViewSet(AuthViewSet):
 
     @action(methods=["POST"], detail=True)
     def build(self, request, pk=None):
-        """从该资料构建知识页面(Schema 驱动生成),返回构建记录。"""
+        """从该资料构建知识页面(Schema 驱动生成)。async=true 时走 Celery 异步,否则同步返回构建记录。"""
         material = self.get_object()
+        operator = getattr(request.user, "username", "")
+        if request.data.get("async"):
+            from apps.opspilot.tasks import wiki_build_material_task
+
+            wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
+            return JsonResponse({"result": True, "data": {"async": True}})
         record = build_from_material(
             material,
             llm_model_id=material.knowledge_base.llm_model_id,
-            operator=getattr(request.user, "username", ""),
+            operator=operator,
         )
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
