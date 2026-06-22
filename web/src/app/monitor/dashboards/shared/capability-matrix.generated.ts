@@ -14,15 +14,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
-      "collectType": "snmp_3com",
-      "capabilities": [
-        "uptime",
-        "cpu",
-        "memory",
-        "traffic"
-      ]
-    },
-    {
       "collectType": "snmp_alcatel",
       "capabilities": [
         "uptime",
@@ -170,31 +161,11 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
-      "collectType": "snmp_fortiswitch",
-      "capabilities": [
-        "uptime",
-        "cpu",
-        "memory",
-        "traffic"
-      ]
-    },
-    {
       "collectType": "snmp_h3c",
       "capabilities": [
         "uptime",
         "cpu",
         "memory",
-        "traffic"
-      ]
-    },
-    {
-      "collectType": "snmp_hirschmann",
-      "capabilities": [
-        "uptime",
-        "cpu",
-        "memory",
-        "temperature",
-        "psu",
         "traffic"
       ]
     },
@@ -449,15 +420,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
-      "collectType": "snmp_forcepoint",
-      "capabilities": [
-        "uptime",
-        "cpu",
-        "memory",
-        "traffic"
-      ]
-    },
-    {
       "collectType": "snmp_fortinet",
       "capabilities": [
         "uptime",
@@ -503,15 +465,6 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "cpu",
         "traffic",
         "session"
-      ]
-    },
-    {
-      "collectType": "snmp_screenos",
-      "capabilities": [
-        "uptime",
-        "cpu",
-        "memory",
-        "traffic"
       ]
     },
     {
