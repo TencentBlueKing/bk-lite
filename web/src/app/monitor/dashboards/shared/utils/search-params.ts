@@ -1,6 +1,7 @@
 import { TimeValuesProps } from '@/app/monitor/types';
 import { SearchParams } from '@/app/monitor/types/search';
 import { getRecentTimeRange, mergeViewQueryKeyValues } from '@/app/monitor/utils/common';
+import { buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 
 export const buildSearchParams = (
@@ -35,5 +36,5 @@ export const buildSearchParams = (
     params.step = calculateQueryStep(params.start, params.end, minStepSeconds);
   }
 
-  return params;
+  return buildGapDetectionParams(params, minStepSeconds);
 };

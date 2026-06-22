@@ -29,6 +29,7 @@ import {
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
+import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import dayjs, { Dayjs } from 'dayjs';
@@ -143,7 +144,7 @@ const Overview: React.FC<ViewDetailProps> = ({
       params.end = endTime;
       params.step = calculateQueryStep(params.start, params.end, collectionInterval);
     }
-    return params;
+    return buildGapDetectionParams(params, collectionInterval);
   };
 
   const fetchViewData = async (data: MetricItem[], type?: string) => {
@@ -151,7 +152,8 @@ const Overview: React.FC<ViewDetailProps> = ({
     const requestQueue = data.map((item: MetricItem) =>
       getInstanceQuery(getParams(item)).then((response) => ({
         id: item.id,
-        data: response.data.result || []
+        data: response.data.result || [],
+        gaps: response.data.gaps || []
       }))
     );
     try {
@@ -169,7 +171,10 @@ const Overview: React.FC<ViewDetailProps> = ({
               title: metricItem.display_name || '--'
             }
           ];
-          metricItem.viewData = renderChart(result.data || [], config);
+          metricItem.viewData = attachGapIntervals(
+            renderChart(result.data || [], config),
+            result.gaps || []
+          );
         }
       });
     } catch {

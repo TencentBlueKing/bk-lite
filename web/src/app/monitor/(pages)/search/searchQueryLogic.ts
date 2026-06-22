@@ -11,6 +11,7 @@ import {
   getRecentTimeRange,
   mergeViewQueryKeyValues
 } from '@/app/monitor/utils/common';
+import { buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 
 export const getMetricsMapKey = (
@@ -76,13 +77,14 @@ export const buildSearchQueryParams = ({
   const recentTimeRange = getRecentTimeRange(timeRange);
   const startTime = recentTimeRange.at(0);
   const endTime = recentTimeRange.at(1);
+  const collectionInterval = Math.max(0, ...selectedInstances.map((item) => Number(item.interval) || 0));
   if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
     params.start = startTime;
     params.end = endTime;
     params.step = calculateQueryStep(
       params.start,
       params.end,
-      Math.max(0, ...selectedInstances.map((item) => Number(item.interval) || 0))
+      collectionInterval
     );
   }
   let query = '';
@@ -110,5 +112,5 @@ export const buildSearchQueryParams = ({
     finalQuery = `${aggFunc}(${finalQuery})${byClause}`;
   }
   params.query = finalQuery;
-  return params;
+  return buildGapDetectionParams(params, collectionInterval);
 };

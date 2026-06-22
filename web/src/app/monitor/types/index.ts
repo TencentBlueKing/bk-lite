@@ -132,11 +132,22 @@ export interface ChartData {
   time: number;
   value1?: number;
   value2?: number;
+  gapIntervals?: GapInterval[];
   details?: Record<
     string,
     Array<{ name: string; label: string; value: string }>
   >;
   [key: string]: unknown;
+}
+
+export interface GapInterval {
+  start: number;
+  end: number;
+  duration?: number;
+  series?: Array<{
+    metric?: Record<string, string>;
+    missing_points?: number;
+  }>;
 }
 
 export interface SegmentedItem {

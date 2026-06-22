@@ -20,6 +20,7 @@
     "test:log-policy-form": "pnpm exec tsx scripts/log-policy-form-state-test.ts",
     "test:monitor-search-plugin-scope": "pnpm exec tsx scripts/monitor-search-plugin-scope-test.ts",
     "test:monitor-query-step": "pnpm exec tsx scripts/monitor-query-step-test.ts",
+    "test:monitor-gap-interval": "pnpm exec tsx scripts/monitor-gap-interval-test.ts",
     "test:monitor-promql-label-query": "pnpm exec tsx scripts/monitor-promql-label-query-test.ts",
     "test:monitor-template-bulk": "pnpm exec tsx scripts/monitor-template-bulk-logic-test.ts",
     "test:related-alerts": "pnpm exec tsx scripts/related-alerts-validation.ts",

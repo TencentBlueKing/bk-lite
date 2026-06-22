@@ -31,6 +31,8 @@ export interface SearchParams {
   query: string;
   source_unit?: string;
   auto_convert_unit?: boolean;
+  detect_gaps?: boolean;
+  collection_interval?: number;
 }
 
 export interface QueryGroup {

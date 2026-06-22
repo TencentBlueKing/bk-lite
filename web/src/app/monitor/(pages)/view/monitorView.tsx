@@ -23,6 +23,7 @@ import {
   getRecentTimeRange,
 } from '@/app/monitor/utils/common';
 import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
+import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 import dayjs, { Dayjs } from 'dayjs';
 import { INIT_VIEW_MODAL_FORM } from '@/app/monitor/constants/view';
 import LazyMetricItem from '@/app/monitor/components/metric-views/lazyMetricItem';
@@ -302,7 +303,7 @@ const MonitorView: React.FC<ViewModalProps> = ({
         (form as { interval?: unknown })?.interval
       );
     }
-    return params;
+    return buildGapDetectionParams(params, (form as { interval?: unknown })?.interval);
   };
 
   const fetchSingleMetricData = async (metric: MetricItem) => {
@@ -353,7 +354,10 @@ const MonitorView: React.FC<ViewModalProps> = ({
       ];
       const chartData = response?.data?.result || [];
       const displayUnit = response?.data?.unit || '';
-      const viewData = renderChart(chartData, instanceRow);
+      const viewData = attachGapIntervals(
+        renderChart(chartData, instanceRow),
+        response?.data?.gaps || []
+      );
       setMetricData((prevData) => {
         const updatedData = prevData.map((group) => ({
           ...group,
