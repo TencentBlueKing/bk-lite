@@ -1,7 +1,7 @@
-"""关系图谱(P5):由 PageRelation 装配图,做连通分量聚类 + 基础洞察。
+"""关系图谱(P5):由 PageRelation 装配图,做社区发现 + 基础洞察。
 
-MVP 以"连通分量"作为社区(无外部依赖、跨 DB 可用);Louvain 社区发现 + 4 信号
-关联度加权留待增强(需 networkx/python-louvain)。洞察包含孤立节点、枢纽页(高度数)等。
+build_graph 以"连通分量"作为粗粒度聚类;analyze_graph 用 **4 信号加权 + 纯 Python Louvain
+社区发现**(模块度贪心 + 多层聚合,无外部依赖、跨 DB 可用)。洞察含孤立节点、枢纽页等。
 """
 
 from collections import defaultdict
@@ -72,10 +72,10 @@ def _connected_components(node_ids, adj):
 
 
 def analyze_graph(knowledge_base):
-    """4 信号关联度加权 + 标签传播社区发现(P5 增强,无外部依赖)。
+    """4 信号关联度加权 + Louvain 社区发现(P5 增强,纯 Python 无外部依赖)。
 
     对每对页面综合 4 个确定性信号计算关联权重:共享资料数、共享标签数、正文 [[引用]]、同页面类型;
-    再以加权图做标签传播(Louvain 的轻量替代)得到社区。返回 {nodes, edges, communities, insights}。
+    再以加权图做 Louvain 模块度优化得到社区。返回 {nodes, edges, communities, insights}。
     """
     pages = list(KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active"))
     by_id = {p.id: p for p in pages}
@@ -109,7 +109,7 @@ def analyze_graph(knowledge_base):
             wadj[a][b] = weight
             wadj[b][a] = weight
 
-    communities = _label_propagation(node_ids, wadj)
+    communities = _louvain(node_ids, wadj)
     community_of = {nid: idx for idx, c in enumerate(communities) for nid in c}
     for n in nodes:
         n["community"] = community_of.get(n["id"], -1)
@@ -138,25 +138,68 @@ def _reference_pairs(pages):
     return pairs
 
 
-def _label_propagation(node_ids, wadj, max_iter=30):
-    """确定性标签传播:节点采用邻居中加权得分最高的标签(平票取最小标签)。"""
-    label = {n: n for n in node_ids}
-    ordered = sorted(node_ids)
-    for _ in range(max_iter):
-        changed = False
-        for n in ordered:
-            if not wadj[n]:
-                continue
-            scores = defaultdict(float)
-            for m, w in wadj[n].items():
-                scores[label[m]] += w
-            best = min(scores.items(), key=lambda kv: (-kv[1], kv[0]))[0]
-            if best != label[n]:
-                label[n] = best
-                changed = True
-        if not changed:
+def _louvain(node_ids, wadj, max_passes=20):
+    """纯 Python Louvain 社区发现(模块度贪心 + 多层聚合),无外部依赖。确定性遍历。
+
+    返回原始节点 id 的社区划分 list[set]。孤立节点(无边)自成一社区。
+    """
+    nodes = sorted(node_ids)
+    adj = {n: dict(wadj[n]) for n in nodes}
+    node_to_super = {n: n for n in nodes}
+    super_nodes = list(nodes)
+
+    for _ in range(max_passes):
+        comm, improved = _louvain_one_level(super_nodes, adj)
+        if not improved or len(set(comm.values())) == len(super_nodes):
             break
+        for orig, sup in node_to_super.items():
+            node_to_super[orig] = comm[sup]
+        agg = defaultdict(lambda: defaultdict(float))
+        for u in super_nodes:
+            cu = comm[u]
+            for v, w in adj[u].items():
+                agg[cu][comm[v]] += w
+        adj = {k: dict(v) for k, v in agg.items()}
+        super_nodes = sorted(adj.keys())
+
     groups = defaultdict(set)
-    for n, lab in label.items():
-        groups[lab].add(n)
+    for orig, sup in node_to_super.items():
+        groups[sup].add(orig)
     return [g for g in groups.values()]
+
+
+def _louvain_one_level(nodes, adj):
+    """单层模块度优化:返回 ({node: 社区代表}, 是否有提升)。"""
+    k = {u: sum(adj[u].values()) for u in nodes}
+    m2 = sum(k.values())  # = 2m
+    if m2 == 0:
+        return {u: u for u in nodes}, False
+    comm = {u: u for u in nodes}
+    sigma_tot = {u: k[u] for u in nodes}
+    improved = changed = True
+    while changed:
+        changed = False
+        for u in nodes:
+            cu = comm[u]
+            sigma_tot[cu] -= k[u]
+            nbr = defaultdict(float)
+            for v, w in adj[u].items():
+                if v != u:
+                    nbr[comm[v]] += w
+            # ΔQ(移入社区 c) ∝ w_in(u,c) - sigma_tot[c]*k[u]/2m;留在原社区为基线
+            stay = nbr.get(cu, 0.0) - sigma_tot[cu] * k[u] / m2
+            best_c, best_gain = cu, stay
+            for c, w_in in sorted(nbr.items()):
+                gain = w_in - sigma_tot[c] * k[u] / m2
+                if gain > best_gain:
+                    best_gain, best_c = gain, c
+            comm[u] = best_c
+            sigma_tot[best_c] += k[u]
+            if best_c != cu:
+                changed = True
+                improved = True
+    members = defaultdict(list)
+    for u in nodes:
+        members[comm[u]].append(u)
+    relabel = {c: min(ms) for c, ms in members.items()}
+    return {u: relabel[comm[u]] for u in nodes}, improved
