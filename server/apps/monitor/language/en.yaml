@@ -3739,7 +3739,7 @@ monitor_object_plugin:
       Supported brands/models — Brocade ICX/FCX/NetIron, Ruckus ICX (formerly Brocade ICX, running FastIron), and Foundry/IronWare switches — all share FOUNDRY-SN-AGENT-MIB (enterprise 1991); Ruckus ICX users can select this template directly.
   Switch Alcatel-Lucent SNMP:
     name: Alcatel-Lucent (Telegraf)
-    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
+    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for Supported brands/models — Nokia/Alcatel-Lucent 7750 SR, 7450 ESS, 7950 XRS and Nokia SR Linux data-center switches (SR-OS / TiMOS / SR Linux, all exposing the TIMETRA MIB; enterprise 6527); excludes Alcatel OmniSwitch (enterprise 6486).
       switches. In addition to standard IF-MIB interface metrics, it collects
       TIMETRA-CHASSIS-MIB private OIDs for device health including CPU utilization,
       system memory pool (used/free bytes), hardware temperature sensors, fan and
@@ -3925,6 +3925,9 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS (Telegraf)
     desc: Lenovo CNOS (Cloud Network OS) switch SNMP collection (LENOVO-ENV-MIB, IANA PEN 19046). Beyond standard IF-MIB interface metrics, it collects device health including temperature sensors (lenovoEnvMibTempSensorTemperature, max), fan state (lenovoEnvMibFanState) and power-supply state (lenovoEnvMibPowerSupplyState), normalised to 1=normal / 2=abnormal, plus CPU utilisation via HOST-RESOURCES hrProcessorLoad where the platform exposes it. Memory is not exposed via a usable private OID, so it is N/A. Supported brands/models — Lenovo ThinkSystem / RackSwitch switches running CNOS (NE-series, e.g. NE1032 / NE2572 / NE10032; enterprise 19046).
+  Switch FortiSwitch SNMP:
+    name: FortiSwitch (Telegraf)
+    desc: Fortinet FortiSwitch SNMP collection (FORTINET-FORTISWITCH-MIB, IANA PEN 12356). Beyond standard IF-MIB interface metrics, it collects FortiSwitch private OIDs for device health including CPU utilisation (fsSysCpuUsage, reported directly as a percentage) and memory (fsSysMemUsage used + fsSysMemCapacity total in KB, usage derived as used/total). Temperature/fan/power are exposed only via the type-mixed ENTITY-SENSOR table, which the SNMP input cannot row-filter, so those are N/A. Supported brands/models — Fortinet FortiSwitch managed switches (FortiSwitch 100 / 200 / 400 / 500 / 1000 series; enterprise 12356).
   Switch FiberHome SNMP:
     name: FiberHome (Telegraf)
     desc: FiberHome switch-specific SNMP collection template (WRI-CPU/MEMORY/TEMPERATURE/POWER
@@ -4046,6 +4049,12 @@ monitor_object_plugin:
   Firewall Sophos XG SNMP:
     name: Sophos XG (Telegraf)
     desc: Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health including CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067).
+  Firewall Forcepoint SNMP:
+    name: Forcepoint (Telegraf)
+    desc: Forcepoint NGFW (formerly Stonesoft / McAfee NGFW) SNMP collection (STONESOFT-FIREWALL-MIB, IANA PEN 1369). Beyond standard IF-MIB interface metrics, it collects Forcepoint private OIDs for device health including per-core CPU utilisation (fwCpuTotal, averaged) and memory (fwMemBytesTotal/fwMemBytesUsed in bytes, usage derived as used/total). The Stonesoft MIB does not expose a scalar session count or temperature/fan/power, so those are N/A. Supported brands/models — Forcepoint NGFW / Stonesoft / McAfee NGFW appliances and virtual engines (enterprise 1369).
+  Firewall ScreenOS SNMP:
+    name: Juniper ScreenOS (Telegraf)
+    desc: Juniper ScreenOS (NetScreen) firewall SNMP collection (NETSCREEN-RESOURCE-MIB, IANA PEN 3224). Beyond standard IF-MIB interface metrics, it collects ScreenOS private OIDs for device health including CPU utilisation over the last 5 minutes (nsResCpuLast5Min) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Juniper NetScreen / SSG firewalls running ScreenOS (enterprise 3224).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.

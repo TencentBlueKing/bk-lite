@@ -3354,7 +3354,7 @@ monitor_object_plugin:
       适用品牌型号——Brocade ICX/FCX/NetIron、Ruckus ICX（原 Brocade ICX，运行 FastIron）、Foundry/IronWare 交换机——均使用同一套 FOUNDRY-SN-AGENT-MIB（企业号 1991）；Ruckus ICX 用户直接选用本模板即可监控。
   Switch Alcatel-Lucent SNMP:
     name: Alcatel-Lucent（Telegraf）
-    desc: Alcatel-Lucent (Nokia) TiMOS 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 TIMETRA-CHASSIS-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存池（已用/空闲字节）、硬件温度传感器、风扇与电源状态。内存使用率按 used/(used+free) 计算；风扇/电源状态（TmnxDeviceState）已归一化为统一的 1=正常 约定。
+    desc: Alcatel-Lucent (Nokia) TiMOS 交换机专用 SNMP 采集模板。在标准 IF-MIB 接口指标之外，额外采集 TIMETRA-CHASSIS-MIB 私有 OID 的设备健康指标：CPU 使用率、系统内存池（已用/空闲字节）、硬件温度传感器、风扇与电源状态。内存使用率按 used/(used+free) 计算；风扇/电源状态（TmnxDeviceState）已归一化为统一的 1=正常 约定。适用品牌型号——Nokia/Alcatel-Lucent 7750 SR、7450 ESS、7950 XRS 及 Nokia SR Linux 数据中心交换机（SR-OS/TiMOS/SR Linux，均暴露 TIMETRA MIB，企业号 6527）；不含 Alcatel OmniSwitch（企业号 6486）。
       适用品牌型号——Alcatel-Lucent / Nokia 业务路由器 7750 SR、7450 ESS、7950 XRS 等（SR-OS/TiMOS，企业号 6527）；不适用于 Alcatel OmniSwitch（企业号 6486，OID 不同）。
   Switch MikroTik SNMP:
     name: MikroTik（Telegraf）
@@ -3437,6 +3437,9 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS（Telegraf）
     desc: 联想 CNOS（Cloud Network OS）交换机专用 SNMP 采集模板（LENOVO-ENV-MIB，企业号 19046）。除标准 IF-MIB 接口指标外，额外采集设备健康指标：温度传感器（lenovoEnvMibTempSensorTemperature，取最高）、风扇状态（lenovoEnvMibFanState）与电源状态（lenovoEnvMibPowerSupplyState，归一为 1=正常/2=异常），以及在平台暴露时通过 HOST-RESOURCES hrProcessorLoad 采集 CPU 使用率。内存无可用私有 OID，故为 N/A。适用品牌型号——运行 CNOS 的联想 ThinkSystem/RackSwitch 交换机（NE 系列，如 NE1032/NE2572/NE10032，企业号 19046）。
+  Switch FortiSwitch SNMP:
+    name: FortiSwitch（Telegraf）
+    desc: Fortinet FortiSwitch 交换机专用 SNMP 采集模板（FORTINET-FORTISWITCH-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiSwitch 私有 OID 的设备健康指标：CPU 使用率（fsSysCpuUsage，直接以百分比上报）与内存（fsSysMemUsage 已用 + fsSysMemCapacity 总量，KB，用量按 已用/总量 推导）。温度/风扇/电源仅通过类型混合的 ENTITY-SENSOR 表暴露，SNMP 采集端无法按行过滤，故为 N/A。适用品牌型号——Fortinet FortiSwitch 网管交换机（FortiSwitch 100/200/400/500/1000 系列，企业号 12356）。
   Switch FiberHome SNMP:
     name: 烽火 FiberHome（Telegraf）
     desc: 烽火 FiberHome 交换机专用 SNMP 采集模板（WRI-CPU/MEMORY/TEMPERATURE/POWER MIB，IANA PEN 3807）。在标准 IF-MIB 接口指标之外，额外采集烽火私有 OID 的设备健康指标：CPU 使用率（cpuUsage，精度100）、系统内存（已分配/总量，字节）、机箱温度（temperatureValue）与电源状态（powerState，0=正常）。风扇仅提供转速（RPM）无状态枚举，故风扇状态不采集（N/A）；风扇转速与电压为后续增补的新指标候选。电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。
@@ -3515,6 +3518,12 @@ monitor_object_plugin:
   Firewall Sophos XG SNMP:
     name: Sophos XG（Telegraf）
     desc: Sophos XG / SFOS 防火墙专用 SNMP 采集模板（SFOS-FIREWALL-MIB，企业号 21067）。在标准 IF-MIB 接口指标之外，额外采集 Sophos 私有 OID 的设备健康指标：CPU 使用率（cpuPercentUsage）与主内存使用率（memoryPercentUsage），均以百分比直接上报。Sophos 暴露在线认证用户数与磁盘使用率而非标准会话/连接表，故会话数与温度/风扇/电源为 N/A。适用品牌型号——Sophos XG / XGS 防火墙及 SFOS 系列设备（Sophos Firewall OS，企业号 21067）。
+  Firewall Forcepoint SNMP:
+    name: Forcepoint（Telegraf）
+    desc: Forcepoint NGFW（原 Stonesoft/McAfee NGFW）专用 SNMP 采集模板（STONESOFT-FIREWALL-MIB，企业号 1369）。除标准 IF-MIB 接口指标外，额外采集 Forcepoint 私有 OID 的设备健康指标：每核 CPU 使用率（fwCpuTotal，取均值）与内存（fwMemBytesTotal/fwMemBytesUsed，字节，用量按 已用/总量 推导）。Stonesoft MIB 未暴露标量会话计数与温度/风扇/电源，故为 N/A。适用品牌型号——Forcepoint NGFW / Stonesoft / McAfee NGFW 硬件及虚拟引擎（企业号 1369）。
+  Firewall ScreenOS SNMP:
+    name: Juniper ScreenOS（Telegraf）
+    desc: Juniper ScreenOS（NetScreen）防火墙专用 SNMP 采集模板（NETSCREEN-RESOURCE-MIB，企业号 3224）。除标准 IF-MIB 接口指标外，额外采集 ScreenOS 私有 OID 的设备健康指标：近 5 分钟 CPU 使用率（nsResCpuLast5Min）与内存（nsResMemAllocate 已用 + nsResMemLeft 空闲，用量按 已用/(已用+空闲) 推导）。会话计数与温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——运行 ScreenOS 的 Juniper NetScreen / SSG 防火墙（企业号 3224）。
   Firewall Check Point SNMP:
     name: Check Point（Telegraf）
     desc: 面向 Check Point Quantum NGFW（Gaia）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 CHECKPOINT-MIB 私有 OID 的设备健康（CPU 使用率，真实内存 总量/空闲/已用及推算使用率）与防火墙特有的 VPN 吞吐（每秒加密/解密包数）。内存使用率按 (总量-空闲)/总量 推算。

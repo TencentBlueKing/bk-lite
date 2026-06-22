@@ -503,7 +503,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
   { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
   { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
-  { match: /alcatel/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
+  { match: /alcatel|nokia|sr.?linux|srlinux|timos|\b7750\b|\b7450\b|\b7950\b/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
   { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
   { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
   { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },
@@ -523,6 +523,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
   { match: /hillstone|stoneos/i, label: 'Hillstone', icon: 'mm-hillstone_hillstone' },
   { match: /sophos|\bxg\b|sfos/i, label: 'Sophos XG', icon: 'mm-sophos_sophos' },
+  { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
+  { match: /screenos|netscreen|\bssg\b/i, label: 'Juniper ScreenOS', icon: 'mm-screenos_screenos' },
   { match: /netscaler|citrix/i, label: 'Citrix NetScaler', icon: 'mm-netscaler_netscaler' },
   { match: /\ba10\b|thunder|acos/i, label: 'A10 Thunder', icon: 'mm-a10_a10' },
   { match: /fortiadc|fad\b/i, label: 'FortiADC', icon: 'mm-fortiadc_fortiadc' },
@@ -544,6 +546,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /allied|awplus|aw\+|at-/i, label: 'Allied Telesis', icon: 'mm-alliedtelesis_alliedtelesis' },
   { match: /os10|smartfabric|\bz9[0-9]|powerswitch/i, label: 'Dell OS10', icon: 'mm-dellos10_dellos10' },
   { match: /cnos|lenovo|thinksystem|\bne[0-9]{4}\b/i, label: 'Lenovo CNOS', icon: 'mm-lenovocnos_lenovocnos' },
+  { match: /fortiswitch|fsw|fortinet.*switch/i, label: 'FortiSwitch', icon: 'mm-fortiswitch_fortiswitch' },
   { match: /fiberhome|烽火|\bwri\b/i, label: 'FiberHome', icon: 'mm-fiberhome_fiberhome' },
   { match: /\bh3c\b|comware|hh3c/i, label: 'H3C', icon: 'mm-h3c_h3c' }
 ];
