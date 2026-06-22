@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Empty, Tag, Tooltip } from 'antd';
+import { Empty, Tag } from 'antd';
 import {
   DatabaseOutlined,
   ThunderboltOutlined,
@@ -13,7 +13,7 @@ import dayjs, { Dayjs } from 'dayjs';
 import useViewApi from '@/app/monitor/api/view';
 import MetricViews from '@/app/monitor/components/metric-views';
 import { useTranslation } from '@/utils/i18n';
-import { ChartData, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
+import { TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
   DASHBOARD_METRICS,
   MYSQL_COLLECTION_STATUS_QUERY,
@@ -37,7 +37,6 @@ import {
   buildInstanceSearchTokens,
   parseLegacyParamList,
   buildCollectionStatusTimeline,
-  formatCollectionStatusWindow,
   toMetricSeries,
   buildMetricItem,
   mergeChartSeries,
@@ -62,6 +61,7 @@ interface MysqlInstanceOption {
   value: string;
   instanceIdValues: string[];
   searchTokens: string[];
+  interval?: number;
 }
 
 const MYSQL_REFRESH_FREQUENCY_LIST = DEFAULT_REFRESH_FREQUENCY_LIST;
@@ -342,7 +342,8 @@ export default function MysqlDashboardPage() {
             label,
             value,
             instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
-            searchTokens: buildInstanceSearchTokens(item, label)
+            searchTokens: buildInstanceSearchTokens(item, label),
+            interval: Number(item.interval) || undefined
           });
         });
 
@@ -377,6 +378,7 @@ export default function MysqlDashboardPage() {
     currentInstanceCandidates[0];
   const resolvedInstanceName =
     currentInstanceOption?.label || normalizedInstanceName || normalizeDisplayText(String(instanceId)) || normalizeDisplayText(idValues[0]) || '--';
+  const currentInstanceInterval = currentInstanceOption?.interval;
   const primaryInstanceText = resolvedInstanceName;
 
   const loadMetricGroup = async (metricNames: readonly string[], targetTimeValues: TimeValuesProps) => {
@@ -388,7 +390,7 @@ export default function MysqlDashboardPage() {
       metrics,
       METRIC_QUERY_CONCURRENCY,
       async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, RAW_VALUE_METRICS))
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, targetTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
     );
@@ -409,7 +411,7 @@ export default function MysqlDashboardPage() {
         );
         const summaryResultsPromise = loadMetricGroup(MYSQL_METRIC_GROUPS[0].names, timeValues);
 
-        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS))
+        const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(buildSearchParams(MYSQL_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
           .then((result) =>
             toMetricSeries(
               {
@@ -446,7 +448,7 @@ export default function MysqlDashboardPage() {
             compareMetrics,
             METRIC_QUERY_CONCURRENCY,
             async (metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, RAW_VALUE_METRICS, undefined, currentInstanceInterval))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )
@@ -507,7 +509,7 @@ export default function MysqlDashboardPage() {
     }
 
     setLoading(false);
-  }, [instanceId, idValuesKey, timeValues, isDashboardMode]);
+  }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, isDashboardMode]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -527,7 +529,7 @@ export default function MysqlDashboardPage() {
         timerRef.current = null;
       }
     };
-  }, [frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
+  }, [currentInstanceInterval, frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
 
   const metricMap = useMemo(() => series, [series]);
   const dashboardMetrics = useMemo(
@@ -584,7 +586,6 @@ export default function MysqlDashboardPage() {
   const abortedClientsRate = getLatest('mysql_aborted_clients_rate');
   const internalConnectionErrors = getLatest('mysql_connection_errors_internal');
   const maxConnectionErrorsRate = getLatest('mysql_connection_errors_max_connections_rate');
-  const replicationDelay = getLatest('mysql_slave_seconds_behind_master');
   const replicationIoRunning = getLatest('mysql_slave_io_running');
   const replicationSqlRunning = getLatest('mysql_slave_sql_running');
   const logBinValue = getLatest('mysql_variables_log_bin');
@@ -592,12 +593,10 @@ export default function MysqlDashboardPage() {
   const statusInfo = getCollectionStatus(collectionStatusMetric);
   const metricEmptyText = statusInfo.label === '异常' ? '查询失败' : '暂无采集数据';
   const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
-  const collectionStatusWindowLabel = formatCollectionStatusWindow(timeValues);
   const qpsDisplay = formatMetricValue(qpsValue, 'cps');
   const connDisplay = formatMetricValue(connValue, 'percent');
   const slowDisplay = formatMetricValue(slowValue, 'cps');
   const uptimeInsight = getUptimeInsight(uptimeValue);
-  const replicationDelayDisplay = formatMetricValue(replicationDelay, 's');
   const connCompare = getPeriodCompare(connValue, getPreviousLatest('mysql_connection_utilization'));
   const qpsCompare = getPeriodCompare(qpsValue, getPreviousLatest('mysql_queries_rate'));
   const slowCompare = getPeriodCompare(slowValue, getPreviousLatest('mysql_slow_queries_rate'));
@@ -1351,6 +1350,7 @@ export default function MysqlDashboardPage() {
                       externalTimeDefaultValue={timeDefaultValue}
                       externalFrequence={frequence}
                       externalRefreshSignal={metricsRefreshSignal}
+                      collectionInterval={currentInstanceInterval}
                       hideTimeSelector
                       onExternalXRangeChange={onXRangeChange}
                     />

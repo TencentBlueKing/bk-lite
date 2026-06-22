@@ -23,6 +23,8 @@ import {
   renderChart,
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
+import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
+import { attachGapIntervals, buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
 
 import dayjs, { Dayjs } from 'dayjs';
 import LazyMetricItem from './lazyMetricItem';
@@ -97,6 +99,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   externalTimeDefaultValue,
   externalFrequence,
   externalRefreshSignal,
+  collectionInterval,
   hideTimeSelector = false,
   onExternalXRangeChange
 }) => {
@@ -390,19 +393,12 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     const recentTimeRange = getRecentTimeRange(activeTimeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
-    const MAX_POINTS = 100;
-    const DEFAULT_STEP = 360;
-    if (startTime && endTime) {
+    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
       params.start = startTime;
       params.end = endTime;
-      params.step = Math.max(
-        Math.ceil(
-          (params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP
-        ),
-        1
-      );
+      params.step = calculateQueryStep(params.start, params.end, collectionInterval);
     }
-    return params;
+    return buildGapDetectionParams(params, collectionInterval);
   };
 
   const fetchSingleMetricData = async (metric: MetricItem) => {
@@ -453,7 +449,10 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       ];
       const chartData = response?.data?.result || [];
       const displayUnit = response?.data?.unit || '';
-      const viewData = renderChart(chartData, instanceRow);
+      const viewData = attachGapIntervals(
+        renderChart(chartData, instanceRow),
+        response?.data?.gaps || []
+      );
 
       setMetricData((prevData) => {
         const updatedData = prevData.map((group) => ({

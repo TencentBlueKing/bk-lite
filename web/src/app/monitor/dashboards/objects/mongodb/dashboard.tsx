@@ -59,6 +59,7 @@ interface InstanceOption {
   value: string;
   instanceIdValues: string[];
   searchTokens: string[];
+  interval?: number;
 }
 
 const MEBIBYTE = 1024 * 1024;
@@ -179,7 +180,8 @@ export default function MongoDashboardPage() {
             value,
             instanceIdValues:
               Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
-            searchTokens: buildInstanceSearchTokens(item, label)
+            searchTokens: buildInstanceSearchTokens(item, label),
+            interval: Number(item.interval) || undefined
           });
         });
         setInstanceOptions(Array.from(uniqueOptions.values()));
@@ -203,6 +205,7 @@ export default function MongoDashboardPage() {
     currentInstanceCandidates.find((item) => normalizedInstanceName && item.label === normalizedInstanceName) ||
     currentInstanceCandidates[0];
   const resolvedInstanceName = currentInstanceOption?.label || normalizedInstanceName || '--';
+  const currentInstanceInterval = currentInstanceOption?.interval;
   const hasReadableInstanceName = Boolean(normalizedInstanceName && normalizedInstanceName !== String(instanceId || ''));
   const instanceSelectOptions = useMemo(() => {
     const options = [...instanceOptions];
@@ -228,7 +231,7 @@ export default function MongoDashboardPage() {
       metrics,
       METRIC_QUERY_CONCURRENCY,
       async (metric) =>
-        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, undefined, false))
+        getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval))
           .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
           .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
     );
@@ -248,7 +251,7 @@ export default function MongoDashboardPage() {
         const summaryResultsPromise = loadMetricGroup(MONGODB_METRIC_GROUPS[0].names);
 
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, undefined, false)
+          buildSearchParams(MONGODB_COLLECTION_STATUS_QUERY, 'counts', idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval)
         )
           .then((result) =>
             toMetricSeries<MongoMetricConfig>(
@@ -286,7 +289,7 @@ export default function MongoDashboardPage() {
             compareMetrics,
             METRIC_QUERY_CONCURRENCY,
             async (metric) =>
-              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues))
+              getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, previousTimeValues, undefined, undefined, currentInstanceInterval))
                 .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
                 .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const)
           )
@@ -336,7 +339,7 @@ export default function MongoDashboardPage() {
       return;
     }
     setLoading(false);
-  }, [instanceId, idValuesKey, timeValues, isDashboardMode]);
+  }, [currentInstanceInterval, instanceId, idValuesKey, timeValues, isDashboardMode]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -354,7 +357,7 @@ export default function MongoDashboardPage() {
         timerRef.current = null;
       }
     };
-  }, [frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
+  }, [currentInstanceInterval, frequence, timeValues, instanceId, idValuesKey, isDashboardMode]);
 
   const metricMap = useMemo(() => series, [series]);
   const previousMetricMap = useMemo(() => previousSeries, [previousSeries]);
@@ -391,7 +394,6 @@ export default function MongoDashboardPage() {
 
   const collectionStatus = getCollectionStatus(collectionStatusMetric, 'MongoDB');
   const collectionStatusTimeline = buildCollectionStatusTimeline(collectionStatusMetric?.loadState, collectionStatusMetric?.viewData);
-  const metricEmptyText = collectionStatus.label === '异常' ? '查询失败' : '暂无采集数据';
 
   const connectionsDisplay = formatMetricValue(currentConnections, 'counts');
   const commandsDisplay = formatMetricValue(commandsRate, 'cps');
@@ -886,6 +888,7 @@ export default function MongoDashboardPage() {
                   externalTimeDefaultValue={timeDefaultValue}
                   externalFrequence={frequence}
                   externalRefreshSignal={metricsRefreshSignal}
+                  collectionInterval={currentInstanceInterval}
                   hideTimeSelector
                   onExternalXRangeChange={onXRangeChange}
                 />

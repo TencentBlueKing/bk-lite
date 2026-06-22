@@ -36,6 +36,11 @@ def test_build_flow_guide_returns_protocol_endpoint_and_sampling_docs(monkeypatc
         "get_listener_endpoint",
         lambda protocol, cloud_region_id: f"udp://10.0.0.1:{2055 if protocol == 'netflow' else 6343}",
     )
+    monkeypatch.setattr(
+        FlowAccessGuideService,
+        "get_listener_endpoints",
+        lambda protocol, cloud_region_id: [],
+    )
 
     doc = FlowAccessGuideService.build_document(
         protocol="netflow",
@@ -50,6 +55,40 @@ def test_build_flow_guide_returns_protocol_endpoint_and_sampling_docs(monkeypatc
     assert "SAMPLING_INTERVAL、SAMPLING_ALGORITHM、sampling_rate、samplingRate" in doc["sampling_rule"]
 
 
+def test_build_netflow_guide_lists_v5_and_v9_listener_ports(monkeypatch, db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    monkeypatch.setattr(
+        FlowAccessGuideService,
+        "_get_listener_host",
+        lambda cloud_region_id: "10.0.0.1",
+    )
+
+    doc = FlowAccessGuideService.build_document(
+        protocol="netflow",
+        cloud_region_id=1,
+        monitor_object=switch_object,
+    )
+
+    assert doc["endpoint"] == "udp://10.0.0.1:2056"
+    assert doc["listener_endpoints"] == [
+        {
+            "protocol": "netflow_v5",
+            "protocol_name": "NetFlow v5",
+            "endpoint": "udp://10.0.0.1:2055",
+            "port": 2055,
+        },
+        {
+            "protocol": "netflow_v9",
+            "protocol_name": "NetFlow v9",
+            "endpoint": "udp://10.0.0.1:2056",
+            "port": 2056,
+        },
+    ]
+    assert any("NetFlow v5" in item and "2055" in item for item in doc["instructions"])
+    assert any("NetFlow v9" in item and "2056" in item for item in doc["instructions"])
+
+
 def test_build_flow_guide_does_not_lock_monitor_object(monkeypatch, db):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
 
@@ -57,6 +96,11 @@ def test_build_flow_guide_does_not_lock_monitor_object(monkeypatch, db):
         FlowAccessGuideService,
         "get_listener_endpoint",
         lambda protocol, cloud_region_id: "udp://10.0.0.1:2055",
+    )
+    monkeypatch.setattr(
+        FlowAccessGuideService,
+        "get_listener_endpoints",
+        lambda protocol, cloud_region_id: [],
     )
     monkeypatch.setattr(
         "apps.monitor.services.flow_access_guide.FlowOnboardingService.lock_monitor_object",

@@ -38,6 +38,7 @@ import {
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
+import { normalizeGapIntervals } from '@/app/monitor/utils/gapIntervals';
 
 interface LineChartProps {
   data: ChartData[];
@@ -218,6 +219,11 @@ const LineChart: React.FC<LineChartProps> = memo(
     const seriesUnits = useMemo(
       () => Object.fromEntries(chartAreaKeys.map((key, index) => [key, resolvedSeriesStyles[index]?.unit || unit])),
       [chartAreaKeys, resolvedSeriesStyles, unit]
+    );
+
+    const gapIntervals = useMemo(
+      () => normalizeGapIntervals(data[0]?.gapIntervals || []),
+      [data]
     );
 
     const yAxisTickCount = useMemo(() => {
@@ -664,6 +670,8 @@ const LineChart: React.FC<LineChartProps> = memo(
               >
                 <XAxis
                   dataKey="time"
+                  type="number"
+                  domain={['dataMin', 'dataMax']}
                   tick={{ fill: 'var(--color-text-3)', fontSize: 14 }}
                   tickFormatter={formatXAxisTick}
                   tickCount={xAxisTickCount}
@@ -682,6 +690,17 @@ const LineChart: React.FC<LineChartProps> = memo(
                   width={leftAxisWidth}
                 />
                 <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="rgba(107, 127, 152, 0.28)" />
+                {gapIntervals.map((gap) => (
+                  <ReferenceArea
+                    key={`gap-${gap.start}-${gap.end}`}
+                    x1={gap.start}
+                    x2={gap.end}
+                    yAxisId="left"
+                    fill="rgba(245, 63, 63, 0.12)"
+                    strokeOpacity={0}
+                    ifOverflow="extendDomain"
+                  />
+                ))}
                 <Tooltip
                   offset={-1}
                   content={
