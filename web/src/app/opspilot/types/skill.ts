@@ -195,6 +195,22 @@ export interface SkillDetailPayload {
   [key: string]: unknown;
 }
 
+/** skill_tools API 返回的 kwarg 条目 */
+export interface SkillToolKwarg {
+  key: string;
+  value: unknown;
+  description?: string;
+  type?: string;
+  isRequired?: boolean;
+  [k: string]: unknown;
+}
+
+/** skill_tools API 返回的 params 结构 */
+export interface SkillToolParams {
+  kwargs: SkillToolKwarg[];
+  [k: string]: unknown;
+}
+
 export interface SkillTool {
   id: number;
   name: string;
@@ -204,6 +220,7 @@ export interface SkillTool {
   description_tr?: string;
   icon?: string;
   enabled: boolean;
+  params: SkillToolParams;
 }
 
 export interface SkillTemplate {

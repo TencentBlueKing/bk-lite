@@ -15,6 +15,7 @@ from apps.operation_analysis.services.import_export.authorization_service import
 from apps.operation_analysis.services.import_export.export_service import ExportService
 from apps.operation_analysis.services.import_export.import_service import ImportService
 from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
+from apps.core.utils.team_utils import get_current_team
 
 
 class ImportExportViewSet(ViewSet):
@@ -175,7 +176,7 @@ class ImportExportViewSet(ViewSet):
         return Response(result, status=status.HTTP_200_OK)
 
     def _get_current_team(self, request) -> int | None:
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if current_team:
             try:
                 return int(current_team)

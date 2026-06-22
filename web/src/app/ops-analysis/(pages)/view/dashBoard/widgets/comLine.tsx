@@ -9,6 +9,7 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '../components/chartLegend';
+import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 
 interface EChartsInstance {
   dispatchAction: (payload: Record<string, any>) => void;
@@ -18,6 +19,7 @@ interface TrendLineProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
+  config?: ValueConfig;
 }
 
 const LINE_SMOOTHNESS = 0.36;
@@ -44,23 +46,31 @@ const withAlpha = (color: string, alpha: number) => {
   return color;
 };
 
-const getSeriesAreaColor = (color: string) => ({
-  type: 'linear' as const,
-  x: 0,
-  y: 0,
-  x2: 0,
-  y2: 1,
-  colorStops: [
-    { offset: 0, color: withAlpha(color, 0.12) },
-    { offset: 0.52, color: withAlpha(color, 0.045) },
-    { offset: 1, color: withAlpha(color, 0) },
-  ],
-});
+const getSeriesAreaColor = (color: string, fillOpacity?: number) => {
+  // fillOpacity（0~1，对齐 Grafana Fill opacity）作为顶部填充透明度；未设时用默认 0.12
+  const top =
+    typeof fillOpacity === 'number' && fillOpacity >= 0 && fillOpacity <= 1
+      ? fillOpacity
+      : 0.12;
+  return {
+    type: 'linear' as const,
+    x: 0,
+    y: 0,
+    x2: 0,
+    y2: 1,
+    colorStops: [
+      { offset: 0, color: withAlpha(color, top) },
+      { offset: 0.52, color: withAlpha(color, top * 0.4) },
+      { offset: 1, color: withAlpha(color, 0) },
+    ],
+  };
+};
 
 const TrendLine: React.FC<TrendLineProps> = ({
   rawData,
   loading = false,
   onReady,
+  config,
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
@@ -367,6 +377,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
       smooth: LINE_SMOOTHNESS,
       smoothMonotone: 'x',
       symbol: 'none',
+      ...(config?.stack ? { stack: 'total' } : {}),
       yAxisIndex: useDualAxis
         ? largeSeriesIndices.includes(index)
           ? 0
@@ -381,7 +392,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
         borderWidth: 1,
       },
       areaStyle: {
-        color: getSeriesAreaColor(chartColors[index % chartColors.length]),
+        color: getSeriesAreaColor(
+          chartColors[index % chartColors.length],
+          config?.fillOpacity,
+        ),
       },
       emphasis: {
         focus: 'series',
@@ -408,7 +422,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
           borderWidth: 1,
         },
         areaStyle: {
-          color: getSeriesAreaColor(chartColors[0]),
+          color: getSeriesAreaColor(chartColors[0], config?.fillOpacity),
         },
         emphasis: {
           focus: 'series',
@@ -418,6 +432,29 @@ const TrendLine: React.FC<TrendLineProps> = ({
         },
       },
     ];
+  }
+
+  // 阈值线（对齐 Grafana）：按 config.thresholdColors 在 Y 轴画水平虚线，
+  // 跳过基线 0 以免杂乱。只挂在第一条系列上，避免重复绘制。
+  const thresholdLines = (config?.thresholdColors || [])
+    .map((th) => ({ value: Number(th.value), color: th.color }))
+    .filter((th) => !Number.isNaN(th.value) && th.value !== 0);
+  if (thresholdLines.length > 0 && option.series.length > 0) {
+    option.series[0].markLine = {
+      symbol: 'none',
+      silent: true,
+      data: thresholdLines.map((th) => ({
+        yAxis: th.value,
+        lineStyle: { color: th.color, type: 'dashed', width: 1.5 },
+        label: {
+          show: true,
+          position: 'insideEndTop',
+          formatter: String(th.value),
+          color: th.color,
+          fontSize: 10,
+        },
+      })),
+    };
   }
 
   const legendData = option.series.map((item: { name?: string }) => ({

@@ -20,6 +20,7 @@ from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.core.utils.team_utils import get_current_team
 
 
 def _get_executor_node(cloud_region_id: int) -> str:
@@ -78,7 +79,7 @@ def _build_ssh_test_failure_message(result: dict, fallback_error: str, fallback_
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 

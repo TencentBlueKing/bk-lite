@@ -59,6 +59,10 @@ export const useLoadbalanceConfig = () => {
     collectTypes: {
       'Loadbalance SNMP General': 'snmp',
       'Loadbalance F5 SNMP': 'snmp_f5',
+      'Loadbalance Citrix NetScaler SNMP': 'snmp_netscaler',
+      'Loadbalance A10 Thunder SNMP': 'snmp_a10',
+      'Loadbalance FortiADC SNMP': 'snmp_fortiadc',
+      'Loadbalance Radware Alteon SNMP': 'snmp_alteon',
       'Loadbalance Flow NetFlow': 'netflow',
       'Loadbalance Flow sFlow': 'sflow'
     }

@@ -3,6 +3,7 @@ MLOps 任务通用工具函数
 """
 
 import json
+import os
 import tempfile
 import zipfile
 from dataclasses import dataclass
@@ -77,6 +78,9 @@ def mark_release_as_failed(
         return False
 
 
+_STREAM_CHUNK_SIZE = int(os.getenv("MLOPS_STREAM_CHUNK_SIZE", 65536))  # 可通过环境变量调整，默认 64 KB
+
+
 @dataclass
 class DatasetPublishConfig:
     """
@@ -90,7 +94,7 @@ class DatasetPublishConfig:
         task_type: 任务类型标识，用于日志和存储路径 (e.g., "classification", "timeseries")
         file_extension: 数据文件扩展名 (e.g., "csv", "txt")
         storage_prefix: MinIO 存储路径前缀 (e.g., "classification_datasets")
-        count_samples: 样本计数函数，接收文件内容(bytes)，返回样本数
+        count_samples: 样本计数函数，接收本地文件 Path，流式返回样本数
         build_metadata: 元数据构建函数，用于生成数据集元信息
     """
 
@@ -99,22 +103,35 @@ class DatasetPublishConfig:
     task_type: str
     file_extension: str
     storage_prefix: str
-    count_samples: Callable[[bytes], int]
+    count_samples: Callable[[Path], int]
     build_metadata: Callable[..., dict[str, Any]]
 
 
-def count_csv_samples(content: bytes) -> int:
-    """CSV 文件样本计数：行数 - 1（去掉表头）"""
-    line_count = content.decode("utf-8").count("\n")
-    return max(0, line_count - 1)
+def count_csv_samples(file_path: Path) -> int:
+    """CSV 文件样本计数：行数 - 1（去掉表头），流式按块读取避免全量加载"""
+    newline_count = 0
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(_STREAM_CHUNK_SIZE), b""):
+            newline_count += chunk.count(b"\n")
+    return max(0, newline_count - 1)
 
 
-def count_txt_samples(content: bytes) -> int:
-    """TXT 文件样本计数：非空行数"""
-    text = content.decode("utf-8").strip()
-    if not text:
+def count_txt_samples(file_path: Path) -> int:
+    """TXT 文件样本计数：非空行数，流式按块读取避免全量加载"""
+    newline_count = 0
+    has_content = False
+    last_byte = b""
+    with open(file_path, "rb") as f:
+        for chunk in iter(lambda: f.read(_STREAM_CHUNK_SIZE), b""):
+            if chunk:
+                has_content = True
+                newline_count += chunk.count(b"\n")
+                last_byte = chunk[-1:]
+    if not has_content:
         return 0
-    return text.count("\n") + 1
+    # 如果末尾没有换行，最后一行也计入
+    trailing_newline = last_byte == b"\n"
+    return newline_count if trailing_newline else newline_count + 1
 
 
 def build_base_metadata(
@@ -249,21 +266,20 @@ def publish_dataset_release_base(
 
         for file_field, filename, data_type in files_info:
             if file_field and file_field.name:
-                # 使用 FileField.open() 直接读取 MinIO 文件
-                with file_field.open("rb") as f:
-                    file_content = f.read()
-
-                # 保存到临时目录
+                # 流式将 MinIO 文件写入本地临时目录，避免全量加载入内存
                 local_file_path = temp_path / filename
-                with open(local_file_path, "wb") as f:
-                    f.write(file_content)
+                with file_field.open("rb") as src, open(local_file_path, "wb") as dst:
+                    for chunk in iter(lambda: src.read(_STREAM_CHUNK_SIZE), b""):
+                        dst.write(chunk)
 
-                # 统计样本数
-                sample_count = config.count_samples(file_content)
+                file_size = local_file_path.stat().st_size
+
+                # 样本计数从本地文件流式读取
+                sample_count = config.count_samples(local_file_path)
                 sample_counts[data_type] = sample_count
 
                 logger.info(
-                    f"下载文件成功: {filename}, 大小: {len(file_content)} bytes, 样本数: {sample_count}"
+                    f"下载文件成功: {filename}, 大小: {file_size} bytes, 样本数: {sample_count}"
                 )
 
         train_samples = sample_counts["train"]

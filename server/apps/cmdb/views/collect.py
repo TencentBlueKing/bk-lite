@@ -34,6 +34,7 @@ from apps.cmdb.serializers.collect_serializer import (
     CollectModelIdStatusSerializer,
 )
 from apps.cmdb.services.collect_service import CollectModelService
+from apps.core.utils.team_utils import get_current_team
 
 
 class CollectModelViewSet(AuthViewSet):
@@ -175,7 +176,7 @@ class CollectModelViewSet(AuthViewSet):
         # 否则勾选"包含子组织"会跳过裁剪、直接返回子树全部任务，造成子组织采集任务越权
         # 查看/执行（issue #3037）。allowed_teams 已与 query_groups（子树）取交，天然按授权收口。
         app_name = self._get_app_name()
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         permission_data = get_permission_rules(request.user, current_team, app_name, permission_key, include_children)
         if not isinstance(permission_data, dict) or not permission_data:
             return base_queryset
@@ -253,7 +254,7 @@ class CollectModelViewSet(AuthViewSet):
             "permission_data": {
                 "username": request.user.username,
                 "domain": request.user.domain,
-                "current_team": request.COOKIES.get("current_team"),
+                "current_team": get_current_team(request),
             },
             "node_type": "container",
         }

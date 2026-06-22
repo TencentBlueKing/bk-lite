@@ -220,6 +220,9 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
+            # 透传会话定位字段，供 request_user_choice 登记会话级 pending（见 pending_hitl）
+            "session_id": flow_input.get("session_id", ""),
+            "bot_id": flow_input.get("bot_id", ""),
         }
 
     @staticmethod

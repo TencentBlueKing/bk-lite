@@ -26,7 +26,7 @@ from apps.alerts.constants import (
     INSTANT_STRATEGY_CACHE_TTL,
     INSTANT_SYNC_THRESHOLD,
 )
-from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus
+from apps.alerts.constants.constants import AlarmStrategyType, AlertStatus, EventStatus
 from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Alert, Event
 from apps.alerts.utils.permission_scope import normalize_team_ids
@@ -268,6 +268,12 @@ class InstantAlertDispatcher:
             if not events:
                 return
 
+            # 已被屏蔽的事件不得产出即时告警。屏蔽在 main() 中先于本旁路执行，
+            # 但内存中的 Event 实例状态可能滞后，故按当前库内状态过滤。
+            events = InstantAlertDispatcher._exclude_shielded(events)
+            if not events:
+                return
+
             hits = InstantAlertDispatcher._collect_hits(events, strategies)
             if not hits:
                 return
@@ -299,6 +305,19 @@ class InstantAlertDispatcher:
                     _trigger_dispatch_async(alert_ids)
         except Exception:
             logger.exception("instant dispatch failed; main pipeline unaffected")
+
+    @staticmethod
+    def _exclude_shielded(events: List[Event]) -> List[Event]:
+        """剔除当前已处于屏蔽状态的事件。仅在存在 INSTANT 策略且有 created 事件时调用。"""
+        event_ids = [e.event_id for e in events]
+        shielded = set(
+            Event.objects.filter(
+                event_id__in=event_ids, status=EventStatus.SHIELD
+            ).values_list("event_id", flat=True)
+        )
+        if not shielded:
+            return events
+        return [e for e in events if e.event_id not in shielded]
 
     @staticmethod
     def _collect_hits(

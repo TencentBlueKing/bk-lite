@@ -3386,6 +3386,43 @@ class Huaweicloud(PublicCloudManage):
         """
         return {"result": True, "data": [{"label": v, "value": k} for k, v in huaweicloud_bucket_cn_dict.items()]}
 
+    def list_rds(self, ids=None, **kwargs):
+        """查询云数据库 RDS 实例列表。
+
+        官方 API: GET /v3/{project_id}/instances (ListInstances)
+        参见 https://support.huaweicloud.com/api-rds/rds_01_0004.html
+        返回原始 instances 列表（{"result": True, "data": [...]}），
+        字段归一化在采集器 HuaweiCloudManager.get_rds 完成。
+        """
+        from huaweicloudsdkrds.v3 import ListInstancesRequest as _ListRdsInstancesRequest
+
+        request = _ListRdsInstancesRequest()
+        client = self.get_client(RdsClient, RdsRegion)
+        try:
+            response = client.list_instances(request)
+        except Exception as e:
+            logger.exception("调用华为云查询RDS实例列表接口失败{}".format(e))
+            return {"result": False, "message": str(e)}
+        return {"result": True, "data": response.to_dict().get("instances", []) or []}
+
+    def list_dcs(self, ids=None, **kwargs):
+        """查询分布式缓存 DCS(Redis) 实例列表。
+
+        官方 API: GET /v2/{project_id}/instances (ListInstances)
+        参见 https://support.huaweicloud.com/api-dcs/ListInstances.html
+        返回原始 instances 列表，字段归一化在采集器 get_dcs 完成。
+        """
+        from huaweicloudsdkdcs.v2 import ListInstancesRequest as _ListDcsInstancesRequest
+
+        request = _ListDcsInstancesRequest()
+        client = self.get_client(DcsClient, DcsRegion)
+        try:
+            response = client.list_instances(request)
+        except Exception as e:
+            logger.exception("调用华为云查询DCS实例列表接口失败{}".format(e))
+            return {"result": False, "message": str(e)}
+        return {"result": True, "data": response.to_dict().get("instances", []) or []}
+
     def get_mysql_spec(self, version="", spec_code="", database="MySQL"):
         """
         获取mysql规格 ListFlavors。本接口可以获取pgSQL、SQLServer规格，

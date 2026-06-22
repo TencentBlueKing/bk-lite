@@ -93,7 +93,7 @@ type EventOptions struct {
 var (
 	configURL  = flag.String("url", "", "Configuration URL")
 	installDir = flag.String("install-dir", "", "Installation directory")
-	skipTLS    = flag.Bool("skip-tls", true, "Skip TLS certificate verification")
+	skipTLS    = flag.Bool("skip-tls", false, "Skip TLS certificate verification")
 	fetchOnly  = flag.Bool("fetch-only", false, "Only fetch and display config")
 )
 

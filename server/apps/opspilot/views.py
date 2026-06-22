@@ -38,6 +38,7 @@ from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
+from apps.core.utils.team_utils import get_current_team
 
 
 def parse_json_body(request, default=None):
@@ -634,7 +635,7 @@ async def execute_chat_flow(request, bot_id, node_id):
 
     # 验证token
     token = extract_api_token(request)
-    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg)
 
@@ -676,6 +677,20 @@ async def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
+        # 会话级 pending 拦截：若该 (bot, session) 当前有正在等待用户输入的智能体节点，
+        # 则把本条对话框消息当作答案直接投递回该节点（在原流续跑），不新建执行——
+        # 否则消息会从工作流入口重跑，回复跑回第一个智能体而非正在等待的那个。
+        if not is_test and session_id and message:
+            from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
+
+            delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
+            if delivered:
+                logger.info(
+                    f"[ChatFlow] 消息已投递给待回答节点，跳过新建执行 - bot_id: {bot_id}, session_id: {session_id}, "
+                    f"execution_id: {delivered.get('execution_id')}, node_id: {delivered.get('node_id')}"
+                )
+                return JsonResponse({"result": True, "data": delivered})
+
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
 
@@ -747,7 +762,7 @@ def interrupt_chat_flow_execution(request):
     execution_id = validated["execution_id"]
 
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg)
     user = msg
@@ -802,7 +817,7 @@ def submit_approval(request):
 
     # 认证：要求有效 Token
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg, status=401)
     user = msg
@@ -867,7 +882,7 @@ def submit_choice(request):
 
     # 认证：要求有效 Token
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg, status=401)
     user = msg

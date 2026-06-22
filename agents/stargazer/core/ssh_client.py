@@ -2,6 +2,7 @@
 # @File: ssh_client.py
 # @Time: 2025/4/30 15:59
 # @Author: windyzhao
+import os
 import time
 
 import paramiko
@@ -24,15 +25,26 @@ class SSHResult:
 class SSHClient:
     """封装的Paramiko SSH客户端"""
 
-    def __init__(self, timeout: int = 30):
+    def __init__(self, timeout: int = 30, known_hosts_file: Optional[str] = None):
         """
         初始化SSH客户端
 
         :param timeout: 连接和操作超时时间(秒)
+        :param known_hosts_file: known_hosts 文件路径；为 None 时读取环境变量
+            SSH_KNOWN_HOSTS_FILE。设置后启用严格主机密钥校验（RejectPolicy），
+            未设置时拒绝陌生主机密钥（RejectPolicy，不自动信任）。
         """
         self.timeout = timeout
         self._client = paramiko.SSHClient()
-        self._client.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+
+        # 确定 known_hosts 文件路径（参数优先，其次环境变量）
+        hosts_file = known_hosts_file or os.getenv("SSH_KNOWN_HOSTS_FILE", "")
+        if hosts_file:
+            self._client.load_host_keys(hosts_file)
+
+        # 拒绝未知主机密钥，防止中间人攻击（MITM）。
+        # AutoAddPolicy 仅适用于开发/测试环境，生产环境禁止使用。
+        self._client.set_missing_host_key_policy(paramiko.RejectPolicy())
 
     def connect(self, host: str, username: str,
                 password: Optional[str] = None, port: int = 22,
