@@ -42,9 +42,12 @@
 ### P1 异步 ✅
 - `tasks.py`:`wiki_build_material_task` / `wiki_propose_update_task` / `wiki_rebuild_kb_task`(Celery);material `build` 支持 `async=true` 走异步
 
-### P1 文件解析 ✅(.txt/.md/.csv/.xlsx,真实 MinIO 已验证)
-- `material_service.extract_text`:file 资料按扩展名分派 loader;`.txt/.md/.csv` 经 Text/Markdown loader、`.xlsx/.xls` 经 ExcelLoader(均 OCR-free)解析;MinIO 读取在 `_read_file`
-- **真实 MinIO 往返集成测试通过**(上传 xlsx→读回解析),用用户提供的 `.env`/`local_settings.py` 环境;OCR 格式(pdf/docx/pptx/图片)需 OCRProvider——该环境未配置,仍待接入
+### P1 文件/网页解析 ✅(真实 MinIO 已验证)
+- `material_service.extract_text` 按类型/扩展名分派:
+  - **OCR-free 文件** `.txt/.md/.csv/.xlsx/.xls`(Text/Markdown/Excel loader)——**真实 MinIO 往返集成测试通过**(上传 xlsx→读回解析)
+  - **OCR 文件** `.pdf/.docx/.pptx/图片`:惰性导入 OCR loader + 从 OCRProvider 经 OcrManager 构建 OCR;**分派与构建已接通并 stub 测试**,无 OCRProvider 时优雅返回空串(当前环境 OCRProvider 为空,真解析需配置)
+  - **网页** `web`:HTTP 抓取 + 标准库剥离 HTML 为文本(基础版,不含 JS/图片 OCR),抓取失败优雅降级
+- 定时刷新:`tasks.wiki_refresh_web_materials_task`(Celery,可挂 beat)重抓 web 资料,内容变更触发安全更新
 
 ### P6 语义混合检索 ✅(检索后重排,无需 pgvector)
 - `embedding_service.py`:`embed_texts`(EmbedProvider/OpenAI 兼容)+ 纯函数 `cosine` / `rrf_fuse`
@@ -64,13 +67,13 @@
 - 技能设置页:`选择 Wiki 知识库` 多选(打通 P4 端到端配置)
 - 校验方式:`npx eslint <files>`(全绿)+ `npx tsc -p tsconfig.lint.json`(仅 3 个既有 env 基线错误,均非 wiki 文件);运行时冒烟需主仓库(worktree Turbopack 跑不起)
 
-## 待办(剩余 —— 受环境/外部服务约束,本环境确无可测核心)
+## 待办(剩余 —— 全部为"代码已接通,仅缺外部服务/配置/部署级动作")
 
-- **OCR 文件解析 + 网页抓取(P1)**:`.pdf/.docx/.pptx/图片/web` 需 OCRProvider + OCR 服务(该环境 OCRProvider 为空)+ 网络;分派与 `_read_file` 接缝已就绪,接上 OCR 即可
-- **嵌入端点可用性 + pgvector 索引(P6)**:嵌入端点当前返回 502(上游不可用);pgvector 扩展未安装。语义混合检索逻辑已就绪并优雅降级,端点恢复即生效;大规模可后接 pgvector
-- **网页定时刷新(P6)**:需 Celery beat + 网络
-- **前端运行时冒烟**:主仓库跑 dev server 验证交互(worktree Turbopack 跑不起;已全程 eslint + 作用域 tsc 校验)
-- **菜单权限注册**:`wiki_list` 在 system_mgmt 的菜单/权限注册属系统级管理配置,菜单 json 入口已加
+- **真实 OCR 解析**:`.pdf/.docx/.pptx/图片` 分派+OCR 构建已接通并测试,仅需在环境配置一个 **OCRProvider + 可达 OCR 服务**(当前环境为空)即生效。
+- **嵌入端点恢复 / pgvector 索引**:嵌入混合检索已就绪,**你的嵌入端点当前 502**(上游不可用),恢复即生效;pgvector 扩展未安装(混合检索不依赖,装后可换 in-Python 余弦扩规模)。
+- **网页刷新挂 beat**:刷新任务已写好并测试,只需在 Celery beat 配置周期调度 + 运行环境有网络。
+- **前端运行时冒烟**:主仓库跑 dev server 验证交互(worktree Turbopack 跑不起;已全程 eslint + 作用域 tsc 校验)。
+- **菜单 Keycloak 资源注册**:`wiki_list` 的角色可见性属 system_mgmt/Keycloak 部署级配置,前端菜单 json 入口已加。
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 
