@@ -1,5 +1,4 @@
 mod api_proxy;
-mod permissions;
 
 use api_proxy::{api_proxy, simple_api_proxy, api_stream_proxy, cancel_stream, StreamRegistry};
 use std::collections::HashMap;
