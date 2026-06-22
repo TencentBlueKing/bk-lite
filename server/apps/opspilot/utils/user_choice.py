@@ -15,6 +15,8 @@ from typing import Any, Dict, List, Optional
 from django.core.cache import cache
 
 from apps.core.logger import opspilot_logger as logger
+from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+from apps.opspilot.utils.pending_hitl import register_pending
 
 CHOICE_CACHE_TTL = int(os.getenv("CHOICE_CACHE_TTL", "600"))
 CHOICE_CACHE_PREFIX = "choice"
@@ -106,10 +108,6 @@ async def wait_for_choice(
             selected,
         )
         return {"selected": selected, "source": "auto"}
-
-    # 延迟导入避免模块级循环依赖
-    from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
-    from apps.opspilot.utils.pending_hitl import register_pending
 
     # interactive(真人对话)：无限等待（deadline=None）；
     # 其他渠道(third_party 等 webhook)：保留有界等待，超时回退默认，避免把请求悬挂。

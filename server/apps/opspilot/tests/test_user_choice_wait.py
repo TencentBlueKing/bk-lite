@@ -10,6 +10,7 @@ wait_for_choice 等待策略的单元测试（2026-06-18 变更）。
 bot_id/session_id 传 None 以跳过 pending 续租（续租逻辑由 test_pending_hitl 覆盖）。
 """
 
+import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
@@ -38,12 +39,18 @@ async def test_interactive_returns_user_answer():
 async def test_interactive_returns_interrupted_when_no_answer():
     with (
         patch("apps.opspilot.utils.user_choice.get_user_choice", MagicMock(return_value=None)),
+        # patch 在使用处 user_choice：wait_for_choice 已在模块顶部导入该名字，
+        # 若 patch 源模块 execution_interrupt 不会改变这里的绑定，interactive 将无限等待。
         patch(
-            "apps.opspilot.utils.execution_interrupt.is_interrupt_requested_async",
+            "apps.opspilot.utils.user_choice.is_interrupt_requested_async",
             AsyncMock(return_value=True),
         ),
     ):
-        result = await wait_for_choice("exec1", "nodeB", "c1", OPTIONS, default_keys=["a"], trigger_type="interactive")
+        # interactive 为无限等待：加兜底超时，mock 万一失效也只失败不挂起整个测试套件。
+        result = await asyncio.wait_for(
+            wait_for_choice("exec1", "nodeB", "c1", OPTIONS, default_keys=["a"], trigger_type="interactive"),
+            timeout=5,
+        )
     assert result == {"selected": [], "source": "interrupted"}
 
 
@@ -52,7 +59,7 @@ async def test_third_party_bounded_wait_times_out_to_default():
     with (
         patch("apps.opspilot.utils.user_choice.get_user_choice", MagicMock(return_value=None)),
         patch(
-            "apps.opspilot.utils.execution_interrupt.is_interrupt_requested_async",
+            "apps.opspilot.utils.user_choice.is_interrupt_requested_async",
             AsyncMock(return_value=False),
         ),
     ):
