@@ -1,7 +1,12 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tauri::{command, AppHandle, Emitter};
+use std::sync::Mutex;
+use tauri::{command, AppHandle, Emitter, State};
 use futures_util::StreamExt;
+use tokio::sync::oneshot;
+
+/// 每个活跃 SSE 流的取消发送端，keyed by stream_id
+pub struct StreamRegistry(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiRequest {
@@ -166,11 +171,12 @@ pub async fn simple_api_proxy(
 #[command]
 pub async fn api_stream_proxy(
     app: AppHandle,
+    registry: State<'_, StreamRegistry>,
     request: ApiRequest,
 ) -> Result<String, ApiError> {
     let stream_id = uuid::Uuid::new_v4().to_string();
     let request_id = stream_id[..8].to_string();
-    
+
     log::info!("🌊 [Tauri-Stream-{}] START: {} {}", request_id, request.method, request.url);
 
     // 创建 HTTP 客户端
@@ -207,9 +213,16 @@ pub async fn api_stream_proxy(
         req_builder = req_builder.body(body.clone());
     }
 
+    // 创建取消通道：JS 侧调用 cancel_stream 时，通过 tx 发送取消信号
+    let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
+    {
+        let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.insert(stream_id.clone(), cancel_tx);
+    }
+
     let stream_id_clone = stream_id.clone();
     let app_clone = app.clone();
-    
+
     // 在后台任务中处理流式响应
     tauri::async_runtime::spawn(async move {
         match req_builder.send().await {
@@ -223,6 +236,9 @@ pub async fn api_stream_proxy(
                         stream_id: stream_id_clone.clone(),
                         error: error_msg,
                     });
+                    // 清理注册表后退出
+                    let reg = app_clone.state::<StreamRegistry>();
+                    reg.0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                     return;
                 }
 
@@ -233,8 +249,24 @@ pub async fn api_stream_proxy(
                 let mut buffer = String::new();
                 let mut chunk_count = 0;
                 let mut pending_data_prefix = false; // 标记是否有待处理的 data: 前缀
+                let mut cancelled = false;
 
-                while let Some(chunk_result) = stream.next().await {
+                loop {
+                    let chunk_result = tokio::select! {
+                        biased; // 优先检查取消信号，确保取消语义立即生效
+                        // 收到取消信号，立即终止读循环
+                        _ = &mut cancel_rx => {
+                            log::info!("🛑 [Tauri-Stream-{}] Cancelled by client", request_id);
+                            cancelled = true;
+                            break;
+                        }
+                        item = stream.next() => {
+                            match item {
+                                Some(r) => r,
+                                None => break, // 流自然结束
+                            }
+                        }
+                    };
                     match chunk_result {
                         Ok(chunk) => {
                             chunk_count += 1;
@@ -354,6 +386,7 @@ pub async fn api_stream_proxy(
                                         stream_id: stream_id_clone.clone(),
                                         error: format!("UTF-8 decode error: {}", e),
                                     });
+                                    app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                                     return;
                                 }
                             }
@@ -364,13 +397,14 @@ pub async fn api_stream_proxy(
                                 stream_id: stream_id_clone.clone(),
                                 error: format!("Stream read error: {}", e),
                             });
+                            app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                             return;
                         }
                     }
                 }
 
-                // 处理剩余的 buffer
-                if !buffer.trim().is_empty() {
+                // 处理剩余的 buffer（仅在非取消情况下）
+                if !cancelled && !buffer.trim().is_empty() {
                     let trimmed = buffer.trim();
                     // 确保数据行包含 data: 前缀
                     let formatted = if trimmed.starts_with("data:") {
@@ -380,22 +414,29 @@ pub async fn api_stream_proxy(
                     } else {
                         buffer.clone()
                     };
-                    
+
                     let _ = app_clone.emit("stream-chunk", StreamChunk {
                         stream_id: stream_id_clone.clone(),
                         data: format!("{}\n", formatted),
                     });
                 }
 
-                log::info!("✅ [Tauri-Stream-{}] COMPLETED: {} chunks received", request_id, chunk_count);
-                
-                // 发送流结束事件
-                let _ = app_clone.emit("stream-end", StreamEnd {
-                    stream_id: stream_id_clone,
-                });
+                // 从注册表中移除
+                app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
+
+                if cancelled {
+                    log::info!("🛑 [Tauri-Stream-{}] Task exiting after cancellation", request_id);
+                } else {
+                    log::info!("✅ [Tauri-Stream-{}] COMPLETED: {} chunks received", request_id, chunk_count);
+                    // 发送流结束事件（仅在非取消情况下）
+                    let _ = app_clone.emit("stream-end", StreamEnd {
+                        stream_id: stream_id_clone,
+                    });
+                }
             }
             Err(err) => {
                 log::error!("❌ [Tauri-Stream-{}] HTTP request failed: {}", request_id, err);
+                app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                 let _ = app_clone.emit("stream-error", StreamError {
                     stream_id: stream_id_clone,
                     error: format!("HTTP request failed: {}", err),
@@ -405,4 +446,21 @@ pub async fn api_stream_proxy(
     });
 
     Ok(stream_id)
+}
+
+/// 取消一个正在进行的 SSE 流式请求
+/// JS 侧在 abortStream() 中调用此命令以通知 Rust 停止读取
+#[command]
+pub async fn cancel_stream(
+    registry: State<'_, StreamRegistry>,
+    stream_id: String,
+) -> Result<(), String> {
+    let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(tx) = map.remove(&stream_id) {
+        let _ = tx.send(());
+        log::info!("🛑 [cancel_stream] Cancelled stream: {}", &stream_id[..8.min(stream_id.len())]);
+    } else {
+        log::warn!("⚠️ [cancel_stream] Stream not found (already ended?): {}", &stream_id[..8.min(stream_id.len())]);
+    }
+    Ok(())
 }
