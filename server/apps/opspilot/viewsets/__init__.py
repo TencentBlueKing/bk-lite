@@ -9,4 +9,5 @@ from apps.opspilot.viewsets.model_vendor_view import ModelVendorViewSet  # noqa
 from apps.opspilot.viewsets.ocr_view import OCRProviderViewSet  # noqa
 from apps.opspilot.viewsets.rasa_model_view import RasaModelViewSet  # noqa
 from apps.opspilot.viewsets.rerank_view import RerankProviderViewSet  # noqa
+from apps.opspilot.viewsets.wiki_kb_view import WikiKnowledgeBaseViewSet  # noqa
 from apps.opspilot.viewsets.workflow_task_result_view import WorkFlowTaskResultViewSet  # noqa
