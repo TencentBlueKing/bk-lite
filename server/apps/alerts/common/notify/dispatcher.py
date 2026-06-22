@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional
 from django.db import transaction
 
 from apps.alerts.common.notify.base import NotifyParamsFormat
+from apps.core.logger import alert_logger as logger
+from apps.system_mgmt.models.channel import ChannelChoices
 
 
 def build_channel_params(
@@ -23,7 +25,13 @@ def build_channel_params(
     title: Optional[str] = None,
     content: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """构建 sync_notify 入参(list[dict])。username_list 或 channels 为空 → 返回 []。"""
+    """构建 sync_notify 入参(list[dict])。username_list 或 channels 为空 → 返回 []。
+
+    opspilot 托管的 NATS 触发通道需要 dict content {message, team, user_ids}
+    （title/receivers 被忽略），其中 team 是单一组织整数：仅当本次为单条告警且其
+    归属组织非空时构造；否则跳过该 NATS 通道（聚合多告警/无组织无单一上下文）。
+    其余通道沿用纯文本 content。
+    """
     if not username_list or not channels:
         return []
 
@@ -31,8 +39,38 @@ def build_channel_params(
     resolved_title = param_format.format_title() if title is None else title
     resolved_content = param_format.format_content() if content is None else content
 
+    # NATS 触发只接受单个组织上下文；单条告警时取其归属组织(告警必定单一组织)
+    nats_team = None
+    if len(alerts) == 1:
+        alert_team = getattr(alerts[0], "team", None) or []
+        if alert_team:
+            nats_team = alert_team[0]
+
     params: List[Dict[str, Any]] = []
     for channel in channels:
+        if channel["channel_type"] == ChannelChoices.NATS:
+            if nats_team is None:
+                logger.warning(
+                    "[AlertNotify] 无单一组织上下文，跳过 OpsPilot NATS 通道 %s (object_id=%s)",
+                    channel["id"], object_id,
+                )
+                continue
+            params.append(
+                {
+                    "username_list": username_list,
+                    "channel_type": channel["channel_type"],
+                    "channel_id": channel["id"],
+                    "title": "",
+                    "content": {
+                        "message": resolved_content,
+                        "team": nats_team,
+                        "user_ids": username_list,
+                    },
+                    "object_id": object_id,
+                    "notify_action_object": notify_action_object,
+                }
+            )
+            continue
         params.append(
             {
                 "username_list": username_list,

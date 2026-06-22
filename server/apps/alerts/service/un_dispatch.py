@@ -5,7 +5,7 @@
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.sys_setting import SystemSetting
-from apps.alerts.models.models import  Alert
+from apps.alerts.models.models import Alert
 
 
 class UnDispatchService:
