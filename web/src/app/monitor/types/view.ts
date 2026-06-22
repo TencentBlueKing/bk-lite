@@ -56,6 +56,7 @@ export interface ViewDetailProps {
   externalTimeDefaultValue?: TimeSelectorDefaultValue;
   externalFrequence?: number;
   externalRefreshSignal?: number;
+  collectionInterval?: number;
   hideTimeSelector?: boolean;
   onExternalXRangeChange?: (range: [Dayjs, Dayjs]) => void;
 }

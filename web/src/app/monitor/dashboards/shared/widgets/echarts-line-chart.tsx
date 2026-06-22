@@ -7,6 +7,7 @@ import { ChartData, MetricItem } from '@/app/monitor/types';
 import { useECharts } from './useECharts';
 import { formatMetricValue } from '../utils/format';
 import { MetricUnit } from '../types';
+import { normalizeGapIntervals } from '@/app/monitor/utils/gapIntervals';
 
 export interface EChartsLineChartProps {
   data: ChartData[];
@@ -90,6 +91,10 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
   const dragStartRef = useRef<number | null>(null);
 
   const areaKeys = useMemo(() => getChartAreaKeys(data), [data]);
+  const gapIntervals = useMemo(
+    () => normalizeGapIntervals(data[0]?.gapIntervals || []),
+    [data]
+  );
 
   const details = useMemo(() => {
     return data.reduce<Record<string, Array<{ name: string; label: string; value: string }>>>((pre, cur) => {
@@ -121,7 +126,19 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       scaleDisplayUnit = scale.displayUnit;
     }
 
-    const times = data.map((d) => d.time);
+    const gapMarkArea: any = gapIntervals.length
+      ? {
+        silent: true,
+        itemStyle: {
+          color: 'rgba(245, 63, 63, 0.12)'
+        },
+        data: gapIntervals.map((gap) => [
+          { xAxis: gap.start },
+          { xAxis: gap.end }
+        ])
+      }
+      : undefined;
+
     const seriesList = areaKeys.map((key, idx) => {
       const style = seriesStyles[idx] || {};
       const color = style.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
@@ -137,8 +154,8 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         connectNulls: true,
         data: data.map((d) => {
           const v = d[key] as number | null;
-          if (v == null) return null;
-          return scaleDivisor > 1 ? v / scaleDivisor : v;
+          if (v == null) return [d.time, null];
+          return [d.time, scaleDivisor > 1 ? v / scaleDivisor : v];
         }),
         smooth: false,
         symbol: 'none',
@@ -158,7 +175,8 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
             ]
           }
         } : undefined,
-        emphasis: { disabled: true }
+        emphasis: { disabled: true },
+        markArea: idx === 0 ? gapMarkArea : undefined
       };
     });
 
@@ -174,10 +192,11 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
         containLabel: false
       },
       xAxis: {
-        type: 'category' as const,
-        data: times,
+        type: 'value' as const,
+        min: 'dataMin' as const,
+        max: 'dataMax' as const,
         axisLabel: {
-          formatter: (val: string) => dayjs(Number(val) * 1000).format(xAxisTimeFormat),
+          formatter: (val: number) => dayjs(val * 1000).format(xAxisTimeFormat),
           fontSize: 11,
           color: '#8c8c8c'
         },
@@ -217,7 +236,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
           } else {
             params.forEach((p: any, idx: number) => {
               const style = seriesStyles[idx] || {};
-              const rawValue = p.value;
+              const rawValue = Array.isArray(p.value) ? p.value[1] : p.value;
               if (rawValue == null) return;
               let displayValue: string;
               let displayUnit: string;
@@ -240,7 +259,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
       },
       series: seriesList
     };
-  }, [data, areaKeys, seriesStyles, unit, xAxisTimeFormat, leftAxisWidthOverride, details]);
+  }, [data, areaKeys, seriesStyles, unit, xAxisTimeFormat, leftAxisWidthOverride, details, gapIntervals]);
 
   const handleZrMouseDown = useCallback((params: any) => {
     if (!allowSelect || !onXRangeChange) return;
@@ -267,11 +286,8 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
     const xAxisEnd = instance.convertFromPixel({ seriesIndex: 0 }, [Math.max(startX, endX), 0]);
 
     if (xAxis && xAxisEnd) {
-      const times = data.map((d) => d.time);
-      const startIdx = Math.max(0, Math.min(Math.round(xAxis[0]), times.length - 1));
-      const endIdx = Math.max(0, Math.min(Math.round(xAxisEnd[0]), times.length - 1));
-      const startTime = dayjs(times[startIdx] * 1000);
-      const endTime = dayjs(times[endIdx] * 1000);
+      const startTime = dayjs(Math.min(Number(xAxis[0]), Number(xAxisEnd[0])) * 1000);
+      const endTime = dayjs(Math.max(Number(xAxis[0]), Number(xAxisEnd[0])) * 1000);
       if (startTime.isValid() && endTime.isValid() && !startTime.isSame(endTime)) {
         onXRangeChange([startTime, endTime]);
       }

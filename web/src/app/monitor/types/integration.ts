@@ -171,6 +171,12 @@ export interface TemplateAccessGuideDoc {
 export interface FlowAccessGuideDoc {
   protocol: FlowProtocol;
   endpoint: string;
+  listener_endpoints?: {
+    protocol: string;
+    protocol_name: string;
+    endpoint: string;
+    port: number;
+  }[];
   sampling_rule: string;
 }
 

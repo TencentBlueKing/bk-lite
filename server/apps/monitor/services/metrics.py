@@ -18,6 +18,7 @@ from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 class Metrics:
     _STEP_PATTERN = re.compile(r"^(?P<value>\d+)(?P<unit>[smhdw])$")
+    MAX_GAP_DETECTION_POINTS = 50000
 
     @staticmethod
     def get_effective_metric_instance_id_keys(metric: Metric) -> list[str]:
@@ -41,12 +42,49 @@ class Metrics:
         return VictoriaMetricsAPI().query(query)
 
     @staticmethod
-    def get_metrics_range(query, start, end, step):
+    def get_metrics_range(
+        query,
+        start,
+        end,
+        step,
+        detect_gaps=False,
+        collection_interval_seconds=None,
+        max_gap_detection_points=None,
+    ):
         """查询指标（范围）"""
         step_seconds = Metrics.parse_step_to_seconds(step)
         start = int(start) / 1000  # Convert milliseconds to seconds
         end = int(end) / 1000  # Convert milliseconds to seconds
-        resp = VictoriaMetricsAPI().query_range(query, start, end, step)
+        vm_api = VictoriaMetricsAPI()
+        resp = vm_api.query_range(query, start, end, step)
+        if detect_gaps:
+            data = resp.setdefault("data", {})
+            try:
+                collection_interval = int(collection_interval_seconds)
+            except (TypeError, ValueError):
+                collection_interval = 0
+
+            detection_limit = max_gap_detection_points or Metrics.MAX_GAP_DETECTION_POINTS
+            detection_points = int((end - start) / collection_interval) + 1 if collection_interval > 0 else 0
+
+            if collection_interval > 0 and detection_points > detection_limit:
+                data["gaps"] = []
+                data["gap_detection"] = {
+                    "status": "limited",
+                    "limited": True,
+                    "reason": "max_points_exceeded",
+                }
+            elif collection_interval > 0:
+                detection_resp = vm_api.query_range(query, start, end, f"{collection_interval}s")
+                gaps = Metrics.detect_gap_intervals(
+                    detection_resp.get("data", {}).get("result", []),
+                    collection_interval,
+                )
+                data["gaps"] = gaps
+                data["gap_detection"] = {"status": "ok", "limited": False}
+            else:
+                data["gaps"] = []
+                data["gap_detection"] = {"status": "skipped", "limited": False}
         Metrics.fill_missing_points(start, end, step_seconds, resp.get("data", {}).get("result", []))
         return resp
 
@@ -92,6 +130,59 @@ class Metrics:
             "w": 604800,
         }
         return value * multiplier_map[matched.group("unit")]
+
+    @staticmethod
+    def detect_gap_intervals(data_list, collection_interval_seconds):
+        try:
+            collection_interval = int(collection_interval_seconds)
+        except (TypeError, ValueError):
+            return []
+        if collection_interval <= 0:
+            return []
+
+        tolerance_seconds = max(collection_interval * 2, 60)
+        gaps = []
+
+        for item in data_list:
+            real_points = sorted(
+                float(timestamp)
+                for timestamp, value in item.get("values", [])
+                if value is not None
+            )
+            for prev_timestamp, next_timestamp in zip(real_points, real_points[1:]):
+                missing_duration = next_timestamp - prev_timestamp - collection_interval
+                if missing_duration < tolerance_seconds:
+                    continue
+                gaps.append(
+                    {
+                        "start": prev_timestamp + collection_interval,
+                        "end": next_timestamp - collection_interval,
+                        "duration": missing_duration,
+                        "series": [
+                            {
+                                "metric": item.get("metric", {}),
+                                "missing_points": int(missing_duration / collection_interval),
+                            }
+                        ],
+                    }
+                )
+
+        return Metrics.merge_gap_intervals(gaps, collection_interval)
+
+    @staticmethod
+    def merge_gap_intervals(gaps, collection_interval_seconds):
+        merged = []
+        for gap in sorted(gaps, key=lambda item: (item["start"], item["end"])):
+            if not merged or gap["start"] > merged[-1]["end"] + collection_interval_seconds:
+                merged.append({**gap, "series": list(gap.get("series", []))})
+                continue
+
+            current = merged[-1]
+            current["end"] = max(current["end"], gap["end"])
+            current["duration"] = current["end"] - current["start"] + collection_interval_seconds
+            current["series"].extend(gap.get("series", []))
+
+        return merged
 
     @staticmethod
     def fill_missing_points(start, end, step, data_list):

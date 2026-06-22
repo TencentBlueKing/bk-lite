@@ -79,6 +79,7 @@ from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.services.approval import wait_for_approval
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
+from apps.opspilot.utils.pending_hitl import clear_pending, register_pending
 from apps.opspilot.utils.rollback import execute_rollback, get_rollback_spec, take_snapshot
 from apps.opspilot.utils.user_choice import wait_for_choice
 from apps.opspilot.utils.verification import get_verification_spec, run_verification
@@ -1014,8 +1015,6 @@ class ToolsNodes(BasicNode):
 
             # 登记会话级 pending：使各对话入口能把"在回答本提问"的消息直接投递回本节点，
             # 而非从工作流入口重跑（避免回复跑回第一个智能体）。仅在 bot_id/session_id 齐备时生效。
-            from apps.opspilot.utils.pending_hitl import clear_pending, register_pending
-
             if bot_id and session_id:
                 register_pending(bot_id, session_id, execution_id=execution_id, node_id=node_id, choice_id=choice_id)
 

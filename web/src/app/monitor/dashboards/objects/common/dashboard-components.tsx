@@ -559,6 +559,7 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
         externalTimeDefaultValue={dashboard.timeDefaultValue}
         externalFrequence={dashboard.frequence}
         externalRefreshSignal={dashboard.metricsRefreshSignal}
+        collectionInterval={dashboard.currentInstanceInterval}
         hideTimeSelector
         onExternalXRangeChange={dashboard.onXRangeChange}
       />

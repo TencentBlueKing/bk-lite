@@ -22,6 +22,7 @@ import {
 import {
   renderChart,
 } from '@/app/monitor/utils/common';
+import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 import dayjs from 'dayjs';
 import QueryPanel from './queryPanel';
 import {
@@ -157,7 +158,10 @@ const SearchView: React.FC = () => {
               showInstName: true
             };
           });
-        const chartData = renderChart(data, list);
+        const chartData = attachGapIntervals(
+          renderChart(data, list),
+          responseData.data?.gaps || []
+        );
         const duration = Date.now() - startTime;
         setChartItems((prev) =>
           prev.map((item, i) => {
