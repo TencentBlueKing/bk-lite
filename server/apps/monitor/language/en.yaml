@@ -565,16 +565,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -847,16 +847,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -2286,16 +2286,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -2422,16 +2422,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.

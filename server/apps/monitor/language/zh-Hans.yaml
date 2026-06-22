@@ -526,16 +526,16 @@ monitor_object_metric:
       desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
-      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_bytes_rate:
       name: 设备 Flow 出方向流量速率
-      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_in_packets_rate:
       name: 设备 Flow 入方向包速率
-      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_packets_rate:
       name: 设备 Flow 出方向包速率
-      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
       desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
@@ -783,16 +783,16 @@ monitor_object_metric:
       desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
-      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_bytes_rate:
       name: 设备 Flow 出方向流量速率
-      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_in_packets_rate:
       name: 设备 Flow 入方向包速率
-      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_packets_rate:
       name: 设备 Flow 出方向包速率
-      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
       desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
@@ -2018,16 +2018,16 @@ monitor_object_metric:
       desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
-      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_bytes_rate:
       name: 设备 Flow 出方向流量速率
-      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_in_packets_rate:
       name: 设备 Flow 入方向包速率
-      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_packets_rate:
       name: 设备 Flow 出方向包速率
-      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
       desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
@@ -2154,16 +2154,16 @@ monitor_object_metric:
       desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
-      desc: 基于 Flow 记录换算的设备入方向流量速率，用于分析进入设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_bytes_rate:
       name: 设备 Flow 出方向流量速率
-      desc: 基于 Flow 记录换算的设备出方向流量速率，用于分析离开设备的带宽使用情况。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的流量速率；具体协议的接口方向请以接口指标为准。
     device_flow_in_packets_rate:
       name: 设备 Flow 入方向包速率
-      desc: 基于 Flow 记录换算的设备入方向包速率，用于观察进入设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输入侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_out_packets_rate:
       name: 设备 Flow 出方向包速率
-      desc: 基于 Flow 记录换算的设备出方向包速率，用于观察离开设备的数据包压力。
+      desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
       desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
