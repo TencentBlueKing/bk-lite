@@ -1,22 +1,20 @@
 "use client";
-import {ArrowLeftOutlined} from "@ant-design/icons";
 import {signIn} from "next-auth/react";
-import {useEffect, useState} from "react";
-import {Input, Select} from "antd";
+import {useState} from "react";
+import {Input} from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
-import WechatQrLoginPanel from "./WechatQrLoginPanel";
+import LoginAuthValidationPanel from "./login-auth/LoginAuthValidationPanel";
+import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
-  buildOauthCallbackBridgeUrl,
-  buildPopupSigninUrl,
   buildThirdLoginCallbackUrl,
-  buildWechatPopupUrl,
   resolveThirdLoginFlag
 } from "@/utils/authRedirect";
+import type { LoginAuthLoginResult } from "./login-auth/types";
 
 interface SigninClientProps {
   searchParams?: {
@@ -25,16 +23,13 @@ interface SigninClientProps {
     third_login?: string;
     thirdLogin?: string;
     popup?: string;
-    provider?: string;
   };
   signinErrors?: Record<string | "default", string>;
   mode?: 'page' | 'modal';
   onAuthenticated?: () => void;
-  showThirdPartyLogin?: boolean;
 }
 
 type AuthStep = 'login' | 'reset-password' | 'otp-verification';
-type ModalThirdPartyView = 'login' | 'wechat';
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -42,6 +37,8 @@ interface LoginResponse {
   qrcode?: boolean;
   token?: string;
   username?: string;
+  display_name?: string;
+  domain?: string;
   id?: string;
   locale?: string;
   timezone?: string;
@@ -54,64 +51,32 @@ interface LoginResponse {
   need_binding?: boolean;  // Flag indicating first-time OTP binding
 }
 
-interface WeChatSettings {
-  enabled: boolean;
-  app_id?: string;
-  app_secret?: string;
-  redirect_uri?: string;
-}
-
-interface BkSettings {
-  is_open_logining: boolean;
-  url?: string;
-}
+const VALIDATION_MODE_DEFAULT_DOMAIN = "domain.com";
 
 export default function SigninClient({
   searchParams,
   signinErrors = {},
   mode = 'page',
   onAuthenticated,
-  showThirdPartyLogin = true,
 }: SigninClientProps) {
   const callbackUrl = searchParams?.callbackUrl || "/";
   const error = searchParams?.error || "";
   const third_login = searchParams?.third_login;
   const thirdLogin = searchParams?.thirdLogin;
   const popup = searchParams?.popup;
-  const provider = searchParams?.provider;
   const thirdLoginFlag = resolveThirdLoginFlag(thirdLogin, third_login);
   const isPopupWindowMode = popup === 'true' || popup === '1';
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
-  const [domain, setDomain] = useState("");
-  const [domainList, setDomainList] = useState<string[]>([]);
-  const [loadingDomains, setLoadingDomains] = useState(true);
   const [formError, setFormError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
-  const [isWechatBrowser, setIsWechatBrowser] = useState(false);
   const [authStep, setAuthStep] = useState<AuthStep>('login');
   const [loginData, setLoginData] = useState<LoginResponse>({});
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
-  const [wechatSettings, setWechatSettings] = useState<WeChatSettings | null>(null);
   const { themeName } = useTheme();
   const { logoUrl } = usePortalBranding();
-  const [loadingWechatSettings, setLoadingWechatSettings] = useState(true);
-  const [bkSettings, setBkSettings] = useState<BkSettings | null>(null);
-  const [loadingBkSettings, setLoadingBkSettings] = useState(true);
-  const [hasTriggeredPopupProvider, setHasTriggeredPopupProvider] = useState(false);
-  const [modalThirdPartyView, setModalThirdPartyView] = useState<ModalThirdPartyView>('login');
   const isModalMode = mode === 'modal';
   const isDarkTheme = themeName === 'dark';
-
-  useEffect(() => {
-    const userAgent = navigator.userAgent.toLowerCase();
-    setIsWechatBrowser(userAgent.includes('micromessenger') || userAgent.includes('wechat'));
-
-    // Fetch WeChat settings, BK settings and domain list
-    fetchWechatSettings();
-    fetchBkSettings();
-    fetchDomainList();
-  }, []);
 
   const finishAuthentication = (targetUrl: string) => {
     if (onAuthenticated) {
@@ -134,148 +99,55 @@ export default function SigninClient({
     window.location.href = targetUrl;
   };
 
-  const checkExistingAuthentication = async () => {
-    try {
-      const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
-        method: 'GET',
-        headers: {
-          'Content-Type': 'application/json',
-          'Cache-Control': 'no-cache, no-store, must-revalidate',
-          Pragma: 'no-cache',
-        },
-        credentials: 'include',
+  const applyOtpLoginResult = (otpLoginResult: LoginAuthLoginResult) => {
+    setUsername(otpLoginResult.username || "");
+    setLoginData({
+      id: otpLoginResult.id ? String(otpLoginResult.id) : undefined,
+      username: otpLoginResult.username,
+      display_name: otpLoginResult.display_name,
+      domain: otpLoginResult.domain,
+      locale: otpLoginResult.locale,
+      timezone: otpLoginResult.timezone,
+      token: otpLoginResult.token,
+      temporary_pwd: otpLoginResult.temporary_pwd,
+      enable_otp: otpLoginResult.enable_otp,
+      password_expiry_reminder: otpLoginResult.password_expiry_reminder,
+      require_otp: otpLoginResult.require_otp,
+      challenge_id: otpLoginResult.challenge_id,
+      qr_code: otpLoginResult.qr_code,
+      redirect_url: otpLoginResult.redirect_url,
+    });
+    setQrCodeUrl(otpLoginResult.qr_code || "");
+    setAuthStep('otp-verification');
+    setFormError("");
+  };
+
+  const loginAuthValidation = useLoginAuthValidation({
+    enabled: authStep === 'login',
+    callbackUrl: callbackUrl || '/',
+    onOtpRequired: applyOtpLoginResult,
+    onSessionSync: async (loginResult) => {
+      const success = await syncAuthenticatedSession({
+        id: loginResult.id ? String(loginResult.id) : undefined,
+        username: loginResult.username,
+        display_name: loginResult.display_name,
+        domain: loginResult.domain,
+        token: loginResult.token,
+        locale: loginResult.locale,
+        timezone: loginResult.timezone,
+        temporary_pwd: loginResult.temporary_pwd,
+        enable_otp: loginResult.enable_otp,
+        password_expiry_reminder: loginResult.password_expiry_reminder,
+        redirect_url: loginResult.redirect_url,
       });
 
-      const responseData = await response.json();
-      const userData = responseData?.data?.user;
-
-      if (response.ok && responseData?.result && userData && (userData.username || userData.id)) {
-        await completeAuthentication(userData);
-        return true;
+      if (!success) {
+        setFormError("Authentication failed");
       }
-    } catch (existingAuthError) {
-      console.error('Failed to check existing authentication in popup:', existingAuthError);
-    }
 
-    return false;
-  };
-
-  const openThirdPartyPopup = (targetProvider: 'wechat' | 'bk') => {
-    const popupUrl = targetProvider === 'wechat'
-      ? buildWechatPopupUrl({
-        callbackUrl: callbackUrl || '/',
-        thirdLogin: true,
-      })
-      : buildPopupSigninUrl({
-        callbackUrl: callbackUrl || '/',
-        thirdLogin: true,
-        provider: targetProvider,
-      });
-
-    const width = 520;
-    const height = 760;
-    const left = window.screenX + Math.max((window.outerWidth - width) / 2, 0);
-    const top = window.screenY + Math.max((window.outerHeight - height) / 2, 0);
-
-    const openedWindow = window.open(
-      popupUrl,
-      'bklite-third-party-login',
-      `width=${width},height=${height},left=${left},top=${top},resizable=yes,scrollbars=yes`
-    );
-
-    if (!openedWindow) {
-      setFormError('Unable to open login popup. Please allow popups and try again.');
-      return;
-    }
-
-    openedWindow.focus();
-  };
-
-  const fetchDomainList = async () => {
-    try {
-      setLoadingDomains(true);
-      const response = await fetch('/api/proxy/core/api/get_domain_list/', {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json"
-        },
-      });
-
-      const responseData = await response.json();
-
-      if (response.ok && responseData.result && Array.isArray(responseData.data)) {
-        setDomainList(responseData.data);
-        // Set default domain if available
-        if (responseData.data.length > 0) {
-          setDomain(responseData.data[0]);
-        }
-      } else {
-        console.error("Failed to fetch domain list:", responseData);
-        setDomainList([]);
-      }
-    } catch (error) {
-      console.error("Failed to fetch domain list:", error);
-      setDomainList([]);
-    } finally {
-      setLoadingDomains(false);
-    }
-  };
-
-  const fetchWechatSettings = async () => {
-    try {
-      setLoadingWechatSettings(true);
-      const response = await fetch("/api/proxy/core/api/get_wechat_settings/", {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json"
-        },
-      });
-
-      const responseData = await response.json();
-
-      if (response.ok && responseData.result) {
-        setWechatSettings({
-          enabled: true,
-          ...responseData.data
-        });
-      } else {
-        setWechatSettings({ enabled: false });
-      }
-    } catch (error) {
-      console.error("Failed to fetch WeChat settings:", error);
-      setWechatSettings({ enabled: false });
-    } finally {
-      setLoadingWechatSettings(false);
-    }
-  };
-
-  const fetchBkSettings = async () => {
-    try {
-      setLoadingBkSettings(true);
-      const response = await fetch('/api/proxy/core/api/get_bk_settings/', {
-        method: "GET",
-        headers: {
-          "Content-Type": "application/json"
-        },
-      });
-
-      const responseData = await response.json();
-
-      if (response.ok && responseData.result) {
-        setBkSettings({
-          is_open_logining: responseData.data.bk_login_open,
-          url: responseData.data.url,
-        });
-      } else {
-        setBkSettings({ is_open_logining: false });
-      }
-    } catch (error) {
-      console.error("Failed to fetch BK settings:", error);
-      setBkSettings({ is_open_logining: false });
-    } finally {
-      setLoadingBkSettings(false);
-    }
-  };
+      return success;
+    },
+  });
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -291,7 +163,7 @@ export default function SigninClient({
         body: JSON.stringify({
           username,
           password,
-          domain,
+          domain: VALIDATION_MODE_DEFAULT_DOMAIN,
         }),
       });
 
@@ -361,7 +233,7 @@ export default function SigninClient({
     await completeAuthentication(loginData);
   };
 
-  const completeAuthentication = async (userData: LoginResponse) => {
+  const syncAuthenticatedSession = async (userData: LoginResponse, nextPassword?: string) => {
     try {
       const userDataForAuth = {
         id: userData.id || userData.username || 'unknown',
@@ -392,7 +264,7 @@ export default function SigninClient({
       const result = await signIn("credentials", {
         redirect: false,
         username: userDataForAuth.username,
-        password: password,
+        password: nextPassword ?? password,
         skipValidation: 'true',
         userData: JSON.stringify(userDataForAuth),
         callbackUrl: callbackUrl || "/",
@@ -402,8 +274,7 @@ export default function SigninClient({
 
       if (result?.error) {
         console.error('SignIn error:', result.error);
-        setFormError(result.error);
-        setIsLoading(false);
+        return false;
       } else if (result?.ok) {
         // Store password expiry reminder in sessionStorage for display after redirect
         if (userData.password_expiry_reminder) {
@@ -418,156 +289,26 @@ export default function SigninClient({
 
         console.log('SignIn successful, redirecting to:', targetUrl);
         finishAuthentication(targetUrl);
+        return true;
       } else {
         console.error('SignIn failed with unknown error');
-        setFormError("Authentication failed");
-        setIsLoading(false);
+        return false;
       }
     } catch (error) {
       console.error("Failed to complete authentication:", error);
+      return false;
+    }
+  };
+
+  const completeAuthentication = async (userData: LoginResponse) => {
+    const success = await syncAuthenticatedSession(userData);
+    if (!success) {
       setFormError("Authentication failed");
       setIsLoading(false);
     }
   };
-
-  const handleWechatSignIn = async () => {
-    if (mode === 'modal' && !isPopupWindowMode) {
-      setModalThirdPartyView('wechat');
-      return;
-    }
-
-    console.log("Starting WeChat login process...");
-    const oauthCallbackUrl = isPopupWindowMode
-      ? buildPopupSigninUrl({
-        callbackUrl: callbackUrl || '/',
-        thirdLogin: true,
-        provider: 'wechat',
-      })
-      : buildOauthCallbackBridgeUrl(callbackUrl || '/', thirdLoginFlag, 'wechat');
-
-    console.log("Callback URL:", oauthCallbackUrl);
-
-    signIn("wechat", {
-      callbackUrl: oauthCallbackUrl,
-      redirect: true
-    });
-  };
-
-  const handleBkSignIn = () => {
-    if (mode === 'modal' && !isPopupWindowMode) {
-      openThirdPartyPopup('bk');
-      return;
-    }
-
-    if (bkSettings?.url) {
-      const currentDomain = window.location.origin;
-      const targetCallbackUrl = isPopupWindowMode
-        ? `${currentDomain}${buildPopupSigninUrl({
-          callbackUrl: callbackUrl || '/',
-          thirdLogin: true,
-          provider: 'bk',
-        })}`
-        : currentDomain;
-      const bkLoginUrl = `${bkSettings.url}?callbackUrl=${encodeURIComponent(targetCallbackUrl)}`;
-      console.log("Redirecting to BK login:", bkLoginUrl);
-      window.location.href = bkLoginUrl;
-    }
-  };
-
-  useEffect(() => {
-    if (thirdLoginFlag) {
-      return;
-    }
-
-    if (!isPopupWindowMode || !provider || hasTriggeredPopupProvider || authStep !== 'login') {
-      return;
-    }
-
-    if (provider === 'wechat') {
-      if (loadingWechatSettings) {
-        return;
-      }
-
-      if (!wechatSettings?.enabled) {
-        setFormError('WeChat login is not available.');
-        setHasTriggeredPopupProvider(true);
-        return;
-      }
-
-      setHasTriggeredPopupProvider(true);
-      void handleWechatSignIn();
-      return;
-    }
-
-    if (provider === 'bk') {
-      if (loadingBkSettings) {
-        return;
-      }
-
-      setHasTriggeredPopupProvider(true);
-      void (async () => {
-        const hasExistingAuth = await checkExistingAuthentication();
-        if (!hasExistingAuth) {
-          handleBkSignIn();
-        }
-      })();
-    }
-  }, [authStep, bkSettings?.is_open_logining, hasTriggeredPopupProvider, isPopupWindowMode, loadingBkSettings, loadingWechatSettings, provider, thirdLoginFlag, wechatSettings?.enabled]);
-
   const renderLoginForm = () => (
     <form onSubmit={handleLoginSubmit} className={`flex w-full flex-col ${isModalMode ? 'space-y-5' : 'space-y-6'}`}>
-      <div className={isModalMode ? 'space-y-1.5' : 'space-y-2'}>
-        <div className="flex justify-between items-center">
-          <label htmlFor="domain" className={`font-medium ${isModalMode ? 'text-[13px] text-(--color-text-1)' : 'text-sm text-(--color-text-1)'}`}>Domain</label>
-          {loadingDomains && (
-            <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin"></div>
-          )}
-        </div>
-        <Select
-          id="domain"
-          value={domain || undefined}
-          onChange={setDomain}
-          placeholder={loadingDomains ? 'Loading domains...' : 'Select a domain'}
-          loading={loadingDomains}
-          disabled={loadingDomains}
-          className="w-full"
-          size="middle"
-          style={{ height: isModalMode ? '40px' : '48px' }}
-          dropdownStyle={{
-            borderRadius: '8px',
-            boxShadow: '0 10px 25px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05)'
-          }}
-          options={domainList.map(domainItem => ({
-            label: domainItem,
-            value: domainItem,
-          }))}
-          notFoundContent={
-            loadingDomains ? (
-              <div className="flex items-center justify-center py-4">
-                <div className="w-4 h-4 border-2 border-gray-300 border-t-blue-600 rounded-full animate-spin mr-2"></div>
-                Loading...
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-4 text-gray-500">
-                <svg className="w-4 h-4 mr-2" fill="currentColor" viewBox="0 0 20 20">
-                  <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-                </svg>
-                No domains available
-              </div>
-            )
-          }
-        />
-        {/* Error state indicator */}
-        {!loadingDomains && domainList.length === 0 && (
-          <p className="text-sm text-amber-600 flex items-center mt-1">
-            <svg className="w-4 h-4 mr-1" fill="currentColor" viewBox="0 0 20 20">
-              <path fillRule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clipRule="evenodd" />
-            </svg>
-            No domains available
-          </p>
-        )}
-      </div>
-
       <div className={isModalMode ? 'space-y-1.5' : 'space-y-2'}>
         <label htmlFor="username" className={`font-medium ${isModalMode ? 'text-[13px] text-(--color-text-1)' : 'text-sm text-(--color-text-1)'}`}>Username</label>
         <Input
@@ -630,84 +371,55 @@ export default function SigninClient({
       onError={setFormError}
     />
   );
+  const shouldRenderValidationPanel = authStep === 'login';
+  const isValidationStartingState = shouldRenderValidationPanel && loginAuthValidation.viewState === 'starting';
+  const isValidationWaitingState = shouldRenderValidationPanel && loginAuthValidation.viewState === 'waiting';
+  const isValidationSyncingState = shouldRenderValidationPanel && loginAuthValidation.viewState === 'syncing-session';
+  const isValidationSelectionLocked = isValidationStartingState || isValidationWaitingState || isValidationSyncingState;
+  const shouldShowValidationFormState = shouldRenderValidationPanel && !isValidationSelectionLocked;
+  const shouldShowValidationStatusState = shouldRenderValidationPanel && isValidationSelectionLocked;
+  const validationInlineError = shouldShowValidationFormState
+    && ['failed', 'cancelled', 'expired'].includes(loginAuthValidation.viewState)
+    ? loginAuthValidation.errorMessage
+    : '';
 
-  const renderWechatLoginSection = () => {
-    const isLoading = loadingWechatSettings || loadingBkSettings;
-    const hasWechat = wechatSettings?.enabled;
-    const hasBkLogin = bkSettings?.is_open_logining;
-    const hasAnyLogin = hasWechat || hasBkLogin;
-
-    if (isLoading) {
-      return (
-        <div className={isModalMode ? 'mt-5' : 'mt-6'}>
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-(--color-border-3)"></div>
-            </div>
-            <div className={`relative flex justify-center ${isModalMode ? 'text-[12px]' : 'text-sm'}`}>
-              <span className={`px-3 ${isModalMode ? 'bg-transparent text-(--color-text-3)' : 'bg-(--color-bg) text-(--color-text-1)'}`}>Or continue with</span>
-            </div>
-          </div>
-
-          <div className={isModalMode ? 'mt-5 space-y-2.5' : 'mt-6 space-y-3'}>
-            <div className={`w-full animate-pulse bg-(--color-fill-2) ${isModalMode ? 'h-10 rounded-xl' : 'h-12 rounded-lg'}`}></div>
-            {loadingBkSettings && (
-              <div className={`w-full animate-pulse bg-(--color-fill-2) ${isModalMode ? 'h-10 rounded-xl' : 'h-12 rounded-lg'}`}></div>
+  const renderValidationStatusContent = () => (
+    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.20))] backdrop-blur-[1px]">
+      <div className="flex flex-col items-center gap-5 px-8 text-center">
+        <div className="flex h-18 w-18 items-center justify-center rounded-full bg-[rgba(255,255,255,0.62)] text-[#246BFD]">
+          <svg
+            className={`h-9 w-9 ${isValidationSyncingState ? '' : 'animate-spin'}`}
+            viewBox="0 0 24 24"
+            fill="none"
+            aria-hidden="true"
+          >
+            {isValidationSyncingState ? (
+              <path
+                d="M7 12.5l3 3 7-8"
+                stroke="currentColor"
+                strokeWidth="2.2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              />
+            ) : (
+              <>
+                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.2" />
+                <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
+              </>
             )}
-          </div>
+          </svg>
         </div>
-      );
-    }
-
-    if (!hasAnyLogin) {
-      return null;
-    }
-
-    return (
-      <div className={isModalMode ? 'mt-5' : 'mt-6'}>
-        {isModalMode ? (
-          <div className="flex justify-center text-[12px] text-(--color-text-3)">
-            <span>Or continue with</span>
-          </div>
-        ) : (
-          <div className="relative">
-            <div className="absolute inset-0 flex items-center">
-              <div className="w-full border-t border-(--color-border-3)"></div>
-            </div>
-            <div className="relative flex justify-center text-sm">
-              <span className="bg-(--color-bg) px-3 text-(--color-text-1)">Or continue with</span>
-            </div>
-          </div>
-        )}
-
-        <div className={isModalMode ? 'mt-5 space-y-2.5' : 'mt-6 space-y-3'}>
-          {hasWechat && (
-            <button
-              onClick={handleWechatSignIn}
-              className={`flex w-full items-center justify-center font-medium text-white transition-colors duration-200 ${isModalMode ? 'h-11 rounded-xl bg-[#10B14A] px-4 text-[14px] shadow-[0_10px_24px_rgba(16,177,74,0.18)] hover:bg-[#0F9E43]' : 'rounded-lg bg-green-600 px-4 py-3 text-sm shadow-sm hover:bg-green-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-green-500'}`}
-            >
-              Sign in with WeChat
-            </button>
-          )}
-
-          {hasBkLogin && (
-            <button
-              onClick={handleBkSignIn}
-              className={`flex w-full items-center justify-center font-medium text-white transition-colors duration-200 ${isModalMode ? 'h-11 rounded-xl bg-[#246BFD] px-4 text-[14px] shadow-[0_10px_24px_rgba(36,107,253,0.18)] hover:bg-[#1F5DE0]' : 'rounded-lg bg-blue-600 px-4 py-3 text-sm shadow-sm hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500'}`}
-            >
-              Sign in with BlueKing
-            </button>
-          )}
-        </div>
-
-        {isWechatBrowser && hasWechat && (
-          <div className="mt-4 text-center text-sm text-[#10B14A]">
-            You are using WeChat browser, for best experience use the WeChat login.
-          </div>
+        <p className="text-[17px] font-semibold tracking-[0.01em] text-(--color-text-1)">
+          {isValidationSyncingState ? 'Completing sign-in' : isValidationStartingState ? 'Starting authentication' : 'Waiting for authentication'}
+        </p>
+        {!isValidationSyncingState && loginAuthValidation.activeBindingName && (
+          <p className="text-sm text-(--color-text-3)">
+            Continue with {loginAuthValidation.activeBindingName} in the newly opened tab.
+          </p>
         )}
       </div>
-    );
-  };
+    </div>
+  );
 
   const content = (
     <div className={`w-full ${isModalMode ? '' : 'max-w-md'}`} style={isModalMode ? { maxWidth: 388 } : undefined}>
@@ -741,37 +453,32 @@ export default function SigninClient({
         </div>
       )}
 
-      {authStep === 'login' && modalThirdPartyView === 'login' && renderLoginForm()}
-      {authStep === 'reset-password' && renderPasswordResetForm()}
-      {authStep === 'otp-verification' && renderOtpVerificationForm()}
-
-      {authStep === 'login' && mode === 'modal' && modalThirdPartyView === 'wechat' && (
-        <div className="pt-1">
-          <div className="mx-auto mb-4 flex w-full max-w-52 items-center justify-center">
-            <div className="relative w-full">
-              <button
-                type="button"
-                onClick={() => setModalThirdPartyView('login')}
-                className="absolute left-0 top-1/2 inline-flex h-6 w-6 -translate-y-1/2 items-center justify-center rounded-md text-[10px] transition-colors"
-                style={{
-                  background: isDarkTheme ? 'var(--color-fill-2)' : '#EEF4FF',
-                  color: isDarkTheme ? 'var(--color-text-2)' : '#4B73B6',
-                }}
-                aria-label="返回"
-              >
-                <ArrowLeftOutlined className="text-[9px]" />
-              </button>
-              <div className="text-center text-[12px] font-normal tracking-normal text-(--color-text-3)">微信扫码登录</div>
-            </div>
-          </div>
-          <WechatQrLoginPanel
-            callbackUrl={callbackUrl}
-            thirdLogin="true"
-          />
+      {validationInlineError && (
+        <div className={`mb-6 rounded border text-red-700 ${isModalMode ? 'px-3 py-2.5 text-[12px]' : 'border-l-4 border-red-500 bg-red-50 p-4'}`} style={isModalMode ? { borderColor: isDarkTheme ? 'rgba(239, 68, 68, 0.35)' : '#F5D4D4', background: isDarkTheme ? 'rgba(127, 29, 29, 0.18)' : '#FFF7F7' } : undefined}>
+          <p className="font-medium">{validationInlineError}</p>
         </div>
       )}
 
-      {showThirdPartyLogin && authStep === 'login' && modalThirdPartyView === 'login' && renderWechatLoginSection()}
+      {authStep === 'login' && (
+        <div className="relative">
+          <div className={shouldShowValidationStatusState ? 'pointer-events-none select-none opacity-28 blur-[0.5px]' : ''}>
+            {renderLoginForm()}
+          </div>
+          {shouldShowValidationStatusState && renderValidationStatusContent()}
+        </div>
+      )}
+
+      {shouldRenderValidationPanel && (
+        <LoginAuthValidationPanel
+          bindings={loginAuthValidation.bindings}
+          isLoadingBindings={loginAuthValidation.isLoadingBindings}
+          activeBindingId={loginAuthValidation.activeBindingId}
+          isSelectionLocked={isValidationSelectionLocked}
+          onStartLoginAuth={loginAuthValidation.startLoginAuth}
+        />
+      )}
+      {authStep === 'reset-password' && renderPasswordResetForm()}
+      {authStep === 'otp-verification' && renderOtpVerificationForm()}
     </div>
   );
 

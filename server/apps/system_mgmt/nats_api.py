@@ -37,6 +37,11 @@ from apps.system_mgmt.models import (
 )
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.services.role_manage import RoleManage
+from apps.system_mgmt.services.login_auth_binding_service import (
+    get_active_login_auth_bindings,
+    login_with_binding as execute_login_with_binding,
+    serialize_public_login_auth_binding,
+)
 from apps.system_mgmt.utils.bk_user_utils import get_bk_user_info
 from apps.system_mgmt.utils.channel_utils import (
     send_by_custom_webhook,
@@ -1069,6 +1074,24 @@ def login(username, password):
         # Add password_expiry_reminder to response
         result["data"]["password_expiry_reminder"] = password_expiry_reminder
     return result
+
+
+@nats_client.register
+def login_with_binding(binding_id, auth_code):
+    return login_with_binding_service(binding_id, auth_code)
+
+
+def login_with_binding_service(binding_id, auth_code):
+    try:
+        return execute_login_with_binding(int(binding_id), auth_code)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "Invalid login auth binding id"}
+
+
+@nats_client.register
+def get_login_auth_bindings():
+    data = [serialize_public_login_auth_binding(binding) for binding in get_active_login_auth_bindings()]
+    return {"result": True, "data": data}
 
 
 @nats_client.register

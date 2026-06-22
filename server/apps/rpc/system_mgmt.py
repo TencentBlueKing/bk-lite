@@ -16,6 +16,12 @@ class SystemMgmt(object):
         return_data = self.client.run("login", username=username, password=password)
         return return_data
 
+    def login_with_binding(self, binding_id, auth_code):
+        return self.client.run("login_with_binding", binding_id=binding_id, auth_code=auth_code)
+
+    def get_login_auth_bindings(self):
+        return self.client.run("get_login_auth_bindings")
+
     def verify_bk_token(self, bk_token):
         return_data = self.client.run("verify_bk_token", bk_token=bk_token)
         return return_data

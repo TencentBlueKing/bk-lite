@@ -77,7 +77,7 @@ const LayoutWithProviders = ({ children }: { children: React.ReactNode }) => {
   const isAuthLoading = status === 'loading';
 
   const isLoading = isAuthLoading || (isAuthenticated && (permissionsLoading || menusLoading));
-  const authPaths = ['/auth/signin', '/auth/signout'];
+  const authPaths = ['/auth/signin', '/auth/signout', '/auth/signin/login-auth-result'];
   const excludedPaths = ['/no-permission', '/no-found', '/', ...authPaths];
   const hasResolvedPathname = pathname !== null;
   const isAuthRoute = Boolean(pathname && authPaths.includes(pathname));

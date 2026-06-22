@@ -73,7 +73,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const { setLocale } = useLocale();
   const { t } = useTranslation();
 
-  const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback'];
+  const authPaths = ['/auth/signin', '/auth/signout', '/auth/callback', '/auth/signin/login-auth-result'];
   const isCurrentAuthPath = isAuthPath(pathname);
   const isSessionValid = extendedSession && extendedSession.user && (extendedSession.user.id || extendedSession.user.username);
 
@@ -415,7 +415,6 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
                 mode="modal"
                 signinErrors={modalSigninErrors}
                 onAuthenticated={handleReloginSuccess}
-                showThirdPartyLogin
               />
             </div>
           </div>

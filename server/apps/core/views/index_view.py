@@ -1,19 +1,29 @@
 import json
 import os
+from urllib.parse import urlencode, urlparse
 
 import requests
 from django.conf import settings as django_settings
-from django.http import JsonResponse
+from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
 
 from apps.core.logger import logger
+from apps.core.services.login_auth_request_service import (
+    build_auth_request_state,
+    create_auth_request,
+    get_auth_request,
+    parse_auth_request_state,
+    update_auth_request_status,
+    validate_poll_token,
+)
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.rpc.base import RpcClient
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import UserLoginLog
 from apps.system_mgmt.models.login_module import LoginModule
+from apps.system_mgmt.services.login_auth_binding_service import build_login_auth_redirect, get_active_login_auth_bindings
 from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
 
@@ -85,6 +95,54 @@ def _get_client_ip(request):
     else:
         ip = request.META.get("REMOTE_ADDR", "")
     return ip
+
+
+def _is_safe_relative_callback_url(callback_url: str) -> bool:
+    if not callback_url or not callback_url.startswith("/"):
+        return False
+
+    parsed = urlparse(callback_url)
+    return not parsed.scheme and not parsed.netloc
+
+
+def _build_login_auth_callback_uri(request):
+    base_url = _get_login_auth_external_base_url(local_port=8011)
+    if base_url:
+        return f"{base_url}/api/v1/core/api/login_auth/callback/"
+    return request.build_absolute_uri("/api/v1/core/api/login_auth/callback/")
+
+
+def _get_login_auth_binding_by_id(binding_id: int):
+    for binding in get_active_login_auth_bindings():
+        if binding.id == binding_id:
+            return binding
+    return None
+
+
+def _get_login_auth_external_base_url(local_port: int | None = None):
+    base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
+    if not base_url:
+        return ""
+
+    parsed = urlparse(base_url)
+    # TODO: 本地联调临时逻辑，上线前移除。当前强制改写为本地前后端分端口地址。
+    if local_port and parsed.hostname:
+        scheme = parsed.scheme or "http"
+        return f"{scheme}://{parsed.hostname}:{local_port}"
+    return base_url
+
+
+def _build_login_auth_result_redirect(status_key: str, message: str):
+    query_string = urlencode(
+        {
+            "status": status_key,
+            "message": message,
+        }
+    )
+    base_url = _get_login_auth_external_base_url(local_port=3000)
+    if base_url:
+        return HttpResponseRedirect(f"{base_url}/auth/signin/login-auth-result?{query_string}")
+    return HttpResponseRedirect(f"/auth/signin/login-auth-result?{query_string}")
 
 
 def verify_wechat_code(code: str) -> dict:
@@ -205,10 +263,38 @@ def index(request):
 def login(request):
     try:
         data = _parse_request_data(request)
+        login_auth_binding_id = data.get("binding_id") or data.get("login_auth_binding_id")
+        auth_code = data.get("auth_code", "").strip()
         username = data.get("username", "").strip()
         password = data.get("password", "")
         domain = data.get("domain", "")
         c_url = data.get("redirect_url", "").strip()  # 获取回调URL
+
+        if login_auth_binding_id:
+            client = SystemMgmt()
+            res = client.login_with_binding(login_auth_binding_id, auth_code)
+            log_username = res.get("data", {}).get("username") or username or "unknown"
+            if not res.get("result"):
+                logger.warning(f"Binding login failed for binding: {login_auth_binding_id}")
+                failure_reason = res.get("message", "Login failed")
+                log_user_login_from_request(
+                    request,
+                    log_username,
+                    UserLoginLog.STATUS_FAILED,
+                    "domain.com",
+                    failure_reason=str(failure_reason),
+                )
+            else:
+                logger.info(f"Binding login successful for binding: {login_auth_binding_id}")
+                log_user_login_from_request(request, log_username, UserLoginLog.STATUS_SUCCESS, "domain.com")
+                if c_url:
+                    if "data" not in res:
+                        res["data"] = {}
+                    res["data"]["redirect_url"] = c_url
+            response = JsonResponse(res)
+            if res.get("result") and res.get("data", {}).get("token"):
+                _set_auth_cookie_on_response(response, res["data"]["token"])
+            return response
 
         if not username or not password:
             # 记录登录失败日志 - 用户名或密码为空
@@ -775,3 +861,185 @@ def get_domain_list(request):
     client = SystemMgmt()
     res = client.get_login_module_domain_list()
     return JsonResponse(res)
+
+
+@api_exempt
+def get_login_auth_bindings(request):
+    client = SystemMgmt()
+    return JsonResponse(client.get_login_auth_bindings())
+
+
+@api_exempt
+def start_login_auth(request):
+    if request.method != "POST":
+        return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
+
+    try:
+        data = _parse_request_data(request)
+        callback_url = (data.get("callback_url") or "/").strip() or "/"
+        binding_id = data.get("binding_id")
+
+        if not _is_safe_relative_callback_url(callback_url):
+            return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
+
+        try:
+            binding_id = int(binding_id)
+        except (TypeError, ValueError):
+            return JsonResponse({"result": False, "message": "binding_id is required"}, status=400)
+
+        binding = _get_login_auth_binding_by_id(binding_id)
+        if not binding:
+            return JsonResponse({"result": False, "message": "Login auth binding not found"}, status=404)
+
+        auth_request = create_auth_request(
+            binding_id=binding.id,
+            provider_key=binding.integration_instance.provider_key,
+            callback_url=callback_url,
+        )
+        state = build_auth_request_state(
+            auth_request_id=auth_request["auth_request_id"],
+            binding_id=binding.id,
+            callback_url=callback_url,
+        )
+        redirect_result = build_login_auth_redirect(
+            binding,
+            redirect_uri=_build_login_auth_callback_uri(request),
+            state=state,
+        )
+        redirect_payload = getattr(redirect_result, "payload", {}) or {}
+        redirect_dict = redirect_result.to_dict() if hasattr(redirect_result, "to_dict") else {}
+        login_url = (
+            redirect_payload.get("login_url")
+            or redirect_payload.get("authorize_url")
+            or redirect_payload.get("url")
+            or redirect_dict.get("login_url")
+            or redirect_dict.get("authorize_url")
+            or redirect_dict.get("url")
+        )
+        if not redirect_result.success or not login_url:
+            logger.warning("Failed to build login auth redirect for binding: %s", binding.id)
+            return JsonResponse(
+                {"result": False, "message": redirect_result.summary or "Failed to build login url"},
+                status=400,
+            )
+
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "auth_request_id": auth_request["auth_request_id"],
+                    "poll_token": auth_request["poll_token"],
+                    "login_url": login_url,
+                    "expires_at": auth_request["expires_at"],
+                },
+                "message": "",
+            }
+        )
+    except Exception as e:
+        logger.error(f"Start login auth error: {e}")
+        return JsonResponse(
+            {
+                "result": False,
+                "message": _get_loader(request).get("error.system_error", "System error occurred"),
+            },
+            status=500,
+        )
+
+
+@api_exempt
+def get_login_auth_request_status(request, auth_request_id):
+    poll_token = request.GET.get("poll_token", "").strip()
+    if not poll_token:
+        return JsonResponse({"result": False, "message": "poll_token is required"}, status=400)
+
+    auth_request = get_auth_request(auth_request_id)
+    if not auth_request:
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "status": "expired",
+                    "error_message": "Login auth request has expired",
+                },
+                "message": "",
+            }
+        )
+
+    if not validate_poll_token(auth_request, poll_token):
+        return JsonResponse({"result": False, "message": "Invalid poll token"}, status=403)
+
+    payload = {
+        "status": auth_request.get("status", "pending"),
+        "error_message": auth_request.get("error_message", ""),
+        "expires_at": auth_request.get("expires_at"),
+        "completed_at": auth_request.get("completed_at"),
+    }
+    if auth_request.get("status") == "success" and auth_request.get("login_result"):
+        payload["login_result"] = auth_request["login_result"]
+
+    return JsonResponse({"result": True, "data": payload, "message": ""})
+
+
+@api_exempt
+def login_auth_callback(request):
+    state = request.GET.get("state", "").strip()
+    code = request.GET.get("code", "").strip()
+    provider_error = request.GET.get("error", "").strip()
+    error_description = request.GET.get("error_description", "").strip()
+
+    state_payload = parse_auth_request_state(state)
+    if not state_payload:
+        return _build_login_auth_result_redirect("failed", "认证状态无效或已过期，请返回原页面重试。")
+
+    auth_request_id = state_payload["auth_request_id"]
+    auth_request = get_auth_request(auth_request_id)
+    if not auth_request:
+        return _build_login_auth_result_redirect("expired", "认证请求已过期，请返回原页面重新发起认证。")
+
+    current_status = auth_request.get("status", "pending")
+    if current_status != "pending":
+        terminal_messages = {
+            "success": "认证已完成，可返回原页面继续。",
+            "cancelled": "认证已取消，可返回原页面重试。",
+            "expired": "认证请求已过期，请返回原页面重新发起认证。",
+            "failed": "认证失败，请返回原页面重试。",
+        }
+        return _build_login_auth_result_redirect(
+            current_status,
+            terminal_messages.get(current_status, "认证状态已完成，可返回原页面查看结果。"),
+        )
+
+    if provider_error:
+        message = error_description or provider_error
+        update_auth_request_status(auth_request_id, status="cancelled", error_message=message)
+        return _build_login_auth_result_redirect("cancelled", "认证已取消，可返回原页面重试。")
+
+    if not code:
+        update_auth_request_status(auth_request_id, status="failed", error_message="Missing provider code")
+        return _build_login_auth_result_redirect("failed", "认证失败，请返回原页面重试。")
+
+    try:
+        client = SystemMgmt()
+        result = client.login_with_binding(state_payload["binding_id"], code)
+    except Exception as e:
+        logger.error(f"Login auth callback error: {e}")
+        update_auth_request_status(auth_request_id, status="failed", error_message=str(e))
+        return _build_login_auth_result_redirect("failed", "认证失败，请返回原页面重试。")
+
+    if not result.get("result"):
+        error_message = result.get("message", "Login auth callback failed")
+        update_auth_request_status(auth_request_id, status="failed", error_message=error_message)
+        return _build_login_auth_result_redirect("failed", "认证失败，请返回原页面重试。")
+
+    login_result = result.get("data", {}) or {}
+    login_result.setdefault("redirect_url", state_payload["callback_url"])
+    update_auth_request_status(
+        auth_request_id,
+        status="success",
+        login_result=login_result,
+    )
+
+    response = _build_login_auth_result_redirect("success", "认证已完成，可返回原页面继续。")
+    if login_result.get("token"):
+        _set_auth_cookie_on_response(response, login_result["token"])
+    return response
