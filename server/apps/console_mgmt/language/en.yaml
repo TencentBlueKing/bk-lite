@@ -5,7 +5,11 @@ error:
   verification_code_incorrect: Verification code is incorrect
   user_id_required: User ID cannot be empty
   user_not_found: User not found
+  not_first_login: User has already been initialized
+  parse_request_failed: Failed to parse request body
+  group_name_required: group_name is required
   password_required: Password cannot be empty
+  invalid_json_format: Invalid JSON format
 email:
   verification_code_validity: The verification code is valid for 10 minutes, please
     use it in time.

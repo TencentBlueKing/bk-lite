@@ -19,6 +19,7 @@ from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.display_fields import validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorObjectViewSet(viewsets.ModelViewSet):
@@ -65,7 +66,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
             include_children = request.COOKIES.get("include_children", "0") == "1"
-            current_team = request.COOKIES.get("current_team")
+            current_team = get_current_team(request)
 
             inst_res = get_permissions_rules(
                 request.user,
@@ -106,7 +107,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}",
                 include_children=include_children,

@@ -1,15 +1,88 @@
 {
   "plugin": "Loadbalance F5 SNMP",
-  "plugin_desc": "F5-specific SNMP collection template for F5 BIG-IP load balancers. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host memory total/used/usage) and load-balancer-specific state (current client connections). Sourced from the official F5-BIGIP-SYSTEM-MIB.",
+  "plugin_desc": "F5-specific SNMP collection template for F5 BIG-IP load balancers. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host memory total/used/usage) and load-balancer-specific state (current client connections). Sourced from the official F5-BIGIP-SYSTEM-MIB. Supported brands/models — F5 BIG-IP (LTM/GTM/DNS; iSeries / VIPRION / VE).",
   "status_query": "any({instance_type='loadbalance', collect_type='snmp_f5'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='loadbalance'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["snmp_uptime", "device_cpu_usage", "device_memory_usage", "lb_current_connections", "device_total_incoming_traffic", "device_total_outgoing_traffic"],
-  "display_fields": [{"name": "System Uptime", "sort_order": 0, "metrics": [{"plugin": "Loadbalance F5 SNMP", "metric": "snmp_uptime"}]}, {"name": "CPU Usage", "sort_order": 1, "metrics": [{"plugin": "Loadbalance F5 SNMP", "metric": "device_cpu_usage"}]}, {"name": "Memory Usage", "sort_order": 2, "metrics": [{"plugin": "Loadbalance F5 SNMP", "metric": "device_memory_usage"}]}, {"name": "Current Connections", "sort_order": 3, "metrics": [{"plugin": "Loadbalance F5 SNMP", "metric": "lb_current_connections"}]}, {"name": "Device Total Incoming Traffic Rate", "sort_order": 4, "metrics": [{"plugin": "Loadbalance F5 SNMP", "metric": "device_total_incoming_traffic"}]}, {"name": "Device Total Outgoing Traffic Rate", "sort_order": 5, "metrics": [{"plugin": "Loadbalance F5 SNMP", "metric": "device_total_outgoing_traffic"}]}],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "lb_current_connections",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "display_fields": [
+    {
+      "name": "System Uptime",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Loadbalance F5 SNMP",
+          "metric": "snmp_uptime"
+        }
+      ]
+    },
+    {
+      "name": "CPU Usage",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Loadbalance F5 SNMP",
+          "metric": "device_cpu_usage"
+        }
+      ]
+    },
+    {
+      "name": "Memory Usage",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Loadbalance F5 SNMP",
+          "metric": "device_memory_usage"
+        }
+      ]
+    },
+    {
+      "name": "Current Connections",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Loadbalance F5 SNMP",
+          "metric": "lb_current_connections"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Incoming Traffic Rate",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Loadbalance F5 SNMP",
+          "metric": "device_total_incoming_traffic"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Outgoing Traffic Rate",
+      "sort_order": 5,
+      "metrics": [
+        {
+          "plugin": "Loadbalance F5 SNMP",
+          "metric": "device_total_outgoing_traffic"
+        }
+      ]
+    }
+  ],
   "metrics": [
     {
       "metric_group": "Base",
@@ -19,7 +92,9 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     },
     {
@@ -30,7 +105,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the host CPU utilization of the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second ratio). Sustained high CPU usage may indicate heavy traffic-processing load."
     },
     {
@@ -41,7 +118,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the total host memory of the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysStatMemoryTotal, in bytes)."
     },
     {
@@ -52,7 +131,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the used host memory of the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysStatMemoryUsed, in bytes)."
     },
     {
@@ -63,7 +144,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the host memory utilization of the F5 BIG-IP load balancer, derived as used / total * 100. High memory pressure can degrade connection-handling performance."
     },
     {
@@ -74,7 +157,9 @@
       "data_type": "Number",
       "unit": "short",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the number of current client-side connections on the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysStatClientCurConns). A rapid rise can indicate a connection surge or capacity pressure."
     },
     {
@@ -84,8 +169,15 @@
       "display_name": "Interface Admin Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the administrative status of the network interface."
     },
     {
@@ -95,8 +187,15 @@
       "display_name": "Interface Oper Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reflects the actual operational status of the network interface."
     },
     {
@@ -106,8 +205,15 @@
       "display_name": "Interface Bandwidth",
       "data_type": "Number",
       "unit": "bitps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the maximum data transmission speed supported by the network interface."
     },
     {
@@ -117,8 +223,15 @@
       "display_name": "Incoming Errors Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
     },
     {
@@ -128,8 +241,15 @@
       "display_name": "Outgoing Errors Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
     },
     {
@@ -139,8 +259,15 @@
       "display_name": "Incoming Discards Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
     },
     {
@@ -150,8 +277,15 @@
       "display_name": "Outgoing Discards Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
     },
     {
@@ -161,8 +295,15 @@
       "display_name": "Incoming Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
     },
     {
@@ -172,9 +313,55 @@
       "display_name": "Outgoing Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the F5 BIG-IP appliance (F5-BIGIP-SYSTEM-MIB sysChassisTempTemperature, a dedicated per-sensor table), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal protection. Virtual editions (no physical chassis) report no value."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the fan state of the F5 BIG-IP appliance (F5-BIGIP-SYSTEM-MIB sysChassisFanStatus, raw bad(0)/good(1)/notpresent(2)), normalized via telegraf processors.enum so that 1 = healthy (good, or an empty slot) and 2 = fault (bad). Aggregated as the maximum across fans so any failed fan surfaces. Virtual editions report no value."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply state of the F5 BIG-IP appliance (F5-BIGIP-SYSTEM-MIB sysChassisPowerSupplyStatus, raw bad(0)/good(1)/notpresent(2)), normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any failed PSU surfaces. Virtual editions report no value."
     },
     {
       "metric_group": "Traffic",
@@ -183,8 +370,15 @@
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
     },
     {
@@ -194,8 +388,15 @@
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
     },
     {
@@ -205,8 +406,15 @@
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
@@ -216,8 +424,15 @@
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
@@ -228,7 +443,9 @@
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
     },
     {
@@ -239,7 +456,9 @@
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
     }
   ]

@@ -384,7 +384,11 @@ def _materialize_private_key(workspace: Path, key_content: str) -> str:
 def _quote_inventory_value(value: Any) -> str:
     text = str(value)
     escaped = text.replace("\\", "\\\\").replace('"', '\\"')
-    if any(ch.isspace() for ch in text):
+    # ansible 的 ini inventory 用 shlex.split(comments=True) 解析主机行：
+    # 未加引号的 '#' 会被当行内注释，'#' 及其后内容（含其它连接参数）被丢弃，
+    # 导致带 '#' 的密码被静默截断。含空格、'#'、';' 或引号时一律加引号包裹。
+    needs_quote = any(ch.isspace() for ch in text) or any(ch in text for ch in '#;"\'')
+    if needs_quote:
         return f'"{escaped}"'
     return escaped
 

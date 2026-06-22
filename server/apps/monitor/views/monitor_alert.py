@@ -30,6 +30,7 @@ from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorAlertViewSet(
@@ -63,7 +64,7 @@ class MonitorAlertViewSet(
         """
         获取当前用户所有有权限的策略ID
         """
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
 
         # 获取所有采集类型下policy模块的权限规则
@@ -107,7 +108,7 @@ class MonitorAlertViewSet(
             include_children = request.COOKIES.get("include_children", "0") == "1"
             permission = get_permission_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
                 include_children=include_children,
@@ -293,7 +294,7 @@ class MonitorAlertViewSet(
 
 class MonitorEventViewSet(viewsets.ViewSet):
     def _get_all_accessible_policy_ids(self, request):
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
 
         permissions_result = get_permissions_rules(

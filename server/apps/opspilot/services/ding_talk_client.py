@@ -68,3 +68,13 @@ class DingTalkClient(object):
         if data.get("errcode") != 0:
             raise Exception(f"获取部门信息失败: {data.get('errmsg')}")
         return data["result"]["name"]
+
+    def close(self):
+        """关闭底层 requests.Session，释放连接池，避免 socket 泄漏。"""
+        self.session.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        self.close()

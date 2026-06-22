@@ -1,0 +1,121 @@
+{
+  "plugin": "Switch Ubiquiti SNMP",
+  "plugin_desc": "Ubiquiti EdgeSwitch-specific SNMP collection (EdgeSwitch-SWITCHING-MIB + EdgeSwitch-BOXSERVICES-PRIVATE-MIB, IANA PEN 4413, Broadcom FASTPATH). In addition to standard IF-MIB interface metrics, it collects EdgeSwitch private OIDs for device health: system memory (available/free, KB), chassis temperature (boxServicesTempSensorTemperature) and fan state (boxServicesFanItemState). Fan raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed from (total-free)/total. CPU is exposed only as a per-process table (agentSwitchCpuProcessTable) with no aggregate device-CPU scalar, which telegraf inputs.snmp cannot reduce, so CPU is not collected (N/A); the BOXSERVICES MIB has no power-supply state object, so PSU is also N/A. Applies to EdgeSwitch/UniFi-Switch (the wired switch line); airOS/UniFi wireless APs are a different object and out of scope. Supported brands/models — Ubiquiti EdgeSwitch (ES series).",
+  "status_query": "any({instance_type='switch', collect_type='snmp_ubiquiti'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__} * 1024",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total size in bytes of the Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMemAvailable, reported in KB and scaled to bytes). Together with the free bytes it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "device_memory_free{instance_type='switch', __$labels__} * 1024",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of free bytes in the Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMemFree, reported in KB and scaled to bytes). Low free memory may indicate memory pressure from oversized tables or leaks."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the Ubiquiti EdgeSwitch device, computed as (total - free) / total * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the Ubiquiti EdgeSwitch device (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesTempSensorTemperature, a dedicated typed temperature column), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the fan state of the Ubiquiti EdgeSwitch device (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesFanItemState), normalized via telegraf processors.enum so that 1 = healthy (operational / powering / not-present) and 2 = fault (failed / no-power / not-powering / incompatible). Aggregated as the maximum across fans so any faulty fan surfaces. A value greater than 1 indicates a fan failure that can lead to overheating."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}

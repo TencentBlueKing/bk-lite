@@ -30,6 +30,7 @@ from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.utils.team_utils import get_current_team
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
@@ -200,7 +201,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def search(self, request):
         """
         查询实例权限：
-        1. 若前端不做组织筛选，默认查询组织 request.COOKIES.get("current_team")
+        1. 若前端不做组织筛选，默认查询组织 get_current_team(request)
             若做组织筛选，则查询所选组织
         2. 用户所在的组织，and （组织单独设置的实例权限过滤条件 or 创建人是我）
         3. 若有额外的字段过滤条件，则在上述基础上做and过滤
@@ -671,7 +672,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(methods=["post"], detail=False, url_path=r"(?P<model_id>.+?)/inst_import")
     def inst_import(self, request, model_id):
         try:
-            current_team_raw = request.COOKIES.get("current_team")
+            current_team_raw = get_current_team(request)
             if not current_team_raw:
                 return JsonResponse(
                     {

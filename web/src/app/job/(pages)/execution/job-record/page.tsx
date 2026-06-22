@@ -30,6 +30,7 @@ import {
   FolderOutlined,
   FileOutlined,
   ProfileOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import MarkdownRenderer from '@/components/markdown';
@@ -55,7 +56,7 @@ const JobRecordPage = () => {
   const searchParams = useSearchParams();
   const recordId = searchParams.get('id');
   const { isLoading: isApiReady } = useApiClient();
-  const { getJobRecordList, getJobRecordDetail, getPlaybookDetail, previewPlaybookFile } = useJobApi();
+  const { getJobRecordList, getJobRecordDetail, getPlaybookDetail, previewPlaybookFile, cancelExecution } = useJobApi();
 
   // List state
   const [data, setData] = useState<JobRecord[]>([]);
@@ -206,6 +207,30 @@ const JobRecordPage = () => {
       }
     }
   }, [getJobRecordDetail]);
+
+  const handleCancelExecution = useCallback(() => {
+    if (!detail) return;
+    Modal.confirm({
+      title: t('job.cancelExecution'),
+      content: t('job.cancelExecutionConfirm'),
+      okText: t('job.confirm'),
+      cancelText: t('job.cancel'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const res = await cancelExecution(detail.id);
+          // 后端按 CAS 分流：cancelled=确实未执行；cancelling=已开始执行，等待远端结果回写
+          if (res?.status === 'cancelling') {
+            message.warning(t('job.cancelRequested'));
+          } else {
+            message.success(t('job.cancelSuccess'));
+          }
+        } finally {
+          fetchDetail(detail.id, true);
+        }
+      },
+    });
+  }, [detail, cancelExecution, fetchDetail, t]);
 
   const handleReExecute = useCallback(async () => {
     if (!detail) return;
@@ -371,7 +396,9 @@ const JobRecordPage = () => {
       running: { color: 'processing', label: t('job.statusRunning') },
       success: { color: 'success', label: t('job.statusSuccess') },
       failed: { color: 'error', label: t('job.statusFailed') },
-      canceled: { color: 'warning', label: t('job.statusCanceled') },
+      timeout: { color: 'error', label: t('job.statusTimeout') },
+      cancelled: { color: 'warning', label: t('job.statusCanceled') },
+      cancelling: { color: 'processing', label: t('job.statusCancelling') },
     };
     return configs[status] || configs.pending;
   };
@@ -420,7 +447,9 @@ const JobRecordPage = () => {
         { id: 'running', name: t('job.statusRunning') },
         { id: 'success', name: t('job.statusSuccess') },
         { id: 'failed', name: t('job.statusFailed') },
-        { id: 'canceled', name: t('job.statusCanceled') },
+        { id: 'timeout', name: t('job.statusTimeout') },
+        { id: 'cancelled', name: t('job.statusCanceled') },
+        { id: 'cancelling', name: t('job.statusCancelling') },
       ],
     },
     {
@@ -900,6 +929,16 @@ const JobRecordPage = () => {
               </Tag>
             </div>
             <div className="flex items-center gap-2">
+              {['pending', 'running', 'cancelling'].includes(detail.status) && (
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  disabled={detail.status === 'cancelling'}
+                  onClick={handleCancelExecution}
+                >
+                  {detail.status === 'cancelling' ? t('job.statusCancelling') : t('job.cancelExecution')}
+                </Button>
+              )}
               <Button
                 icon={<ReloadOutlined />}
                 onClick={handleReExecute}
@@ -908,6 +947,16 @@ const JobRecordPage = () => {
               </Button>
             </div>
           </div>
+
+          {/* Cancelling Tip */}
+          {detail.status === 'cancelling' && (
+            <Alert
+              message={t('job.cancellingTip')}
+              type="warning"
+              showIcon
+              className="mb-4"
+            />
+          )}
 
           {/* Meta Info Row */}
           <div className="flex items-center justify-between">

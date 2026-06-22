@@ -1,0 +1,76 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_netscaler"
+        config_type = "netscaler"
+        brand = "netscaler"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Citrix NetScaler CPU (NS-ROOT-MIB resCpuUsage, per-CPU table, %, PEN 5951) ----
+    # 待现网核验：resCpuUsage 列 1.3.6.1.4.1.5951.4.1.1.41.6.1.2（每 CPU 利用率%，按 CPU 名[Mgmt/Packet CPU n]索引；LibreNMS os_discovery 用此列）。
+    # 多 CPU → device_cpu_usage avg() by instance_id。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5951.4.1.1.41.6.1.2"
+        name = "usage"
+    # ---- NetScaler memory (NS-ROOT-MIB resMemUsage, 直接利用率%, scalar) ----
+    # 待现网核验：resMemUsage 1.3.6.1.4.1.5951.4.1.1.41.2.0（memUsageInPcnt，直接%；snmprec=5）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5951.4.1.1.41.2.0"
+        name = "usage"
+    # ---- NetScaler current client connections (NS-ROOT-MIB tcpCurClientConn, scalar) ----
+    # 待现网核验：tcpCurClientConn 1.3.6.1.4.1.5951.4.1.1.46.12.0（当前客户端连接数；snmprec=39）。
+    # 度量名取 lb_current_connections（measurement=lb + field=current_connections），对齐 loadbalance 盘连接 or-chain。
+    [[inputs.snmp.table]]
+        name = "lb"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5951.4.1.1.46.12.0"
+        name = "current_connections"
+# ---- 温度/风扇/电源：NetScaler 传感器在 nsSysHealthTable(1.3.6.1.4.1.5951.4.1.1.41.7.1.2)按传感器名[CPU0Temperature/Voltage…]字符串索引混合,需行级名称过滤 → inputs.snmp 不支持 → N/A 不采。仅 CPU/内存/连接/接口干净可采。----

@@ -57,7 +57,40 @@ from apps.system_mgmt.utils.channel_utils import (
 )
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.pwd_policy_cache import get_pwd_policy_settings as _get_pwd_policy_settings
 from apps.system_mgmt.utils.token_blacklist import blacklist_token, is_blacklisted
+
+
+def _collect_ancestor_group_ids(seed_ids):
+    """
+    从 seed_ids 出发，沿 parent_id 链向上收集所有祖先组 ID（含自身）。
+
+    仅使用轻量级 values_list 查询（不加载角色关联），避免全表 prefetch。
+    返回的集合可用于后续有针对性地加载完整 Group 对象。
+
+    :param seed_ids: 起始组 ID 列表（通常为 user.group_list）
+    :return: 包含 seed_ids 及其所有祖先的 ID set
+    """
+    if not seed_ids:
+        return set()
+    # 一次查询获取全表的 (id, parent_id, allow_inherit_roles)，仅传输轻量列
+    all_meta = {
+        row[0]: (row[1], row[2])
+        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
+    }
+    result = set()
+    stack = list(seed_ids)
+    while stack:
+        gid = stack.pop()
+        if gid in result:
+            continue
+        result.add(gid)
+        meta = all_meta.get(gid)
+        if meta:
+            parent_id, allow_inherit = meta
+            if parent_id and parent_id not in result:
+                stack.append(parent_id)
+    return result
 
 
 def get_user_all_roles(user):
@@ -75,8 +108,12 @@ def get_user_all_roles(user):
 
     group_role_ids = set()
     if user.group_list:
-        # 单次查询所有组织，内存中完成递归，避免 N+1
-        all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+        # 先收集祖先组 ID（轻量查询），再按需加载完整对象（含角色关联）
+        ancestor_ids = _collect_ancestor_group_ids(user.group_list)
+        all_groups = {
+            g.id: g
+            for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
+        }
 
         visited = set()
 
@@ -216,14 +253,24 @@ def verify_token(token):
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
 
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-    group_list = Group.objects.all().order_by("id")
-    if not is_superuser:
-        group_list = group_list.filter(id__in=user.group_list)
-    groups = list(group_list.values("id", "name", "parent_id"))
 
-    queryset = Group.objects.prefetch_related("roles").all()
+    if is_superuser:
+        # 超管需要完整组树：单次全量查询（含角色关联）
+        queryset = list(Group.objects.prefetch_related("roles").all().order_by("id"))
+        groups = [{"id": g.id, "name": g.name, "parent_id": g.parent_id} for g in queryset]
+    else:
+        # 非超管：仅加载用户直属组及其祖先（供树路径展示），消除全表扫描
+        visible_ids = _collect_ancestor_group_ids(user.group_list)
+        queryset = list(
+            Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id")
+        )
+        groups = [
+            {"id": g.id, "name": g.name, "parent_id": g.parent_id}
+            for g in queryset
+            if g.id in set(user.group_list)
+        ]
 
-    # 构建嵌套组结构
+    # 构建嵌套组结构（queryset 已按范围过滤，避免全表扫描）
     groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
 
     menus = cache.get(f"menus-user:{user.id}")
@@ -1238,12 +1285,10 @@ def login(username, password):
         # 密码错误，递增错误次数
         user.password_error_count += 1
 
-        # 获取系统设置的最大重试次数和锁定时长
-        max_retry_setting = SystemSettings.objects.filter(key="pwd_set_max_retry_count").first()
-        max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
-
-        lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
-        lock_duration_seconds = int(lock_duration_setting.value) if lock_duration_setting else 180  # 默认180秒(3分钟)
+        # 批量读取密码策略（单次 DB 查询 + 缓存，避免每次失败登录多次打 DB）
+        pwd_policy = _get_pwd_policy_settings()
+        max_retry_count = pwd_policy["pwd_set_max_retry_count"]
+        lock_duration_seconds = pwd_policy["pwd_set_lock_duration"]
 
         # 如果错误次数达到或超过最大重试次数，锁定账号
         if user.password_error_count >= max_retry_count:
@@ -1278,14 +1323,13 @@ def login(username, password):
     # 检查密码过期
     password_expiry_reminder = ""
     if user.password_last_modified:
-        # 获取密码有效期和提醒提前天数
-        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
-        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+        # 批量读取密码策略（与密码错误路径共用同一缓存，无额外 DB 开销）
+        pwd_policy = _get_pwd_policy_settings()
+        validity_period_days = pwd_policy["pwd_set_validity_period"]
 
         # validity_period_days <= 0 表示永不过期，跳过过期检查
         if validity_period_days > 0:
-            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+            reminder_days = pwd_policy["pwd_set_expiry_reminder_days"]
 
             password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
             days_until_expire = (password_expire_date - now).days
@@ -1360,23 +1404,26 @@ def reset_pwd(username, domain, password, caller_token=""):
 
 @nats_client.register
 def wechat_user_register(user_id, nick_name):
-    user, is_first_login = User.objects.get_or_create(username=user_id, defaults={"display_name": nick_name})
-    default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
-    if not user.group_list and default_group:
-        user.group_list = [default_group.id]
-    default_role = list(
-        Role.objects.filter(
-            Q(name="normal", app__in=["opspilot", "ops-console"])
-            | Q(
-                name="guest",
-                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
-            )
-        ).values_list("id", flat=True)
-    )
-    default_role.extend(user.role_list)
-    user.role_list = list(set(default_role))
-    user.last_login = timezone.now()
-    user.save()
+    with transaction.atomic():
+        user, is_first_login = User.objects.select_for_update().get_or_create(
+            username=user_id, defaults={"display_name": nick_name}
+        )
+        default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
+        if not user.group_list and default_group:
+            user.group_list = [default_group.id]
+        default_role = list(
+            Role.objects.filter(
+                Q(name="normal", app__in=["opspilot", "ops-console"])
+                | Q(
+                    name="guest",
+                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
+                )
+            ).values_list("id", flat=True)
+        )
+        default_role.extend(user.role_list)
+        user.role_list = list(set(default_role))
+        user.last_login = timezone.now()
+        user.save()
     try:
         if default_group:
             set_opspilot_guest_group_default_rule(default_group, user)
@@ -1612,13 +1659,13 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
         # Initialize language loader for user's locale
         loader = LanguageLoader(app="system_mgmt", default_lang=user.locale or "en")
 
-        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
-        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+        # 批量读取密码策略（单次 DB 查询 + 缓存，复用与 login() 相同的缓存键）
+        pwd_policy = _get_pwd_policy_settings()
+        validity_period_days = pwd_policy["pwd_set_validity_period"]
 
         # validity_period_days <= 0 表示永不过期，跳过过期检查
         if validity_period_days > 0:
-            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+            reminder_days = pwd_policy["pwd_set_expiry_reminder_days"]
 
             now = timezone.now()
             password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)

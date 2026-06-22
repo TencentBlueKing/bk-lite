@@ -12,6 +12,7 @@ from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType,
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_file
@@ -31,6 +32,47 @@ def distribute_files_task(execution_id: int):
 def execute_playbook_task(execution_id: int):
     client = PlaybookExecution(execution_id)
     client.run()
+
+
+@shared_task(max_retries=0)
+def finalize_cancelling_execution(execution_id: int):
+    """兜底收敛：CANCELLING 滞留超时后强制收敛为 CANCELLED 终态。
+
+    CAS 仅在仍为 CANCELLING 时生效（真实结果已回写并收敛后即为 no-op）；已有结果保留，
+    对缺失结果的目标补一条"远端结果未知"的 CANCELLED 结果并发 done 哨兵关闭前端面板。
+    """
+    updated = JobExecution.objects.filter(id=execution_id, status=ExecutionStatus.CANCELLING).update(
+        status=ExecutionStatus.CANCELLED, finished_at=timezone.now()
+    )
+    if not updated:
+        return
+    execution = JobExecution.objects.filter(id=execution_id).first()
+    if execution is None:
+        # CAS 命中后记录被删除（防御分支）：静默返回
+        return
+
+    results = list(execution.execution_results or [])
+    have_keys = {str(r.get("target_key")) for r in results}
+    for t in execution.target_list or []:
+        tk = t.get("node_id") or str(t.get("target_id", ""))
+        if tk in have_keys:
+            continue
+        results.append(
+            {
+                "target_key": tk,
+                "name": t.get("name", ""),
+                "ip": t.get("ip", ""),
+                "status": ExecutionStatus.CANCELLED,
+                "error_message": "任务已取消，远端结果未知",
+            }
+        )
+        publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
+
+    execution.execution_results = results
+    execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
+    execution.failed_count = sum(1 for r in results if r.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
+    execution.save(update_fields=["execution_results", "success_count", "failed_count", "updated_at"])
+    logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
 
 
 @shared_task(max_retries=0)

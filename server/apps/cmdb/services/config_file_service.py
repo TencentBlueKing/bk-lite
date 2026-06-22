@@ -16,6 +16,7 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.permission_utils import get_permission_rules
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.utils.team_utils import get_current_team
 
 MAX_CONFIG_FILE_SIZE_LIMIT = 5 * 1024 * 1024
 
@@ -612,7 +613,7 @@ class ConfigFileService(object):
 
     @staticmethod
     def filter_queryset_by_task_permission(request, queryset):
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if not current_team:
             return queryset.none()
 

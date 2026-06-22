@@ -24,10 +24,11 @@ from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 
@@ -151,7 +152,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
         include_children = request.COOKIES.get("include_children", "0") == "1"
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
 
         permission = get_permission_rules(
             request.user,
@@ -211,7 +212,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
             include_children=include_children,
@@ -281,7 +282,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
             include_children=include_children,

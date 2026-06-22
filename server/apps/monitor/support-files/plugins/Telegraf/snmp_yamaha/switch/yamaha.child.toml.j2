@@ -1,0 +1,66 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_yamaha"
+        config_type = "yamaha"
+        brand = "yamaha"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Yamaha SWX CPU (YAMAHA-SWHUB-MIB yshCpuUtil1min, 1分平均%, scalar, PEN 1182) ----
+    # 待现网核验：yshCpuUtil1min 1.3.6.1.4.1.1182.3.1.6.0（1 分钟平均 CPU%，直采；Yamaha community swx2300 模板）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1182.3.1.6.0"
+        name = "usage"
+    # ---- Yamaha SWX memory (YAMAHA-SWHUB-MIB yshMemoryUtil, 直接%, scalar) ----
+    # 待现网核验：yshMemoryUtil 1.3.6.1.4.1.1182.3.1.4.0（内存使用率%，直采）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1182.3.1.4.0"
+        name = "usage"
+# ---- 温度/风扇/电源：Yamaha SWX2300 模板仅暴露 CPU/内存/FlashROM,无温度/风扇/电源 sensor → N/A。仅 CPU/内存/接口干净可采。----

@@ -12,6 +12,7 @@ from apps.alerts.models.alert_operator import AlarmStrategy
 from apps.alerts.models.models import Level, Event, Alert
 from apps.alerts.constants import (
     EventAction,
+    EventStatus,
     AlarmStrategyType,
     AlertStatus,
     SessionStatus,
@@ -128,10 +129,11 @@ class AggregationProcessor:
             strategy.name, window_size, cutoff_time.isoformat(),
         )
 
+        # 排除已被屏蔽的事件：屏蔽策略命中的事件不应再参与聚合产出告警
         events = Event.objects.filter(
             received_at__gte=cutoff_time,
             action=EventAction.CREATED,
-        )
+        ).exclude(status=EventStatus.SHIELD)
         logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())
 
         return events
@@ -411,6 +413,10 @@ class AggregationProcessor:
             alert.alert_id,
             deadline.isoformat() if deadline else "",
         )
+        # 缺失检测告警与常规聚合/即时一致，需进入自动分派链路；
+        # 当前处于 select_for_update 事务内，故延迟到提交后再调度，避免回滚后空跑。
+        alert_id = alert.alert_id
+        transaction.on_commit(lambda: self._schedule_auto_assignment([alert_id]))
         return alert
 
     def _recover_missing_alert(

@@ -353,6 +353,8 @@ export interface NodeConfigFormValues {
   nameColor?: string;
   nameFontSize?: number;
   unit?: string;
+  unitId?: string;
+  valueMappings?: import('@/app/ops-analysis/utils/valueMapping').ValueMapping[];
   conversionFactor?: number;
   decimalPlaces?: number;
   thresholdColors?: Array<{
