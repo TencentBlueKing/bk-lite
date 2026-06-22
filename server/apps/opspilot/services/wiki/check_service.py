@@ -78,14 +78,15 @@ def scan_health(knowledge_base):
         has_evidence = PageEvidence.objects.filter(page=page).exists()
         # 孤立:既无关系也无证据
         if not has_relation and not has_evidence:
-            created += _ensure_check(knowledge_base, "orphan", page)
+            created += ensure_check(knowledge_base, "orphan", page)
         # 纯 AI 页面无证据 → 缺来源
         elif page.contribution == "ai" and not has_evidence:
-            created += _ensure_check(knowledge_base, "no_source", page)
+            created += ensure_check(knowledge_base, "no_source", page)
     return created
 
 
-def _ensure_check(knowledge_base, check_type, page):
+def ensure_check(knowledge_base, check_type, page, suggested_actions=None):
+    """幂等创建检查事项:同库同类型同页面已有 open 检查则不重复。返回新建列表。"""
     exists = CheckItem.objects.filter(
         knowledge_base=knowledge_base, check_type=check_type, status="open", related__pages__contains=[page.id]
     ).exists()
@@ -97,6 +98,6 @@ def _ensure_check(knowledge_base, check_type, page):
             check_type=check_type,
             status="open",
             related={"pages": [page.id]},
-            suggested_actions=["dismiss", "supplement_source"],
+            suggested_actions=suggested_actions or ["dismiss", "supplement_source"],
         )
     ]

@@ -14,7 +14,7 @@ from django.db import transaction
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion
-from apps.opspilot.services.wiki.check_service import create_candidate
+from apps.opspilot.services.wiki.check_service import create_candidate, ensure_check
 
 logger = logging.getLogger("opspilot")
 
@@ -85,6 +85,36 @@ def _default_generator(page, material, llm_model_id):
     except Exception:
         logger.exception("wiki 资料更新重写失败 page=%s", page.id)
         return ""
+
+
+@transaction.atomic
+def handle_material_deletion(material, operator=""):
+    """删除资料并记录影响:级联移除证据后,把因此失去全部来源的页面标记为待审。
+
+    返回 BuildRecord(trigger=material_delete)。失去来源的页面生成 source_invalid 检查,
+    交人工决定补充来源或归档,不自动隐藏页面。
+    """
+    kb = material.knowledge_base
+    page_ids = [p.id for p in affected_pages(material)]  # 删除前捕获
+    build = BuildRecord.objects.create(
+        knowledge_base=kb,
+        trigger="material_delete",
+        operator=operator,
+        inputs={"material_id": material.id, "material_name": material.name},
+        stage="done",
+        status="success",
+        progress=100,
+    )
+    material.delete()  # 级联删除该资料的 PageEvidence
+    flagged = []
+    for page in KnowledgePage.objects.filter(id__in=page_ids, status="active"):
+        if not PageEvidence.objects.filter(page=page).exists():
+            if ensure_check(kb, "source_invalid", page, suggested_actions=["supplement_source", "archive"]):
+                flagged.append(page.id)
+    build.counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": len(flagged)}
+    build.affected_pages = flagged
+    build.save(update_fields=["counts", "affected_pages", "updated_at"])
+    return build
 
 
 def propose_update(material, llm_model_id=None, operator="", generator=None):

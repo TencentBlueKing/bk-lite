@@ -6,7 +6,7 @@ from apps.opspilot.models import Material
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
 from apps.opspilot.services.wiki.build_service import build_from_material
 from apps.opspilot.services.wiki.material_service import ingest_material
-from apps.opspilot.services.wiki.update_service import propose_update
+from apps.opspilot.services.wiki.update_service import handle_material_deletion, propose_update
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -47,9 +47,9 @@ class WikiMaterialViewSet(AuthViewSet):
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
         name = instance.name
-        instance.delete()
+        build = handle_material_deletion(instance, operator=getattr(request.user, "username", ""))
         log_operation(request, "delete", "opspilot", f"删除资料: {name}")
-        return JsonResponse({"result": True})
+        return JsonResponse({"result": True, "data": {"pending_review": build.counts.get("pending_review", 0)}})
 
     @action(methods=["POST"], detail=True)
     def ingest(self, request, pk=None):
