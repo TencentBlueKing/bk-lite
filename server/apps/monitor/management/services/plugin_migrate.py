@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 from apps.core.logger import monitor_logger as logger
@@ -10,6 +11,70 @@ from apps.monitor.management.utils import (
     parse_template_filename,
 )
 from apps.monitor.services.plugin import MonitorPluginService
+
+TEMPLATE_COLLECT_TYPE_PATTERN = re.compile(r"""collect_type\s*=\s*["']([^"']+)["']""")
+
+
+class PluginIdentityValidationError(ValueError):
+    """Raised when plugin metadata and local template identity disagree."""
+
+
+def _clean_identity_value(value):
+    if value is None:
+        return ""
+    return str(value).strip()
+
+
+def _resolve_plugin_identity(file_path, plugin_data):
+    """Resolve runtime identity from explicit metadata, then legacy path fallback."""
+    collector_from_path, collect_type_from_path = extract_plugin_path_info(file_path)
+
+    collector = _clean_identity_value(plugin_data.get("collector")) or collector_from_path
+    collect_type = _clean_identity_value(plugin_data.get("collect_type")) or collect_type_from_path
+
+    plugin_data["collector"] = collector
+    plugin_data["collect_type"] = collect_type
+    return collector, collect_type
+
+
+def _validate_ui_identity(plugin_dir, collector, collect_type):
+    ui_file = plugin_dir / "UI.json"
+    if not ui_file.exists() or not ui_file.is_file():
+        return
+
+    ui_data = json.loads(ui_file.read_text(encoding="utf-8"))
+    expected_values = {
+        "collector": collector,
+        "collect_type": collect_type,
+    }
+    for field, expected in expected_values.items():
+        declared = _clean_identity_value(ui_data.get(field))
+        if declared and declared != expected:
+            raise PluginIdentityValidationError(
+                f"{ui_file} {field} mismatch: resolved={expected}, declared={declared}"
+            )
+
+
+def _validate_template_identity(plugin_dir, collect_type):
+    for j2_file in sorted(plugin_dir.glob("*.j2")):
+        if not j2_file.is_file():
+            continue
+
+        content = j2_file.read_text(encoding="utf-8")
+        for match in TEMPLATE_COLLECT_TYPE_PATTERN.finditer(content):
+            declared = _clean_identity_value(match.group(1))
+            if not declared or "{" in declared or "}" in declared:
+                continue
+            if declared != collect_type:
+                raise PluginIdentityValidationError(
+                    f"{j2_file} collect_type mismatch: resolved={collect_type}, declared={declared}"
+                )
+
+
+def _validate_plugin_identity(file_path, collector, collect_type):
+    plugin_dir = Path(file_path).parent
+    _validate_ui_identity(plugin_dir, collector, collect_type)
+    _validate_template_identity(plugin_dir, collect_type)
 
 
 def _collect_file_supplementary_indicators(plugin_data, supplementary_map):
@@ -44,10 +109,8 @@ def _import_plugins_from_files(path_list):
             plugin_data = json.loads(Path(file_path).read_text(encoding="utf-8"))
             _collect_file_supplementary_indicators(plugin_data, supplementary_map)
 
-            # 从文件路径提取采集器和采集方式信息
-            collector, collect_type = extract_plugin_path_info(file_path)
-            plugin_data["collector"] = collector
-            plugin_data["collect_type"] = collect_type
+            collector, collect_type = _resolve_plugin_identity(file_path, plugin_data)
+            _validate_plugin_identity(file_path, collector, collect_type)
 
             plugin_name = plugin_data.get("plugin")
             MonitorPluginService.import_monitor_plugin(plugin_data)
