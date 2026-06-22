@@ -6,6 +6,7 @@ from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.check_service import scan_health
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
+from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -101,3 +102,16 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         kb = self.get_object()
         created = scan_health(kb)
         return JsonResponse({"result": True, "data": {"created": len(created)}})
+
+    @action(methods=["POST"], detail=True)
+    def rebuild_relations(self, request, pk=None):
+        """重建页面关系(共享资料/正文引用)。"""
+        kb = self.get_object()
+        created = rebuild_relations(kb)
+        return JsonResponse({"result": True, "data": {"relations": len(created)}})
+
+    @action(methods=["GET"], detail=True)
+    def relations(self, request, pk=None):
+        """返回知识库的页面关系边(供校验与图谱)。"""
+        kb = self.get_object()
+        return JsonResponse({"result": True, "data": list_relations(kb)})

@@ -97,6 +97,11 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
             page.save(update_fields=["current_version"])
             PageEvidence.objects.create(page=page, material=material, material_version=material.current_version)
             affected.append(page.id)
+        if affected:
+            # 新页面与同库其他页面建立关系(共享资料/正文引用)
+            from apps.opspilot.services.wiki.relation_service import rebuild_relations
+
+            rebuild_relations(kb)
         build.counts = {"new": len(affected), "updated": 0, "unchanged": 0, "pending_review": 0}
         build.affected_pages = affected
         build.stage = "done"
