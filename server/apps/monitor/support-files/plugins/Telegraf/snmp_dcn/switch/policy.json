@@ -1,0 +1,30 @@
+{
+  "object": "Switch",
+  "plugin": "Switch DCN SNMP",
+  "templates": [
+  {
+    "name": "DCN交换机CPU使用率过高",
+    "alert_name": "交换机${resource_name} CPU 使用率过高",
+    "description": "监控神州数码（DCN）交换机控制平面的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+    "metric_name": "device_cpu_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  },
+  {
+    "name": "DCN交换机内存使用率过高",
+    "alert_name": "交换机${resource_name} 内存使用率过高",
+    "description": "监控神州数码（DCN）交换机整体内存使用率（按 used/total 计算），当超过阈值时触发告警，便于及时发现内存泄漏、表项过大或容量不足等问题，防止设备不稳定或分配失败。",
+    "metric_name": "device_memory_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  }
+  ]
+}

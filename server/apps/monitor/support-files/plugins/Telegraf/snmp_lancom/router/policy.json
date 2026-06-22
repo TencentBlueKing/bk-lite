@@ -1,0 +1,30 @@
+{
+  "object": "Router",
+  "plugin": "Router LANCOM SNMP",
+  "templates": [
+    {
+      "name": "LANCOM路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 LANCOM LCOS 路由器/VPN 网关的硬件温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}
