@@ -47,6 +47,20 @@ def test_display_fields_contract(path):
                 assert metric, f"{path}: 空 metric"
                 # 禁止存活/uptime 类进默认列
                 assert metric not in FORBIDDEN_METRICS, f"{path}: 列 {col['name']} 含禁用指标 {metric}"
-                # 绑定带 plugin 时，指标须存在于本文件(plugin 留空=跨插件绑定，跳过校验)
-                if plugin and not data.get("is_compound_object"):
+                # 仅校验"本插件"绑定的指标存在于本文件；跨插件绑定(Host 多绑定的外插件)与
+                # plugin 留空(SNMP 跨品牌)绑定均跳过——它们的指标不在本文件理所应当。
+                if plugin and plugin == data.get("plugin") and not data.get("is_compound_object"):
                     assert metric in metric_names, f"{path}: 列 {col['name']} 指标 {metric} 不在本文件"
+
+
+def test_host_three_plugins_share_same_block():
+    base = os.path.join(os.path.dirname(__file__), "..", "support-files", "plugins", "Telegraf")
+    paths = [f"{base}/host/os/metrics.json", f"{base}/http/windows_wmi/metrics.json", f"{base}/http/host/metrics.json"]
+    blocks = []
+    for p in paths:
+        with open(p, encoding="utf-8") as f:
+            blocks.append(json.load(f)["display_fields"])
+    assert [c["name"] for c in blocks[0]] == [c["name"] for c in blocks[1]] == [c["name"] for c in blocks[2]]
+    cpu = blocks[0][0]
+    plugins = {b["plugin"] for b in cpu["metrics"]}
+    assert plugins == {"Host", "Windows WMI", "Host Remote"}, plugins
