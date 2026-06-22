@@ -29,7 +29,13 @@ class WebhookAdapter(AlertSourceAdapter):
             else:
                 data = request.POST.dict()
 
-            return self._transform_alert_to_event(data)
+            # 路由到批量丰富路径（与主流程 create_events 保持一致）
+            saved_batches = self.create_events([data])
+            # saved_batches 是 [[Event, ...], ...] 的分批列表；取第一个事件返回
+            for batch in saved_batches:
+                if batch:
+                    return batch[0]
+            return None
         except Exception as e:
             logger.error("[AlertSource] 处理 webhook 请求失败: %s", e, exc_info=True)
             raise

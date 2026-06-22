@@ -38,6 +38,9 @@ from .operator_log import OperatorLogModelSerializer
 # 策略
 from .strategy import AlarmStrategySerializer
 
+# 告警丰富
+from .enrichment import EnrichmentRuleModelSerializer
+
 __all__ = [
     # 告警源
     "AlertSourceModelSerializer",
@@ -59,6 +62,8 @@ __all__ = [
     "OperatorLogModelSerializer",
     # 策略
     "AlarmStrategySerializer",
+    # 告警丰富
+    "EnrichmentRuleModelSerializer",
 ]
 # @File: __init__.py.py
 # @Time: 2025/5/9 14:59
