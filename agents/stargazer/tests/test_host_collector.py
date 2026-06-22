@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 import os
+import subprocess
 import types
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -341,6 +342,44 @@ class TestBuildScript:
         assert '\\"mount\\":\\"$mount_json\\"' in disk_script
         assert 'iface_json=$(json_escape "$iface")' in net_script
         assert '\\"interface\\":\\"$iface_json\\"' in net_script
+
+    def test_linux_disk_script_normalizes_dash_inode_percent_to_valid_json(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake_df = bin_dir / "df"
+        fake_df.write_text(
+            """#!/bin/sh
+if [ "$1" = "-P" ] && [ "$2" = "-B1" ]; then
+  cat <<'DATA'
+Filesystem 1B-blocks Used Available Capacity Mounted on
+/dev/sda1 100 50 50 50% /
+DATA
+  exit 0
+fi
+if [ "$1" = "-Pi" ]; then
+  cat <<'DATA'
+Filesystem Inodes IUsed IFree IUse% Mounted on
+/dev/sda1 100 50 50 - /
+DATA
+  exit 0
+fi
+exit 1
+""",
+            encoding="utf-8",
+        )
+        fake_df.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+
+        result = subprocess.run(
+            ["bash", "-c", build_script("linux", ["disk"])],
+            check=True,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        assert payload["disk"][0]["inodes_used_percent"] == 0
 
     def test_linux_net_script_filters_virtual_interfaces(self):
         script = build_script("linux", ["net"])

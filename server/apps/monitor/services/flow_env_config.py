@@ -5,6 +5,8 @@ from apps.monitor.models import MonitorInstance
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.models import CollectorConfiguration
+from apps.node_mgmt.services.sidecar import Sidecar
+from apps.node_mgmt.tasks.action_task import converge_collector_action_task_for_node
 
 
 class FlowEnvConfigService:
@@ -59,6 +61,7 @@ class FlowEnvConfigService:
                     env_patch=env_patch,
                 )
                 config_obj.save(update_fields=["env_config"])
+                cls._queue_converge_for_config_nodes(config_obj, cloud_region_id=cloud_region_id)
             except Exception:
                 logger.exception("刷新 Flow Telegraf 基础配置 env_config 失败: config_id=%s", config_obj.id)
 
@@ -89,3 +92,19 @@ class FlowEnvConfigService:
             **(existing_env_config or {}),
             **env_config,
         }
+
+    @staticmethod
+    def _queue_converge_for_config_nodes(config_obj, *, cloud_region_id):
+        nodes = config_obj.nodes.filter(
+            cloud_region_id=cloud_region_id,
+            node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+        ).order_by("id")
+        for node in nodes:
+            try:
+                Sidecar.create_default_config(node, [ControllerConstants.NODE_TYPE_CONTAINER])
+            except Exception:
+                logger.exception("刷新 Flow Telegraf 基础配置后重建预置配置失败: node_id=%s", node.id)
+            try:
+                converge_collector_action_task_for_node.delay(node.id)
+            except Exception:
+                logger.exception("刷新 Flow Telegraf 基础配置后下发收敛任务失败: node_id=%s", node.id)

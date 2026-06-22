@@ -171,134 +171,134 @@
     {
       "metric_group": "Network",
       "name": "host_net_rx_bytes",
-      "query": "host_net_rx_bytes_gauge{instance_type=\"os\", __$labels__}",
+      "query": "rate(host_net_rx_bytes_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network RX Bytes",
       "data_type": "Number",
-      "unit": "bytes",
+      "unit": "byteps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network bytes received per interface"
+      "description": "Network byte receive rate per interface"
     },
     {
       "metric_group": "Network",
       "name": "host_net_tx_bytes",
-      "query": "host_net_tx_bytes_gauge{instance_type=\"os\", __$labels__}",
+      "query": "rate(host_net_tx_bytes_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network TX Bytes",
       "data_type": "Number",
-      "unit": "bytes",
+      "unit": "byteps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network bytes transmitted per interface"
+      "description": "Network byte transmit rate per interface"
     },
     {
       "metric_group": "Network",
       "name": "host_net_rx_errors",
-      "query": "host_net_rx_errors_gauge{instance_type=\"os\", __$labels__}",
+      "query": "rate(host_net_rx_errors_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network RX Errors",
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network receive errors per interface"
+      "description": "Network receive error rate per interface"
     },
     {
       "metric_group": "Network",
       "name": "host_net_tx_errors",
-      "query": "host_net_tx_errors_gauge{instance_type=\"os\", __$labels__}",
+      "query": "rate(host_net_tx_errors_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network TX Errors",
       "data_type": "Number",
-      "unit": "counts",
+      "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network transmit errors per interface"
+      "description": "Network transmit error rate per interface"
     },
     {
       "metric_group": "Network",
       "name": "net_packets_recv_rate",
-      "query": "rate(net_packets_recv_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_packets_recv_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Receive Packet Rate",
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network received packet rate over the past 5 minutes"
+      "description": "Network received packet rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_packets_sent_rate",
-      "query": "rate(net_packets_sent_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_packets_sent_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Transmit Packet Rate",
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network transmitted packet rate over the past 5 minutes"
+      "description": "Network transmitted packet rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_bytes_recv_rate",
-      "query": "rate(net_bytes_recv_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_bytes_recv_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Receive Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network received byte rate over the past 5 minutes"
+      "description": "Network received byte rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_bytes_sent_rate",
-      "query": "rate(net_bytes_sent_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_bytes_sent_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Transmit Byte Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network transmitted byte rate over the past 5 minutes"
+      "description": "Network transmitted byte rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_err_in_rate",
-      "query": "rate(net_err_in_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_err_in_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Receive Error Rate",
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network receive error rate over the past 5 minutes"
+      "description": "Network receive error rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_err_out_rate",
-      "query": "rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_err_out_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Transmit Error Rate",
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network transmit error rate over the past 5 minutes"
+      "description": "Network transmit error rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_drop_in_rate",
-      "query": "rate(net_drop_in_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_drop_in_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Receive Drop Rate",
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network receive drop rate over the past 5 minutes"
+      "description": "Network receive drop rate over the past 1 minute"
     },
     {
       "metric_group": "Network",
       "name": "net_drop_out_rate",
-      "query": "rate(net_drop_out_gauge{instance_type=\"os\", __$labels__}[5m])",
+      "query": "rate(net_drop_out_gauge{instance_type=\"os\", __$labels__}[1m])",
       "display_name": "Network Transmit Drop Rate",
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [{"name": "interface"}],
       "instance_id_keys": ["instance_id"],
-      "description": "Network transmit drop rate over the past 5 minutes"
+      "description": "Network transmit drop rate over the past 1 minute"
     },
     {
       "metric_group": "CPU",

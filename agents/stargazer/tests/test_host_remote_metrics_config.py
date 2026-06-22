@@ -20,6 +20,10 @@ def test_host_remote_network_metrics_expose_telegraf_rate_semantics():
     metrics = _load_metrics_by_name()
 
     expected = {
+        "host_net_rx_bytes": ("host_net_rx_bytes_gauge", "byteps"),
+        "host_net_tx_bytes": ("host_net_tx_bytes_gauge", "byteps"),
+        "host_net_rx_errors": ("host_net_rx_errors_gauge", "cps"),
+        "host_net_tx_errors": ("host_net_tx_errors_gauge", "cps"),
         "net_packets_recv_rate": ("net_packets_recv_gauge", "cps"),
         "net_packets_sent_rate": ("net_packets_sent_gauge", "cps"),
         "net_bytes_recv_rate": ("net_bytes_recv_gauge", "byteps"),
@@ -32,9 +36,13 @@ def test_host_remote_network_metrics_expose_telegraf_rate_semantics():
 
     for metric_name, (source_metric, unit) in expected.items():
         metric = metrics[metric_name]
+        dimensions = [
+            dimension["name"] if isinstance(dimension, dict) else dimension
+            for dimension in metric["dimensions"]
+        ]
         assert metric["metric_group"] == "Network"
         assert metric["unit"] == unit
-        assert metric["dimensions"] == ["interface"]
+        assert dimensions == ["interface"]
         assert metric["query"] == (
-            f'rate({source_metric}{{instance_type="os", __$labels__}}[5m])'
+            f'rate({source_metric}{{instance_type="os", __$labels__}}[1m])'
         )
