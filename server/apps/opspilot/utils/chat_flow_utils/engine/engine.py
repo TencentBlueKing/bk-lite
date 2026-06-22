@@ -106,6 +106,9 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         self.variable_manager.set_variable("execution_id", self.execution_id)
         self.variable_manager.set_variable("last_message", input_data.get("last_message", ""))
         self.variable_manager.set_variable("flow_input", input_data)
+        # 跨轮历史注入所需的稳定锚点：本轮用户原话 + bot_id（flow_input 不一定带 bot_id）
+        self.variable_manager.set_variable("original_user_message", input_data.get("last_message", ""))
+        self.variable_manager.set_variable("bot_id", self.instance.bot_id)
 
     @staticmethod
     def _to_datetime(timestamp: Optional[float]):

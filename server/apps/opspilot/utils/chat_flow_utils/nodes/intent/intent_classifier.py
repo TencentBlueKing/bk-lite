@@ -6,7 +6,11 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.enum import SkillTypeChoices
 from apps.opspilot.services.chat_service import ChatService
+from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
+
+# 意图分类读取最近 N 条会话消息用于解析省略/指代（如"深圳呢"），由下游 process_chat_history 精确加窗
+INTENT_HISTORY_WINDOW = 5
 
 
 class IntentClassifierNode(BaseNodeExecutor):
@@ -86,9 +90,9 @@ class IntentClassifierNode(BaseNodeExecutor):
             "llm_model": llm_model,
             "skill_prompt": self._build_intent_prompt(node_id, intent_names, config.get("classificationRules", "")),
             "temperature": 0.1,
-            "chat_history": [{"event": "user", "message": message}],
+            "chat_history": build_node_chat_history(self.variable_manager, message, message),
             "user_message": message,
-            "conversation_window_size": 1,
+            "conversation_window_size": INTENT_HISTORY_WINDOW,
             "enable_rag": False,
             "enable_rag_knowledge_source": False,
             "show_think": False,

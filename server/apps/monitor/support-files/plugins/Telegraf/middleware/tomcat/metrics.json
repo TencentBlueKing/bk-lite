@@ -9,7 +9,7 @@
   "default_metric": "any({instance_type='tomcat'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["tomcat_connector_current_threads_busy", "tomcat_jvm_memorypool_used", "tomcat_connector_error_count_rate"],
-  "display_fields": [{"name": "Busy Threads Count", "sort_order": 0, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_connector_current_threads_busy"}]}, {"name": "Memory Pool Used", "sort_order": 1, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_jvm_memorypool_used"}]}, {"name": "Error Request Rate", "sort_order": 2, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_connector_error_count_rate"}]}],
+  "display_fields": [{"name": "线程池利用率", "sort_order": 0, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_connector_current_thread_utilization"}]}, {"name": "请求处理速率", "sort_order": 1, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_connector_request_count_rate"}]}, {"name": "错误请求速率", "sort_order": 2, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_connector_error_count_rate"}]}, {"name": "内存池使用量", "sort_order": 3, "metrics": [{"plugin": "Tomcat", "metric": "tomcat_jvm_memorypool_used"}]}],
   "metrics": [
     {
       "metric_group": "Connector",

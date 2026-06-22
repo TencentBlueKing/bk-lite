@@ -9,7 +9,7 @@
   "default_metric": "any({instance_type='redis'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["redis_mem_fragmentation_ratio", "redis_clients", "redis_evicted_keys_rate"],
-  "display_fields": [{"name": "Memory Fragmentation Ratio", "sort_order": 0, "metrics": [{"plugin": "Redis", "metric": "redis_mem_fragmentation_ratio"}]}, {"name": "Client Connections", "sort_order": 1, "metrics": [{"plugin": "Redis", "metric": "redis_clients"}]}, {"name": "Key Eviction Frequency", "sort_order": 2, "metrics": [{"plugin": "Redis", "metric": "redis_evicted_keys_rate"}]}],
+  "display_fields": [{"name":"客户端连接数","sort_order":0,"metrics":[{"plugin":"Redis","metric":"redis_clients"}]}, {"name":"实时操作频率","sort_order":1,"metrics":[{"plugin":"Redis","metric":"redis_instantaneous_ops_per_sec"}]}, {"name":"缓存命中率","sort_order":2,"metrics":[{"plugin":"Redis","metric":"redis_keyspace_hitrate"}]}, {"name":"内存碎片率","sort_order":3,"metrics":[{"plugin":"Redis","metric":"redis_mem_fragmentation_ratio"}]}, {"name":"键驱逐频率","sort_order":4,"metrics":[{"plugin":"Redis","metric":"redis_evicted_keys_rate"}]}],
   "metrics": [
     {
       "metric_group": "Base",
