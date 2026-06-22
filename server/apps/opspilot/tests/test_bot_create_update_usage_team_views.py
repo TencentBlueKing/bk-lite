@@ -148,3 +148,18 @@ class TestBotUpdateTeamPermission:
         assert resp.status_code == 200
         bot.refresh_from_db()
         assert bot.team == [1, 2]
+
+    def test_update_keeping_existing_unmanaged_org_allowed(self):
+        """回归:保留既有(用户无权管理)的 team 组织、仅改其它字段时不应被误拦。
+
+        team 校验应只针对【新增】组织(与 usage_team 分支一致);否则只管理 bot 部分组织的用户
+        (get_has_permission 取交集即放行)连改名都会被全量校验误判 403。
+        """
+        bot = Bot.objects.create(name="tp3", team=[1, 2], usage_team=[1, 2])
+        user = _make_normal_user("bot_tp_u3", [1], {"opspilot": {"bot_settings-Edit"}})
+        with patch.object(BotViewSet, "get_has_permission", return_value=True):
+            resp = _put(user, 1, {"name": "tp3-renamed", "team": [1, 2]}, pk=bot.id)
+        assert resp.status_code == 200
+        bot.refresh_from_db()
+        assert bot.name == "tp3-renamed"
+        assert bot.team == [1, 2]
