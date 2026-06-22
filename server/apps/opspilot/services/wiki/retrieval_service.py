@@ -66,6 +66,36 @@ def search(knowledge_base, query, top_k=5):
     return results[:top_k]
 
 
+def hybrid_search(knowledge_base, query, top_k=5, candidate_k=20, embed_fn=None):
+    """混合检索:关键词召回候选 → 语义重排 → RRF 融合。无嵌入/失败时回退关键词。
+
+    embed_fn(texts)->List[vector] 可注入以便测试;默认走知识库的 EmbedProvider。
+    """
+    from apps.opspilot.services.wiki.embedding_service import cosine, embed_texts, rrf_fuse
+
+    candidates = search(knowledge_base, query, top_k=candidate_k)
+    if not candidates:
+        return []
+
+    def _key(c):
+        return f"{c['kind']}:{c['id']}"
+
+    by_key = {_key(c): c for c in candidates}
+    kw_rank = [_key(c) for c in candidates]
+
+    embed = embed_fn or (lambda texts: embed_texts(texts, knowledge_base.embed_provider))
+    qvecs = embed([query])
+    cvecs = embed([f"{c['title']} {c['snippet']}" for c in candidates])
+    if not qvecs or not cvecs or len(cvecs) != len(candidates):
+        return candidates[:top_k]  # 无嵌入 → 回退关键词
+
+    qv = qvecs[0]
+    order = sorted(range(len(candidates)), key=lambda i: cosine(qv, cvecs[i]), reverse=True)
+    sem_rank = [_key(candidates[i]) for i in order]
+    fused = rrf_fuse([kw_rank, sem_rank], top_k=top_k)
+    return [by_key[k] for k in fused]
+
+
 def _answer_with_llm(query, contexts, llm_model_id):
     if not llm_model_id:
         return None

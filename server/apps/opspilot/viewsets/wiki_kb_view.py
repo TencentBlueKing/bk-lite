@@ -11,6 +11,7 @@ from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_
 from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
+from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.wiki_context_service import build_context
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -91,6 +92,13 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         kb = self.get_object()
         query = request.data.get("query") if request.method == "POST" else request.GET.get("query", "")
         results = wiki_search(kb, query or "", top_k=int(request.GET.get("top_k", 5)))
+        return JsonResponse({"result": True, "data": results})
+
+    @action(methods=["POST"], detail=True)
+    def hybrid_search(self, request, pk=None):
+        """混合检索:关键词召回 + 语义重排 + RRF 融合(知识库需配置 EmbedProvider 才启用语义)。"""
+        kb = self.get_object()
+        results = wiki_hybrid_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
         return JsonResponse({"result": True, "data": results})
 
     @action(methods=["POST"], detail=True)
