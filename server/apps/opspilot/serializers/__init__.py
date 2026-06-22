@@ -4,5 +4,10 @@ from apps.opspilot.serializers.chat_application_serializer import ChatApplicatio
 from apps.opspilot.serializers.history_serializer import HistorySerializer  # noqa
 from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer  # noqa
 from apps.opspilot.serializers.rasa_model_serializer import RasaModelSerializer  # noqa
-from apps.opspilot.serializers.wiki_serializers import MaterialSerializer, WikiKnowledgeBaseSerializer  # noqa
+from apps.opspilot.serializers.wiki_serializers import (  # noqa
+    BuildRecordSerializer,
+    KnowledgePageSerializer,
+    MaterialSerializer,
+    WikiKnowledgeBaseSerializer,
+)
 from apps.opspilot.serializers.workflow_task_result_serializer import WorkFlowTaskResultSerializer  # noqa

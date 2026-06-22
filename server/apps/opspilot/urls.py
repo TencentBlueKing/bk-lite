@@ -18,8 +18,10 @@ from apps.opspilot.viewsets import (
     RerankProviderViewSet,
     SkillRequestLogViewSet,
     SkillToolsViewSet,
+    WikiBuildRecordViewSet,
     WikiKnowledgeBaseViewSet,
     WikiMaterialViewSet,
+    WikiPageViewSet,
     WorkFlowTaskResultViewSet,
 )
 from apps.opspilot.viewsets.memory_engine_view import MemoryEngineViewSet
@@ -53,6 +55,8 @@ router.register(r"memory_mgmt/memory_engines", MemoryEngineViewSet, basename="me
 # wiki (new knowledge base)
 router.register(r"wiki_mgmt/knowledge_base", WikiKnowledgeBaseViewSet, basename="wiki_knowledge_base")
 router.register(r"wiki_mgmt/material", WikiMaterialViewSet, basename="wiki_material")
+router.register(r"wiki_mgmt/page", WikiPageViewSet, basename="wiki_page")
+router.register(r"wiki_mgmt/build_record", WikiBuildRecordViewSet, basename="wiki_build_record")
 
 urlpatterns = router.urls
 

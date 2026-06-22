@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.opspilot.models import Material, WikiKnowledgeBase
+from apps.opspilot.models import BuildRecord, KnowledgePage, Material, WikiKnowledgeBase
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
@@ -47,3 +47,48 @@ class MaterialSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "content_hash", "ai_summary", "status", "error_message", "created_by", "created_at", "updated_at"]
+
+
+class KnowledgePageSerializer(serializers.ModelSerializer):
+    body = serializers.SerializerMethodField()
+
+    class Meta:
+        model = KnowledgePage
+        fields = [
+            "id",
+            "knowledge_base",
+            "page_type",
+            "title",
+            "tags",
+            "contribution",
+            "update_method",
+            "status",
+            "current_version",
+            "body",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+
+    def get_body(self, obj):
+        return obj.current_version.body if obj.current_version_id else ""
+
+
+class BuildRecordSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = BuildRecord
+        fields = [
+            "id",
+            "knowledge_base",
+            "trigger",
+            "operator",
+            "inputs",
+            "stage",
+            "progress",
+            "counts",
+            "affected_pages",
+            "errors",
+            "status",
+            "created_at",
+            "updated_at",
+        ]
