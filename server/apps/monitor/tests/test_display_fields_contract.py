@@ -34,8 +34,9 @@ def test_display_fields_contract(path):
         dfs = obj.get("display_fields")
         if not dfs:
             continue  # 缺默认列的对象由各自任务补齐，这里不强制
-        # 列数 3~5
-        assert 3 <= len(dfs) <= 5, f"{path}: 列数={len(dfs)} 不在 [3,5]"
+        # 列数 ∈ [min(3, 指标数), 5]：指标少于3个的对象(如 TCP/SangforSCP 仅 1 个)放宽下界
+        lo = min(3, len(obj.get("metrics", [])))
+        assert lo <= len(dfs) <= 5, f"{path}: 列数={len(dfs)} 不在 [{lo},5]"
         metric_names = {m["name"] for m in obj.get("metrics", [])}
         for col in dfs:
             assert col.get("name"), f"{path}: 列缺 name"
