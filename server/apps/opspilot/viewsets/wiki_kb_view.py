@@ -5,6 +5,8 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
+from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
+from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -76,3 +78,18 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
             llm_model_id=request.data.get("llm_model_id"),
         )
         return JsonResponse({"result": True, "data": {"purpose_md": purpose, "schema_md": schema}})
+
+    @action(methods=["GET", "POST"], detail=True)
+    def search(self, request, pk=None):
+        """在知识库内检索(知识页面 + 资料摘要)。"""
+        kb = self.get_object()
+        query = request.data.get("query") if request.method == "POST" else request.GET.get("query", "")
+        results = wiki_search(kb, query or "", top_k=int(request.GET.get("top_k", 5)))
+        return JsonResponse({"result": True, "data": results})
+
+    @action(methods=["POST"], detail=True)
+    def qa(self, request, pk=None):
+        """问答试用:检索 + 作答 + 引用(可追溯到资料)。"""
+        kb = self.get_object()
+        result = wiki_answer(kb, request.data.get("query", ""), llm_model_id=kb.llm_model_id)
+        return JsonResponse({"result": True, "data": result})
