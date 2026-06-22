@@ -1,0 +1,95 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_alliedtelesis"
+        config_type = "alliedtelesis"
+        brand = "alliedtelesis"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Allied Telesis AlliedWare Plus CPU (AT-SYSINFO-MIB cpuUtilisationStackAvgLastMinute, 每栈成员%, PEN 207) ----
+    # 待现网核验：1.3.6.1.4.1.207.8.4.4.3.3.8.1.4（每栈成员近 1 分钟平均 CPU%，按列 walk，avg by instance；awplus.snmprec 实测 1）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.207.8.4.4.3.3.8.1.4"
+        name = "usage"
+    # ---- Allied 温度 (AT-ENVMONv2-MIB atEnvMonv2TemperatureCurrent, 每传感器 ℃, 专用表) ----
+    # 待现网核验：1.3.6.1.4.1.207.8.4.4.3.12.3.1.5（按列 walk 所有温度传感器，max by instance；metrics 滤 128/-128 无效哨兵；实测 26-30）。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.207.8.4.4.3.12.3.1.5"
+        name = "celsius"
+    # ---- Allied 风扇状态 (AT-ENVMONv2-MIB atEnvMonv2FanStatus) ----
+    # 待现网核验：1.3.6.1.4.1.207.8.4.4.3.12.1.1.7（原始码 good(2)/failed(1)/null(-1)；下方 enum 归一 2→1正常,其余→2异常；实测 2）。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.207.8.4.4.3.12.1.1.7"
+        name = "state"
+    # ---- Allied 电源状态 (AT-ENVMONv2-MIB atEnvMonv2PsbSensorStatus) ----
+    # 待现网核验：1.3.6.1.4.1.207.8.4.4.3.12.4.2.1.6（good(2)/failed(1)/notPowered(3)/null(-1)；enum 归一 2→1,其余→2；实测 2）。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.207.8.4.4.3.12.4.2.1.6"
+        name = "state"
+# ---- 内存:AlliedWare Plus 无标准 mempool 私有 OID(LibreNMS awplus 无 mempool 块) → 内存 N/A。CPU/温度/风扇/电源四项干净可采。----
+# ---- 状态归一:风扇/电源 good(2)→1(正常),其余(failed/notPowered/null)→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1

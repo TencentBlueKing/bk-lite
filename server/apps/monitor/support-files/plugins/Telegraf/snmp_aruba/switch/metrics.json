@@ -1,14 +1,19 @@
 {
   "plugin": "Switch Aruba SNMP",
-  "plugin_desc": "Aruba-specific SNMP collection for switches (ArubaOS-CX). In addition to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for device health: per-module CPU and memory utilization, temperature sensors, fan and power-supply status. Aruba reports memory as a utilization percentage directly; fan/psu states are normalized to the unified 1=normal convention.",
+  "plugin_desc": "Aruba-specific SNMP collection for switches (ArubaOS-CX). In addition to standard IF-MIB interface metrics, it collects ARUBAWIRED private OIDs for device health: per-module CPU and memory utilization, temperature sensors, fan and power-supply status. Aruba reports memory as a utilization percentage directly; fan/psu states are normalized to the unified 1=normal convention. Supported brands/models — Aruba / HPE ArubaOS-CX and ArubaOS-Switch (some formerly HP ProCurve; 2530/2930/3810/5400/6300/8300, etc.).",
   "status_query": "any({instance_type='switch', collect_type='snmp_aruba'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='switch'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["device_cpu_usage", "device_memory_usage"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
   "metrics": [
     {
       "metric_group": "CPU",
@@ -18,7 +23,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the CPU utilization of the Aruba device control plane (ARUBAWIRED per-module CPU utilization), normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
@@ -29,7 +36,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports overall memory utilization of the Aruba device (ARUBAWIRED per-module memory utilization), reported directly as a 0-100 percentage. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
@@ -39,8 +48,15 @@
       "display_name": "Temperature",
       "data_type": "Number",
       "unit": "celsius",
-      "dimensions": [{"name": "descr", "description": "Sensor description"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Sensor description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the temperature reading of each Aruba hardware sensor (ARUBAWIRED temperature sensor), in degrees Celsius. Abnormally high temperatures may indicate fan failure, blocked airflow, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
     },
     {
@@ -50,8 +66,15 @@
       "display_name": "Fan Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [{"name": "descr", "description": "Fan description"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Fan description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the operational state of each Aruba cooling fan, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state indicates a cooling fault that can quickly lead to overheating and should be investigated immediately."
     },
     {
@@ -61,8 +84,15 @@
       "display_name": "Power Supply Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"normal\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"warning\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"critical\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"shutdown\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"notPresent\",\"id\":5,\"color\":\"#d9d9d9\"},{\"name\":\"notFunctioning\",\"id\":6,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [{"name": "descr", "description": "Power supply description"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "descr",
+          "description": "Power supply description"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the operational state of each Aruba power supply unit, normalized to the unified convention where 1 means normal and any other value indicates an abnormal/fault state. A non-normal state signals a power redundancy or hardware fault and must be remediated promptly."
     },
     {
@@ -72,8 +102,15 @@
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
     },
     {
@@ -83,8 +120,15 @@
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
     }
   ]
