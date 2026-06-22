@@ -69,6 +69,12 @@
 - 技能设置页:`选择 Wiki 知识库` 多选(打通 P4 端到端配置)
 - 校验方式:`npx eslint <files>`(全绿)+ `npx tsc -p tsconfig.lint.json`(仅 3 个既有 env 基线错误,均非 wiki 文件);运行时冒烟需主仓库(worktree Turbopack 跑不起)
 
+## 补齐(2026-06-22 第二轮:把"spec 简化项"补成逐字实现)
+- **构建两步法**:`build_service` 改为 Stage1 抽取要点 → Stage2 依 Schema 生成页面(对标 llm_wiki)。
+- **Louvain 社区发现**:`graph_service._louvain`(纯 Python 模块度贪心 + 多层聚合)替换标签传播,无依赖。
+- **PageChunk 分块级嵌入**:模型 + 迁移 `0063` + 按标题切分 + 块级语义检索(`reindex_chunks`/`chunk_search`)。
+- **版本 diff**:`page_service.diff_versions`(unified diff)+ `page/{id}/diff` 接口 + 前端 PageTab 版本对比视图。
+
 ## 待办(剩余 —— 仅 2 项,均为本环境无法提供的外部服务/运行时)
 
 代码已全部就位并测试;以下两项只受真实外部依赖限制,我无法在此环境代为执行:
