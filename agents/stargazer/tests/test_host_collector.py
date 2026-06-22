@@ -1194,7 +1194,7 @@ class TestHostCollectorCollect:
         mock_adhoc.assert_called_once()
         call_kwargs = mock_adhoc.call_args[1]
         assert call_kwargs["ansible_node_id"] == "region1"
-        assert call_kwargs["module"] == "shell"
+        assert call_kwargs["module"] == "raw"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
         assert call_kwargs["task_id"] == "collect-123"
         assert call_kwargs["callback"] == {
@@ -1458,7 +1458,7 @@ class TestHostCollectorCollect:
         mock_adhoc.assert_called_once()
         call_kwargs = mock_adhoc.call_args[1]
         assert call_kwargs["ansible_node_id"] == "region1"
-        assert call_kwargs["module"] == "shell"
+        assert call_kwargs["module"] == "raw"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)
