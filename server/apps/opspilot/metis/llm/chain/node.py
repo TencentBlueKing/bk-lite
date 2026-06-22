@@ -21,7 +21,6 @@ from langchain_mcp_adapters.client import MultiServerMCPClient
 from langgraph.constants import END
 from langgraph.graph import StateGraph
 from langgraph.prebuilt import ToolNode
-from pydantic import BaseModel
 from pydantic import BaseModel as PydanticBaseModel
 from pydantic import Field as PydanticField
 
@@ -688,7 +687,7 @@ class ToolsNodes(BasicNode):
         parser = StructuredOutputParser(llm)
         return await parser.parse_with_structured_output(user_message, pydantic_model)
 
-    async def setup(self, request: BaseModel):
+    async def setup(self, request: PydanticBaseModel):
         """初始化工具节点"""
         # 初始化LLM客户端和结构化输出解析器
         self.llm = self.get_llm_client(request)
@@ -850,7 +849,7 @@ class ToolsNodes(BasicNode):
         if not done_cfg.enabled:
             return None
 
-        class DoneToolInput(BaseModel):
+        class DoneToolInput(PydanticBaseModel):
             result: str = PydanticField(description="任务的最终结构化结果（JSON 字符串）")
 
         def _done_func(result: str) -> str:
@@ -868,7 +867,7 @@ class ToolsNodes(BasicNode):
     def _build_approval_tool(self):
         """构建 request_human_approval 工具，供 LLM 在判断操作高危时主动调用"""
 
-        class ApprovalToolInput(BaseModel):
+        class ApprovalToolInput(PydanticBaseModel):
             action: str = PydanticField(description="即将执行的操作描述，包括工具名和关键参数")
             reason: str = PydanticField(description="为什么需要人工审批（风险说明）")
             risk_level: str = PydanticField(default="medium", description="风险等级: low / medium / high / critical")
