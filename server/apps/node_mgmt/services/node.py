@@ -67,6 +67,7 @@ class NodeService:
     @staticmethod
     def process_node_data(node_data):
         """处理节点数据列表，并补充每个节点的采集器名称和采集器配置名称"""
+        collector_ids = set()
         configuration_ids = set()
 
         # 收集所有需要的 collector_id 和 configuration_id
@@ -74,15 +75,10 @@ class NodeService:
             if "collectors" not in node["status"]:
                 continue
             for collector in node["status"]["collectors"]:
+                collector_ids.add(collector["collector_id"])
                 configuration_ids.add(collector["configuration_id"])
 
-        # 批量查询所有需要的 Collector 和 CollectorConfiguration
-        collectors = Collector.objects.all()
-        collector_dict = {collector.id: collector for collector in collectors}
-
-        configurations = CollectorConfiguration.objects.filter(id__in=configuration_ids)
-        configuration_dict = {config.id: config for config in configurations}
-
+        # 先查询安装状态，收集安装记录中涉及的 collector_id
         node_ids = [node["id"] for node in node_data]
         node_install_map = {}
         objs = NodeCollectorInstallStatus.objects.filter(node__in=node_ids)
@@ -94,7 +90,15 @@ class NodeService:
             else:
                 status = 10
 
+            collector_ids.add(obj.collector_id)
             node_install_map.setdefault(obj.node_id, []).append(dict(collector_id=obj.collector_id, status=status, message=obj.result))
+
+        # 批量查询所有需要的 Collector 和 CollectorConfiguration（仅过滤本页涉及的 ID）
+        collectors = Collector.objects.filter(id__in=collector_ids) if collector_ids else []
+        collector_dict = {collector.id: collector for collector in collectors}
+
+        configurations = CollectorConfiguration.objects.filter(id__in=configuration_ids)
+        configuration_dict = {config.id: config for config in configurations}
 
         # 处理节点数据
         for node in node_data:
