@@ -249,6 +249,7 @@ def get_skill_and_params(kwargs, team, bot_id=None):
         "tools": skill_obj.tools,
         "skill_type": skill_obj.skill_type,
         "group": skill_obj.team[0],
+        "wiki_kb_ids": list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True)),
     }
 
     return skill_obj, params, None

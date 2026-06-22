@@ -32,3 +32,17 @@ def build_context(kb_ids, query, top_k=5, per_kb=5):
         lines.append(f"[{i}] 《{h['title']}》(知识库: {h['kb_name']})\n{h['snippet']}")
         citations.append({"n": i, "kb_id": h["kb_id"], "kind": h["kind"], "id": h["id"], "title": h["title"]})
     return {"context": "\n\n".join(lines), "citations": citations, "hits": hits}
+
+
+def augment_prompt(system_prompt, kb_ids, query, top_k=5):
+    """把 Wiki 检索上下文拼接进系统提示词,返回 (新提示词, citations)。
+
+    无所选知识库 / 无查询 / 无命中时,原样返回提示词与空引用,确保对聊天链零副作用。
+    """
+    if not kb_ids or not (query or "").strip():
+        return system_prompt, []
+    result = build_context(kb_ids, query, top_k=top_k)
+    if not result["context"]:
+        return system_prompt, []
+    augmented = f"{system_prompt or ''}\n\n" "【相关知识库信息】(回答时请优先参考以下内容,并在末尾用 [n] 标注所引用的条目)\n" f"{result['context']}"
+    return augmented, result["citations"]

@@ -88,6 +88,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "enable_query_rewrite",
             "instance_id",
             "is_builtin",
+            "wiki_knowledge_bases",
             # 只读派生字段（保持现有读取输出不变）
             "permissions",
             "team_name",

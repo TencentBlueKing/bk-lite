@@ -303,6 +303,15 @@ class ChatService:
         # 处理 skill_params: 解密并替换 prompt 中的 {{key}} 占位符
         resolved_prompt = resolve_skill_params(kwargs["skill_prompt"], kwargs.get("skill_params", []))
 
+        # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词
+        wiki_kb_ids = kwargs.get("wiki_kb_ids")
+        if wiki_kb_ids:
+            from apps.opspilot.services.wiki.wiki_context_service import augment_prompt
+
+            resolved_prompt, wiki_citations = augment_prompt(resolved_prompt, wiki_kb_ids, user_message)
+            if wiki_citations:
+                extra_config["wiki_citations"] = wiki_citations
+
         # 构建聊天参数
         chat_kwargs = {
             "openai_api_base": llm_model.openai_api_base,
