@@ -3,3 +3,4 @@ from .channel_mgmt import *  # noqa
 from .memory_mgmt import *  # noqa
 from .model_provider_mgmt import *  # noqa
 from .user_pin import *  # noqa
+from .wiki_mgmt import *  # noqa
