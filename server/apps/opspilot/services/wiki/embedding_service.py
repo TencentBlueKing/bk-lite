@@ -9,8 +9,44 @@ RRF 融合关键词序与语义序。只需对小候选集调用嵌入服务,无
 
 import logging
 import math
+import re
 
 logger = logging.getLogger("opspilot")
+
+_HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
+
+
+def chunk_markdown(body, max_chars=800):
+    """按 markdown 标题切分正文为块,过长段落再按 max_chars 二次切。
+
+    返回 [{idx, text, heading_path}];heading_path 为该块所属最近标题。
+    """
+    sections, heading, buf = [], "", []
+
+    def _flush():
+        text = "\n".join(buf).strip()
+        if text:
+            sections.append({"heading_path": heading, "text": text})
+
+    for line in (body or "").splitlines():
+        m = _HEADING_RE.match(line)
+        if m:
+            _flush()
+            heading = m.group(2).strip()
+            buf = [line]
+        else:
+            buf.append(line)
+    _flush()
+
+    out = []
+    for sec in sections:
+        text = sec["text"]
+        if len(text) <= max_chars:
+            out.append(sec)
+        else:
+            for i in range(0, len(text), max_chars):
+                out.append({"heading_path": sec["heading_path"], "text": text[i : i + max_chars]})
+    return [{"idx": i, **sec} for i, sec in enumerate(out)]
 
 
 def cosine(a, b):
@@ -91,6 +127,85 @@ def semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
         if score > 0:
             body = cv.body or ""
             results.append({"kind": "page", "id": page.id, "title": page.title, "snippet": body[:300], "score": score})
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results[:top_k]
+
+
+def reindex_page_chunks(page, embed_provider, embed_fn=None):
+    """重建某页面当前版本的分块索引:删旧块 → 切块 → 批量嵌入 → 落库。返回建索引的块数。"""
+    from django.db import transaction
+
+    from apps.opspilot.models import PageChunk
+
+    cv = page.current_version
+    if not cv:
+        return 0
+    chunks = chunk_markdown(cv.body or "")
+    if not chunks:
+        with transaction.atomic():
+            PageChunk.objects.filter(page=page).delete()
+        return 0
+    embed = embed_fn or (lambda texts: embed_texts(texts, embed_provider))
+    vecs = embed([c["text"] for c in chunks])
+    if not vecs or len(vecs) != len(chunks):
+        return 0
+    with transaction.atomic():
+        PageChunk.objects.filter(page=page).delete()
+        PageChunk.objects.bulk_create(
+            [
+                PageChunk(
+                    page=page,
+                    version=cv,
+                    idx=c["idx"],
+                    text=c["text"],
+                    heading_path=c["heading_path"][:512],
+                    embedding=vecs[i],
+                )
+                for i, c in enumerate(chunks)
+            ]
+        )
+    return len(chunks)
+
+
+def reindex_chunks(knowledge_base, embed_fn=None):
+    """为知识库所有有效页面重建分块索引,返回 (页面数, 块数)。"""
+    from apps.opspilot.models import KnowledgePage
+
+    pages = KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").select_related("current_version")
+    n_pages = n_chunks = 0
+    for page in pages:
+        c = reindex_page_chunks(page, knowledge_base.embed_provider, embed_fn=embed_fn)
+        if c:
+            n_pages += 1
+            n_chunks += c
+    return n_pages, n_chunks
+
+
+def chunk_semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
+    """块级语义检索:query 嵌入 vs 已存块嵌入余弦,返回 [{page_id,title,heading_path,snippet,score}]。"""
+    from apps.opspilot.models import PageChunk
+
+    embed = embed_fn or (lambda texts: embed_texts(texts, knowledge_base.embed_provider))
+    qvecs = embed([query])
+    if not qvecs or not qvecs[0]:
+        return []
+    qv = qvecs[0]
+    results = []
+    chunks = PageChunk.objects.filter(page__knowledge_base=knowledge_base, page__status="active").select_related("page")
+    for ch in chunks:
+        if not ch.embedding:
+            continue
+        score = cosine(qv, ch.embedding)
+        if score > 0:
+            results.append(
+                {
+                    "page_id": ch.page_id,
+                    "title": ch.page.title,
+                    "heading_path": ch.heading_path,
+                    "snippet": (ch.text or "")[:300],
+                    "score": score,
+                }
+            )
     results.sort(key=lambda r: r["score"], reverse=True)
     return results[:top_k]
 

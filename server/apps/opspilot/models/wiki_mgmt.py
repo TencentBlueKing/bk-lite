@@ -122,6 +122,24 @@ class PageEvidence(TimeInfo):
         db_table = "opspilot_wiki_page_evidence"
 
 
+class PageChunk(TimeInfo):
+    """页面分块:按标题/段落切分当前版本正文,块级嵌入,支持细粒度语义检索(P6)。
+
+    embedding 用 JSONField 存向量(无需 pgvector);规模化可换 pgvector 列。
+    """
+
+    page = models.ForeignKey(KnowledgePage, on_delete=models.CASCADE, related_name="chunks")
+    version = models.ForeignKey(PageVersion, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+    idx = models.IntegerField(default=0)
+    text = models.TextField(default="")
+    heading_path = models.CharField(max_length=512, blank=True, default="")
+    embedding = models.JSONField(default=list, blank=True)
+
+    class Meta:
+        db_table = "opspilot_wiki_page_chunk"
+        ordering = ["page_id", "idx"]
+
+
 class BuildRecord(MaintainerInfo, TimeInfo):
     knowledge_base = models.ForeignKey(WikiKnowledgeBase, on_delete=models.CASCADE, related_name="build_records")
     trigger = models.CharField(max_length=30, default="material")  # material / rebuild / material_update / material_delete

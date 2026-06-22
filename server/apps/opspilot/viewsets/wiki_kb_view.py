@@ -5,6 +5,8 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.check_service import scan_health
+from apps.opspilot.services.wiki.embedding_service import chunk_semantic_search as wiki_chunk_search
+from apps.opspilot.services.wiki.embedding_service import reindex_chunks as wiki_reindex_chunks
 from apps.opspilot.services.wiki.embedding_service import reindex_knowledge_base
 from apps.opspilot.services.wiki.embedding_service import semantic_search as wiki_semantic_search
 from apps.opspilot.services.wiki.graph_service import analyze_graph, build_graph
@@ -115,6 +117,20 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         """纯语义检索:基于已存储的页面嵌入做余弦相似检索(需先 reindex 且配置 EmbedProvider)。"""
         kb = self.get_object()
         results = wiki_semantic_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
+        return JsonResponse({"result": True, "data": results})
+
+    @action(methods=["POST"], detail=True)
+    def reindex_chunks(self, request, pk=None):
+        """构建/刷新分块索引:按标题切分页面正文,块级嵌入入库(细粒度语义检索)。"""
+        kb = self.get_object()
+        n_pages, n_chunks = wiki_reindex_chunks(kb)
+        return JsonResponse({"result": True, "data": {"pages": n_pages, "chunks": n_chunks}})
+
+    @action(methods=["POST"], detail=True)
+    def chunk_search(self, request, pk=None):
+        """块级语义检索:返回最相关的页面分块(含所属标题),需先 reindex_chunks。"""
+        kb = self.get_object()
+        results = wiki_chunk_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
         return JsonResponse({"result": True, "data": results})
 
     @action(methods=["POST"], detail=True)
