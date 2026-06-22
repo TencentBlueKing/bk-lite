@@ -100,6 +100,18 @@ LLM / 语义检索 / 图片 OCR 均已**真实端到端验证**(上方);仅剩:
 
 > 其余原"受阻"项均已**真实验证或完成**:LLM 构建/问答/摘要/Purpose 生成(模型 130)、语义检索/分块/混合(真实向量,api.v36.cm 嵌入)、图片 OCR(api.v36.cm gpt-4o vision)全部**真实端到端跑通**;beat 周期已注册;`wiki_list` 已入菜单;两步构建/Louvain/PageChunk/版本 diff 已补齐。pgvector 为多 DB 可移植性故意不作默认(JSON+余弦跨 7 种库,pgvector 仅 Postgres 专属可选)。
 
+## 前端浏览器交互冒烟 —— 主仓库验收清单(worktree 跑不了,此处给步骤)
+> worktree 前端运行时被嵌套 node_modules 路由冲突 500(已证),且浏览器自动化+登录态只在主仓库具备。在主仓库(依赖 hoist 完整)按下列步骤点验:
+
+1. 切到含本分支前端代码的检出,`cd web && pnpm install`(hoist 安装,无嵌套 .pnpm)。
+2. 确保后端在跑、已 `migrate`、有可用 LLM(模型 130)与嵌入/OCR(把 EmbedProvider#36 / OCRProvider 指向 `https://api.v36.cm/v1`)。
+3. `pnpm dev`(Turbopack)→ 登录 → 访问 `/opspilot/wiki`。
+4. 逐工作区点验:
+   - 列表页:新建知识库(填名称/简介/模板,点"AI 生成"出 Purpose/Schema),编辑、删除。
+   - 详情 7 Tab:概览(统计)、资料(新增文本/网页→解析→构建→删除)、知识页面(查看正文/版本/对比 diff/恢复)、构建记录、检查审核(扫描→接受/拒绝)、关系图谱(G6 画布渲染+社区着色)、问答试用(提问→答案+引用)。
+   - 技能设置页:"选择 Wiki 知识库"多选保存,对话验证注入。
+5. 预期:各接口 200、列表/表格/画布正常渲染、增删改即时刷新。
+
 ## 已上线 API(`/api/v1/opspilot/wiki_mgmt/`)
 - `knowledge_base/`(CRUD)+ 动作 `templates` `generate_purpose_schema` `search` `qa` `scan` `rebuild_relations` `relations` `graph` `overview` `context`(detail=False)
 - `material/`(CRUD,destroy 含删除影响)+ 动作 `ingest` `build` `propose_update`
