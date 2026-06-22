@@ -6,6 +6,7 @@ import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import BuildRecordTab from '@/app/opspilot/components/wiki/BuildRecordTab';
 import CheckTab from '@/app/opspilot/components/wiki/CheckTab';
+import GraphTab from '@/app/opspilot/components/wiki/GraphTab';
 import MaterialTab from '@/app/opspilot/components/wiki/MaterialTab';
 import OverviewTab from '@/app/opspilot/components/wiki/OverviewTab';
 import PageTab from '@/app/opspilot/components/wiki/PageTab';
@@ -26,6 +27,7 @@ const WikiDetailPage: React.FC = () => {
     { key: 'page', label: t('wiki.page'), children: <PageTab kbId={kbId} /> },
     { key: 'build', label: t('wiki.buildRecord'), children: <BuildRecordTab kbId={kbId} /> },
     { key: 'check', label: t('wiki.check'), children: <CheckTab kbId={kbId} /> },
+    { key: 'graph', label: t('wiki.graph'), children: <GraphTab kbId={kbId} /> },
     { key: 'qa', label: t('wiki.qa'), children: <QaTab kbId={kbId} /> },
   ];
 
