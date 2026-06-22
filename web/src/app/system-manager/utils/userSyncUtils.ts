@@ -1,0 +1,187 @@
+import type {
+  BusinessTemplate,
+  ProviderManifest,
+} from '@/app/system-manager/types/integration-center';
+import type {
+  AvailableInstance,
+  UserSyncSource,
+  UserSyncSourceBasicFormValues,
+  UserSyncSourceCreateFormValues,
+  UserSyncSourceStrategyFormValues,
+} from '@/app/system-manager/types/user-sync';
+
+export interface PaginatedResponse<T> {
+  count: number;
+  items: T[];
+}
+
+export function normalizeUserSyncList<T>(
+  response: T[] | PaginatedResponse<T>
+): T[] {
+  if (Array.isArray(response)) return response;
+  return (response as PaginatedResponse<T>).items ?? [];
+}
+
+export function buildSchedulePayload(
+  scheduleEnabled: boolean,
+  syncTime: string | undefined
+): { enabled: boolean; sync_time: string } {
+  return { enabled: scheduleEnabled, sync_time: syncTime ?? '' };
+}
+
+export function parseScheduleConfig(
+  scheduleConfig: { enabled?: boolean; sync_time?: string } | null | undefined
+): { scheduleEnabled: boolean; syncTime: string } {
+  if (!scheduleConfig) {
+    return { scheduleEnabled: false, syncTime: '' };
+  }
+  return {
+    scheduleEnabled: scheduleConfig.enabled ?? false,
+    syncTime: scheduleConfig.sync_time ?? '',
+  };
+}
+
+export function resolveUserSyncTemplate(
+  instanceId: number | undefined,
+  availableInstances: AvailableInstance[],
+  providers: ProviderManifest[],
+): BusinessTemplate | null {
+  if (!instanceId) return null;
+  const instance = availableInstances.find((item) => item.id === instanceId);
+  if (!instance) return null;
+  const provider = providers.find((item) => item.key === instance.provider_key);
+  if (!provider) return null;
+  const capability = provider.capabilities.find((item) => item.key === 'user_sync');
+  if (!capability?.business_template) return null;
+  return provider.business_templates?.[capability.business_template] ?? null;
+}
+
+export function getWriteOnlyKeys(template: BusinessTemplate | null): Set<string> {
+  if (!template) return new Set();
+  const keys = new Set<string>();
+  for (const group of template.groups) {
+    for (const field of group.fields) {
+      if (field.write_only) keys.add(field.key);
+    }
+  }
+  return keys;
+}
+
+export function getUserSyncTemplateField(template: BusinessTemplate | null, fieldKey: string) {
+  if (!template) return null;
+  for (const group of template.groups) {
+    for (const field of group.fields) {
+      if (field.key === fieldKey) return field;
+    }
+  }
+  return null;
+}
+
+export function getDefaultDepartmentIdType(template: BusinessTemplate | null): string {
+  const field = getUserSyncTemplateField(template, 'department_id_type');
+  if (!field) return '';
+  if (typeof field.default === 'string' && field.default) return field.default;
+  const firstOption = field.options[0]?.value;
+  return typeof firstOption === 'string' ? firstOption : '';
+}
+
+function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSource> {
+  return {
+    name: source.name,
+    integration_instance: source.integration_instance,
+    enabled: source.enabled,
+    description: source.description,
+    root_group_name: source.root_group_name,
+    field_mapping: { ...(source.field_mapping || {}) },
+    schedule_config: {
+      enabled: source.schedule_config?.enabled ?? false,
+      sync_time: source.schedule_config?.sync_time ?? '',
+    },
+    business_config: { ...(source.business_config || {}) },
+  };
+}
+
+function stripEmptyWriteOnlyFields(
+  businessConfig: Record<string, unknown>,
+  writeOnlyKeys: Set<string>
+): Record<string, unknown> {
+  const nextConfig = { ...businessConfig };
+  for (const key of writeOnlyKeys) {
+    const value = nextConfig[key];
+    if (value === undefined || value === null || value === '') {
+      delete nextConfig[key];
+    }
+  }
+  return nextConfig;
+}
+
+export function buildCreateSyncSourcePayload(
+  values: UserSyncSourceCreateFormValues,
+  fieldMapping: Record<string, string>
+): Partial<UserSyncSource> {
+  return {
+    name: values.name,
+    integration_instance: values.integration_instance,
+    enabled: true,
+    description: values.description,
+    root_group_name: values.root_group_name,
+    field_mapping: fieldMapping,
+    schedule_config: buildSchedulePayload(false, ''),
+    business_config: {
+      ...(values.business_config || {}),
+    },
+  };
+}
+
+export function buildBasicUpdatePayload(
+  source: UserSyncSource,
+  values: UserSyncSourceBasicFormValues
+): Partial<UserSyncSource> {
+  return {
+    ...buildExistingSourcePayload(source),
+    name: values.name,
+    description: values.description,
+  };
+}
+
+export function buildConfigUpdatePayload(
+  source: UserSyncSource,
+  businessConfig: Record<string, unknown> | undefined,
+  fieldMapping: Record<string, string>
+): Partial<UserSyncSource> {
+  return {
+    ...buildExistingSourcePayload(source),
+    field_mapping: fieldMapping,
+    business_config: {
+      ...(businessConfig || {}),
+    },
+  };
+}
+
+export function buildStrategyUpdatePayload(
+  source: UserSyncSource,
+  values: UserSyncSourceStrategyFormValues
+): Partial<UserSyncSource> {
+  return {
+    ...buildExistingSourcePayload(source),
+    enabled: values.enabled,
+    schedule_config: buildSchedulePayload(values.schedule_enabled, values.sync_time),
+  };
+}
+
+export function buildConfigPreviewPayload(
+  source: UserSyncSource,
+  businessConfig: Record<string, unknown> | undefined,
+  fieldMapping: Record<string, string>,
+  writeOnlyKeys: Set<string>
+): Record<string, unknown> {
+  const payload = buildConfigUpdatePayload(source, businessConfig, fieldMapping);
+  return {
+    source_id: source.id,
+    ...payload,
+    business_config: stripEmptyWriteOnlyFields(
+      (payload.business_config || {}) as Record<string, unknown>,
+      writeOnlyKeys
+    ),
+  };
+}
