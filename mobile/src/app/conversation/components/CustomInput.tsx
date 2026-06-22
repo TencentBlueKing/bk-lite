@@ -61,12 +61,14 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     // 当 selectedFiles 变化时，清理已移除文件的 Blob URL
     useEffect(() => {
         const currentMap = fileBlobUrlsRef.current;
+        const toDelete: File[] = [];
         currentMap.forEach((url, file) => {
             if (!selectedFiles.includes(file)) {
                 URL.revokeObjectURL(url);
-                currentMap.delete(file);
+                toDelete.push(file);
             }
         });
+        toDelete.forEach((f) => currentMap.delete(f));
     }, [selectedFiles]);
 
     // 组件卸载时释放所有持有的 Blob URL
