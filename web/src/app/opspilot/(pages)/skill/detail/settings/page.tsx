@@ -12,6 +12,8 @@ import { SelectTool } from '@/app/opspilot/types/tool';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
 import { useSkillApi } from '@/app/opspilot/api/skill';
+import { useWikiApi } from '@/app/opspilot/api/wiki';
+import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
 
@@ -23,6 +25,7 @@ const SkillSettingsPage: React.FC = () => {
   const { groups, loading: groupsLoading } = useGroups();
   const { t } = useTranslation();
   const { fetchSkillDetail, fetchLlmModels, saveSkillDetail } = useSkillApi();
+  const { fetchKnowledgeBases } = useWikiApi();
   const { refreshSkillInfo } = useSkill();
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
@@ -44,6 +47,7 @@ const SkillSettingsPage: React.FC = () => {
   const [skillPermissions, setSkillPermissions] = useState<string[]>([]);
   const [guideValue, setGuideValue] = useState<string>('');
   const [hasInvalidParamKeys, setHasInvalidParamKeys] = useState(false);
+  const [wikiKbs, setWikiKbs] = useState<WikiKnowledgeBase[]>([]);
 
   const syncSkillParamsFromPrompt = useCallback((promptText: string) => {
     const validRegex = /\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g;
@@ -88,6 +92,7 @@ const SkillSettingsPage: React.FC = () => {
           show_think: data.show_think,
           enable_suggest: data.enable_suggest,
           enable_query_rewrite: data.enable_query_rewrite,
+          wiki_knowledge_bases: data.wiki_knowledge_bases || [],
         });
         setGuideValue(data.guide || initialGuide);
         setChatHistoryEnabled(data.enable_conversation_history);
@@ -113,6 +118,9 @@ const SkillSettingsPage: React.FC = () => {
       try {
         const llmModelsData = await fetchLlmModels();
         setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; vendor_name?: string; }[]);
+        fetchKnowledgeBases()
+          .then(setWikiKbs)
+          .catch(() => undefined);
         fetchFormData();
       } catch (error) {
         console.error(t('common.fetchFailed'), error);
@@ -153,6 +161,7 @@ const SkillSettingsPage: React.FC = () => {
         enable_suggest: values.enable_suggest,
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
+        wiki_knowledge_bases: values.wiki_knowledge_bases || [],
       };
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
@@ -315,6 +324,14 @@ const SkillSettingsPage: React.FC = () => {
                           </Option>
                         ))}
                       </Select>
+                    </Form.Item>
+                    <Form.Item label={t('wiki.title')} name="wiki_knowledge_bases">
+                      <Select
+                        mode="multiple"
+                        allowClear
+                        placeholder={t('wiki.title')}
+                        options={wikiKbs.map((kb) => ({ value: kb.id, label: kb.name }))}
+                      />
                     </Form.Item>
                     <Form.Item
                       label={t('skill.form.showThought')}

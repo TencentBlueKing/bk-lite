@@ -80,6 +80,7 @@ export interface SkillDetail extends Skill {
   enable_conversation_history?: boolean;
   conversation_window_size?: number;
   tools?: unknown[];
+  wiki_knowledge_bases?: number[];
   desc?: string;
 }
 
