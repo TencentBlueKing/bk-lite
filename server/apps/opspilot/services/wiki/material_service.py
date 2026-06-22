@@ -12,6 +12,7 @@ import tempfile
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.loader.excel_loader import ExcelLoader
 from apps.opspilot.metis.llm.loader.markdown_loader import MarkdownLoader
 from apps.opspilot.metis.llm.loader.raw_loader import RawLoader
 from apps.opspilot.metis.llm.loader.text_loader import TextLoader
@@ -20,7 +21,15 @@ from apps.opspilot.models import LLMModel
 logger = logging.getLogger("opspilot")
 
 # 无需 OCR、可直接经 loader 解析的文件扩展名 → loader 类
-_FILE_LOADERS = {".txt": TextLoader, ".text": TextLoader, ".md": MarkdownLoader, ".markdown": MarkdownLoader}
+_FILE_LOADERS = {
+    ".txt": TextLoader,
+    ".text": TextLoader,
+    ".csv": TextLoader,
+    ".md": MarkdownLoader,
+    ".markdown": MarkdownLoader,
+    ".xlsx": ExcelLoader,
+    ".xls": ExcelLoader,
+}
 
 
 def _docs_to_text(docs):

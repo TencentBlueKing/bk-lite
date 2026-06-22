@@ -51,3 +51,46 @@ def test_ingest_markdown_file_sets_done(monkeypatch):
     assert out.status == "done"
     assert out.ai_summary == "hello wiki"  # 无模型回退为截断正文
     assert out.content_hash
+
+
+def _xlsx_bytes():
+    import io
+
+    from openpyxl import Workbook
+
+    wb = Workbook()
+    ws = wb.active
+    ws.append(["host", "status"])
+    ws.append(["web01", "running"])
+    buf = io.BytesIO()
+    wb.save(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.django_db
+def test_extract_xlsx_file(monkeypatch):
+    kb = _kb()
+    mat = _file_material(kb, "data.xlsx")
+    monkeypatch.setattr(material_service, "_read_file", lambda m: ("data.xlsx", _xlsx_bytes()))
+    text = material_service.extract_text(mat)
+    assert "web01" in text and "running" in text
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
+def test_ingest_xlsx_via_real_minio():
+    """真实 MinIO 往返:上传 xlsx 到对象存储,再读回解析,验证 _read_file 端到端。"""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    from apps.opspilot.models import Material
+
+    kb = _kb()
+    mat = Material.objects.create(
+        knowledge_base=kb,
+        name="real.xlsx",
+        material_type="file",
+        file=SimpleUploadedFile("real.xlsx", _xlsx_bytes()),
+    )
+    out = material_service.ingest_material(mat)
+    assert out.status == "done"
+    assert "web01" in out.ai_summary
