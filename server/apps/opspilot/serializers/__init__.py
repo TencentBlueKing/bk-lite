@@ -6,6 +6,7 @@ from apps.opspilot.serializers.memory_serializer import MemorySerializer, Memory
 from apps.opspilot.serializers.rasa_model_serializer import RasaModelSerializer  # noqa
 from apps.opspilot.serializers.wiki_serializers import (  # noqa
     BuildRecordSerializer,
+    CheckItemSerializer,
     KnowledgePageSerializer,
     MaterialSerializer,
     WikiKnowledgeBaseSerializer,

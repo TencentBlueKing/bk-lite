@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
+from apps.opspilot.services.wiki.check_service import scan_health
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
@@ -93,3 +94,10 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         kb = self.get_object()
         result = wiki_answer(kb, request.data.get("query", ""), llm_model_id=kb.llm_model_id)
         return JsonResponse({"result": True, "data": result})
+
+    @action(methods=["POST"], detail=True)
+    def scan(self, request, pk=None):
+        """系统检查扫描:发现孤立页面、缺来源等并写入检查事项。"""
+        kb = self.get_object()
+        created = scan_health(kb)
+        return JsonResponse({"result": True, "data": {"created": len(created)}})

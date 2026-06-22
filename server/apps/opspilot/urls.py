@@ -19,6 +19,7 @@ from apps.opspilot.viewsets import (
     SkillRequestLogViewSet,
     SkillToolsViewSet,
     WikiBuildRecordViewSet,
+    WikiCheckItemViewSet,
     WikiKnowledgeBaseViewSet,
     WikiMaterialViewSet,
     WikiPageViewSet,
@@ -57,6 +58,7 @@ router.register(r"wiki_mgmt/knowledge_base", WikiKnowledgeBaseViewSet, basename=
 router.register(r"wiki_mgmt/material", WikiMaterialViewSet, basename="wiki_material")
 router.register(r"wiki_mgmt/page", WikiPageViewSet, basename="wiki_page")
 router.register(r"wiki_mgmt/build_record", WikiBuildRecordViewSet, basename="wiki_build_record")
+router.register(r"wiki_mgmt/check_item", WikiCheckItemViewSet, basename="wiki_check_item")
 
 urlpatterns = router.urls
 

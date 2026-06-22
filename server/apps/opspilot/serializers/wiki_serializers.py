@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.opspilot.models import BuildRecord, KnowledgePage, Material, PageVersion, WikiKnowledgeBase
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageVersion, WikiKnowledgeBase
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
@@ -72,6 +72,22 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
 
     def get_body(self, obj):
         return obj.current_version.body if obj.current_version_id else ""
+
+
+class CheckItemSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = CheckItem
+        fields = [
+            "id",
+            "knowledge_base",
+            "check_type",
+            "status",
+            "related",
+            "candidate_version",
+            "suggested_actions",
+            "created_at",
+            "updated_at",
+        ]
 
 
 class PageVersionSerializer(serializers.ModelSerializer):
