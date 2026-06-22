@@ -9,7 +9,7 @@
   "default_metric": "any({instance_type='elasticsearch'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["elasticsearch_jvm_mem_heap_used_percent", "elasticsearch_fs_data_0_available_in_bytes", "elasticsearch_process_cpu_percent"],
-  "display_fields": [{"name": "JVM Heap Usage", "sort_order": 0, "metrics": [{"plugin": "ElasticSearch", "metric": "elasticsearch_jvm_mem_heap_used_percent"}]}, {"name": "Node Available Disk Space", "sort_order": 1, "metrics": [{"plugin": "ElasticSearch", "metric": "elasticsearch_fs_data_0_available_in_bytes"}]}, {"name": "Process CPU Usage", "sort_order": 2, "metrics": [{"plugin": "ElasticSearch", "metric": "elasticsearch_process_cpu_percent"}]}],
+  "display_fields": [{"name":"集群健康状态","sort_order":0,"metrics":[{"plugin":"ElasticSearch","metric":"elasticsearch_cluster_health_status_code"}]}, {"name":"JVM堆使用率","sort_order":1,"metrics":[{"plugin":"ElasticSearch","metric":"elasticsearch_jvm_mem_heap_used_percent"}]}, {"name":"未分配分片数","sort_order":2,"metrics":[{"plugin":"ElasticSearch","metric":"elasticsearch_cluster_health_unassigned_shards"}]}, {"name":"进程CPU使用率","sort_order":3,"metrics":[{"plugin":"ElasticSearch","metric":"elasticsearch_process_cpu_percent"}]}, {"name":"写线程池队列长度","sort_order":4,"metrics":[{"plugin":"ElasticSearch","metric":"elasticsearch_thread_pool_write_queue"}]}],
   "metrics": [
     {
       "metric_group": "Base",
