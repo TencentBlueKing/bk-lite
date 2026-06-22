@@ -5,7 +5,7 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.check_service import scan_health
-from apps.opspilot.services.wiki.graph_service import build_graph
+from apps.opspilot.services.wiki.graph_service import analyze_graph, build_graph
 from apps.opspilot.services.wiki.overview_service import get_overview
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
 from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
@@ -124,6 +124,12 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         """返回知识图谱:节点 + 边 + 连通分量社区 + 洞察。"""
         kb = self.get_object()
         return JsonResponse({"result": True, "data": build_graph(kb)})
+
+    @action(methods=["GET"], detail=True)
+    def graph_analysis(self, request, pk=None):
+        """返回 4 信号关联度加权图 + 标签传播社区 + 洞察。"""
+        kb = self.get_object()
+        return JsonResponse({"result": True, "data": analyze_graph(kb)})
 
     @action(methods=["GET"], detail=True)
     def overview(self, request, pk=None):
