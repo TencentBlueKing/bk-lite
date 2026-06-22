@@ -381,6 +381,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_adtran",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_draytek",
       "capabilities": [
         "uptime",
@@ -407,6 +416,14 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "uptime",
         "cpu",
         "memory",
+        "temperature",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_lancom",
+      "capabilities": [
+        "uptime",
         "temperature",
         "traffic"
       ]
