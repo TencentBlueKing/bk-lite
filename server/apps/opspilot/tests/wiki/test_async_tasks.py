@@ -51,3 +51,17 @@ def test_propose_update_task_missing_returns_none():
     from apps.opspilot.tasks import wiki_propose_update_task
 
     assert wiki_propose_update_task.apply(args=[999999]).get() is None
+
+
+@pytest.mark.django_db
+def test_refresh_web_materials_task(monkeypatch):
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki import material_service
+    from apps.opspilot.tasks import wiki_refresh_web_materials_task
+
+    kb = _kb()
+    Material.objects.create(knowledge_base=kb, name="site", material_type="web", url="http://example.com")
+    monkeypatch.setattr(material_service, "_fetch_url", lambda url: "<p>fresh content</p>")
+
+    result = wiki_refresh_web_materials_task.apply().get()
+    assert result["checked"] == 1 and result["updated"] == 1

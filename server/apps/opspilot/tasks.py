@@ -816,3 +816,29 @@ def wiki_rebuild_kb_task(kb_id, llm_model_id=None, operator=""):
         logger.error("wiki 重建任务: 知识库不存在 id=%s", kb_id)
         return None
     return rebuild_knowledge_base(kb, llm_model_id=llm_model_id, operator=operator).id
+
+
+@shared_task
+def wiki_refresh_web_materials_task():
+    """网页资料定时刷新:重新抓取所有 web 资料并重新摄取,内容变化的触发安全更新。
+
+    供 Celery beat 周期调度。返回 {checked, updated} 统计。
+    """
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.material_service import ingest_material
+    from apps.opspilot.services.wiki.update_service import propose_update
+
+    web_materials = Material.objects.filter(material_type="web")
+    checked = updated = 0
+    for material in web_materials:
+        checked += 1
+        prev_hash = material.content_hash
+        material = ingest_material(material, llm_model_id=material.knowledge_base.llm_model_id)
+        if material.status == "done" and material.content_hash and material.content_hash != prev_hash:
+            updated += 1
+            try:
+                propose_update(material, llm_model_id=material.knowledge_base.llm_model_id, operator="web_refresh")
+            except Exception:
+                logger.exception("wiki 网页刷新触发更新失败 material=%s", material.id)
+    logger.info("wiki 网页资料刷新完成: checked=%s updated=%s", checked, updated)
+    return {"checked": checked, "updated": updated}

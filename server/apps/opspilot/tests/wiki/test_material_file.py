@@ -76,6 +76,35 @@ def test_extract_xlsx_file(monkeypatch):
     assert "web01" in text and "running" in text
 
 
+@pytest.mark.django_db
+def test_extract_web_text(monkeypatch):
+    from apps.opspilot.models import Material
+
+    kb = _kb()
+    mat = Material.objects.create(knowledge_base=kb, name="site", material_type="web", url="http://example.com")
+    monkeypatch.setattr(
+        material_service,
+        "_fetch_url",
+        lambda url: "<html><body><h1>标题</h1><p>正文内容</p><script>bad()</script></body></html>",
+    )
+    text = material_service.extract_text(mat)
+    assert "标题" in text and "正文内容" in text and "bad" not in text
+
+
+@pytest.mark.django_db
+def test_extract_web_text_fetch_failure_returns_empty(monkeypatch):
+    from apps.opspilot.models import Material
+
+    kb = _kb()
+    mat = Material.objects.create(knowledge_base=kb, name="site", material_type="web", url="http://example.com")
+
+    def _boom(url):
+        raise RuntimeError("network down")
+
+    monkeypatch.setattr(material_service, "_fetch_url", _boom)
+    assert material_service.extract_text(mat) == ""
+
+
 @pytest.mark.integration
 @pytest.mark.django_db
 def test_ingest_xlsx_via_real_minio():

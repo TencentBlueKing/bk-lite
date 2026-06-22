@@ -79,6 +79,54 @@ def _extract_file_text(material):
             os.unlink(tmp_path)
 
 
+def _fetch_url(url):
+    """抓取网页 HTML(测试可 monkeypatch 本函数避免真实网络)。"""
+    import requests
+
+    resp = requests.get(url, timeout=30, headers={"User-Agent": "bklite-wiki/1.0"})
+    resp.raise_for_status()
+    return resp.text
+
+
+def _html_to_text(html):
+    """用标准库剥离 HTML 标签为纯文本(忽略 script/style),无需第三方依赖。"""
+    from html.parser import HTMLParser
+
+    class _Stripper(HTMLParser):
+        def __init__(self):
+            super().__init__()
+            self.parts = []
+            self._skip = False
+
+        def handle_starttag(self, tag, attrs):
+            if tag in ("script", "style"):
+                self._skip = True
+
+        def handle_endtag(self, tag):
+            if tag in ("script", "style"):
+                self._skip = False
+
+        def handle_data(self, data):
+            if not self._skip and data.strip():
+                self.parts.append(data.strip())
+
+    parser = _Stripper()
+    parser.feed(html or "")
+    return "\n".join(parser.parts)
+
+
+def _extract_web_text(material):
+    """网页资料:抓取 URL → 剥离 HTML 为文本(基础版,不含 JS 渲染/图片 OCR)。"""
+    if not material.url:
+        return ""
+    try:
+        html = _fetch_url(material.url)
+    except Exception:
+        logger.exception("material %s 网页抓取失败 url=%s", material.id, material.url)
+        return ""
+    return _html_to_text(html)
+
+
 def extract_text(material):
     """从 Material 提取纯文本正文。
 
@@ -88,8 +136,9 @@ def extract_text(material):
         return _docs_to_text(RawLoader(material.text_content or "").load())
     if material.material_type == "file":
         return _extract_file_text(material)
-    # web 等需要抓取/OCR 的解析在后续增量接入
-    logger.info("material %s type=%s 暂未支持解析(后续增量接入)", material.id, material.material_type)
+    if material.material_type == "web":
+        return _extract_web_text(material)
+    logger.info("material %s type=%s 暂未支持解析", material.id, material.material_type)
     return ""
 
 
