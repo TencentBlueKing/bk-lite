@@ -58,14 +58,67 @@ def _read_file(material):
     return name, data
 
 
+_OCR_EXTS = {".pdf", ".png", ".jpg", ".jpeg", ".docx", ".pptx"}
+
+
+def _ocr_loader_class(ext):
+    """惰性导入依赖较重(fitz/tabula 等)的 OCR loader,避免模块加载期引入这些依赖。"""
+    if ext == ".pdf":
+        from apps.opspilot.metis.llm.loader.pdf_loader import PDFLoader
+
+        return PDFLoader
+    if ext in (".png", ".jpg", ".jpeg"):
+        from apps.opspilot.metis.llm.loader.image_loader import ImageLoader
+
+        return ImageLoader
+    if ext == ".docx":
+        from apps.opspilot.metis.llm.loader.doc_loader import DocLoader
+
+        return DocLoader
+    if ext == ".pptx":
+        from apps.opspilot.metis.llm.loader.ppt_loader import PPTLoader
+
+        return PPTLoader
+    return None
+
+
+def _build_ocr(material):
+    """从已启用的 OCRProvider 构建 OCR 实例;无 provider 返回 None。测试可 monkeypatch。"""
+    from apps.opspilot.metis.ocr.ocr_manager import OcrManager
+    from apps.opspilot.models import OCRProvider
+
+    provider = OCRProvider.objects.filter(enabled=True).first()
+    if not provider:
+        return None
+    cfg = provider.runtime_ocr_config
+    return OcrManager.load_ocr(
+        ocr_type=cfg.get("ocr_type"),
+        model=cfg.get("model"),
+        base_url=cfg.get("base_url") or cfg.get("endpoint"),
+        api_key=cfg.get("api_key"),
+    )
+
+
 def _extract_file_text(material):
-    """文件资料:按扩展名选 loader(仅 .txt/.md 无需 OCR),写临时文件解析。其余返回空串。"""
+    """文件资料:按扩展名分派 loader。.txt/.md/.csv/.xlsx 无需 OCR;
+    .pdf/.docx/.pptx/图片 需 OCRProvider(未配置则返回空串)。"""
     name, data = _read_file(material)
-    ext = (os.path.splitext(name)[1] or "").lower()
-    loader_cls = _FILE_LOADERS.get(ext)
-    if not loader_cls:
-        logger.info("material %s 扩展名 %s 需 OCR/暂未支持,待后续接入", material.id, ext)
+    if not data:
         return ""
+    ext = (os.path.splitext(name)[1] or "").lower()
+
+    loader_cls = _FILE_LOADERS.get(ext)
+    ocr = None
+    if not loader_cls and ext in _OCR_EXTS:
+        ocr = _build_ocr(material)
+        if not ocr:
+            logger.info("material %s 扩展名 %s 需 OCR,但环境未配置 OCRProvider", material.id, ext)
+            return ""
+        loader_cls = _ocr_loader_class(ext)
+    if not loader_cls:
+        logger.info("material %s 扩展名 %s 暂未支持", material.id, ext)
+        return ""
+
     if isinstance(data, str):
         data = data.encode("utf-8")
     tmp_path = None
@@ -73,7 +126,8 @@ def _extract_file_text(material):
         with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
             tmp.write(data)
             tmp_path = tmp.name
-        return _docs_to_text(loader_cls(tmp_path).load())
+        docs = loader_cls(tmp_path, ocr, "full").load() if ocr else loader_cls(tmp_path).load()
+        return _docs_to_text(docs)
     finally:
         if tmp_path and os.path.exists(tmp_path):
             os.unlink(tmp_path)

@@ -77,6 +77,35 @@ def test_extract_xlsx_file(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_ocr_dispatch_uses_provider_and_loader(monkeypatch):
+    from langchain_core.documents import Document
+
+    kb = _kb()
+    mat = _file_material(kb, "scan.pdf")
+    monkeypatch.setattr(material_service, "_read_file", lambda m: ("scan.pdf", b"%PDF-1.4 fake"))
+    monkeypatch.setattr(material_service, "_build_ocr", lambda m: object())  # 模拟已配置 OCR
+
+    class FakeLoader:
+        def __init__(self, path, ocr, mode):
+            self.ocr = ocr
+
+        def load(self):
+            return [Document("ocr 提取的文本")]
+
+    monkeypatch.setattr(material_service, "_ocr_loader_class", lambda ext: FakeLoader)
+    assert material_service.extract_text(mat) == "ocr 提取的文本"
+
+
+@pytest.mark.django_db
+def test_ocr_format_without_provider_returns_empty(monkeypatch):
+    kb = _kb()
+    mat = _file_material(kb, "scan.pdf")
+    monkeypatch.setattr(material_service, "_read_file", lambda m: ("scan.pdf", b"%PDF-1.4 fake"))
+    monkeypatch.setattr(material_service, "_build_ocr", lambda m: None)  # 无 OCRProvider(同当前环境)
+    assert material_service.extract_text(mat) == ""
+
+
+@pytest.mark.django_db
 def test_extract_web_text(monkeypatch):
     from apps.opspilot.models import Material
 
