@@ -39,12 +39,13 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
     @staticmethod
     def _translate_display_fields(lan, object_name, display_fields):
-        """把展示列的列名替换为所绑定指标的翻译名（复用 monitor_object_metric 指标翻译）。
+        """展示列名国际化：列名一律取绑定指标在当前账号语言下的译名，跟随 request.user.locale
+        自动中/英切换；无绑定指标或无译名时回退原列名。
 
-        - 取每列首个绑定指标，按 ``monitor_object_metric.<对象名>.<指标名>.name`` 查译文；
-        - 命中则用译文做列名，未命中保留原列名（种子英文）；
-        - 不就地修改入参，返回新的列表/字典副本。
-        仅对未自定义（display_fields_customized=False）的对象调用。
+        说明：display_fields[].name 是 metrics.json 写死的英文种子（且有时是另起的精简标签，
+        不等于指标英文名），数据模型里没有可靠区分“默认名 vs 用户手打名”的信号
+        （display_fields_customized 只要在弹窗里加/删/排序就置 True），故统一按绑定指标译名展示，
+        以保证编辑后仍跟随语言、不回退英文。不就地修改入参，返回新副本。
         """
         if not display_fields:
             return display_fields
@@ -85,13 +86,10 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             result["is_builtin"] = bool(i18n_name) or not result.get("display_name")
             # 添加子对象数量
             result["children_count"] = children_count_map.get(result["id"], 0)
-            # 展示列名国际化：未被用户自定义的展示列，列名复用所绑定指标的翻译名（跟随账号语言
-            # request.user.locale 自动中/英切换）；用户自定义过（display_fields_customized）则保留原文，
-            # 译文缺失时回退种子列名。详见 _translate_display_fields。
-            if not result.get("display_fields_customized"):
-                result["display_fields"] = self._translate_display_fields(
-                    lan, result["name"], result.get("display_fields")
-                )
+            # 展示列名国际化：一律按绑定指标译名展示，跟随账号语言（编辑后也不回退英文）。
+            result["display_fields"] = self._translate_display_fields(
+                lan, result["name"], result.get("display_fields")
+            )
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
             include_children = request.COOKIES.get("include_children", "0") == "1"

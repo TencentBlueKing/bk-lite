@@ -52,8 +52,11 @@ def test_save_display_fields_rejects_empty_name(api_client, host_with_metric):
     assert resp.status_code == 400
 
 
+_METRIC_KEY = "monitor_object_metric.UTHost.cpu_usage_total.name"
+
+
 def _patch_translations(monkeypatch, mapping):
-    """让 list 接口里的 LanguageLoader.get 按 mapping 返回译文，未命中走 default。"""
+    """mock list 接口里的 LanguageLoader.get 按 mapping 返回译文，未命中走 default。"""
     from apps.monitor.views import monitor_object as mo_views
 
     monkeypatch.setattr(
@@ -63,59 +66,49 @@ def _patch_translations(monkeypatch, mapping):
     )
 
 
+def _get_object(resp, obj_id):
+    assert resp.status_code == 200
+    return next(o for o in resp.json()["data"] if o["id"] == obj_id)
+
+
 @pytest.mark.django_db
-def test_list_translates_display_field_name_when_not_customized(api_client, host_with_metric, monkeypatch):
-    """未自定义的展示列：列名按绑定指标的翻译名覆盖（复用指标翻译，跟随账号语言）。"""
+def test_list_translates_column_to_metric_name(api_client, host_with_metric, monkeypatch):
+    """列名一律取绑定指标的当前语言译名（跟随账号语言）；即使种子名/已 customized 也照译（回归用例）。"""
     obj = host_with_metric
     obj.display_fields = [
-        {"name": "CPU Usage", "sort_order": 0,
+        {"name": "Service Uptime", "sort_order": 0,  # 种子标签，故意 != 指标译名
          "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
     ]
-    obj.display_fields_customized = False
+    obj.display_fields_customized = True  # 用户在弹窗里编辑过，仍应翻译
     obj.save(update_fields=["display_fields", "display_fields_customized"])
 
-    _patch_translations(monkeypatch, {
-        "monitor_object_metric.UTHost.cpu_usage_total.name": "CPU使用率译",
-    })
-    resp = api_client.get("/api/v1/monitor/api/monitor_object/")
-    assert resp.status_code == 200
-    target = next(o for o in resp.json()["data"] if o["id"] == obj.id)
+    _patch_translations(monkeypatch, {_METRIC_KEY: "CPU使用率译"})
+    target = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
     assert target["display_fields"][0]["name"] == "CPU使用率译"
 
 
 @pytest.mark.django_db
-def test_list_keeps_display_field_name_when_customized(api_client, host_with_metric, monkeypatch):
-    """用户自定义过的展示列：列名保留原文，不被翻译覆盖。"""
+def test_list_keeps_name_when_translation_missing(api_client, host_with_metric, monkeypatch):
+    """无译文时保留原列名（兜底）。"""
     obj = host_with_metric
     obj.display_fields = [
-        {"name": "我的自定义列", "sort_order": 0,
+        {"name": "Service Uptime", "sort_order": 0,
          "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
     ]
-    obj.display_fields_customized = True
-    obj.save(update_fields=["display_fields", "display_fields_customized"])
+    obj.save(update_fields=["display_fields"])
 
-    _patch_translations(monkeypatch, {
-        "monitor_object_metric.UTHost.cpu_usage_total.name": "CPU使用率译",
-    })
-    resp = api_client.get("/api/v1/monitor/api/monitor_object/")
-    assert resp.status_code == 200
-    target = next(o for o in resp.json()["data"] if o["id"] == obj.id)
-    assert target["display_fields"][0]["name"] == "我的自定义列"
+    _patch_translations(monkeypatch, {})  # 未命中
+    target = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
+    assert target["display_fields"][0]["name"] == "Service Uptime"
 
 
 @pytest.mark.django_db
-def test_list_keeps_seed_name_when_translation_missing(api_client, host_with_metric, monkeypatch):
-    """无译文时保留种子英文列名（兜底）。"""
+def test_list_keeps_name_when_no_metric_binding(api_client, host_with_metric, monkeypatch):
+    """无绑定指标的列：无可翻译来源，保留原列名。"""
     obj = host_with_metric
-    obj.display_fields = [
-        {"name": "CPU Usage", "sort_order": 0,
-         "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
-    ]
-    obj.display_fields_customized = False
-    obj.save(update_fields=["display_fields", "display_fields_customized"])
+    obj.display_fields = [{"name": "纯文本列", "sort_order": 0, "metrics": []}]
+    obj.save(update_fields=["display_fields"])
 
-    _patch_translations(monkeypatch, {})  # 全部未命中
-    resp = api_client.get("/api/v1/monitor/api/monitor_object/")
-    assert resp.status_code == 200
-    target = next(o for o in resp.json()["data"] if o["id"] == obj.id)
-    assert target["display_fields"][0]["name"] == "CPU Usage"
+    _patch_translations(monkeypatch, {_METRIC_KEY: "CPU使用率译"})
+    target = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
+    assert target["display_fields"][0]["name"] == "纯文本列"
