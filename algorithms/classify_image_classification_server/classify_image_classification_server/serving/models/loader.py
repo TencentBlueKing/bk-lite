@@ -1,5 +1,7 @@
 """统一的模型加载器."""
 
+import hashlib
+import os
 from typing import Any
 
 from loguru import logger
@@ -75,6 +77,22 @@ def _load_from_local(config: ModelConfig) -> Any:
             raise FileNotFoundError(f"Model not found: {model_path}")
 
         logger.info(f"Loading local model from: {model_path}")
+
+        # SHA256 完整性校验：从环境变量读取期望值，未配置时仅告警（向后兼容）
+        expected_sha256 = os.getenv("MODEL_SHA256")
+        if expected_sha256:
+            actual_sha256 = hashlib.sha256(model_path.read_bytes()).hexdigest()
+            if actual_sha256 != expected_sha256:
+                raise ValueError(
+                    f"Model checksum mismatch: expected {expected_sha256}, got {actual_sha256}"
+                )
+            logger.info("Model SHA256 checksum verified successfully")
+        else:
+            logger.warning(
+                "MODEL_SHA256 not set, skipping checksum verification "
+                "(set this env var in production to guard against model file tampering)"
+            )
+
         model = joblib.load(model_path)
         logger.info("Local model loaded successfully")
         return model
