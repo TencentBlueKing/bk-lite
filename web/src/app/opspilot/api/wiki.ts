@@ -100,6 +100,9 @@ export const useWikiApi = () => {
   const restorePageVersion = (id: number, version_id: number): Promise<KnowledgePage> =>
     post(`${BASE}/page/${id}/restore/`, { version_id });
 
+  const fetchPageDiff = (id: number, from: number, to: number): Promise<{ diff: string[] }> =>
+    get(`${BASE}/page/${id}/diff/`, { params: { from, to } });
+
   // ---- 构建记录 ----
   const fetchBuildRecords = (kbId: number, params?: Record<string, unknown>): Promise<BuildRecord[]> =>
     get(`${BASE}/build_record/`, { params: { ...params, knowledge_base: kbId } });
@@ -146,6 +149,7 @@ export const useWikiApi = () => {
     deletePage,
     fetchPageVersions,
     restorePageVersion,
+    fetchPageDiff,
     fetchBuildRecords,
     fetchCheckItems,
     acceptCheck,

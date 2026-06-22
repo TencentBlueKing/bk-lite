@@ -9,12 +9,14 @@ import { KnowledgePage, PageVersion } from '@/app/opspilot/types/wiki';
 
 const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
-  const { fetchPages, deletePage, fetchPageVersions, restorePageVersion } = useWikiApi();
+  const { fetchPages, deletePage, fetchPageVersions, restorePageVersion, fetchPageDiff } = useWikiApi();
   const [data, setData] = useState<KnowledgePage[]>([]);
   const [loading, setLoading] = useState(false);
   const [drawer, setDrawer] = useState(false);
   const [active, setActive] = useState<KnowledgePage | null>(null);
   const [versions, setVersions] = useState<PageVersion[]>([]);
+  const [diffLines, setDiffLines] = useState<string[]>([]);
+  const [diffVer, setDiffVer] = useState<number | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -34,8 +36,20 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const openView = async (record: KnowledgePage) => {
     setActive(record);
     setDrawer(true);
+    setDiffLines([]);
+    setDiffVer(null);
     setVersions(await fetchPageVersions(record.id));
   };
+
+  const showDiff = async (versionId: number) => {
+    if (!active?.current_version) return;
+    const res = await fetchPageDiff(active.id, versionId, active.current_version);
+    setDiffLines(res.diff);
+    setDiffVer(versionId);
+  };
+
+  const diffColor = (line: string) =>
+    line.startsWith('+') ? '#237804' : line.startsWith('-') ? '#a8071a' : 'inherit';
 
   const handleRestore = async (versionId: number) => {
     if (!active) return;
@@ -92,22 +106,39 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           dataSource={versions}
           renderItem={(v) => (
             <List.Item
-              actions={[
-                v.is_current ? (
-                  <Tag color="green" key="cur">
-                    current
-                  </Tag>
-                ) : (
-                  <Button type="link" size="small" key="restore" onClick={() => handleRestore(v.id)}>
-                    restore
-                  </Button>
-                ),
-              ]}
+              actions={
+                v.is_current
+                  ? [
+                    <Tag color="green" key="cur">
+                      current
+                    </Tag>,
+                  ]
+                  : [
+                    <Button type="link" size="small" key="diff" onClick={() => showDiff(v.id)}>
+                      {t('wiki.diff')}
+                    </Button>,
+                    <Button type="link" size="small" key="restore" onClick={() => handleRestore(v.id)}>
+                      restore
+                    </Button>,
+                  ]
+              }
             >
               {`v${v.no} · ${v.change_type}`}
             </List.Item>
           )}
         />
+        {!!diffLines.length && (
+          <div className="mt-3">
+            <div className="text-xs text-gray-500 mb-1">{`v${diffVer} → current`}</div>
+            <pre className="text-xs whitespace-pre-wrap">
+              {diffLines.map((ln, i) => (
+                <div key={i} style={{ color: diffColor(ln) }}>
+                  {ln}
+                </div>
+              ))}
+            </pre>
+          </div>
+        )}
       </Drawer>
     </div>
   );

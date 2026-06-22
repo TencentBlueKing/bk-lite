@@ -4,7 +4,7 @@ from rest_framework.decorators import action
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, KnowledgePageSerializer, PageVersionSerializer
-from apps.opspilot.services.wiki.page_service import create_manual_page, edit_page, restore_version
+from apps.opspilot.services.wiki.page_service import create_manual_page, diff_versions, edit_page, restore_version
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -71,6 +71,21 @@ class WikiPageViewSet(AuthViewSet):
         page = self.get_object()
         qs = page.page_versions.order_by("-no")
         return JsonResponse({"result": True, "data": PageVersionSerializer(qs, many=True).data})
+
+    @action(methods=["GET"], detail=True)
+    def diff(self, request, pk=None):
+        """对比两个版本正文,返回统一 diff 行(?from=<版本id>&to=<版本id>)。"""
+        page = self.get_object()
+        try:
+            from_id = int(request.GET.get("from"))
+            to_id = int(request.GET.get("to"))
+        except (TypeError, ValueError):
+            return JsonResponse({"result": False, "message": "from/to 版本 id 必填"}, status=400)
+        try:
+            lines = diff_versions(page, from_id, to_id)
+        except ValueError:
+            return JsonResponse({"result": False, "message": "版本不存在"}, status=404)
+        return JsonResponse({"result": True, "data": {"diff": lines}})
 
     @action(methods=["POST"], detail=True)
     def restore(self, request, pk=None):

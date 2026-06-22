@@ -3,6 +3,8 @@
 对应 spec §8(页面编辑)、§9(版本管理:每次变化生成新版本,可比较与恢复)。
 """
 
+import difflib
+
 from django.db import transaction
 
 from apps.opspilot.models import KnowledgePage, PageVersion
@@ -68,3 +70,20 @@ def restore_version(page, version_id, operator=""):
     """恢复历史版本:复制其正文为新版本(change_type=restore),不删除历史。"""
     target = page.page_versions.get(id=version_id)
     return _new_current_version(page, body=target.body, change_type="restore", created_by=operator)
+
+
+def diff_versions(page, from_id, to_id):
+    """返回两个版本正文的逐行统一 diff(unified diff 行列表),用于版本对比可视化。"""
+    versions = {v.id: v for v in page.page_versions.filter(id__in=[from_id, to_id])}
+    a, b = versions.get(from_id), versions.get(to_id)
+    if not a or not b:
+        raise ValueError("version not found")
+    return list(
+        difflib.unified_diff(
+            (a.body or "").splitlines(),
+            (b.body or "").splitlines(),
+            fromfile=f"v{a.no}",
+            tofile=f"v{b.no}",
+            lineterm="",
+        )
+    )
