@@ -1,6 +1,6 @@
 {
   "plugin": "Router Vyatta SNMP",
-  "plugin_desc": "Vyatta/VyOS-specific SNMP collection template for Vyatta/VyOS (Linux) routers. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load and UCD-SNMP memory (total/free, used and derived usage). Sourced from standard HOST-RESOURCES and UCD-SNMP-MIB.",
+  "plugin_desc": "Vyatta/VyOS-specific SNMP collection template for Vyatta/VyOS (Linux) routers. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects HOST-RESOURCES CPU load and UCD-SNMP memory (total/free, used and derived usage). Sourced from standard HOST-RESOURCES and UCD-SNMP-MIB. Supported brands/models — Vyatta / VyOS software routers.",
   "status_query": "any({instance_type='router', collect_type='snmp_vyatta'}) by (instance_id)",
   "name": "Router",
   "icon": "mm-router_路由器",

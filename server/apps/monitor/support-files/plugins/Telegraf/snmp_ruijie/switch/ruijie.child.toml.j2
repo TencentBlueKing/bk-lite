@@ -87,6 +87,11 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.4"
         name = "state"
+    # ---- Ruijie fan speed (RUIJIE-SYSTEM-MIB ruijieSystemFanStatusSpeed, RPM, 同风扇表) ----
+    # 待现网核验：转速列 1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.6（snmprec 6657/6696/6944/6999 RPM）。device_fan_speed max() by instance_id。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.6"
+        name = "speed"
     # ---- Ruijie PSU state (RUIJIE-SYSTEM-MIB ruijieSystemElectricalInformationStatus, per-supply table) ----
     # 待现网核验：state 列 1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.3（snmprec PSU1=4 normal/PSU2=1 noexist）。
     # 同 fan 枚举码；processors.enum 归一为 1=正常(1/3/4)/2=异常(2/5/6)。
@@ -96,6 +101,31 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.3"
         name = "state"
+    # ---- Ruijie input voltage (RUIJIE-SYSTEM-MIB ruijieSystemElectricalInformationInVoltage, V, per-supply table) ----
+    # 待现网核验：电压列 1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.11（伏特直采,snmprec PSU1=231V/PSU2=0 缺位）。
+    # device_voltage_volts max() by instance_id 取在位电源的供电电压(避开缺位 0)。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.11"
+        name = "volts"
+    # ---- Ruijie SFP optical DDM (RUIJIE-FIBER-MIB, per-fiber-port table, raw value ÷100 = dBm) ----
+    # 待现网核验：RX=ruijieFiberRXpower 1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.76 / TX=ruijieFiberTXpower ...1.81（原始值÷100=dBm,负值常见;无模块/不支持 DDM 报哨兵 -10000）。
+    # 端口名 ruijieFiberPortDescr ...1.2 作 is_tag。metrics.json 用 (x != -10000)/100 过滤哨兵,min() by instance_id 取最弱光口(最易劣化)。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.76"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.81"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.2"
+        name = "portName"
+        is_tag = true
 
 # ---- 风扇状态归一：1=noexist(缺位)/3=existreadypower(就绪)/4=normal→1(正常)，2=existnopower/5=powerbutabnormal/6=unknown→2(异常)。----
 [[processors.enum]]

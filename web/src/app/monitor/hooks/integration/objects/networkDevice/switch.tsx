@@ -130,7 +130,15 @@ export const useSwitchConfig = () => {
       'Switch Ubiquiti SNMP': 'snmp_ubiquiti',
       'Switch Ruijie SNMP': 'snmp_ruijie',
       'Switch ZTE SNMP': 'snmp_zte',
+      'Switch Alcatel OmniSwitch SNMP': 'snmp_omniswitch',
+      'Switch Yamaha SNMP': 'snmp_yamaha',
+      'Switch Arista SNMP': 'snmp_arista',
+      'Switch Mellanox SNMP': 'snmp_mellanox',
+      'Switch Allied Telesis SNMP': 'snmp_alliedtelesis',
+      'Switch Dell OS10 SNMP': 'snmp_dellos10',
+      'Switch Lenovo CNOS SNMP': 'snmp_lenovocnos',
       'Switch FiberHome SNMP': 'snmp_fiberhome',
+      'Switch H3C SNMP': 'snmp_h3c',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }
