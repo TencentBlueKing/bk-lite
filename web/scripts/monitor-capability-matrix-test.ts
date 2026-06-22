@@ -4,6 +4,7 @@ import {
   isMetricVisible,
   type CapabilityMatrix
 } from '../src/app/monitor/dashboards/shared/capability-matrix-core';
+import { CAPABILITY_MATRIX } from '../src/app/monitor/dashboards/shared/capability-matrix.generated';
 
 // 固定 fixture：snmp_cisco 全能力；通用 snmp 仅 uptime/cpu/memory/traffic（无 temperature）。
 const FIXTURE: CapabilityMatrix = {
@@ -60,6 +61,18 @@ const FIXTURE: CapabilityMatrix = {
   const r = resolveCapability(FIXTURE, 'switch', "('snmp_cisco',)");
   assert.equal(isMetricVisible(r, 'switch', 'device_total_in_errors', true), true);
   assert.equal(isMetricVisible(r, 'switch', 'device_total_in_errors', false), false);
+}
+
+// 8. 生成矩阵不变量：snmp_cisco/switch 应含 cpu/memory/temperature/fan/psu/traffic。
+{
+  const ciscoSwitch = CAPABILITY_MATRIX.switch.find((e) => e.collectType === 'snmp_cisco');
+  assert.ok(ciscoSwitch, 'snmp_cisco/switch present in generated matrix');
+  for (const cap of ['uptime', 'cpu', 'memory', 'temperature', 'fan', 'psu', 'traffic'] as const) {
+    assert.ok(ciscoSwitch!.capabilities.includes(cap), `cisco switch supports ${cap}`);
+  }
+  const checkpointFw = CAPABILITY_MATRIX.firewall.find((e) => e.collectType === 'snmp_checkpoint');
+  assert.ok(checkpointFw, 'snmp_checkpoint/firewall present in generated matrix');
+  assert.ok(!checkpointFw!.capabilities.includes('session'), 'checkpoint firewall has no session capability');
 }
 
 console.log('monitor capability matrix tests passed');
