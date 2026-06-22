@@ -97,6 +97,7 @@ def _build_ocr(material):
     """构建 OCR 实例。优先用已启用的 OCRProvider;否则在本机 Tesseract 可用时回退到本地 OCR
     (无需任何外部服务);都不可用则返回 None。测试可 monkeypatch。"""
     from apps.opspilot.metis.ocr.ocr_manager import OcrManager
+    from apps.opspilot.metis.ocr.rapid_ocr import RapidOCR
     from apps.opspilot.metis.ocr.tesseract_ocr import TesseractOCR
     from apps.opspilot.models import OCRProvider
 
@@ -109,7 +110,9 @@ def _build_ocr(material):
             base_url=cfg.get("base_url") or cfg.get("endpoint"),
             api_key=cfg.get("api_key"),
         )
-    # 无云端 OCRProvider:本机装了 tesseract 即可本地识别(无需服务)
+    # 无云端 OCRProvider:优先本地 RapidOCR(纯 pip,无需服务/系统二进制),否则本机 Tesseract
+    if RapidOCR.available():
+        return RapidOCR()
     if TesseractOCR.available():
         return TesseractOCR()
     return None

@@ -2,6 +2,7 @@ from typing import Optional
 
 from apps.opspilot.metis.ocr.azure_ocr import AzureOCR
 from apps.opspilot.metis.ocr.olm_ocr import OlmOcr
+from apps.opspilot.metis.ocr.rapid_ocr import RapidOCR
 from apps.opspilot.metis.ocr.tesseract_ocr import TesseractOCR
 
 
@@ -18,5 +19,8 @@ class OcrManager:
 
         if ocr_type == "tesseract":
             ocr = TesseractOCR(lang=model or "chi_sim+eng")
+
+        if ocr_type == "rapidocr":
+            ocr = RapidOCR()
 
         return ocr

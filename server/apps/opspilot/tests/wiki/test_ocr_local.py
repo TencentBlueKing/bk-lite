@@ -16,6 +16,21 @@ def test_ocr_manager_registers_tesseract():
     assert isinstance(OcrManager.load_ocr("tesseract"), TesseractOCR)
 
 
+def test_ocr_manager_registers_rapidocr():
+    from apps.opspilot.metis.ocr.ocr_manager import OcrManager
+    from apps.opspilot.metis.ocr.rapid_ocr import RapidOCR
+
+    assert isinstance(OcrManager.load_ocr("rapidocr"), RapidOCR)
+
+
+def test_rapidocr_unavailable_is_graceful():
+    from apps.opspilot.metis.ocr.rapid_ocr import RapidOCR
+
+    # 私有 pip 源无 rapidocr_onnxruntime → available False、predict 空串(不抛错)
+    if not RapidOCR.available():
+        assert RapidOCR().predict("nonexistent.png") == ""
+
+
 @pytest.mark.django_db
 def test_build_ocr_falls_back_to_local_tesseract(monkeypatch):
     from apps.opspilot.metis.ocr.tesseract_ocr import TesseractOCR
