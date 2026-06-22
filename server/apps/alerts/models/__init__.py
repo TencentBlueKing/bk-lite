@@ -32,6 +32,9 @@ from .sys_setting import SystemSetting
 # 操作日志
 from .operator_log import OperatorLog
 
+# 丰富规则
+from .enrichment import EnrichmentRule  # noqa: F401
+
 __all__ = [
     # 告警源
     "AlertSource",
@@ -55,4 +58,7 @@ __all__ = [
     
     # 操作日志
     "OperatorLog",
+
+    # 丰富规则
+    "EnrichmentRule",
 ]

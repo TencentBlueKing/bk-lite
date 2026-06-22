@@ -1,6 +1,6 @@
 {
   "plugin": "Firewall Sophos XG SNMP",
-  "plugin_desc": "Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health: CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067).",
+  "plugin_desc": "Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health: CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067), and Cyberoam UTM appliances (CYBEROAM-MIB, same enterprise 21067 and identical health OIDs — Sophos acquired Cyberoam and SFOS forked its MIB).",
   "status_query": "any({instance_type='firewall', collect_type='snmp_sophos'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

@@ -224,6 +224,53 @@ def test_refresh_collect_configs_updates_all_container_telegraf_base_configs(db,
     assert "FLOW_ASSET_MAP_JSON" in second_config.env_config
 
 
+def test_refresh_collect_configs_queues_converge_for_updated_container_nodes(db, monkeypatch):
+    cloud_region = CloudRegion.objects.create(name="flow-region-converge")
+    first_node = _create_node(
+        node_id="flow-container-node-converge-a",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+    )
+    second_node = _create_node(
+        node_id="flow-container-node-converge-b",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_CONTAINER,
+    )
+    host_node = _create_node(
+        node_id="flow-host-node-converge",
+        cloud_region=cloud_region,
+        node_type=ControllerConstants.NODE_TYPE_HOST,
+    )
+    _create_telegraf_config(name="telegraf-flow-container-converge-a", cloud_region=cloud_region, node=first_node)
+    _create_telegraf_config(name="telegraf-flow-container-converge-b", cloud_region=cloud_region, node=second_node)
+    _create_telegraf_config(name="telegraf-flow-host-converge", cloud_region=cloud_region, node=host_node)
+    queued_nodes = []
+    rebuilt_nodes = []
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+    import apps.monitor.services.flow_env_config as flow_env_config_module
+
+    monkeypatch.setattr(
+        "apps.monitor.services.flow_env_config.Sidecar.create_default_config",
+        lambda node, node_types: rebuilt_nodes.append((node.id, list(node_types))),
+    )
+    monkeypatch.setattr(
+        flow_env_config_module,
+        "converge_collector_action_task_for_node",
+        types.SimpleNamespace(delay=lambda node_id: queued_nodes.append(node_id)),
+        raising=False,
+    )
+
+    refreshed = FlowEnvConfigService.refresh_collect_configs(cloud_region_id=cloud_region.id)
+
+    assert refreshed == 2
+    assert set(queued_nodes) == {first_node.id, second_node.id}
+    assert sorted(rebuilt_nodes) == [
+        (first_node.id, [ControllerConstants.NODE_TYPE_CONTAINER]),
+        (second_node.id, [ControllerConstants.NODE_TYPE_CONTAINER]),
+    ]
+
+
 def test_refresh_collect_configs_logs_and_skips_when_container_telegraf_base_config_missing(db, monkeypatch):
     cloud_region = CloudRegion.objects.create(name="flow-region-3")
     logged = []
