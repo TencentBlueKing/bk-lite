@@ -42,10 +42,16 @@
 ### P1 异步 ✅
 - `tasks.py`:`wiki_build_material_task` / `wiki_propose_update_task` / `wiki_rebuild_kb_task`(Celery);material `build` 支持 `async=true` 走异步
 
-## 待办(剩余 —— 受基础设施 / 前端环境约束,非本环境可净完成)
+### P1 文件解析 ✅(.txt/.md)
+- `material_service.extract_text`:file 资料按扩展名分派 loader;`.txt/.md` 经 TextLoader/MarkdownLoader 解析(MinIO 读取在 `_read_file`,可注入测试);OCR 格式返回空串待接入
 
-- **文件/网页/OCR 解析(P1)**:loader 已就绪,需接 OCRProvider + 从 MinIO 读取(worktree 缺 MinIO env 无法联测)
-- **pgvector 语义检索 + 网页定时刷新(P6)**:需 pgvector 扩展 + 嵌入模型 + 网络抓取
+> 测试合计 **61 passed**(`apps/opspilot/tests/wiki/`)。后端 P0–P6(除下列纯基础设施项)已完成。
+
+## 待办(剩余 —— 100% 受基础设施 / 前端环境约束,本环境无可测核心)
+
+- **OCR 文件 + 真实 MinIO 读取 + 网页抓取(P1/P6)**:分派已就绪,缺 OCRProvider + MinIO + 网络;`.pdf/.docx/.xlsx/.pptx/图片/web` 仍空串待接入
+- **pgvector 语义检索 + 网页定时刷新(P6)**:需 pgvector 扩展 + 嵌入模型 + Celery beat + 网络
+- **前端 6 工作区 + 技能选库 UI + 引用展示**:worktree 前端环境跑不通,需主仓库或修依赖
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 
