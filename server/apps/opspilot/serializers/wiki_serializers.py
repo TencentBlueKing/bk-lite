@@ -1,6 +1,6 @@
 from rest_framework import serializers
 
-from apps.opspilot.models import WikiKnowledgeBase
+from apps.opspilot.models import Material, WikiKnowledgeBase
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
@@ -26,3 +26,24 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
             "updated_at",
         ]
         read_only_fields = ["id", "created_by", "created_at", "updated_at"]
+
+
+class MaterialSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Material
+        fields = [
+            "id",
+            "knowledge_base",
+            "name",
+            "material_type",
+            "url",
+            "text_content",
+            "content_hash",
+            "ai_summary",
+            "status",
+            "error_message",
+            "created_by",
+            "created_at",
+            "updated_at",
+        ]
+        read_only_fields = ["id", "content_hash", "ai_summary", "status", "error_message", "created_by", "created_at", "updated_at"]
