@@ -105,7 +105,7 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
     <Drawer
       open={open}
       onClose={onClose}
-      width={400}
+      width={500}
       zIndex={1080}
       title={null}
       closable={false}
@@ -118,21 +118,37 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
       {device && (
         <div className="dd">
           <div className="dd-hd">
-            <span className="dd-led" style={{ background: c, boxShadow: `0 0 10px ${c}` }} />
+            <span
+              className="dd-led"
+              style={{ background: c, boxShadow: `0 0 10px ${c}` }}
+            />
             <div style={{ minWidth: 0, flex: 1 }}>
-              <div className="dd-name" title={device.inst_name}>{device.inst_name}</div>
+              <div className="dd-name" title={device.inst_name}>
+                {device.inst_name}
+              </div>
               <div className="dd-sub">
-                <Tag style={{ background: 'transparent', borderColor: c, color: c, margin: 0 }}>
+                <Tag
+                  style={{
+                    background: 'transparent',
+                    borderColor: c,
+                    color: c,
+                    margin: 0,
+                  }}
+                >
                   {deviceTypeName(device.model_id)}
                 </Tag>
-                <span className="dd-u">U{device.rack_u_start}-{device.u_end} · {device.u_size}U</span>
+                <span className="dd-u">
+                  U{device.rack_u_start}-{device.u_end} · {device.u_size}U
+                </span>
               </div>
             </div>
           </div>
 
           <div className="dd-body">
             {loading ? (
-              <div style={{ padding: 40, textAlign: 'center' }}><Spin spinning /></div>
+              <div style={{ padding: 40, textAlign: 'center' }}>
+                <Spin spinning />
+              </div>
             ) : rows.length ? (
               <div className="dd-grid">
                 {rows.map((row) => (
@@ -156,29 +172,90 @@ const DeviceDetailDrawer: React.FC<Props> = ({ device, open, onClose }) => {
       )}
 
       <style jsx>{`
-        .dd { display: flex; flex-direction: column; height: 100%; color: ${TECH.text}; }
+        .dd {
+          display: flex;
+          flex-direction: column;
+          height: 100%;
+          color: ${TECH.text};
+        }
         .dd-hd {
-          display: flex; align-items: center; gap: 12px; padding: 18px 20px;
+          display: flex;
+          align-items: center;
+          gap: 12px;
+          padding: 18px 20px;
           background: linear-gradient(180deg, ${TECH.panelHi}, ${TECH.bg0});
           border-bottom: 1px solid ${TECH.line};
         }
-        .dd-led { width: 10px; height: 10px; border-radius: 50%; flex: none; }
-        .dd-name { font-size: 16px; font-weight: 600; color: ${TECH.text};
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dd-sub { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-        .dd-u { font-size: 12px; color: ${TECH.textDim}; font-family: ui-monospace, monospace; }
-        .dd-body { flex: 1; overflow: auto; padding: 8px 14px; }
-        .dd-grid { display: flex; flex-direction: column; }
-        .dd-row { display: flex; justify-content: space-between; align-items: baseline;
-          gap: 14px; padding: 11px 6px; border-bottom: 1px dashed ${TECH.line}; }
-        .dd-row :global(.dd-k) { color: ${TECH.textDim}; font-size: 13px;
-          flex: none; max-width: 42%;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dd-row :global(.dd-v) { color: ${TECH.text}; font-size: 13px;
-          flex: 1; min-width: 0; text-align: right;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-        .dd-empty { padding: 40px; text-align: center; color: ${TECH.textDim}; }
-        .dd-ft { padding: 14px 16px; border-top: 1px solid ${TECH.line}; }
+        .dd-led {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+          flex: none;
+        }
+        .dd-name {
+          font-size: 16px;
+          font-weight: 600;
+          color: ${TECH.text};
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .dd-sub {
+          display: flex;
+          align-items: center;
+          gap: 10px;
+          margin-top: 6px;
+        }
+        .dd-u {
+          font-size: 12px;
+          color: ${TECH.textDim};
+          font-family: ui-monospace, monospace;
+        }
+        .dd-body {
+          flex: 1;
+          overflow: auto;
+          padding: 8px 14px;
+        }
+        .dd-grid {
+          display: flex;
+          flex-direction: column;
+        }
+        .dd-row {
+          display: flex;
+          justify-content: space-between;
+          align-items: baseline;
+          gap: 14px;
+          padding: 11px 6px;
+          border-bottom: 1px dashed ${TECH.line};
+        }
+        .dd-row :global(.dd-k) {
+          color: ${TECH.textDim};
+          font-size: 13px;
+          flex: none;
+          max-width: 42%;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .dd-row :global(.dd-v) {
+          color: ${TECH.text};
+          font-size: 13px;
+          flex: 1;
+          min-width: 0;
+          text-align: right;
+          white-space: nowrap;
+          overflow: hidden;
+          text-overflow: ellipsis;
+        }
+        .dd-empty {
+          padding: 40px;
+          text-align: center;
+          color: ${TECH.textDim};
+        }
+        .dd-ft {
+          padding: 14px 16px;
+          border-top: 1px solid ${TECH.line};
+        }
       `}</style>
     </Drawer>
   );
