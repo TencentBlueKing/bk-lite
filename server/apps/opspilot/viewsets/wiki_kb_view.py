@@ -9,6 +9,7 @@ from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_
 from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
+from apps.opspilot.services.wiki.wiki_context_service import build_context
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -115,3 +116,11 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         """返回知识库的页面关系边(供校验与图谱)。"""
         kb = self.get_object()
         return JsonResponse({"result": True, "data": list_relations(kb)})
+
+    @action(methods=["POST"], detail=False)
+    def context(self, request):
+        """多智能体复用:按所选知识库 + 问题取回可注入提示词的上下文 + 引用。"""
+        kb_ids = request.data.get("kb_ids") or []
+        query = request.data.get("query", "")
+        top_k = int(request.data.get("top_k", 5))
+        return JsonResponse({"result": True, "data": build_context(kb_ids, query, top_k=top_k)})
