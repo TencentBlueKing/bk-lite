@@ -9,7 +9,7 @@
   "default_metric": "any({instance_type='rabbitmq'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["rabbitmq_node_running", "rabbitmq_overview_messages_ready", "rabbitmq_node_mem_alarm"],
-  "display_fields": [{"name": "Node Running Status", "sort_order": 0, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_node_running"}]}, {"name": "Ready Messages", "sort_order": 1, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_overview_messages_ready"}]}, {"name": "Memory Alarm", "sort_order": 2, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_node_mem_alarm"}]}],
+  "display_fields": [{"name": "就绪消息数", "sort_order": 0, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_overview_messages_ready"}]}, {"name": "未确认消息数", "sort_order": 1, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_overview_messages_unacked"}]}, {"name": "消息发布速率", "sort_order": 2, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_overview_messages_published_rate"}]}, {"name": "连接数", "sort_order": 3, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_overview_connections"}]}, {"name": "已用内存", "sort_order": 4, "metrics": [{"plugin": "RabbitMQ", "metric": "rabbitmq_node_mem_used"}]}],
   "metrics": [
     {
       "metric_group": "Base",
