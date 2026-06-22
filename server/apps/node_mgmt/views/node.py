@@ -37,6 +37,39 @@ from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_re
 class NodeFilterHandler:
     """节点查询过滤器处理器 - 统一管理所有特殊字段的过滤逻辑"""
 
+    # 白名单：允许通过标准过滤路径查询的 Node 直接字段
+    ALLOWED_FILTER_FIELDS = frozenset(
+        {
+            "id",
+            "name",
+            "ip",
+            "operating_system",
+            "cpu_architecture",
+            "install_method",
+            "node_type",
+            "cloud_region_id",
+        }
+    )
+
+    # 白名单：允许使用的 ORM lookup 表达式（不含 bool，bool 在进入此校验前已被规范化为 exact）
+    ALLOWED_LOOKUP_EXPRS = frozenset(
+        {
+            "exact",
+            "iexact",
+            "contains",
+            "icontains",
+            "startswith",
+            "istartswith",
+            "endswith",
+            "iendswith",
+            "in",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+        }
+    )
+
     @staticmethod
     def normalize_bool_value(value):
         """规范化布尔值"""
@@ -103,6 +136,10 @@ class NodeFilterHandler:
         """
         构建标准字段的 Q 对象过滤条件
 
+        只允许白名单中的字段名（ALLOWED_FILTER_FIELDS）和 lookup 表达式
+        （ALLOWED_LOOKUP_EXPRS）参与查询，不在白名单内的条目静默跳过，
+        防止攻击者通过任意字段名/lookup 进行 ORM 注入（#3609）。
+
         Args:
             params: 过滤参数字典
 
@@ -115,6 +152,10 @@ class NodeFilterHandler:
         final_q = Q()
 
         for field_name, conditions in params.items():
+            # 字段名白名单校验
+            if field_name not in NodeFilterHandler.ALLOWED_FILTER_FIELDS:
+                continue
+
             if not conditions or not isinstance(conditions, list):
                 continue
 
@@ -132,6 +173,10 @@ class NodeFilterHandler:
                 if lookup_expr == "bool":
                     value = NodeFilterHandler.normalize_bool_value(value)
                     lookup_expr = "exact"
+
+                # lookup 表达式白名单校验
+                if lookup_expr not in NodeFilterHandler.ALLOWED_LOOKUP_EXPRS:
+                    continue
 
                 # 构建查询键
                 lookup_key = f"{field_name}__{lookup_expr}"
