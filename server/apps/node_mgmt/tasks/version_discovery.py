@@ -25,42 +25,39 @@ def discover_node_versions():
     # 一次性获取所有最新版本映射（只查询一次）
     latest_versions_map = VersionUpgradeService.get_latest_versions_map(component_type="controller")
 
-    total_count = Node.objects.count()
+    # 预加载所有 Controller 记录，避免循环内每节点发起最多 3 次 DB 查询
+    # Controller 表记录数有限（按 os×arch 组合），一次全量加载后在内存中查找
+    all_controllers = list(Controller.objects.filter(name="Controller"))
+    controllers_map = {(c.os, c.cpu_architecture): c for c in all_controllers}
+
     success_count = 0
     failed_count = 0
 
-    for node in Node.objects.all().iterator(chunk_size=500):
+    for node in Node.objects.iterator(chunk_size=200):
         try:
-            _discover_controller_version(node, latest_versions_map)
+            _discover_controller_version(node, latest_versions_map, controllers_map, all_controllers)
             success_count += 1
         except Exception as e:
             failed_count += 1
             logger.error(f"节点 {node.name}({node.ip}) 控制器版本发现失败: {str(e)}")
 
+    total = success_count + failed_count
     logger.info(f"节点控制器版本发现任务完成，成功: {success_count}, 失败: {failed_count}")
-    return {"success_count": success_count, "failed_count": failed_count, "total": total_count}
+    return {"success_count": success_count, "failed_count": failed_count, "total": total}
 
 
-def _discover_controller_version(node: Node, latest_versions_map: dict):
+def _discover_controller_version(node: Node, latest_versions_map: dict, controllers_map: dict, all_controllers: list):
     """
     发现控制器版本信息，并计算升级状态
-    从 Controller 模型中读取配置的 version_command
+    从预加载的 Controller 列表中查找（不再发起 DB 查询）
     """
-    # 根据节点操作系统查询对应的控制器配置
+    # 根据节点操作系统从预加载的 map 中查找控制器配置（精确匹配 → x86_64 回退 → os 兜底）
     node_arch = normalize_cpu_architecture(getattr(node, "cpu_architecture", ""))
-    controller = Controller.objects.filter(
-        os=node.operating_system,
-        cpu_architecture=node_arch,
-        name="Controller",
-    ).first()
-    if not controller:
-        controller = Controller.objects.filter(
-            os=node.operating_system,
-            cpu_architecture=NodeConstants.X86_64_ARCH,
-            name="Controller",
-        ).first()
-    if not controller:
-        controller = Controller.objects.filter(os=node.operating_system, name="Controller").first()
+    controller = (
+        controllers_map.get((node.operating_system, node_arch))
+        or controllers_map.get((node.operating_system, NodeConstants.X86_64_ARCH))
+        or next((c for c in all_controllers if c.os == node.operating_system), None)
+    )
 
     if not controller:
         logger.warning(f"节点 {node.name} 操作系统 {node.operating_system} 未找到对应的控制器配置")
