@@ -8,6 +8,7 @@ from apps.opspilot.services.wiki.check_service import scan_health
 from apps.opspilot.services.wiki.graph_service import analyze_graph, build_graph
 from apps.opspilot.services.wiki.overview_service import get_overview
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
+from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
 from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
@@ -105,6 +106,15 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         kb = self.get_object()
         created = scan_health(kb)
         return JsonResponse({"result": True, "data": {"created": len(created)}})
+
+    @action(methods=["POST"], detail=True)
+    def rebuild(self, request, pk=None):
+        """Schema 变更后全量重建:归档旧 AI 页、保留并标记人工页、按新 Schema 重生成。"""
+        kb = self.get_object()
+        record = rebuild_knowledge_base(kb, llm_model_id=kb.llm_model_id, operator=getattr(request.user, "username", ""))
+        from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer
+
+        return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
     @action(methods=["POST"], detail=True)
     def rebuild_relations(self, request, pk=None):
