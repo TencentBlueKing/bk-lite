@@ -53,15 +53,17 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   }, [node.id, onTableQueryChange]);
 
   const chartType = valueConfig?.chartType;
+  const isTableLikeChart = chartType === 'table' || chartType === 'eventTable';
 
   const widgetProps = {
     rawData: rawData || null,
     loading: isLoading || false,
     config: valueConfig,
     dataSource,
-    ...(chartType === 'table' ? { onQueryChange: handleQueryChange } : {}),
+    ...(isTableLikeChart ? { onQueryChange: handleQueryChange } : {}),
   };
-  const shouldShowLoading = (isLoading || (!rawData && !hasError)) && chartType !== 'table';
+  const shouldShowLoading =
+    (isLoading || (!rawData && !hasError)) && !isTableLikeChart;
   const shouldShowError = hasError && !isLoading;
   const normalizedDescription = description?.trim();
 
@@ -134,7 +136,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
           />
         ) : (
           <div
-            className="h-full w-full"
+            className="h-full min-h-0 w-full overflow-hidden"
             onClick={(e) => {
               e.stopPropagation();
             }}
@@ -155,13 +157,13 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
               <WidgetRenderer
                 chartType={chartType}
                 {...widgetProps}
-                fallback={(
+                fallback={
                   <div className="h-full flex flex-col items-center justify-center">
                     <div className="text-xs text-gray-500">
                       Unknown chart type: {chartType}
                     </div>
                   </div>
-                )}
+                }
               />
             </ConfigProvider>
           </div>

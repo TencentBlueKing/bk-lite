@@ -9,7 +9,7 @@ from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
-from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer
+from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer, WorkflowMemorySpaceOptionSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -29,11 +29,19 @@ class MemorySpaceViewSet(AuthViewSet):
         serializer = self.get_detail(request, *args, **kwargs)
         return JsonResponse({"result": True, "data": serializer.data})
 
+    @HasPermission("memory_list-View")
+    @action(methods=["GET"], detail=False, url_path="workflow_options")
+    def workflow_options(self, request):
+        """返回工作流记忆节点可选择的记忆空间，不按 current_team 过滤。"""
+        queryset = MemorySpace.objects.all().order_by("-id")
+        serializer = WorkflowMemorySpaceOptionSerializer(queryset, many=True)
+        return JsonResponse({"result": True, "data": serializer.data})
+
     @HasPermission("memory_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            params["team"] = [int(request.COOKIES.get("current_team"))]
+            params["team"] = [self._parse_current_team_cookie(request)]
         self._validate_org_field_permission(request, params["team"])
         response = super().create(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:
@@ -94,6 +102,7 @@ class MemorySpaceViewSet(AuthViewSet):
                 openai_api_key=llm_model.openai_api_key,
                 model=llm_model.model_name,
                 protocol_type=llm_model.protocol_type,
+                vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
                 temperature=0.3,
             )
             client = LLMClientFactory.create_client(llm_request, disable_stream=True)
@@ -105,7 +114,7 @@ class MemorySpaceViewSet(AuthViewSet):
             result_text = response.content if hasattr(response, "content") else str(response)
             return JsonResponse({"result": True, "data": {"result": result_text}})
         except Exception as e:
-            logger.error(f"记忆写入测试失败: {e}")
+            logger.exception("记忆写入测试失败")
             return JsonResponse({"result": False, "message": f"LLM 调用失败: {str(e)}"}, status=500)
 
 

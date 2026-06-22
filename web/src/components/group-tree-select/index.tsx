@@ -1,6 +1,6 @@
 import React, { useMemo, useCallback, useEffect, useState } from 'react';
 import { Tag, Dropdown } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
+import { CloseCircleFilled, DownOutlined } from '@ant-design/icons';
 import { useUserInfoContext } from '@/context/userInfo';
 import { convertGroupTreeToTreeSelectData } from '@/utils/index';
 import { createStrategy } from './strategies';
@@ -15,16 +15,23 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
   placeholder,
   multiple = true,
   disabled = false,
+  allowClear = false,
   style = { width: '100%' },
   mode = 'ownership',
   height = 300,
   showSearch = false,
   filterByRootId,
+  lockedValues = [],
 }) => {
   const { groupTree } = useUserInfoContext();
   const { t } = useTranslation();
   const [internalValue, setInternalValue] = useState<number[]>([]);
   const [open, setOpen] = useState(false);
+
+  // 锁定项（如「管理组织」自动并入「使用组织」）：始终被选中、不可取消
+  const lockedString = useMemo(() => JSON.stringify(lockedValues || []), [lockedValues]);
+  const lockedIds = useMemo<number[]>(() => (lockedValues || []).map(Number).filter((n) => !Number.isNaN(n)), [lockedString]);
+  const lockedSet = useMemo(() => new Set<number>(lockedIds), [lockedIds]);
 
   const treeSelectData = useMemo(() => {
     return convertGroupTreeToTreeSelectData(groupTree);
@@ -61,12 +68,13 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
       return nodes.map(node => ({
         value: node.value,
         label: node.title,
-        disabled: node.disabled,
+        // 锁定项在面板中置灰（已勾选且不可取消）
+        disabled: node.disabled || lockedSet.has(node.value),
         children: node.children ? convertToCascadeNode(node.children) : undefined
       }));
     };
     return convertToCascadeNode(processedTreeData);
-  }, [processedTreeData]);
+  }, [processedTreeData, lockedSet]);
 
   const getNodePath = useCallback((treeData: any[], targetId: number, path: string[] = []): string[] => {
     for (const item of treeData) {
@@ -119,32 +127,45 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
 
     const normalizedValue = normalizeValue(value);
     const validValues = normalizedValue.filter(id => isValidValue(id));
+    // 锁定项始终保留（即便外部 value 暂未包含），且仅保留树中有效的锁定项
+    const withLocked = Array.from(new Set([...validValues, ...lockedIds.filter(id => isValidValue(id))]));
 
     // Update internal state only when value actually changes
     const currentValueString = JSON.stringify(internalValue);
-    const newValueString = JSON.stringify(validValues);
+    const newValueString = JSON.stringify(withLocked);
 
     if (currentValueString !== newValueString) {
-      setInternalValue(validValues);
+      setInternalValue(withLocked);
     }
-  }, [valueString, processedTreeData, isValidValue, normalizeValue]);
+  }, [valueString, processedTreeData, isValidValue, normalizeValue, lockedIds]);
 
   // 处理 MultiCascadePanel 值变化
   const handlePanelChange = useCallback((newValue: number[]) => {
-    setInternalValue(newValue);
+    // 锁定项不可移除：始终并入（即便面板尝试取消也会被补回）
+    const merged = Array.from(new Set([...newValue, ...lockedIds]));
+    setInternalValue(merged);
     if (multiple) {
-      onChange?.(newValue);
+      onChange?.(merged);
     } else {
       // 单选模式：传递单个值或第一个值
-      onChange?.(newValue.length > 0 ? newValue[0] : undefined);
+      onChange?.(merged.length > 0 ? merged[0] : undefined);
     }
-  }, [onChange, multiple]);
+  }, [onChange, multiple, lockedIds]);
 
   const handleRemoveTag = useCallback((removedId: number) => {
+    if (lockedSet.has(removedId)) return; // 锁定项不可删除
     const newValue = internalValue.filter(id => id !== removedId);
     setInternalValue(newValue);
     onChange?.(newValue);
-  }, [internalValue, onChange]);
+  }, [internalValue, onChange, lockedSet]);
+
+  const handleClear = useCallback((event: React.MouseEvent) => {
+    event.stopPropagation();
+    // 清空时保留锁定项（锁定项不可被清除）
+    const cleared = Array.from(lockedSet) as number[];
+    setInternalValue(cleared);
+    onChange?.(multiple ? cleared : (cleared.length > 0 ? cleared[0] : undefined));
+  }, [multiple, onChange, lockedSet]);
 
   const dropdownContent = (
     <div
@@ -176,7 +197,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
           {internalValue.map(id => (
             <Tag
               key={id}
-              closable={!disabled}
+              closable={!disabled && !lockedSet.has(id)}
               onClose={(e) => {
                 e.stopPropagation();
                 handleRemoveTag(id);
@@ -189,7 +210,7 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
       );
     }
     return getFullPathLabel(processedTreeData, internalValue[0]);
-  }, [internalValue, multiple, disabled, placeholder, processedTreeData, getFullPathLabel, handleRemoveTag]);
+  }, [internalValue, multiple, disabled, placeholder, processedTreeData, getFullPathLabel, handleRemoveTag, lockedSet]);
 
   return (
     <div style={style}>
@@ -212,6 +233,12 @@ const GroupTreeSelect: React.FC<GroupTreeSelectProps> = ({
           <div className="flex-1 overflow-hidden">
             {displayContent}
           </div>
+          {allowClear && internalValue.length > 0 && !disabled && (
+            <CloseCircleFilled
+              className="text-xs text-gray-400 ml-2 hover:text-gray-500"
+              onClick={handleClear}
+            />
+          )}
           <DownOutlined className="text-xs text-gray-400 ml-2" />
         </div>
       </Dropdown>

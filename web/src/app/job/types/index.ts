@@ -153,6 +153,7 @@ export interface ScriptParam {
   description?: string;
   default?: string;
   is_encrypted?: boolean;
+  is_required?: boolean;
 }
 
 export interface Script {
@@ -180,6 +181,8 @@ export interface DashboardTrend {
   execution_count: number;
   success_count: number;
   failed_count: number;
+  cancelled_count: number;
+  avg_duration_seconds: number;
 }
 
 export interface DashboardSuccessRatePeriod {
@@ -187,12 +190,49 @@ export interface DashboardSuccessRatePeriod {
   success_count: number;
   failed_count: number;
   success_rate: number;
+  avg_duration_seconds: number;
 }
 
 export interface DashboardSuccessRateCompare {
   days: number;
+  start_date?: string;
+  end_date?: string;
   current_period: DashboardSuccessRatePeriod;
   success_rate_increase: number;
+}
+
+// Dashboard 趋势/成功率对比接口的统计区间入参。
+// 传 startDate + endDate 走自定义闭区间；否则按 days（默认 7）统计最近 N 天。
+export interface DashboardRangeParams {
+  days?: number;
+  startDate?: string; // YYYY-MM-DD
+  endDate?: string; // YYYY-MM-DD
+}
+
+export interface DashboardStats {
+  target_total: number;
+  script_total: number;
+  playbook_total: number;
+  execution_total: number;
+  execution_success: number;
+  execution_failed: number;
+  execution_running: number;
+  execution_pending: number;
+  scheduled_task_total: number;
+  scheduled_task_enabled: number;
+  avg_duration_seconds: number;
+}
+
+export interface DashboardJobTypeDistributionItem {
+  job_type: string;
+  job_type_display: string;
+  count: number;
+}
+
+export interface DashboardExecutionStatusDistributionItem {
+  status: string;
+  status_display: string;
+  count: number;
 }
 
 export interface ScriptListResponse {
@@ -354,12 +394,14 @@ export interface ScheduledTaskFormData {
 }
 
 // Job Record types
-export type JobRecordStatus = 'pending' | 'running' | 'success' | 'failed' | 'canceled';
+// 与后端 ExecutionStatus 对齐：cancelled（已取消，终态）、cancelling（取消中，非终态）
+export type JobRecordStatus = 'pending' | 'running' | 'success' | 'failed' | 'timeout' | 'cancelled' | 'cancelling';
 export type JobRecordSource = 'manual' | 'scheduled' | 'api';
 
 export interface ExecutionTarget {
   id: number;
   target: number;
+  target_key?: string;
   target_name: string;
   target_ip: string;
   status: JobRecordStatus;
@@ -406,6 +448,7 @@ export interface JobRecord {
 export interface JobRecordDetail extends JobRecord {
   script?: number;
   playbook?: number;
+  playbook_version?: string;
   params?: Record<string, unknown>;
   script_type?: ScriptType;
   script_type_display?: string;

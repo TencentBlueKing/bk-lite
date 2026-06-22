@@ -3,20 +3,17 @@ import { Form, Input, Select, InputNumber, Radio } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useTermList } from '@/app/log/hooks/integration/common/other';
 import ConditionSelector from './conditionSelector';
-import SelectCard from './selectCard';
 import { StrategyFields } from '@/app/log/types/event';
 import { FilterItem } from '@/app/log/types/integration';
 import { ListItem } from '@/app/log/types';
 import { SCHEDULE_UNIT_MAP } from '@/app/log/constants';
-import {
-  useAlgorithmList,
-  useScheduleList,
-  useLevelList
-} from '@/app/log/hooks/event';
+import { useScheduleList, useLevelList } from '@/app/log/hooks/event';
+import { getAlertConditionVisibility } from './policyFormUtils';
 
 const { Option } = Select;
 
 interface AlertConditionsFormProps {
+  policyType?: 'keyword' | 'aggregate';
   unit: string;
   periodUnit: string;
   conditions: FilterItem[];
@@ -30,6 +27,7 @@ interface AlertConditionsFormProps {
 }
 
 const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
+  policyType,
   unit,
   periodUnit,
   conditions,
@@ -44,8 +42,9 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
   const { t } = useTranslation();
   const LEVEL_LIST = useLevelList();
   const SCHEDULE_LIST = useScheduleList();
-  const ALGORITHM_LIST = useAlgorithmList();
   const TERM_LIST = useTermList();
+  const lockedPolicyType = policyType || 'keyword';
+  const conditionVisibility = getAlertConditionVisibility(lockedPolicyType);
 
   // 验证条件函数
   const validateConidtion = async () => {
@@ -65,12 +64,8 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
 
   return (
     <>
-      <Form.Item<StrategyFields>
-        name="alert_type"
-        label={<span className="w-[100px]">{t('log.event.algorithm')}</span>}
-        rules={[{ required: true, message: t('common.required') }]}
-      >
-        <SelectCard data={ALGORITHM_LIST} cardWidth={220} />
+      <Form.Item<StrategyFields> name="alert_type" hidden>
+        <Input />
       </Form.Item>
       <Form.Item<StrategyFields>
         required
@@ -79,7 +74,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           prevValues.alert_type !== currentValues.alert_type
         }
       >
-        {({ getFieldValue }) => (
+        {() => (
           <>
             <Form.Item
               name="alert_name"
@@ -97,7 +92,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               />
             </Form.Item>
             <div className="text-[var(--color-text-3)] mt-[10px]">
-              {getFieldValue('alert_type') === 'aggregate'
+              {lockedPolicyType === 'aggregate'
                 ? t('log.event.alertNameTitle')
                 : t('log.event.keyWordAlertNameTitle')}
             </div>
@@ -152,135 +147,110 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           {t('log.event.queryCriteriaTips')}
         </div>
       </Form.Item>
-      <Form.Item
-        noStyle
-        shouldUpdate={(prevValues, currentValues) =>
-          prevValues.alert_type !== currentValues.alert_type
-        }
-      >
-        {({ getFieldValue }) =>
-          getFieldValue('alert_type') === 'aggregate' ? (
-            <>
-              <Form.Item<StrategyFields>
-                required
-                label={
-                  <span className="w-[100px]">
-                    {t('log.event.polymerizationConditions')}
-                  </span>
-                }
-              >
-                <Form.Item
-                  name="group_by"
-                  noStyle
-                  rules={[
-                    {
-                      required: true,
-                      message: t('common.required')
-                    }
-                  ]}
-                >
-                  <Select
-                    style={{ width: 800 }}
-                    allowClear
-                    showSearch
-                    mode="multiple"
-                    maxTagCount="responsive"
-                  >
-                    {fieldList.map((item) => (
-                      <Option key={item} value={item}>
-                        {item}
-                      </Option>
-                    ))}
-                  </Select>
-                </Form.Item>
-                <div className="text-[var(--color-text-3)] mt-[10px]">
-                  {t('log.event.polymerizationConditionsDes')}
-                </div>
-              </Form.Item>
-              <Form.Item<StrategyFields>
-                required
-                label={
-                  <span className="w-[100px]">{t('log.integration.rule')}</span>
-                }
-              >
-                <Form.Item
-                  name="rule"
-                  noStyle
-                  rules={[
-                    {
-                      validator: validateConidtion,
-                      required: true
-                    }
-                  ]}
-                >
-                  <div className="flex items-center mb-[20px] w-[800px]">
-                    <span>{t('log.integration.meetRule')}</span>
-                    <Select
-                      className="ml-[8px] flex-1"
-                      placeholder={t('log.integration.rule')}
-                      showSearch
-                      value={term}
-                      onChange={onTermChange}
-                    >
-                      {TERM_LIST.map((item: ListItem) => (
-                        <Option value={item.value} key={item.value}>
-                          {item.name}
-                        </Option>
-                      ))}
-                    </Select>
-                  </div>
-                  <ConditionSelector
-                    fields={fieldList}
-                    data={conditions}
-                    onChange={onConditionsChange}
-                  ></ConditionSelector>
-                </Form.Item>
-              </Form.Item>
-            </>
-          ) : (
-            <Form.Item<StrategyFields>
-              required
-              label={
-                <span className="w-[100px]">
-                  {t('log.event.displayFields')}
-                </span>
+      {conditionVisibility.showDisplayFields && (
+        <Form.Item<StrategyFields>
+          required
+          label={
+            <span className="w-[100px]">{t('log.event.displayFields')}</span>
+          }
+        >
+          <Form.Item
+            name="show_fields"
+            noStyle
+            rules={[
+              {
+                required: true,
+                message: t('common.required')
               }
+            ]}
+          >
+            <Select
+              style={{ width: 800 }}
+              showSearch
+              mode="multiple"
+              maxTagCount="responsive"
+              options={fieldList
+                .filter(
+                  (item) =>
+                    !['message', 'timestamp', '_time', '_msg'].includes(item)
+                )
+                .map((item) => ({
+                  value: item,
+                  label: item
+                }))}
+            />
+          </Form.Item>
+          <div className="text-[var(--color-text-3)] mt-[10px]">
+            {t('log.event.displayFieldsDes')}
+          </div>
+        </Form.Item>
+      )}
+      {conditionVisibility.showGroupBy && (
+        <Form.Item<StrategyFields>
+          label={
+            <span className="w-[100px]">{t('log.event.groupByFields')}</span>
+          }
+        >
+          <Form.Item name="group_by" noStyle>
+            <Select
+              style={{ width: 800 }}
+              allowClear
+              showSearch
+              mode="multiple"
+              maxTagCount="responsive"
+              placeholder={t('log.event.groupByFields')}
             >
-              <Form.Item
-                name="show_fields"
-                noStyle
-                rules={[
-                  {
-                    required: true,
-                    message: t('common.required')
-                  }
-                ]}
+              {fieldList.map((item) => (
+                <Option key={item} value={item}>
+                  {item}
+                </Option>
+              ))}
+            </Select>
+          </Form.Item>
+          <div className="text-[var(--color-text-3)] mt-[10px]">
+            {t('log.event.groupByFieldsDes')}
+          </div>
+        </Form.Item>
+      )}
+      {conditionVisibility.showRule && (
+        <Form.Item<StrategyFields>
+          required
+          label={<span className="w-[100px]">{t('log.integration.rule')}</span>}
+        >
+          <Form.Item
+            name="rule"
+            noStyle
+            rules={[
+              {
+                validator: validateConidtion,
+                required: true
+              }
+            ]}
+          >
+            <div className="flex items-center mb-[20px] w-[800px]">
+              <span>{t('log.integration.meetRule')}</span>
+              <Select
+                className="ml-[8px] flex-1"
+                placeholder={t('log.integration.rule')}
+                showSearch
+                value={term}
+                onChange={onTermChange}
               >
-                <Select
-                  style={{ width: 800 }}
-                  showSearch
-                  mode="multiple"
-                  maxTagCount="responsive"
-                  options={fieldList
-                    .filter(
-                      (item) =>
-                        !['message', 'timestamp', '_time', '_msg'].includes(
-                          item
-                        )
-                    )
-                    .map((item) => ({
-                      value: item,
-                      label: item
-                    }))}
-                />
-              </Form.Item>
-              <div className="text-[var(--color-text-3)] mt-[10px]">
-                {t('log.event.displayFieldsDes')}
-              </div>
-            </Form.Item>
-          )
-        }
-      </Form.Item>
+                {TERM_LIST.map((item: ListItem) => (
+                  <Option value={item.value} key={item.value}>
+                    {item.name}
+                  </Option>
+                ))}
+              </Select>
+            </div>
+            <ConditionSelector
+              fields={fieldList}
+              data={conditions}
+              onChange={onConditionsChange}
+            ></ConditionSelector>
+          </Form.Item>
+        </Form.Item>
+      )}
       <Form.Item<StrategyFields>
         required
         label={<span className="w-[100px]">{t('log.event.frequency')}</span>}

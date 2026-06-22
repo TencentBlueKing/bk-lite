@@ -31,6 +31,7 @@ import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import strategyStyle from '../index.module.scss';
 import { debounce } from 'lodash';
+import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -87,8 +88,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   // 合并分组维度列表：固定列表 + 标签列表，去重
   const groupByOptions = useMemo(() => {
     const fixedList = getGroupIds(monitorName)?.list || defaultGroup;
-    const merged = [...fixedList, ...labels];
-    return [...new Set(merged)];
+    return sanitizeGroupBy([...fixedList, ...labels]);
   }, [monitorName, labels, getGroupIds]);
 
   // 条件维度输入框的本地状态（用于即时显示）
@@ -285,7 +285,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                   maxTagCount="responsive"
                   placeholder={t('monitor.events.groupDimension')}
                   value={groupBy}
-                  onChange={onGroupChange}
+                  onChange={(value) => onGroupChange(sanitizeGroupBy(value))}
                 >
                   {groupByOptions.map((item: string) => (
                     <Option value={item} key={item}>

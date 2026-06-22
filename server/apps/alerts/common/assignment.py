@@ -24,6 +24,7 @@ from apps.alerts.service.reminder_service import ReminderService
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.alerts.utils.time_range_checker import TimeRangeChecker
 from apps.alerts.utils.rule_matcher import RuleMatcher
+from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.core.logger import alert_logger as logger
 
 
@@ -155,14 +156,15 @@ class AlertAssignmentOperator:
                     self._batch_create_log(assignment, matched_alert_ids)
                 except Exception as log_error:
                     logger.error(
-                        f"Error creating logs for assignment {assignment.id}: {str(log_error)}"
+                        "[AlertAssign] 创建分派日志失败 assignment_id=%s: %s",
+                        assignment.id, log_error, exc_info=True,
                     )
 
             except Exception as e:
-                logger.error(f"Error processing assignment {assignment.id}: {str(e)}")
+                logger.error("[AlertAssign] 处理分派失败 assignment_id=%s: %s", assignment.id, e, exc_info=True)
                 continue
 
-        logger.info(f"Assignment completed: {results}")
+        logger.info("[AlertAssign] 分派处理完成: %s", results)
         return results
 
     @staticmethod
@@ -185,7 +187,7 @@ class AlertAssignmentOperator:
                     overview=f"告警自动分派，分派策略ID [{assignment.id}] 策略名称 [{assignment.name}] 分派人员 {assignment.personnel}",
                 )
             )
-        OperatorLog.objects.bulk_create(bulk_data)
+        record_operator_logs_bulk(bulk_data)
 
     def _batch_find_matching_alerts(
         self, assignment: AlertAssignment, excluded_ids: set = None
@@ -220,7 +222,7 @@ class AlertAssignmentOperator:
                 time_matched_alert_ids.append(alert_pk)
 
         if not time_matched_alert_ids:
-            logger.debug(f"No alerts match time range for assignment {assignment.id}")
+            logger.debug("[AlertAssign] 无告警匹配分派时间范围 assignment_id=%s", assignment.id)
             return []
 
         # 重新构建查询集，只包含时间范围匹配的告警
@@ -314,13 +316,13 @@ class AlertAssignmentOperator:
                             },
                         )
                         logger.debug(
-                            f"Alert {alert.alert_id} assigned successfully to {personnel}, result={result}"
+                            "[AlertAssign] 告警 %s 成功分派给 %s, result=%s",
+                            alert.alert_id, personnel, result,
                         )
 
                         logger.info(
-                            "== assignment alert notify start ==, assignment={}, alert_id={}".format(
-                                assignment.id, alert.alert_id
-                            )
+                            "[AlertAssign] == assignment alert notify start ==, assignment=%s, alert_id=%s",
+                            assignment.id, alert.alert_id,
                         )
                         # 分派成功后 立即发送提醒通知
                         reminder_id = AlertReminderTask.objects.filter(
@@ -332,9 +334,8 @@ class AlertAssignmentOperator:
                             reminder_id=reminder_id,
                         )
                         logger.info(
-                            "== assignment alert notify end ==, assignment={}, alert_id={}".format(
-                                assignment.id, alert.alert_id
-                            )
+                            "[AlertAssign] == assignment alert notify end ==, assignment=%s, alert_id=%s",
+                            assignment.id, alert.alert_id,
                         )
 
                         results.append(
@@ -349,7 +350,7 @@ class AlertAssignmentOperator:
 
                     except Exception as e:
                         logger.exception(
-                            f"Error executing assignment for alert {alert.alert_id}"
+                            "[AlertAssign] 执行分派失败 alert_id=%s", alert.alert_id
                         )
                         results.append(
                             {
@@ -362,7 +363,7 @@ class AlertAssignmentOperator:
                         )
 
         except Exception as e:
-            logger.error(f"Error in batch assignment: {str(e)}")
+            logger.error("[AlertAssign] 批量分派失败: %s", e, exc_info=True)
             # 如果批量操作失败，为所有告警添加失败记录
             for alert_id in alert_ids:
                 alert = self.alerts.get(alert_id)
@@ -400,7 +401,7 @@ def execute_auto_assignment_for_alerts(alert_ids: List[str]) -> Dict[str, Any]:
 
     operator = AlertAssignmentOperator(alert_ids)
     result = operator.execute_auto_assignment()
-    logger.info(f"=== Auto assignment completed: {result} ===")
+    logger.info("[AlertAssign] === 自动分派完成: %s ===", result)
     assignment_alert_ids = [
         i.get("alert_id") for i in result.get("assignment_results", [])
     ]

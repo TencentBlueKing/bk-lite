@@ -1,4 +1,9 @@
+import asyncio
+import base64
 import json
+import sys
+import types
+from pathlib import Path
 
 
 def test_kubernetes_constructor_params_expose_structured_instances_only():
@@ -14,7 +19,45 @@ def test_kubernetes_constructor_params_expose_structured_instances_only():
     ]
 
 
-def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():
+def test_build_generated_file_download_event_returns_generic_payload():
+    from apps.opspilot.services.generated_file_delivery_service import build_generated_file_download_event
+
+    event = build_generated_file_download_event(
+        filename="report.docx",
+        content_bytes=b"hello",
+        mime_type="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    )
+
+    assert event["filename"] == "report.docx"
+    assert event["mime_type"] == "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+    assert len(event["download_id"]) == 8
+    assert base64.b64decode(event["content_base64"]) == b"hello"
+
+
+def test_generate_k8s_report_docx_keeps_k8s_specific_rendering():
+    from apps.opspilot.metis.llm.tools.kubernetes.report_generator import generate_k8s_report_docx
+
+    report_bytes = generate_k8s_report_docx(
+        {
+            "cluster_name": "test-cluster",
+            "raw_items": [
+                {
+                    "namespace": "default",
+                    "target_name": "api",
+                    "target_type": "Deployment",
+                    "severity": "high",
+                    "summary": "镜像标签使用 latest",
+                    "category": "image",
+                }
+            ],
+        }
+    )
+
+    assert isinstance(report_bytes, bytes)
+    assert report_bytes.startswith(b"PK")
+
+
+def test_get_kubernetes_instances_prompt_requires_choice_when_unspecified():
     from apps.opspilot.metis.llm.tools.kubernetes.connection import get_kubernetes_instances_prompt
 
     prompt = get_kubernetes_instances_prompt(
@@ -27,7 +70,8 @@ def test_get_kubernetes_instances_prompt_targets_all_when_unspecified():
     )
 
     assert "可用实例: 测试集群, 生产集群" in prompt
-    assert "未指定实例时，默认对全部实例执行" in prompt
+    assert "未指定实例时，必须先让用户选择一个目标实例" in prompt
+    assert "默认对全部实例执行" not in prompt
 
 
 def test_collect_k8s_context_targets_single_instance_when_instance_id_provided(mocker):
@@ -367,7 +411,6 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
         return_value=mocker.Mock(),
     )
     mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult.objects.filter")
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.threading.Thread")
 
     engine = ChatFlowEngine(workflow, execution_id="exec-sse-params-1")
     evidence_package = '{"alert_id":"alert-001","ready_for_analysis":true}'
@@ -386,14 +429,16 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
     mocker.patch.object(engine, "_get_node_executor", return_value=DummyExecutor())
     mocker.patch.object(engine, "_record_execution_result")
     mocker.patch.object(engine, "_record_node_execution_result")
+    # 中断检查依赖 DB/缓存；本单测无 DB，显式 mock 为"未中断"以测试正常传递路径
+    mocker.patch.object(engine, "_check_interrupt_requested", return_value=False)
 
-    engine._execute_subsequent_nodes_async(collector_node, [{"content": evidence_package}])
+    # F013: subsequent-node execution is now an awaited coroutine (no detached
+    # daemon thread). Awaiting it must run the work in-flow to completion and
+    # propagate the correct output-params-derived input to the next node.
 
-    threading_target = None
-    thread_call = __import__("apps.opspilot.utils.chat_flow_utils.engine.engine", fromlist=["threading"]).threading.Thread.call_args
-    threading_target = thread_call.kwargs["target"]
-    threading_target()
+    asyncio.run(engine._execute_subsequent_nodes_async(collector_node, [{"content": evidence_package}]))
 
+    # The subsequent node ran and completed during the await (not dropped).
     assert next_node_inputs == [
         {
             "node_id": "node_analyzer",
@@ -419,7 +464,13 @@ def test_resolve_request_tools_falls_back_to_skill_tools():
         {"name": "kubernetes_data_collection", "kwargs": []}
     ]
     assert resolve_request_tools([], [{"name": "kubernetes_data_collection", "kwargs": []}]) == [{"name": "kubernetes_data_collection", "kwargs": []}]
-    assert resolve_request_tools([{"name": "override", "kwargs": []}], [{"name": "default", "kwargs": []}]) == [{"name": "override", "kwargs": []}]
+    # BL-NEW-001：请求工具必须在 Skill 授权范围内，未授权的 name 会被丢弃（不再原样覆盖）。
+    assert resolve_request_tools([{"name": "override", "kwargs": []}], [{"name": "default", "kwargs": []}]) == []
+    # 请求携带 Skill 已授权的同名工具（含运行时参数）则保留。
+    assert resolve_request_tools(
+        [{"name": "kubernetes_data_collection", "kwargs": [{"key": "kubeconfig_data", "value": "x"}]}],
+        [{"name": "kubernetes_data_collection", "kwargs": []}],
+    ) == [{"name": "kubernetes_data_collection", "kwargs": [{"key": "kubeconfig_data", "value": "x"}]}]
 
 
 def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker):
@@ -564,10 +615,6 @@ def test_chat_service_formats_kubernetes_data_collection_tool_server(mocker):
 
 
 def test_execute_chat_flow_test_mode_enqueues_async_run(rf, mocker):
-    import json
-    import sys
-    import types
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
     falkordb_module = types.ModuleType("falkordb")
@@ -634,9 +681,6 @@ def test_execute_chat_flow_test_mode_enqueues_async_run(rf, mocker):
 
 
 def test_chat_flow_test_execute_task_runs_engine_with_entry_type(mocker):
-    import sys
-    import types
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
     falkordb_module = types.ModuleType("falkordb")
@@ -676,8 +720,6 @@ def test_chat_flow_test_execute_task_runs_engine_with_entry_type(mocker):
 
 
 def test_kubernetes_tools_loader_metadata_includes_node_diagnostics_and_collection_tools():
-    import sys
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
 
@@ -696,8 +738,6 @@ def test_kubernetes_tools_loader_metadata_includes_node_diagnostics_and_collecti
 
 
 def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tools():
-    import sys
-
     sys.modules.setdefault("oracledb", object())
     sys.modules.setdefault("pyodbc", object())
 
@@ -718,9 +758,6 @@ def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tool
 
 
 def test_builtin_k8s_chatflow_uses_restricted_data_collection_toolkit():
-    import json
-    from pathlib import Path
-
     config_path = Path(__file__).resolve().parents[1] / "management" / "chatflow_data" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
     k8s_item = next(item for item in config if item["id"] == "k8s")
@@ -729,8 +766,6 @@ def test_builtin_k8s_chatflow_uses_restricted_data_collection_toolkit():
 
 
 def test_builtin_k8s_chatflow_prompts_align_alert_input_and_evidence_output():
-    from pathlib import Path
-
     chatflow_dir = Path(__file__).resolve().parents[1] / "management" / "chatflow_data" / "k8s"
     check_prompt = (chatflow_dir / "check.txt").read_text(encoding="utf-8")
     format_prompt = (chatflow_dir / "format.txt").read_text(encoding="utf-8")

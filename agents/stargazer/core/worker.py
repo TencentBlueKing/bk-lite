@@ -44,6 +44,7 @@ async def collect_task(
     logger.info("=" * 60)
 
     result = None
+    should_clear_running_flag = True
     try:
         # 根据任务类型分发到对应的 handler
         if monitor_type == "vmware":
@@ -65,6 +66,11 @@ async def collect_task(
             from tasks.handlers.monitor_handler import collect_host_metrics_task
 
             result = await collect_host_metrics_task(ctx, params, task_id)
+
+        elif monitor_type == "windows_wmi":
+            from tasks.handlers.monitor_handler import collect_windows_wmi_metrics_task
+
+            result = await collect_windows_wmi_metrics_task(ctx, params, task_id)
 
         elif monitor_type == "sangforscp":
             try:
@@ -107,11 +113,26 @@ async def collect_task(
                 "completed_at": int(time.time() * 1000),
             }
 
+        should_clear_running_flag = not bool(
+            isinstance(result, dict) and result.get("defer_running_clear")
+        )
         return result
 
     finally:
+        await _clear_dedupe_key(params, ctx.get("job_id"))
         # 清除运行标记，允许相同参数的任务再次入队
-        await _clear_running_flag(task_id)
+        if should_clear_running_flag:
+            await _clear_running_flag(task_id)
+        else:
+            logger.info(f"Task {task_id} deferred running flag cleanup to callback completion")
+
+
+async def process_host_remote_callback_task(
+    ctx: Dict, params: Dict[str, Any], task_id: str
+) -> Dict[str, Any]:
+    from tasks.handlers.host_remote_handler import process_host_remote_callback_task as handler
+
+    return await handler(ctx, params, task_id)
 
 
 async def _clear_running_flag(task_id: str):
@@ -143,6 +164,52 @@ async def _clear_running_flag(task_id: str):
             await pool.close()
 
 
+async def _clear_dedupe_key(params: Dict[str, Any], job_id: str | None = None):
+    pool = None
+    try:
+        from core.task_queue import generate_dedupe_key
+
+        redis_settings = RedisSettings(
+            host=REDIS_CONFIG["host"],
+            port=REDIS_CONFIG["port"],
+            password=REDIS_CONFIG["password"],
+            database=REDIS_CONFIG["database"],
+        )
+
+        pool = await create_pool(redis_settings)
+        dedupe_key = generate_dedupe_key(params or {})
+        redis_key = f"task:dedupe:{dedupe_key}"
+        existing_job_id = await pool.get(redis_key)
+        if existing_job_id and job_id:
+            existing_job_id = (
+                existing_job_id.decode()
+                if isinstance(existing_job_id, (bytes, bytearray))
+                else str(existing_job_id)
+            )
+            if existing_job_id != job_id:
+                logger.info(
+                    "event=task_dedupe_clear status=skipped reason=job_id_mismatch "
+                    "dedupe_key=%s job_id=%s existing_job_id=%s",
+                    dedupe_key,
+                    job_id,
+                    existing_job_id,
+                )
+                return
+
+        await pool.delete(redis_key)
+        logger.info(
+            "event=task_dedupe_clear status=success dedupe_key=%s job_id=%s",
+            dedupe_key,
+            job_id,
+        )
+
+    except Exception as e:
+        logger.warning("event=task_dedupe_clear status=failed error=%s", e)
+    finally:
+        if pool:
+            await pool.close()
+
+
 class WorkerSettings:
     """
     ARQ Worker 配置
@@ -165,7 +232,7 @@ class WorkerSettings:
     )
 
     # 注册的任务函数
-    functions = [collect_task]
+    functions = [collect_task, process_host_remote_callback_task]
 
     # Worker 运行配置
     max_jobs = int(os.getenv("TASK_MAX_JOBS", "10"))

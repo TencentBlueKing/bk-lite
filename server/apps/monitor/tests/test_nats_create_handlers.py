@@ -156,6 +156,77 @@ def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeyp
     }
 
 
+def test_create_monitor_policy_maps_api_create_side_effects(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_policy_test_module")
+
+    captured = {"view_calls": []}
+
+    class StubMonitorPolicySerializer:
+        def __init__(self, instance=None, data=None):
+            self.instance = instance
+            self.input_data = data
+            if data is not None:
+                captured["payload"] = data
+                self.data = {"id": 42, "name": data["name"]}
+            else:
+                self.data = {"id": instance.id, "name": instance.name}
+
+        def is_valid(self, raise_exception=False):
+            captured["raise_exception"] = raise_exception
+            return True
+
+        def save(self):
+            return types.SimpleNamespace(
+                id=42,
+                name=self.input_data["name"],
+                enable_alerts=["no_data"],
+            )
+
+    class StubMonitorPolicyViewSet:
+        def update_or_create_task(self, policy_id, schedule):
+            captured["view_calls"].append(("task", policy_id, schedule))
+
+        def update_policy_organizations(self, policy_id, organizations):
+            captured["view_calls"].append(("organizations", policy_id, organizations))
+
+        def is_no_data_alert_enabled(self, policy):
+            return "no_data" in policy.enable_alerts
+
+        def update_policy_baselines(self, policy_id, enable_alerts):
+            captured["view_calls"].append(("baselines", policy_id, enable_alerts))
+
+    monkeypatch.setattr(module, "MonitorPolicySerializer", StubMonitorPolicySerializer)
+    monkeypatch.setattr(module, "_get_monitor_policy_viewset", StubMonitorPolicyViewSet)
+
+    result = module.create_monitor_policy(
+        {
+            "name": "cpu policy",
+            "schedule": "*/5 * * * *",
+            "organizations": [1, 2],
+        },
+        user_info={"user": "alice", "domain": "tenant-a.com"},
+    )
+
+    assert result == {"result": True, "data": {"id": 42, "name": "cpu policy"}, "message": ""}
+    assert captured["payload"]["created_by"] == "alice"
+    assert captured["payload"]["updated_by"] == "alice"
+    assert captured["payload"]["domain"] == "tenant-a.com"
+    assert captured["payload"]["updated_by_domain"] == "tenant-a.com"
+    assert captured["view_calls"] == [
+        ("task", 42, "*/5 * * * *"),
+        ("organizations", 42, [1, 2]),
+        ("baselines", 42, ["no_data"]),
+    ]
+
+
+def test_create_monitor_policy_requires_schedule(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_policy_schedule_test_module")
+
+    result = module.create_monitor_policy({"name": "cpu policy"}, user_info={"user": "alice"})
+
+    assert result == {"result": False, "data": [], "message": "schedule 不能为空"}
+
+
 def test_create_monitor_object_payload_generates_derivative_instance_id_keys(monkeypatch):
     module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_object_payload_test_module")
 
@@ -293,3 +364,184 @@ def test_mm_query_returns_failure_when_victoriametrics_reports_error_without_det
     result = module.mm_query("up")
 
     assert result == {"result": False, "data": [], "message": "查询单个指标数据失败"}
+
+
+# ============ 总览统计 scope 收口（Issue #3342）============
+
+
+class _ScopeFakeQS:
+    """仅用于 _scope_count_queryset 单测：记录 none/filter/distinct 调用。"""
+
+    def __init__(self, tag="full"):
+        self.tag = tag
+        self.filter_kwargs = None
+        self.distinct_called = False
+
+    def none(self):
+        return _ScopeFakeQS("none")
+
+    def filter(self, **kwargs):
+        new = _ScopeFakeQS("filtered")
+        new.filter_kwargs = kwargs
+        return new
+
+    def distinct(self):
+        self.distinct_called = True
+        return self
+
+
+def test_scope_count_queryset_superuser_returns_full(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_scope_superuser_test_module")
+    qs = _ScopeFakeQS("full")
+    assert module._scope_count_queryset(qs, is_superuser=True, team=None, org_field="x") is qs
+
+
+def test_scope_count_queryset_non_superuser_no_team_returns_none(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_scope_no_team_test_module")
+    qs = _ScopeFakeQS("full")
+    # 非超管 + 空 team → 零授权空集（修复点；revert 后会返回 full，本断言失败）
+    for empty_team in (None, "", 0):
+        result = module._scope_count_queryset(qs, is_superuser=False, team=empty_team, org_field="x")
+        assert result.tag == "none"
+
+
+def test_scope_count_queryset_non_superuser_with_team_filters(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_scope_team_test_module")
+    qs = _ScopeFakeQS("full")
+    result = module._scope_count_queryset(
+        qs, is_superuser=False, team=5, org_field="policyorganization__organization"
+    )
+    assert result.tag == "filtered"
+    assert result.filter_kwargs == {"policyorganization__organization": 5}
+    assert result.distinct_called
+
+
+class _ScopedIdList(list):
+    def __init__(self, scope):
+        super().__init__([] if scope == "none" else [1, 2, 3])
+        self.scope = scope
+
+
+class _StatsFakeQS:
+    """模拟统计查询集：count 由作用域决定（full=100 / team=7 / none=0）。
+
+    filter 按 kwargs 推断作用域：组织维度过滤→team；policy_id__in/monitor_instance_id__in
+    继承传入 id 集合的作用域；其余过滤（is_active/status/created_at__gte…）不改作用域。
+    """
+
+    _COUNTS = {"full": 100, "team": 7, "none": 0}
+
+    def __init__(self, scope="full"):
+        self.scope = scope
+
+    def all(self):
+        return self
+
+    def none(self):
+        return _StatsFakeQS("none")
+
+    def distinct(self):
+        return self
+
+    def exclude(self, **kwargs):
+        return self
+
+    def filter(self, **kwargs):
+        org_keys = {"monitorinstanceorganization__organization", "policyorganization__organization"}
+        if org_keys & set(kwargs):
+            return _StatsFakeQS("team")
+        for key in ("policy_id__in", "monitor_instance_id__in"):
+            if key in kwargs:
+                return _StatsFakeQS(getattr(kwargs[key], "scope", "full"))
+        return self
+
+    def values_list(self, *args, **kwargs):
+        return _ScopedIdList(self.scope)
+
+    def count(self):
+        return self._COUNTS[self.scope]
+
+
+class _StatsFakeModel:
+    def __init__(self, scope="full"):
+        self.objects = _StatsFakeQS(scope)
+
+
+_STATS_MODEL_NAMES = [
+    "MonitorObject",
+    "MonitorObjectType",
+    "MonitorInstance",
+    "MonitorPlugin",
+    "Metric",
+    "MetricGroup",
+    "CollectConfig",
+    "MonitorPolicy",
+    "MonitorAlert",
+    "MonitorEvent",
+    "MonitorAlertMetricSnapshot",
+    "PolicyInstanceBaseline",
+]
+
+_ORG_SCOPED_KEYS = [
+    "monitor_instance_total",
+    "monitor_instance_active",
+    "monitor_instance_inactive",
+    "collect_config_total",
+    "policy_total",
+    "policy_enabled",
+    "policy_disabled",
+    "policy_threshold",
+    "policy_no_data",
+    "alert_history",
+    "alert_current",
+    "alert_today",
+    "alert_recovered",
+    "alert_closed",
+    "event_total",
+    "event_today",
+    "alert_snapshot_total",
+    "no_data_baseline_total",
+]
+
+_CATALOG_KEYS = ["monitor_object_total", "plugin_total", "metric_total", "metric_group_total"]
+
+
+def _install_stats_models(monkeypatch, module):
+    for name in _STATS_MODEL_NAMES:
+        monkeypatch.setattr(module, name, _StatsFakeModel("full"))
+
+
+def test_get_monitor_statistics_non_superuser_without_team_zeroes_org_counts(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_stats_no_team_test_module")
+    _install_stats_models(monkeypatch, module)
+
+    data = module.get_monitor_statistics(user_info={"is_superuser": False})["data"]
+
+    # 组织域计数全部归零，不再泄露全平台跨组织数字（revert 收口后这些会变成 100）
+    for key in _ORG_SCOPED_KEYS:
+        assert data[key] == 0, f"{key} 应为 0，实际 {data[key]}"
+    # 平台级目录计数（对象/插件/指标）非租户数据，保持全局
+    for key in _CATALOG_KEYS:
+        assert data[key] == 100, f"{key} 应保持全局 100，实际 {data[key]}"
+
+
+def test_get_monitor_statistics_non_superuser_with_team_scopes_counts(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_stats_team_test_module")
+    _install_stats_models(monkeypatch, module)
+
+    data = module.get_monitor_statistics(user_info={"is_superuser": False, "team": 5})["data"]
+
+    for key in _ORG_SCOPED_KEYS:
+        assert data[key] == 7, f"{key} 应按 team 收窄为 7，实际 {data[key]}"
+    for key in _CATALOG_KEYS:
+        assert data[key] == 100
+
+
+def test_get_monitor_statistics_superuser_returns_full_counts(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_stats_superuser_test_module")
+    _install_stats_models(monkeypatch, module)
+
+    data = module.get_monitor_statistics(user_info={"is_superuser": True})["data"]
+
+    for key in _ORG_SCOPED_KEYS + _CATALOG_KEYS:
+        assert data[key] == 100, f"{key} 超管应为全量 100，实际 {data[key]}"

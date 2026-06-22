@@ -16,8 +16,10 @@ from apps.monitor.models import MonitorInstance, MonitorPolicy
 from apps.monitor.models.monitor_object import MonitorObject, MonitorObjectType
 from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, MonitorObjectTypeSerializer
 from apps.monitor.services.monitor_object import MonitorObjectService
+from apps.monitor.utils.display_fields import validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorObjectViewSet(viewsets.ModelViewSet):
@@ -64,7 +66,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
             include_children = request.COOKIES.get("include_children", "0") == "1"
-            current_team = request.COOKIES.get("current_team")
+            current_team = get_current_team(request)
 
             inst_res = get_permissions_rules(
                 request.user,
@@ -105,7 +107,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}",
                 include_children=include_children,
@@ -149,6 +151,19 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         obj.is_visible = is_visible
         obj.save(update_fields=["is_visible"])
         return WebUtils.response_success()
+
+    @action(methods=["post"], detail=True, url_path="display_fields")
+    def display_fields(self, request, pk=None):
+        """保存对象的视图列表展示列配置（用户自定义后 re-seed 不再覆盖）"""
+        obj = self.get_object()
+        try:
+            normalized = validate_display_fields(obj, request.data.get("display_fields", []))
+        except Exception as e:
+            return WebUtils.response_error(error_message=str(e))
+        obj.display_fields = normalized
+        obj.display_fields_customized = True
+        obj.save(update_fields=["display_fields", "display_fields_customized"])
+        return WebUtils.response_success(normalized)
 
     def create(self, request, *args, **kwargs):
         """创建监控对象，支持同时创建子对象"""

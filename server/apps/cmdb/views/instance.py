@@ -2,11 +2,18 @@ from django.http import HttpResponse, JsonResponse
 from rest_framework import viewsets, status
 from rest_framework.decorators import action
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.cmdb.constants.constants import PERMISSION_INSTANCES, OPERATE, VIEW
+from apps.cmdb.constants.constants import (
+    PERMISSION_INSTANCES,
+    OPERATE,
+    VIEW,
+    NETWORK_TOPO_DEFAULT_HOP,
+    NETWORK_TOPO_MAX_HOP,
+)
 from apps.cmdb.models.change_record import (
     INSTANCE_EDIT_CORRECTABLE_SCENARIOS,
     ORDINARY_ATTRIBUTE_CHANGE,
 )
+from apps.cmdb.instance_ops.extensions import get_instance_enterprise_extension
 from apps.cmdb.services.instance import InstanceManage
 from apps.cmdb.utils.base import (
     format_group_params,
@@ -14,6 +21,8 @@ from apps.cmdb.utils.base import (
     get_current_team_from_request,
     get_organization_and_children_ids,
 )
+from apps.cmdb.services.topology_theme import get_topo_themes
+from apps.cmdb.services.rack_room import get_room_layout, get_rack_layout
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -21,6 +30,7 @@ from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.utils.team_utils import get_current_team
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
@@ -176,16 +186,22 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     if _permission not in instance["permission"]:
                         instance["permission"].append(_permission)
 
-            if not instance["permission"]:
-                if instance["inst_name"] in organizations_instances_map:
-                    instance["permission"] = list(organizations_instances_map[instance["inst_name"]]["permission"])
+            permission_data = organizations_instances_map.get(instance["inst_name"])
+            if not permission_data:
+                continue
+
+            organization_permission_map = permission_data.get("organization_permission_map", {})
+            for organization in organizations:
+                for _permission in organization_permission_map.get(organization, set()):
+                    if _permission not in instance["permission"]:
+                        instance["permission"].append(_permission)
 
     @HasPermission("asset_info-View")
     @action(methods=["post"], detail=False)
     def search(self, request):
         """
         查询实例权限：
-        1. 若前端不做组织筛选，默认查询组织 request.COOKIES.get("current_team")
+        1. 若前端不做组织筛选，默认查询组织 get_current_team(request)
             若做组织筛选，则查询所选组织
         2. 用户所在的组织，and （组织单独设置的实例权限过滤条件 or 创建人是我）
         3. 若有额外的字段过滤条件，则在上述基础上做and过滤
@@ -263,6 +279,70 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             creator=request.user.username,
         )
         return WebUtils.response_success(instance)
+
+    # ---- 附件/图片文件（企业版；社区版返回未启用） -----------------------
+
+    def _check_instance_read_permission(self, request, instance) -> bool:
+        """实例读权限判定（与 retrieve 一致），供附件下载校权复用。"""
+        if self.check_creator_and_organizations(request, instance):
+            return True
+        if not self.organizations(request, instance):
+            return False
+        model_id = instance["model_id"]
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(request=request, model_id=model_id)
+        return CmdbRulesFormatUtil.has_object_permission(
+            obj_type=PERMISSION_INSTANCES,
+            operator=VIEW,
+            model_id=model_id,
+            permission_instances_map=permissions_map,
+            instance=instance,
+        )
+
+    @HasPermission("asset_info-Add")
+    @action(detail=False, methods=["post"], url_path="upload_file")
+    def upload_file(self, request):
+        """附件/图片预上传：校验后存入对象存储，返回文件元数据（含 file_id）。"""
+        model_id = request.data.get("model_id")
+        attr_id = request.data.get("attr_id")
+        uploaded = request.FILES.get("file")
+        if not model_id or not attr_id:
+            return WebUtils.response_error("model_id 和 attr_id 不能为空", status_code=status.HTTP_400_BAD_REQUEST)
+        if not uploaded:
+            return WebUtils.response_error("未接收到文件", status_code=status.HTTP_400_BAD_REQUEST)
+        meta = get_instance_enterprise_extension().handle_upload(
+            request=request, model_id=model_id, attr_id=attr_id, uploaded_file=uploaded
+        )
+        return WebUtils.response_success(meta)
+
+    @HasPermission("asset_info-View")
+    @action(detail=False, methods=["get"], url_path="download_file/(?P<file_id>[^/]+)")
+    def download_file(self, request, file_id: str):
+        """获取附件/图片的短时效预签名直链。
+
+        校验实例读权限后返回预签名 URL（JSON）。前端经 axios（带令牌）调用本接口拿到
+        URL，再直接用于 <img src> / 下载——浏览器对 MinIO 的图片显示与下载导航不受 CORS
+        限制，从而绕开「直链请求不带令牌」的鉴权问题。
+        """
+
+        def _check_read(inst_id):
+            if inst_id is None:
+                return False
+            instance = InstanceManage.query_entity_by_id(int(inst_id))
+            return bool(instance) and self._check_instance_read_permission(request, instance)
+
+        as_attachment = request.query_params.get("download") == "1"
+        url = get_instance_enterprise_extension().handle_download(
+            request=request, file_id=file_id, check_read_permission=_check_read,
+            as_attachment=as_attachment,
+        )
+        return WebUtils.response_success({"url": url})
+
+    @HasPermission("asset_info-Add")
+    @action(detail=False, methods=["delete"], url_path="delete_file/(?P<file_id>[^/]+)")
+    def delete_file(self, request, file_id: str):
+        """删除尚未提交的临时文件（仅上传者本人）。"""
+        get_instance_enterprise_extension().handle_delete_temp(request=request, file_id=file_id)
+        return WebUtils.response_success()
 
     @HasPermission("asset_info-Add")
     def create(self, request):
@@ -592,7 +672,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(methods=["post"], detail=False, url_path=r"(?P<model_id>.+?)/inst_import")
     def inst_import(self, request, model_id):
         try:
-            current_team_raw = request.COOKIES.get("current_team")
+            current_team_raw = get_current_team(request)
             if not current_team_raw:
                 return JsonResponse(
                     {
@@ -898,6 +978,98 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             return permission_error
 
         result = InstanceManage.topo_search_test_config(int(inst_id), model_id)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"topo_themes/(?P<model_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def topo_themes(self, request, model_id: str):
+        """返回模型可用的拓扑主题（如 ["network"]），前端据此决定渲染哪些主题 tab。"""
+        return WebUtils.response_success({"themes": get_topo_themes(model_id)})
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"network_topo/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def network_topo(self, request, model_id: str, inst_id: int):
+        """网络设备拓扑：以该设备为中心按 depth 跳展开接口直连。
+
+        depth 查询参数控制展开层数（默认 2，钳制到 [1, NETWORK_TOPO_MAX_HOP]）；
+        前端首屏传 depth=2，点击对端增量展开传 depth=1。节点上限 100 由服务层兜底。
+        """
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        try:
+            depth = int(request.query_params.get("depth", NETWORK_TOPO_DEFAULT_HOP))
+        except (TypeError, ValueError):
+            depth = NETWORK_TOPO_DEFAULT_HOP
+        depth = max(1, min(depth, NETWORK_TOPO_MAX_HOP))
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = InstanceManage.network_topology(
+            int(inst_id),
+            instance["model_id"],
+            depth=depth,
+            permission_map=permissions_map,
+            user=request.user,
+        )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"room_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def room_layout(self, request, model_id: str, inst_id: int):
+        """机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率，供平面图布局。"""
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = get_room_layout(int(inst_id), permission_map=permissions_map, user=request.user)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"rack_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def rack_layout(self, request, model_id: str, inst_id: int):
+        """机柜正视 U 图：返回机柜 u_count 及其 contains 设备的 U 位排布。"""
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = get_rack_layout(int(inst_id), permission_map=permissions_map, user=request.user)
         return WebUtils.response_success(result)
 
     @action(

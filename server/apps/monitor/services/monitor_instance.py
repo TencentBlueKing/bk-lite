@@ -1,7 +1,11 @@
+import os
 import re
+from collections import Counter
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime, timezone
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
@@ -17,6 +21,10 @@ from apps.monitor.models import (
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
+
+# 实例列表页插件状态查询的最大并发度：每个插件的 status_query 是一次独立 VM 读，
+# 去重后并发拉取以消除「插件越多越慢」的串行 N+1。保守默认 8，可经 env 调。
+PLUGIN_STATUS_QUERY_MAX_WORKERS = int(os.getenv("MONITOR_PLUGIN_STATUS_QUERY_MAX_WORKERS", "8"))
 
 
 class InstanceSearch:
@@ -158,7 +166,7 @@ class InstanceSearch:
 
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name")
+        return qs.only("id", "name", "cloud_region_id", "ip", "fallback_sampling_rate")
 
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
@@ -220,21 +228,27 @@ class InstanceSearch:
                 confs_map[conf.monitor_instance_id] = set()
             plugin_key = (
                 conf.monitor_plugin_id
-                if conf.monitor_plugin and conf.monitor_plugin.template_type == "pull"
+                if conf.monitor_plugin_id
                 else (self.monitor_obj.id, conf.collector, conf.collect_type)
             )
             confs_map[conf.monitor_instance_id].add(plugin_key)
 
         plugin_map, plugin_status_map = {}, {}
-        plugins = MonitorPlugin.objects.filter(monitor_object=self.monitor_obj)
+        plugins = list(MonitorPlugin.objects.filter(monitor_object=self.monitor_obj))
+        legacy_plugin_key_counts = Counter((self.monitor_obj.id, plugin.collector, plugin.collect_type) for plugin in plugins)
 
         instance_id_keys = self.obj_metric_map.get("instance_id_keys")
 
+        # 先去重各插件的 status_query 并并发拉取状态映射，避免在下面的插件循环里逐个串行发 VM 查询
+        status_map_by_query = self._batch_plugin_status_maps(
+            instance_id_keys,
+            {plugin.status_query for plugin in plugins},
+        )
+
         for plugin in plugins:
-            plugin_key = plugin.id if plugin.template_type == "pull" else (self.monitor_obj.id, plugin.collector, plugin.collect_type)
             # 添加翻译属性
             plugin_key_name = f"{LanguageConstants.MONITOR_OBJECT_PLUGIN}.{plugin.name}"
-            plugin_map[plugin_key] = dict(
+            plugin_info = dict(
                 name=plugin.name,
                 plugin_id=plugin.id,
                 collector=plugin.collector,
@@ -242,7 +256,15 @@ class InstanceSearch:
                 display_name=lan.get(f"{plugin_key_name}.name") or plugin.name,
                 display_description=lan.get(f"{plugin_key_name}.desc") or plugin.description,
             )
-            plugin_status_map[plugin_key] = self.get_plugin_normal_status_map(instance_id_keys, plugin.status_query)
+            plugin_map[plugin.id] = plugin_info
+
+            legacy_plugin_key = (self.monitor_obj.id, plugin.collector, plugin.collect_type)
+            plugin_map.setdefault(legacy_plugin_key, plugin_info)
+
+            status_map = status_map_by_query.get(plugin.status_query, {})
+            plugin_status_map[plugin.id] = status_map
+            if legacy_plugin_key_counts[legacy_plugin_key] == 1:
+                plugin_status_map[legacy_plugin_key] = status_map
 
         # 反转插件状态映射，方便后续查询
         instance_plugin_status_map = {}
@@ -267,6 +289,7 @@ class InstanceSearch:
             # 添加组织信息
             item["organization"] = list(org_map.get(item["instance_id"], []))
             item["plugins"] = []
+            appended_plugin_ids = set()
 
             db_confs = confs_map.get(item["instance_id"], set())
             vm_confs = instance_plugin_status_map.get(item["instance_id"], set())
@@ -278,25 +301,31 @@ class InstanceSearch:
                     db_confs & vm_confs,
                     PluginConstants.STATUS_NORMAL,
                     PluginConstants.COLLECT_MODE_AUTO,
+                    True,
+                    PluginConstants.CONFIG_SOURCE_CONFIGURED_REPORTED,
                 ),
                 # 自动失联
                 (
                     db_confs - vm_confs,
                     PluginConstants.STATUS_OFFLINE,
                     PluginConstants.COLLECT_MODE_AUTO,
+                    True,
+                    PluginConstants.CONFIG_SOURCE_CONFIGURED,
                 ),
                 # 手动正常
                 (
                     vm_confs - db_confs,
                     PluginConstants.STATUS_NORMAL,
                     PluginConstants.COLLECT_MODE_MANUAL,
+                    False,
+                    PluginConstants.CONFIG_SOURCE_REPORTED_ONLY,
                 ),
                 # 手动失联理应不存在，如果你想加也可以放这里
                 # (set(), PluginConstants.STATUS_OFFLINE, PluginConstants.COLLECT_MODE_MANUAL),
             ]
 
             # 统一处理插件信息
-            for conf_set, status, collect_mode in categories:
+            for conf_set, status, collect_mode, configured, config_source in categories:
                 for c_tuple in conf_set:
                     plugin_info = plugin_map.get(c_tuple)
                     if not plugin_info:
@@ -309,10 +338,50 @@ class InstanceSearch:
 
                     # 为了避免修改原对象，复制一份
                     info = dict(plugin_info)
-                    info.update(status=status, collect_mode=collect_mode)
+                    plugin_id = info.get("plugin_id")
+                    if plugin_id in appended_plugin_ids:
+                        continue
+                    appended_plugin_ids.add(plugin_id)
+                    info.update(
+                        status=status,
+                        collect_mode=collect_mode,
+                        configured=configured,
+                        config_source=config_source,
+                    )
                     item["plugins"].append(info)
 
+            # 同一物理插件可能同时以 plugin.id 与 legacy (obj, collector, collect_type)
+            # 元组两种键出现在 vm_confs 中，导致「集成模板」列同一模板渲染两次（一条
+            # 自动正常、一条幻影手动）。按模板身份去重，仅保留状态优先级最高的一条。
+            item["plugins"] = self._dedupe_instance_plugins(item["plugins"])
+
         return data
+
+    @staticmethod
+    def _dedupe_instance_plugins(plugins):
+        """按模板身份 (collector, collect_type, name) 去重实例插件徽标。
+
+        一个物理插件模板可能因 plugin.id 与 legacy 元组双键而重复出现；本方法在
+        保留不同模板（如 exporter 与 database）的前提下，折叠同一模板的重复条目，
+        并保留采集状态优先级最高的一条：自动正常 > 自动失联 > 手动正常。返回新列表，
+        不修改入参。
+        """
+        status_priority = {
+            (PluginConstants.COLLECT_MODE_AUTO, PluginConstants.STATUS_NORMAL): 0,
+            (PluginConstants.COLLECT_MODE_AUTO, PluginConstants.STATUS_OFFLINE): 1,
+            (PluginConstants.COLLECT_MODE_MANUAL, PluginConstants.STATUS_NORMAL): 2,
+        }
+        best = {}
+        order = []
+        for plugin in plugins:
+            key = (plugin.get("collector"), plugin.get("collect_type"), plugin.get("name"))
+            rank = status_priority.get((plugin.get("collect_mode"), plugin.get("status")), 99)
+            if key not in best:
+                best[key] = (rank, plugin)
+                order.append(key)
+            elif rank < best[key][0]:
+                best[key] = (rank, plugin)
+        return [best[key][1] for key in order]
 
     def get_objs(self):
         qs = self.qs.filter(monitor_object_id=self.monitor_obj.id, is_deleted=False)
@@ -344,6 +413,12 @@ class InstanceSearch:
         start = (page - 1) * page_size
         end = start + page_size
         results = self._project_instance_identity(qs)[start:end]
+        org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
+        org_map = {}
+        for org in org_objs:
+            if org.monitor_instance_id not in org_map:
+                org_map[org.monitor_instance_id] = set()
+            org_map[org.monitor_instance_id].add(org.organization)
 
         return dict(
             count=count,
@@ -352,10 +427,39 @@ class InstanceSearch:
                     "instance_id": obj.id,
                     "instance_name": obj.name,
                     "instance_id_values": list(parse_instance_id(obj.id)),
+                    "cloud_region_id": obj.cloud_region_id,
+                    "ip": obj.ip,
+                    "fallback_sampling_rate": obj.fallback_sampling_rate,
+                    "organizations": list(org_map.get(obj.id, [])),
                 }
                 for obj in results
             ],
         )
+
+    def _batch_plugin_status_maps(self, instance_id_keys, queries):
+        """并发拉取多个插件 status_query 的正常状态映射，返回 {query: status_map}。
+
+        每个 query 是一次独立的 VM 读，去重相同 query 后并发执行——结果与逐个串行查询完全一致，
+        只是把插件列表页的 N 次串行 VM 查询压成一批并发，消除「插件越多越慢」。
+        单个 query 失败降级为空映射、不影响其余 query（与原逐个调用各自独立的语义一致）。
+        """
+        unique_queries = [query for query in queries if query and str(query).strip()]
+        if not unique_queries:
+            return {}
+        max_workers = min(len(unique_queries), PLUGIN_STATUS_QUERY_MAX_WORKERS)
+        status_map_by_query = {}
+        with ThreadPoolExecutor(max_workers=max_workers) as executor:
+            future_to_query = {
+                executor.submit(self.get_plugin_normal_status_map, instance_id_keys, query): query for query in unique_queries
+            }
+            for future in as_completed(future_to_query):
+                query = future_to_query[future]
+                try:
+                    status_map_by_query[query] = future.result()
+                except Exception as exc:
+                    logger.warning("get_plugin_normal_status_map failed, query=%s, error=%s", query, exc)
+                    status_map_by_query[query] = {}
+        return status_map_by_query
 
     def get_plugin_normal_status_map(self, instance_id_keys, query):
         if not query or not str(query).strip():

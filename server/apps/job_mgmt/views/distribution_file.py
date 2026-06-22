@@ -1,8 +1,9 @@
 """分发文件视图"""
 
-from datetime import datetime
+from datetime import datetime, timedelta
 
 from asgiref.sync import async_to_sync
+from django.utils import timezone
 from nanoid import generate
 from rest_framework import status
 from rest_framework.decorators import action
@@ -45,6 +46,10 @@ class DistributionFileViewSet(AuthViewSet):
             "name": "原始文件名.txt"
         }
         """
+        # BL-NEW-002：上传文件必须带团队归属，否则文件分发时无法做团队隔离。
+        # 校验并取得当前用户有权访问的 current_team，作为文件归属团队。
+        current_team = self._validate_current_team_permission(request)
+
         serializer = DistributionFileUploadSerializer(data=request.data)
         serializer.is_valid(raise_exception=True)
 
@@ -62,10 +67,13 @@ class DistributionFileViewSet(AuthViewSet):
         # 上传到 JetStream Object Store
         async_to_sync(upload_file_to_s3)(file, file_key)
 
-        # 创建数据库记录
+        # 创建数据库记录（带团队归属）。expire_at 必填（模型无默认），
+        # 与开放上传接口一致默认 7 天后过期，由定时任务清理。
         distribution_file = DistributionFile.objects.create(
             original_name=original_name,
             file_key=file_key,
+            expire_at=timezone.now() + timedelta(days=7),
+            team=current_team,
         )
         log_operation(request, "create", "job", f"上传分发文件: {distribution_file.original_name}")
 

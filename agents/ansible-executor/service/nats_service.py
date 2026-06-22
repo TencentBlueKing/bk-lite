@@ -461,7 +461,7 @@ class AnsibleNATSService:
             error = f"ansible {task.task_type} failed with exit code {code}"
 
         output_truncated = bool(output_meta.get("truncated"))
-        parsed_results = [] if output_truncated else (parse_ansible_output_per_host(output) if output else [])
+        parsed_results = parse_ansible_output_per_host(output, output_truncated=output_truncated) if output else []
         if not parsed_results and output and not output_truncated:
             parsed_results = parse_playbook_recap(output)
 
@@ -498,11 +498,21 @@ class AnsibleNATSService:
         started_at = self._now_iso()
         execution_payload = self._load_execution_payload(task)
 
+        stream_log_topic = execution_payload.get("stream_log_topic")
+        execution_id = execution_payload.get("execution_id")
+        stream_kwargs: dict[str, Any] = {}
+        if stream_log_topic and execution_id:
+            stream_kwargs = {
+                "stream_publish": lambda subject, data: self.nc.publish(subject, data),
+                "stream_log_topic": str(stream_log_topic),
+                "execution_id": str(execution_id),
+            }
+
         try:
             if task.task_type == "adhoc":
                 request = to_adhoc_request(execution_payload)
                 cmd, workspace = prepare_adhoc_execution(request)
-                code, output, output_meta = await run_command(cmd, request.execute_timeout)
+                code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
             else:
                 request = to_playbook_request(execution_payload)
                 cmd, workspace, prepared_request = await prepare_playbook_execution(self.config, request)
@@ -510,7 +520,7 @@ class AnsibleNATSService:
                 _, _, _ = await run_command(preflight_cmd, request.execute_timeout)
                 winrm_preflight_cmd = build_playbook_winrm_preflight_command(prepared_request)
                 _, _, _ = await run_command(winrm_preflight_cmd, request.execute_timeout)
-                code, output, output_meta = await run_command(cmd, request.execute_timeout)
+                code, output, output_meta = await run_command(cmd, request.execute_timeout, **stream_kwargs)
         except Exception as err:
             error = str(err)
         finally:

@@ -123,3 +123,27 @@ export interface ExportModalConfig {
 export interface ExportModalRef {
   showModal: (config: ExportModalConfig) => void;
 }
+
+export interface NetworkTopoNode {
+  id: string;
+  name: string;
+  model_id: string;
+  hop?: number;
+  expanded?: boolean;
+}
+
+export interface NetworkTopoLink {
+  relationship_id: string;
+  source_device: string;
+  source_inst_name: string;
+  target_device: string;
+  target_inst_name: string;
+  asst_id?: string;
+}
+
+export interface NetworkTopoData {
+  center: NetworkTopoNode;
+  nodes: NetworkTopoNode[];
+  links: NetworkTopoLink[];
+  truncated?: boolean;
+}

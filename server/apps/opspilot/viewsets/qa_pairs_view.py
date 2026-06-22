@@ -9,12 +9,14 @@ from rest_framework.exceptions import PermissionDenied
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
+from apps.opspilot.enum import KnowledgeTaskStatus
 from apps.opspilot.models import KnowledgeBase, KnowledgeTask, LLMModel, QAPairs
 from apps.opspilot.serializers.qa_pairs_serializers import QAPairsSerializer
 from apps.opspilot.tasks import create_qa_pairs, create_qa_pairs_by_chunk, create_qa_pairs_by_custom, create_qa_pairs_by_json, generate_answer
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.permission_check import CheckKnowledgePermission
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.core.utils.team_utils import get_current_team
 
 
 class QAPairsFilter(FilterSet):
@@ -95,7 +97,7 @@ class QAPairsViewSet(MaintainerViewSet):
 
     def _check_user_permission(self, knowledge_base_id, request):
         knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         has_permission = self.get_has_permission(request.user, knowledge_base, current_team, include_children=include_children)
         if not has_permission:
@@ -523,12 +525,19 @@ class QAPairsViewSet(MaintainerViewSet):
         )
         if not task_list:
             return JsonResponse({"result": True, "data": []})
+        # Reflect the real KnowledgeTask.status. "running" maps to the legacy "generating"
+        # value for backward-compat; "success"/"failed" pass through truthfully.
+        status_display_map = {
+            KnowledgeTaskStatus.RUNNING.value: "generating",
+            KnowledgeTaskStatus.SUCCESS.value: KnowledgeTaskStatus.SUCCESS.value,
+            KnowledgeTaskStatus.FAILED.value: KnowledgeTaskStatus.FAILED.value,
+        }
         return JsonResponse(
             {
                 "result": True,
                 "data": [
                     {
-                        "status": "generating",
+                        "status": status_display_map.get(task_obj.status, "generating"),
                         "process": f"{task_obj.completed_count}/{task_obj.total_count}",
                     }
                     for task_obj in task_list
@@ -543,7 +552,7 @@ class QAPairsViewSet(MaintainerViewSet):
         instance_id = request.data.get("qa_pairs_id")
         instance = QAPairs.objects.get(id=instance_id)
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = get_current_team(request, "0")
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance.knowledge_base, current_team, include_children=include_children)
             if not has_permission:

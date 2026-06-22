@@ -2,8 +2,10 @@ from sanic import Sanic
 from api import api, enterprise_api
 from core.config import YamlConfig
 from dotenv import load_dotenv
+from core.host_remote_runtime import register_host_remote_runtime
 from core.nats import initialize_nats
 from core.task_queue import initialize_task_queue
+from service.collect_credential_result_push_task import register_collect_credential_result_push_loop
 import os
 
 load_dotenv(".env")
@@ -20,6 +22,8 @@ nats = initialize_nats(app, service_name=service_name)
 
 # 初始化任务队列
 task_queue = initialize_task_queue(app)
+register_collect_credential_result_push_loop(app)
+register_host_remote_runtime(app)
 
 # 导入 nats_server 模块，确保处理器被注册
 from service import nats_server

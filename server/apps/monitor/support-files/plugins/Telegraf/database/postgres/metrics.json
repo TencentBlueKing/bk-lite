@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate"],
+  "display_fields": [{"name": "Active DB Connections", "sort_order": 0, "metrics": [{"plugin": "Postgres", "metric": "postgresql_numbackends"}]}, {"name": "Disk Block Read Rate", "sort_order": 1, "metrics": [{"plugin": "Postgres", "metric": "postgresql_blks_read_rate"}]}, {"name": "Temporary Files Creation Rate", "sort_order": 2, "metrics": [{"plugin": "Postgres", "metric": "postgresql_temp_files_rate"}]}],
   "metrics": [
     {
       "metric_group": "Connection",
@@ -19,7 +20,7 @@
       "unit": "short",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -35,7 +36,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -51,7 +52,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -67,7 +68,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -83,7 +84,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -99,7 +100,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -115,7 +116,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -131,7 +132,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -147,7 +148,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -163,7 +164,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -179,7 +180,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -195,7 +196,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -211,7 +212,7 @@
       "unit": "cps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -227,7 +228,7 @@
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "dbname",
+          "name": "db",
           "description": "Database name"
         }
       ],
@@ -299,6 +300,54 @@
       "dimensions": [],
       "description": "Indicates high write pressure",
       "query": "rate(postgresql_maxwritten_clean{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Cache",
+      "name": "postgresql_blk_write_time",
+      "display_name": "Disk Block Write Time Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "msps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Rate of cumulative time spent writing data file blocks (pg_stat_database.blk_write_time), expressed as milliseconds of write time accrued per second. High values indicate disk I/O write pressure or a storage bottleneck.",
+      "query": "rate(postgresql_blk_write_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "postgresql_active_time",
+      "display_name": "SQL Active Execution Time Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "msps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Rate of cumulative time spent executing SQL statements (pg_stat_database.active_time), expressed as milliseconds of active execution accrued per second. Sustained high values indicate abnormally long-running or heavily concurrent statement execution.",
+      "query": "rate(postgresql_active_time{__$labels__}[5m])"
+    },
+    {
+      "metric_group": "Connection",
+      "name": "postgresql_sessions_killed",
+      "display_name": "Abnormally Terminated Sessions Rate",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "db",
+          "description": "Database name"
+        }
+      ],
+      "description": "Rate of database sessions terminated by fatal errors such as administrator commands, idle-session timeout, or deadlock resolution (pg_stat_database.sessions_killed), expressed as sessions per second. A rising rate signals connection instability.",
+      "query": "rate(postgresql_sessions_killed{__$labels__}[5m])"
     }
   ]
 }

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="opnOrange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d94f00"/>
+      <stop offset="1" stop-color="#b03d00"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#opnOrange)"/>
+  <text x="60" y="74" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="40" font-weight="800" fill="#ffffff" letter-spacing="-1">OPN</text>
+  <rect x="30" y="84" width="60" height="6" rx="3" fill="#ffffff"/>
+</svg>

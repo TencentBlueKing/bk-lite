@@ -55,3 +55,46 @@ start-nats:
 
 test:
 	uv run pytest
+
+# 只跑某个 app：make test-app APP=cmdb
+test-app:
+	uv run pytest apps/$(APP)/tests
+
+# 按 marker 过滤
+test-unit:
+	uv run pytest -m unit
+
+test-bdd:
+	uv run pytest -m bdd
+
+# CI 快速通道：跳过慢用例
+test-fast:
+	uv run pytest -m "not slow"
+
+# 调试：关掉覆盖率统计，输出更干净；可叠加路径 make test-debug APP=cmdb
+test-debug:
+	uv run pytest apps/$(APP)/tests --no-cov
+
+# 改了 migration 后重建测试库
+test-reset:
+	uv run pytest --create-db
+
+# 启动一次性 PostgreSQL 测试库(Docker),供本地跑 DB 相关用例
+# 注意: SQLite 因历史 migration 的全表重建语义无法从零构建,测试库须用 PostgreSQL
+TEST_DB_PORT ?= 55432
+test-db-up:
+	docker rm -f bklite-testdb 2>/dev/null || true
+	docker run -d --name bklite-testdb \
+		-e POSTGRES_PASSWORD=testpass -e POSTGRES_USER=postgres -e POSTGRES_DB=bklite \
+		-p $(TEST_DB_PORT):5432 postgres:15
+	@echo "等待 PostgreSQL 就绪..."
+	@until docker exec bklite-testdb pg_isready -U postgres >/dev/null 2>&1; do sleep 1; done
+	@echo "测试库已就绪: localhost:$(TEST_DB_PORT)"
+
+test-db-down:
+	docker rm -f bklite-testdb 2>/dev/null || true
+
+# 连到测试库跑全部用例(先 make test-db-up)
+test-db:
+	DB_ENGINE=postgresql DB_NAME=bklite DB_USER=postgres DB_PASSWORD=testpass \
+		DB_HOST=localhost DB_PORT=$(TEST_DB_PORT) uv run pytest

@@ -13,6 +13,7 @@ from apps.alerts.constants import (
     SessionStatus,
 )
 from apps.alerts.models import Alert, AlarmStrategy, OperatorLog
+from apps.alerts.utils.operator_log import record_operator_logs_bulk
 from apps.alerts.utils.util import split_list
 from apps.core.logger import alert_logger as logger
 
@@ -106,13 +107,14 @@ class AlertAutoClose:
             # 但保留基础检查作为安全措施
             if not strategy.auto_close or strategy.close_minutes <= 0:
                 logger.debug(
-                    f"告警 {alert.id} 的策略 {strategy.id} 配置为不自动关闭 (auto_close={strategy.auto_close}, close_minutes={strategy.close_minutes})")
+                    "[AlertAutoClose] 告警 %s 的策略 %s 配置为不自动关闭 (auto_close=%s, close_minutes=%s)",
+                    alert.id, strategy.id, strategy.auto_close, strategy.close_minutes)
                 return False
 
             # 会话窗口在未确认前不参与自动关闭倒计时
             if alert.is_session_alert and alert.session_status in SessionStatus.NO_CONFIRMED:
                 logger.debug(
-                    "告警 %s 为会话窗口且尚未确认，跳过自动关闭计算",
+                    "[AlertAutoClose] 告警 %s 为会话窗口且尚未确认，跳过自动关闭计算",
                     alert.alert_id,
                 )
                 return False
@@ -122,7 +124,7 @@ class AlertAutoClose:
 
             # 检查必要的时间字段
             if not last_event_time:
-                logger.warning(f"告警 {alert.id} 缺少最后事件时间，无法判断自动关闭条件")
+                logger.warning("[AlertAutoClose] 告警 %s 缺少最后事件时间，无法判断自动关闭条件", alert.id)
                 return False
 
             # 计算自动关闭时间点（close_minutes是整数分钟数）
@@ -133,22 +135,19 @@ class AlertAutoClose:
 
             if should_close:
                 logger.info(
-                    f"告警 {alert.id} 满足自动关闭条件: "
-                    f"最后事件时间={last_event_time}, "
-                    f"关闭时间配置={strategy.close_minutes}分钟, "
-                    f"自动关闭时间点={auto_close_time}, "
-                    f"当前时间={self.current_time}"
+                    "[AlertAutoClose] 告警 %s 满足自动关闭条件: 最后事件时间=%s, 关闭时间配置=%s分钟, 自动关闭时间点=%s, 当前时间=%s",
+                    alert.id, last_event_time, strategy.close_minutes, auto_close_time, self.current_time,
                 )
             else:
                 logger.debug(
-                    f"告警 {alert.id} 暂不满足自动关闭条件: "
-                    f"距离自动关闭还有 {(auto_close_time - self.current_time).total_seconds() / 60:.1f} 分钟"
+                    "[AlertAutoClose] 告警 %s 暂不满足自动关闭条件: 距离自动关闭还有 %.1f 分钟",
+                    alert.id, (auto_close_time - self.current_time).total_seconds() / 60,
                 )
 
             return should_close
 
         except Exception as e:
-            logger.error(f"判断告警 {alert.id} 是否应该自动关闭时发生错误: {str(e)}")
+            logger.error("[AlertAutoClose] 判断告警 %s 是否应该自动关闭时发生错误: %s", alert.id, e, exc_info=True)
             return False
 
     def auto_close_alert(self, alert: Alert, strategy: AlarmStrategy) -> bool:
@@ -170,7 +169,7 @@ class AlertAutoClose:
 
                 # 再次检查告警状态，防止在等待锁期间被其他进程处理
                 if locked_alert.status not in AlertStatus.ACTIVATE_STATUS:
-                    logger.info(f"告警 {alert.id} 已被其他进程处理，当前状态: {locked_alert.status}")
+                    logger.info("[AlertAutoClose] 告警 %s 已被其他进程处理，当前状态: %s", alert.id, locked_alert.status)
                     return False
 
                 # 更新告警状态为已关闭
@@ -194,14 +193,14 @@ class AlertAutoClose:
                 )
                 self.bulk_logs.append(logs)
 
-                logger.info(f"成功自动关闭告警 {alert.id}")
+                logger.info("[AlertAutoClose] 成功自动关闭告警 %s", alert.id)
                 return True
 
         except Alert.DoesNotExist:
-            logger.warning(f"告警 {alert.id} 不存在，可能已被删除")
+            logger.warning("[AlertAutoClose] 告警 %s 不存在，可能已被删除", alert.id)
             return False
         except Exception as e:
-            logger.error(f"自动关闭告警 {alert.alert_id} 失败: {str(e)}")
+            logger.error("[AlertAutoClose] 自动关闭告警 %s 失败: %s", alert.alert_id, e, exc_info=True)
             return False
 
     def main(self):
@@ -233,7 +232,7 @@ class AlertAutoClose:
         valid_alerts = self.alerts.filter(rule_id__in=list(self.rule_id_to_strategy.keys()))
         valid_alert_count = valid_alerts.count()
 
-        logger.info(f"开始检查 {total_alerts} 个活跃告警，其中 {valid_alert_count} 个告警有有效的自动关闭策略")
+        logger.info("[AlertAutoClose] 开始检查 %s 个活跃告警，其中 %s 个告警有有效的自动关闭策略", total_alerts, valid_alert_count)
 
         # 分批处理，避免一次性处理太多告警导致内存或性能问题
         batch_alerts = split_list(valid_alerts, count=200)
@@ -251,14 +250,12 @@ class AlertAutoClose:
                             error_count += 1
 
                 except Exception as e:
-                    logger.error(f"处理告警 {alert.id} 时发生错误: {str(e)}")
+                    logger.error("[AlertAutoClose] 处理告警 %s 时发生错误: %s", alert.id, e, exc_info=True)
                     error_count += 1
 
         logger.info(
-            f"告警自动关闭检查完成: "
-            f"总检查数={valid_alert_count}, "
-            f"成功关闭数={closed_count}, "
-            f"错误数={error_count}"
+            "[AlertAutoClose] 告警自动关闭检查完成: 总检查数=%s, 成功关闭数=%s, 错误数=%s",
+            valid_alert_count, closed_count, error_count,
         )
 
-        OperatorLog.objects.bulk_create(self.bulk_logs, batch_size=200)
+        record_operator_logs_bulk(self.bulk_logs, batch_size=200)

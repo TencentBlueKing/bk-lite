@@ -1,8 +1,7 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Alert, Collapse, Form, Input, InputNumber, Spin } from 'antd';
-import { CaretRightOutlined } from '@ant-design/icons';
+import { Alert, Form, Input, Spin } from 'antd';
 import { useLocale } from '@/context/locale';
 import { useUserInfoContext } from '@/context/userInfo';
 import { useTranslation } from '@/utils/i18n';
@@ -13,8 +12,14 @@ import {
   CONFIG_FILE_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, buildCredential } from '../hooks/formatTaskValues';
+import {
+  formatTaskValues,
+  buildCredentialPool,
+  normalizeCredentialPool,
+  trimFormString,
+} from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import CredentialPoolEditor from './credentialPoolEditor';
 
 interface ConfigFileTaskFormProps {
   onClose: () => void;
@@ -66,6 +71,7 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
     () => ({
       ...CONFIG_FILE_FORM_INITIAL_VALUES,
       organization: selectedGroup ? [Number(selectedGroup.id)] : [],
+      credentialPool: [{ port: '22' }],
     }),
     [selectedGroup]
   );
@@ -93,14 +99,24 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
           ...baseData,
           ip_range: '',
           instances: selectedData || [],
-          credential: buildCredential(
-            {
-              username: 'username',
-              password: 'password',
-              port: 'port',
-            },
-            values
-          ),
+          credential: buildCredentialPool(values.credentialPool, (item) => {
+            const credential: Record<string, any> = {};
+            if (item.credential_id) {
+              credential.credential_id = item.credential_id;
+            }
+            const username = trimFormString(item.username);
+            const password = trimFormString(item.password);
+            if (username !== undefined) {
+              credential.username = username;
+            }
+            if (password && password !== PASSWORD_PLACEHOLDER) {
+              credential.password = password;
+            }
+            if (item.port !== undefined && item.port !== null && item.port !== '') {
+              credential.port = item.port;
+            }
+            return credential;
+          }),
           params: {
             config_file_path: values.configFilePath?.trim(),
           },
@@ -110,14 +126,15 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
 
   const buildFormValues = (values: any, isCopy: boolean) => ({
     ...CONFIG_FILE_FORM_INITIAL_VALUES,
+    credentialPool: normalizeCredentialPool(values.credential).map((item) => ({
+      ...item,
+      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+    })),
     ...getCleanupFormValues(values),
     ...getCycleFormValues(values),
     ...values,
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
-    username: values.credential?.username || values.credential?.user,
-    password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-    port: values.credential?.port,
     accessPointId: values.access_point?.[0]?.id,
     configFilePath: values.params?.config_file_path || '',
   });
@@ -175,54 +192,19 @@ const ConfigFileTask: React.FC<ConfigFileTaskFormProps> = ({
           />
 
           <Form.Item
-            label="配置文件绝对路径"
+            label={t('Collection.configFilePath')}
             name="configFilePath"
             rules={[{ validator: validateConfigFilePath }]}
           >
             <Input
               autoComplete="off"
-              placeholder="/etc/nginx/nginx.conf 或 C:\\Windows\\System32\\drivers\\etc\\hosts"
+              placeholder={t('Collection.configFilePathPlaceholder')}
             />
           </Form.Item>
 
-          <Collapse
-            ghost
-            defaultActiveKey={['credential']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined rotate={isActive ? 90 : 0} className="text-base" />
-            )}
-          >
-            <Collapse.Panel
-              header={<div className="font-medium">{t('Collection.credential')}</div>}
-              key="credential"
-            >
-              <Form.Item label={t('user')} name="username">
-                <Input placeholder={t('common.inputTip')} />
-              </Form.Item>
-
-              <Form.Item label={t('password')} name="password">
-                <Input.Password
-                  placeholder={t('common.inputTip')}
-                  onFocus={(e) => {
-                    if (!editId) return;
-                    if (e.target.value === PASSWORD_PLACEHOLDER) {
-                      form.setFieldValue('password', '');
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!editId) return;
-                    if (!e.target.value?.trim()) {
-                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
-                    }
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item label={t('Collection.port')} name="port">
-                <InputNumber min={1} max={65535} className="w-32" placeholder="22" />
-              </Form.Item>
-            </Collapse.Panel>
-          </Collapse>
+          <Form.Item name="credentialPool">
+            <CredentialPoolEditor credentialShape="config_file" editMode={Boolean(editId)} />
+          </Form.Item>
         </BaseTaskForm>
       </Form>
     </Spin>

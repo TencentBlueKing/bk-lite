@@ -1,13 +1,16 @@
 from datetime import datetime
 from typing import Optional, Tuple
 
+from django.db import transaction
 from django.utils import timezone
 
 from apps.core.logger import job_logger as logger
 from apps.core.mixinx import EncryptMixin
+from apps.job_mgmt.config import EXECUTION_MAX_WORKERS
 from apps.job_mgmt.constants import CredentialSource, ExecutionStatus, ExecutorDriver, OSType, ScriptType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import JobExecution, Target
 from apps.job_mgmt.services.callback_service import send_callback
+from apps.job_mgmt.services.execution_stream_service import build_stream_topic
 from apps.job_mgmt.services.shell_utils import ANSIBLE_SHELL_EXECUTABLES, build_heredoc_command, parse_shebang
 from apps.rpc.ansible import AnsibleExecutor
 from apps.rpc.node_mgmt import NodeMgmt
@@ -16,11 +19,26 @@ from config.components.nats import NATS_NAMESPACE
 
 
 class ExecutionTaskBaseService(object):
-    MAX_WORKERS = 10
+    MAX_WORKERS = EXECUTION_MAX_WORKERS
 
     def __init__(self, execution_id: int, task_name: str):
         self.execution_id = execution_id
         self.task_name = task_name
+
+    @staticmethod
+    def normalize_script_line_endings(script_content: str, script_type: str) -> str:
+        """规范化脚本换行符（CRLF/CR -> LF）。
+
+        Windows 编辑/粘贴的脚本常带 ``\\r\\n``，会让 Linux 的 bash/sh 报
+        ``syntax error near unexpected token $'\\r'``；老 Mac 的裸 ``\\r`` 同理。
+        类 Unix 脚本统一转 LF；Windows 原生脚本(bat/powershell)保持原样。
+
+        sidecar(SSH/local_stream) 与 Ansible 两条下发路径都必须调用，缺一不可
+        （#3404：dd4508928 只覆盖了 sidecar，遗漏 Ansible 路径）。
+        """
+        if not script_content or script_type in (ScriptType.BAT, ScriptType.POWERSHELL):
+            return script_content
+        return script_content.replace("\r\n", "\n").replace("\r", "\n")
 
     @staticmethod
     def decrypt_password(password: Optional[str]) -> Optional[str]:
@@ -38,8 +56,8 @@ class ExecutionTaskBaseService(object):
             logger.error(f"[{self.task_name}] 执行记录不存在: execution_id={self.execution_id}")
             return None, []
 
-        if execution.status == ExecutionStatus.CANCELLED:
-            logger.info(f"[{self.task_name}] 任务已取消: execution_id={self.execution_id}")
+        if execution.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED):
+            logger.info(f"[{self.task_name}] 任务已取消，不再进入执行: execution_id={self.execution_id}, status={execution.status}")
             return None, []
 
         self.update_execution_status(execution, ExecutionStatus.RUNNING, started_at=timezone.now())
@@ -82,29 +100,42 @@ class ExecutionTaskBaseService(object):
         """从数据库刷新并检查执行是否已被取消"""
         try:
             current_status = JobExecution.objects.filter(id=execution_id).values_list("status", flat=True).first()
-            return current_status == ExecutionStatus.CANCELLED
+            # CANCELLING（已请求取消、尚未收敛）同样视为已取消，使 Runner 检查点立即停止后续目标
+            return current_status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED)
         except Exception:
             return False
 
     @staticmethod
     def update_execution_counts(execution: JobExecution):
-        results = execution.execution_results or []
-        execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
-        execution.failed_count = sum(1 for r in results if r.get("status") in [ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT])
-        execution.save(update_fields=["success_count", "failed_count", "updated_at"])
+        """重算 success_count / failed_count 并保存。
+
+        在事务内对当前 execution 行加 ``SELECT ... FOR UPDATE`` 锁，
+        消除"读 execution_results → 计数 → 写 counts"窗口内的并发覆盖。
+        计算后回写到传入的 ``execution`` 实例，保证调用方读到的字段值是最新的。
+        """
+        with transaction.atomic():
+            locked = JobExecution.objects.select_for_update().get(id=execution.id)
+            results = locked.execution_results or []
+            success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
+            failed_count = sum(1 for r in results if r.get("status") in [ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT])
+            locked.success_count = success_count
+            locked.failed_count = failed_count
+            locked.save(update_fields=["success_count", "failed_count", "updated_at"])
+        execution.success_count = success_count
+        execution.failed_count = failed_count
 
     @classmethod
     def finalize_execution(cls, execution: JobExecution, task_name: str, results: list):
         execution.execution_results = results
         execution.save(update_fields=["execution_results", "updated_at"])
         execution.refresh_from_db()
-        if execution.status == ExecutionStatus.CANCELLED:
-            # 取消时仍保留已完成的结果和计数，但状态保持 CANCELLED
+        if execution.status in (ExecutionStatus.CANCELLING, ExecutionStatus.CANCELLED):
+            # 取消时保留已完成的真实结果与计数，并把 CANCELLING 收敛为 CANCELLED 终态
             cls.update_execution_counts(execution)
-            execution.finished_at = timezone.now()
-            execution.save(update_fields=["finished_at", "updated_at"])
+            cls.update_execution_status(execution, ExecutionStatus.CANCELLED, finished_at=timezone.now())
             logger.info(
-                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, " f"success={execution.success_count}, failed={execution.failed_count}"
+                f"[{task_name}] 任务被取消，保留已完成结果: execution_id={execution.id}, "
+                f"success={execution.success_count}, failed={execution.failed_count}"
             )
             # 取消时也发送回调通知，让第三方系统知道任务被取消
             execution.refresh_from_db()
@@ -171,6 +202,9 @@ class ExecutionTaskBaseService(object):
             script_type: 脚本类型
         """
         task_name = "execute_script_via_ansible"
+
+        # 规范化换行符：与 sidecar 路径一致，类 Unix 脚本转 LF（#3404）
+        script_content = cls.normalize_script_line_endings(script_content, script_type)
 
         # 获取所有目标的 Target 对象
         target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
@@ -241,6 +275,8 @@ class ExecutionTaskBaseService(object):
             task_id=str(execution.id),
             timeout=execution.timeout,
             extra_vars=extra_vars if extra_vars else None,
+            stream_log_topic=build_stream_topic(execution.id, "ansible"),
+            execution_id=str(execution.id),
         )
 
         logger.info(f"[{task_name}] Ansible 任务已提交: execution_id={execution.id}, result={sanitize_sensitive_data(result)}")
@@ -283,7 +319,9 @@ class ExecutionTaskBaseService(object):
         for target in targets:
             # 凭据来源检查：credential 模式暂未实现，记录警告并跳过
             if target.credential_source == CredentialSource.CREDENTIAL:
-                logger.warning(f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标")
+                logger.warning(
+                    f"[_build_host_credentials] 目标 {target.ip} 使用凭据管理(credential_id={target.credential_id})，该模式暂未实现，跳过此目标"
+                )
                 continue
 
             cred = {
@@ -297,7 +335,7 @@ class ExecutionTaskBaseService(object):
                 if target.ssh_credential_type == SSHCredentialType.PASSWORD:
                     cred["password"] = cls.decrypt_password(target.ssh_password)
                 else:
-                    private_key = cls._get_ssh_private_key(target)
+                    private_key = cls._read_ssh_key_file(target)
                     if private_key:
                         cred["private_key_content"] = private_key
                     ssh_key_passphrase = cls.decrypt_password(target.ssh_key_passphrase)
@@ -316,47 +354,37 @@ class ExecutionTaskBaseService(object):
         return credentials
 
     @staticmethod
-    def _get_ssh_private_key(target) -> Optional[str]:
-        """从 Target 获取 SSH 私钥内容"""
+    def _read_ssh_key_file(target) -> Optional[str]:
+        """读取 Target 的 SSH 私钥文件内容；读取失败返回 None 并记录告警。
+
+        使用上下文管理器确保异常路径也能释放文件句柄；仅捕获文件 / IO 类异常，
+        避免静默吞掉非预期错误（原实现 except Exception 会掩盖权限 / IO 问题）。
+        """
         if not target.ssh_key_file:
             return None
         try:
-            target.ssh_key_file.open("r")
-            content = target.ssh_key_file.read()
-            target.ssh_key_file.close()
-            if isinstance(content, bytes):
-                return content.decode("utf-8")
-            return content
-        except Exception:
+            with target.ssh_key_file.open("r") as fh:
+                content = fh.read()
+        except (FileNotFoundError, OSError) as e:
+            logger.warning(f"[_read_ssh_key_file] 读取 SSH 密钥文件失败: target_id={getattr(target, 'id', None)}, error={e}")
             return None
+        return content.decode("utf-8") if isinstance(content, bytes) else content
 
     @classmethod
     def get_ssh_credentials(cls, target_id: int) -> dict:
         """从 Target 获取 SSH 凭据信息"""
         try:
             target = Target.objects.get(id=target_id)
-            private_key = None
-            if target.ssh_key_file:
-                try:
-                    target.ssh_key_file.open("r")
-                    content = target.ssh_key_file.read()
-                    target.ssh_key_file.close()
-                    if isinstance(content, bytes):
-                        private_key = content.decode("utf-8")
-                    else:
-                        private_key = content
-                except Exception:
-                    pass
-            return {
-                "host": target.ip,
-                "username": target.ssh_user,
-                "password": cls.decrypt_password(target.ssh_password),
-                "private_key": private_key,
-                "port": target.ssh_port,
-                "node_id": target.node_id,  # 云区域 ID
-            }
         except Target.DoesNotExist:
             return {}
+        return {
+            "host": target.ip,
+            "username": target.ssh_user,
+            "password": cls.decrypt_password(target.ssh_password),
+            "private_key": cls._read_ssh_key_file(target),
+            "port": target.ssh_port,
+            "node_id": target.node_id,  # 云区域 ID
+        }
 
     @staticmethod
     def format_error_message(e: Exception) -> str:

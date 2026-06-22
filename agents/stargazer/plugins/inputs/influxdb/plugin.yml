@@ -1,0 +1,28 @@
+name: influxdb
+version: "1.0.0"
+category: database
+
+metadata:
+  display_name: "InfluxDB 时序数据库【BETA】"
+  description: "InfluxDB 采集插件（Beta），协议方式采集，兼容 1.x/2.x，优先 2.x"
+  author: "WeOps"
+  tags: [database, influxdb, beta]
+  cloud_protocol: false
+  model_id: influxdb
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Protocol 类型（协议采集）
+  protocol:
+    type: protocol
+    timeout: 30
+
+    # Python 采集器
+    collector:
+      module: plugins.inputs.influxdb.influxdb_info
+      class: InfluxdbInfo
+
+# 默认执行器
+default_executor: protocol

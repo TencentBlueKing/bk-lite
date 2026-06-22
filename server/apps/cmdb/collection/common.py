@@ -1,5 +1,7 @@
 from dotenv import load_dotenv
 
+from apps.cmdb.collect.extensions import get_collect_enterprise_extension
+from apps.cmdb.collection.change_records import write_collect_instance_change_records
 from apps.cmdb.constants.constants import INSTANCE, INSTANCE_ASSOCIATION, DataCleanupStrategy
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.services.model import ModelManage
@@ -218,10 +220,18 @@ class Management:
 
     def update(self):
         update_result = self.update_inst(self.update_list)
-        return dict(add={"success": [], "failed": []}, update=update_result, delete={"success": [], "failed": []})
+        result = dict(add={"success": [], "failed": []}, update=update_result, delete={"success": [], "failed": []})
+        self._after_instances_applied(result)
+        return result
 
     def controller(self):
         delete_result = self.delete_inst(self.delete_list)
         add_result = self.add_inst(self.add_list)
         update_result = self.update_inst(self.update_list)
-        return dict(add=add_result, update=update_result, delete=delete_result)
+        result = dict(add=add_result, update=update_result, delete=delete_result)
+        self._after_instances_applied(result)
+        return result
+
+    def _after_instances_applied(self, result):
+        write_collect_instance_change_records(self, result)
+        get_collect_enterprise_extension().on_collect_instances_applied(management=self, result=result)

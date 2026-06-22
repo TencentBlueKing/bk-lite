@@ -2,6 +2,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
+import styles from '../index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { Form, Spin, Select, Input } from 'antd';
 import {
@@ -153,7 +154,7 @@ const K8sTaskForm: React.FC<K8sTaskFormProps> = ({
   }, [modelId, copyTaskData, setCopyTaskData]);
 
   return (
-    <Spin spinning={loading}>
+    <Spin spinning={loading} wrapperClassName={styles.k8sTaskSpin}>
       <Form
         form={form}
         layout="horizontal"

@@ -4,6 +4,7 @@
 唯一校验规则、模型复制、关联类型、导入导出配置等接口层逻辑与权限校验。
 """
 
+import importlib
 import io
 import json
 
@@ -12,10 +13,15 @@ from rest_framework import status
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.cmdb.models.field_group import FieldGroup
+from apps.cmdb.services.model import ModelManage
 from apps.cmdb.views.model import ModelViewSet
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 VIEWS = "apps.cmdb.views.model"
+
+
+# custom_reporting 是商业版能力：其模型编排行为（bootstrap/sync）测试随实现迁到
+# apps/cmdb_enterprise/tests/test_custom_reporting_model_behavior.py（社区不再持有）。
 
 
 @pytest.fixture
@@ -73,10 +79,34 @@ def test_model_add_permission_default_group_view():
 
 
 def test_model_add_permission_by_model_id():
-    models = [{"model_id": "host", "group": [9]}]
+    models = [{"model_id": "host", "group": [6]}]
     pmap = {6: {"permission_instances_map": {"host": ["View"]}}}
     ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
     assert models[0]["permission"] == ["View"]
+
+
+def test_model_add_permission_same_model_id_other_org_denied():
+    models = [{"model_id": "host", "group": [9]}]
+    pmap = {6: {"permission_instances_map": {"host": ["View"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert models[0]["permission"] == []
+
+
+def test_model_add_permission_same_model_id_ignores_other_org_permissions():
+    models = [{"model_id": "host", "group": [6]}]
+    pmap = {
+        6: {"permission_instances_map": {"host": ["View"]}},
+        8: {"permission_instances_map": {"host": ["Operate"]}},
+    }
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert models[0]["permission"] == ["View"]
+
+
+def test_model_add_permission_merges_default_group_and_same_org_permission():
+    models = [{"model_id": "host", "group": [1, 6]}]
+    pmap = {6: {"permission_instances_map": {"host": ["Operate"]}}}
+    ModelViewSet.model_add_permission(models, permission_instances_map=pmap, default_group=1)
+    assert set(models[0]["permission"]) == {"View", "Operate"}
 
 
 # --------------------------------------------------------------------------
@@ -100,6 +130,29 @@ def test_get_model_info_ok(superuser, monkeypatch):
     response = ModelViewSet.as_view({"get": "get_model_info"})(_req("get", superuser), model_id="host")
     assert response.status_code == status.HTTP_200_OK
     assert _body(response)["data"]["model_id"] == "host"
+
+
+@pytest.mark.django_db
+def test_get_model_info_denied_when_name_permission_only_exists_in_other_org(superuser, monkeypatch):
+    permission_module = importlib.reload(importlib.import_module("apps.cmdb.utils.permission_util"))
+
+    superuser.group_list = [{"id": 9}]
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.search_model_info",
+        lambda model_id: {"model_id": "host", "model_name": "主机", "group": [9]},
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.has_object_permission",
+        permission_module.CmdbRulesFormatUtil.has_object_permission,
+    )
+    monkeypatch.setattr(
+        f"{VIEWS}.CmdbRulesFormatUtil.format_user_groups_permissions",
+        lambda *a, **k: {6: {"permission_instances_map": {"host": ["View"]}, "inst_names": ["host"]}},
+    )
+    request = _req("get", superuser)
+    request.COOKIES["current_team"] = "9"
+    response = ModelViewSet.as_view({"get": "get_model_info"})(request, model_id="host")
+    assert response.status_code == status.HTTP_403_FORBIDDEN
 
 
 # --------------------------------------------------------------------------
@@ -129,7 +182,7 @@ def test_create_ok(superuser, monkeypatch):
 def test_list_models(superuser, monkeypatch):
     monkeypatch.setattr(
         f"{VIEWS}.ModelManage.search_model",
-        lambda language=None, permissions_map=None: [{"model_id": "host", "group": [1]}],
+        lambda language=None, permissions_map=None, **kwargs: [{"model_id": "host", "group": [1]}],
     )
     response = ModelViewSet.as_view({"get": "list"})(_req("get", superuser))
     assert _body(response)["data"][0]["model_id"] == "host"
@@ -401,6 +454,24 @@ def test_model_attr_update_enum(superuser, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_model_attr_update_file_triggers_rebuild(superuser, monkeypatch):
+    # 修改附件/图片字段时，应回填实例的文件名词干 _display
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.update_model_attr", lambda *a, **k: {"attr_id": "doc"})
+    monkeypatch.setattr(f"{VIEWS}.is_file_attr_type", lambda t: t in {"attachment", "image"})
+    called = {}
+    monkeypatch.setattr(
+        f"{VIEWS}.ModelManage.rebuild_file_instances_display",
+        lambda mid, aid: called.setdefault("hit", (mid, aid)),
+    )
+    response = ModelViewSet.as_view({"put": "model_attr_update"})(
+        _req("put", superuser, data={"attr_id": "doc", "attr_type": "attachment"}), model_id="host"
+    )
+    assert response.status_code == status.HTTP_200_OK
+    assert called.get("hit") == ("host", "doc")
+
+
+@pytest.mark.django_db
 def test_model_attr_delete_ok(superuser, monkeypatch):
     monkeypatch.setattr(f"{VIEWS}.ModelManage.search_model_info", lambda mid: {"model_id": mid, "group": [1]})
     monkeypatch.setattr(f"{VIEWS}.ModelManage.delete_model_attr", lambda *a, **k: {"deleted": True})
@@ -512,10 +583,34 @@ def test_model_association_type(superuser):
 
 @pytest.mark.django_db
 def test_export_model_config(superuser, monkeypatch):
-    monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", lambda language=None: io.BytesIO(b"xlsxdata"))
-    response = ModelViewSet.as_view({"get": "export_model_config"})(_req("get", superuser))
+    captured = {}
+
+    def fake_export(language=None, model_ids=None):
+        captured["language"] = language
+        captured["model_ids"] = model_ids
+        return io.BytesIO(b"xlsxdata")
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", fake_export)
+    response = ModelViewSet.as_view({"post": "export_model_config"})(
+        _req("post", superuser, data={"model_ids": ["host", "sw"]})
+    )
     assert response.status_code == status.HTTP_200_OK
     assert response["Content-Disposition"].startswith("attachment")
+    assert captured["model_ids"] == ["host", "sw"]
+
+
+@pytest.mark.django_db
+def test_export_model_config_no_ids(superuser, monkeypatch):
+    captured = {}
+
+    def fake_export(language=None, model_ids=None):
+        captured["model_ids"] = model_ids
+        return io.BytesIO(b"xlsxdata")
+
+    monkeypatch.setattr(f"{VIEWS}.ModelManage.export_model_config", fake_export)
+    response = ModelViewSet.as_view({"post": "export_model_config"})(_req("post", superuser, data={}))
+    assert response.status_code == status.HTTP_200_OK
+    assert captured["model_ids"] == []
 
 
 @pytest.mark.django_db

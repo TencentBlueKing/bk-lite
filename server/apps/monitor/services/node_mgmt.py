@@ -15,7 +15,7 @@ from apps.monitor.models import (
     MonitorObjectOrganizationRule,
     Metric,
 )
-from apps.monitor.utils.dimension import parse_instance_id, normalize_instance_identity
+from apps.monitor.utils.dimension import build_safe_instance_id, parse_instance_id, normalize_instance_identity
 from apps.monitor.utils.config_format import ConfigFormat
 from apps.monitor.utils.plugin_controller import Controller
 from apps.rpc.node_mgmt import NodeMgmt
@@ -32,6 +32,7 @@ class InstanceConfigService:
         "Node": "node_status_condition",
     }
     _HOST_MONITOR_OBJECT_NAME = "Host"
+    _NETWORK_DEVICE_MONITOR_OBJECT_NAMES = {"Switch", "Router", "Firewall", "Loadbalance"}
 
     @staticmethod
     def _build_permission_data(actor_context):
@@ -318,7 +319,7 @@ class InstanceConfigService:
         filter_kwargs = {"monitor_instance_id": collect_instance_id}
         if monitor_plugin_id not in (None, ""):
             filter_kwargs["monitor_plugin_id"] = monitor_plugin_id
-        if collector not in (None, ""):
+        elif collector not in (None, ""):
             filter_kwargs["collector"] = collector
         if collect_type not in (None, ""):
             filter_kwargs["collect_type"] = collect_type
@@ -644,6 +645,11 @@ class InstanceConfigService:
         return monitor_object_name == InstanceConfigService._HOST_MONITOR_OBJECT_NAME
 
     @staticmethod
+    def _should_use_network_device_identity_adapter(monitor_object_name: str) -> bool:
+        """判断当前监控对象是否为网络设备，网络设备接入需要跨插件统一实例ID。"""
+        return monitor_object_name in InstanceConfigService._NETWORK_DEVICE_MONITOR_OBJECT_NAMES
+
+    @staticmethod
     def _prepare_host_identity_instances(instances: list) -> list:
         """对 Host 实例列表应用 identity adapter，统一 storage/logical/raw 三层 ID。
 
@@ -670,6 +676,75 @@ class InstanceConfigService:
         return prepared
 
     @staticmethod
+    def _prepare_network_device_identity_instances(instances: list) -> list:
+        """对网络设备实例应用 identity adapter，按云区域和 IP 统一跨插件实例ID。"""
+        prepared = []
+        for instance in instances:
+            cloud_region, ip = InstanceConfigService._extract_network_device_identity_parts(instance)
+            identity = normalize_instance_identity(build_safe_instance_id(cloud_region, ip))
+            prepared.append(
+                {
+                    **instance,
+                    "raw_instance_id": instance.get("instance_id"),
+                    "logical_instance_value": identity["logical_instance_value"],
+                    "storage_instance_key": identity["storage_instance_key"],
+                    "instance_id": identity["storage_instance_key"],
+                }
+            )
+        return prepared
+
+    @staticmethod
+    def _extract_network_device_identity_parts(instance: dict) -> tuple:
+        cloud_region = instance.get("cloud_region_id") or instance.get("cloud_region")
+        ip = instance.get("ip")
+        raw_instance_id = str(instance.get("instance_id") or "").strip()
+
+        if (not cloud_region or not ip) and raw_instance_id:
+            colon_parts = raw_instance_id.split(":")
+            if len(colon_parts) >= 3:
+                cloud_region = cloud_region or colon_parts[0]
+                ip = ip or colon_parts[-1]
+
+            underscore_parts = raw_instance_id.split("_")
+            if len(underscore_parts) >= 2:
+                cloud_region = cloud_region or underscore_parts[0]
+                ip = ip or underscore_parts[-1]
+
+        if not cloud_region or not ip:
+            raise ValueError("network device instance requires cloud_region and ip")
+
+        return cloud_region, ip
+
+    @staticmethod
+    def _validate_expected_collect_configs(instances, configs, monitor_plugin_id, collect_type):
+        expected_types = {config.get("type") for config in configs if config.get("type")}
+        if not instances or not expected_types:
+            return
+
+        instance_ids = [instance.get("instance_id") for instance in instances if instance.get("instance_id")]
+        if not instance_ids:
+            return
+
+        filter_kwargs = {
+            "monitor_instance_id__in": instance_ids,
+            "collect_type": collect_type,
+            "config_type__in": expected_types,
+        }
+        if monitor_plugin_id not in (None, ""):
+            filter_kwargs["monitor_plugin_id"] = monitor_plugin_id
+
+        rows = CollectConfig.objects.filter(**filter_kwargs).values_list("monitor_instance_id", "config_type")
+        actual = {(instance_id, config_type) for instance_id, config_type in rows}
+        missing = [
+            f"{instance_id}:{config_type}"
+            for instance_id in instance_ids
+            for config_type in expected_types
+            if (instance_id, config_type) not in actual
+        ]
+        if missing:
+            raise BaseAppException(f"采集配置元数据缺失: {', '.join(missing)}")
+
+    @staticmethod
     def create_monitor_instance_by_node_mgmt(data, actor_context=None):
         """创建监控对象实例（支持同一实例ID多种采集方式）"""
         instances = data.get("instances", [])
@@ -692,13 +767,19 @@ class InstanceConfigService:
             actor_context,
         )
 
-        # 对 Host 对象应用 identity adapter，统一 storage/logical/raw 三层 ID
+        # 对需要统一实例身份的对象应用 identity adapter，统一 storage/logical/raw 三层 ID
         monitor_object = MonitorObject.objects.filter(id=monitor_object_id).only("id", "name").first()
         monitor_object_name = monitor_object.name if monitor_object else ""
         prepared_instances = sanitized_instances
         if InstanceConfigService._should_use_host_identity_adapter(monitor_object_name):
             try:
                 prepared_instances = InstanceConfigService._prepare_host_identity_instances(sanitized_instances)
+            except ValueError as e:
+                logger.error(f"实例识别失败: {e}")
+                raise BaseAppException(f"实例识别失败：{e}")
+        elif InstanceConfigService._should_use_network_device_identity_adapter(monitor_object_name):
+            try:
+                prepared_instances = InstanceConfigService._prepare_network_device_identity_instances(sanitized_instances)
             except ValueError as e:
                 logger.error(f"实例识别失败: {e}")
                 raise BaseAppException(f"实例识别失败：{e}")
@@ -744,6 +825,12 @@ class InstanceConfigService:
                 sanitized_data["instances"] = new_instances + existing_instances
                 sanitized_data["monitor_plugin_id"] = monitor_plugin_id
                 Controller(sanitized_data).controller()
+                InstanceConfigService._validate_expected_collect_configs(
+                    sanitized_data["instances"],
+                    sanitized_data.get("configs", []),
+                    monitor_plugin_id,
+                    collect_type,
+                )
                 logger.info("采集配置创建成功")
 
                 # ✅ 所有操作成功，事务自动提交

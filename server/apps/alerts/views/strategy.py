@@ -5,7 +5,7 @@ from django.db import transaction
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.filters import AlarmStrategyModelFilter
 from apps.alerts.models.alert_operator import AlarmStrategy
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.serializers import AlarmStrategySerializer
 from apps.alerts.utils.permission_scope import apply_team_scope_for_request
 from apps.core.decorators.api_permission import HasPermission
@@ -101,7 +101,7 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
             "target_id": serializer.data["id"],
             "overview": f"创建告警策略: 策略名称:{serializer.data['name']}",
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         headers = self.get_success_headers(serializer.data)
         return Response(
             serializer.data, status=status.HTTP_201_CREATED, headers=headers
@@ -150,8 +150,8 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
                 instance.id
             )
             logger.info(
-                f"策略修改关闭会话窗口: strategy_id={instance.id}, "
-                f"策略名={instance.name}, 确认观察中告警数={confirmed_count}"
+                "[AlertView] 策略修改关闭会话窗口: strategy_id=%s, 策略名=%s, 确认观察中告警数=%s",
+                instance.id, instance.name, confirmed_count,
             )
 
         log_data = {
@@ -162,7 +162,7 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
             "target_id": instance.id,
             "overview": f"修改告警策略: 策略名称:{instance.name}",
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
 
         return Response(serializer.data)
 
@@ -187,8 +187,8 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
                 instance_id
             )
             logger.info(
-                f"删除会话策略关闭观察中告警: strategy_id={instance_id}, "
-                f"策略名={rule_name}, 关闭告警数={closed_count}"
+                "[AlertView] 删除会话策略关闭观察中告警: strategy_id=%s, 策略名=%s, 关闭告警数=%s",
+                instance_id, rule_name, closed_count,
             )
 
         self.perform_destroy(instance)
@@ -201,5 +201,5 @@ class AlarmStrategyModelViewSet(viewsets.ModelViewSet):
             "target_id": instance_id,
             "overview": f"删除告警策略: 策略名称:{rule_name}",
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return Response(status=status.HTTP_204_NO_CONTENT)

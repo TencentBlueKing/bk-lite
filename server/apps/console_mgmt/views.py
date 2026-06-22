@@ -1,8 +1,10 @@
 import json
-import random
+import os
+import secrets
 from zoneinfo import ZoneInfo
 
-from django.contrib.auth.hashers import check_password, make_password
+from django.contrib.auth.hashers import check_password
+from django.core.cache import cache
 from django.db import transaction
 from django.http import JsonResponse
 from django.utils import timezone as django_timezone
@@ -13,6 +15,17 @@ from apps.system_mgmt.models import Group, Role, User
 from apps.system_mgmt.models.app import App
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+# 每用户每邮箱发送验证码的速率限制：60 秒内最多 1 次
+EMAIL_CODE_RATE_LIMIT_SECONDS = 60
+
+# 验证码在 cache 中的有效期（秒），可通过环境变量覆盖，默认 600s（10 分钟）
+_EMAIL_CODE_TTL = int(os.getenv("EMAIL_CODE_TTL", "600"))
+
+
+def _email_code_cache_key(username: str, email: str) -> str:
+    """生成验证码 cache key，按用户+邮箱隔离。"""
+    return f"vc:{username}:{email}"
 
 
 def _format_datetime_for_user(value, timezone_name=None):
@@ -33,38 +46,36 @@ def get_user_group_paths(user_group_list):
     获取用户所在组的路径信息（包含所有父级组）
     :param user_group_list: 用户所属的组ID列表
     :return: 组路径列表
+
+    实现采用两阶段按需加载，避免全表扫描：
+    - Phase 1：仅查询 id/parent_id 轻量字段，BFS 收集从用户组到根的所有祖先 ID。
+    - Phase 2：按 ID 集合查询完整对象（含 prefetch_related("roles")），集合大小
+              与路径深度成正比（O(depth × fan-out)），而非系统组织总数 O(N)。
     """
     if not user_group_list:
         return []
 
-    # 一次性获取所有组数据（包含所有可能的父级组）
-    all_groups = Group.objects.all().prefetch_related("roles")
+    # Phase 1：轻量查询，仅取 id + parent_id，BFS 向上收集祖先 ID
+    # 从用户直属组出发，每轮查询当前层节点的 parent_id，直到到达根（parent_id=0 或 None）
+    all_group_ids: set = set(user_group_list)
+    current_ids: set = set(user_group_list)
 
-    # 构建组ID到组对象的映射
-    group_map = {group.id: group for group in all_groups}
-
-    # 收集用户所在组及其所有父级组ID
-    all_group_ids = set(user_group_list)
-
-    # 非递归方式获取所有父级组ID
-    current_ids = set(user_group_list)
     while current_ids:
-        parent_ids = set()
-        for group_id in current_ids:
-            group = group_map.get(group_id)
-            if group and hasattr(group, "parent_id") and group.parent_id:
-                parent_ids.add(group.parent_id)
+        # 仅查询当前层节点的 parent_id，不加载其余字段
+        parent_rows = Group.objects.filter(id__in=current_ids).values_list("id", "parent_id")
+        new_parent_ids = set()
+        for _gid, parent_id in parent_rows:
+            if parent_id and parent_id not in all_group_ids:
+                new_parent_ids.add(parent_id)
 
-        # 过滤出尚未处理的父级组ID
-        new_parent_ids = parent_ids - all_group_ids
         if not new_parent_ids:
             break
 
         all_group_ids.update(new_parent_ids)
         current_ids = new_parent_ids
 
-    # 获取所有相关组对象
-    related_groups = [group_map[gid] for gid in all_group_ids if gid in group_map]
+    # Phase 2：仅加载路径所需的组对象（含 roles prefetch）
+    related_groups = list(Group.objects.filter(id__in=all_group_ids).prefetch_related("roles"))
 
     return GroupUtils.build_group_paths(related_groups, user_group_list)
 
@@ -97,8 +108,15 @@ def init_user_set(request):
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})
 
+    group_name_value = kwargs.get("group_name")
+    if not group_name_value:
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.group_name_required", "group_name is required")},
+            status=400,
+        )
+
     client = SystemMgmt()
-    res = client.init_user_default_attributes(user.id, kwargs["group_name"], group_list[0]["id"])
+    res = client.init_user_default_attributes(user.id, group_name_value, group_list[0]["id"])
     if not res["result"]:
         return JsonResponse(res)
     log_operation(request, "create", "console_mgmt", f"初始化用户设置: {request.user.username}")
@@ -106,13 +124,17 @@ def init_user_set(request):
 
 
 def update_user_base_info(request):
-    params = json.loads(request.body)
-    username = request.user.username
-    domain = request.user.domain
-
     # 获取用户语言设置
     locale = getattr(request.user, "locale", "en")
     loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        params = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")}, status=400)
+
+    username = request.user.username
+    domain = request.user.domain
     try:
         # 通过username和domain获取用户
         user = User.objects.get(username=username, domain=domain)
@@ -132,14 +154,18 @@ def update_user_base_info(request):
 
 
 def validate_pwd(request):
-    body = json.loads(request.body)
-    password = body.get("password")
-    username = request.user.username
-    domain = request.user.domain
-
     # 获取用户语言设置
     locale = getattr(request.user, "locale", "en")
     loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")}, status=400)
+
+    password = body.get("password")
+    username = request.user.username
+    domain = request.user.domain
 
     if not password:
         return JsonResponse({"result": False, "message": loader.get("error.password_required", "Password cannot be empty")})
@@ -157,27 +183,37 @@ def validate_pwd(request):
 
 def validate_email_code(request):
     """
-    验证邮箱验证码
+    验证邮箱验证码（服务端持有验证码状态，一次性使用）
     :param request: {
-        "hashed_code": "哈希后的验证码",
+        "email": "待验证邮箱地址",
         "input_code": "用户输入的验证码"
     }
     """
     try:
         params = json.loads(request.body)
-        hashed_code = params.get("hashed_code")
+        email = params.get("email")
         input_code = params.get("input_code")
 
         # 获取用户语言设置
         locale = getattr(request.user, "locale", "en") if hasattr(request, "user") else "en"
         loader = LanguageLoader(app="console_mgmt", default_lang=locale)
 
-        if not hashed_code or not input_code:
+        if not email or not input_code:
             return JsonResponse({"result": False, "message": loader.get("error.verification_code_empty", "Verification code cannot be empty")})
 
-        # 使用check_password验证
-        if check_password(input_code, hashed_code):
+        username = request.user.username if hasattr(request, "user") and request.user else ""
+        cache_key = _email_code_cache_key(username, email)
+        stored_code = cache.get(cache_key)
+
+        if stored_code is None:
+            # 验证码不存在：已过期或从未发送
+            return JsonResponse({"result": False, "message": loader.get("error.verification_code_expired", "Verification code has expired or does not exist")})
+
+        if secrets.compare_digest(str(stored_code), str(input_code)):
+            # 验证通过：立即删除（一次性使用）
+            cache.delete(cache_key)
             return JsonResponse({"result": True, "message": loader.get("success.verification_success", "Verification successful")})
+
         return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
     except Exception as e:
         return JsonResponse({"result": False, "message": str(e)})
@@ -201,8 +237,24 @@ def send_email_code(request):
         if not email:
             return JsonResponse({"result": False, "message": loader.get("error.email_required", "Email address cannot be empty")})
 
-        # 生成6位随机数字验证码
-        verification_code = "".join([str(random.randint(0, 9)) for _ in range(6)])
+        # 速率限制：每个已登录用户每个目标邮箱 60 秒内最多发送 1 次，防止平台邮件服务被滥用为骚扰工具
+        # 使用 cache.add() 原子操作（set-if-not-exists），避免 get+set 的 TOCTOU 竞争条件
+        username = getattr(request.user, "username", None)
+        if username:
+            rate_key = f"send_email_code_rate:{username}:{email}"
+            if not cache.add(rate_key, 1, timeout=EMAIL_CODE_RATE_LIMIT_SECONDS):
+                return JsonResponse(
+                    {
+                        "result": False,
+                        "message": loader.get(
+                            "error.email_code_rate_limit",
+                            "Please wait before requesting another verification code",
+                        ),
+                    }
+                )
+
+        # 使用密码学安全 PRNG 生成 6 位数字验证码
+        verification_code = "".join([str(secrets.randbelow(10)) for _ in range(6)])
 
         # 构造邮件内容（使用翻译）
         title = loader.get("email.verification_code_title", "Email Verification Code")
@@ -227,14 +279,15 @@ def send_email_code(request):
         if not result.get("result"):
             return JsonResponse(result)
 
-        # 使用make_password哈希验证码返回给前端
-        hashed_code = make_password(verification_code)
+        # 验证码存入服务端 cache，TTL 到期自动失效；不向客户端返回任何哈希
+        username = request.user.username if hasattr(request, "user") and request.user else ""
+        cache_key = _email_code_cache_key(username, email)
+        cache.set(cache_key, verification_code, timeout=_EMAIL_CODE_TTL)
 
         return JsonResponse(
             {
                 "result": True,
                 "message": loader.get("success.verification_code_sent", "Verification code has been sent"),
-                "data": {"hashed_code": hashed_code},
             }
         )
     except Exception as e:
@@ -318,8 +371,13 @@ def reset_pwd(request):
         if not username or not password:
             return JsonResponse({"result": False, "message": loader.get("error.password_required", "Username or password cannot be empty")})
 
+        # 从 cookie 中读取调用方 token，转发给 NATS handler 进行身份校验
+        caller_token = request.COOKIES.get("bklite_token", "")
+        if not caller_token:
+            return JsonResponse({"result": False, "message": loader.get("error.please_provide_token", "Please provide Token")})
+
         client = SystemMgmt()
-        res = client.reset_pwd(username, domain, password)
+        res = client.reset_pwd(username, domain, password, caller_token=caller_token)
 
         # 如果密码重置成功，记录操作日志
         if res.get("result"):

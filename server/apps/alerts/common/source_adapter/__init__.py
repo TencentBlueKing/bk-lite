@@ -2,6 +2,6 @@
 # @File: __init__.py.py
 # @Time: 2025/5/13 15:48
 # @Author: windyzhao
-import logging
+from apps.core.logger import alert_logger as logger
 
-logger = logging.getLogger(__name__)
+__all__ = ["logger"]

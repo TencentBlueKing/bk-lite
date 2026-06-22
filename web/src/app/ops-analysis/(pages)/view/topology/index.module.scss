@@ -56,23 +56,23 @@
   right: 0.6rem;
   width: 200px;
   height: 135px;
-  border: 1px solid var(--color-border-1);
+  border: 1px solid rgba(222, 228, 236, 0.92);
   border-radius: 8px;
   box-shadow:
-    0 12px 30px rgba(31, 63, 104, 0.1),
-    0 3px 8px rgba(31, 63, 104, 0.06);
+    0 8px 20px rgba(15, 23, 42, 0.05),
+    0 1px 3px rgba(15, 23, 42, 0.03);
   background: linear-gradient(135deg,
-    rgba(255, 255, 255, 0.96) 0%,
-    rgba(246, 250, 255, 0.96) 100%);
-  backdrop-filter: blur(6px);
+    rgba(255, 255, 255, 0.98) 0%,
+    rgba(249, 250, 252, 0.99) 100%);
+  backdrop-filter: blur(4px);
   z-index: 10;
   overflow: hidden;
   transition: all 0.3s ease;
   
   &:hover {
     box-shadow:
-      0 16px 34px rgba(31, 63, 104, 0.12),
-      0 4px 10px rgba(31, 63, 104, 0.06);
+      0 10px 22px rgba(15, 23, 42, 0.06),
+      0 2px 6px rgba(15, 23, 42, 0.04);
     transform: translateY(-1px);
   }
   
@@ -84,9 +84,9 @@
     right: 0;
     height: 18px;
     background: linear-gradient(90deg, 
-      rgba(24, 144, 255, 0.05) 0%, 
-      rgba(24, 144, 255, 0.02) 100%);
-    border-bottom: 1px solid rgba(24, 144, 255, 0.08);
+      rgba(148, 163, 184, 0.05) 0%, 
+      rgba(148, 163, 184, 0.015) 100%);
+    border-bottom: 1px solid rgba(226, 232, 240, 0.92);
     z-index: 1;
   }
 }
@@ -137,12 +137,11 @@
   border-radius: 3px;
   cursor: pointer;
   border: none;
-  background: rgba(0, 0, 0, 0.04);
+  background: rgba(148, 163, 184, 0.08);
   
   &:hover {
     color: var(--color-text-1);
-    background: rgba(24, 144, 255, 0.1);
-    transform: scale(1.1);
+    background: rgba(148, 163, 184, 0.14);
   }
 }
 
@@ -159,30 +158,30 @@
     
     // 视窗样式
     :global(.x6-widget-minimap-viewport) {
-      border: 1px solid rgba(46, 99, 255, 0.72) !important;
+      border: 1px solid rgba(148, 163, 184, 0.28) !important;
       border-radius: 4px !important;
-      background: rgba(46, 99, 255, 0.05) !important;
+      background: rgba(241, 245, 249, 0.82) !important;
       backdrop-filter: blur(1px) !important;
       box-shadow: 
-        0 2px 8px rgba(24, 144, 255, 0.12),
-        inset 0 1px 0 rgba(255, 255, 255, 0.15) !important;
+        0 1px 3px rgba(15, 23, 42, 0.05),
+        inset 0 1px 0 rgba(255, 255, 255, 0.22) !important;
       transition: all 0.2s ease !important;
       
       &:hover {
-        background: rgba(24, 144, 255, 0.06) !important;
+        background: rgba(241, 245, 249, 0.92) !important;
         box-shadow: 
-          0 3px 12px rgba(46, 99, 255, 0.16),
-          inset 0 1px 0 rgba(255, 255, 255, 0.2) !important;
+          0 2px 5px rgba(15, 23, 42, 0.06),
+          inset 0 1px 0 rgba(255, 255, 255, 0.24) !important;
       }
     }
     
     // 节点样式优化
     :global(.x6-node) {
-      filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.1));
+      filter: drop-shadow(0 1px 2px rgba(15, 23, 42, 0.06));
       transition: all 0.2s ease;
       
       &:hover {
-        filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.15));
+        filter: drop-shadow(0 2px 4px rgba(15, 23, 42, 0.08));
       }
     }
     
@@ -205,14 +204,14 @@
   width: 36px;
   height: 36px;
   background: linear-gradient(135deg, 
-    rgba(255, 255, 255, 0.95) 0%, 
-    rgba(248, 249, 250, 0.95) 100%);
-  border: 1px solid var(--color-border-1);
+    rgba(255, 255, 255, 0.98) 0%, 
+    rgba(248, 250, 252, 1) 100%);
+  border: 1px solid rgba(222, 228, 236, 0.92);
   border-radius: 10px;
   box-shadow:
-    0 12px 30px rgba(31, 63, 104, 0.12),
-    0 3px 8px rgba(31, 63, 104, 0.06);
-  backdrop-filter: blur(8px);
+    0 8px 18px rgba(15, 23, 42, 0.05),
+    0 1px 3px rgba(15, 23, 42, 0.03);
+  backdrop-filter: blur(5px);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -222,13 +221,13 @@
   
   &:hover {
     background: linear-gradient(135deg, 
-      rgba(24, 144, 255, 0.05) 0%, 
-      rgba(24, 144, 255, 0.02) 100%);
-    border-color: rgba(24, 144, 255, 0.3);
+      rgba(248, 250, 252, 1) 0%, 
+      rgba(241, 245, 249, 1) 100%);
+    border-color: rgba(203, 213, 225, 0.92);
     box-shadow: 
-      0 6px 16px rgba(24, 144, 255, 0.1),
-      0 3px 8px rgba(24, 144, 255, 0.06);
-    transform: translateY(-2px) scale(1.05);
+      0 10px 20px rgba(15, 23, 42, 0.06),
+      0 2px 6px rgba(15, 23, 42, 0.04);
+    transform: translateY(-1px);
   }
   
   &:active {
@@ -242,7 +241,6 @@
   }
   
   &:hover .anticon {
-    color: #1890ff;
-    transform: scale(1.1);
+    color: #64748b;
   }
 }

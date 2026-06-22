@@ -1,3 +1,10 @@
+import type {
+  SnmpTopologyFormValues,
+  TopologyFallbackStrategy,
+  TopologyProtocol,
+  TopologyTaskParams,
+} from '@/app/cmdb/types/autoDiscovery';
+
 export type ExecStatusKey = 'add' | 'update' | 'delete';
 
 export interface ExecStatus {
@@ -92,6 +99,102 @@ export const ENTER_TYPE = {
 
 // 密码占位符，用于编辑时隐藏真实密码
 export const PASSWORD_PLACEHOLDER = '******';
+export const MAX_CREDENTIAL_POOL_SIZE = 3;
+export const DEFAULT_TOPOLOGY_PROTOCOLS: TopologyProtocol[] = [
+  'lldp',
+  'cdp',
+  'fdb',
+  'arp',
+];
+export const DEFAULT_TOPOLOGY_FALLBACK_STRATEGY: TopologyFallbackStrategy =
+  'prefer_neighbors_then_fdb_then_arp';
+export const DEFAULT_TOPOLOGY_MIN_CONFIDENCE = 0;
+export interface TopologyFactRowKeyFields {
+  source_protocol?: string;
+  instance_id?: string;
+  local_device_id?: string;
+  local_port_id?: string | number;
+  local_port_name?: string;
+  remote_device_id?: string;
+  remote_port_id?: string | number;
+  remote_port_name?: string;
+}
+
+export const buildTopologyFactRowKey = (
+  fact: TopologyFactRowKeyFields,
+  suffix?: string | number
+) =>
+  [
+    fact.source_protocol || 'protocol',
+    fact.local_device_id || fact.instance_id || 'unknown',
+    fact.local_port_id || fact.local_port_name || 'local',
+    fact.remote_device_id || 'remote',
+    fact.remote_port_id || fact.remote_port_name || 'port',
+    suffix,
+  ]
+    .filter((part) => part !== undefined && part !== null && part !== '')
+    .join('-');
+
+export const TOPOLOGY_PROTOCOL_OPTIONS: Array<{
+  value: TopologyProtocol;
+  labelKey: string;
+}> = [
+  { value: 'lldp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.lldp' },
+  { value: 'cdp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.cdp' },
+  { value: 'fdb', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.fdb' },
+  { value: 'arp', labelKey: 'Collection.SNMPTask.topologyProtocolOptions.arp' },
+];
+export const TOPOLOGY_FALLBACK_STRATEGY_OPTIONS: Array<{
+  value: TopologyFallbackStrategy;
+  labelKey: string;
+}> = [
+  {
+    value: 'prefer_neighbors_then_fdb_then_arp',
+    labelKey:
+      'Collection.SNMPTask.topologyFallbackStrategyOptions.prefer_neighbors_then_fdb_then_arp',
+  },
+  {
+    value: 'strict_neighbors_only',
+    labelKey:
+      'Collection.SNMPTask.topologyFallbackStrategyOptions.strict_neighbors_only',
+  },
+];
+
+export const getSnmpTopologyFormValues = (
+  params?: TopologyTaskParams
+): Required<SnmpTopologyFormValues> => {
+  const hasNetworkTopo = params?.has_network_topo ?? false;
+
+  return {
+    hasNetworkTopo,
+    topologyProtocols: params?.topology_protocols
+      ? [...params.topology_protocols]
+      : [...DEFAULT_TOPOLOGY_PROTOCOLS],
+    topologyFallbackStrategy:
+      params?.topology_fallback_strategy ??
+      DEFAULT_TOPOLOGY_FALLBACK_STRATEGY,
+    minConfidence:
+      params?.min_confidence ?? DEFAULT_TOPOLOGY_MIN_CONFIDENCE,
+  };
+};
+
+export const getTaskTopologyDisplayConfig = (
+  params?: TopologyTaskParams
+): Required<SnmpTopologyFormValues> => getSnmpTopologyFormValues(params);
+
+export const buildSnmpTopologyParams = (
+  values: SnmpTopologyFormValues
+): TopologyTaskParams => ({
+  has_network_topo: values.hasNetworkTopo ?? false,
+  topology_protocols: values.topologyProtocols
+    ? [...values.topologyProtocols]
+    : [...DEFAULT_TOPOLOGY_PROTOCOLS],
+  topology_fallback_strategy:
+    values.topologyFallbackStrategy ??
+    DEFAULT_TOPOLOGY_FALLBACK_STRATEGY,
+  min_confidence:
+    values.minConfidence ?? DEFAULT_TOPOLOGY_MIN_CONFIDENCE,
+});
 
 export const K8S_FORM_INITIAL_VALUES = {
   instId: undefined,
@@ -127,6 +230,9 @@ export const SNMP_FORM_INITIAL_VALUES = {
   integrity: 'sha',
   privacy: 'aes',
   hasNetworkTopo: true,
+  topologyProtocols: [...DEFAULT_TOPOLOGY_PROTOCOLS],
+  topologyFallbackStrategy: DEFAULT_TOPOLOGY_FALLBACK_STRATEGY,
+  minConfidence: DEFAULT_TOPOLOGY_MIN_CONFIDENCE,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };
@@ -398,8 +504,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.add'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 140 },
-      { title: '实例名', dataIndex: 'inst_name', width: 250 },
+      { title: t('Collection.objectType'), dataIndex: 'model_id', width: 140 },
+      { title: t('Collection.instanceName'), dataIndex: 'inst_name', width: 250 },
     ],
   },
   update: {
@@ -407,8 +513,8 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.update'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 140 },
-      { title: '实例名', dataIndex: 'inst_name', width: 250 },
+      { title: t('Collection.objectType'), dataIndex: 'model_id', width: 140 },
+      { title: t('Collection.instanceName'), dataIndex: 'inst_name', width: 250 },
     ],
   },
   delete: {
@@ -416,27 +522,27 @@ export const CREATE_TASK_DETAIL_CONFIG = (t: (key: string) => string) => ({
     label: t('Collection.syncStatus.delete'),
     alertType: 'warning',
     columns: [
-      { title: '对象类型', dataIndex: 'model_id', width: 140 },
-      { title: '实例名', dataIndex: 'inst_name', width: 250 },
+      { title: t('Collection.objectType'), dataIndex: 'model_id', width: 140 },
+      { title: t('Collection.instanceName'), dataIndex: 'inst_name', width: 250 },
     ],
   },
 });
 
-export const NETWORK_DEVICE_OPTIONS = [
+export const getNetworkDeviceOptions = (t: (key: string) => string) => [
   {
     key: 'switch',
-    label: '交换机',
+    label: t('Collection.networkDevice.switch'),
   },
   {
     key: 'router',
-    label: '路由器',
+    label: t('Collection.networkDevice.router'),
   },
   {
     key: 'firewall',
-    label: '防火墙',
+    label: t('Collection.networkDevice.firewall'),
   },
   {
     key: 'loadbalance',
-    label: '负载均衡',
+    label: t('Collection.networkDevice.loadbalance'),
   },
 ]

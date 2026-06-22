@@ -1,6 +1,7 @@
 import { getAuthOptions } from "@/constants/authOptions";
 // @ts-expect-error - next-auth v4 getServerSession exists but types may not be exported correctly
 import { getServerSession } from "next-auth";
+import { headers } from "next/headers";
 import { redirect } from "next/navigation";
 import SigninClient from "./SigninClient";
 import { buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authRedirect";
@@ -34,6 +35,13 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
   const authOptions = await getAuthOptions();
   const session = await getServerSession(authOptions);
   const resolvedSearchParams = await searchParams;
+  const requestHeaders = await headers();
+  // Derive the current origin from the incoming request so that
+  // buildThirdLoginCallbackUrl can validate absolute callbackUrls correctly
+  // in this server-side context (window.location is not available on the server).
+  const requestHost = requestHeaders.get('x-forwarded-host') || requestHeaders.get('host') || '';
+  const requestProto = requestHeaders.get('x-forwarded-proto') || 'https';
+  const requestOrigin = requestHost ? `${requestProto}://${requestHost}` : '';
   const thirdLoginFlag = resolveThirdLoginFlag(
     resolvedSearchParams.thirdLogin,
     resolvedSearchParams.third_login,
@@ -65,6 +73,7 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
         resolvedSearchParams.callbackUrl,
         session.user.token,
         thirdLoginFlag,
+        requestOrigin,
       ),
     );
   }

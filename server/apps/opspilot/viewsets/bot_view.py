@@ -13,11 +13,41 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.enum import BotTypeChoice, WorkFlowExecuteType, WorkFlowTaskStatus
 from apps.opspilot.models import Bot, BotChannel, BotWorkFlow, LLMSkill, UserPin, WorkFlowConversationHistory, WorkFlowTaskResult
 from apps.opspilot.serializers import BotSerializer
+from apps.opspilot.services.memory_write_buffer_service import find_memory_write_nodes_to_flush
+from apps.opspilot.services.nats_channel_sync import cleanup_opspilot_nats_channels_for_bot, sync_opspilot_nats_channels_for_bot
+from apps.opspilot.tasks import flush_memory_write_cache_for_node
 from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def _schedule_memory_write_cache_flush(workflow: BotWorkFlow, old_flow_json, new_flow_json):
+    """当记忆写入节点切换或删除目标空间时，先冲刷旧缓存"""
+    flush_nodes = find_memory_write_nodes_to_flush(old_flow_json, new_flow_json)
+    for node_id, config in flush_nodes.items():
+        # 支持两种字段名：memorySpace（前端表单/工作流 JSON 的规范键）和 memory_space_id（旧格式）。
+        # 两种形式都存在于已持久化的工作流数据中，因此必须同时容忍以免破坏存量工作流。
+        memory_space_id = config.get("memorySpace") or config.get("memory_space_id")
+        if not memory_space_id:
+            continue
+        flush_memory_write_cache_for_node.delay(
+            workflow_id=workflow.id,
+            node_id=node_id,
+            memory_space_id=memory_space_id,
+            title=config.get("title", "") or f"自动记忆-{node_id}",
+            model_id=config.get("llmModel"),
+        )
+
+
+def _merge_usage_team(team, usage_team):
+    """保证不变式 team ⊆ usage_team：管理组织恒在使用组织内、去重、保持顺序（管理组织在前）。"""
+    merged = list(team or [])
+    for org in usage_team or []:
+        if org not in merged:
+            merged.append(org)
+    return merged
 
 
 class BotFilter(FilterSet):
@@ -40,6 +70,22 @@ class BotViewSet(PinMixin, AuthViewSet):
     permission_key = "bot"
     filterset_class = BotFilter
 
+    # update 接口允许通过请求体直接更新的字段白名单。
+    # 故意排除敏感/受控字段：created_by、updated_by、api_token、instance_id、is_builtin、id 等，
+    # 以及由专门逻辑单独处理的字段（channels、rasa_model、node_port、llm_skills、workflow_data 等）。
+    UPDATABLE_FIELDS = (
+        "name",
+        "introduction",
+        "team",
+        "enable_bot_domain",
+        "bot_domain",
+        "enable_node_port",
+        "enable_ssl",
+        "online",
+        "replica_count",
+        "bot_type",
+    )
+
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         return self.query_by_groups_with_pinned(request, queryset)
@@ -55,11 +101,13 @@ class BotViewSet(PinMixin, AuthViewSet):
             return response
 
         bot_id = response.data.get("id") or kwargs.get("pk")
+        # 配置页仅恢复"测试"发起的执行；真实对话执行（is_test=False）不应回填到画布展示
         execution_id = (
             WorkFlowTaskResult.objects.filter(
                 bot_work_flow__bot_id=bot_id,
                 status=WorkFlowTaskStatus.RUNNING,
                 finished_at__isnull=True,
+                is_test=True,
             )
             .order_by("-run_time", "-id")
             .values_list("execution_id", flat=True)
@@ -81,10 +129,14 @@ class BotViewSet(PinMixin, AuthViewSet):
         team = data.get("team", []) or [current_team]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, team)
+        # 使用组织：默认并入管理组织（不变式 team ⊆ usage_team）；额外使用组织需单独校验权限
+        usage_team = data.get("usage_team") or []
+        self._validate_org_field_permission(request, [org for org in usage_team if org not in team])
         bot_obj = Bot.objects.create(
             name=data.get("name"),
             introduction=data.get("introduction"),
             team=team,
+            usage_team=_merge_usage_team(team, usage_team),
             channels=[],
             created_by=request.user.username,
             replica_count=data.get("replica_count") or 1,
@@ -116,8 +168,18 @@ class BotViewSet(PinMixin, AuthViewSet):
         if "team" in data:
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)
-        for key in data.keys():
-            setattr(obj, key, data[key])
+        # 仅允许更新明确白名单内的字段，避免恶意请求批量覆盖 team/created_by/api_token 等敏感字段（mass-assignment）
+        for key in self.UPDATABLE_FIELDS:
+            if key in data:
+                setattr(obj, key, data[key])
+        if "usage_team" in data:
+            # 使用组织：管理组织恒并入且不可删除；额外的使用组织需校验权限
+            extra_orgs = [org for org in (data["usage_team"] or []) if org not in obj.team]
+            self._validate_org_field_permission(request, extra_orgs)
+            obj.usage_team = _merge_usage_team(obj.team, data["usage_team"])
+        elif "team" in data:
+            # 仅管理组织变更：维持不变式 team ⊆ usage_team
+            obj.usage_team = _merge_usage_team(obj.team, obj.usage_team)
         if node_port:
             obj.node_port = node_port
         if rasa_model:
@@ -131,9 +193,11 @@ class BotViewSet(PinMixin, AuthViewSet):
         if workflow_data:
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
+            old_flow_json = flow.flow_json
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
             flow.save()
+            _schedule_memory_write_cache_flush(flow, old_flow_json, workflow_data)
         obj.updated_by = request.user.username
         obj.save()
         if is_publish:
@@ -141,10 +205,42 @@ class BotViewSet(PinMixin, AuthViewSet):
             create_celery_task(obj.id, workflow_data)
             obj.online = is_publish
             obj.save()
+            # 发布时同步 nats 触发节点对应的 system_mgmt 通道
+            sync_opspilot_nats_channels_for_bot(obj)
 
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
             log_operation(request, "update", "opspilot", f"编辑工作台: {obj.name}")
+        return response
+
+    @HasPermission("bot_settings-Edit")
+    @action(methods=["POST"], detail=True)
+    def authorize_usage_team(self, request, pk=None):
+        """授权使用组织：管理组织把 bot 开放给其它组织进行对话（不授予管理权）。
+
+        三重防护：get_object()（team 作用域，非管理组织取不到 → 404）+ get_has_permission
+        （管理编辑权）+ _validate_org_field_permission（只能授权授权人有权限的新增组织）。
+        管理组织恒并入 usage_team 且不可删除（不变式 team ⊆ usage_team）。
+        请求体 usage_team 为期望的完整使用组织列表（含管理组织），后端强制并入 team。
+        """
+        obj: Bot = self.get_object()
+        if not request.user.is_superuser:
+            current_team = self._validate_current_team_permission(request)
+            include_children = request.COOKIES.get("include_children", "0") == "1"
+            has_permission = self.get_has_permission(request.user, obj, current_team, include_children=include_children)
+            if not has_permission:
+                msg = self.loader.get("error.no_bot_update_permission") if self.loader else "You do not have permission to update this bot."
+                return JsonResponse({"result": False, "message": msg})
+        requested = request.data.get("usage_team", []) or []
+        # 仅校验“新增的非管理组织”——管理组织是授权人本就管理的、且恒不可删
+        extra_orgs = [org for org in requested if org not in obj.team]
+        self._validate_org_field_permission(request, extra_orgs)
+        obj.usage_team = _merge_usage_team(obj.team, requested)
+        obj.updated_by = request.user.username
+        obj.save()
+        response = JsonResponse({"result": True, "data": {"usage_team": obj.usage_team}})
+        if response.status_code >= 200 and response.status_code < 300:
+            log_operation(request, "update", "opspilot", f"授权使用组织: {obj.name}")
         return response
 
     @HasPermission("bot_channel-View")
@@ -196,11 +292,15 @@ class BotViewSet(PinMixin, AuthViewSet):
     @HasPermission("bot_list-Delete")
     def destroy(self, request, *args, **kwargs):
         obj = self.get_object()
+        bot_id = obj.id
+        bot_name = obj.name
         # 只有 CHAT_FLOW 类型,删除 Celery 任务
         delete_celery_task(obj.id)
         response = super().destroy(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:
-            log_operation(request, "delete", "opspilot", f"删除工作台: {obj.name}")
+            # 清理该 bot 名下 OpsPilot 托管的 NATS 通道
+            cleanup_opspilot_nats_channels_for_bot(bot_id)
+            log_operation(request, "delete", "opspilot", f"删除工作台: {bot_name}")
         return response
 
     @action(methods=["POST"], detail=False)
@@ -225,6 +325,8 @@ class BotViewSet(PinMixin, AuthViewSet):
                 create_celery_task(bot.id, workflow_data.web_json)
             bot.online = True
             bot.save()
+            # 启动（发布）时同步 nats 触发节点对应的 system_mgmt 通道
+            sync_opspilot_nats_channels_for_bot(bot)
         response = JsonResponse({"result": True})
         if response.status_code >= 200 and response.status_code < 300:
             bot_name = "、".join(bots.values_list("name", flat=True))

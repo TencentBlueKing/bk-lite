@@ -4,7 +4,12 @@ from apps.rpc.system_mgmt import SystemMgmt
 class SystemMgmtUtils:
     @staticmethod
     def get_user_all(actor_context=None, group=None, include_children=False):
-        result = SystemMgmt().get_group_users(group=group, include_children=include_children)
+        # 带 actor_context（用户面调用）走授权范围收口的 scoped 查询，避免返回全平台用户（#3140）；
+        # 无 actor_context 仅供系统内部调用方使用。
+        if actor_context is not None:
+            result = SystemMgmt().get_group_users_scoped(actor_context, group=group, include_children=include_children)
+        else:
+            result = SystemMgmt().get_group_users(group=group, include_children=include_children)
         return result["data"]
 
     @staticmethod

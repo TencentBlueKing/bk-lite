@@ -39,6 +39,31 @@
       }
     },
     {
+      "name": "metrics_modules",
+      "label": "采集模块",
+      "type": "checkbox_group",
+      "required": true,
+      "editable": false,
+      "default_value": ["cpu", "mem", "disk", "net"],
+      "description": "选择需要远程采集的主机指标模块",
+      "options": [
+        {"label": "CPU", "value": "cpu", "description": "CPU 使用率、核心数和负载"},
+        {"label": "Memory", "value": "mem", "description": "内存、Swap、缓存和缓冲区"},
+        {"label": "Disk", "value": "disk", "description": "磁盘容量、可用空间和 inode 使用率"},
+        {"label": "Network", "value": "net", "description": "网卡流量、包数、错误和丢包"},
+        {"label": "Disk IO", "value": "diskio", "description": "磁盘读写次数、字节数和耗时"},
+        {"label": "Processes", "value": "processes", "description": "进程状态数量"},
+        {"label": "System", "value": "system", "description": "系统负载和运行时长"}
+      ],
+      "widget_props": {},
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.metrics_modules",
+        "to_form": {
+          "array": true
+        }
+      }
+    },
+    {
       "name": "username",
       "label": "用户名",
       "type": "input",
@@ -53,17 +78,77 @@
       }
     },
     {
-      "name": "password",
+      "name": "auth_type",
+      "label": "Linux认证方式",
+      "type": "select",
+      "required": false,
+      "default_value": "password",
+      "description": "Linux SSH 认证方式。Windows 始终使用 WinRM 密码认证。",
+      "widget_props": {
+        "options": [
+          {"label": "密码", "value": "password"},
+          {"label": "SSH密钥", "value": "private_key"}
+        ]
+      },
+      "dependency": {
+        "field": "os_type",
+        "value": "linux"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.auth_type"
+      }
+    },
+    {
+      "name": "ENV_PASSWORD",
       "label": "密码",
       "type": "password",
       "required": true,
       "editable": false,
+      "encrypted": true,
       "description": "SSH/WinRM 登录密码",
       "widget_props": {
         "placeholder": "密码"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.http_headers.password"
+        "origin_path": "child.env_config.PASSWORD__{{config_id}}"
+      }
+    },
+    {
+      "name": "private_key_content",
+      "label": "SSH私钥",
+      "type": "password",
+      "required": false,
+      "editable": false,
+      "encrypted": true,
+      "description": "Linux SSH 私钥内容，仅认证方式为 SSH密钥 时使用",
+      "widget_props": {
+        "placeholder": "-----BEGIN OPENSSH PRIVATE KEY-----"
+      },
+      "dependency": {
+        "field": "auth_type",
+        "value": "private_key"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PRIVATE_KEY_CONTENT__{{config_id}}"
+      }
+    },
+    {
+      "name": "private_key_passphrase",
+      "label": "SSH私钥口令",
+      "type": "password",
+      "required": false,
+      "editable": false,
+      "encrypted": true,
+      "description": "Linux SSH 私钥口令，可为空",
+      "widget_props": {
+        "placeholder": "私钥口令"
+      },
+      "dependency": {
+        "field": "auth_type",
+        "value": "private_key"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.env_config.PRIVATE_KEY_PASSPHRASE__{{config_id}}"
       }
     },
     {
@@ -71,27 +156,71 @@
       "label": "端口",
       "type": "input",
       "required": false,
-      "default_value": "22",
-      "description": "连接端口 (Linux SSH: 22, Windows WinRM: 5986)",
+      "default_value": "",
+      "description": "连接端口。Linux SSH 默认 22，Windows WinRM 默认 5986。",
       "widget_props": {
-        "placeholder": "22"
+        "placeholder": "Linux: 22 / Windows: 5986"
       },
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.port"
       }
     },
     {
-      "name": "metrics_modules",
-      "label": "采集模块",
-      "type": "input",
+      "name": "winrm_scheme",
+      "label": "WinRM协议",
+      "type": "select",
       "required": false,
-      "default_value": "cpu,mem,disk,net",
-      "description": "采集模块列表，逗号分隔 (可选: cpu,mem,disk,net)",
+      "default_value": "https",
+      "description": "Windows WinRM 协议",
       "widget_props": {
-        "placeholder": "cpu,mem,disk,net"
+        "options": [
+          {"label": "HTTPS", "value": "https"},
+          {"label": "HTTP", "value": "http"}
+        ]
+      },
+      "dependency": {
+        "field": "os_type",
+        "value": "windows"
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.http_headers.metrics_modules"
+        "origin_path": "child.content.config.http_headers.winrm_scheme"
+      }
+    },
+    {
+      "name": "winrm_transport",
+      "label": "WinRM认证方式",
+      "type": "select",
+      "required": false,
+      "default_value": "ntlm",
+      "description": "推荐 NTLM。Basic 需要目标 Windows 开启 Basic 认证，默认通常未开启。",
+      "widget_props": {
+        "options": [
+          {"label": "NTLM", "value": "ntlm"},
+          {"label": "Basic", "value": "basic"},
+          {"label": "CredSSP", "value": "credssp"}
+        ]
+      },
+      "dependency": {
+        "field": "os_type",
+        "value": "windows"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.winrm_transport"
+      }
+    },
+    {
+      "name": "winrm_cert_validation",
+      "label": "校验WinRM证书",
+      "type": "switch",
+      "required": false,
+      "default_value": false,
+      "description": "HTTPS WinRM 是否校验证书。自签证书场景建议关闭。",
+      "dependency": {
+        "field": "os_type",
+        "value": "windows"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.http_headers.winrm_cert_validation"
       }
     },
     {

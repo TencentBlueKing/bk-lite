@@ -2,6 +2,7 @@ import json
 import re
 import time
 
+from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
 
 from apps.core.logger import opspilot_logger as logger
@@ -9,6 +10,28 @@ from apps.opspilot.models import LLMModel
 from apps.opspilot.services.chat_service import chat_service
 from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_response_headers, normalize_llm_error_message
 from apps.opspilot.utils.bot_utils import insert_skill_log
+from apps.opspilot.utils import stream_common
+
+
+def create_error_stream_response(error_message):
+    """
+    创建错误的流式响应，用于在流式模式下返回错误信息。
+
+    放在此处而非 LLMViewSet 上，避免仅为使用该静态辅助方法就被迫导入整个
+    LLMViewSet（及其大量依赖）。LLMViewSet 仍保留同名静态方法委托到此函数。
+    """
+
+    async def error_generator():
+        error_data = {"result": False, "message": error_message, "error": True}
+        yield f"data: {json.dumps(error_data, ensure_ascii=False)}\n\n"
+        yield "data: [DONE]\n\n"
+
+    response = StreamingHttpResponse(error_generator(), content_type="text/event-stream")
+    response["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response["X-Accel-Buffering"] = "no"  # Nginx
+    response["Access-Control-Allow-Origin"] = "*"
+    response["Access-Control-Allow-Headers"] = "Cache-Control"
+    return response
 
 
 def generate_stream_error(message):
@@ -31,124 +54,13 @@ def generate_stream_error(message):
     return response
 
 
-def _process_think_buffer(think_buffer, in_think_block):
-    """处理思考缓冲区，返回可输出的内容"""
-    output_chunks = []
-
-    while think_buffer:
-        if not in_think_block:
-            think_start_pos = think_buffer.find("<think>")
-            if think_start_pos != -1:
-                # 输出思考标签前的内容
-                if think_start_pos > 0:
-                    output_chunks.append(think_buffer[:think_start_pos])
-                in_think_block = True
-                think_buffer = think_buffer[think_start_pos + 7 :]
-            else:
-                # 保留最后8个字符防止标签分割
-                if len(think_buffer) > 8:
-                    output_chunks.append(think_buffer[:-8])
-                    think_buffer = think_buffer[-8:]
-                break
-        else:
-            think_end_pos = think_buffer.find("</think>")
-            if think_end_pos != -1:
-                in_think_block = False
-                think_buffer = think_buffer[think_end_pos + 8 :]
-            else:
-                think_buffer = ""
-                break
-
-    return "".join(output_chunks), think_buffer, in_think_block
-
-
-def _process_think_content(
-    content_chunk,
-    think_buffer,
-    in_think_block,
-    is_first_content,
-    show_think,
-    has_think_tags,
-):
-    """处理思考过程相关的内容过滤"""
-    if show_think:
-        return content_chunk, think_buffer, in_think_block, False, has_think_tags
-
-    # 首次内容检查是否包含think标签
-    if is_first_content:
-        think_buffer += content_chunk
-        if "<think>" not in think_buffer:
-            return think_buffer, "", in_think_block, False, False
-        else:
-            has_think_tags = True
-            if think_buffer.lstrip().startswith("<think>"):
-                in_think_block = True
-                think_start = think_buffer.find("<think>")
-                think_buffer = think_buffer[think_start + 7 :]
-                return "", think_buffer, in_think_block, False, has_think_tags
-
-    if not has_think_tags:
-        return content_chunk, think_buffer, in_think_block, False, has_think_tags
-
-    # 处理思考内容
-    think_buffer += content_chunk
-    output_content, think_buffer, in_think_block = _process_think_buffer(think_buffer, in_think_block)
-
-    return output_content, think_buffer, in_think_block, False, has_think_tags
-
-
-def _split_think_content(
-    content_chunk,
-    think_buffer,
-    in_think_block,
-    is_first_content,
-    has_think_tags,
-):
-    """将内容拆分为可见内容和 think 内容，复用 show_think=False 的识别逻辑"""
-    visible_content = ""
-    thinking_content = ""
-
-    if is_first_content:
-        think_buffer += content_chunk
-        if "<think>" not in think_buffer:
-            return think_buffer, "", "", in_think_block, False, False
-
-        has_think_tags = True
-        think_start = think_buffer.find("<think>")
-        visible_content += think_buffer[:think_start]
-        think_buffer = think_buffer[think_start + 7 :]
-        in_think_block = True
-        is_first_content = False
-
-    if not has_think_tags:
-        return content_chunk, "", think_buffer, in_think_block, False, has_think_tags
-
-    think_buffer += content_chunk
-
-    while think_buffer:
-        if in_think_block:
-            think_end = think_buffer.find("</think>")
-            if think_end == -1:
-                thinking_content += think_buffer
-                think_buffer = ""
-                break
-
-            thinking_content += think_buffer[:think_end]
-            think_buffer = think_buffer[think_end + 8 :]
-            in_think_block = False
-            continue
-
-        think_start = think_buffer.find("<think>")
-        if think_start == -1:
-            visible_content += think_buffer
-            think_buffer = ""
-            break
-
-        visible_content += think_buffer[:think_start]
-        think_buffer = think_buffer[think_start + 7 :]
-        in_think_block = True
-
-    return visible_content, thinking_content, think_buffer, in_think_block, False, has_think_tags
+# --- think 标签解析共享逻辑（F056）---
+# 实现已抽取至 apps.opspilot.utils.stream_common，供本模块（OpenAI chunk 协议）
+# 与 agui_chat（AGUI 协议）共用。此处保留原私有名作为薄别名，以兼容历史导入
+# （agui_chat 仍从本模块导入 _process_think_content / _split_think_content）。
+_process_think_buffer = stream_common.process_think_buffer
+_process_think_content = stream_common.process_think_content
+_split_think_content = stream_common.split_think_content
 
 
 def _create_stream_chunk(content, skill_name, finish_reason=None):
@@ -317,22 +229,34 @@ def stream_chat(params, skill_name, kwargs, current_ip, user_message, skill_id=N
     return response
 
 
-def create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
-    """创建流式生成器 - 返回异步生成器供内部或外部使用"""
+def _prepare_stream_prerequisites(params):
+    """同步准备工作：取模型、格式化 chat_server 参数（F044）。
+
+    抽成独立函数以便在生成器内经 sync_to_async 调用，让这些阻塞型 DB/格式化
+    工作发生在首个 flush 之后，改善 TTFB。返回的内容/形状与此前完全一致。
+    """
     llm_model = LLMModel.objects.get(id=params["llm_model"])
-    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
     skill_type = params.get("skill_type")
     params.pop("group", 0)
-
     chat_kwargs, doc_map, title_map = chat_service.format_chat_server_kwargs(params, llm_model)
+    return skill_type, chat_kwargs
+
+
+def create_stream_generator(params, skill_name, kwargs, current_ip, user_message, skill_id=None, history_log=None):
+    """创建流式生成器 - 返回异步生成器供内部或外部使用"""
+    show_think = params.get("show_think", True)  # 使用 get 而不是 pop，保留值给 format_chat_server_kwargs
 
     # 用于存储最终统计信息的共享变量
     final_stats = {"content": ""}
 
     async def generate_stream():
         try:
+            # F044: 将同步前置工作（取模型 / 格式化参数 / 创建 Agent 实例）移入生成器内，
+            # 经 sync_to_async 执行，避免在首个 flush 前阻塞请求线程，改善 TTFB。
+            skill_type, chat_kwargs = await sync_to_async(_prepare_stream_prerequisites, thread_sensitive=True)(params)
+
             # 创建对应的 Agent 实例和请求对象
-            graph, request = create_agent_instance(skill_type, chat_kwargs)
+            graph, request = await sync_to_async(create_agent_instance, thread_sensitive=True)(skill_type, chat_kwargs)
 
             # 使用直接调用 agent 方法生成流
             stream_gen = _generate_agent_stream(graph, request, skill_name, show_think)

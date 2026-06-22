@@ -3,7 +3,7 @@
   "plugin_desc": "Used for collecting and analyzing the status, resource usage (CPU, memory, network, IO), and performance metrics of Docker containers, helping to identify anomalies and optimize container operational efficiency.",
   "status_query": "any({instance_type='docker', collect_type='docker'}) by (instance_id)",
   "node_selector": {
-    "is_container": true
+    "is_container": false
   },
   "is_compound_object": true,
   "objects": [
@@ -16,6 +16,7 @@
       "default_metric": "any({instance_type='docker'}) by (instance_id)",
       "instance_id_keys": ["instance_id"],
       "supplementary_indicators": ["docker_n_containers_running", "docker_n_containers", "docker_n_containers_stopped"],
+      "display_fields": [{"name": "Running Container Count", "sort_order": 0, "metrics": [{"plugin": "Docker", "metric": "docker_n_containers_running"}]}, {"name": "Total Container Count", "sort_order": 1, "metrics": [{"plugin": "Docker", "metric": "docker_n_containers"}]}, {"name": "Stopped Container Count", "sort_order": 2, "metrics": [{"plugin": "Docker", "metric": "docker_n_containers_stopped"}]}],
       "metrics": [
         {
           "metric_group": "Docker Count",
@@ -61,6 +62,7 @@
       "default_metric": "docker_container_mem_usage",
       "instance_id_keys": ["instance_id", "container_name"],
       "supplementary_indicators": ["docker_container_status", "docker_container_cpu_usage_percent", "docker_container_mem_usage_percent"],
+      "display_fields": [{"name": "Container Status", "sort_order": 0, "metrics": [{"plugin": "Docker", "metric": "docker_container_status"}]}, {"name": "CPU Usage Percent", "sort_order": 1, "metrics": [{"plugin": "Docker", "metric": "docker_container_cpu_usage_percent"}]}, {"name": "Memory Usage Percent", "sort_order": 2, "metrics": [{"plugin": "Docker", "metric": "docker_container_mem_usage_percent"}]}],
       "metrics": [
         {
           "metric_group": "Status",

@@ -15,10 +15,18 @@ from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteTyp
 BOT_CONVERSATION_ROLE_CHOICES = [("user", "用户"), ("bot", "机器人")]
 
 
+def generate_workflow_attachment_download_token():
+    return uuid.uuid4().hex
+
+
 class Bot(MaintainerInfo):
     name = models.CharField(max_length=255, verbose_name="名称")
     introduction = models.TextField(blank=True, null=True, verbose_name="描述")
-    team = models.JSONField(default=list)
+    team = models.JSONField(default=list)  # 管理组织：工作台可见/编辑/删除/授权使用组织
+    # 使用组织：仅能调用 execute_chat_flow 进行对话/接口请求，不能在工作台查看/编辑/删除。
+    # 不变式 team ⊆ usage_team：管理组织恒为使用组织子集（新建时并入、授权时不可删），
+    # 因此管理组织天然具备使用权。
+    usage_team = models.JSONField(default=list, verbose_name="使用组织")
     channels = models.JSONField(default=list)
     rasa_model = models.ForeignKey("RasaModel", on_delete=models.CASCADE, verbose_name="模型", blank=True, null=True)
     llm_skills = models.ManyToManyField("LLMSkill", verbose_name="LLM技能", blank=True)
@@ -29,7 +37,7 @@ class Bot(MaintainerInfo):
     node_port = models.IntegerField(verbose_name="端口映射", default=5005)
     online = models.BooleanField(verbose_name="是否上线", default=False)
     enable_ssl = models.BooleanField(verbose_name="启用SSL", default=False)
-    api_token = models.CharField(max_length=64, default="", blank=True, null=True, verbose_name="API Token")
+    api_token = models.CharField(max_length=64, default="", blank=True, verbose_name="API Token")
     replica_count = models.IntegerField(verbose_name="副本数量", default=1)
     bot_type = models.IntegerField(default=BotTypeChoice.PILOT, verbose_name="类型", choices=BotTypeChoice.choices)
     instance_id = models.CharField(max_length=36, blank=True, null=True, verbose_name="实例ID", db_index=True)
@@ -281,6 +289,42 @@ class WorkFlowTaskResult(models.Model):
     output_data = models.JSONField(verbose_name="输出数据", default=dict)
     last_output = models.TextField(verbose_name="最后输出", blank=True, null=True)
     execute_type = models.CharField(max_length=50, default="restful")
+    is_test = models.BooleanField(default=False, db_index=True, verbose_name="是否测试执行")
+
+
+class WorkflowAttachmentAsset(models.Model):
+    execution_id = models.CharField(max_length=36, db_index=True, verbose_name="执行实例ID")
+    flow_id = models.CharField(max_length=36, default="", blank=True, verbose_name="工作流ID")
+    source_node_id = models.CharField(max_length=100, default="", blank=True, verbose_name="来源节点ID")
+    attachment_id = models.CharField(max_length=100, verbose_name="附件ID")
+    filename = models.CharField(max_length=255, verbose_name="文件名")
+    mime_type = models.CharField(max_length=120, default="", blank=True, verbose_name="MIME类型")
+    file_knowledge = models.ForeignKey(
+        "FileKnowledge",
+        on_delete=models.CASCADE,
+        related_name="workflow_attachments",
+        verbose_name="附件文件",
+    )
+    created_by = models.CharField(max_length=100, default="", blank=True, verbose_name="创建者")
+    download_token = models.CharField(
+        max_length=32,
+        unique=True,
+        db_index=True,
+        default=generate_workflow_attachment_download_token,
+        verbose_name="下载令牌",
+    )
+    created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
+
+    class Meta:
+        verbose_name = "工作流附件"
+        verbose_name_plural = verbose_name
+        db_table = "bot_mgmt_workflowattachmentasset"
+        constraints = [
+            models.UniqueConstraint(fields=["execution_id", "attachment_id"], name="uniq_workflow_attachment_execution"),
+        ]
+        indexes = [
+            models.Index(fields=["execution_id", "created_at"]),
+        ]
 
 
 class WorkFlowTaskNodeResult(models.Model):

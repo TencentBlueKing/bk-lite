@@ -28,12 +28,23 @@ import HiveModal from './hiveModal';
 import { EditOutlined } from '@ant-design/icons';
 import { getEnumColor, isStringArray } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
-import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import { Select, Spin } from 'antd';
 import { ListItem } from '@/types';
 const { Option } = Select;
 
 const HEXAGON_AREA = 6400; // 格子的面积
+
+// 展示指标值现按 (plugin, metric) 复合 key 回填(后端 display_field_key)。蜂巢图的指标选择
+// 只携带指标名,故按名解析:先取裸 key(遗留/补充指标),否则取任一 `<plugin>::<metric>` key。
+// 按插件隔离保证同一实例对同一指标名至多有一个插件的值,扫描不会取错。
+const readDisplayMetricCell = (item: TableDataItem, metricName: string) => {
+  if (item[metricName] != null) return item[metricName];
+  const suffix = `::${metricName}`;
+  for (const key of Object.keys(item)) {
+    if (key.endsWith(suffix) && item[key] != null) return item[key];
+  }
+  return undefined;
+};
 
 const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const { isLoading } = useApiClient();
@@ -41,7 +52,6 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
   const { getInstanceQueryParams, getInstanceSearch } = useViewApi();
   const { t } = useTranslation();
   const { getEnumValueUnit } = useUnitTransform();
-  const { getTableDiaplay } = useObjectConfigInfo();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const modalRef = useRef<ModalRef>(null);
   const hexGridRef = useRef<HTMLDivElement>(null);
@@ -68,16 +78,16 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
 
   const metricList = useMemo(() => {
     if (objectId && objects?.length && mertics?.length) {
-      const objName = objects.find((item) => item.id === objectId)?.name;
-      if (objName) {
-        const filterMetrics = getTableDiaplay(objName);
-        return mertics.filter((metric) =>
-          filterMetrics.find((item: TableDataItem) => item.key === metric.name)
-        );
-      }
+      const target = objects.find((item) => item.id === objectId);
+      const metricNames = new Set(
+        (target?.display_fields || []).flatMap((col) =>
+          (col.metrics || []).map((binding) => binding.metric)
+        )
+      );
+      return mertics.filter((metric) => metricNames.has(metric.name));
     }
     return [];
-  }, [mertics, isPod]);
+  }, [mertics, objects, objectId]);
 
   // 动态设置 pageSize
   useEffect(() => {
@@ -289,6 +299,7 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
         (item) => item.name === metricName
       );
       if (tagetMerticItem) {
+        const cellValue = readDisplayMetricCell(item, metricName);
         return {
           name: '',
           description: (
@@ -296,13 +307,13 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
               <div>{item.instance_name}</div>
               {`${tagetMerticItem.display_name}: ${getEnumValueUnit(
                 tagetMerticItem,
-                item[metricName]
+                cellValue
               )}`}
             </>
           ),
           fill: queryMetric
-            ? handleHexColor(item[metricName], hexColor)
-            : handleFillColor(tagetMerticItem, item[metricName])
+            ? handleHexColor(cellValue, hexColor)
+            : handleFillColor(tagetMerticItem, cellValue)
         };
       }
       return {

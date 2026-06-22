@@ -7,7 +7,7 @@
 - module: file_integrity
   paths:
     {% if _monitor_paths is string %}
-    {% for path in _monitor_paths.split(',') | map('trim') | reject('equalto', '') %}
+    {% for path in _monitor_paths | split(',') | map('trim') | reject('equalto', '') %}
     - {{ path }}
     {% endfor %}
     {% elif _monitor_paths %}
@@ -29,7 +29,7 @@
 
   exclude_files:
     {% if _exclude_paths is string and _exclude_paths %}
-    {% for path in _exclude_paths.split(',') | map('trim') | reject('equalto', '') %}
+    {% for path in _exclude_paths | split(',') | map('trim') | reject('equalto', '') %}
     - {{ path | to_json }}
     {% endfor %}
     {% elif _exclude_paths %}

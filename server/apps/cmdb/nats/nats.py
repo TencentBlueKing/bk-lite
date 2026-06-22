@@ -32,6 +32,7 @@ from apps.cmdb.display_field.constants import (
 from apps.cmdb.display_field.handler import DisplayFieldConverter, DisplayFieldHandler
 from apps.cmdb.models.change_record import CREATE_INST, DELETE_INST, OPERATE_TYPE_CHOICES, UPDATE_INST, ChangeRecord
 from apps.cmdb.models.collect_model import CollectModels
+from apps.cmdb.services.collect_credential_result_service import CollectCredentialResultService
 from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.config_file_service import ConfigFileService
 from apps.cmdb.services.instance import InstanceManage
@@ -364,6 +365,318 @@ def search_instances(params):
 
 
 @nats_client.register
+def search_instances_batch(params):
+    """批量查询实例。params={"model_id":..,"ids":[..],"inst_names":[..]} -> {key: instance}"""
+    return InstanceManage.search_inst_batch(
+        model_id=params["model_id"],
+        ids=params.get("ids"),
+        inst_names=params.get("inst_names"),
+    )
+
+
+def _resolve_allowed_org_ids(params, data):
+    """解析实例写操作的 organization 范围上下文。
+
+    HTTP 路径下该范围由 view 从请求 cookie（current_team/include_children）+ 用户组织树推导。
+    NATS 为可信的机器对机器调用、无用户范围概念：
+    - 调用方显式传 allowed_org_ids 时按其限制；
+    - 否则默认放行 payload 自带的 organization（即不做范围限制），
+      避免实例数据携带 organization 时触发“缺少 organization 范围上下文”。
+    """
+    allowed = params.get("allowed_org_ids")
+    if allowed is not None:
+        return allowed
+    org_value = (data or {}).get("organization")
+    if isinstance(org_value, list):
+        return org_value
+    return None
+
+
+@nats_client.register
+def update_instance(params):
+    """
+    修改实例属性
+
+    params={
+        "inst_id": 123,            # 实例ID，优先使用；缺省时用 model_id+inst_name 定位
+        "model_id": "host",        # 配合 inst_name 定位实例时必填
+        "inst_name": "host-01",    # 配合 model_id 定位实例时必填
+        "update_attr": {...},      # 待更新的属性键值
+        "operator": "admin",       # 操作人，用于变更记录
+        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
+    }
+    -> 更新后的实例数据
+    """
+    update_attr = params.get("update_attr") or {}
+    if not update_attr:
+        raise ValueError("update_attr is required")
+
+    inst_id = params.get("inst_id") or params.get("_id")
+    if not inst_id:
+        model_id = params.get("model_id")
+        inst_name = params.get("inst_name")
+        if not (model_id and inst_name):
+            raise ValueError("inst_id or (model_id and inst_name) is required")
+        instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
+        if not instances:
+            raise ValueError("实例不存在！")
+        inst_id = instances[0]["_id"]
+
+    return InstanceManage.instance_update(
+        user_groups=[],
+        roles=[],
+        inst_id=int(inst_id),
+        update_attr=update_attr,
+        operator=params.get("operator", ""),
+        allowed_org_ids=_resolve_allowed_org_ids(params, update_attr),
+        skip_permission_check=True,
+    )
+
+
+@nats_client.register
+def create_instance(params):
+    """
+    创建实例
+
+    params={
+        "model_id": "host",        # 模型ID，必填
+        "instance_info": {...},    # 实例属性键值，必填
+        "operator": "admin",       # 操作人，用于变更记录
+        "allowed_org_ids": [1, 2]  # 可选；限制 organization 范围，缺省不限制
+    }
+    -> 创建后的实例数据
+    """
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+
+    instance_info = params.get("instance_info") or {}
+    if not instance_info:
+        raise ValueError("instance_info is required")
+
+    return InstanceManage.instance_create(
+        model_id=model_id,
+        instance_info=instance_info,
+        operator=params.get("operator", ""),
+        allowed_org_ids=_resolve_allowed_org_ids(params, instance_info),
+    )
+
+
+@nats_client.register
+def delete_instance(params):
+    """
+    删除实例（支持单个或批量）
+
+    params={
+        "inst_ids": [1, 2],        # 实例ID列表，优先使用
+        "inst_id": 1,              # 单个实例ID（兼容 _id）
+        "model_id": "host",        # 配合 inst_name 定位单个实例时必填
+        "inst_name": "host-01",    # 配合 model_id 定位单个实例时必填
+        "operator": "admin"        # 操作人，用于变更记录
+    }
+    -> {"result": True, "deleted": [<inst_ids>]}
+    """
+    inst_ids = _normalize_to_list(params.get("inst_ids"))
+
+    if not inst_ids:
+        single_id = params.get("inst_id") or params.get("_id")
+        if single_id:
+            inst_ids = [single_id]
+        else:
+            model_id = params.get("model_id")
+            inst_name = params.get("inst_name")
+            if not (model_id and inst_name):
+                raise ValueError("inst_ids, inst_id or (model_id and inst_name) is required")
+            instances, _ = InstanceManage.search_inst(model_id=model_id, inst_name=inst_name)
+            if not instances:
+                raise ValueError("实例不存在！")
+            inst_ids = [instances[0]["_id"]]
+
+    inst_ids = [int(i) for i in inst_ids]
+    InstanceManage.instance_batch_delete(
+        user_groups=[],
+        roles=[],
+        inst_ids=inst_ids,
+        operator=params.get("operator", ""),
+    )
+    return {"result": True, "deleted": inst_ids}
+
+
+@nats_client.register
+def list_instances(params):
+    """
+    查询单个模型下的实例列表（分页 + 过滤）
+
+    params={
+        "model_id": "host",          # 模型ID，必填
+        "params": [...],             # 可选；查询条件，格式同 instance_list，如
+                                     #   [{"field": "ip_addr", "type": "str*", "value": "10."}]
+        "page": 1,                   # 页码，默认 1
+        "page_size": 20,             # 每页条数，默认 20
+        "order": "",                 # 排序字段，前缀 - 表示倒序
+        "format": True               # 可选；True 时把 org/user/enum 等字段转为展示值，默认 True
+    }
+    -> {"count": <总数>, "items": [<实例>, ...]}
+    """
+    model_id = params.get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+
+    page = int(params.get("page") or 1)
+    page_size = int(params.get("page_size") or 20)
+    query_params = params.get("params") or []
+    order = params.get("order") or ""
+    need_format = params.get("format", True)
+
+    instances, count = InstanceManage.instance_list(
+        model_id=model_id,
+        params=list(query_params),
+        page=page,
+        page_size=page_size,
+        order=order,
+        creator="",
+        permission_map={},
+    )
+
+    items = _format_asset_instances_response(model_id, instances) if need_format else [dict(i) for i in instances]
+    return {"count": count, "items": items}
+
+
+@nats_client.register
+def search_model_attrs(params):
+    """
+    查询模型属性列表
+
+    params={"model_id": "host"}  # 模型ID，必填
+    -> [<属性定义>, ...]
+    """
+    model_id = (params or {}).get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+    return ModelManage.search_model_attr(model_id)
+
+
+@nats_client.register
+def search_models(params=None):
+    """
+    查询模型列表
+
+    params={
+        "classification_id": "host_mgmt",  # 可选；按分类过滤
+        "include_hidden": False            # 可选；是否包含已隐藏模型，默认 False
+    }
+    -> [<模型定义>, ...]
+    """
+    params = params or {}
+    classification_id = params.get("classification_id")
+    classification_ids = [classification_id] if classification_id else None
+    return ModelManage.search_model(
+        classification_ids=classification_ids,
+        include_hidden=bool(params.get("include_hidden", False)),
+    )
+
+
+@nats_client.register
+def search_classifications(params=None):
+    """
+    查询模型分类列表
+
+    params={"include_hidden": False}  # 可选；是否包含已隐藏分类，默认 False
+    -> [<分类定义>, ...]
+    """
+    params = params or {}
+    return ClassificationManage.search_model_classification(
+        include_hidden=bool(params.get("include_hidden", False)),
+    )
+
+
+@nats_client.register
+def search_model_associations(params):
+    """
+    查询模型关联定义（作为源或目标的所有关联）
+
+    params={"model_id": "host"}  # 模型ID，必填
+    -> [<模型关联定义>, ...]
+    """
+    model_id = (params or {}).get("model_id")
+    if not model_id:
+        raise ValueError("model_id is required")
+    return ModelManage.model_association_search(model_id)
+
+
+@nats_client.register
+def search_instance_associations(params):
+    """
+    查询实例关联列表（某实例关联到的其它实例，按 model_asst_id 分组）
+
+    params={
+        "model_id": "host",   # 模型ID，必填
+        "inst_id": 123        # 实例ID，必填
+    }
+    -> [{"src_model_id":..,"dst_model_id":..,"model_asst_id":..,"asst_id":..,"inst_list":[..]}, ...]
+    """
+    params = params or {}
+    model_id = params.get("model_id")
+    inst_id = params.get("inst_id") or params.get("_id")
+    if not model_id or inst_id in (None, ""):
+        raise ValueError("model_id and inst_id are required")
+    return InstanceManage.instance_association_instance_list(model_id, int(inst_id))
+
+
+@nats_client.register
+def create_instance_association(params):
+    """
+    创建实例关联（写）
+
+    params={
+        "src_inst_id": 1,                  # 源实例ID，必填
+        "dst_inst_id": 2,                  # 目标实例ID，必填
+        "model_asst_id": "host_run_app",   # 模型关联ID，必填
+        "operator": "admin"                # 操作人，用于变更记录
+    }
+    -> 创建后的关联边数据
+    """
+    params = params or {}
+    src_inst_id = params.get("src_inst_id")
+    dst_inst_id = params.get("dst_inst_id")
+    model_asst_id = params.get("model_asst_id")
+    if src_inst_id in (None, "") or dst_inst_id in (None, "") or not model_asst_id:
+        raise ValueError("src_inst_id, dst_inst_id and model_asst_id are required")
+
+    data = {
+        "src_inst_id": int(src_inst_id),
+        "dst_inst_id": int(dst_inst_id),
+        "model_asst_id": model_asst_id,
+    }
+    for key in ("asst_id", "src_model_id", "dst_model_id"):
+        if params.get(key) is not None:
+            data[key] = params[key]
+
+    return InstanceManage.instance_association_create(data, params.get("operator", ""))
+
+
+@nats_client.register
+def delete_instance_association(params):
+    """
+    删除实例关联（写）
+
+    params={
+        "asso_id": 10,        # 关联ID，必填（兼容 inst_asst_id / _id）
+        "operator": "admin"   # 操作人，用于变更记录
+    }
+    -> {"result": True, "deleted": <asso_id>}
+    """
+    params = params or {}
+    asso_id = params.get("asso_id") or params.get("inst_asst_id") or params.get("_id")
+    if asso_id in (None, ""):
+        raise ValueError("asso_id is required")
+
+    asso_id = int(asso_id)
+    InstanceManage.instance_association_delete(asso_id, params.get("operator", ""))
+    return {"result": True, "deleted": asso_id}
+
+
+@nats_client.register
 def receive_config_file_result(data: dict):
     """接收 Stargazer 回传的配置文件采集结果并落库。"""
     logger.info("==[ConfigFileCollect] 接收配置文件采集结果")
@@ -376,6 +689,47 @@ def receive_config_file_result(data: dict):
         "changed": bool(result.get("changed", False)),
         "task_updated": bool(result.get("task_updated", False)),
     }
+
+@nats_client.register
+def receive_collect_credential_result(data: dict):
+    """接收 Stargazer 推送的单条或批量凭据执行结果并回写命中状态。"""
+    payload = data or {}
+    events = payload.get("events") if isinstance(payload, dict) else None
+
+    if isinstance(events, list):
+        logger.info(
+            "Received pushed collect credential result batch, count=%s next_since=%s",
+            len(events),
+            payload.get("next_since") or "",
+        )
+    else:
+        logger.info(
+            "Received pushed collect credential result event, task_id=%s host=%s credential_id=%s success=%s",
+            payload.get("collect_task_id") or payload.get("task_id") or "",
+            payload.get("host") or "",
+            payload.get("credential_id") or "",
+            bool(payload.get("success")),
+        )
+
+    result = CollectCredentialResultService.process_batch(payload, parse_datetime=_parse_nats_datetime)
+
+    if isinstance(events, list):
+        logger.info(
+            "Processed pushed collect credential result batch, processed=%s failed=%s next_since=%s",
+            result.get("processed", 0),
+            result.get("failed", 0),
+            result.get("next_since") or "",
+        )
+    else:
+        logger.info(
+            "Processed pushed collect credential result event, result=%s task_id=%s object_key=%s credential_id=%s",
+            result.get("result", False),
+            result.get("task_id") or "",
+            result.get("object_key") or "",
+            result.get("credential_id") or "",
+        )
+
+    return result
 
 
 @nats_client.register
@@ -481,6 +835,12 @@ def _parse_client_datetime(value, target_tz):
     if timezone.is_naive(parsed):
         return timezone.make_aware(parsed, target_tz)
     return parsed.astimezone(target_tz)
+
+
+def _parse_nats_datetime(value):
+    if value in (None, ""):
+        return None
+    return _parse_client_datetime(value, timezone.get_current_timezone())
 
 
 def _format_period_value(value, target_tz):

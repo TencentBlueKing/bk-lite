@@ -12,6 +12,7 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
 from apps.operation_analysis.common.get_nats_source_data import GetNatsData
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter, DataSourceTagModelFilter, NameSpaceModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
@@ -296,15 +297,26 @@ class NameSpaceModelViewSet(ModelViewSet):
 
     @HasPermission("namespace-Add")
     def create(self, request, *args, **kwargs):
-        return super(NameSpaceModelViewSet, self).create(request, *args, **kwargs)
+        response = super(NameSpaceModelViewSet, self).create(request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增命名空间: {name}")
+        return response
 
     @HasPermission("namespace-Edit")
     def update(self, request, *args, **kwargs):
-        return super(NameSpaceModelViewSet, self).update(request, *args, **kwargs)
+        instance = self.get_object()
+        response = super(NameSpaceModelViewSet, self).update(request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑命名空间: {name}")
+        return response
 
     @HasPermission("namespace-Delete")
     def destroy(self, request, *args, **kwargs):
-        return super(NameSpaceModelViewSet, self).destroy(request, *args, **kwargs)
+        instance = self.get_object()
+        name = instance.name
+        response = super(NameSpaceModelViewSet, self).destroy(request, *args, **kwargs)
+        log_ops_analysis_success(request, response, "delete", f"删除命名空间: {name}")
+        return response
 
 
 class DataSourceAPIModelViewSet(AuthViewSet):
@@ -363,11 +375,30 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             path = instance.rest_api
         else:
             namespace, path = instance.rest_api.split("/", 1)
+
+        # 演示静态数据源（已注释，仅用于无 NATS 时本地预览组件效果，勿提交启用）：
+        # namespace=="demo" 时短路返回固定数据，无需 NATS。取消下方注释即可恢复。
+        # if namespace == "demo":
+        #     from apps.operation_analysis.common.demo_source import get_demo_source_data
+        #
+        #     demo_data = get_demo_source_data(path, params)
+        #     if demo_data is not None:
+        #         return Response(demo_data)
+        #     return _build_error_response("演示数据源不存在", status.HTTP_404_NOT_FOUND)
+
         client = GetNatsData(namespace=namespace, path=path, params=params, namespace_list=namespace_list, request=request)
         try:
             result = _normalize_downstream_result(client.get_data())
         except Exception as e:
-            logger.error("获取数据源数据失败: {}".format(e))
+            logger.error(
+                "[DataSourceQuery] 取数失败 datasource_id=%s name=%s namespace=%s path=%s：%s",
+                instance.id,
+                instance.name,
+                namespace,
+                path,
+                e,
+                exc_info=True,
+            )
             error_status, error_message = _classify_runtime_exception(e)
             return _build_error_response(error_message, error_status)
 
@@ -397,19 +428,29 @@ class DataSourceAPIModelViewSet(AuthViewSet):
 
     @HasPermission("data_source-Add")
     def create(self, request, *args, **kwargs):
-        return super(DataSourceAPIModelViewSet, self).create(request, *args, **kwargs)
+        response = super(DataSourceAPIModelViewSet, self).create(request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增数据源: {name}")
+        return response
 
     @HasPermission("data_source-Edit")
     def update(self, request, *args, **kwargs):
-        return super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
+        instance = self.get_object()
+        response = super(DataSourceAPIModelViewSet, self).update(request, *args, **kwargs)
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑数据源: {name}")
+        return response
 
     @HasPermission("data_source-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        name = instance.name
         current_team = self._parse_current_team_cookie(request)
 
         if current_team not in (instance.groups or []):
             return Response({"detail": "无权删除该数据源"}, status=403)
 
         instance.delete()
-        return Response(status=204)
+        response = Response(status=204)
+        log_ops_analysis_success(request, response, "delete", f"删除数据源: {name}")
+        return response

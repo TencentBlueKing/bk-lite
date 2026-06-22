@@ -82,7 +82,7 @@ urlpatterns += [
     path(
         r"bot_mgmt/lobe_chat/v1/chat/completions",
         views.lobe_skill_execute,
-        name="openai_completions",
+        name="lobe_openai_completions",
     ),
     path(
         r"bot_mgmt/get_active_users_line_data/",
@@ -108,6 +108,11 @@ urlpatterns += [
         r"bot_mgmt/execute_chat_flow/<int:bot_id>/<str:node_id>/",
         views.execute_chat_flow,
         name="execute_chat_flow",
+    ),
+    path(
+        r"bot_mgmt/workflow_attachment/download/<str:download_token>/",
+        views.download_workflow_attachment,
+        name="download_workflow_attachment",
     ),
     path(
         r"bot_mgmt/interrupt_chat_flow_execution/",

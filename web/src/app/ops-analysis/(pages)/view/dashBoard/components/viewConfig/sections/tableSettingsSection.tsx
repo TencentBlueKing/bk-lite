@@ -1,14 +1,30 @@
-import React from 'react';
-import { Button, Input, Select, Switch, Tooltip } from 'antd';
+import React, { useState } from 'react';
+import {
+  AutoComplete,
+  Button,
+  Dropdown,
+  Input,
+  Select,
+  Switch,
+  Tag,
+  Tooltip,
+} from 'antd';
 import {
   PlusCircleOutlined,
   MinusCircleOutlined,
   ExclamationCircleOutlined,
+  SettingOutlined,
+  DownOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
-import type { TableFilterFieldConfig, TableColumnConfigItem } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  DashboardActionConfig,
+  TableFilterFieldConfig,
+  TableColumnConfigItem,
+} from '@/app/ops-analysis/types/dashBoard';
 import type { DisplayColumnRow } from '../utils/columnProbing';
 import CompactEmptyState from '@/app/ops-analysis/components/compactEmptyState';
+import { ActionInteractionModal } from './actionInteractionModal';
 
 type FilterFieldRow = TableFilterFieldConfig & { id: string };
 
@@ -20,8 +36,11 @@ interface FilterFieldOption {
 interface TableSettingsSectionProps {
   t: (key: string) => string;
   displayColumns: DisplayColumnRow[];
+  displayColumnOptions: FilterFieldOption[];
+  actions: DashboardActionConfig[];
   filterFields: FilterFieldRow[];
   filterFieldOptions: FilterFieldOption[];
+  showFilterFields: boolean;
   invalidConfiguredFieldKeys: string[];
   isProbingColumns: boolean;
   paramsChangedAfterProbe: boolean;
@@ -45,14 +64,18 @@ interface TableSettingsSectionProps {
   onDisplayColumnDragEnd: (targetTableData: DisplayColumnRow[]) => void;
   onReProbeColumns: () => void;
   onAddNewFilterField: () => void;
-  onAddNewDisplayColumn: () => void;
+  onAddNewDisplayColumn: (columnType?: 'data' | 'actions') => void;
+  onActionsChange: (actions: DashboardActionConfig[]) => void;
 }
 
 export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   t,
   displayColumns,
+  displayColumnOptions,
+  actions,
   filterFields,
   filterFieldOptions,
+  showFilterFields,
   invalidConfiguredFieldKeys,
   isProbingColumns,
   paramsChangedAfterProbe,
@@ -68,7 +91,11 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
   onReProbeColumns,
   onAddNewFilterField,
   onAddNewDisplayColumn,
+  onActionsChange,
 }) => {
+  const [interactionColumn, setInteractionColumn] =
+    useState<DisplayColumnRow | null>(null);
+
   const localizedFilterInputTypeOptions = [
     { label: t('dashboard.keyword'), value: 'keyword' },
     { label: t('dashboard.timeRange'), value: 'time_range' },
@@ -163,16 +190,26 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
       dataIndex: 'key',
       key: 'key',
       width: 180,
-      render: (_: unknown, record: DisplayColumnRow) => (
-        <Input
-          value={record.key}
-          placeholder={t('common.inputMsg')}
-          onChange={(e) =>
-            onDisplayColumnChange(record.id, 'key', e.target.value)
-          }
-          onBlur={() => onDisplayColumnKeyBlur(record.id)}
-        />
-      ),
+      render: (_: unknown, record: DisplayColumnRow) =>
+        record.columnType === 'actions' ? (
+          <Tag className="m-0">{t('dashboard.operationColumn')}</Tag>
+        ) : (
+          <AutoComplete
+            value={record.key}
+            placeholder={t('dashboard.selectOrInputField')}
+            style={{ width: '100%' }}
+            options={displayColumnOptions}
+            filterOption={(inputValue, option) => {
+              const query = inputValue.toLowerCase();
+              return (
+                (option?.label || '').toString().toLowerCase().includes(query) ||
+                (option?.value || '').toString().toLowerCase().includes(query)
+              );
+            }}
+            onChange={(value) => onDisplayColumnChange(record.id, 'key', value)}
+            onBlur={() => onDisplayColumnKeyBlur(record.id)}
+          />
+        ),
     },
     {
       title: t('dashboard.filterFieldLabel'),
@@ -205,7 +242,7 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
     {
       title: t('dataSource.operation'),
       key: 'action',
-      width: 100,
+      width: 132,
       render: (_: unknown, record: DisplayColumnRow, index: number) => (
         <div
           style={{ display: 'flex', gap: '4px', justifyContent: 'flex-start' }}
@@ -224,6 +261,17 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
             onClick={() => onDeleteDisplayColumn(record.id)}
             style={{ border: 'none', padding: '4px' }}
           />
+          {record.columnType === 'actions' && (
+            <Tooltip title={t('dashboard.interactionConfig')}>
+              <Button
+                type="text"
+                size="small"
+                icon={<SettingOutlined />}
+                onClick={() => setInteractionColumn(record)}
+                style={{ border: 'none', padding: '4px' }}
+              />
+            </Tooltip>
+          )}
         </div>
       ),
     },
@@ -285,30 +333,49 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
                 {t('dashboard.reProbeColumns') || '重新探测列'}
               </Button>
             </Tooltip>
-            <Button
-              type="dashed"
-              size="small"
-              icon={<PlusCircleOutlined />}
-              onClick={onAddNewDisplayColumn}
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: [
+                  {
+                    key: 'data',
+                    label: t('dashboard.addDataColumn'),
+                  },
+                  {
+                    key: 'actions',
+                    label: t('dashboard.addOperationColumn'),
+                  },
+                ],
+                onClick: ({ key }) =>
+                  onAddNewDisplayColumn(
+                    key === 'actions' ? 'actions' : 'data',
+                  ),
+              }}
             >
-              {t('common.add')}
-            </Button>
+              <Button type="dashed" size="small" icon={<PlusCircleOutlined />}>
+                {t('common.add')}
+                <DownOutlined />
+              </Button>
+            </Dropdown>
           </div>
         </div>
         {displayColumns.length > 0 ? (
-          <CustomTable
-            rowKey="id"
-            columns={displayColumnTableColumns}
-            dataSource={displayColumns}
-            pagination={false}
-            scroll={{ y: 320 }}
-            rowDraggable
-            onRowDragEnd={(targetTableData) =>
-              onDisplayColumnDragEnd(
-                (targetTableData || []) as DisplayColumnRow[],
-              )
-            }
-          />
+          <div className="pt-1">
+            <CustomTable
+              rowKey="id"
+              columns={displayColumnTableColumns}
+              dataSource={displayColumns}
+              pagination={false}
+              scroll={{ y: 320 }}
+              size="small"
+              rowDraggable
+              onRowDragEnd={(targetTableData) =>
+                onDisplayColumnDragEnd(
+                  (targetTableData || []) as DisplayColumnRow[],
+                )
+              }
+            />
+          </div>
         ) : (
           <CompactEmptyState
             description={
@@ -329,40 +396,56 @@ export const TableSettingsSection: React.FC<TableSettingsSectionProps> = ({
         )}
       </div>
 
-      <div>
-        <div
-          style={{
-            marginBottom: '8px',
-            display: 'flex',
-            justifyContent: 'space-between',
-            alignItems: 'center',
-          }}
-        >
-          <span style={{ fontWeight: 500 }}>{t('dashboard.filterFields')}</span>
-          <Button
-            type="dashed"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={onAddNewFilterField}
-            disabled={filterFieldOptions.length === 0}
+      {showFilterFields && (
+        <div>
+          <div
+            style={{
+              marginBottom: '8px',
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+            }}
           >
-            {t('common.add')}
-          </Button>
+            <span style={{ fontWeight: 500 }}>
+              {t('dashboard.filterFields')}
+            </span>
+            <Button
+              type="dashed"
+              size="small"
+              icon={<PlusCircleOutlined />}
+              onClick={onAddNewFilterField}
+              disabled={filterFieldOptions.length === 0}
+            >
+              {t('common.add')}
+            </Button>
+          </div>
+          {filterFieldOptions.length === 0 ? (
+            <CompactEmptyState description={t('dashboard.noSchemaFields')} />
+          ) : filterFields.length > 0 ? (
+            <CustomTable
+              rowKey="id"
+              columns={filterFieldColumns}
+              dataSource={filterFields}
+              pagination={false}
+              scroll={{ y: 320 }}
+            />
+          ) : (
+            <CompactEmptyState description={t('dashboard.noFilterFields')} />
+          )}
         </div>
-        {filterFieldOptions.length === 0 ? (
-          <CompactEmptyState description={t('dashboard.noSchemaFields')} />
-        ) : filterFields.length > 0 ? (
-          <CustomTable
-            rowKey="id"
-            columns={filterFieldColumns}
-            dataSource={filterFields}
-            pagination={false}
-            scroll={{ y: 320 }}
-          />
-        ) : (
-          <CompactEmptyState description={t('dashboard.noFilterFields')} />
-        )}
-      </div>
+      )}
+      <ActionInteractionModal
+        open={!!interactionColumn}
+        column={interactionColumn}
+        actions={actions}
+        fieldOptions={displayColumnOptions}
+        t={t}
+        onCancel={() => setInteractionColumn(null)}
+        onConfirm={(nextActions) => {
+          onActionsChange(nextActions);
+          setInteractionColumn(null);
+        }}
+      />
     </div>
   );
 };

@@ -2,8 +2,6 @@
 
 import React, { useEffect, useRef } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import styles from '../index.module.scss';
-import { CaretRightOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
@@ -13,9 +11,15 @@ import {
   HOST_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, buildCredential } from '../hooks/formatTaskValues';
-import { Form, Spin, Input, Collapse, InputNumber, Select, Tooltip } from 'antd';
+import {
+  buildCredentialPool,
+  formatTaskValues,
+  normalizeCredentialPool,
+  trimFormString,
+} from '../hooks/formatTaskValues';
+import { Form, Spin } from 'antd';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import CredentialPoolEditor from './credentialPoolEditor';
 
 interface IPMITaskFormProps {
   onClose: () => void;
@@ -27,17 +31,8 @@ interface IPMITaskFormProps {
 
 const IPMI_FORM_INITIAL_VALUES = {
   ...HOST_FORM_INITIAL_VALUES,
-  port: '623',
-  // 默认按管理员级别发起会话，减少不同厂商 BMC 下因为权限过低导致 inventory 不完整的概率。
-  privilege: 'administrator',
+  credentialPool: [{ port: '623', privilege: 'administrator' }],
 };
-
-const PRIVILEGE_OPTIONS = [
-  { label: 'callback', value: 'callback' },
-  { label: 'user', value: 'user' },
-  { label: 'operator', value: 'operator' },
-  { label: 'administrator', value: 'administrator' },
-];
 
 const IPMITask: React.FC<IPMITaskFormProps> = ({
   onClose,
@@ -92,16 +87,13 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
       return {
         ...baseData,
         ...instanceData,
-        credential: buildCredential(
-          {
-            // 注意：这里仍然写回现有 physcial_server 模型，但凭据语义已经变成 IPMI/BMC 登录信息。
-            username: 'username',
-            password: 'password',
-            port: 'port',
-            privilege: 'privilege',
-          },
-          values
-        ),
+        // 注意：这里仍然写回现有 physcial_server 模型，但凭据语义已经变成 IPMI/BMC 登录信息。
+        credential: buildCredentialPool(values.credentialPool, (item) => ({
+          username: trimFormString(item.username),
+          password: trimFormString(item.password),
+          port: item.port,
+          privilege: item.privilege,
+        })),
       };
     },
   });
@@ -112,10 +104,16 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
     ...values,
     taskName: isCopy ? '' : values.name,
     organization: values.team || [],
-    username: values.credential?.username || values.credential?.user,
-    password: isCopy ? '' : PASSWORD_PLACEHOLDER,
-    port: values.credential?.port || 623,
-    privilege: values.credential?.privilege || 'administrator',
+    credentialPool: (normalizeCredentialPool(values.credential).length
+      ? normalizeCredentialPool(values.credential)
+      : IPMI_FORM_INITIAL_VALUES.credentialPool
+    ).map((item) => ({
+      ...item,
+      username: item.username || item.user,
+      password: isCopy ? '' : PASSWORD_PLACEHOLDER,
+      port: item.port || '623',
+      privilege: item.privilege || 'administrator',
+    })),
     accessPointId: values.access_point?.[0]?.id,
   });
 
@@ -144,7 +142,7 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
       }
     };
     initForm();
-  }, [copyTaskData, editId, fetchTaskDetail, form]);
+  }, [modelId, copyTaskData, editId]);
 
   return (
     <Spin spinning={loading}>
@@ -168,60 +166,9 @@ const IPMITask: React.FC<IPMITaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
-          <Collapse
-            ghost
-            defaultActiveKey={['credential']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined rotate={isActive ? 90 : 0} className="text-base" />
-            )}
-          >
-            <Collapse.Panel
-              header={<div className={styles.panelHeader}>{t('Collection.credential')}</div>}
-              key="credential"
-            >
-              <Form.Item label={t('user')} name="username">
-                <Input placeholder={t('common.inputTip')} />
-              </Form.Item>
-
-              <Form.Item label={t('password')} name="password">
-                <Input.Password
-                  placeholder={t('common.inputTip')}
-                  onFocus={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (value === PASSWORD_PLACEHOLDER) {
-                      form.setFieldValue('password', '');
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (!value || value.trim() === '') {
-                      form.setFieldValue('password', PASSWORD_PLACEHOLDER);
-                    }
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item label={t('Collection.port')} name="port">
-                <InputNumber min={1} max={65535} className="w-32" placeholder="623" />
-              </Form.Item>
-
-              <Form.Item
-                label={
-                  <span>
-                    {t('Collection.IPMITask.privilege')}
-                    <Tooltip title={t('Collection.IPMITask.privilegeTooltip')}>
-                      <QuestionCircleOutlined className="ml-1 text-gray-400" />
-                    </Tooltip>
-                  </span>
-                }
-                name="privilege"
-              >
-                <Select options={PRIVILEGE_OPTIONS} placeholder={t('common.selectTip')} />
-              </Form.Item>
-            </Collapse.Panel>
-          </Collapse>
+          <Form.Item name="credentialPool">
+            <CredentialPoolEditor credentialShape="ipmi" editMode={Boolean(editId)} />
+          </Form.Item>
         </BaseTaskForm>
       </Form>
     </Spin>

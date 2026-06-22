@@ -5,11 +5,12 @@
 from collections import defaultdict
 
 from apps.cmdb.collection.collect_plugin.base import CollectBase
+from apps.cmdb.collection.collect_plugin.topology import build_pipeline_aggregate, parse_aggregate_result
 from apps.cmdb.collection.collect_util import timestamp_gt_one_day_ago
-from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS
+from apps.cmdb.collection.constants import NETWORK_INTERFACES_RELATIONS, NETWORK_TOPOLOGY_FACTS
 from apps.cmdb.collection.plugins import get_collection_plugin
 from apps.cmdb.constants.constants import CollectPluginTypes
-from apps.cmdb.models import OidMapping
+from apps.cmdb.models import CollectModels, OidMapping
 from apps.core.logger import cmdb_logger as logger
 
 
@@ -33,18 +34,25 @@ class CollectNetworkMetrics(CollectBase):
         self.instance_id_map = {}
         self.collect_inst = self.get_collect_inst()
         self.is_topo = self.collect_inst.is_network_topo
+        self._instance_metrics = list(self._metrics)
         self.set_metrics()
         self.interfaces_data = {}
+        self.interface_index_map = {}
+        self.interface_name_map = defaultdict(dict)
 
     def set_metrics(self):
         if self.is_topo:
-            self._metrics.append(NETWORK_INTERFACES_RELATIONS)
+            # 新流水线只消费 network_topo_info_gauge，不再查询 network_topology_facts_info_gauge
+            if NETWORK_INTERFACES_RELATIONS not in self._metrics:
+                self._metrics.append(NETWORK_INTERFACES_RELATIONS)
             self.collection_metrics_dict.update({NETWORK_INTERFACES_RELATIONS: []})
 
     @property
     def _metrics(self):
+        if hasattr(self, "_instance_metrics"):
+            return self._instance_metrics
         plugin_cls = get_collection_plugin(CollectPluginTypes.SNMP, self.model_id)
-        return plugin_cls._metrics.fget(self)
+        return list(plugin_cls._metrics.fget(self))
 
     @staticmethod
     def get_oid_map():
@@ -133,6 +141,13 @@ class CollectNetworkMetrics(CollectBase):
                 **index_data["metric"],
             )
 
+            # agent 给同一任务所有设备盖的是任务级 instance_id（cmdb_{task_id}），
+            # 仅靠每行 host 区分设备。改用 host 作为设备身份键，避免多台设备因共享
+            # instance_id 被合并成一台（否则跨设备拓扑关联无法建立）。
+            host = index_dict.get("host")
+            if host:
+                index_dict["instance_id"] = host
+
             if "sysobjectid" in index_dict:
                 self.instance_id_map[index_dict["instance_id"]] = index_dict
 
@@ -141,6 +156,7 @@ class CollectNetworkMetrics(CollectBase):
     def format_metrics(self):
         """格式化数据"""
         topo_data = self.collection_metrics_dict.pop(NETWORK_INTERFACES_RELATIONS, [])
+        topology_facts = self.collection_metrics_dict.pop(NETWORK_TOPOLOGY_FACTS, [])
         for metric_key, metrics in self.collection_metrics_dict.items():
             for index_data in metrics:
                 if index_data["instance_id"] not in self.instance_id_map:
@@ -167,11 +183,102 @@ class CollectNetworkMetrics(CollectBase):
                 self.result.setdefault(model_id, []).append(data)
                 if model_id == "interface":
                     self.interfaces_data[data["inst_name"]] = data
+                    self.index_interface_lookup(index_data, data)
 
         if self.is_topo:
-            relationships = self.find_interface_relationships(topo_data)
+            relationships = self.collect_topology_relationships(topology_facts, topo_data)
             self.add_interface_assos(relationships)
             # 把接口的关联补充接口的关联关系中
+
+    def collect_topology_relationships(self, topology_facts, topo_data):
+        # topology_facts（network_topology_facts_info_gauge）已废弃：新流水线直接消费
+        # network_topo_info_gauge 原始证据行；参数保留以隔离 VM 中旧 agent 指标的残留期。
+        del topology_facts
+        aggregate = build_pipeline_aggregate(topo_data)
+        parsed = parse_aggregate_result(aggregate, previous_links=self.get_previous_topology_links())
+
+        contract = self.collect_inst.topology_contract
+        # 契约 min_confidence 为 0~1 浮点，流水线 confidence 为 0~100 整数
+        min_confidence = int(float(contract.get("min_confidence", 0) or 0) * 100)
+
+        relationships = []
+        dropped = []
+        seen = set()
+        topology = parsed.get("topology", {})
+        current_links = list(topology.get("authoritative_links", [])) + list(topology.get("inferred_links", []))
+        for link in current_links:
+            if (
+                str(link.get("relationship_type", "")) != "authoritative"
+                and int(link.get("confidence", 0) or 0) < min_confidence
+            ):
+                dropped.append(self.slim_topology_link(link, reason="below_min_confidence"))
+                continue
+            source_inst_name = self.resolve_pipeline_inst_name(link.get("source_port_id"))
+            target_inst_name = self.resolve_pipeline_inst_name(link.get("target_port_id"))
+            if not source_inst_name or not target_inst_name:
+                dropped.append(self.slim_topology_link(link, reason="interface_not_in_inventory"))
+                continue
+            if source_inst_name == target_inst_name:
+                dropped.append(self.slim_topology_link(link, reason="self_loop"))
+                continue
+            relation = {
+                "source_inst_name": source_inst_name,
+                "target_inst_name": target_inst_name,
+                "model_id": "interface",
+                "asst_id": "connect",
+                "model_asst_id": "interface_connect_interface",
+            }
+            self.append_unique_relationship(relationships, seen, relation)
+
+        snapshot = {
+            "summary": parsed.get("summary", {}),
+            "links": [self.slim_topology_link(link) for link in current_links],
+            "stale_links": [self.slim_topology_link(link) for link in topology.get("stale_links", [])],
+            "unresolved_neighbors": [
+                {key: value for key, value in item.items() if key != "raw_remote_fields"}
+                for item in topology.get("unresolved_neighbors", [])
+                if isinstance(item, dict)
+            ],
+            "dropped": dropped,
+        }
+        self.save_topology_snapshot(snapshot)
+        return relationships
+
+    def resolve_pipeline_inst_name(self, port_id):
+        """流水线 port_id 形如 "{instance_id}:{ifindex}"，映射到 CMDB 接口实例名"""
+        if not port_id:
+            return None
+        instance_id, _, ifindex = str(port_id).rpartition(":")
+        if not instance_id:
+            return None
+        return self.interface_index_map.get((instance_id, ifindex))
+
+    @staticmethod
+    def slim_topology_link(link, reason=None):
+        """快照瘦身：剔除体积大的证据明细字段"""
+        slim = {key: value for key, value in link.items() if key not in ("supporting_evidence", "provenance")}
+        if reason is not None:
+            slim["drop_reason"] = reason
+        return slim
+
+    def get_previous_topology_links(self):
+        snapshot = getattr(self.collect_inst, "topology_snapshot", None) or {}
+        links = snapshot.get("links", [])
+        return [item for item in links if isinstance(item, dict)]
+
+    def save_topology_snapshot(self, snapshot):
+        try:
+            CollectModels.objects.filter(id=self.task_id).update(topology_snapshot=snapshot)
+        except Exception as err:  # noqa: BLE001
+            logger.warning("==保存拓扑快照失败，跳过（不影响采集主流程）task_id={} error={}==".format(self.task_id, err))
+
+    @staticmethod
+    def append_unique_relationship(relationships, seen, relation):
+        edge_key = (relation["source_inst_name"], relation["target_inst_name"])
+        if edge_key in seen:
+            return
+        seen.add(edge_key)
+        relationships.append(relation)
 
     def add_interface_assos(self, relationships):
         for relationship in relationships:
@@ -184,98 +291,28 @@ class CollectNetworkMetrics(CollectBase):
                     'model_asst_id': 'interface_connect_interface',
                     'model_id': 'interface'
                     }
-            source_interface_data.setdefault("assos", []).append(data)
+            assos = source_interface_data.setdefault("assos", [])
+            if data not in assos:
+                assos.append(data)
 
-    def find_interface_relationships(self, data):
-        # 数据结构
-        device_interfaces = defaultdict(dict)  # {instance_id: {ifindex: {"ifdescr": ..., "mac": ..., "ifalias": ...}}}
-        ip_to_mac = defaultdict(dict)  # {instance_id: {ip: mac}}
-        arp_table = defaultdict(dict)  # {instance_id: {ip: {"ifindex": ..., "mac": ...}}}
+    def index_interface_lookup(self, index_data, data):
+        instance_id = index_data["instance_id"]
+        index = index_data.get("index")
+        if index is not None:
+            self.interface_index_map[(instance_id, str(index))] = data["inst_name"]
 
-        # 预处理数据
-        for entry in data:
-            instance_id = entry['instance_id']
-            tag = entry['tag']
-            ifindex = entry.get('ifindex')
-            value = entry.get('val')
-
-            if tag == 'IFTable-IfDescr':  # 接口描述
-                device_interfaces[instance_id].setdefault(ifindex, {})['ifdescr'] = value
-            elif tag == 'IFTable-PhysAddress':  # 接口MAC地址
-                device_interfaces[instance_id].setdefault(ifindex, {})['mac'] = self.normalize_mac(value)
-            elif tag == 'IFTable-IfAlias':  # 接口别名
-                device_interfaces[instance_id].setdefault(ifindex, {})['ifalias'] = value
-            elif tag == 'IpAddr-IpAddr':  # IP地址与MAC地址的映射
-                mac = device_interfaces[instance_id].get(ifindex, {}).get('mac')
-                if mac:
-                    ip_to_mac[instance_id][value] = mac
-            elif tag == 'ARP-IfIndex':  # ARP表中的接口索引
-                arp_table[instance_id].setdefault(ifindex, {})['ifindex'] = value
-            elif tag == 'ARP-PhysAddress':  # ARP表中的MAC地址
-                arp_table[instance_id].setdefault(ifindex, {})['mac'] = self.normalize_mac(value)
-
-        # 构建 MAC 到设备和接口的索引
-        mac_to_device = {}
-        for instance_id, interfaces in device_interfaces.items():
-            for ifindex, details in interfaces.items():
-                mac = details.get('mac')
-                if mac:
-                    mac_to_device[mac] = (instance_id, ifindex)
-
-        # 构建连接关系
-        relations = []
-        for src_instance, src_arp in arp_table.items():
-            for ip, arp_info in src_arp.items():
-                dst_mac = arp_info.get('mac')
-                if not dst_mac:
-                    continue
-
-                # 使用索引快速查找目标设备和接口
-                if dst_mac in mac_to_device:
-                    dst_instance, dst_ifindex = mac_to_device[dst_mac]
-                    if dst_instance == src_instance:
-                        continue  # 跳过同一设备
-
-                    if dst_instance not in self.instance_id_map or src_instance not in self.instance_id_map:
-                        logger.info(
-                            "This data is discarded because no feature library can be found for the OID. instance_id={}".format(
-                                src_instance))
-                        continue
-
-                    src_ifindex = arp_info.get('ifindex')
-                    src_interface = device_interfaces[src_instance].get(src_ifindex, {})
-                    dst_interface = device_interfaces[dst_instance].get(dst_ifindex, {})
-                    if not src_interface or not dst_interface:
-                        continue
-
-                    relations.append({
-                        "source_device": src_instance,
-                        # "source_interface": src_interface.get('ifalias') or src_interface.get('ifdescr'),
-                        "source_inst_name": self.set_interface_inst_name(
-                            data={"instance_id": src_instance, **self.set_alias_descr(src_interface)}),
-                        "target_device": dst_instance,
-                        # "target_interface": dst_interface.get('ifalias') or dst_interface.get('ifdescr'),
-                        "target_inst_name": self.set_interface_inst_name(
-                            data={"instance_id": dst_instance, **self.set_alias_descr(dst_interface)}),
-                        "model_id": "interface",
-                        "asst_id": "connect",
-                        "model_asst_id": "interface_connect_interface",
-                    })
-
-        return relations
+        for key in (
+            data.get("name"),
+            index_data.get("alias"),
+            index_data.get("description"),
+            index_data.get("index"),
+        ):
+            normalized_key = self.normalize_lookup_value(key)
+            if normalized_key:
+                self.interface_name_map[instance_id][normalized_key] = data["inst_name"]
 
     @staticmethod
-    def set_alias_descr(data):
-        """设置别名"""
-        result = {"description": data["ifdescr"]}
-        if data.get("ifalias", ""):
-            result["alias"] = data["ifalias"]
-
-        return result
-
-    @staticmethod
-    def normalize_mac(mac):
-        """将 MAC 地址标准化为统一格式"""
-        if mac.startswith("0x"):
-            mac = mac[2:]  # 去掉 "0x"
-        return ":".join(mac[i:i + 2] for i in range(0, len(mac), 2)).lower()
+    def normalize_lookup_value(value):
+        if value is None:
+            return ""
+        return str(value).strip().lower()

@@ -12,12 +12,15 @@ from apps.job_mgmt.constants import OSType, SSHCredentialType
 from apps.job_mgmt.filters.target import TargetFilter
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.serializers.target import TargetBatchDeleteSerializer, TargetSerializer, TargetTestConnectionSerializer
+from apps.job_mgmt.services.error_response import exception_to_response
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.node_mgmt.models import CloudRegion
 from apps.rpc.executor import Executor
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.core.utils.team_utils import get_current_team
 
 
 def _get_executor_node(cloud_region_id: int) -> str:
@@ -76,7 +79,7 @@ def _build_ssh_test_failure_message(result: dict, fallback_error: str, fallback_
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 
@@ -94,7 +97,7 @@ def _build_actor_context(request):
     }
 
 
-class TargetViewSet(AuthViewSet):
+class TargetViewSet(BatchDeleteMixin, AuthViewSet):
     """目标管理视图集"""
 
     queryset = Target.objects.all()
@@ -103,6 +106,9 @@ class TargetViewSet(AuthViewSet):
     search_fields = ["name", "ip"]
     ORGANIZATION_FIELD = "team"
     permission_key = "job"
+
+    batch_delete_serializer_class = TargetBatchDeleteSerializer
+    batch_delete_log_label = "目标"
 
     def get_serializer_class(self):
         if self.action == "batch_delete":
@@ -233,17 +239,8 @@ class TargetViewSet(AuthViewSet):
                     },
                 }
             )
-        except BaseAppException as e:
-            return Response(
-                {"result": False, "message": str(e)},
-                status=status.HTTP_400_BAD_REQUEST,
-            )
         except Exception as e:
-            logger.exception(f"[query_nodes] 查询节点失败: {e}")
-            return Response(
-                {"result": False, "message": f"查询节点失败: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return exception_to_response(e, context="[query_nodes]", default_message="查询节点失败")
 
     @action(detail=False, methods=["get"])
     @HasPermission("target-View")
@@ -265,27 +262,13 @@ class TargetViewSet(AuthViewSet):
             result = node_mgmt.cloud_region_list()
             return Response({"result": True, "data": result})
         except Exception as e:
-            logger.exception(f"[cloud_regions] 查询云区域失败: {e}")
-            return Response(
-                {"result": False, "message": f"查询云区域失败: {str(e)}"},
-                status=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            )
+            return exception_to_response(e, context="[cloud_regions]", default_message="查询云区域失败")
 
     @action(detail=False, methods=["post"])
     @HasPermission("target-Delete")
     def batch_delete(self, request):
         """批量删除目标"""
-        serializer = TargetBatchDeleteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
-
-        # 只删除当前用户有权限的目标
-        queryset = self.filter_queryset(self.get_queryset())
-        deleted_count, _ = queryset.filter(id__in=ids).delete()
-        response = Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
-        if response.status_code == status.HTTP_200_OK:
-            log_operation(request, "delete", "job", f"批量删除目标: (共{deleted_count}个)")
-        return response
+        return self.perform_batch_delete(request)
 
     @action(detail=False, methods=["post"])
     @HasPermission("target-View")
@@ -375,4 +358,4 @@ class TargetViewSet(AuthViewSet):
 
         except Exception as e:
             logger.exception(f"[test_connection] SSH connection test error: {ssh_user}@{ip}:{ssh_port}, error: {e}")
-            return Response({"success": False, "message": f"连接测试异常: {str(e)}"})
+            return Response({"success": False, "message": "连接测试异常，请查看后端日志排查"})

@@ -8,18 +8,16 @@ import {
   Form,
   Input,
   InputNumber,
-  ColorPicker,
+  Select,
   Switch,
   TreeSelect,
   Tooltip,
 } from 'antd';
-import {
-  PlusCircleOutlined,
-  MinusCircleOutlined,
-  ReloadOutlined,
-  QuestionCircleOutlined,
-} from '@ant-design/icons';
+import { ReloadOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
+import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
+import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 
 /** Switch + Tooltip 包装：透传 Form.Item 注入的 checked/onChange，同时支持 hover 提示 */
 const TooltipSwitch: React.FC<{
@@ -215,12 +213,41 @@ export const SingleValueSettingsSection: React.FC<
         />
       </Form.Item>
 
-      <Form.Item label={t('topology.nodeConfig.unit')} name="unit">
-        <Input
-          placeholder={t('common.inputMsg')}
+      <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
+        <Select
+          allowClear
+          placeholder={t('common.selectMsg')}
           disabled={readonly}
           style={{ width: '200px' }}
+          options={[
+            { value: '', label: t('topology.nodeConfig.customSuffix') },
+            ...getUnitCategories().map((cat) => ({
+              label: cat.label,
+              options: cat.units.map((u) => ({ value: u.id, label: u.label })),
+            })),
+          ]}
         />
+      </Form.Item>
+
+      {/* unitId 为空（自定义/未设）时回退到自由文本后缀，兼容旧配置 */}
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
+      >
+        {({ getFieldValue }) =>
+          !getFieldValue('unitId') ? (
+            <Form.Item
+              label={t('topology.nodeConfig.customSuffix')}
+              name="unit"
+            >
+              <Input
+                placeholder={t('common.inputMsg')}
+                disabled={readonly}
+                style={{ width: '200px' }}
+              />
+            </Form.Item>
+          ) : null
+        }
       </Form.Item>
 
       <Form.Item
@@ -251,84 +278,21 @@ export const SingleValueSettingsSection: React.FC<
         />
       </Form.Item>
 
-      <Form.Item label={t('topology.nodeConfig.thresholdColors')}>
-        <div className="rounded-md border border-(--color-border-1) bg-(--color-fill-1) px-3 py-2">
-          {thresholdColors.map((threshold, index) => {
-            const isBaseThreshold = index === thresholdColors.length - 1;
-            return (
-              <div key={index} className="flex items-center gap-2 py-1.5">
-                <div className="flex items-center gap-3">
-                  <span className="text-sm text-gray-600 whitespace-nowrap">
-                    {t('topology.nodeConfig.thresholdWhenValueGte')}
-                  </span>
-                  <InputNumber
-                    value={parseFloat(threshold.value)}
-                    onChange={(value) =>
-                      onThresholdChange(index, 'value', value || 0)
-                    }
-                    onBlur={(e) => {
-                      if (!isBaseThreshold && !readonly) {
-                        const value = parseFloat(e.target.value);
-                        onThresholdBlur(index, isNaN(value) ? 0 : value);
-                      }
-                    }}
-                    placeholder={t('common.inputMsg')}
-                    disabled={isBaseThreshold || readonly}
-                    style={{ width: '100px' }}
-                    size="small"
-                    min={0}
-                  />
-                  <span className="text-sm text-gray-600">
-                    {t('topology.nodeConfig.thresholdShow')}
-                  </span>
-                </div>
-                <ColorPicker
-                  value={threshold.color}
-                  onChange={(color) =>
-                    onThresholdChange(index, 'color', color.toHexString())
-                  }
-                  disabled={readonly}
-                  size="small"
-                  showText
-                />
-                <div className="flex items-center gap-2 pl-3">
-                  {!readonly && (
-                    <span
-                      onClick={() => onAddThreshold(index)}
-                      className="cursor-pointer text-(--color-text-2) hover:text-(--color-primary) transition-colors duration-200"
-                      style={{ fontSize: '14px' }}
-                      title={t('topology.nodeConfig.addThresholdBelow')}
-                    >
-                      <PlusCircleOutlined />
-                    </span>
-                  )}
-                  {!readonly && (
-                    <span
-                      onClick={
-                        isBaseThreshold
-                          ? undefined
-                          : () => onRemoveThreshold(index)
-                      }
-                      className={`transition-colors duration-200 ${
-                        isBaseThreshold
-                          ? 'text-(--color-text-4) cursor-not-allowed'
-                          : 'cursor-pointer text-(--color-text-2) hover:text-(--color-primary)'
-                      }`}
-                      style={{ fontSize: '14px' }}
-                      title={
-                        isBaseThreshold
-                          ? t('topology.nodeConfig.baseThresholdNotRemovable')
-                          : t('topology.nodeConfig.removeThreshold')
-                      }
-                    >
-                      <MinusCircleOutlined />
-                    </span>
-                  )}
-                </div>
-              </div>
-            );
-          })}
-        </div>
+      <ThresholdColorConfigSection
+        t={t}
+        thresholdColors={thresholdColors}
+        onThresholdChange={onThresholdChange}
+        onThresholdBlur={onThresholdBlur}
+        onAddThreshold={onAddThreshold}
+        onRemoveThreshold={onRemoveThreshold}
+        readonly={readonly}
+      />
+
+      <Form.Item
+        label={t('topology.nodeConfig.valueMappings')}
+        name="valueMappings"
+      >
+        <ValueMappingsConfigSection t={t} readonly={readonly} />
       </Form.Item>
     </div>
   );

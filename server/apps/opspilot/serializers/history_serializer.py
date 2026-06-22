@@ -5,4 +5,16 @@ from apps.opspilot.models import BotConversationHistory
 class HistorySerializer(UsernameSerializer):
     class Meta:
         model = BotConversationHistory
-        fields = "__all__"
+        fields = [
+            "id",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "bot",
+            "conversation_role",
+            "conversation",
+            "created_at",
+            "channel_user",
+            "citing_knowledge",
+        ]

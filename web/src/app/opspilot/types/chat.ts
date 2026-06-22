@@ -67,16 +67,92 @@ export interface ConfigDiffReportValue {
   }>;
 }
 
-export interface ConfigAnalysisReportValue {
-  report_id: string;
-  markdown: string;
+export interface ConfigAnalysisReportItemValue {
+  issue: string;
+  count: number;
+  workloads: string[];
+  risk: string;
+  [key: string]: unknown;
 }
+
+export interface ConfigAnalysisReportScopeValue {
+  cluster_name?: string;
+  namespace?: string | null;
+  instance_name?: string | null;
+  name?: string | null;
+  target_name?: string | null;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportScanRangeValue {
+  offset?: number;
+  limit?: number;
+  has_more?: boolean;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisReportSummaryValue {
+  total?: number;
+  problematic?: number;
+  healthy?: number;
+  top_recommendation?: string;
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisSeveritySectionValue {
+  severity: 'critical' | 'high' | 'medium' | 'low' | 'warning' | 'info';
+  title: string;
+  issues: ConfigAnalysisReportItemValue[];
+  items?: ConfigAnalysisReportItemValue[];
+  [key: string]: unknown;
+}
+
+export interface ConfigAnalysisRecommendationValue {
+  priority: 'P0' | 'P1' | 'P2' | 'P3';
+  action: string;
+  target: string;
+  benefit: string;
+  [key: string]: unknown;
+}
+
+export interface StructuredConfigAnalysisReportValue {
+  report_id: string;
+  title: string;
+  cluster_name: string;
+  scope?: ConfigAnalysisReportScopeValue;
+  scan_range?: ConfigAnalysisReportScanRangeValue;
+  summary: ConfigAnalysisReportSummaryValue;
+  severity_sections: ConfigAnalysisSeveritySectionValue[];
+  recommendations: ConfigAnalysisRecommendationValue[];
+  markdown: string;
+  fallback_markdown?: string;
+  [key: string]: unknown;
+}
+
+export interface MarkdownConfigAnalysisReportValue {
+  report_id?: string;
+  title?: string;
+  cluster_name?: string;
+  scope?: ConfigAnalysisReportScopeValue;
+  scan_range?: ConfigAnalysisReportScanRangeValue;
+  summary?: ConfigAnalysisReportSummaryValue;
+  severity_sections?: ConfigAnalysisSeveritySectionValue[];
+  recommendations?: ConfigAnalysisRecommendationValue[];
+  markdown: string;
+  fallback_markdown?: string;
+  [key: string]: unknown;
+}
+
+export type ConfigAnalysisReportValue =
+  | StructuredConfigAnalysisReportValue
+  | MarkdownConfigAnalysisReportValue;
 
 export interface ReportFileDownloadValue {
   download_id: string;
   filename: string;
-  content_base64: string;
+  content_base64?: string;
   mime_type: string;
+  file_url?: string;
 }
 
 export interface ReportFileDownload extends ReportFileDownloadValue {

@@ -67,7 +67,7 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
         type: 'node',
         nodeTypeId: nodeType.id,
         nodeTypeName: nodeType.name,
-      })
+      }),
     );
 
     e.dataTransfer.effectAllowed = 'copy';
@@ -122,7 +122,7 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
 
           if (dropData.type === 'node' && dropData.nodeTypeId) {
             const nodeType = nodeTypes.find(
-              (nt) => nt.id === dropData.nodeTypeId
+              (nt) => nt.id === dropData.nodeTypeId,
             );
 
             if (nodeType) {
@@ -131,7 +131,7 @@ const Sidebar: React.FC<NodeSidebarProps> = ({
               if (graphInstance && 'pageToLocal' in graphInstance) {
                 position = (graphInstance as any).pageToLocal(
                   e.clientX,
-                  e.clientY
+                  e.clientY,
                 );
               }
 

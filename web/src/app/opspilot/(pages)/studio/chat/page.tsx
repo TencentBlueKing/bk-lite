@@ -4,7 +4,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStudioApi } from '@/app/opspilot/api/studio';
 import { List, Button, Dropdown, Skeleton, Popconfirm } from 'antd';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
-import { processHistoryMessageContent } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
+import { processHistoryMessageWithExtras } from '@/app/opspilot/components/custom-chat-sse/historyMessageProcessor';
 import Icon from '@/components/icon';
 import type { MenuProps } from 'antd';
 
@@ -138,12 +138,26 @@ const StudioChatPage: React.FC = () => {
     setSessionId(id);
     try {
       const data = await fetchSessionMessages(id);
-      const messages = (data || []).map((item: any) => ({
-        id: String(item.id),
-        role: item.conversation_role === 'user' ? 'user' : 'bot',
-        content: processHistoryMessageContent(item.conversation_content, item.conversation_role),
-        createAt: item.conversation_time,
-      }));
+      const messages = (data || []).map((item: any) => {
+        const role = item.conversation_role === 'user' ? 'user' : 'bot';
+        const processed = processHistoryMessageWithExtras(item.conversation_content, item.conversation_role);
+        return {
+          id: String(item.id),
+          role,
+          content: processed.content,
+          createAt: item.conversation_time,
+          thinking: processed.thinking,
+          isThinking: false,
+          browserStepsHistory: processed.browserStepsHistory ?? null,
+          agentStepProgress: processed.agentStepProgress,
+          configDiffReports: processed.configDiffReports,
+          configAnalysisReports: processed.configAnalysisReports,
+          userChoiceRequests: processed.userChoiceRequests,
+          approvalRequests: processed.approvalRequests,
+          repairCommands: processed.repairCommands,
+          reportFileDownloads: processed.reportFileDownloads,
+        };
+      });
       setInitialMessages(messages);
     } catch {
       setInitialMessages([]);
@@ -333,7 +347,7 @@ const StudioChatPage: React.FC = () => {
             onClick={() => setSidebarCollapsed(false)}
           >
             <Icon 
-              type={currentAgent.icon} 
+              type={currentAgent?.icon || 'jiqiren3'}
               className="text-3xl text-blue-500"
             />
           </div>

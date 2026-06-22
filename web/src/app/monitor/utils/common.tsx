@@ -312,9 +312,20 @@ export const mergeViewQueryKeyValues = (
     });
   });
 
+  // 值会被拼进 PromQL 正则匹配器 key=~"v1|v2",必须逐个转义正则元字符,
+  // 再转义 PromQL 字符串中的反斜杠和双引号,
+  // 否则含 . + ( ) 等字符的实例标识(如 IP/主机名)会被当作正则,匹配到错误/多余的序列,
+  // 含 " 的值还会直接破坏查询语法。
+  const escapeRegexValue = (v: string): string =>
+    v.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
+
   const resultArray: string[] = [];
   for (const key in mergedObject) {
-    const values = Array.from(mergedObject[key]).join('|');
+    const values = Array.from(mergedObject[key])
+      .map((v) => escapeRegexValue(String(v ?? '')))
+      .join('|');
     resultArray.push(`${key}=~"${values}"`);
   }
 
@@ -486,6 +497,43 @@ export const getIconByObjectName = (objectName = '', objects: ObjectItem[]) => {
     OBJECT_DEFAULT_ICON
   );
 };
+
+// 品牌专属采集模板/实例（如思科交换机）的品牌识别：按名称匹配 → 提供品牌标签（及可选 logo 图标）。
+// icon 可选：未提供时集成卡片回退到监控对象默认图标，仪表盘头部仍展示品牌文字标签。
+const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
+  { match: /cisco/i, label: 'Cisco', icon: 'mm-cisco_思科' },
+  { match: /huawei/i, label: 'Huawei', icon: 'mm-huawei_华为' },
+  { match: /aruba/i, label: 'Aruba', icon: 'mm-aruba_aruba' },
+  { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
+  { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
+  { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
+  { match: /alcatel/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
+  { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
+  { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
+  { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },
+  { match: /tplink|tp-link/i, label: 'TP-Link', icon: 'mm-tplink_tplink' },
+  { match: /zyxel/i, label: 'Zyxel', icon: 'mm-zyxel_zyxel' },
+  { match: /qtech/i, label: 'QTech', icon: 'mm-qtech_qtech' },
+  { match: /dellforce|force10|dell.?force/i, label: 'Dell Force10', icon: 'mm-dellforce_dellforce' },
+  { match: /hphpn|procurve|hp.?networking/i, label: 'HP ProCurve', icon: 'mm-hphpn_hphpn' },
+  { match: /fortinet|fortigate/i, label: 'Fortinet', icon: 'mm-fortinet_fortinet' },
+  { match: /checkpoint|check.?point/i, label: 'Check Point', icon: 'mm-checkpoint_checkpoint' },
+  { match: /stormshield/i, label: 'Stormshield', icon: 'mm-stormshield_stormshield' },
+  { match: /paloalto|palo.?alto|pan.?os/i, label: 'Palo Alto', icon: 'mm-paloalto_paloalto' },
+  { match: /sonicwall|sonicos/i, label: 'SonicWall', icon: 'mm-sonicwall_sonicwall' },
+  { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' },
+  { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
+  { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
+  { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' }
+];
+
+// 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。
+export const getPluginBrandIcon = (pluginName = ''): string | undefined =>
+  BRANDS.find((brand) => brand.match.test(pluginName))?.icon;
+
+// 按名称（实例名/插件名）取品牌标签（如 'Cisco'），用于在共享仪表盘头部标识当前品牌；未命中返回 undefined。
+export const getBrandLabel = (text = ''): string | undefined =>
+  BRANDS.find((brand) => brand.match.test(text))?.label;
 
 export const getRecentTimeRange = (timeValues: TimeValuesProps) => {
   if (timeValues.originValue) {

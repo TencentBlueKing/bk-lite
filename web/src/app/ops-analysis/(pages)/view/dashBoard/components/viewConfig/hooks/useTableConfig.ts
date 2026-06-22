@@ -18,9 +18,9 @@ import {
   buildDisplayColumnsFromSchema,
   extractFirstRecordFromSourceData,
   mergeDetectedFieldsWithSchema,
-  mergeProbedDefaultsWithCurrentColumns,
   createDefaultDisplayColumn as createDefaultColumn,
 } from '../utils/columnProbing';
+import { createOperationColumnKey } from '@/app/ops-analysis/utils/dashboardActions';
 
 export type FilterFieldRow = TableFilterFieldConfig & { id: string };
 
@@ -62,8 +62,13 @@ export function useTableConfig({
   builtinNamespaceId,
   t,
 }: UseTableConfigProps) {
+  const isTableLikeChartType =
+    chartType === 'table' || chartType === 'eventTable';
   const [filterFields, setFilterFields] = useState<FilterFieldRow[]>([]);
   const [displayColumns, setDisplayColumns] = useState<DisplayColumnRow[]>([]);
+  const [detectedDisplayColumns, setDetectedDisplayColumns] = useState<
+    DisplayColumnRow[]
+  >([]);
   const [isProbingColumns, setIsProbingColumns] = useState(false);
   const [paramsChangedAfterProbe, setParamsChangedAfterProbe] = useState(false);
   const [displayColumnsError, setDisplayColumnsError] = useState('');
@@ -81,6 +86,19 @@ export function useTableConfig({
   const createDefaultDisplayColumn = useCallback(
     (): DisplayColumnRow => createDefaultColumn(displayColumns.length),
     [displayColumns.length],
+  );
+
+  const createDefaultOperationColumn = useCallback(
+    (): DisplayColumnRow => ({
+      id: `column_actions_${Date.now()}_${Math.random().toString(16).slice(2, 8)}`,
+      key: createOperationColumnKey(displayColumns),
+      title: t('dashboard.operationColumnTitle'),
+      visible: true,
+      order: displayColumns.length,
+      columnType: 'actions',
+      isDefault: false,
+    }),
+    [displayColumns, t],
   );
 
   const handleAddFilterField = useCallback(
@@ -151,6 +169,18 @@ export function useTableConfig({
       setDisplayColumns((prev) =>
         prev.map((col) => {
           if (col.id !== id) return col;
+          if (fieldName === 'key' && typeof value === 'string') {
+            const nextKey = value;
+            const currentTitle = (col.title || '').trim();
+            const currentKey = (col.key || '').trim();
+            const shouldSyncTitle = !currentTitle || currentTitle === currentKey;
+
+            return {
+              ...col,
+              key: nextKey,
+              title: shouldSyncTitle ? nextKey.trim() : col.title,
+            };
+          }
           return { ...col, [fieldName]: value };
         }),
       );
@@ -206,7 +236,7 @@ export function useTableConfig({
         }),
       );
 
-      if (chartType === 'table') {
+      if (isTableLikeChartType) {
         payload.page = 1;
         payload.page_size = 20;
       }
@@ -222,7 +252,7 @@ export function useTableConfig({
       return payload;
     },
     [
-      chartType,
+      isTableLikeChartType,
       processFormParamsForSubmit,
       unifiedFilterValues,
       filterBindings,
@@ -258,7 +288,7 @@ export function useTableConfig({
   );
 
   const handleReProbeColumns = useCallback(async () => {
-    if (!selectedDataSource || chartType !== 'table') return;
+    if (!selectedDataSource || !isTableLikeChartType) return;
 
     try {
       setIsProbingColumns(true);
@@ -269,9 +299,7 @@ export function useTableConfig({
       );
 
       if (probedColumns.length > 0) {
-        setDisplayColumns((prev) =>
-          mergeProbedDefaultsWithCurrentColumns(probedColumns, prev),
-        );
+        setDetectedDisplayColumns(probedColumns);
         setParamsChangedAfterProbe(false);
         message.success(t('dashboard.reProbeSuccess'));
         return;
@@ -281,33 +309,42 @@ export function useTableConfig({
     } finally {
       setIsProbingColumns(false);
     }
-  }, [selectedDataSource, chartType, form, probeDefaultDisplayColumns, t]);
+  }, [
+    selectedDataSource,
+    isTableLikeChartType,
+    form,
+    probeDefaultDisplayColumns,
+    t,
+  ]);
 
   const handleChartTypeChange = useCallback(
     async (newChartType: string) => {
       if (
-        newChartType === 'table' &&
-        displayColumns.length === 0 &&
+        (newChartType === 'table' || newChartType === 'eventTable') &&
         selectedDataSource
       ) {
         const currentParams = (form.getFieldValue('params') || {}) as Record<string, any>;
+        const schemaColumns = buildDisplayColumnsFromSchema(availableFields);
+
+        if (schemaColumns.length > 0) {
+          setDetectedDisplayColumns(schemaColumns);
+          return;
+        }
+
         const probedColumns = await probeDefaultDisplayColumns(
           selectedDataSource,
           currentParams,
         );
-        if (probedColumns.length > 0) {
-          setDisplayColumns(probedColumns);
-        } else if (availableFields.length > 0) {
-          setDisplayColumns(buildDisplayColumnsFromSchema(availableFields));
-        }
+        setDetectedDisplayColumns(probedColumns);
       }
     },
-    [displayColumns.length, selectedDataSource, form, probeDefaultDisplayColumns, availableFields],
+    [selectedDataSource, form, probeDefaultDisplayColumns, availableFields],
   );
 
   const resetTableConfig = useCallback(() => {
     setFilterFields([]);
     setDisplayColumns([]);
+    setDetectedDisplayColumns([]);
     setIsProbingColumns(false);
     setParamsChangedAfterProbe(false);
     setDisplayColumnsError('');
@@ -318,6 +355,8 @@ export function useTableConfig({
     setFilterFields,
     displayColumns,
     setDisplayColumns,
+    detectedDisplayColumns,
+    setDetectedDisplayColumns,
     isProbingColumns,
     paramsChangedAfterProbe,
     setParamsChangedAfterProbe,
@@ -325,6 +364,7 @@ export function useTableConfig({
     setDisplayColumnsError,
     createDefaultFilterField,
     createDefaultDisplayColumn,
+    createDefaultOperationColumn,
     handleAddFilterField,
     handleDeleteFilterField,
     handleFilterFieldChange,

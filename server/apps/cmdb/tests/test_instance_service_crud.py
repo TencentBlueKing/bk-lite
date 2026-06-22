@@ -120,6 +120,45 @@ def test_batch_instance_update_ok(fake_graph, patch_side_effects):
     assert out[0]["inst_name"] == "h2"
 
 
+@pytest.mark.django_db
+def test_batch_instance_update_runs_file_field_hooks(fake_graph, patch_side_effects):
+    # 编辑实例（前端走 batch_update）必须像 create/update 一样规范化并提交附件/图片字段，
+    # 否则字段值不落成元数据 JSON、文件不落账 → 列表/详情无法回显且文件被 GC。
+    from apps.cmdb.extensions import registry
+    from apps.cmdb.instance_ops.extensions import InstanceEnterpriseExtension
+
+    calls = {"normalize": 0, "commit": []}
+
+    class _Spy(InstanceEnterpriseExtension):
+        def normalize_file_fields(self, model_id, instance_data, attrs, *, operator, old_instance=None):
+            calls["normalize"] += 1
+            return instance_data
+
+        def commit_instance_files(self, model_id, inst_id, saved, attrs, *, operator):
+            calls["commit"].append(inst_id)
+
+    saved_ext = registry._registry.get("instance_ops")
+    registry.register("instance_ops", _Spy())
+    try:
+        fake_graph(
+            MODULE,
+            query_entity_by_ids=[{"_id": 1, "model_id": "host", "inst_name": "h1", "organization": [1]}],
+            query_entity=([], 0),
+            set_entity_properties=[{"_id": 1, "model_id": "host", "inst_name": "h2", "organization": [1]}],
+        )
+        InstanceManage.batch_instance_update(
+            [{"id": 1}], ["admin"], [1], {"inst_name": "h2"}, "admin"
+        )
+    finally:
+        if saved_ext is not None:
+            registry.register("instance_ops", saved_ext)
+        else:
+            registry._registry.pop("instance_ops", None)
+
+    assert calls["normalize"] == 1, "batch_instance_update 应规范化附件/图片字段"
+    assert calls["commit"] == [1], "batch_instance_update 应对每个更新实例提交文件落账"
+
+
 # --------------------------------------------------------------------------
 # instance_batch_delete
 # --------------------------------------------------------------------------
@@ -175,6 +214,78 @@ def test_instance_association_delete(fake_graph, patch_side_effects, monkeypatch
     fg = fake_graph(MODULE)
     InstanceManage.instance_association_delete(100, "admin")
     assert any(c[0] == "delete_edge" for c in fg.calls)
+
+
+@pytest.mark.django_db
+def test_instance_association_create_unresolved_endpoint(fake_graph, patch_side_effects, monkeypatch):
+    """回归：端点实体未完全解析（dst 为空、src 缺 model_id，如接口↔接口并行边时
+    query_edge_by_id 偶发回空端点）时，创建关联不应因拼接变更记录文案 KeyError 而 500。"""
+    monkeypatch.setattr(f"{MODULE}.create_change_record_by_asso", lambda *a, **k: None)
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage.instance_association_by_asso_id",
+        lambda aid: {"src": {"_id": 1, "inst_name": "if-a"}, "dst": {}},
+    )
+    fake_graph(MODULE, create_edge={"_id": 101, "model_asst_id": "interface_connect_interface"})
+    out = InstanceManage.instance_association_create(
+        {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
+         "src_model_id": "interface", "dst_model_id": "interface",
+         "model_asst_id": "interface_connect_interface"},
+        "admin",
+    )
+    assert out["_id"] == 101
+
+
+@pytest.mark.django_db
+def test_instance_association_delete_unresolved_endpoint(fake_graph, patch_side_effects, monkeypatch):
+    """回归：删除关联时端点实体未完全解析也不应 KeyError。"""
+    monkeypatch.setattr(f"{MODULE}.create_change_record_by_asso", lambda *a, **k: None)
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage.instance_association_by_asso_id",
+        lambda aid: {"src": {"_id": 1, "inst_name": "if-a"}, "dst": {}},
+    )
+    fg = fake_graph(MODULE)
+    InstanceManage.instance_association_delete(101, "admin")
+    assert any(c[0] == "delete_edge" for c in fg.calls)
+
+
+@pytest.mark.django_db
+def test_instance_association_create_duplicate_raises_friendly(fake_graph, patch_side_effects, monkeypatch):
+    """create_edge 报「edge already exists」时转成可读的 repetition 提示。"""
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
+
+    def dup(*a, **k):
+        raise BaseAppException("edge already exists")
+
+    fake_graph(MODULE, create_edge=dup)
+    with pytest.raises(BaseAppException) as ei:
+        InstanceManage.instance_association_create(
+            {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
+             "src_model_id": "interface", "dst_model_id": "interface",
+             "model_asst_id": "interface_connect_interface"},
+            "admin",
+        )
+    assert "repetition" in str(ei.value.message)
+
+
+@pytest.mark.django_db
+def test_instance_association_create_propagates_graph_error(fake_graph, patch_side_effects, monkeypatch):
+    """回归：create_edge 抛非「edge already exists」异常时必须原样抛出，
+    而不是被吞掉导致后续 edge 未赋值 UnboundLocalError 掩盖真实错误。"""
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
+
+    def boom(*a, **k):
+        raise BaseAppException("graph down")
+
+    fake_graph(MODULE, create_edge=boom)
+    with pytest.raises(BaseAppException) as ei:
+        InstanceManage.instance_association_create(
+            {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
+             "src_model_id": "interface", "dst_model_id": "interface",
+             "model_asst_id": "interface_connect_interface"},
+            "admin",
+        )
+    assert "graph down" in str(ei.value.message)
 
 
 @pytest.mark.django_db

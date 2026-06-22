@@ -73,8 +73,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     {
       key: 'parameters',
       title: t('integration.fillDeployParams'),
-      eyebrow: 'Step 01',
-      description: '先填写会写入部署清单的参数，保证下载文件与集群标识一致。',
+      eyebrow: t('integration.guideStep', '', { num: '01' }),
+      description: t('integration.fillDeployParamsDesc'),
       content: (
         <div className="grid gap-5 lg:grid-cols-2 xl:grid-cols-[minmax(0,1.2fr)_minmax(0,1fr)]">
           <div className="lg:col-span-2">
@@ -124,8 +124,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     {
       key: 'yaml',
       title: t('integration.downloadDeployYaml'),
-      eyebrow: 'Step 02',
-      description: '下载系统渲染后的部署文件，再进入集群侧执行应用。',
+      eyebrow: t('integration.guideStep', '', { num: '02' }),
+      description: t('integration.downloadDeployYamlDesc'),
       content: (
         <div className="space-y-4">
           <div>
@@ -152,12 +152,12 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     {
       key: 'image',
       title: t('integration.prepareImage'),
-      eyebrow: 'Step 03',
-      description: '准备事件导出镜像与离线导入命令，保持页面能力与实际部署动作一致。',
+      eyebrow: t('integration.guideStep', '', { num: '03' }),
+      description: t('integration.prepareImageDesc'),
       content: (
         <div className="space-y-4">
           <div className="rounded-[16px] bg-[var(--color-fill-1)] px-5 py-4">
-            <div className={fieldLabelClassName}>Image reference</div>
+            <div className={fieldLabelClassName}>{t('integration.imageReference')}</div>
             <div className="flex flex-wrap items-center gap-x-3 gap-y-2 break-all text-[13px] font-medium leading-6 text-[var(--color-text-1)]">
               <span className="min-w-0 flex-1 break-all">{meta.image_reference}</span>
               <Button className="self-center" type="link" size="small" aria-label={t('common.copy')} icon={<CopyOutlined aria-hidden="true" />} onClick={() => copy(meta.image_reference)} />
@@ -187,8 +187,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     {
       key: 'config',
       title: t('integration.renderedConfig'),
-      eyebrow: 'Step 04',
-      description: '核对渲染后的关键变量，确认只展示当前真实可配置项。',
+      eyebrow: t('integration.guideStep', '', { num: '04' }),
+      description: t('integration.renderedConfigDesc'),
       content: (
         <div className="overflow-hidden rounded-[16px] border border-[var(--color-border-1)] bg-[var(--color-fill-1)]">
           <Descriptions bordered size="small" column={1} labelStyle={{ width: 220, fontSize: 12, color: 'var(--color-text-3)' }}>
@@ -230,8 +230,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     {
       key: 'apply',
       title: t('integration.applyToCluster'),
-      eyebrow: 'Step 05',
-      description: '在集群环境中应用已下载的部署文件。',
+      eyebrow: t('integration.guideStep', '', { num: '05' }),
+      description: t('integration.applyToClusterDesc'),
       content: (
         <div className={codeBlockClassName}>
           <pre className="overflow-x-auto pr-10 text-[13px] leading-6 text-[var(--color-text-1)] whitespace-pre-wrap break-all">
@@ -247,8 +247,8 @@ const K8sGuide: React.FC<K8sGuideProps> = ({
     {
       key: 'verify',
       title: t('integration.verifyResult'),
-      eyebrow: 'Step 06',
-      description: '完成部署后，用页面已有事件预览与事件表确认是否开始接收上报。',
+      eyebrow: t('integration.guideStep', '', { num: '06' }),
+      description: t('integration.verifyResultDesc'),
       content: (
         <div className="rounded-[16px] border border-dashed border-[var(--color-border-3)] bg-[var(--color-fill-1)] px-5 py-4 text-[13px] leading-6 text-[var(--color-text-2)]">
           {t('integration.verifyResultHelp')}

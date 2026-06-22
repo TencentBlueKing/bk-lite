@@ -376,8 +376,11 @@ async def test_enqueue_callback_retry_uses_compact_payload(tmp_path):
     assert published["payload"]["result"] == ""
 
 
-def test_build_task_result_marks_truncated_output(monkeypatch):
-    monkeypatch.setattr("service.nats_service.parse_ansible_output_per_host", lambda output: [{"host": "should-not-be-used"}])
+def test_build_task_result_keeps_structured_results_when_output_is_truncated(monkeypatch):
+    monkeypatch.setattr(
+        "service.nats_service.parse_ansible_output_per_host",
+        lambda output, output_truncated=False: [{"host": "10.10.41.149", "output_truncated": output_truncated}],
+    )
     monkeypatch.setattr("service.nats_service.parse_playbook_recap", lambda output: [{"host": "should-not-be-used"}])
 
     task = QueuedTask(task_id="task-output", task_type="adhoc", payload={"task_id": "task-output"}, callback={}, instance_id="default")
@@ -398,7 +401,105 @@ def test_build_task_result_marks_truncated_output(monkeypatch):
 
     assert result["success"] is True
     assert result["output_truncated"] is True
-    assert result["result"] == "x" * 32
+    assert result["result"] == [{"host": "10.10.41.149", "output_truncated": True}]
     assert result["result_summary"]["output_bytes_total"] == 1024
     assert result["result_summary"]["output_bytes_retained"] == 32
     assert result["result_summary"]["output_max_bytes"] == 32
+
+
+class RecordingNATSClient(DummyNATSClient):
+    def __init__(self):
+        super().__init__({"success": True})
+        self.published = []
+
+    async def publish(self, subject, data):
+        self.published.append((subject, data))
+
+
+def _make_service(tmp_path):
+    return AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+
+
+@pytest.mark.asyncio
+async def test_run_task_forwards_stream_context_to_run_command(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+
+    captured = {}
+
+    monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: type("R", (), {"execute_timeout": 60})())
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda request: (["echo", "hi"], None))
+    monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
+
+    async def fake_run_command(cmd, timeout, **kwargs):
+        captured.update(kwargs)
+        # Simulate the executor publishing one streamed line through the wrapper.
+        if kwargs.get("stream_publish") and kwargs.get("stream_log_topic"):
+            await kwargs["stream_publish"](kwargs["stream_log_topic"], b'{"line": "hi"}')
+        return 0, "hi", {"truncated": False, "output_bytes_total": 2, "output_bytes_retained": 2, "output_max_bytes": 0}
+
+    monkeypatch.setattr("service.nats_service.run_command", fake_run_command)
+    monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
+    monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
+
+    task = QueuedTask(
+        task_id="task-stream",
+        task_type="adhoc",
+        payload={
+            "task_id": "task-stream",
+            "stream_log_topic": "bk.ans_exec.stream.exec-9",
+            "execution_id": "exec-9",
+        },
+        callback=None,
+        instance_id="default",
+    )
+
+    await service._run_task(task, "owner-a")
+
+    assert captured["stream_log_topic"] == "bk.ans_exec.stream.exec-9"
+    assert captured["execution_id"] == "exec-9"
+    assert callable(captured["stream_publish"])
+    # The publisher wrapper routes to the core NATS publish on self.nc.
+    assert service.nc.published == [("bk.ans_exec.stream.exec-9", b'{"line": "hi"}')]
+
+
+@pytest.mark.asyncio
+async def test_run_task_skips_stream_context_when_fields_absent(tmp_path, monkeypatch):
+    service = _make_service(tmp_path)
+    service.nc = RecordingNATSClient()
+
+    captured = {}
+
+    monkeypatch.setattr("service.nats_service.to_adhoc_request", lambda payload: type("R", (), {"execute_timeout": 60})())
+    monkeypatch.setattr("service.nats_service.prepare_adhoc_execution", lambda request: (["echo", "hi"], None))
+    monkeypatch.setattr("service.nats_service.cleanup_workspace", lambda workspace: None)
+
+    async def fake_run_command(cmd, timeout, **kwargs):
+        captured["kwargs"] = kwargs
+        return 0, "hi", {"truncated": False, "output_bytes_total": 2, "output_bytes_retained": 2, "output_max_bytes": 0}
+
+    monkeypatch.setattr("service.nats_service.run_command", fake_run_command)
+    monkeypatch.setattr(service.task_store, "update_execution_result", lambda *a, **k: True)
+    monkeypatch.setattr(service.task_store, "update_callback_status", lambda *a, **k: True)
+
+    task = QueuedTask(
+        task_id="task-no-stream",
+        task_type="adhoc",
+        payload={"task_id": "task-no-stream"},
+        callback=None,
+        instance_id="default",
+    )
+
+    await service._run_task(task, "owner-a")
+
+    assert captured["kwargs"] == {}
+    assert service.nc.published == []

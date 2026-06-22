@@ -16,7 +16,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import { EllipsisOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { getIconByObjectName } from '@/app/monitor/utils/common';
+import { getIconByObjectName, getPluginBrandIcon } from '@/app/monitor/utils/common';
 import { useRouter } from 'next/navigation';
 import {
   ModalRef,
@@ -35,6 +35,7 @@ import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import { cloneDeep } from 'lodash';
 import CreateTemplateModal from './createTemplateModal';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 
 const { confirm } = Modal;
 
@@ -166,6 +167,7 @@ const Integration = () => {
             title: item.display_name || '--',
             label: item.name || '--',
             key: item.id,
+            icon: item.icon,
             children: []
           });
         }
@@ -340,22 +342,24 @@ const Integration = () => {
 
   return (
     <div className="w-full flex overflow-hidden">
-      <div className="h-[calc(100vh-146px)] pt-5 px-2.5 pb-2.5 bg-[var(--color-bg-1)] w-[210px] min-w-[210px] mr-2.5 overflow-y-auto">
-        <TreeSelector
-          showAllMenu
-          data={treeData}
-          defaultSelectedKey={
-            searchParams.get('objId')
-              ? Number(searchParams.get('objId'))
-              : 'all'
-          }
-          loading={treeLoading}
-          draggable
-          onNodeSelect={handleObjectChange}
-          onNodeDrag={handleNodeDrag}
-        />
-      </div>
-      <div className="w-full bg-[var(--color-bg-1)] p-5">
+      <ResizableSidebar collapseStorageKey="monitor.integration.list.sidebarCollapsed">
+        <div className="h-[calc(100vh-146px)] pt-5 px-2.5 pb-2.5 bg-[var(--color-bg-1)] overflow-y-auto">
+          <TreeSelector
+            showAllMenu
+            data={treeData}
+            defaultSelectedKey={
+              searchParams.get('objId')
+                ? Number(searchParams.get('objId'))
+                : 'all'
+            }
+            loading={treeLoading}
+            draggable
+            onNodeSelect={handleObjectChange}
+            onNodeDrag={handleNodeDrag}
+          />
+        </div>
+      </ResizableSidebar>
+      <div className="flex-1 min-w-0 bg-[var(--color-bg-1)] p-5">
         <div className="mb-[20px] flex items-start justify-between gap-[16px]">
           <div className="flex flex-1 items-start">
             <Input
@@ -417,7 +421,7 @@ const Integration = () => {
                       <div className="flex items-center space-x-4 my-2">
                         <div className="w-14 h-14 min-w-[56px] rounded-lg flex items-center justify-center bg-[var(--color-fill-1)]">
                           <img
-                            src={`/assets/icons/${getIconByObjectName(objectName, objects)}.svg`}
+                            src={`/assets/icons/${getPluginBrandIcon(app.name) || getIconByObjectName(objectName, objects)}.svg`}
                             alt={objectName}
                             className="w-12 h-12"
                             onError={(e) => {

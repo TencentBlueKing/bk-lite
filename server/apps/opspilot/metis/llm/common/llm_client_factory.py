@@ -9,8 +9,11 @@ from langchain_core.messages import HumanMessage
 from langchain_openai import ChatOpenAI
 from openai import OpenAI
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities
+from apps.opspilot.metis.llm.common.anthropic_compatible_adapter import AnthropicCompatibleChatClient
 
 
 class LLMClientFactory:
@@ -29,7 +32,13 @@ class LLMClientFactory:
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        if request.protocol_type == "anthropic":
+        capabilities = build_anthropic_runtime_capabilities(
+            getattr(request, "vendor_type", ""),
+            request.protocol_type,
+        )
+        if capabilities.use_anthropic_compatible_adapter:
+            llm = LLMClientFactory._create_anthropic_compatible_client(request, disable_stream)
+        elif request.protocol_type == "anthropic":
             llm = LLMClientFactory._create_anthropic_client(request, disable_stream)
         else:
             llm = LLMClientFactory._create_openai_client(request, disable_stream)
@@ -67,6 +76,9 @@ class LLMClientFactory:
         elif "deepseek" in model_lower:
             thinking_type = "enabled" if show_think else "disabled"
             llm.extra_body["thinking"] = {"type": thinking_type}
+        elif "gemma" in model_lower:
+            # Gemma-4 通过 vLLM chat_template_kwargs 控制 thinking 模式
+            llm.extra_body["chat_template_kwargs"] = {"enable_thinking": show_think}
 
         return llm
 
@@ -101,7 +113,34 @@ class LLMClientFactory:
             model_kwargs=model_kwargs if model_kwargs else None,
         )
 
+        logger.info(f"[LLMClientFactory] ChatAnthropic client: model={request.model}, base_url={base_url}, api_key={request.openai_api_key}")
+
         return llm
+
+    @staticmethod
+    def _create_anthropic_compatible_client(request: BasicLLMRequest, disable_stream: bool) -> AnthropicCompatibleChatClient:
+        """Create a thin runtime client for Anthropic-compatible vendors."""
+        base_url = request.openai_api_base
+        if not base_url or base_url == "https://api.openai.com":
+            base_url = "https://api.anthropic.com"
+
+        SSRFValidator.validate_llm_endpoint(base_url)
+
+        logger.info(
+            f"[LLMClientFactory] AnthropicCompatible client: model={request.model}, "
+            f"base_url={base_url}, vendor_type={getattr(request, 'vendor_type', '')}, "
+            f"api_key={request.openai_api_key}"
+        )
+
+        return AnthropicCompatibleChatClient(
+            model=request.model,
+            api_key=request.openai_api_key,
+            api_base=base_url,
+            temperature=request.temperature,
+            disable_streaming=disable_stream,
+            timeout=15,
+            vendor_type=getattr(request, "vendor_type", ""),
+        )
 
     @staticmethod
     def create_isolated_client(request: BasicLLMRequest) -> Union[OpenAI, anthropic.Anthropic]:
@@ -188,12 +227,14 @@ class LLMClientFactory:
             "temperature": request.temperature,
         }
 
-        # 添加 Qwen/DeepSeek 模型的特殊配置（隔离调用禁用 thinking）
+        # 添加 Qwen/DeepSeek/Gemma 模型的特殊配置（隔离调用禁用 thinking）
         model_lower = request.model.lower()
         if "qwen" in model_lower:
             call_kwargs["extra_body"] = {"enable_thinking": False}
         elif "deepseek" in model_lower:
             call_kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
+        elif "gemma" in model_lower:
+            call_kwargs["extra_body"] = {"chat_template_kwargs": {"enable_thinking": False}}
 
         # 直接调用原生 OpenAI API
         response = client.chat.completions.create(**call_kwargs)

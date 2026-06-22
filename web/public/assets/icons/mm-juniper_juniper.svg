@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="juniperGreen" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2faf5a"/>
+      <stop offset="1" stop-color="#1e8a44"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#juniperGreen)"/>
+  <g fill="none" stroke="#ffffff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M40 38 L40 64 C40 72 48 72 54 68"/>
+    <path d="M70 38 L82 38 M76 38 L76 72"/>
+  </g>
+  <text x="60" y="98" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="700" fill="#ffffff" letter-spacing="1">JUNIPER</text>
+</svg>

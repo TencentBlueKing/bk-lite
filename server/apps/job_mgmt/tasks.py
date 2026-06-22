@@ -1,7 +1,5 @@
 """作业执行 Celery 任务入口"""
 
-from datetime import timedelta
-
 from asgiref.sync import async_to_sync
 from celery import current_app, shared_task
 from django.utils import timezone
@@ -9,10 +7,12 @@ from django.utils import timezone
 from apps.core.logger import job_logger as logger
 from apps.core.utils.safe_requests import safe_post
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.job_mgmt.config import SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
 from apps.job_mgmt.utils.callback_signer import get_signed_headers
 from apps.node_mgmt.utils.s3 import delete_s3_file
@@ -32,6 +32,47 @@ def distribute_files_task(execution_id: int):
 def execute_playbook_task(execution_id: int):
     client = PlaybookExecution(execution_id)
     client.run()
+
+
+@shared_task(max_retries=0)
+def finalize_cancelling_execution(execution_id: int):
+    """兜底收敛：CANCELLING 滞留超时后强制收敛为 CANCELLED 终态。
+
+    CAS 仅在仍为 CANCELLING 时生效（真实结果已回写并收敛后即为 no-op）；已有结果保留，
+    对缺失结果的目标补一条"远端结果未知"的 CANCELLED 结果并发 done 哨兵关闭前端面板。
+    """
+    updated = JobExecution.objects.filter(id=execution_id, status=ExecutionStatus.CANCELLING).update(
+        status=ExecutionStatus.CANCELLED, finished_at=timezone.now()
+    )
+    if not updated:
+        return
+    execution = JobExecution.objects.filter(id=execution_id).first()
+    if execution is None:
+        # CAS 命中后记录被删除（防御分支）：静默返回
+        return
+
+    results = list(execution.execution_results or [])
+    have_keys = {str(r.get("target_key")) for r in results}
+    for t in execution.target_list or []:
+        tk = t.get("node_id") or str(t.get("target_id", ""))
+        if tk in have_keys:
+            continue
+        results.append(
+            {
+                "target_key": tk,
+                "name": t.get("name", ""),
+                "ip": t.get("ip", ""),
+                "status": ExecutionStatus.CANCELLED,
+                "error_message": "任务已取消，远端结果未知",
+            }
+        )
+        publish_done_sentinel(execution_id, tk, ExecutionStatus.CANCELLED)
+
+    execution.execution_results = results
+    execution.success_count = sum(1 for r in results if r.get("status") == ExecutionStatus.SUCCESS)
+    execution.failed_count = sum(1 for r in results if r.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
+    execution.save(update_fields=["execution_results", "success_count", "failed_count", "updated_at"])
+    logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
 
 
 @shared_task(max_retries=0)
@@ -73,7 +114,7 @@ def execute_scheduled_task(scheduled_task_id: int):
                 )
                 execute_scheduled_task.apply_async(
                     args=[scheduled_task_id],
-                    countdown=30,
+                    countdown=SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN,
                 )
                 return
         else:
@@ -127,6 +168,7 @@ def execute_scheduled_task(scheduled_task_id: int):
         status=ExecutionStatus.PENDING,
         script=scheduled_task.script,
         playbook=scheduled_task.playbook,
+        playbook_version=scheduled_task.playbook.version if scheduled_task.playbook else "",
         scheduled_task=scheduled_task,
         params=params_str,
         script_type=script_type,
@@ -144,9 +186,12 @@ def execute_scheduled_task(scheduled_task_id: int):
 
     logger.info(f"[execute_scheduled_task] 创建执行记录: execution_id={execution.id}, targets={len(target_list)}")
 
-    # 根据作业类型调用对应的执行任务
+    # 根据作业类型调用对应的执行任务（broker 不可用 / 未知作业类型时置 FAILED 避免 PENDING 孤立）
     if not _dispatch_execution_job(scheduled_task.job_type, execution.id):
-        logger.error(f"[execute_scheduled_task] 未知的作业类型: {scheduled_task.job_type}")
+        logger.error(
+            f"[execute_scheduled_task] 作业派发失败（broker 不可用或作业类型未知）: "
+            f"scheduled_task_id={scheduled_task_id}, execution_id={execution.id}, job_type={scheduled_task.job_type}"
+        )
         execution.status = ExecutionStatus.FAILED
         execution.save(update_fields=["status", "updated_at"])
         return
@@ -156,9 +201,8 @@ def execute_scheduled_task(scheduled_task_id: int):
 
 @shared_task(max_retries=0)
 def cleanup_expired_distribution_files_task():
-    threshold = timezone.now() - timedelta(days=7)
-    # 仅清理临时文件（is_permanent=False），永久文件不清理
-    expired_files = DistributionFile.objects.filter(created_at__lt=threshold, is_permanent=False)
+    # 清理所有已到期文件（expire_at <= 当前时间）
+    expired_files = DistributionFile.objects.filter(expire_at__lte=timezone.now())
     total_count = expired_files.count()
     if total_count == 0:
         logger.info("[cleanup_expired_distribution_files_task] 没有过期文件需要清理")
@@ -180,18 +224,29 @@ def cleanup_expired_distribution_files_task():
     logger.info(f"[cleanup_expired_distribution_files_task] 清理完成: success={success_count}, fail={fail_count}")
 
 
+_JOB_TYPE_TO_TASK_NAME = {
+    JobType.SCRIPT: "apps.job_mgmt.tasks.execute_script_task",
+    JobType.FILE_DISTRIBUTION: "apps.job_mgmt.tasks.distribute_files_task",
+    JobType.PLAYBOOK: "apps.job_mgmt.tasks.execute_playbook_task",
+}
+
+
 def _dispatch_execution_job(job_type: str, execution_id: int) -> bool:
-    result = None
-    if job_type == JobType.SCRIPT:
-        result = current_app.send_task("apps.job_mgmt.tasks.execute_script_task", args=[execution_id])
-    elif job_type == JobType.FILE_DISTRIBUTION:
-        result = current_app.send_task("apps.job_mgmt.tasks.distribute_files_task", args=[execution_id])
-    elif job_type == JobType.PLAYBOOK:
-        result = current_app.send_task("apps.job_mgmt.tasks.execute_playbook_task", args=[execution_id])
-    else:
+    """通过 Celery 派发执行任务并回填 ``celery_task_id``。
+
+    Returns ``False`` 当作业类型未知或 broker 派发失败（broker 不可用、连接超时等）；
+    调用方应据此把执行记录置为 FAILED，避免留下 PENDING 孤立记录。
+    """
+    task_name = _JOB_TYPE_TO_TASK_NAME.get(job_type)
+    if not task_name:
         return False
 
-    # 保存 Celery task_id 到执行记录，用于取消时 revoke
+    try:
+        result = current_app.send_task(task_name, args=[execution_id])
+    except Exception as e:
+        logger.exception(f"[_dispatch_execution_job] Celery 派发失败: execution_id={execution_id}, job_type={job_type}, error={e}")
+        return False
+
     if result:
         JobExecution.objects.filter(id=execution_id).update(celery_task_id=result.id)
     return True

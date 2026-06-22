@@ -20,6 +20,22 @@ export const useInstanceApi = () => {
   const topoSearchInstances = (modelId: string, instId: string) =>
     get(`/cmdb/api/instance/topo_search/${modelId}/${instId}/`);
 
+  const getTopoThemes = (modelId: string) =>
+    get(`/cmdb/api/instance/topo_themes/${modelId}/`);
+
+  const getNetworkTopo = (modelId: string, instId: string, depth?: number) =>
+    get(
+      `/cmdb/api/instance/network_topo/${modelId}/${instId}/${
+        depth ? `?depth=${depth}` : ''
+      }`
+    );
+
+  const getRoomLayout = (modelId: string, instId: string) =>
+    get(`/cmdb/api/instance/room_layout/${modelId}/${instId}/`);
+
+  const getRackLayout = (modelId: string, instId: string) =>
+    get(`/cmdb/api/instance/rack_layout/${modelId}/${instId}/`);
+
   // 获取实例详情
   const getInstanceDetail = (instanceId: string) =>
     get(`/cmdb/api/instance/${instanceId}/`);
@@ -87,12 +103,33 @@ export const useInstanceApi = () => {
     method: 'GET'
   });
 
+  // 附件/图片字段（企业版）：预上传文件（multipart: file, model_id, attr_id），返回文件元数据
+  // 必须显式指定 multipart，否则 axios 默认 JSON 头会把 FormData 转成 JSON（File 丢失）
+  const uploadFile = (formData: FormData, options?: any) =>
+    post('/cmdb/api/instance/upload_file/', formData, {
+      ...(options || {}),
+      headers: { 'Content-Type': 'multipart/form-data', ...(options?.headers || {}) },
+    });
+
+  // 删除尚未提交的临时文件（仅上传者本人）
+  const deleteFile = (fileId: string) =>
+    del(`/cmdb/api/instance/delete_file/${fileId}/`);
+
+  // 获取附件/图片的短时效预签名直链（经 axios 带令牌鉴权；返回 { url }）
+  // download=true 时返回的 URL 附带 attachment disposition，浏览器打开即触发下载保存
+  const getFileUrl = (fileId: string, download = false): Promise<{ url: string }> =>
+    get(`/cmdb/api/instance/download_file/${fileId}/${download ? '?download=1' : ''}`);
+
   return {
     searchInstances,
     fulltextSearchInstances,
     fulltextSearchStats,
     fulltextSearchByModel,
     topoSearchInstances,
+    getTopoThemes,
+    getNetworkTopo,
+    getRoomLayout,
+    getRackLayout,
     getInstanceDetail,
     createInstance,
     updateInstance,
@@ -109,5 +146,8 @@ export const useInstanceApi = () => {
     deleteInstanceAssociation,
     importInstances,
     downloadTemplate,
+    uploadFile,
+    deleteFile,
+    getFileUrl,
   };
 };

@@ -21,7 +21,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
   const [selectedItem, setSelectedItem] = useState<ConfigDiffItem | null>(null);
 
   return (
-    <div className="mt-3 rounded-lg border border-gray-200 bg-white overflow-hidden shadow-sm max-w-[600px]">
+    <div className="mt-3 w-full max-w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
       {/* Header */}
       <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-white border-b border-gray-200 flex items-center gap-2">
         <FileTextOutlined className="text-blue-500 text-base" />
@@ -74,6 +74,7 @@ const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
         }
         footer={null}
         width="90vw"
+        zIndex={10010}
         styles={{ body: { padding: 0, maxHeight: '70vh', overflow: 'auto' } }}
       >
         {selectedItem && (

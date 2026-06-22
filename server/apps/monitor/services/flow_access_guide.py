@@ -48,8 +48,8 @@ class FlowAccessGuideService:
                 "完成配置后使用检测接口确认最近时间窗内已收到对应协议数据。",
             ],
             "sampling_rule": (
-                "系统统一消费 effective_sampling_rate。若设备已上报 effective_sampling_rate 则直接使用；"
-                "否则按 SAMPLING_INTERVAL、SAMPLING_ALGORITHM、sampling_rate、samplingRate 的顺序归一化；"
+                "系统统一消费 effective_sampling_rate。接收侧按 "
+                "SAMPLING_INTERVAL、SAMPLING_ALGORITHM、sampling_rate、samplingRate 的顺序归一化；"
                 "若仍缺失则回退到资产 fallback_sampling_rate。"
             ),
             "detect_hint": "检测成功的标准是最近时间窗内收到该资产对应协议的实际 Flow 数据。",

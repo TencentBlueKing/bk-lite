@@ -1,0 +1,1595 @@
+@use '../common/simple-dashboard.module.scss';
+
+// 区块小标题:给分区加语义标题,提升可扫读性(与 MySQL/PostgreSQL 同款)
+.sectionLabel {
+  margin: 2px 2px 4px;
+  padding-bottom: 4px;
+  border-bottom: 1px solid #eceff4;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+
+.dashboardSection + .sectionLabel {
+  margin-top: 8px;
+}
+
+:global(html.dark) .sectionLabel {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+.modeContent {
+  width: 100%;
+  min-width: 0;
+}
+
+.metricsMode {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  min-width: 0;
+}
+
+.metricsMode > .panel {
+  width: 100%;
+  max-width: none;
+}
+
+.pageHeader {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.pageTitleRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.titleBlock {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.title {
+  margin: 0;
+  color: #182132;
+  font-size: 28px;
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  word-break: break-word;
+}
+
+.meta {
+  display: flex;
+  align-items: center;
+  gap: 8px 10px;
+  flex-wrap: wrap;
+  color: #3f5370;
+  min-width: 0;
+  margin-bottom: 0;
+}
+
+.instanceCard {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 6px 0 8px;
+  border-bottom: 1px solid #e7edf5;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+  min-width: 0;
+  width: 100%;
+}
+
+.instanceCardFull {
+  width: 100%;
+  max-width: none;
+}
+
+.instanceMain {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+  flex: 1;
+}
+
+.instanceInfo {
+  min-width: 0;
+  flex: 1;
+}
+
+.instanceIcon {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #fff0f0 0%, #fff7f7 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #ff4d4f;
+  font-size: 20px;
+  box-shadow: inset 0 0 0 1px rgba(255, 77, 79, 0.08);
+  flex-shrink: 0;
+}
+
+.instanceName {
+  font-size: 18px;
+  font-weight: 700;
+  color: #182132;
+  line-height: 1.22;
+  min-width: 0;
+  word-break: break-word;
+}
+
+// 头部布局/控件样式（实例选择器、时间选择器、刷新两-pill）统一继承基座
+// simple-dashboard.module.scss，此处不再重复声明，避免覆盖造成不一致。
+
+.instanceSubline {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px 10px;
+  min-width: 0;
+  color: #5d7090;
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.controls {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  flex-shrink: 0;
+}
+
+.controlsWrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex-shrink: 0;
+}
+
+.modeTabs {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  height: 34px;
+  border-radius: 12px;
+  background: #ffffff;
+  border: 1px solid #dbe5f1;
+  box-shadow: none;
+}
+
+.modeTab {
+  height: 26px;
+  padding: 0 10px;
+  border: 0;
+  background: transparent;
+  color: #68809e;
+  font-size: 13px;
+  font-weight: 700;
+  border-radius: 9px;
+  cursor: pointer;
+  transition: all 0.18s ease;
+}
+
+.modeTabActive {
+  background: #ffffff;
+  color: #1d2f47;
+  box-shadow: 0 1px 2px rgba(18, 34, 66, 0.08);
+}
+
+.actionButtons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.toolbarBackBtn {
+  height: 34px;
+  padding: 0 12px;
+  border-radius: 14px;
+  border: 1px solid #dbe5f1;
+  color: #617792;
+  background: #ffffff;
+  box-shadow: 0 1px 2px rgba(18, 34, 66, 0.04);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.primaryGrid {
+  // flex 自适应：换行后末行卡片弹性撑满整行，避免 7 张卡（状态+6 KPI）在断点下落单留白。
+  display: flex;
+  flex-wrap: wrap;
+  align-items: stretch;
+  gap: 12px;
+  margin-bottom: 0;
+
+  > * {
+    // 基准 = 整行 1/7（扣除 6 个 gap）→ 宽屏每行 7 张；收窄到 min-width 以下自动换行并撑满。
+    flex: 1 1 calc((100% - 6 * 12px) / 7);
+    min-width: 188px;
+  }
+}
+
+.mainTrendGrid,
+.detailGrid {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+// 分区小标题跟在上一区栅格之后:补足 section 间距(12),保持紧凑且分层清晰。
+.primaryGrid + .sectionLabel,
+.mainTrendGrid + .sectionLabel,
+.detailGrid + .sectionLabel {
+  margin-top: 12px;
+}
+
+.sectionTitle {
+  margin: 0 0 12px;
+  color: #22324a;
+  font-size: 18px;
+  font-weight: 700;
+}
+
+.statCard {
+  padding: 13px 14px 11px;
+  min-height: 122px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.statCardRelaxed {
+  padding-top: 18px;
+}
+
+.statHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.statLabel {
+  color: #334861;
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1.3;
+  min-width: 0;
+}
+
+.statIcon {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+}
+
+.statBody {
+  margin-top: 7px;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.statBodyRelaxed {
+  margin-top: 22px;
+  justify-content: flex-start;
+}
+
+.statValue {
+  color: #182132;
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.08;
+  letter-spacing: -0.03em;
+  word-break: break-word;
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.statUnit {
+  font-size: 14px;
+  margin-left: 0;
+  color: #5d728b;
+  line-height: 1;
+}
+
+.statMeta {
+  display: flex;
+  align-items: center;
+  gap: 6px 10px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.5;
+  min-height: 22px;
+}
+
+.statCompare {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  min-height: 18px;
+}
+
+.statCompareLabel {
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 500;
+  line-height: 1.2;
+}
+
+.statCompareValue {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.statComparePositive {
+  color: #ff4d4f;
+}
+
+.statCompareNegative {
+  color: #1fa971;
+}
+
+.statCompareFlat {
+  color: #7e90a7;
+}
+
+.statMeta span {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.statExtra {
+  margin-top: auto;
+  padding-top: 10px;
+}
+
+.uptimeStatus {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  min-height: 48px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: #f8fbff;
+  border: 1px solid #edf2f9;
+}
+
+.uptimeStatusDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 999px;
+  background: #94a3b8;
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.12);
+}
+
+.uptimeStatusMain {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.uptimeStatusMainWrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.uptimeStatusInfoIcon {
+  color: #8fa0b3;
+  font-size: 14px;
+  cursor: help;
+}
+
+.uptimeStatusDetail {
+  min-width: 0;
+  color: #7d8fa7;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.2;
+  text-align: right;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uptimeStatusTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+}
+
+.uptimeStatusTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.uptimeStatusTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.uptimeStatusTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.uptimeStatusSuccess .uptimeStatusDot {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.12);
+}
+
+.uptimeStatusWarning .uptimeStatusDot {
+  background: #faad14;
+  box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.14);
+}
+
+.uptimeStatusEmpty .uptimeStatusMain {
+  color: #64748b;
+}
+
+.miniTrend {
+  height: 52px;
+  margin-top: auto;
+  padding-top: 8px;
+  border-radius: 8px;
+  overflow: hidden;
+  opacity: 0.95;
+}
+
+.miniTrendPlaceholder {
+  width: 100%;
+  height: 100%;
+}
+
+.collectionStatusCard {
+  justify-content: flex-start;
+  min-height: 122px;
+}
+
+.collectionStatusHeader {
+  min-height: 32px;
+}
+
+.collectionStatusBody {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  gap: 10px;
+  min-height: 0;
+}
+
+.collectionStatusValue {
+  font-size: 30px;
+  font-weight: 700;
+  line-height: 1.05;
+  letter-spacing: -0.03em;
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+}
+
+.collectionStatusValueSuccess {
+  color: #22c55e;
+}
+
+.collectionStatusValueError {
+  color: #ff4d4f;
+}
+
+.collectionStatusValueEmpty {
+  color: #94a3b8;
+}
+
+.collectionStatusTimelineBlock {
+  margin-top: 0;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.collectionStatusTimelineTitle {
+  margin-top: 0;
+  color: #536882;
+  font-size: 14px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+}
+
+.collectionStatusTimeline {
+  display: grid;
+  grid-template-columns: repeat(18, minmax(0, 1fr));
+  gap: 4px;
+  margin-top: 8px;
+}
+
+.collectionStatusSegment {
+  min-width: 0;
+  height: 22px;
+  border-radius: 4px;
+  border: 1px solid transparent;
+}
+
+.collectionStatusSegmentSuccess {
+  background: #22c55e;
+  border-color: #b6f0c8;
+}
+
+.collectionStatusSegmentEmpty {
+  background: #d7dfeb;
+  border-color: #edf2f9;
+}
+
+.collectionStatusSegmentError {
+  background: #ff4d4f;
+  border-color: #ffc3c3;
+}
+
+.collectionStatusLegend {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  flex-wrap: wrap;
+  margin-top: 8px;
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.collectionStatusLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.collectionStatusLegendDot {
+  width: 14px;
+  height: 14px;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px rgba(19, 33, 56, 0.04);
+}
+
+.panel {
+  padding: 16px;
+}
+
+.chartPanel {
+  grid-column: span 6;
+}
+
+.thirdChartPanel {
+  grid-column: span 4;
+}
+
+.quarterPanel {
+  grid-column: span 3;
+}
+
+.halfPanel {
+  grid-column: span 4;
+}
+
+.halfWidePanel {
+  grid-column: span 6;
+}
+
+.fullPanel {
+  grid-column: span 12;
+}
+
+.panelHeader {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.chartPanelHeader {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-areas:
+    'title'
+    'subtitle'
+    'legend';
+  align-items: start;
+  column-gap: 0;
+  row-gap: 6px;
+}
+
+.chartHeaderTitle {
+  grid-area: title;
+}
+
+.chartHeaderSubTitle {
+  grid-area: subtitle;
+}
+
+.fillPanel {
+  display: flex;
+  flex-direction: column;
+  min-height: 224px;
+}
+
+.fillBody {
+  flex: 1;
+}
+
+.panelHeading {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+}
+
+.panelTitle {
+  margin: 0;
+  color: #1d2f47;
+  font-size: 17px;
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.01em;
+}
+
+.panelSubTitle {
+  color: #9caabd;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.4;
+}
+
+.chartLegend {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px 12px;
+  margin-top: 0;
+}
+
+.chartLegendHeader {
+  grid-area: legend;
+  justify-content: flex-end;
+  align-items: center;
+  align-self: flex-start;
+  flex-wrap: nowrap;
+  gap: 10px;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.chartLegendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #8b9bb0;
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.chartLegendDot {
+  width: 10px;
+  height: 10px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.chartLegendDash {
+  width: 12px;
+  height: 0;
+  border-radius: 0;
+  border-top-width: 2px;
+  border-top-style: dashed;
+}
+
+.chartWrap {
+  height: 164px;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.compactChartPanel {
+  min-height: 0;
+}
+
+.compactChartWrap {
+  height: 176px;
+}
+
+.detailCard {
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  height: 100%;
+}
+
+.detailCardTitle {
+  color: #1e3048;
+  font-size: 15px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.detailMetricRow {
+  display: grid;
+  // 标签 · 缩略图 · 数值 三列固定、左对齐成一束(与共享详情面板一致)。
+  grid-template-columns: minmax(88px, 140px) 150px auto;
+  justify-content: start;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 0;
+  border-bottom: 1px solid #edf2f9;
+}
+
+.detailMetricRow:last-child {
+  border-bottom: 0;
+}
+
+.detailMetricLabel {
+  color: #667b96;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.detailMetricValue {
+  color: #1f3047;
+  font-size: 16px;
+  font-weight: 850;
+  line-height: 1.2;
+  white-space: nowrap;
+}
+
+.fragmentationWarning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.fragmentationWarningNormal {
+  background: #f0fdf4;
+  border: 1px solid #dcfce7;
+  color: #166534;
+}
+
+.fragmentationWarningWarn {
+  background: #fffbeb;
+  border: 1px solid #fef3c7;
+  color: #92400e;
+}
+
+.fragmentationWarningDanger {
+  background: #fff1f2;
+  border: 1px solid #fecdd3;
+  color: #9f1239;
+}
+
+.metricGuideTooltip {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 220px;
+}
+
+.metricGuideTooltipRow {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.metricGuideTooltipRow strong {
+  color: #31445c;
+  font-size: 13px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.metricGuideTooltipRow span {
+  color: #6f8299;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.45;
+}
+
+.metricGuideIcon {
+  margin-left: 0;
+  color: #91a4bc;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  flex-shrink: 0;
+  transform: translateY(-1px);
+}
+
+.metricGuideIcon:hover {
+  color: #2f6bff;
+}
+
+.titleWithGuide {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.panelTitleWithGuide,
+.statTitleWithGuide {
+  max-width: 100%;
+}
+
+.panelTitleWithGuide > span:first-child,
+.statTitleWithGuide > span:first-child {
+  min-width: 0;
+}
+
+.metricSections {
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  width: 100%;
+}
+
+.metricSection {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.metricSectionTitle {
+  color: #2b425c;
+  font-size: 20px;
+  font-weight: 700;
+  padding-left: 12px;
+  border-left: 3px solid #ff4d4f;
+  line-height: 1.3;
+}
+
+.allMetricsGrid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  align-items: stretch;
+}
+
+.miniMetricCard {
+  padding: 16px 16px 14px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfcff 100%);
+  border: 1px solid #ebf1f8;
+  min-height: 252px;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.metricCardHeaderCompact {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 8px;
+}
+
+.miniMetricTitle {
+  color: #31445c;
+  font-size: 16px;
+  font-weight: 700;
+  margin-bottom: 0;
+  cursor: help;
+  line-height: 1.25;
+}
+
+.miniMetricTitleWrap {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  flex: 1;
+}
+
+.miniMetricSubTitle {
+  color: #8b9bb0;
+  font-size: 12px;
+  line-height: 1.35;
+  word-break: break-all;
+  letter-spacing: 0.01em;
+}
+
+.miniMetricValue {
+  color: #182132;
+  font-size: 32px;
+  font-weight: 700;
+  line-height: 1;
+  flex-shrink: 0;
+  padding-top: 6px;
+  letter-spacing: -0.03em;
+}
+
+.metricHoverCard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  max-width: 420px;
+  color: #44566f;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #ffffff;
+  color: #44566f;
+  border: 1px solid #dbe6f3;
+  box-shadow: 0 14px 34px rgba(23, 42, 79, 0.12);
+}
+
+:global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #ffffff;
+  border: 1px solid #dbe6f3;
+}
+
+.fullMetricChart {
+  height: 138px;
+  min-height: 138px;
+  margin-top: 4px;
+  border-radius: 14px;
+  overflow: hidden;
+  flex: 1;
+}
+
+.mongoInstanceIcon {
+  background: linear-gradient(135deg, #ecfff3 0%, #f5fff8 100%);
+  color: #16a34a;
+  box-shadow: inset 0 0 0 1px rgba(22, 163, 74, 0.08);
+}
+
+.empty {
+  padding: 60px 0;
+}
+
+.ringCard {
+  display: grid;
+  grid-template-columns: 188px minmax(0, 1fr);
+  gap: 18px;
+  align-items: stretch;
+  min-height: 190px;
+}
+
+.ringChartWrap {
+  position: relative;
+  height: 176px;
+  min-height: 176px;
+  width: 176px;
+  min-width: 176px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  align-self: center;
+  overflow: visible;
+}
+
+.ringChartWrap::before {
+  content: '';
+  position: absolute;
+  inset: 26px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 30%, rgba(255, 255, 255, 0.98) 0%, rgba(249, 251, 255, 0.98) 62%, rgba(241, 246, 252, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.86),
+    inset 0 -8px 18px rgba(162, 178, 198, 0.08);
+  pointer-events: none;
+  z-index: 0;
+}
+
+.ringCenter {
+  text-align: left;
+  padding-bottom: 18px;
+  border-bottom: 1px solid #edf2f9;
+  min-height: 132px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+}
+
+.ringCenterOverlay {
+  position: absolute;
+  inset: 0 0 auto;
+  height: 176px;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 0;
+  min-height: 0;
+  border-bottom: 0;
+  pointer-events: none;
+}
+
+.ringValue {
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: #182132;
+  letter-spacing: -0.02em;
+  font-variant-numeric: tabular-nums;
+}
+
+.ringCaption {
+  font-size: 13px;
+  color: #7f93ad;
+  font-weight: 600;
+  margin-top: 2px;
+}
+
+.ringInfoPanel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 4px 0;
+}
+
+.metricList {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.metricRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.metricRowPercentOnly {
+  padding: 4px 0;
+}
+
+.metricKey {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+}
+
+.metricLabelGroup {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.metricDot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.metricName {
+  font-size: 14px;
+  font-weight: 600;
+  color: #42556d;
+  line-height: 1.3;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.metricValueGroup {
+  display: flex;
+  align-items: baseline;
+  gap: 4px;
+  flex-shrink: 0;
+}
+
+.metricPercent {
+  font-size: 14px;
+  font-weight: 700;
+  color: #22324a;
+  font-variant-numeric: tabular-nums;
+}
+
+.metricCount {
+  font-size: 12px;
+  color: #8a9bb5;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+}
+
+.bars {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-top: 2px;
+}
+
+.compactBars {
+  gap: 10px;
+  min-height: 0;
+}
+
+.barsFull {
+  flex: 1;
+  justify-content: space-evenly;
+  padding: 8px 0 6px;
+}
+
+.barRow {
+  display: grid;
+  // 条固定窄宽成一列、数值紧贴右侧;富余宽度留右(与共享条面板一致)。
+  grid-template-columns: 108px 180px auto;
+  justify-content: start;
+  gap: 12px;
+  align-items: center;
+}
+
+.barLabel {
+  color: #42556d;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.3;
+}
+
+.barTrack {
+  height: 8px;
+  border-radius: 999px;
+  background: #edf3fb;
+  overflow: hidden;
+}
+
+.barsFull .barTrack {
+  height: 10px;
+}
+
+.barFill {
+  height: 100%;
+  border-radius: 999px;
+}
+
+.barValue {
+  color: #22324a;
+  font-size: 16px;
+  font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+:global(html.dark) .page {
+  background: linear-gradient(180deg, #0f1723 0%, #0b121b 100%);
+  color: rgba(255, 255, 255, 0.88);
+}
+
+:global(html.dark) .title,
+:global(html.dark) .instanceName,
+:global(html.dark) .statValue,
+:global(html.dark) .collectionStatusValue,
+:global(html.dark) .panelTitle,
+:global(html.dark) .miniMetricValue {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:global(html.dark) .meta,
+:global(html.dark) .instanceMetaInline,
+:global(html.dark) .statLabel,
+:global(html.dark) .collectionStatusTimelineTitle,
+:global(html.dark) .metricHoverCard,
+:global(html.dark) .miniMetricTitle,
+:global(html.dark) .detailCardTitle,
+:global(html.dark) .detailMetricLabel {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+:global(html.dark) .instanceMetaDivider,
+:global(html.dark) .panelSubTitle,
+:global(html.dark) .chartLegendItem,
+:global(html.dark) .statCompareLabel,
+:global(html.dark) .statMeta,
+:global(html.dark) .collectionStatusLegendItem,
+:global(html.dark) .statUnit,
+:global(html.dark) .miniMetricSubTitle {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+:global(html.dark) .instanceCard {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .instanceIcon {
+  background: linear-gradient(135deg, rgba(255, 77, 79, 0.18) 0%, rgba(84, 29, 29, 0.68) 100%);
+  color: #ff9f9f;
+  box-shadow: inset 0 0 0 1px rgba(255, 159, 159, 0.14);
+}
+
+:global(html.dark) .mongoInstanceIcon {
+  background: linear-gradient(135deg, rgba(12, 46, 28, 0.9) 0%, rgba(14, 61, 39, 0.76) 100%);
+  color: #67e39d;
+  box-shadow: inset 0 0 0 1px rgba(103, 227, 157, 0.16);
+}
+
+:global(html.dark) .inlineInstanceSelector,
+:global(html.dark) .modeTabs,
+:global(html.dark) .toolbarBackBtn,
+:global(html.dark) .panel,
+:global(html.dark) .statCard,
+:global(html.dark) .miniMetricCard {
+  background: rgba(15, 25, 38, 0.88) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.18);
+}
+
+:global(html.dark) .miniMetricCard {
+  background: linear-gradient(180deg, rgba(15, 25, 38, 0.96) 0%, rgba(12, 20, 31, 0.96) 100%) !important;
+}
+
+:global(html.dark) .detailMetricValue {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .detailMetricRow {
+  border-bottom-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .uptimeStatus {
+  background: rgba(255, 255, 255, 0.06) !important;
+  border-color: rgba(255, 255, 255, 0.1) !important;
+  box-shadow: none;
+}
+
+:global(html.dark) .uptimeStatusMain {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .uptimeStatusDetail {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+:global(html.dark) .uptimeStatusDot {
+  background: rgba(148, 163, 184, 0.9);
+  box-shadow: 0 0 0 4px rgba(148, 163, 184, 0.16);
+}
+
+:global(html.dark) .uptimeStatusSuccess .uptimeStatusDot {
+  background: #22c55e;
+  box-shadow: 0 0 0 4px rgba(34, 197, 94, 0.18);
+}
+
+:global(html.dark) .uptimeStatusWarning .uptimeStatusDot {
+  background: #faad14;
+  box-shadow: 0 0 0 4px rgba(250, 173, 20, 0.2);
+}
+
+:global(html.dark) .identityPill {
+  background: rgba(255, 77, 79, 0.14);
+  border-color: rgba(255, 159, 159, 0.2);
+  color: #ffb3b3;
+}
+
+:global(html.dark) .collectionStatusSegmentEmpty {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .collectionStatusSegment {
+  border-color: transparent;
+}
+
+:global(html.dark) .collectionStatusSegmentSuccess {
+  background: #22c55e;
+  border-color: rgba(162, 243, 196, 0.35);
+}
+
+:global(html.dark) .collectionStatusSegmentError {
+  background: #ff4d4f;
+  border-color: rgba(255, 166, 166, 0.28);
+}
+
+:global(html.dark) .collectionStatusLegendDot {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.06);
+}
+
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selector),
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-picker),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-btn),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selector),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-selector) {
+  background: rgba(12, 20, 31, 0.92) !important;
+  border-color: rgba(255, 255, 255, 0.08) !important;
+  color: rgba(255, 255, 255, 0.78) !important;
+  box-shadow: none !important;
+}
+
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selection-item),
+:global(html.dark) .toolbarTimeSelector > div > div:first-child :global(.ant-select-selection-placeholder),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selection-item),
+:global(html.dark) .toolbarTimeSelector > div > div:last-child :global(.ant-select-selection-placeholder),
+:global(html.dark) .toolbarTimeSelector > div :global(.ant-picker-input > input),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-selection-item),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-selection-placeholder),
+:global(html.dark) .toolbarBackBtn {
+  color: rgba(255, 255, 255, 0.78) !important;
+}
+
+:global(html.dark) .toolbarTimeSelector > div :global(.anticon),
+:global(html.dark) .inlineInstanceSelector :global(.ant-select-arrow) {
+  color: rgba(255, 255, 255, 0.42) !important;
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-inner) {
+  background: #101926;
+  color: rgba(255, 255, 255, 0.74);
+  border-color: rgba(255, 255, 255, 0.08);
+  box-shadow: 0 18px 40px rgba(0, 0, 0, 0.28);
+}
+
+:global(html.dark) :global(.ant-tooltip.lightMetricTooltip) :global(.ant-tooltip-arrow::before) {
+  background: #101926;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .uptimeStatusTooltipRow strong,
+:global(html.dark) .metricGuideTooltipRow strong {
+  color: rgba(255, 255, 255, 0.94);
+}
+
+:global(html.dark) .uptimeStatusTooltipRow span,
+:global(html.dark) .metricGuideTooltipRow span {
+  color: rgba(222, 232, 246, 0.8);
+}
+
+:global(html.dark) .fragmentationWarningNormal {
+  background: rgba(22, 163, 74, 0.12);
+  border-color: rgba(22, 163, 74, 0.24);
+  color: #86efac;
+}
+
+:global(html.dark) .fragmentationWarningWarn {
+  background: rgba(217, 119, 6, 0.12);
+  border-color: rgba(217, 119, 6, 0.24);
+  color: #fcd34d;
+}
+
+:global(html.dark) .fragmentationWarningDanger {
+  background: rgba(225, 29, 72, 0.12);
+  border-color: rgba(225, 29, 72, 0.24);
+  color: #fda4af;
+}
+
+:global(html.dark) .ringValue {
+  color: rgba(255, 255, 255, 0.92);
+}
+
+:global(html.dark) .ringCaption {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+:global(html.dark) .ringChartWrap::before {
+  background: radial-gradient(circle at 30% 30%, rgba(20, 30, 44, 0.98) 0%, rgba(15, 23, 35, 0.98) 62%, rgba(12, 20, 31, 0.96) 100%);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.06),
+    inset 0 -8px 18px rgba(0, 0, 0, 0.14);
+}
+
+:global(html.dark) .metricName {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+:global(html.dark) .metricPercent {
+  color: rgba(255, 255, 255, 0.9);
+}
+
+:global(html.dark) .metricCount {
+  color: rgba(255, 255, 255, 0.48);
+}
+
+:global(html.dark) .barLabel {
+  color: rgba(255, 255, 255, 0.74);
+}
+
+:global(html.dark) .barTrack {
+  background: rgba(255, 255, 255, 0.08);
+}
+
+:global(html.dark) .barValue {
+  color: rgba(255, 255, 255, 0.56);
+}
+
+@media (max-width: 1600px) {
+  .thirdChartPanel {
+    grid-column: span 12;
+  }
+
+  .quarterPanel {
+    grid-column: span 6;
+  }
+
+  .compactChartPanel {
+    grid-column: span 12;
+  }
+
+  .allMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .panelTitle {
+    font-size: 15px;
+  }
+}
+
+@media (max-width: 1200px) {
+  .chartPanel,
+  .thirdChartPanel,
+  .quarterPanel,
+  .halfPanel,
+  .halfWidePanel,
+  .fullPanel {
+    grid-column: span 12;
+  }
+
+  .allMetricsGrid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .controlsWrap {
+    width: 100%;
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .pageTitleRow {
+    width: 100%;
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .instanceCard {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .instanceActions {
+    width: 100%;
+    justify-content: flex-start;
+    align-items: center;
+    flex-wrap: wrap;
+  }
+
+  .inlineInstanceSelector {
+    width: min(100%, 360px);
+  }
+
+  .toolbarTimeSelector > div,
+  .toolbarTimeSelector > div > div:first-child,
+  .toolbarTimeSelector > div > div:first-child :global(.ant-select),
+  .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
+    width: min(100%, 320px) !important;
+  }
+
+  .instanceIcon {
+    width: 42px;
+    height: 42px;
+    font-size: 20px;
+  }
+
+  .instanceName {
+    font-size: 17px;
+  }
+
+  .instanceSubline {
+    gap: 6px 10px;
+  }
+}
+
+@media (max-width: 768px) {
+  .chartWrap,
+  .compactChartWrap {
+    height: 160px;
+  }
+
+  .actionButtons {
+    width: 100%;
+  }
+
+  .inlineInstanceSelector {
+    width: 100%;
+  }
+
+  .toolbarTimeSelector,
+  .toolbarTimeSelector > div,
+  .toolbarTimeSelector > div > div:first-child,
+  .toolbarTimeSelector > div > div:first-child :global(.ant-select),
+  .toolbarTimeSelector > div > div:first-child :global(.ant-picker) {
+    width: 100%;
+  }
+
+  .toolbarTimeSelector > div {
+    flex-wrap: wrap;
+  }
+
+  .toolbarTimeSelector > div > div:last-child {
+    margin-left: 0 !important;
+  }
+
+  .instanceIcon {
+    width: 40px;
+    height: 40px;
+    font-size: 18px;
+  }
+
+  .instanceName {
+    font-size: 16px;
+  }
+
+  .instanceMetaInline,
+  .instanceSubline {
+    font-size: 13px;
+  }
+
+  .instanceSubline {
+    font-size: 13px;
+  }
+
+  .instanceMetaDivider {
+    display: none;
+  }
+}
+
+@media (max-width: 480px) {
+
+  .chartWrap,
+  .compactChartWrap {
+    height: 130px;
+  }
+}

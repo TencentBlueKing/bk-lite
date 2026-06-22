@@ -6,11 +6,10 @@ import json
 import threading
 import time
 import uuid
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from datetime import datetime
 from datetime import timezone as dt_timezone
-from graphlib import CycleError, TopologicalSorter
-from typing import Any, Callable, Dict, List, Optional, Set
+from graphlib import CycleError
+from typing import Any, Callable, Dict, List, Optional
 
 from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
@@ -22,14 +21,18 @@ from apps.opspilot.models import BotWorkFlow
 from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskNodeResult, WorkFlowTaskResult
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested, is_interrupt_requested_async
 
-from .core.base_executor import BaseNodeExecutor
+from .core.base_executor import BaseNodeExecutor  # noqa: F401  (保留以兼容历史 from .engine import ...)
 from .core.enums import NodeStatus
 from .core.models import NodeExecutionContext
-from .core.variable_manager import VariableManager
-from .node_registry import node_registry
+from .core.node_result import NodeResult  # noqa: F401  (类型化节点契约，供门面/测试引用)
+from .core.variable_manager import VariableManager  # noqa: F401
+from .flow_graph import FlowGraphMixin
+from .node_registry import node_registry  # noqa: F401  (保留以兼容历史 from .engine import node_registry)
+from .node_runner import NodeRunnerMixin
+from .sse_responder import SSEResponderMixin
 
 
-class ChatFlowEngine:
+class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
     # AGUI 协议中需要过滤的事件类型（工具调用相关和运行状态相关）
     # 用于 _extract_final_message 方法提取真实文本内容时过滤
     AGUI_SKIP_TYPES = frozenset(
@@ -55,6 +58,8 @@ class ChatFlowEngine:
         self.start_node_id = start_node_id
         self.entry_type = entry_type or WorkFlowExecuteType.OPENAI  # 默认为 openai
         self.execution_id = execution_id or str(uuid.uuid4())
+        # 标记本次执行是否来自配置页的"测试"发起；用于区分测试执行与真实对话执行
+        self.is_test = False
         self.task_result: Optional[WorkFlowTaskResult] = None
         self.variable_manager = VariableManager()
         self.execution_contexts: Dict[str, NodeExecutionContext] = {}
@@ -64,6 +69,11 @@ class ChatFlowEngine:
 
         # 用于跟踪节点执行顺序
         self.execution_order = 0
+
+        # 守护引擎级共享状态（execution_order / execution_contexts）的可重入锁。
+        # 并行分支（_execute_parallel_nodes 的线程池）会并发调用 _update_node_execution_order
+        # 与写入 execution_contexts，需串行化以避免计数错乱或字典写入竞争。
+        self._state_lock = threading.RLock()
 
         # 解析流程图
         self.nodes = self._parse_nodes(instance.flow_json)
@@ -203,6 +213,7 @@ class ChatFlowEngine:
             input_data=json.dumps(input_data, ensure_ascii=False),
             output_data={},
             execute_type=self._get_execute_type(start_node_type),
+            is_test=self.is_test,
         )
         return self.task_result
 
@@ -434,20 +445,6 @@ class ChatFlowEngine:
         )
         return None, self._create_error_response("agents节点不支持流式执行")
 
-    def _create_sse_stream_response(self, generate_stream) -> StreamingHttpResponse:
-        """创建 SSE 响应"""
-        response = StreamingHttpResponse(generate_stream(), content_type="text/event-stream")
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response["X-Accel-Buffering"] = "no"
-        response["Pragma"] = "no-cache"
-        response["Expires"] = "0"
-        response["Access-Control-Allow-Origin"] = "*"
-        response["Access-Control-Allow-Headers"] = "Cache-Control"
-        response["X-Execution-ID"] = self.execution_id
-        response["Access-Control-Expose-Headers"] = "X-Execution-ID"
-        response["Transfer-Encoding"] = "chunked"
-        return response
-
     def sse_execute(self, input_data: Dict[str, Any] = None):
         """流程流式执行，支持SSE和AGUI协议，返回 StreamingHttpResponse"""
 
@@ -511,7 +508,6 @@ class ChatFlowEngine:
                 async_execute = sync_to_async(execute_method, thread_sensitive=False)
                 stream_generator = await async_execute(target_agent_node.get("id"), target_agent_node, agent_input_data)
 
-                chunk_index = 0
                 # 直接迭代异步生成器
                 async for chunk in stream_generator:
                     if await self._check_interrupt_requested_async():
@@ -524,7 +520,6 @@ class ChatFlowEngine:
                             start_node.get("type", "") if start_node else None,
                         )
                         return
-                    chunk_index += 1
                     # 累积内容用于记录对话历史
                     if chunk.startswith("data: "):
                         try:
@@ -589,8 +584,10 @@ class ChatFlowEngine:
                         start_node.get("type", "") if start_node else None,
                     )
 
-                # 执行后续节点(在后台异步执行,不阻塞流式响应)
-                self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
+                # 执行后续节点：在 async 流内串行 await，避免与 SSE 生成器并发修改
+                # 共享状态（variable_manager / execution_contexts），同时保证后续节点
+                # 工作不会因进程/请求结束被静默丢弃。
+                await self._execute_subsequent_nodes_async(target_agent_node, accumulated_content)
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] Stream error: {e}", exc_info=True)
@@ -693,7 +690,8 @@ class ChatFlowEngine:
         self.variable_manager.set_variable(f"node_{node_id}_output_key", output_key)
 
         # 注册到 execution_contexts
-        self.execution_contexts[node_id] = context
+        with self._state_lock:
+            self.execution_contexts[node_id] = context
         self._record_node_execution_result(node_id, context)
 
         return context
@@ -737,7 +735,8 @@ class ChatFlowEngine:
         self.variable_manager.set_variable(f"node_{node_id}_output_key", output_key)
 
         # 注册到 execution_contexts
-        self.execution_contexts[node_id] = context
+        with self._state_lock:
+            self.execution_contexts[node_id] = context
         await self._record_node_execution_result_async(node_id, context)
 
         return context
@@ -751,9 +750,11 @@ class ChatFlowEngine:
         Returns:
             int: 当前节点的执行顺序编号
         """
-        self.execution_order += 1
-        self.variable_manager.set_variable(f"node_{node_id}_index", self.execution_order)
-        return self.execution_order
+        with self._state_lock:
+            self.execution_order += 1
+            order = self.execution_order
+        self.variable_manager.set_variable(f"node_{node_id}_index", order)
+        return order
 
     def _find_target_agent_node(self, start_node, last_node, is_agui_protocol: bool, is_openai_protocol: bool):
         """查找目标agents节点及前置节点"""
@@ -764,77 +765,6 @@ class ChatFlowEngine:
             target_agent_node = last_node
             nodes_to_execute_before = self.nodes[:-1] if len(self.nodes) > 1 else []
             return target_agent_node, nodes_to_execute_before
-
-    def _find_agent_node_via_bfs(self, start_node):
-        """使用BFS查找从起始节点可达的第一个agents节点
-
-        注意：如果路径中包含意图分类节点（intent_classification），此方法只会找到
-        意图分类节点并将其加入前置节点列表。实际的目标agents节点需要在执行完意图分类
-        节点后，根据intent_result动态确定。
-        """
-        from collections import deque
-
-        queue = deque([start_node.get("id")])
-        visited = {start_node.get("id")}
-        path_nodes = []
-
-        while queue:
-            current_node_id = queue.popleft()
-            next_node_ids = [edge.get("target") for edge in self.edges if edge.get("source") == current_node_id]
-
-            for next_node_id in next_node_ids:
-                if next_node_id in visited:
-                    continue
-                visited.add(next_node_id)
-
-                next_node = self._get_node_by_id(next_node_id)
-                if not next_node:
-                    continue
-
-                node_type = next_node.get("type", "")
-
-                # 如果遇到意图分类节点，将其加入前置节点并停止搜索
-                # 目标agents节点需要在执行完意图分类后动态确定
-                if node_type == "intent_classification":
-                    path_nodes.append(next_node)
-                    logger.info(f"[SSE-Engine] BFS发现意图分类节点: {next_node_id}，需要动态路由")
-                    # 返回 None 作为目标节点，表示需要动态路由
-                    return None, path_nodes
-
-                if node_type == "agents":
-                    return next_node, path_nodes
-
-                path_nodes.append(next_node)
-                queue.append(next_node_id)
-
-        logger.error(f"[SSE-Engine] 起始节点是 {start_node.get('type')}，但未找到后续的 agents 节点")
-        return None, []
-
-    def _find_agent_by_intent(self, intent_node_id: str, intent_result: str) -> Optional[Dict[str, Any]]:
-        """根据意图分类结果，查找匹配的目标 agents 节点
-
-        通过遍历 edges，找到 source 为意图分类节点且 sourceHandle 匹配意图结果的边，
-        然后返回该边指向的目标节点。
-
-        Args:
-            intent_node_id: 意图分类节点的ID
-            intent_result: 意图分类结果（如 "alarm_helper"）
-
-        Returns:
-            匹配的目标节点配置，如果未找到返回 None
-        """
-        for edge in self.edges:
-            if edge.get("source") == intent_node_id and edge.get("sourceHandle") == intent_result:
-                target_id = edge.get("target")
-                target_node = self._get_node_by_id(target_id)
-                if target_node:
-                    logger.info(f"[SSE-Engine] 意图路由匹配成功: intent={intent_result!r} -> target_node={target_id} (type={target_node.get('type')})")
-                    return target_node
-
-        # 未找到匹配的边，记录可用的 sourceHandle 供调试
-        available_handles = [edge.get("sourceHandle") for edge in self.edges if edge.get("source") == intent_node_id and edge.get("sourceHandle")]
-        logger.warning(f"[SSE-Engine] 意图路由未找到匹配: intent={intent_result!r}, available_handles={available_handles}")
-        return None
 
     def _execute_prerequisite_nodes(self, nodes_to_execute_before, input_data: Dict[str, Any]):
         """执行前置节点（非流式）"""
@@ -937,29 +867,23 @@ class ChatFlowEngine:
 
         return agent_input_data
 
-    def _create_error_response(self, error_message: str):
-        """创建错误的 StreamingHttpResponse"""
-        logger.error(f"[SSE-Engine] {error_message}")
+    async def _execute_subsequent_nodes_async(self, agent_node: Dict[str, Any], agent_output: Any):
+        """执行 agents 节点之后的后续节点
 
-        async def error_gen():
-            yield f"data: {json.dumps({'result': False, 'error': error_message})}\n\n"
-            yield "data: [DONE]\n\n"
+        在 SSE 异步生成器内被 await，确保：
+        - 不与仍在迭代的流并发修改共享状态（variable_manager / execution_contexts），消除竞态；
+        - 后续节点工作不会因为请求/进程结束而被静默丢弃。
 
-        response = StreamingHttpResponse(error_gen(), content_type="text/event-stream")
-        response["Cache-Control"] = "no-cache, no-store, must-revalidate"
-        response["X-Accel-Buffering"] = "no"
-        return response
-
-    def _execute_subsequent_nodes_async(self, agent_node: Dict[str, Any], agent_output: Any):
-        """在后台异步执行agents节点之后的节点
+        内部的同步逻辑（含 ORM 写入）通过 sync_to_async(thread_sensitive=False) 在工作线程中执行，
+        避免在异步上下文中直接调用同步数据库操作。
 
         Args:
             agent_node: agents节点配置
             agent_output: agents节点的输出内容
         """
 
-        def execute_in_background():
-            """后台线程执行函数"""
+        def execute_subsequent_nodes():
+            """同步执行后续节点（在工作线程中运行）"""
             all_success = True  # 跟踪所有节点是否都成功
             last_error_result = None  # 记录最后一个错误信息
 
@@ -1059,7 +983,7 @@ class ChatFlowEngine:
                         # 有失败节点
                         self._record_execution_result(first_input_data or {}, last_error_result or {"error": "后续节点执行失败"}, False)
                 except Exception as record_err:
-                    logger.error(f"[SSE-Engine] 记录后续节点执行结果失败: {record_err}")
+                    logger.exception(f"[SSE-Engine] 记录后续节点执行结果失败: {record_err}")
 
             except Exception as e:
                 logger.error(f"[SSE-Engine] 后续节点执行失败: {str(e)}", exc_info=True)
@@ -1068,124 +992,11 @@ class ChatFlowEngine:
                     error_result = {"success": False, "error": str(e), "error_type": type(e).__name__, "stage": "subsequent_nodes_overall"}
                     self._record_execution_result({}, error_result, False)
                 except Exception as record_err:
-                    logger.error(f"[SSE-Engine] 记录后续节点整体错误失败: {record_err}")
+                    logger.exception(f"[SSE-Engine] 记录后续节点整体错误失败: {record_err}")
 
-        # 在后台线程中执行
-        thread = threading.Thread(target=execute_in_background, daemon=True, name="SSE-SubsequentNodes")
-        thread.start()
-
-    def _extract_final_message(self, accumulated_content: list) -> str:
-        """从累积的流式内容中提取最终消息
-
-        只提取真实的文本内容，过滤掉工具调用相关的事件。
-
-        Args:
-            accumulated_content: 累积的数据列表
-
-        Returns:
-            最终消息字符串
-        """
-        if not accumulated_content:
-            return ""
-
-        final_msg_parts = []
-
-        for data in accumulated_content:
-            if not isinstance(data, dict):
-                continue
-
-            data_type = data.get("type", "")
-            data_object = data.get("object", "")
-
-            # 跳过 AGUI 协议中的非文本内容事件
-            if data_type in self.AGUI_SKIP_TYPES:
-                continue
-
-            # 跳过 CUSTOM 类型（如 browser_step_progress），由 _extract_browser_steps 处理
-            if data_type == "CUSTOM":
-                continue
-
-            # 处理 OpenAI 格式的流式响应
-            # 格式: {"choices": [{"delta": {"content": "..."}, ...}], "object": "chat.completion.chunk", ...}
-            if data_object == "chat.completion.chunk" or "choices" in data:
-                choices = data.get("choices")
-                if not choices or not isinstance(choices, list):
-                    continue
-                for choice in choices:
-                    if not isinstance(choice, dict):
-                        continue
-                    delta = choice.get("delta")
-                    if not isinstance(delta, dict):
-                        continue
-                    content = delta.get("content", "")
-                    if content:
-                        final_msg_parts.append(content)
-                continue
-
-            # 处理 AGUI 协议的文本消息内容
-            if data_type == "TEXT_MESSAGE_CONTENT":
-                delta = data.get("delta", "")
-                if delta:
-                    final_msg_parts.append(delta)
-                continue
-
-            # 处理其他 SSE 协议格式（非 AGUI）
-            # 注意：只有在没有 type 字段时才使用 fallback 逻辑
-            if not data_type:
-                if data_object in ["message", "content", "text"]:
-                    content = data.get("content") or data.get("message") or data.get("text", "")
-                    if content:
-                        final_msg_parts.append(content)
-                    continue
-
-                # 尝试直接提取常见字段（仅用于无 type 的数据）
-                for key in ["content", "message", "text", "delta"]:
-                    value = data.get(key)
-                    if value and isinstance(value, str):
-                        final_msg_parts.append(value)
-                        break
-
-        final_message = "".join(final_msg_parts) if final_msg_parts else ""
-
-        return final_message
-
-    def _extract_browser_steps(self, accumulated_content: list) -> List[str]:
-        """从累积的流式内容中提取 browser_use 步骤信息
-
-        解析 CUSTOM 类型的 browser_step_progress 事件，提取 step_number、next_goal 和 evaluation。
-        格式化为纯字符串列表，最后一个元素为最终评估结果。
-
-        Args:
-            accumulated_content: 累积的数据列表
-
-        Returns:
-            browser_steps 字符串列表，格式: ["step1 xxx", "step2 xxx", ..., "最终结果: xxx"]
-        """
-        if not accumulated_content:
-            return []
-
-        browser_steps = []
-        last_evaluation = ""
-        for data in accumulated_content:
-            if not isinstance(data, dict):
-                continue
-            if data.get("type") != "CUSTOM" or data.get("name") != "browser_step_progress":
-                continue
-            value = data.get("value", {})
-            if not isinstance(value, dict):
-                continue
-            step_number = value.get("step_number")
-            next_goal = value.get("next_goal", "")
-            evaluation = value.get("evaluation", "")
-            if step_number is not None and next_goal:
-                browser_steps.append(f"步骤{step_number} {next_goal}")
-            if evaluation:
-                last_evaluation = evaluation
-
-        if last_evaluation:
-            browser_steps.append(f"最终结果: {last_evaluation}")
-
-        return browser_steps
+        # 在 async 上下文中通过工作线程执行同步逻辑（含 ORM），并 await 其完成，
+        # 保证串行执行、状态隔离且工作不被丢弃。
+        await sync_to_async(execute_subsequent_nodes, thread_sensitive=False)()
 
     def _record_execution_result(self, input_data: Dict[str, Any], result: Any, success: bool, start_node_type: str = None) -> None:
         """记录工作流执行结果
@@ -1259,7 +1070,6 @@ class ChatFlowEngine:
         # 检查节点类型是否支持
         supported_types = set(node_registry.get_supported_types())
         supported_types.update(self.custom_node_executors.keys())
-
         for node in self.nodes:
             node_type = node.get("type", "")
             if node_type not in supported_types:
@@ -1267,27 +1077,24 @@ class ChatFlowEngine:
 
         return errors
 
-    def _serialize_execution_contexts(self) -> Dict[str, Any]:
-        """将 execution_contexts 序列化为可 JSON 化的字典
+    def _summarize_execution_contexts(self) -> Dict[str, Any]:
+        """生成执行上下文的脱敏摘要，用于持久化错误结果。
 
-        处理 NodeStatus 枚举等不可直接序列化的类型
-
-        Returns:
-            可 JSON 序列化的执行上下文字典
+        仅保留排查所需的元信息（节点状态、错误信息、耗时、输入/输出的键名），
+        绝不回显完整的 input_data / output_data，避免将提示词、用户数据、
+        记忆等敏感内容写入数据库。
         """
         result = {}
         for node_id, context in self.execution_contexts.items():
-            ctx_dict = {}
-            for key, value in context.__dict__.items():
-                # 处理枚举类型
-                if hasattr(value, "value"):
-                    ctx_dict[key] = value.value
-                # 处理其他不可序列化的类型
-                elif isinstance(value, (str, int, float, bool, list, dict, type(None))):
-                    ctx_dict[key] = value
-                else:
-                    ctx_dict[key] = str(value)
-            result[node_id] = ctx_dict
+            status = context.status
+            result[node_id] = {
+                "status": getattr(status, "value", status),
+                "error_message": context.error_message,
+                "start_time": context.start_time,
+                "end_time": context.end_time,
+                "input_keys": sorted(context.input_data.keys()) if isinstance(context.input_data, dict) else [],
+                "output_keys": sorted(context.output_data.keys()) if isinstance(context.output_data, dict) else [],
+            }
         return result
 
     def execute(self, input_data: Dict[str, Any] = None, timeout: int = None) -> Dict[str, Any]:
@@ -1389,7 +1196,7 @@ class ChatFlowEngine:
                     "failed_node_id": failed_node_id,
                     "failed_node_type": error_info.get("node_type"),
                     "execution_time": execution_time,
-                    "execution_contexts": self._serialize_execution_contexts(),
+                    "execution_contexts": self._summarize_execution_contexts(),
                 }
 
                 # 记录失败结果到数据库
@@ -1400,7 +1207,7 @@ class ChatFlowEngine:
 
         except Exception as e:
             execution_time = time.time() - start_time
-            logger.error(f"流程执行失败: flow_id={self.instance.id}, error={str(e)}")
+            logger.exception(f"流程执行失败: flow_id={self.instance.id}, error={str(e)}")
 
             if isinstance(e, InterruptedError):
                 interrupt_result = self._interrupt_result(str(e))
@@ -1412,11 +1219,13 @@ class ChatFlowEngine:
                 self._record_execution_result(input_data, interrupt_result, False, start_node_type)
                 return interrupt_result
 
+            # 仅持久化脱敏摘要：不回显完整变量状态（提示词/用户数据/记忆）与
+            # 完整执行上下文，避免敏感数据落库。
             error_result = {
                 "success": False,
                 "error": str(e),
-                "variables": self.variable_manager.get_all_variables(),
-                "execution_contexts": self._serialize_execution_contexts(),
+                "variable_keys": sorted(self.variable_manager.get_all_variables().keys()),
+                "execution_contexts": self._summarize_execution_contexts(),
                 "execution_time": execution_time,
             }
 
@@ -1464,418 +1273,13 @@ class ChatFlowEngine:
                 execution_id=self.execution_id,
             )
         except Exception as e:
-            logger.error(f"记录{role}对话历史失败: execution_id={self.execution_id}, user_id={user_id}, error={str(e)}")
+            logger.exception(f"记录{role}对话历史失败: execution_id={self.execution_id}, user_id={user_id}, error={str(e)}")
 
     async def _record_conversation_history_async(
         self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""
     ):
         """记录对话历史（异步版本，用于 async 上下文）"""
         await sync_to_async(self._record_conversation_history, thread_sensitive=False)(user_id, message, role, entry_type, node_id, session_id)
-
-    def _check_chain_result(self, chain_result: Dict[str, Any]) -> tuple:
-        """检查节点链执行结果，判断是否有节点执行失败
-
-        递归检查整个执行结果树，找出第一个失败的节点
-
-        Args:
-            chain_result: 节点链执行结果
-
-        Returns:
-            tuple: (is_success, error_info)
-                - is_success: 是否所有节点都执行成功
-                - error_info: 如果失败，包含失败节点的信息 {"node_id", "node_type", "error"}
-        """
-        if not isinstance(chain_result, dict):
-            return True, {}
-
-        # 检查当前结果是否失败
-        if chain_result.get("success") is False:
-            return False, {
-                "node_id": chain_result.get("node_id"),
-                "node_type": chain_result.get("node_type"),
-                "error": chain_result.get("error", "未知错误"),
-            }
-
-        # 检查 current_node（如果存在）
-        current_node = chain_result.get("current_node")
-        if current_node and isinstance(current_node, dict):
-            if current_node.get("success") is False:
-                return False, {
-                    "node_id": current_node.get("node_id"),
-                    "node_type": current_node.get("node_type"),
-                    "error": current_node.get("error", "未知错误"),
-                }
-
-        # 递归检查 next_nodes（如果存在）
-        next_nodes = chain_result.get("next_nodes")
-        if next_nodes and isinstance(next_nodes, dict):
-            for node_id, node_result in next_nodes.items():
-                is_success, error_info = self._check_chain_result(node_result)
-                if not is_success:
-                    return False, error_info
-
-        return True, {}
-
-    def _execute_node_chain(self, node_id: str, input_data: Dict[str, Any], remaining_timeout: float) -> Dict[str, Any]:
-        """执行节点链
-
-        Args:
-            node_id: 节点ID
-            input_data: 输入数据
-            remaining_timeout: 剩余超时时间
-
-        Returns:
-            执行结果
-        """
-        visited = set()
-        return self._execute_node_recursive(node_id, input_data, visited, remaining_timeout)
-
-    def _execute_node_recursive(self, node_id: str, input_data: Dict[str, Any], visited: Set[str], remaining_timeout: float) -> Dict[str, Any]:
-        """递归执行节点
-
-        Args:
-            node_id: 节点ID
-            input_data: 输入数据
-            visited: 已访问节点集合
-            remaining_timeout: 剩余超时时间
-
-        Returns:
-            执行结果
-        """
-        # 检查超时
-        if remaining_timeout <= 0:
-            raise TimeoutError(f"节点执行超时: {node_id}")
-
-        # 防止无限循环
-        if node_id in visited:
-            logger.warning(f"检测到节点循环访问: {node_id}")
-            return {"success": True, "message": f"节点 {node_id} 已访问，跳过执行"}
-
-        visited.add(node_id)
-
-        # 执行当前节点
-        node_result = self._execute_single_node(node_id, input_data)
-        # 如果节点执行失败，直接返回
-        if not node_result.get("success", True):
-            return node_result
-
-        # 获取后续节点
-        next_nodes = self._get_next_nodes(node_id, node_result)
-
-        if not next_nodes:
-            # 没有后续节点，这是最后一个节点，返回当前结果
-            return node_result
-
-        # 执行后续节点
-        next_results = {}
-        remaining_time = remaining_timeout - 1  # 为当前节点预留1秒
-
-        if len(next_nodes) == 1:
-            # 单个后续节点，继续递归
-            next_node_id = next_nodes[0]
-            next_result = self._execute_node_recursive(next_node_id, node_result.get("data", node_result), visited.copy(), remaining_time)
-            next_results[next_node_id] = next_result
-        else:
-            # 多个后续节点，并行执行
-            next_results = self._execute_parallel_nodes(next_nodes, node_result.get("data", node_result), remaining_time)
-
-        # 合并结果
-        return {"success": True, "current_node": node_result, "next_nodes": next_results}
-
-    def _execute_single_node(self, node_id: str, input_data: Dict[str, Any]) -> Dict[str, Any]:
-        """执行单个节点
-
-        Args:
-            node_id: 节点ID
-            input_data: 输入数据
-
-        Returns:
-            节点执行结果
-        """
-        # 获取节点配置
-        node = self._get_node_by_id(node_id)
-        if not node:
-            return {"success": False, "error": f"节点不存在: {node_id}"}
-
-        node_type = node.get("type", "")
-        self._raise_if_interrupted(input_data, node_type)
-
-        # 使用公共方法创建执行上下文
-        context = self._create_node_execution_context(node=node, input_data=input_data, status=NodeStatus.RUNNING)
-
-        try:
-            # 获取执行器
-            executor = self._get_node_executor(node_type)
-            if not executor:
-                raise ValueError(f"找不到节点类型 {node_type} 的执行器")
-
-            # 根据节点配置处理输入数据
-            node_config = node.get("data", {}).get("config", {})
-            input_key = node_config.get("inputParams", "last_message")
-            output_key = node_config.get("outputParams", "last_message")
-
-            # 检查是否是意图分类节点的目标节点（从意图分类节点路由过来的节点）
-            # 如果前一个节点是意图分类节点，使用意图分类节点的前置节点输出
-            intent_previous_output = self.variable_manager.get_variable("intent_previous_output")
-            if intent_previous_output is not None:
-                # 当前节点是意图分类后的目标节点，使用保存的前置节点输出
-                input_value = intent_previous_output
-                # 清除标记，避免影响后续节点
-                self.variable_manager.delete_variable("intent_previous_output")
-            else:
-                # 从全局变量中获取输入值
-                input_value = self.variable_manager.get_variable(input_key)
-                if input_value is None:
-                    # 如果全局变量中没有找到，使用默认值
-                    input_value = input_data.get(input_key, "")
-
-            # 准备节点执行的输入数据
-            node_input_data = {input_key: input_value}
-            # 执行节点
-            result = executor.execute(node_id, node, node_input_data)
-            # 处理输出数据到全局变量
-            if result and isinstance(result, dict):
-                # 获取节点的实际输出值
-                output_value = result.get(output_key)
-                if output_value is not None:
-                    # 更新全局变量
-                    if output_key == "last_message":
-                        # 特殊处理：condition、branch、intent节点的last_message不更新全局变量
-                        # 避免覆盖前置节点的输出
-                        if node_type not in ["condition", "branch", "intent"]:
-                            self.variable_manager.set_variable("last_message", output_value)
-                    else:
-                        # 非last_message的输出直接设置到全局变量
-                        self.variable_manager.set_variable(output_key, output_value)
-
-            # 更新上下文
-            context.end_time = time.time()
-            context.status = NodeStatus.COMPLETED
-            context.output_data = result
-
-            # 更新节点执行顺序
-            self._update_node_execution_order(node_id)
-            self._record_node_execution_result(node_id, context)
-
-            # 将节点结果保存到变量管理器（保持原有的节点结果存储机制）
-            self.variable_manager.set_variable(f"node_{node_id}_result", result)
-
-            return {
-                "success": True,
-                "node_id": node_id,
-                "node_type": node_type,
-                "data": result,
-                "execution_time": context.end_time - context.start_time,
-            }
-
-        except Exception as e:
-            context.end_time = time.time()
-            context.status = NodeStatus.FAILED
-            context.error_message = str(e)
-
-            # 更新节点执行顺序（失败节点也需要记录顺序）
-            self._update_node_execution_order(node_id)
-            self._record_node_execution_result(node_id, context)
-
-            logger.error(f"节点 {node_id} 执行失败: {str(e)}")
-
-            return {
-                "success": False,
-                "node_id": node_id,
-                "node_type": node_type,
-                "error": str(e),
-                "execution_time": context.end_time - context.start_time,
-            }
-
-    def _execute_parallel_nodes(self, node_ids: List[str], input_data: Dict[str, Any], remaining_timeout: float) -> Dict[str, Any]:
-        """并行执行多个节点
-
-        Args:
-            node_ids: 节点ID列表
-            input_data: 输入数据
-            remaining_timeout: 剩余超时时间
-
-        Returns:
-            并行执行结果
-        """
-        results = {}
-        timeout_per_node = remaining_timeout / len(node_ids)
-
-        with ThreadPoolExecutor(max_workers=min(len(node_ids), self.max_parallel_nodes)) as executor:
-            # 提交任务
-            futures = {}
-            for node_id in node_ids:
-                if self._check_interrupt_requested():
-                    break
-                future = executor.submit(self._execute_node_recursive, node_id, input_data, set(), timeout_per_node)  # 每个并行分支使用独立的访问集合
-                futures[future] = node_id
-
-            # 收集结果
-            for future in as_completed(futures, timeout=remaining_timeout):
-                node_id = futures[future]
-                try:
-                    result = future.result()
-                    results[node_id] = result
-
-                except Exception as e:
-                    logger.error(f"并行节点 {node_id} 执行失败: {str(e)}")
-                    results[node_id] = {"success": False, "error": str(e), "node_id": node_id}
-
-        return results
-
-    def _get_node_executor(self, node_type: str):
-        """获取节点执行器
-
-        Args:
-            node_type: 节点类型
-
-        Returns:
-            节点执行器实例
-        """
-        # 优先使用自定义执行器
-        if node_type in self.custom_node_executors:
-            executor = self.custom_node_executors[node_type]
-            # 如果是函数，需要包装成执行器类
-            if callable(executor) and not hasattr(executor, "execute"):
-
-                class FunctionExecutor(BaseNodeExecutor):
-                    def __init__(self, func, variable_manager):
-                        super().__init__(variable_manager)
-                        self.func = func
-
-                    def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Any:
-                        return self.func(node_id, node_config, input_data)
-
-                return FunctionExecutor(executor, self.variable_manager)
-            return executor
-
-        # 使用注册表中的执行器
-        executor_class = node_registry.get_executor(node_type)
-        if executor_class:
-            # 对于分支节点，需要传递起始节点ID
-            if node_type in ["condition", "branch"]:
-                return executor_class(self.variable_manager, self.start_node_id)
-            else:
-                return executor_class(self.variable_manager)
-
-        return None
-
-    def _get_next_nodes(self, node_id: str, node_result: Dict[str, Any]) -> List[str]:
-        """获取后续节点
-
-        Args:
-            node_id: 当前节点ID
-            node_result: 节点执行结果
-
-        Returns:
-            后续节点ID列表
-        """
-        next_nodes = []
-
-        # 提取意图结果用于日志
-        intent_result = node_result.get("data", {}).get("intent_result")
-        if intent_result:
-            logger.info(f"[路由决策] 节点 {node_id} 的意图结果: {intent_result!r}")
-
-        for edge in self.edges:
-            if edge.get("source") != node_id:
-                continue
-            source_handle = edge.get("sourceHandle", "")
-            target = edge.get("target")
-            should_follow = self._should_follow_edge(edge, node_result)
-
-            # 记录每条边的匹配情况
-            if intent_result:
-                logger.debug(f"[路由决策] 边 {edge.get('id')}: sourceHandle={source_handle!r}, target={target}, 匹配={should_follow}")
-
-            if not should_follow:
-                continue
-            if target:
-                next_nodes.append(target)
-
-        # 记录最终选择的节点
-        if next_nodes:
-            target_nodes_info = []
-            for target_id in next_nodes:
-                target_node = self._get_node_by_id(target_id)
-                if target_node:
-                    node_name = target_node.get("data", {}).get("config", {}).get("agentName", "")
-                    node_type = target_node.get("type", "")
-                    target_nodes_info.append(f"{target_id}(type={node_type}, name={node_name})")
-                else:
-                    target_nodes_info.append(target_id)
-            logger.info(f"[路由决策] 节点 {node_id} -> 下一个节点: {target_nodes_info}")
-        else:
-            logger.info(f"[路由决策] 节点 {node_id} 没有后续节点")
-
-        return next_nodes
-
-    def _should_follow_edge(self, edge: Dict[str, Any], node_result: Dict[str, Any]) -> bool:
-        """判断是否应该沿着这条边执行
-
-        Args:
-            edge: 边定义
-            node_result: 节点执行结果
-
-        Returns:
-            是否应该执行
-        """
-        source_handle = edge.get("sourceHandle", "")
-
-        # 检查是否是意图分类节点的路由边（通过sourceHandle匹配意图结果）
-        intent_result = node_result.get("data", {}).get("intent_result")
-        if intent_result:
-            # 这是意图分类节点，检查边的sourceHandle是否匹配意图结果
-            if source_handle and source_handle == intent_result:
-                return True
-            elif source_handle:
-                return False
-            else:
-                # 没有sourceHandle的边，默认不跟随（意图节点必须有明确的sourceHandle）
-                return False
-
-        # 检查是否是分支节点的条件边
-        if source_handle.lower() in ["true", "false"]:
-            condition_result = node_result["data"].get("condition_result")
-            if condition_result is None:
-                logger.warning(f"分支边缺少条件结果，edge: {edge.get('id', 'unknown')}")
-                return False
-            return (source_handle.lower() == "true") == bool(condition_result)
-
-        # 默认跟随边（对于非分支、非意图节点的普通边）
-        return True
-
-    def _parse_nodes(self, flow_json: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """解析节点定义"""
-        return flow_json.get("nodes", [])
-
-    def _parse_edges(self, flow_json: Dict[str, Any]) -> List[Dict[str, Any]]:
-        """解析边定义"""
-        return flow_json.get("edges", [])
-
-    def _identify_entry_nodes(self) -> List[str]:
-        """识别入口节点（没有输入边的节点）"""
-        all_nodes = {node["id"] for node in self.nodes}
-        target_nodes = {edge["target"] for edge in self.edges}
-        return list(all_nodes - target_nodes)
-
-    def _build_topology(self) -> TopologicalSorter:
-        """构建拓扑排序器用于检测循环依赖"""
-        topology = TopologicalSorter()
-
-        # 添加所有节点
-        for node in self.nodes:
-            topology.add(node["id"])
-
-        # 添加依赖关系
-        for edge in self.edges:
-            topology.add(edge["target"], edge["source"])
-
-        return topology
-
-    def _get_node_by_id(self, node_id: str) -> Optional[Dict[str, Any]]:
-        """根据ID获取节点（O(1) 复杂度）"""
-        return self._node_map.get(node_id)
 
 
 # 向后兼容别名

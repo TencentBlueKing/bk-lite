@@ -3,29 +3,6 @@
 from rest_framework import serializers
 
 
-class DashboardStatsSerializer(serializers.Serializer):
-    """Dashboard统计数据序列化器"""
-
-    # 目标统计
-    target_total = serializers.IntegerField(help_text="目标总数")
-    target_online = serializers.IntegerField(help_text="在线目标数")
-    target_offline = serializers.IntegerField(help_text="离线目标数")
-
-    # 脚本统计
-    script_total = serializers.IntegerField(help_text="脚本总数")
-    playbook_total = serializers.IntegerField(help_text="Playbook总数")
-
-    # 执行统计
-    execution_total = serializers.IntegerField(help_text="执行记录总数")
-    execution_success = serializers.IntegerField(help_text="执行成功数")
-    execution_failed = serializers.IntegerField(help_text="执行失败数")
-    execution_running = serializers.IntegerField(help_text="执行中数量")
-
-    # 定时任务统计
-    scheduled_task_total = serializers.IntegerField(help_text="定时任务总数")
-    scheduled_task_enabled = serializers.IntegerField(help_text="启用的定时任务数")
-
-
 class DashboardTrendSerializer(serializers.Serializer):
     """Dashboard趋势数据序列化器"""
 
@@ -33,16 +10,21 @@ class DashboardTrendSerializer(serializers.Serializer):
     execution_count = serializers.IntegerField(help_text="执行次数")
     success_count = serializers.IntegerField(help_text="成功次数")
     failed_count = serializers.IntegerField(help_text="失败次数")
+    cancelled_count = serializers.IntegerField(help_text="取消次数")
+    avg_duration_seconds = serializers.FloatField(help_text="当日平均执行时长（秒）")
 
 
-class DashboardRecentExecutionSerializer(serializers.Serializer):
-    """Dashboard最近执行记录序列化器"""
+class DashboardStatsSerializer(serializers.Serializer):
+    """Dashboard统计数据序列化器（资产与执行计数）"""
 
-    id = serializers.IntegerField(help_text="执行记录ID")
-    name = serializers.CharField(help_text="作业名称")
-    job_type = serializers.CharField(help_text="作业类型")
-    job_type_display = serializers.CharField(help_text="作业类型显示名称")
-    status = serializers.CharField(help_text="执行状态")
-    status_display = serializers.CharField(help_text="执行状态显示名称")
-    created_by = serializers.CharField(help_text="创建人")
-    created_at = serializers.DateTimeField(help_text="创建时间")
+    target_total = serializers.IntegerField(help_text="目标总数")
+    script_total = serializers.IntegerField(help_text="脚本总数")
+    playbook_total = serializers.IntegerField(help_text="Playbook总数")
+    execution_total = serializers.IntegerField(help_text="执行记录总数")
+    execution_success = serializers.IntegerField(help_text="执行成功数")
+    execution_failed = serializers.IntegerField(help_text="执行失败数")
+    execution_running = serializers.IntegerField(help_text="执行中数量")
+    execution_pending = serializers.IntegerField(help_text="等待中数量")
+    scheduled_task_total = serializers.IntegerField(help_text="定时任务总数")
+    scheduled_task_enabled = serializers.IntegerField(help_text="启用的定时任务数")
+    avg_duration_seconds = serializers.FloatField(help_text="平均执行时长（秒，基于已完成执行）")

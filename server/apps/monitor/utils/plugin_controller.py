@@ -3,7 +3,12 @@ import uuid
 from jinja2 import BaseLoader, DebugUndefined, Environment
 
 from apps.core.exceptions.base_app_exception import BaseAppException
-from apps.core.utils.safe_template import build_sandboxed_env
+from apps.core.utils.safe_template import (
+    TemplateSecurityError,
+    build_sandboxed_env,
+    sanitize_template_context,
+    validate_template_variables,
+)
 from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.models import CollectConfig, MonitorPlugin, MonitorPluginConfigTemplate
@@ -14,14 +19,102 @@ from apps.rpc.node_mgmt import NodeMgmt
 _DEFAULT_JINJA_ENV = Environment()
 _MONITOR_TEMPLATE_ALLOWED_FILTERS = (
     "default",
+    "lower",
+    "urlencode",
+    "replace",
 )
+_MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
+    "agents",
+    "auth_password",
+    "auth_protocol",
+    "auth_type",
+    "base_url",
+    "collector",
+    "collect_type",
+    "community",
+    "config_id",
+    "database",
+    "dbname",
+    "endpoint",
+    "host",
+    "insecure_skip_verify",
+    "instance_id",
+    "instance_type",
+    "interval",
+    "ip",
+    "jmx_url",
+    "logical_instance_value",
+    "metrics_modules",
+    "monitor_plugin_id",
+    "namespace",
+    "node_id",
+    "os_type",
+    "password",
+    "plugin_id",
+    "port",
+    "private_key_content",
+    "private_key_passphrase",
+    "priv_password",
+    "priv_protocol",
+    "protocol",
+    "response_timeout",
+    "sec_level",
+    "sec_name",
+    "server",
+    "server_url",
+    "storage_instance_key",
+    "timeout",
+    "tls_ca",
+    "tls_cert",
+    "tls_key",
+    "type",
+    "url",
+    "username",
+    "version",
+    "winrm_cert_validation",
+    "winrm_scheme",
+    "winrm_transport",
+}
+
+
+def _escape_toml_string(value):
+    if not isinstance(value, str):
+        value = str(value)
+    return (
+        value.replace("\\", "\\\\")
+        .replace('"', '\\"')
+        .replace("\n", "\\n")
+        .replace("\r", "\\r")
+        .replace("\t", "\\t")
+    )
 
 
 def to_toml_dict(d):
     """将字典转换为 TOML 格式的内联表"""
     if not d:
         return "{}"
-    return "{ " + ", ".join(f'"{k}" = "{v}"' for k, v in d.items()) + " }"
+    return "{ " + ", ".join(f'"{_escape_toml_string(k)}" = "{_escape_toml_string(v)}"' for k, v in d.items()) + " }"
+
+
+def _escape_toml_context_strings(value):
+    if isinstance(value, str):
+        return _escape_toml_string(value)
+    if isinstance(value, dict):
+        return {key: _escape_toml_context_strings(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_escape_toml_context_strings(item) for item in value]
+    return value
+
+
+def _normalize_template_context(context: dict) -> dict:
+    normalized = {**context}
+    metrics_modules = normalized.get("metrics_modules")
+    if isinstance(metrics_modules, (list, tuple)):
+        normalized["metrics_modules"] = ",".join(str(item).strip() for item in metrics_modules if str(item).strip())
+    for key in ("winrm_cert_validation",):
+        if isinstance(normalized.get(key), bool):
+            normalized[key] = "true" if normalized[key] else "false"
+    return normalized
 
 
 class Controller:
@@ -39,7 +132,9 @@ class Controller:
                 undefined=DebugUndefined,
                 extra_filters={"to_toml": to_toml_dict},
             )
-            missing_filters = [name for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters]
+            missing_filters = [
+                name for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters
+            ]
             if missing_filters:
                 raise BaseAppException(f"Missing default Jinja filters: {', '.join(missing_filters)}")
             env.filters.update({name: _DEFAULT_JINJA_ENV.filters[name] for name in _MONITOR_TEMPLATE_ALLOWED_FILTERS})
@@ -76,7 +171,7 @@ class Controller:
 
         return templates_by_type
 
-    def render_template(self, template_content: str, context: dict):
+    def render_template(self, template_content: str, context: dict, escape_toml_strings: bool = False):
         """
         渲染模板内容。
 
@@ -85,7 +180,7 @@ class Controller:
         :return: 渲染后的配置字符串
         :raises ValueError: 当 instance_id 格式不正确时
         """
-        _context = {**context}
+        _context = _normalize_template_context(context)
 
         # 优先使用显式 logical_instance_value（已规范化的逻辑实例值）。
         # 仅在缺失时才尝试解析 instance_id，保持向后兼容。
@@ -110,8 +205,18 @@ class Controller:
                     logger.error(f"解析 instance_id 失败: {instance_id}, 错误: {e}")
                     raise ValueError(f"无效的 instance_id 格式: {instance_id}") from e
 
+        safe_context = sanitize_template_context(_context)
+        if escape_toml_strings:
+            safe_context = _escape_toml_context_strings(safe_context)
+        try:
+            allowed_variables = set(safe_context.keys()) | _MONITOR_TEMPLATE_ALLOWED_VARIABLES
+            validate_template_variables(template_content, self.jinja_env, allowed_variables)
+        except TemplateSecurityError as e:
+            logger.warning(f"采集模板变量校验失败: {e}")
+            raise BaseAppException(f"采集模板包含未授权变量: {e}") from e
+
         template = self.jinja_env.from_string(template_content)
-        return template.render(_context)
+        return template.render(safe_context)
 
     def format_configs(self):
         """
@@ -228,6 +333,7 @@ class Controller:
                             "plugin_id": plugin_template_id or plugin_id,
                             "monitor_plugin_id": plugin_id,
                         },
+                        escape_toml_strings=template["file_type"] == "toml",
                     )
                 except ValueError as e:
                     raw_id = config_info.get("instance_id")

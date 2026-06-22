@@ -44,6 +44,16 @@ class TimeRangeChecker:
         self.config = config or {}
         self.check_time = check_time if check_time else timezone.now()
 
+    def _local_check_time(self) -> datetime.datetime:
+        """将待检查时间转换为项目本地时区（settings.TIME_ZONE）。
+
+        循环型窗口（每日/每周/每月）按本地时区的"墙上时间"判断，
+        否则当 TIME_ZONE 非 UTC 时会整体偏移时区差。naive 时间原样返回。
+        """
+        if timezone.is_aware(self.check_time):
+            return timezone.localtime(self.check_time)
+        return self.check_time
+
     def is_in_range(self) -> bool:
         """
         检查时间是否在配置的时间范围内
@@ -66,14 +76,14 @@ class TimeRangeChecker:
             elif time_type == "month":
                 return self._check_month_range()
             else:
-                logger.warning(f"Unknown time type: {time_type}")
+                logger.warning("[AlertUtil] 未知时间类型: %s", time_type)
                 return True
 
         except ValueError as e:
-            logger.error(f"Error parsing time format: {str(e)}")
+            logger.error("[AlertUtil] 解析时间格式失败: %s", e, exc_info=True)
             return False
         except Exception as e:
-            logger.error(f"Error checking time range: {str(e)}")
+            logger.error("[AlertUtil] 检查时间范围失败: %s", e, exc_info=True)
             return False
 
     def _check_one_time_range(self) -> bool:
@@ -103,13 +113,13 @@ class TimeRangeChecker:
             logger.warning("Day-time range missing start_time or end_time")
             return False
 
-        check_time_str = self.check_time.strftime("%H:%M:%S")
+        check_time_str = self._local_check_time().strftime("%H:%M:%S")
         return start_time_str <= check_time_str <= end_time_str
 
     def _check_week_range(self) -> bool:
         """检查每周时间范围"""
         week_day = self.config.get("week_month")
-        current_weekday = str(self.check_time.weekday() + 1)  # Monday is 1
+        current_weekday = str(self._local_check_time().weekday() + 1)  # Monday is 1
 
         # 检查是否是指定的周几
         if not self._is_day_matched(week_day, current_weekday):
@@ -121,7 +131,7 @@ class TimeRangeChecker:
     def _check_month_range(self) -> bool:
         """检查每月时间范围"""
         month_day = self.config.get("week_month")
-        current_day = str(self.check_time.day)
+        current_day = str(self._local_check_time().day)
 
         # 检查是否是指定的日期
         if not self._is_day_matched(month_day, current_day):
@@ -172,7 +182,7 @@ class TimeRangeChecker:
         start_time_str = self._extract_time_part(start_time_str)
         end_time_str = self._extract_time_part(end_time_str)
 
-        check_time_str = self.check_time.strftime("%H:%M:%S")
+        check_time_str = self._local_check_time().strftime("%H:%M:%S")
         return start_time_str <= check_time_str <= end_time_str
 
     @staticmethod

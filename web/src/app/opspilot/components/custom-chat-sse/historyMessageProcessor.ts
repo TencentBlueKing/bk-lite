@@ -3,8 +3,32 @@
  * 用于将历史会话中的 AG-UI 协议消息解析并渲染为 HTML
  */
 
-import { BrowserStepProgressData, BrowserStepsHistory, BrowserTaskReceivedData } from '@/app/opspilot/types/global';
-import { initToolCallTooltips, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
+import {
+  AgentStepProgressData,
+  ApprovalRequest,
+  BrowserStepProgressData,
+  BrowserStepsHistory,
+  BrowserTaskReceivedData,
+  ConfigAnalysisReport,
+  ConfigDiffReport,
+  RepairCommands,
+  ReportFileDownload,
+  UserChoiceRequest
+} from '@/app/opspilot/types/global';
+import {
+  ApprovalRequestValue,
+  ConfigAnalysisReportValue,
+  ConfigDiffReportValue,
+  RepairCommandsValue,
+  ReportFileDownloadValue,
+  UserChoiceRequestValue
+} from '@/app/opspilot/types/chat';
+import {
+  isStructuredConfigAnalysisReport,
+  normalizeConfigAnalysisRecommendations,
+  normalizeConfigAnalysisSection
+} from './aguiMessageHandler';
+import { initToolCallTooltips, renderAllToolCalls, renderErrorMessage, ToolCallInfo } from './toolCallRenderer';
 
 const escapeNewlinesInStrings = (raw: string) => {
   let result = '';
@@ -297,9 +321,34 @@ const parseJsonArray = (raw: string): any[] | null => {
   return parseObjectsLenient(unwrapped) || parseObjectsLenient(normalized) || null;
 };
 
+const parseAttachmentToolResult = (content: string) => {
+  try {
+    return JSON.parse(content);
+  } catch {
+    const extractField = (field: string) => {
+      const match = content.match(new RegExp(`[\"']${field}[\"']\\s*:\\s*[\"']([^\"']+)[\"']`));
+      return match?.[1];
+    };
+
+    return {
+      filename: extractField('filename'),
+      file_url: extractField('file_url'),
+      mime_type: extractField('mime_type'),
+    };
+  }
+};
+
 const buildFromEvents = (events: any[], finalize = true) => {
   const parts: string[] = [];
   const toolCalls = new Map<string, ToolCallInfo>();
+  const reportFileDownloads: ReportFileDownload[] = [];
+  const configDiffReports: ConfigDiffReport[] = [];
+  const configAnalysisReports: ConfigAnalysisReport[] = [];
+  const userChoiceRequests: UserChoiceRequest[] = [];
+  const approvalRequests: ApprovalRequest[] = [];
+  const repairCommandsList: RepairCommands[] = [];
+  // 历史回放没有真实的接收时间，用自增序号保证卡片按事件顺序排序
+  let seq = 0;
   let currentText = '';
   let thinking = '';
   let isThinking = false;
@@ -312,15 +361,34 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
   const flushToolCalls = () => {
     if (pendingToolIds.length > 0) {
-      const idsStr = pendingToolIds.join(',');
-      if (parts.length > 0) {
-        parts.push(`\n\n<!--TOOL_CALLS:${idsStr}-->`);
-      } else {
-        parts.push(`<!--TOOL_CALLS:${idsStr}-->`);
+      const group = new Map<string, ToolCallInfo>();
+      pendingToolIds.forEach(id => {
+        const tool = toolCalls.get(id);
+        if (tool) group.set(id, tool);
+      });
+      const toolCallsHtml = renderAllToolCalls(group, false);
+      if (toolCallsHtml) {
+        if (parts.length > 0) {
+          parts.push('\n\n' + toolCallsHtml);
+        } else {
+          parts.push(toolCallsHtml);
+        }
       }
       pendingToolIds.length = 0;
       lastBlockType = 'toolCall';
     }
+  };
+
+  const flushCurrentText = () => {
+    if (!currentText) return;
+    flushToolCalls();
+    if (parts.length > 0 && lastBlockType !== 'text') {
+      parts.push('\n\n' + currentText);
+    } else {
+      parts.push(currentText);
+    }
+    currentText = '';
+    lastBlockType = 'text';
   };
 
   const upsertStep = (stepData: BrowserStepProgressData) => {
@@ -370,23 +438,18 @@ const buildFromEvents = (events: any[], finalize = true) => {
 
       case 'TOOL_CALL_START':
         isThinking = false;
-        if (currentText) {
-          // Flush pending tool calls before text
-          flushToolCalls();
-          if (parts.length > 0 && lastBlockType !== 'text') {
-            parts.push('\n\n' + currentText);
-          } else {
-            parts.push(currentText);
-          }
-          currentText = '';
-          lastBlockType = 'text';
-        }
+        flushCurrentText();
         toolCalls.set(msg.toolCallId, {
           name: msg.toolCallName,
           args: '',
           status: 'completed',
           result: undefined
         });
+        // 在 START 时即入队渲染，避免持久化事件流缺少 TOOL_CALL_END 时工具丢失
+        if (msg.toolCallId && !pendingToolIds.includes(msg.toolCallId)) {
+          pendingToolIds.push(msg.toolCallId);
+          lastBlockType = 'toolCall';
+        }
         break;
 
       case 'TOOL_CALL_ARGS':
@@ -404,12 +467,29 @@ const buildFromEvents = (events: any[], finalize = true) => {
           if (tool) {
             tool.result = msg.content || '';
             tool.status = 'completed';
+            if (tool.name === 'generate_attachment_file') {
+              try {
+                const parsed = parseAttachmentToolResult(msg.content || '{}');
+                if (parsed?.file_url && parsed?.filename) {
+                  reportFileDownloads.push({
+                    download_id: `attachment_${msg.toolCallId}`,
+                    filename: parsed.filename,
+                    file_url: parsed.file_url,
+                    mime_type: parsed.mime_type || 'application/octet-stream',
+                    received_at: Date.now(),
+                  });
+                }
+              } catch {
+                // ignore invalid tool result payloads
+              }
+            }
           }
         }
         break;
 
       case 'TOOL_CALL_END':
-        if (msg.toolCallId && toolCalls.has(msg.toolCallId)) {
+        // 工具已在 TOOL_CALL_START 时入队，此处兜底处理 START 缺失的异常事件流
+        if (msg.toolCallId && toolCalls.has(msg.toolCallId) && !pendingToolIds.includes(msg.toolCallId)) {
           pendingToolIds.push(msg.toolCallId);
           lastBlockType = 'toolCall';
         }
@@ -473,6 +553,75 @@ const buildFromEvents = (events: any[], finalize = true) => {
           } else {
             agentSteps.push(newStep);
           }
+        } else if (msg.name === 'config_diff_report' && msg.value) {
+          const value = msg.value as ConfigDiffReportValue;
+          flushCurrentText();
+          flushToolCalls();
+          configDiffReports.push({ ...value, received_at: ++seq });
+          parts.push(`\n\n<!--CONFIG_DIFF:${value.report_id}-->`);
+          lastBlockType = 'configDiff';
+        } else if (msg.name === 'config_analysis_report' && msg.value) {
+          const value = msg.value as ConfigAnalysisReportValue;
+          flushCurrentText();
+          flushToolCalls();
+          if (isStructuredConfigAnalysisReport(value)) {
+            const report: ConfigAnalysisReport = {
+              ...value,
+              summary: value.summary || {},
+              severity_sections: value.severity_sections.map(normalizeConfigAnalysisSection),
+              recommendations: normalizeConfigAnalysisRecommendations(value.recommendations),
+              markdown: value.markdown,
+              fallback_markdown: value.fallback_markdown || value.markdown,
+              received_at: ++seq,
+            };
+            const existingIndex = configAnalysisReports.findIndex(r => r.report_id === value.report_id);
+            if (existingIndex >= 0) {
+              configAnalysisReports[existingIndex] = report;
+            } else {
+              configAnalysisReports.push(report);
+              parts.push(`\n\n<!--CONFIG_ANALYSIS:${value.report_id}-->`);
+              lastBlockType = 'configAnalysis';
+            }
+          } else {
+            const fallbackMarkdown = value.fallback_markdown || value.markdown;
+            if (fallbackMarkdown) {
+              if (parts.length > 0 && lastBlockType !== 'text') {
+                parts.push('\n\n' + fallbackMarkdown);
+              } else {
+                parts.push(fallbackMarkdown);
+              }
+              lastBlockType = 'text';
+            }
+          }
+        } else if (msg.name === 'user_choice_request' && msg.value) {
+          const value = msg.value as UserChoiceRequestValue;
+          flushCurrentText();
+          flushToolCalls();
+          // 历史回放默认按超时处理（只读卡片），后续 user_choice_result 事件会修正实际状态
+          userChoiceRequests.push({ ...value, received_at: 0, status: 'timeout' });
+          parts.push(`\n\n<!--USER_CHOICE:${value.choice_id}-->`);
+          lastBlockType = 'userChoice';
+        } else if (msg.name === 'user_choice_result' && msg.value) {
+          const value = msg.value as { choice_id: string; selected: string[]; source: string };
+          const request = userChoiceRequests.find(r => r.choice_id === value.choice_id);
+          if (request) {
+            request.status = value.source === 'user' ? 'submitted' : 'timeout';
+            request.selected = value.selected;
+          }
+        } else if (msg.name === 'approval_request' && msg.value) {
+          const value = msg.value as ApprovalRequestValue;
+          flushCurrentText();
+          flushToolCalls();
+          // received_at 置 0 使历史中的审批卡片显示为已超时的只读状态
+          approvalRequests.push({ ...value, received_at: 0, status: 'pending' });
+        } else if (msg.name === 'repair_commands' && msg.value) {
+          const value = msg.value as RepairCommandsValue;
+          flushCurrentText();
+          flushToolCalls();
+          repairCommandsList.push({ ...value, received_at: ++seq });
+        } else if (msg.name === 'report_file_download' && msg.value) {
+          const value = msg.value as ReportFileDownloadValue;
+          reportFileDownloads.push({ ...value, received_at: ++seq });
         }
         break;
 
@@ -488,15 +637,29 @@ const buildFromEvents = (events: any[], finalize = true) => {
     }
   });
 
-  // 输出剩余的工具调用占位
+  // 输出剩余的文本和工具调用
+  flushCurrentText();
   flushToolCalls();
 
-  if (currentText) {
-    if (parts.length > 0 && lastBlockType !== 'text') {
-      parts.push('\n\n' + currentText);
-    } else {
-      parts.push(currentText);
-    }
+  // Fallback: report_config_diff 工具已完成但 CUSTOM 事件缺失时，从工具入参恢复 diff 报告
+  if (configDiffReports.length === 0) {
+    toolCalls.forEach((tool, toolCallId) => {
+      if (tool.name !== 'report_config_diff' || !tool.args) return;
+      try {
+        const args = JSON.parse(tool.args);
+        if (args.items && args.items.length > 0) {
+          configDiffReports.push({
+            report_id: `fallback_${toolCallId}`,
+            title: args.title || '',
+            cluster_name: args.cluster_name || '',
+            items: args.items,
+            received_at: ++seq,
+          });
+        }
+      } catch {
+        // args 解析失败则跳过回退
+      }
+    });
   }
 
   const contentText = parts.join('');
@@ -511,6 +674,12 @@ const buildFromEvents = (events: any[], finalize = true) => {
     browserStepProgress: lastStep,
     browserStepsHistory,
     agentStepProgress: agentSteps.length > 0 ? agentSteps : undefined,
+    reportFileDownloads: reportFileDownloads.length > 0 ? reportFileDownloads : undefined,
+    configDiffReports: configDiffReports.length > 0 ? configDiffReports : undefined,
+    configAnalysisReports: configAnalysisReports.length > 0 ? configAnalysisReports : undefined,
+    userChoiceRequests: userChoiceRequests.length > 0 ? userChoiceRequests : undefined,
+    approvalRequests: approvalRequests.length > 0 ? approvalRequests : undefined,
+    repairCommands: repairCommandsList.length > 0 ? repairCommandsList : undefined,
     toolCalls: toolCalls.size > 0 ? Array.from(toolCalls.entries()).map(([id, info]) => ({
       id, name: info.name, args: info.args, status: info.status as 'calling' | 'completed', result: info.result
     })) : undefined
@@ -564,7 +733,13 @@ export const processHistoryMessageWithExtras = (
   isThinking?: boolean;
   browserStepProgress?: BrowserStepProgressData | null;
   browserStepsHistory?: BrowserStepsHistory | null;
-  agentStepProgress?: import('@/app/opspilot/types/global').AgentStepProgressData[];
+  agentStepProgress?: AgentStepProgressData[];
+  reportFileDownloads?: ReportFileDownload[];
+  configDiffReports?: ConfigDiffReport[];
+  configAnalysisReports?: ConfigAnalysisReport[];
+  userChoiceRequests?: UserChoiceRequest[];
+  approvalRequests?: ApprovalRequest[];
+  repairCommands?: RepairCommands[];
   toolCalls?: Array<{ id: string; name: string; args: string; status: 'calling' | 'completed'; result?: string }>;
 } => {
   if (role !== 'bot') {
@@ -573,7 +748,8 @@ export const processHistoryMessageWithExtras = (
       thinking: '',
       isThinking: false,
       browserStepProgress: null,
-      browserStepsHistory: null
+      browserStepsHistory: null,
+      reportFileDownloads: undefined,
     };
   }
 
@@ -587,7 +763,8 @@ export const processHistoryMessageWithExtras = (
       thinking: '',
       isThinking: false,
       browserStepProgress: null,
-      browserStepsHistory: null
+      browserStepsHistory: null,
+      reportFileDownloads: undefined,
     };
   }
 
@@ -598,7 +775,8 @@ export const processHistoryMessageWithExtras = (
       thinking: '',
       isThinking: false,
       browserStepProgress: null,
-      browserStepsHistory: null
+      browserStepsHistory: null,
+      reportFileDownloads: undefined,
     };
   }
 

@@ -26,6 +26,9 @@ def migrate_policy():
     for file_path in path_list:
         try:
             policy_data = json.loads(Path(file_path).read_text(encoding='utf-8'))
+            if policy_data == []:
+                logger.info(f'跳过空策略配置: {file_path}')
+                continue
             PolicyService.import_monitor_policy(policy_data)
             logger.info(f'导入策略成功: {file_path}')
             success_count += 1

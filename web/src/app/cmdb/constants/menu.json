@@ -119,6 +119,12 @@
           ]
         },
         {
+          "title": "自定义上报",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/customReporting",
+          "name": "model_management"
+        },
+        {
           "title": "操作日志",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetManage/operationLog",
@@ -245,6 +251,12 @@
               "name": "collection_tool"
             }
           ]
+        },
+        {
+          "title": "Custom Reporting",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetManage/customReporting",
+          "name": "model_management"
         },
         {
           "title": "Operation Log",

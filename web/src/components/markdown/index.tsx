@@ -9,6 +9,7 @@ import gfm from 'remark-gfm';
 import 'github-markdown-css/github-markdown.css';
 import styles from './index.module.scss';
 import { getClientIdFromRoute } from '@/utils/route';
+import { useTranslation } from '@/utils/i18n';
 
 interface MarkdownRendererProps {
   filePath?: string;
@@ -29,6 +30,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
   fileName,
   content: externalContent,
 }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState<boolean>(true);
   const [content, setContent] = useState<string>('');
 
@@ -47,7 +49,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         setContent('');
       }
     } catch (error) {
-      message.error('Failed to process markdown content.');
+      message.error(t('common.markdownProcessFailed'));
       console.error(error);
     } finally {
       setLoading(false);
@@ -78,7 +80,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({
         .process(data.content);
       setContent(sanitizeMarkdownHtml(processedContent.toString()));
     } catch (error) {
-      message.error('Failed to load markdown content.');
+      message.error(t('common.markdownLoadFailed'));
       console.error(error);
     } finally {
       setLoading(false);

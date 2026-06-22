@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='mssql'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["sqlserver_database_io_read_latency_ms", "sqlserver_waitstats_wait_time_ms_rate", "sqlserver_volume_space_available_space_bytes"],
+  "display_fields": [{"name": "Database Read Latency", "sort_order": 0, "metrics": [{"plugin": "MSSQL", "metric": "sqlserver_database_io_read_latency_ms"}]}, {"name": "Wait Time Rate", "sort_order": 1, "metrics": [{"plugin": "MSSQL", "metric": "sqlserver_waitstats_wait_time_ms_rate"}]}, {"name": "Volume Available Space", "sort_order": 2, "metrics": [{"plugin": "MSSQL", "metric": "sqlserver_volume_space_available_space_bytes"}]}],
   "metrics": [
     {
       "metric_group": "Base",
@@ -50,7 +51,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "database_name", "description": "数据库名"}, {"name": "logical_filename", "description": "逻辑文件名"}, {"name": "file_type", "description": "文件类型(ROWS/LOG)"}],
       "description": "Average latency time for database file read operations, reflecting storage subsystem performance. High latency may indicate storage bottlenecks, network issues, or insufficient hardware performance.",
       "query": "avg_over_time(sqlserver_database_io_read_latency_ms{__$labels__}[5m])"
     },
@@ -61,7 +62,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "database_name", "description": "数据库名"}, {"name": "logical_filename", "description": "逻辑文件名"}, {"name": "file_type", "description": "文件类型(ROWS/LOG)"}],
       "description": "Average latency time for database file write operations, directly impacting transaction performance and application response times. High latency may affect data write speed and system throughput.",
       "query": "avg_over_time(sqlserver_database_io_write_latency_ms{__$labels__}[5m])"
     },
@@ -72,7 +73,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [{"name": "database_name", "description": "数据库名"}, {"name": "logical_filename", "description": "逻辑文件名"}, {"name": "file_type", "description": "文件类型(ROWS/LOG)"}],
       "description": "Rate of database file read operations, indicating data retrieval load intensity and working set access patterns. High read rates may indicate frequent queries or low cache efficiency.",
       "query": "rate(sqlserver_database_io_reads{__$labels__}[5m])"
     },
@@ -83,7 +84,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [{"name": "database_name", "description": "数据库名"}, {"name": "logical_filename", "description": "逻辑文件名"}, {"name": "file_type", "description": "文件类型(ROWS/LOG)"}],
       "description": "Rate of database file write operations, indicating data write load intensity and transaction activity levels. High write rates may indicate substantial data updates or insert operations.",
       "query": "rate(sqlserver_database_io_writes{__$labels__}[5m])"
     },
@@ -94,7 +95,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "kibibytes",
-      "dimensions": [],
+      "dimensions": [{"name": "clerk_type", "description": "内存 Clerk 类型"}],
       "description": "Current memory size allocated by SQL Server internal memory clerks, used to analyze memory usage distribution and identify potential memory leaks. Different clerks represent different memory usage purposes.",
       "query": "sqlserver_memory_clerks_size_kb{__$labels__}"
     },
@@ -116,7 +117,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "s",
-      "dimensions": [],
+      "dimensions": [{"name": "object", "description": "性能对象(Buffer Manager/Buffer Node)"}, {"name": "instance", "description": "NUMA 节点"}],
       "description": "Average time data pages stay in the buffer pool, reflecting memory pressure. Low values suggest insufficient memory, potentially causing frequent physical I/O and impacting performance.",
       "query": "sqlserver_performance_value{counter=\"Page life expectancy\", __$labels__}"
     },
@@ -149,7 +150,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "instance", "description": "锁资源类型"}],
       "description": "Rate of lock wait time, reflecting concurrency contention. High values may indicate blocking or lock contention issues that require transaction design optimization.",
       "query": "rate(sqlserver_performance_value{counter=~\"Lock Waits/sec\", __$labels__}[5m])"
     },
@@ -160,7 +161,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "session_db_name", "description": "会话数据库"}, {"name": "status", "description": "请求状态"}, {"name": "command", "description": "命令类型"}],
       "description": "Rate of CPU time consumed by requests, used to identify queries and statements with high CPU consumption, aiding in performance optimization and resource allocation decisions.",
       "query": "rate(sqlserver_requests_cpu_time_ms{__$labels__}[5m])"
     },
@@ -171,7 +172,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [{"name": "session_db_name", "description": "会话数据库"}, {"name": "status", "description": "请求状态"}, {"name": "command", "description": "命令类型"}],
       "description": "Rate of logical read operations by requests, reflecting query data access patterns and working set size. High logical reads may indicate queries lacking indexes or needing optimization.",
       "query": "rate(sqlserver_requests_logical_reads{__$labels__}[5m])"
     },
@@ -182,7 +183,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "session_db_name", "description": "会话数据库"}, {"name": "status", "description": "请求状态"}, {"name": "command", "description": "命令类型"}],
       "description": "Rate of total elapsed time of requests, monitoring query execution efficiency and response times. High elapsed time may indicate complex queries, large data volumes, or performance issues.",
       "query": "rate(sqlserver_requests_total_elapsed_time_ms{__$labels__}[5m])"
     },
@@ -193,7 +194,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "session_db_name", "description": "会话数据库"}, {"name": "status", "description": "请求状态"}, {"name": "command", "description": "命令类型"}],
       "description": "Rate of wait time of requests, reflecting query waiting on resources. High wait times may indicate resource bottlenecks or lock contention.",
       "query": "rate(sqlserver_requests_wait_time_ms{__$labels__}[5m])"
     },
@@ -204,7 +205,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [{"name": "scheduler_id", "description": "调度器 ID"}, {"name": "cpu_id", "description": "CPU ID"}],
       "description": "Number of active workers currently executing tasks on schedulers, reflecting CPU scheduling load. Excessive numbers may indicate high CPU pressure or parallel query contention.",
       "query": "sqlserver_schedulers_active_workers_count{__$labels__}"
     },
@@ -215,7 +216,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [{"name": "scheduler_id", "description": "调度器 ID"}, {"name": "cpu_id", "description": "CPU ID"}],
       "description": "Number of tasks ready to run and waiting for CPU execution on schedulers, reflecting CPU queue length. High values indicate insufficient CPU resources or a large number of concurrent requests.",
       "query": "sqlserver_schedulers_runnable_tasks_count{__$labels__}"
     },
@@ -226,7 +227,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "wait_category", "description": "等待类别"}, {"name": "wait_type", "description": "等待类型"}],
       "description": "Rate of time spent waiting for external resources (such as disk, network, memory), reflecting true resource bottlenecks. Helps identify hardware limitations like I/O, memory, or network.",
       "query": "rate(sqlserver_waitstats_resource_wait_ms{__$labels__}[5m])"
     },
@@ -237,7 +238,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "wait_category", "description": "等待类别"}, {"name": "wait_type", "description": "等待类型"}],
       "description": "Rate of time spent waiting for CPU scheduler, reflecting CPU pressure. High signal wait time indicates CPU resource contention or parallel query issues, requiring query optimization or additional CPU resources.",
       "query": "rate(sqlserver_waitstats_signal_wait_time_ms{__$labels__}[5m])"
     },
@@ -248,7 +249,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "ms",
-      "dimensions": [],
+      "dimensions": [{"name": "wait_category", "description": "等待类别"}, {"name": "wait_type", "description": "等待类型"}],
       "description": "Rate of cumulative wait time for various wait types in SQL Server, a key metric for performance tuning that helps identify system bottlenecks.",
       "query": "rate(sqlserver_waitstats_wait_time_ms{__$labels__}[5m])"
     },
@@ -259,7 +260,7 @@
       "instance_id_keys": ["instance_id"],
       "data_type": "Number",
       "unit": "counts",
-      "dimensions": [],
+      "dimensions": [{"name": "wait_category", "description": "等待类别"}, {"name": "wait_type", "description": "等待类型"}],
       "description": "Number of SQL Server tasks currently waiting, reflecting the system's concurrent wait situation. High waiting tasks count may indicate resource contention in the system.",
       "query": "sqlserver_waitstats_waiting_tasks_count{__$labels__}"
     },

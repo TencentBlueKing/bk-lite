@@ -1,15 +1,11 @@
 from copy import deepcopy
-from importlib import import_module
 
+from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
 
 
 def _get_enterprise_collect_obj_tree():
-    try:
-        module = import_module("apps.cmdb.enterprise.tree")
-    except ModuleNotFoundError:
-        return []
-    return deepcopy(getattr(module, "ENTERPRISE_COLLECT_OBJ_TREE", []))
+    return deepcopy(get_collect_enterprise_extension().collect_tree)
 
 
 def _normalize_enterprise_groups(enterprise_tree):

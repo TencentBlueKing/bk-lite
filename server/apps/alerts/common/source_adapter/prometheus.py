@@ -33,7 +33,7 @@ class PrometheusAdapter(AlertSourceAdapter):
             response.raise_for_status()
             return response.json().get('data', {}).get('alerts', [])
         except Exception as e:
-            logger.error(f"Failed to fetch alerts from Prometheus: {e}")
+            logger.error("[AlertSource] 从 Prometheus 拉取告警失败: %s", e, exc_info=True)
             return []
 
     def normalize_payload(self, payload: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -51,6 +51,7 @@ class PrometheusAdapter(AlertSourceAdapter):
         normalized_events = []
 
         for alert in alerts:
+            # TODO 参数字段不应该多从labels获取而是外层直接传递过来，后续可以优化告警源适配器的接口设计，减少对labels的依赖
             labels = {**common_labels, **(alert.get("labels", {}) or {})}
             annotations = {**common_annotations, **(alert.get("annotations", {}) or {})}
             alertname = labels.get("alertname") or annotations.get("alertname") or "Prometheus Alert"

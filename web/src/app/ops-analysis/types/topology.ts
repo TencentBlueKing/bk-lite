@@ -14,6 +14,12 @@ export interface Point {
   y: number;
 }
 
+export interface TopologyViewportConfig {
+  width?: number;
+  height?: number;
+  letterboxColor?: string;
+}
+
 // 状态管理相关类型
 export interface GraphState {
   instance: X6Graph | null;
@@ -271,11 +277,13 @@ export interface DropPosition {
 export interface ToolbarProps {
   isSelectMode: boolean;
   isEditMode?: boolean;
+  isFullscreen?: boolean;
   selectedTopology?: DirItem | null;
   onZoomIn: () => void;
   onZoomOut: () => void;
   onEdit: () => void;
   onSave: () => void;
+  onFullscreenToggle: () => void;
   onFit: () => void;
   onDelete: () => void;
   onSelectMode: () => void;
@@ -287,6 +295,7 @@ export interface ToolbarProps {
   onFrequencyChange?: (frequency: number) => void;
   onCancel?: () => void;
   onFilterConfig?: () => void;
+  onPresentationConfig?: () => void;
 }
 
 // ViewConfig 表单值类型
@@ -304,6 +313,9 @@ export interface ViewConfigFormValues {
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
+  gaugeMin?: number;
+  gaugeMax?: number;
+  gaugeShape?: 'semicircle' | 'circle';
   thresholdColors?: Array<{
     value: string;
     color: string;
@@ -341,6 +353,8 @@ export interface NodeConfigFormValues {
   nameColor?: string;
   nameFontSize?: number;
   unit?: string;
+  unitId?: string;
+  valueMappings?: import('@/app/ops-analysis/utils/valueMapping').ValueMapping[];
   conversionFactor?: number;
   decimalPlaces?: number;
   thresholdColors?: Array<{
@@ -391,5 +405,6 @@ export interface TopologySaveData {
     nodes: TopologyNodeData[];
     edges: SerializedEdge[];
     filters?: UnifiedFilterDefinition[];
+    viewport?: TopologyViewportConfig;
   };
 }

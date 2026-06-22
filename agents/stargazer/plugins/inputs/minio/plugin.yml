@@ -1,0 +1,32 @@
+name: minio
+version: "1.0.0"
+category: storage
+
+metadata:
+  display_name: "MinIO 对象存储【BETA】"
+  description: "MinIO 对象存储采集插件（Beta），脚本方式采集进程/端口/数据目录/部署模式等"
+  author: "WeOps"
+  tags: [storage, minio, beta]
+  cloud_protocol: false
+  model_id: minio
+
+# ============================================================================
+# 执行器配置
+# ============================================================================
+executors:
+  # Job 类型（脚本采集）
+  job:
+    type: job
+    timeout: 60
+
+    scripts:
+      linux: plugins/inputs/minio/minio_default_discover.sh
+
+    collector:
+      module: plugins.script_executor
+      class: SSHPlugin
+
+    default_script: linux
+
+# 默认执行器
+default_executor: job

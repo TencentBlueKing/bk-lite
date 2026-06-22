@@ -2,14 +2,17 @@
 动作节点（HTTP请求、定时任务等）
 """
 
+import base64
 import json
 from typing import Any, Dict
 
 import requests
+from django.utils import timezone
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_requests import safe_delete, safe_get, safe_patch, safe_post, safe_put
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
+from apps.opspilot.models import WorkflowAttachmentAsset
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.rpc.system_mgmt import SystemMgmt
 
@@ -159,6 +162,15 @@ class HttpActionNode(BaseNodeExecutor):
 class NotifyNode(BaseNodeExecutor):
     """通知节点"""
 
+    SUPPORTED_ATTACHMENT_EXTENSIONS = {"md", "pdf", "docx"}
+
+    @staticmethod
+    def _build_email_attachment_filename(original_filename: str, index: int) -> str:
+        extension = original_filename.rsplit(".", 1)[-1].lower() if "." in original_filename else ""
+        date_prefix = timezone.localtime().strftime("%Y%m%d")
+        suffix = "" if index == 0 else f"_{index + 1}"
+        return f"{date_prefix}{suffix}.{extension}" if extension else f"{date_prefix}{suffix}"
+
     def _render_content(self, content: str, node_id: str) -> str:
         """渲染通知内容
 
@@ -182,6 +194,21 @@ class NotifyNode(BaseNodeExecutor):
             logger.warning(f"通知节点 {node_id} 内容渲染失败: {e}")
             return content
 
+    def _resolve_receivers(self, config: Dict[str, Any]) -> list[str]:
+        receivers = config.get("notificationRecipients") or config.get("notificationReceivers", [])
+        if receivers:
+            return receivers
+
+        if not self.variable_manager:
+            return []
+
+        flow_input = self.variable_manager.get_variable("flow_input", {}) or {}
+        if not isinstance(flow_input, dict):
+            return []
+
+        fallback_receivers = flow_input.get("user_ids", [])
+        return [str(receiver).strip() for receiver in fallback_receivers if str(receiver).strip()]
+
     def execute(self, node_id: str, node_config: Dict[str, Any], input_data: Dict[str, Any]) -> Dict[str, Any]:
         """执行通知发送"""
         config = node_config["data"].get("config", {})
@@ -192,7 +219,8 @@ class NotifyNode(BaseNodeExecutor):
             channel_id = config.get("notificationMethod")
             title = config.get("notificationTitle") or config.get("notificationSubject", "")
             content = config.get("notificationContent", "")
-            receivers = config.get("notificationRecipients") or config.get("notificationReceivers", [])
+            receivers = self._resolve_receivers(config)
+            notification_type = config.get("notificationType", "email")
 
             # 参数验证
             if not channel_id:
@@ -209,9 +237,12 @@ class NotifyNode(BaseNodeExecutor):
             # 渲染通知内容
             rendered_content = self._render_content(content, node_id)
             rendered_title = self._render_content(title, node_id) if title else ""
+            attachments = []
+            if notification_type == "email":
+                attachments = self._build_attachments()
 
             # 调用发送通知接口
-            result = self._send_notification(channel_id, rendered_title, rendered_content, receivers, node_id)
+            result = self._send_notification(channel_id, rendered_title, rendered_content, receivers, node_id, attachments)
 
             logger.info(f"通知节点 {node_id} 执行完成: {result}")
             return {output_key: f"通知已发送: {rendered_title}"}
@@ -225,14 +256,49 @@ class NotifyNode(BaseNodeExecutor):
             logger.error(f"通知节点 {node_id} 执行失败: {str(e)}")
             return {output_key: f"通知发送失败: {str(e)}"}
 
-    def _send_notification(self, channel_id: int, title: str, content: str, receivers: list, node_id: str) -> Dict[str, Any]:
+    def _build_attachments(self) -> list[dict]:
+        execution_id = str(self.variable_manager.get_variable("execution_id", "") or "")
+        if not execution_id:
+            raise ValueError("当前工作流缺少 execution_id，无法解析附件")
+
+        attachments = []
+        assets = WorkflowAttachmentAsset.objects.filter(execution_id=execution_id).order_by("created_at", "id")
+        for index, asset in enumerate(assets):
+            extension = asset.filename.rsplit(".", 1)[-1].lower() if "." in asset.filename else ""
+            if extension not in self.SUPPORTED_ATTACHMENT_EXTENSIONS:
+                raise ValueError(f"附件 {asset.filename} 类型不支持发送")
+
+            asset.file_knowledge.file.open("rb")
+            try:
+                file_bytes = asset.file_knowledge.file.read()
+            finally:
+                asset.file_knowledge.file.close()
+
+            attachments.append(
+                {
+                    "filename": self._build_email_attachment_filename(asset.filename, index),
+                    "content": base64.b64encode(file_bytes).decode("utf-8"),
+                }
+            )
+
+        return attachments
+
+    def _send_notification(
+        self, channel_id: int, title: str, content: str, receivers: list, node_id: str, attachments: list[dict] | None = None
+    ) -> Dict[str, Any]:
         """发送通知消息"""
         try:
             # 创建系统管理客户端
             system_client = SystemMgmt()
 
             # 调用发送通知接口
-            result = system_client.send_msg_with_channel(channel_id=channel_id, title=title, content=content, receivers=receivers)
+            result = system_client.send_msg_with_channel(
+                channel_id=channel_id,
+                title=title,
+                content=content,
+                receivers=receivers,
+                attachments=attachments or None,
+            )
 
             logger.info(f"通知节点 {node_id} 发送通知成功")
             return result

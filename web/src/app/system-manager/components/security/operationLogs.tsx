@@ -1,12 +1,14 @@
 'use client';
 
 import React, { useState, useEffect, useRef } from 'react';
-import { Input, Select, Button, message } from 'antd';
+import { Input, Select, Button, message, Drawer, Descriptions } from 'antd';
+import ReactDiffViewer from 'react-diff-viewer-continued';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { useClientData } from '@/context/client';
-import dayjs from 'dayjs';
 import { useSecurityApi } from '@/app/system-manager/api/security';
+import { buildOperationLogParams } from '@/app/system-manager/utils/operationLogParams';
+import { hasOperationDetail } from '@/app/system-manager/utils/operationLogDetail';
 import CustomTable from '@/components/custom-table';
 import TimeSelector from '@/components/time-selector';
 
@@ -23,6 +25,9 @@ interface OperationLog {
   domain: string;
   operation_time: string;
   created_at: string;
+  target_type?: string;
+  target_id?: string;
+  detail?: Record<string, any>;
 }
 
 const OperationLogs: React.FC = () => {
@@ -43,33 +48,15 @@ const OperationLogs: React.FC = () => {
     actionType: '',
   });
   const [timeRange, setTimeRange] = useState<number[]>([]);
+  const [detailVisible, setDetailVisible] = useState(false);
+  const [detailRecord, setDetailRecord] = useState<OperationLog | null>(null);
 
   const { getOperationLogs } = useSecurityApi();
 
   const fetchOperationLogs = async (page = 1, pageSize = pagination.pageSize) => {
     setLoading(true);
     try {
-      const params: any = {
-        page,
-        page_size: pageSize,
-      };
-
-      if (filters.username) {
-        params.username = filters.username;
-      }
-
-      if (filters.app) {
-        params.app = filters.app;
-      }
-
-      if (filters.actionType) {
-        params.action_type = filters.actionType;
-      }
-
-      if (timeRange && timeRange.length === 2) {
-        params.start_time = dayjs(timeRange[0]).format('YYYY-MM-DD HH:mm:ss');
-        params.end_time = dayjs(timeRange[1]).format('YYYY-MM-DD HH:mm:ss');
-      }
+      const params = buildOperationLogParams(filters, timeRange, page, pageSize);
 
       const response = await getOperationLogs(params);
       setDataSource(response.items || []);
@@ -114,6 +101,20 @@ const OperationLogs: React.FC = () => {
     setTimeRange(range);
   };
 
+  const handleOpenDetail = (record: OperationLog) => {
+    setDetailRecord(record);
+    setDetailVisible(true);
+  };
+
+  const handleCloseDetail = () => {
+    setDetailVisible(false);
+    setDetailRecord(null);
+  };
+
+  const detail = detailRecord?.detail || {};
+  const hasDiff =
+    detail.before_data !== undefined || detail.after_data !== undefined;
+
   const columns = [
     {
       title: t('system.security.operationTime'),
@@ -146,6 +147,20 @@ const OperationLogs: React.FC = () => {
       dataIndex: 'summary',
       key: 'summary',
       ellipsis: true,
+    },
+    {
+      title: t('common.actions'),
+      key: 'detail',
+      width: 100,
+      fixed: 'right' as const,
+      render: (_: unknown, record: OperationLog) =>
+        hasOperationDetail(record) ? (
+          <Button type="link" size="small" onClick={() => handleOpenDetail(record)}>
+            {t('common.detail')}
+          </Button>
+        ) : (
+          '--'
+        ),
     },
   ];
 
@@ -227,6 +242,55 @@ const OperationLogs: React.FC = () => {
           scroll={{ x: 1200 }}
         />
       </div>
+
+      <Drawer
+        title={t('common.detail')}
+        width={720}
+        open={detailVisible}
+        onClose={handleCloseDetail}
+        destroyOnClose
+      >
+        {detailRecord && (
+          <div className="flex flex-col gap-4">
+            <Descriptions column={1} bordered size="small">
+              <Descriptions.Item label={t('system.security.targetType') || '对象类型'}>
+                {detailRecord.target_type || '--'}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('system.security.targetId') || '对象ID'}>
+                {detailRecord.target_id || '--'}
+              </Descriptions.Item>
+              {detail.scenario && (
+                <Descriptions.Item label={t('system.security.scenario') || '场景'}>
+                  {detail.scenario}
+                </Descriptions.Item>
+              )}
+              {detail.model_object && (
+                <Descriptions.Item label={t('system.security.modelObject') || '模型'}>
+                  {detail.model_object}
+                </Descriptions.Item>
+              )}
+              {detail.operator_object && (
+                <Descriptions.Item label={t('system.security.operatorObject') || '操作对象'}>
+                  {detail.operator_object}
+                </Descriptions.Item>
+              )}
+            </Descriptions>
+
+            {hasDiff && (
+              <div>
+                <div className="mb-2 font-medium">
+                  {t('system.security.beforeAfter') || '变更前后对比'}
+                </div>
+                <ReactDiffViewer
+                  oldValue={JSON.stringify(detail.before_data ?? {}, null, 2)}
+                  newValue={JSON.stringify(detail.after_data ?? {}, null, 2)}
+                  splitView
+                />
+              </div>
+            )}
+          </div>
+        )}
+      </Drawer>
     </div>
   );
 };

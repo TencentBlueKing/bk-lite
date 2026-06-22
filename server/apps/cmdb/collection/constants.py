@@ -109,6 +109,7 @@ VMWARE_COLLECT_MAP = {
 # "network_interfaces_info_gauge"
 NETWORK_COLLECT = ["network_system_info_gauge", "network_interfaces_info_gauge"]
 NETWORK_INTERFACES_RELATIONS = "network_topo_info_gauge"
+NETWORK_TOPOLOGY_FACTS = "network_topology_facts_info_gauge"
 
 PROTOCOL_METRIC_MAP = {
     "mysql": ["mysql_info_gauge"],
@@ -162,6 +163,7 @@ MIDDLEWARE_METRIC_MAP = {
     "jboss": ["jboss_info_gauge"],
     "weblogic": ["weblogic_info_gauge"],
     "keepalived": ["keepalived_info_gauge"],
+    "keepalive": ["keepalived_info_gauge"],
     "memcached": ["memcached_info_gauge"],
     "openresty": ["openresty_info_gauge"],
     "rocketmq": ["rocketmq_info_gauge"],

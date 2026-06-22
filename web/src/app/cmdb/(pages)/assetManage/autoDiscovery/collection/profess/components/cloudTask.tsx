@@ -2,21 +2,20 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import BaseTaskForm, { BaseTaskRef } from './baseTask';
-import styles from '../index.module.scss';
 import { useCollectApi } from '@/app/cmdb/api';
-import { CaretRightOutlined, SyncOutlined } from '@ant-design/icons';
 import { useLocale } from '@/context/locale';
 import { useTranslation } from '@/utils/i18n';
 import { useTaskForm } from '../hooks/useTaskForm';
 import { getCleanupFormValues } from '../hooks/useTaskForm';
 import { TreeNode, ModelItem } from '@/app/cmdb/types/autoDiscovery';
-import { Form, Spin, Input, Collapse, Select, message } from 'antd';
+import { Form, Spin, message } from 'antd';
 import {
   CLOUD_FORM_INITIAL_VALUES,
   PASSWORD_PLACEHOLDER,
 } from '@/app/cmdb/constants/professCollection';
-import { formatTaskValues, trimFormString } from '../hooks/formatTaskValues';
+import { formatTaskValues, normalizeCredentialPool, trimFormString } from '../hooks/formatTaskValues';
 import useAssetManageStore from '@/app/cmdb/store/useAssetManage';
+import CredentialPoolEditor from './credentialPoolEditor';
 
 interface RegionItem {
   cloud_type: string;
@@ -36,14 +35,6 @@ interface cloudTaskFormProps {
   selectedNode: TreeNode;
   modelItem: ModelItem;
   editId?: number | null;
-}
-
-interface RegionSelectProps {
-  value?: string;
-  onChange?: (value: string) => void;
-  loading?: boolean;
-  options?: { label: string; value: string }[];
-  onRefresh: () => void;
 }
 
 const CloudTask: React.FC<cloudTaskFormProps> = ({
@@ -76,10 +67,11 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     onSuccess,
     onClose,
     formatValues: (values) => {
-      const accessKey = trimFormString(values.accessKey);
-      const accessSecret = trimFormString(values.accessSecret);
+      const credentialValue = normalizeCredentialPool(values.credentialPool)[0] || {};
+      const accessKey = trimFormString(credentialValue.accessKey);
+      const accessSecret = trimFormString(credentialValue.accessSecret);
       const regionItem = regions.find(
-        (item: any) => item.resource_id === values.regionId
+        (item: any) => item.resource_id === credentialValue.regionId
       );
 
       const baseData = formatTaskValues({
@@ -122,9 +114,12 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
       ...getCleanupFormValues(values),
       ...values,
       taskName: isCopy ? '' : values.name,
-      accessKey: isCopy ? values.credential?.accessKey : PASSWORD_PLACEHOLDER,
-      accessSecret: isCopy ? '' : PASSWORD_PLACEHOLDER,
-      regionId: regionItem?.resource_id,
+      credentialPool: [{
+        accessKey: isCopy ? values.credential?.accessKey : PASSWORD_PLACEHOLDER,
+        accessSecret: isCopy ? '' : PASSWORD_PLACEHOLDER,
+        regionId: regionItem?.resource_id,
+        regionName: regionItem?.resource_name,
+      }],
       organization: values.team || [],
       timeout: values.timeout,
       instId: values.instances?.[0]?._id,
@@ -174,21 +169,19 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
   };
 
   const handleRefreshRegions = async (refreshFlag = false) => {
-    const rawValues = form.getFieldsValue([
-      'accessKey',
-      'accessSecret',
-      'accessPointId',
-    ]);
+    const rawValues = form.getFieldsValue(['credentialPool', 'accessPointId']);
+    const credentialValue = normalizeCredentialPool(rawValues.credentialPool)[0] || {};
     const values = {
       ...rawValues,
-      accessKey: trimFormString(rawValues.accessKey),
-      accessSecret: trimFormString(rawValues.accessSecret),
+      accessKey: trimFormString(credentialValue.accessKey),
+      accessSecret: trimFormString(credentialValue.accessSecret),
     };
 
-    form.setFieldsValue({
+    form.setFieldValue('credentialPool', [{
+      ...credentialValue,
       accessKey: values.accessKey,
       accessSecret: values.accessSecret,
-    });
+    }]);
 
     const isAccessKeyPlaceholder = values.accessKey === PASSWORD_PLACEHOLDER;
     const isAccessSecretPlaceholder = values.accessSecret === PASSWORD_PLACEHOLDER;
@@ -234,17 +227,8 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
     );
   };
 
-  const handleCredentialChange = (changedField: 'accessKey' | 'accessSecret') => {
+  const handleCredentialChange = () => {
     setRegions([]);
-    form.setFieldValue('regionId', undefined);
-
-    if (!editId) return;
-
-    const otherField = changedField === 'accessKey' ? 'accessSecret' : 'accessKey';
-    const otherValue = form.getFieldValue(otherField);
-    if (otherValue === PASSWORD_PLACEHOLDER) {
-      form.setFieldValue(otherField, '');
-    }
   };
 
   useEffect(() => {
@@ -269,35 +253,28 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
           fetchRegions(PASSWORD_PLACEHOLDER, PASSWORD_PLACEHOLDER, cloudRegion, false, values.instances?.[0]?.endpoint || undefined);
         }
       } else {
-        form.setFieldsValue(CLOUD_FORM_INITIAL_VALUES);
+        form.setFieldsValue({
+          ...CLOUD_FORM_INITIAL_VALUES,
+          credentialPool: [{ accessKey: '', accessSecret: '', regionId: '' }],
+        });
       }
     };
     initForm();
   }, [modelId, copyTaskData, setCopyTaskData]);
 
-  const RegionSelect: React.FC<RegionSelectProps> = ({
-    value,
-    loading,
-    options,
-    onChange,
-    onRefresh,
-  }) => (
-    <div className="flex items-center gap-2">
-      <Select
-        value={value}
-        onChange={onChange}
-        className="flex-1"
-        loading={loading}
-        placeholder={t('common.selectTip')}
-        options={options}
-      />
-      <SyncOutlined
-        spin={loading}
-        className="cursor-pointer"
-        onClick={onRefresh}
-      />
-    </div>
-  );
+  const validateCredentialPool = (_: any, value?: any[]) => {
+    const credentialValue = normalizeCredentialPool(value)[0] || {};
+    if (!trimFormString(credentialValue.accessKey)) {
+      return Promise.reject(new Error(t('common.inputMsg') + t('Collection.cloudTask.accessKey')));
+    }
+    if (!trimFormString(credentialValue.accessSecret)) {
+      return Promise.reject(new Error(t('common.inputMsg') + t('Collection.cloudTask.accessSecret')));
+    }
+    if (!credentialValue.regionId) {
+      return Promise.reject(new Error(t('common.selectTip') + t('Collection.cloudTask.region')));
+    }
+    return Promise.resolve();
+  };
 
   return (
     <Spin spinning={loading}>
@@ -321,90 +298,27 @@ const CloudTask: React.FC<cloudTaskFormProps> = ({
             addonAfter: t('Collection.k8sTask.second'),
           }}
         >
-          <Collapse
-            ghost
-            defaultActiveKey={['credential']}
-            expandIcon={({ isActive }) => (
-              <CaretRightOutlined
-                rotate={isActive ? 90 : 0}
-                className="text-base"
-              />
-            )}
+          <Form.Item
+            name="credentialPool"
+            rules={[{ validator: validateCredentialPool }]}
+            validateTrigger={[]}
           >
-            <Collapse.Panel
-              header={
-                <div className={styles.panelHeader}>
-                  {t('Collection.credential')}
-                </div>
-              }
-              key="credential"
-            >
-              <Form.Item
-                label={t('Collection.cloudTask.accessKey')}
-                name="accessKey"
-                rules={[{ required: true, message: t('common.inputTip') }]}
-              >
-                <Input
-                  placeholder={t('common.inputTip')}
-                  onChange={() => handleCredentialChange('accessKey')}
-                  onFocus={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (value === PASSWORD_PLACEHOLDER) {
-                      form.setFieldValue('accessKey', '');
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (!value || value.trim() === '') {
-                      form.setFieldValue('accessKey', PASSWORD_PLACEHOLDER);
-                    }
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item
-                label={t('Collection.cloudTask.accessSecret')}
-                name="accessSecret"
-                rules={[{ required: true, message: t('common.inputTip') }]}
-              >
-                <Input.Password
-                  placeholder={t('common.inputTip')}
-                  onChange={() => handleCredentialChange('accessSecret')}
-                  onFocus={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (value === PASSWORD_PLACEHOLDER) {
-                      form.setFieldValue('accessSecret', '');
-                    }
-                  }}
-                  onBlur={(e) => {
-                    if (!editId) return;
-                    const value = e.target.value;
-                    if (!value || value.trim() === '') {
-                      form.setFieldValue('accessSecret', PASSWORD_PLACEHOLDER);
-                    }
-                  }}
-                />
-              </Form.Item>
-
-              <Form.Item
-                label={t('Collection.cloudTask.region')}
-                name="regionId"
-                rules={[{ required: true, message: t('common.selectTip') }]}
-              >
-                <RegionSelect
-                  loading={loadingRegions}
-                  onRefresh={handleRefreshRegions}
-                  options={regions.map((item) => ({
-                    label: item.resource_name,
-                    value: item.resource_id,
-                  }))}
-                />
-              </Form.Item>
-            </Collapse.Panel>
-          </Collapse>
+            <CredentialPoolEditor
+              credentialShape="cloud"
+              editMode={Boolean(editId)}
+              maxCount={1}
+              allowAdd={false}
+              allowRemove={false}
+              showCount={false}
+              cloudRegionLoading={loadingRegions}
+              cloudRegionOptions={regions.map((item) => ({
+                label: item.resource_name,
+                value: item.resource_id,
+              }))}
+              onCloudRegionRefresh={() => handleRefreshRegions()}
+              onCredentialFieldChange={handleCredentialChange}
+            />
+          </Form.Item>
         </BaseTaskForm>
       </Form>
     </Spin>

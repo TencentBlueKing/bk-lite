@@ -142,6 +142,12 @@ const MonitorView: React.FC<ViewModalProps> = ({
     if (form?.instance_id_values.length) {
       const _activeTab = plugins[0]?.value || '';
       setActiveTab(_activeTab);
+      if (!_activeTab) {
+        setMetricData([]);
+        setOriginMetricData([]);
+        setLoading(false);
+        return;
+      }
       setNeedsRefreshOnExpand(true);
       getInitData(_activeTab);
     }
@@ -594,8 +600,9 @@ const MonitorView: React.FC<ViewModalProps> = ({
   const linkToSearch = (row: TableDataItem) => {
     const _row = {
       monitor_object: monitorObject + '',
+      plugin_id: activeTab,
       instance_id: form?.instance_id || '',
-      metric_id: row.name,
+      metric_id: row.id ? String(row.id) : row.name,
     };
     const queryString = new URLSearchParams(_row).toString();
     const url = `/monitor/search?${queryString}`;

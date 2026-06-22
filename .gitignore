@@ -37,9 +37,14 @@ code-reviews/
 **/enterprise/
 !/enterprise/
 !/enterprise/**
+!docs/changelog/release/enterprise/
+!docs/changelog/release/enterprise/**
 /web/enterprise
 /web/src/app/**/(enterprise)/
 .env.dev
 .sisyphus/*
 automation/
 .worktrees/
+
+# CMDB 商业版 overlay（同级 app，单独交付，不进开源仓）
+/server/apps/cmdb_enterprise/

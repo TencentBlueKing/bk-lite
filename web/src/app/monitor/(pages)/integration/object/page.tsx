@@ -22,8 +22,10 @@ import CustomTable from '@/components/custom-table';
 import Permission from '@/components/permission';
 import ObjectTypeModal from './objectTypeModal';
 import ObjectModal from './objectModal';
+import DisplayFieldsModal from './displayFieldsModal';
 import useObjectApi from './api';
 import TreeSelector from '@/app/monitor/components/treeSelector';
+import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 
 const ObjectPage = () => {
   const { isLoading } = useApiClient();
@@ -40,6 +42,7 @@ const ObjectPage = () => {
 
   const typeModalRef = useRef<ModalRef>(null);
   const objectModalRef = useRef<ModalRef>(null);
+  const displayFieldsModalRef = useRef<ModalRef>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
 
   // 对象类型相关状态
@@ -156,6 +159,21 @@ const ObjectPage = () => {
           const isBuiltin = (record as MonitorObjectItem).is_builtin;
           return (
             <div className="flex gap-2">
+              <Permission requiredPermissions={['Edit']}>
+                <Button
+                  type="link"
+                  size="small"
+                  onClick={() =>
+                    displayFieldsModalRef.current?.showModal({
+                      type: 'edit',
+                      title: '',
+                      form: record as MonitorObjectItem
+                    })
+                  }
+                >
+                  {t('monitor.object.display')}
+                </Button>
+              </Permission>
               <Permission requiredPermissions={['Edit']}>
                 <Button
                   type="link"
@@ -507,31 +525,33 @@ const ObjectPage = () => {
   return (
     <div className="w-full flex overflow-hidden">
       {/* 左侧对象类型列表 */}
-      <div className="h-[calc(100vh-146px)] bg-[var(--color-bg-1)] w-[220px] min-w-[220px] mr-2.5 overflow-hidden flex flex-col">
-        <div className="flex items-center justify-between px-2.5 pt-5 mb-[15px]">
-          <span className="font-semibold">
-            {t('monitor.object.objectType')}
-          </span>
-          <Permission requiredPermissions={['Add']}>
-            <Button
-              size="small"
-              icon={<PlusOutlined />}
-              onClick={() => openTypeModal('add')}
-              title={t('monitor.object.addType')}
+      <ResizableSidebar collapseStorageKey="monitor.integration.object.sidebarCollapsed">
+        <div className="h-[calc(100vh-146px)] bg-[var(--color-bg-1)] overflow-hidden flex flex-col">
+          <div className="flex items-center justify-between px-2.5 pt-5 mb-[15px]">
+            <span className="font-semibold">
+              {t('monitor.object.objectType')}
+            </span>
+            <Permission requiredPermissions={['Add']}>
+              <Button
+                size="small"
+                icon={<PlusOutlined />}
+                onClick={() => openTypeModal('add')}
+                title={t('monitor.object.addType')}
+              />
+            </Permission>
+          </div>
+          <div className="flex-1 overflow-y-auto px-2.5 pb-2.5">
+            <TreeSelector
+              data={treeData}
+              defaultSelectedKey={defaultSelectedKey}
+              loading={typeLoading}
+              draggable
+              onNodeSelect={handleNodeSelect}
+              onNodeDrag={handleNodeDrag}
             />
-          </Permission>
+          </div>
         </div>
-        <div className="flex-1 overflow-y-auto px-2.5 pb-2.5">
-          <TreeSelector
-            data={treeData}
-            defaultSelectedKey={defaultSelectedKey}
-            loading={typeLoading}
-            draggable
-            onNodeSelect={handleNodeSelect}
-            onNodeDrag={handleNodeDrag}
-          />
-        </div>
-      </div>
+      </ResizableSidebar>
 
       {/* 右侧对象列表 */}
       <div className="flex-1 flex flex-col bg-[var(--color-bg-1)] p-5 overflow-hidden">
@@ -622,6 +642,7 @@ const ObjectPage = () => {
         typeId={selectedType?.id}
         onSuccess={handleObjectSuccess}
       />
+      <DisplayFieldsModal ref={displayFieldsModalRef} />
     </div>
   );
 };

@@ -16,10 +16,11 @@ from apps.job_mgmt.serializers.script import (
     ScriptUpdateSerializer,
 )
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.views.mixins import BatchDeleteMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
-class ScriptViewSet(AuthViewSet):
+class ScriptViewSet(BatchDeleteMixin, AuthViewSet):
     """脚本视图集"""
 
     queryset = Script.objects.all()
@@ -28,6 +29,9 @@ class ScriptViewSet(AuthViewSet):
     search_fields = ["name", "description"]
     ORGANIZATION_FIELD = "team"
     permission_key = "job"
+
+    batch_delete_serializer_class = ScriptBatchDeleteSerializer
+    batch_delete_log_label = "脚本"
 
     def get_serializer_class(self):
         if self.action == "list":
@@ -110,14 +114,4 @@ class ScriptViewSet(AuthViewSet):
     @HasPermission("script_library-Delete")
     def batch_delete(self, request):
         """批量删除脚本"""
-        serializer = ScriptBatchDeleteSerializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        ids = serializer.validated_data["ids"]
-
-        # 只删除当前用户有权限的脚本
-        queryset = self.filter_queryset(self.get_queryset())
-        deleted_count, _ = queryset.filter(id__in=ids).delete()
-        response = Response({"deleted_count": deleted_count}, status=status.HTTP_200_OK)
-        if response.status_code == status.HTTP_200_OK:
-            log_operation(request, "delete", "job", f"批量删除脚本: (共{deleted_count}个)")
-        return response
+        return self.perform_batch_delete(request)

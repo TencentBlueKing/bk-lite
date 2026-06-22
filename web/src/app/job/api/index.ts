@@ -28,6 +28,10 @@ import {
   JobRecordDetail,
   DashboardSuccessRateCompare,
   DashboardTrend,
+  DashboardRangeParams,
+  DashboardStats,
+  DashboardJobTypeDistributionItem,
+  DashboardExecutionStatusDistributionItem,
   ExecutionTargetSource,
   TargetListItem,
 } from '@/app/job/types';
@@ -386,22 +390,52 @@ const useJobApi = () => {
     return await post(`/job_mgmt/api/scheduled_task/${id}/run_now/`);
   };
 
+  // 自定义区间优先 start_date/end_date，否则回退 days（默认 7）
+  const buildDashboardRangeQuery = (params: DashboardRangeParams) => {
+    if (params.startDate && params.endDate) {
+      return { start_date: params.startDate, end_date: params.endDate };
+    }
+    return { days: params.days ?? 7 };
+  };
+
   const getDashboardTrend = async (
-    days: 7 | 30,
+    params: DashboardRangeParams,
     config?: AxiosRequestConfig
   ): Promise<DashboardTrend[]> => {
     return await get('/job_mgmt/api/dashboard/trend/', {
-      params: { days },
+      params: buildDashboardRangeQuery(params),
       ...config,
     });
   };
 
   const getDashboardSuccessRateCompare = async (
-    days: 7 | 30,
+    params: DashboardRangeParams,
     config?: AxiosRequestConfig
   ): Promise<DashboardSuccessRateCompare> => {
     return await get('/job_mgmt/api/dashboard/success_rate_compare/', {
-      params: { days },
+      params: buildDashboardRangeQuery(params),
+      ...config,
+    });
+  };
+
+  const getDashboardStats = async (
+    config?: AxiosRequestConfig
+  ): Promise<DashboardStats> => {
+    return await get('/job_mgmt/api/dashboard/stats/', config);
+  };
+
+  const getDashboardJobTypeDistribution = async (
+    config?: AxiosRequestConfig
+  ): Promise<DashboardJobTypeDistributionItem[]> => {
+    return await get('/job_mgmt/api/dashboard/job_type_distribution/', config);
+  };
+
+  const getDashboardExecutionStatusDistribution = async (
+    params: DashboardRangeParams,
+    config?: AxiosRequestConfig
+  ): Promise<DashboardExecutionStatusDistributionItem[]> => {
+    return await get('/job_mgmt/api/dashboard/execution_status_distribution/', {
+      params: buildDashboardRangeQuery(params),
       ...config,
     });
   };
@@ -466,6 +500,12 @@ const useJobApi = () => {
     return await post(`/job_mgmt/api/execution/${id}/re_execute/`);
   };
 
+  // Cancel execution
+  // 后端按状态分流：pending 直接 cancelled；running 进入 cancelling（远端执行可能仍在进行）
+  const cancelExecution = async (id: number): Promise<{ message: string; status: 'cancelled' | 'cancelling' }> => {
+    return await post(`/job_mgmt/api/execution/${id}/cancel/`);
+  };
+
   const getCrontabPreview = async (
     cronExpression: string
   ): Promise<{ result: boolean; data: { next_runs: string[] } }> => {
@@ -522,9 +562,13 @@ const useJobApi = () => {
     runScheduledTaskNow,
     getDashboardTrend,
     getDashboardSuccessRateCompare,
+    getDashboardStats,
+    getDashboardJobTypeDistribution,
+    getDashboardExecutionStatusDistribution,
     getJobRecordList,
     getJobRecordDetail,
     reExecuteJob,
+    cancelExecution,
     getCrontabPreview,
     quickExecute,
     playbookExecute,

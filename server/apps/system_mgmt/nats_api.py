@@ -36,6 +36,14 @@ from apps.system_mgmt.models import (
     UserRule,
 )
 from apps.system_mgmt.models.system_settings import SystemSettings
+from apps.system_mgmt.otp_challenge import (
+    check_rate_limit,
+    create_challenge,
+    invalidate_challenge,
+    record_failed_attempt,
+    reset_rate_limit,
+    verify_challenge,
+)
 from apps.system_mgmt.services.role_manage import RoleManage
 from apps.system_mgmt.services.login_auth_binding_service import (
     get_active_login_auth_bindings,
@@ -54,7 +62,40 @@ from apps.system_mgmt.utils.channel_utils import (
 )
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.password_validator import PasswordValidator
+from apps.system_mgmt.utils.pwd_policy_cache import get_pwd_policy_settings as _get_pwd_policy_settings
 from apps.system_mgmt.utils.token_blacklist import blacklist_token, is_blacklisted
+
+
+def _collect_ancestor_group_ids(seed_ids):
+    """
+    从 seed_ids 出发，沿 parent_id 链向上收集所有祖先组 ID（含自身）。
+
+    仅使用轻量级 values_list 查询（不加载角色关联），避免全表 prefetch。
+    返回的集合可用于后续有针对性地加载完整 Group 对象。
+
+    :param seed_ids: 起始组 ID 列表（通常为 user.group_list）
+    :return: 包含 seed_ids 及其所有祖先的 ID set
+    """
+    if not seed_ids:
+        return set()
+    # 一次查询获取全表的 (id, parent_id, allow_inherit_roles)，仅传输轻量列
+    all_meta = {
+        row[0]: (row[1], row[2])
+        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
+    }
+    result = set()
+    stack = list(seed_ids)
+    while stack:
+        gid = stack.pop()
+        if gid in result:
+            continue
+        result.add(gid)
+        meta = all_meta.get(gid)
+        if meta:
+            parent_id, allow_inherit = meta
+            if parent_id and parent_id not in result:
+                stack.append(parent_id)
+    return result
 
 
 def get_user_all_roles(user):
@@ -72,8 +113,12 @@ def get_user_all_roles(user):
 
     group_role_ids = set()
     if user.group_list:
-        # 单次查询所有组织，内存中完成递归，避免 N+1
-        all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+        # 先收集祖先组 ID（轻量查询），再按需加载完整对象（含角色关联）
+        ancestor_ids = _collect_ancestor_group_ids(user.group_list)
+        all_groups = {
+            g.id: g
+            for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
+        }
 
         visited = set()
 
@@ -213,14 +258,24 @@ def verify_token(token):
     role_names = [f"{role.app}--{role.name}" if role.app else role.name for role in role_list]
 
     is_superuser = "admin" in role_names or "system-manager--admin" in role_names
-    group_list = Group.objects.all().order_by("id")
-    if not is_superuser:
-        group_list = group_list.filter(id__in=user.group_list)
-    groups = list(group_list.values("id", "name", "parent_id"))
 
-    queryset = Group.objects.prefetch_related("roles").all()
+    if is_superuser:
+        # 超管需要完整组树：单次全量查询（含角色关联）
+        queryset = list(Group.objects.prefetch_related("roles").all().order_by("id"))
+        groups = [{"id": g.id, "name": g.name, "parent_id": g.parent_id} for g in queryset]
+    else:
+        # 非超管：仅加载用户直属组及其祖先（供树路径展示），消除全表扫描
+        visible_ids = _collect_ancestor_group_ids(user.group_list)
+        queryset = list(
+            Group.objects.prefetch_related("roles").filter(id__in=visible_ids).order_by("id")
+        )
+        groups = [
+            {"id": g.id, "name": g.name, "parent_id": g.parent_id}
+            for g in queryset
+            if g.id in set(user.group_list)
+        ]
 
-    # 构建嵌套组结构
+    # 构建嵌套组结构（queryset 已按范围过滤，避免全表扫描）
     groups_data = GroupUtils.build_group_tree(queryset, is_superuser, [i["id"] for i in groups])
 
     menus = cache.get(f"menus-user:{user.id}")
@@ -377,6 +432,7 @@ def _get_actor_user_scope(actor_context, include_children=False):
     domain = (actor_context or {}).get("domain", "domain.com")
     current_team = (actor_context or {}).get("current_team")
     is_superuser = (actor_context or {}).get("is_superuser", False)
+    actor_group_list = (actor_context or {}).get("group_list")
 
     if not username or current_team in (None, ""):
         return None, []
@@ -395,8 +451,9 @@ def _get_actor_user_scope(actor_context, include_children=False):
             return user_obj, GroupUtils.get_group_with_descendants(current_team)
         return user_obj, [current_team]
 
+    user_group_list = actor_group_list if actor_group_list else user_obj.group_list
     authorized_groups = GroupUtils.get_user_authorized_child_groups(
-        user_obj.group_list,
+        user_group_list,
         current_team,
         include_children=include_children,
     )
@@ -435,7 +492,10 @@ def get_group_users_scoped(actor_context, group=None, include_children=False):
     if not query_groups:
         return {"result": True, "data": []}
 
-    users = User.objects.filter(group_list__overlap=query_groups).values("id", "username", "display_name")
+    user_filter = Q()
+    for group_id in query_groups:
+        user_filter |= Q(group_list__contains=int(group_id))
+    users = User.objects.filter(user_filter).values("id", "username", "display_name")
     return {"result": True, "data": list(users)}
 
 
@@ -670,6 +730,69 @@ def search_channel_list_scoped(actor_context, channel_type="", teams=None, inclu
     )
 
 
+def _resolve_message_receivers(receivers):
+    if not receivers:
+        return None
+
+    if all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
+        return User.objects.filter(id__in=[int(r) for r in receivers])
+
+    if all(isinstance(r, str) and r.strip() and not r.isdigit() for r in receivers):
+        return User.objects.filter(username__in=[receiver.strip() for receiver in receivers])
+
+    return None
+
+
+def _normalize_nats_content(content):
+    if isinstance(content, str):
+        try:
+            content = json.loads(content)
+        except (json.JSONDecodeError, TypeError):
+            return None, {"result": False, "message": "NATS content is not valid JSON"}
+
+    if not isinstance(content, dict):
+        return None, {"result": False, "message": "NATS content must be a dict"}
+
+    message = content.get("message")
+    if not isinstance(message, str) or not message.strip():
+        return None, {"result": False, "message": "NATS content.message must be a non-empty string"}
+
+    team = content.get("team")
+    # team 现在只允许单个组织 ID；兼容历史的单元素列表写法
+    if isinstance(team, (list, tuple)):
+        if len(team) != 1:
+            return None, {"result": False, "message": "NATS content.team must be a single team id"}
+        team = team[0]
+    team_value = str(team).strip()
+    if not team_value or not team_value.isdigit():
+        return None, {"result": False, "message": "NATS content.team must be a single integer team id"}
+    normalized_team = int(team_value)
+
+    user_ids = content.get("user_ids")
+    if not isinstance(user_ids, list):
+        return None, {"result": False, "message": "NATS content.user_ids must be a list"}
+
+    normalized_user_ids = []
+    for user_id in user_ids:
+        if user_id is None:
+            continue
+        normalized_user_id = str(user_id).strip()
+        if normalized_user_id:
+            normalized_user_ids.append(normalized_user_id)
+
+    return {
+        "message": message.strip(),
+        "team": normalized_team,
+        "user_ids": normalized_user_ids,
+    }, None
+
+
+# NATS 通道里「原样透传 content」的内部方法白名单。
+# 这些方法（如告警中心 receive_alert_events）有自己的入参契约（如 {source_id, pusher, events}），
+# 不走 OpsPilot/IM 触发那套 message/team/user_ids 规范化，否则 content 会被裁剪、事件丢失。
+RAW_PASSTHROUGH_NATS_METHODS = {"receive_alert_events"}
+
+
 @nats_client.register
 def send_msg_with_channel(channel_id, title, content, receivers, attachments=None):
     """
@@ -686,10 +809,7 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
     if not channel_obj:
         return {"result": False, "message": "Channel not found"}
     # 兼容用户ID列表和用户名列表两种情况
-    user_list = None
-    if receivers and all(isinstance(r, int) or (isinstance(r, str) and r.isdigit()) for r in receivers):
-        # receivers 是用户ID列表
-        user_list = User.objects.filter(id__in=[int(r) for r in receivers])
+    user_list = _resolve_message_receivers(receivers)
     if channel_obj.channel_type == ChannelChoices.EMAIL:
         # 邮件发送需要校验收件人是否存在
         if not user_list or not user_list.exists():
@@ -717,11 +837,186 @@ def send_msg_with_channel(channel_id, title, content, receivers, attachments=Non
         return send_by_custom_webhook(channel_obj, content, receivers)
     elif channel_obj.channel_type == ChannelChoices.NATS:
         # NATS 通道：content 作为 kwargs 传递给目标服务
-        if isinstance(content, str):
-            content = json.loads(content)
-        return send_nats_message(channel_obj, content)
+        method_name = (channel_obj.config or {}).get("method_name")
+        if method_name in RAW_PASSTHROUGH_NATS_METHODS:
+            # 内部直推通道（如告警中心）：原样透传 content，跳过 IM 触发的字段规范化。
+            return send_nats_message(channel_obj, content)
+        normalized, error = _normalize_nats_content(content)
+        if error:
+            return error
+        return send_nats_message(channel_obj, normalized)
     return {"result": False, "message": "Unsupported channel type"}
     # return send_wechat(channel_obj, content, user_list)
+
+
+# OpsPilot 工作流自动托管的 NATS 触发通道：靠 config.source 标识，禁止用户在通道管理里编辑/删除
+OPSPILOT_CHANNEL_SOURCE = "opspilot"
+# 通道路由到 OpsPilot 的 NATS namespace，需与部署的 NATS_NAMESPACE 一致（默认 bklite），
+# 而非字符串 "opspilot"——所有 @nats_client.register 方法都经该 namespace 路由。
+OPSPILOT_NATS_NAMESPACE = os.getenv("NATS_NAMESPACE", "bklite")
+OPSPILOT_NATS_METHOD = "trigger_workflow_by_nats"
+
+
+def _list_opspilot_nats_channels(bot_id):
+    """返回某个 bot 名下、由 OpsPilot 托管的 NATS 通道（DB 无关，Python 侧过滤 config）。"""
+    channels = Channel.objects.filter(channel_type=ChannelChoices.NATS)
+    result = []
+    for channel in channels:
+        config = channel.config or {}
+        if config.get("source") == OPSPILOT_CHANNEL_SOURCE and str(config.get("bot_id")) == str(bot_id):
+            result.append(channel)
+    return result
+
+
+@nats_client.register
+def sync_opspilot_nats_channels(bot_id, bot_name, team, nodes, timeout=60):
+    """对账 OpsPilot 某个 bot 的 NATS 触发节点对应的通道（增/改/删）。
+
+    :param bot_id: Bot ID
+    :param bot_name: Bot 名称（用于拼通道名）
+    :param team: 通道归属组织 ID 列表
+    :param nodes: [{"node_id": "xxx", "name": "节点label"}, ...]
+    :param timeout: NATS 请求超时（秒）
+    """
+    try:
+        bot_id = int(bot_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "bot_id must be an integer"}
+
+    team = team or []
+    nodes = nodes or []
+    description = "OpsPilot 工作流自动创建的 NATS 触发通道"
+
+    existing_by_node = {(ch.config or {}).get("node_id"): ch for ch in _list_opspilot_nats_channels(bot_id)}
+
+    incoming_node_ids = set()
+    created = updated = 0
+    for node in nodes:
+        node_id = str((node or {}).get("node_id") or "").strip()
+        if not node_id:
+            continue
+        incoming_node_ids.add(node_id)
+        label = str((node or {}).get("name") or node_id).strip()
+        # 通道名：BOT名 - 节点名；Channel.name 上限 100
+        name = f"{bot_name} - {label}"[:100]
+        config = {
+            "namespace": OPSPILOT_NATS_NAMESPACE,
+            "method_name": OPSPILOT_NATS_METHOD,
+            "bot_id": bot_id,
+            "node_id": node_id,
+            "timeout": timeout,
+            "source": OPSPILOT_CHANNEL_SOURCE,
+        }
+        channel = existing_by_node.get(node_id)
+        if channel:
+            channel.name = name
+            channel.config = config
+            channel.team = team
+            channel.description = description
+            channel.save()
+            updated += 1
+        else:
+            Channel.objects.create(
+                name=name,
+                channel_type=ChannelChoices.NATS,
+                config=config,
+                team=team,
+                description=description,
+            )
+            created += 1
+
+    # 对账删除：flow_json 里已不存在的旧节点对应的通道
+    deleted = 0
+    for node_id, channel in existing_by_node.items():
+        if node_id not in incoming_node_ids:
+            channel.delete()
+            deleted += 1
+
+    return {"result": True, "data": {"created": created, "updated": updated, "deleted": deleted}}
+
+
+@nats_client.register
+def delete_opspilot_nats_channels(bot_id):
+    """删除某个 bot 名下所有 OpsPilot 托管的 NATS 通道（bot 删除时清理）。"""
+    try:
+        bot_id = int(bot_id)
+    except (TypeError, ValueError):
+        return {"result": False, "message": "bot_id must be an integer"}
+
+    deleted = 0
+    for channel in _list_opspilot_nats_channels(bot_id):
+        channel.delete()
+        deleted += 1
+    return {"result": True, "data": {"deleted": deleted}}
+
+
+@nats_client.register
+def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=False):
+    """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。
+
+    与通用 search_channel_list 不同：本接口专门按 OpsPilot 托管标识过滤，
+    支持跨团队/全局列举，并返回路由字段 bot_id / node_id。
+
+    :param teams: 可选，组织 ID 列表；为空/None 则跨团队全局列举
+    :param bot_id: 可选，仅返回该 Bot 的通道
+    :param include_children: 当传 teams 时，是否一并包含其子组织
+    :return: 标准 NATS 返回结构，data 为 [{id, name, description, team, bot_id, node_id}]
+    """
+    channels = Channel.objects.filter(channel_type=ChannelChoices.NATS)
+
+    # 传了 teams 才按组织过滤；为空表示全局
+    if teams:
+        normalized_teams = []
+        for team_id in teams:
+            try:
+                normalized_teams.append(int(team_id))
+            except (TypeError, ValueError):
+                continue
+
+        if include_children and normalized_teams:
+            all_groups = Group.objects.values_list("id", "parent_id")
+            children_map = {}
+            for gid, pid in all_groups:
+                if pid is not None:
+                    children_map.setdefault(pid, []).append(gid)
+
+            def _collect_descendants(group_id, acc):
+                acc.add(group_id)
+                for child_id in children_map.get(group_id, []):
+                    _collect_descendants(child_id, acc)
+
+            expanded = set()
+            for team_id in normalized_teams:
+                _collect_descendants(team_id, expanded)
+            normalized_teams = list(expanded)
+
+        if not normalized_teams:
+            return {"result": True, "data": []}
+
+        team_filter = Q(team__contains=normalized_teams[0])
+        for team_id in normalized_teams[1:]:
+            team_filter |= Q(team__contains=team_id)
+        channels = channels.filter(team_filter)
+
+    # DB 无关：在 Python 侧按 config.source（及可选 bot_id）过滤
+    data = []
+    for channel in channels:
+        config = channel.config or {}
+        if config.get("source") != OPSPILOT_CHANNEL_SOURCE:
+            continue
+        if bot_id is not None and str(config.get("bot_id")) != str(bot_id):
+            continue
+        data.append(
+            {
+                "id": channel.id,
+                "name": channel.name,
+                "description": channel.description,
+                "team": channel.team,
+                "bot_id": config.get("bot_id"),
+                "node_id": config.get("node_id"),
+            }
+        )
+    return {"result": True, "data": data}
 
 
 @nats_client.register
@@ -995,12 +1290,10 @@ def login(username, password):
         # 密码错误，递增错误次数
         user.password_error_count += 1
 
-        # 获取系统设置的最大重试次数和锁定时长
-        max_retry_setting = SystemSettings.objects.filter(key="pwd_set_max_retry_count").first()
-        max_retry_count = int(max_retry_setting.value) if max_retry_setting else 5
-
-        lock_duration_setting = SystemSettings.objects.filter(key="pwd_set_lock_duration").first()
-        lock_duration_seconds = int(lock_duration_setting.value) if lock_duration_setting else 180  # 默认180秒(3分钟)
+        # 批量读取密码策略（单次 DB 查询 + 缓存，避免每次失败登录多次打 DB）
+        pwd_policy = _get_pwd_policy_settings()
+        max_retry_count = pwd_policy["pwd_set_max_retry_count"]
+        lock_duration_seconds = pwd_policy["pwd_set_lock_duration"]
 
         # 如果错误次数达到或超过最大重试次数，锁定账号
         if user.password_error_count >= max_retry_count:
@@ -1035,14 +1328,13 @@ def login(username, password):
     # 检查密码过期
     password_expiry_reminder = ""
     if user.password_last_modified:
-        # 获取密码有效期和提醒提前天数
-        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
-        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+        # 批量读取密码策略（与密码错误路径共用同一缓存，无额外 DB 开销）
+        pwd_policy = _get_pwd_policy_settings()
+        validity_period_days = pwd_policy["pwd_set_validity_period"]
 
         # validity_period_days <= 0 表示永不过期，跳过过期检查
         if validity_period_days > 0:
-            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+            reminder_days = pwd_policy["pwd_set_expiry_reminder_days"]
 
             password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
             days_until_expire = (password_expire_date - now).days
@@ -1095,12 +1387,26 @@ def get_login_auth_bindings():
 
 
 @nats_client.register
-def reset_pwd(username, domain, password):
+def reset_pwd(username, domain, password, caller_token=""):
     """
     重置用户密码（NATS接口）
 
-    会进行密码复杂度校验
+    会进行密码复杂度校验，以及调用方身份校验——caller_token 必须是有效的
+    JWT 会话 token，且 token 所属用户必须与 username 一致（自助改密），
+    以阻止任意内网服务通过 NATS 总线篡改他人密码。
     """
+    # 调用方身份校验：验证 caller_token 有效，且属于请求的同一用户
+    if not caller_token:
+        return {"result": False, "message": "caller_token is required"}
+    try:
+        caller = _verify_token(caller_token)
+    except Exception:
+        return {"result": False, "message": "Unauthorized: invalid token"}
+    caller_domain = getattr(caller, "domain", "") or "domain.com"
+    target_domain = domain or "domain.com"
+    if caller.username != username or caller_domain != target_domain:
+        return {"result": False, "message": "Unauthorized: caller does not match target user"}
+
     filter_kwargs = {"username": username}
     if domain:
         filter_kwargs["domain"] = domain
@@ -1121,23 +1427,26 @@ def reset_pwd(username, domain, password):
 
 @nats_client.register
 def wechat_user_register(user_id, nick_name):
-    user, is_first_login = User.objects.get_or_create(username=user_id, defaults={"display_name": nick_name})
-    default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
-    if not user.group_list and default_group:
-        user.group_list = [default_group.id]
-    default_role = list(
-        Role.objects.filter(
-            Q(name="normal", app__in=["opspilot", "ops-console"])
-            | Q(
-                name="guest",
-                app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
-            )
-        ).values_list("id", flat=True)
-    )
-    default_role.extend(user.role_list)
-    user.role_list = list(set(default_role))
-    user.last_login = timezone.now()
-    user.save()
+    with transaction.atomic():
+        user, is_first_login = User.objects.select_for_update().get_or_create(
+            username=user_id, defaults={"display_name": nick_name}
+        )
+        default_group = Group.objects.filter(name="OpsPilotGuest", parent_id=0).first()
+        if not user.group_list and default_group:
+            user.group_list = [default_group.id]
+        default_role = list(
+            Role.objects.filter(
+                Q(name="normal", app__in=["opspilot", "ops-console"])
+                | Q(
+                    name="guest",
+                    app__in=["opspilot", "cmdb", "monitor", "log", "alarm", "node", "mlops", "job"],
+                )
+            ).values_list("id", flat=True)
+        )
+        default_role.extend(user.role_list)
+        user.role_list = list(set(default_role))
+        user.last_login = timezone.now()
+        user.save()
     try:
         if default_group:
             set_opspilot_guest_group_default_rule(default_group, user)
@@ -1259,11 +1568,31 @@ def generate_qr_code_by_user_id(user_id):
 
 # 验证OTP代码
 @nats_client.register
-def verify_otp_code(username, otp_code):
-    user = User.objects.get(username=username)
+def verify_otp_code(username, otp_code, client_ip=""):
+    """
+    Verify OTP code for a user by username.
+
+    Requires client_ip for rate limiting. Falls back to empty string when not
+    provided (legacy callers), but rate limiting is still applied per IP+username.
+    """
+    # Check rate limit before any DB lookup
+    is_limited, remaining = check_rate_limit(client_ip, username)
+    if is_limited:
+        return {"result": False, "message": "Too many failed attempts. Please try again later."}
+
+    user = User.objects.filter(username=username).first()
+    if not user:
+        return {"result": False, "message": "User not found"}
+
+    if not user.otp_secret:
+        return {"result": False, "message": "OTP not configured for this user"}
+
     totp = pyotp.TOTP(user.otp_secret)
     if totp.verify(otp_code):
+        reset_rate_limit(client_ip, username)
         return {"result": True, "message": "Verification successful"}
+
+    record_failed_attempt(client_ip, username)
     return {"result": False, "message": "Invalid OTP code"}
 
 
@@ -1304,8 +1633,6 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
     Returns:
         Dict with login result and JWT token if successful
     """
-    from apps.system_mgmt.otp_challenge import check_rate_limit, invalidate_challenge, record_failed_attempt, reset_rate_limit, verify_challenge
-
     # Verify challenge exists and is valid
     challenge_data = verify_challenge(challenge_id)
     if not challenge_data:
@@ -1355,13 +1682,13 @@ def verify_otp_login(challenge_id, otp_code, client_ip=""):
         # Initialize language loader for user's locale
         loader = LanguageLoader(app="system_mgmt", default_lang=user.locale or "en")
 
-        validity_period_setting = SystemSettings.objects.filter(key="pwd_set_validity_period").first()
-        validity_period_days = int(validity_period_setting.value) if validity_period_setting else 90
+        # 批量读取密码策略（单次 DB 查询 + 缓存，复用与 login() 相同的缓存键）
+        pwd_policy = _get_pwd_policy_settings()
+        validity_period_days = pwd_policy["pwd_set_validity_period"]
 
         # validity_period_days <= 0 表示永不过期，跳过过期检查
         if validity_period_days > 0:
-            reminder_days_setting = SystemSettings.objects.filter(key="pwd_set_expiry_reminder_days").first()
-            reminder_days = int(reminder_days_setting.value) if reminder_days_setting else 7
+            reminder_days = pwd_policy["pwd_set_expiry_reminder_days"]
 
             now = timezone.now()
             password_expire_date = user.password_last_modified + timedelta(days=validity_period_days)
@@ -1430,8 +1757,6 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
 
     # If OTP is enabled and we should use two-phase authentication
     if skip_token_for_otp and enable_otp:
-        from apps.system_mgmt.otp_challenge import create_challenge
-
         # Generate QR code for first-time OTP binding if user hasn't configured OTP yet
         qr_code_base64 = None
         if not user_has_otp:
@@ -1655,7 +1980,8 @@ def save_error_log(username, app, module, error_message, domain="domain.com"):
 
 
 @nats_client.register
-def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com"):
+def save_operation_log(username, source_ip, app, action_type, summary="", domain="domain.com",
+                       target_type="", target_id="", detail=None):
     """
     保存操作日志
     :param username: 用户名
@@ -1664,6 +1990,9 @@ def save_operation_log(username, source_ip, app, action_type, summary="", domain
     :param action_type: 操作类型 (create/update/delete/execute)
     :param summary: 操作概要
     :param domain: 域名
+    :param target_type: 操作目标类型（可选）
+    :param target_id: 操作目标ID（可选）
+    :param detail: 操作详情 JSON（可选，默认空字典）
     """
     try:
         # 验证 action_type 是否合法
@@ -1686,6 +2015,9 @@ def save_operation_log(username, source_ip, app, action_type, summary="", domain
             action_type=action_type,
             summary=summary,
             domain=domain,
+            target_type=target_type or "",
+            target_id=str(target_id or ""),
+            detail=detail or {},
         )
         return {"result": True, "message": "Operation log saved successfully"}
     except Exception as e:

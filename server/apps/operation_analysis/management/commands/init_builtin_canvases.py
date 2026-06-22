@@ -15,11 +15,11 @@
 import os
 
 import yaml
+from django.conf import settings
 from django.core.management import BaseCommand
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
-
 
 BUILTIN_DIRECTORY_KEY = "__builtin__"
 BUILTIN_DIRECTORY_NAME = "内置目录"
@@ -28,6 +28,7 @@ YAML_FILE_PATH = os.path.join(
     "support-files",
     "builtin_canvases.yaml",
 )
+MERGEABLE_SECTIONS = ("dashboards", "topologies", "architectures", "datasources", "namespaces")
 
 
 def _get_default_group_ids():
@@ -93,38 +94,81 @@ def _build_conflict_decisions(doc):
     return decisions
 
 
+def _get_builtin_canvas_file_paths():
+    extra_files = getattr(settings, "OPERATION_ANALYSIS_BUILTIN_CANVAS_FILES", []) or []
+    if isinstance(extra_files, (str, os.PathLike)):
+        extra_files = [extra_files]
+
+    paths = [YAML_FILE_PATH]
+    paths.extend(str(path) for path in extra_files if str(path).strip())
+    return paths
+
+
+def _merge_yaml_documents(documents):
+    merged = {
+        "meta": {
+            "schema_version": "1.0.0",
+            "exported_at": "",
+            "source": {"organization_id": 0},
+            "object_counts": {},
+        }
+    }
+    for section in MERGEABLE_SECTIONS:
+        merged[section] = []
+
+    for data in documents:
+        for section in MERGEABLE_SECTIONS:
+            existing_keys = {item.get("key") for item in merged[section] if isinstance(item, dict)}
+            for item in data.get(section) or []:
+                if isinstance(item, dict) and item.get("key") in existing_keys:
+                    continue
+                merged[section].append(item)
+                if isinstance(item, dict):
+                    existing_keys.add(item.get("key"))
+
+    merged["meta"]["object_counts"] = {section: len(merged[section]) for section in MERGEABLE_SECTIONS}
+    return merged
+
+
 class Command(BaseCommand):
     help = "从 YAML 文件导入内置画布（仪表盘/拓扑/架构图）"
 
     def handle(self, *args, **options):
         # 1. 读取 YAML 文件
-        if not os.path.isfile(YAML_FILE_PATH):
-            self.stdout.write(self.style.WARNING(f"内置画布 YAML 文件不存在，跳过: {YAML_FILE_PATH}"))
-            return
+        yaml_documents = []
+        for file_path in _get_builtin_canvas_file_paths():
+            if not os.path.isfile(file_path):
+                self.stdout.write(self.style.WARNING(f"内置画布 YAML 文件不存在，跳过: {file_path}"))
+                continue
 
-        with open(YAML_FILE_PATH, "r", encoding="utf-8") as f:
-            raw_content = f.read()
+            with open(file_path, "r", encoding="utf-8") as f:
+                raw_content = f.read()
 
-        if not raw_content.strip():
-            self.stdout.write(self.style.WARNING("内置画布 YAML 文件为空，跳过"))
-            return
+            if not raw_content.strip():
+                self.stdout.write(self.style.WARNING(f"内置画布 YAML 文件为空，跳过: {file_path}"))
+                continue
 
-        data = yaml.safe_load(raw_content)
-        if not data:
-            self.stdout.write(self.style.WARNING("内置画布 YAML 解析结果为空，跳过"))
+            data = yaml.safe_load(raw_content)
+            if not data:
+                self.stdout.write(self.style.WARNING(f"内置画布 YAML 解析结果为空，跳过: {file_path}"))
+                continue
+            yaml_documents.append(data)
+
+        if not yaml_documents:
+            self.stdout.write(self.style.WARNING("内置画布 YAML 无可导入内容，跳过"))
             return
 
         # 2. 延迟导入（避免循环依赖）
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
         from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
         from apps.operation_analysis.services.import_export.import_service import ImportService
-        from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
 
         # 3. 解析 YAML 为 YAMLDocument
         try:
-            doc = YAMLDocument(**data)
+            doc = YAMLDocument(**_merge_yaml_documents(yaml_documents))
         except Exception as e:
             self.stdout.write(self.style.ERROR(f"内置画布 YAML 解析失败: {e}"))
-            logger.error(f"内置画布 YAML 解析失败: {e}")
+            logger.error("[BuiltinCanvas] 内置画布 YAML 解析失败：%s", e, exc_info=True)
             return
 
         total_canvases = len(doc.dashboards) + len(doc.topologies) + len(doc.architectures)
@@ -180,7 +224,7 @@ class Command(BaseCommand):
                             obj_key = item_result.get("object_key", "unknown")
                             error = item_result.get("error", "未知错误")
                             self.stdout.write(self.style.ERROR(f"  失败对象: [{obj_type}] {obj_key} - {error}"))
-                    logger.error(f"内置画布导入失败: {result['summary']}")
+                    logger.error("[BuiltinCanvas] 内置画布导入失败：%s", result["summary"])
                     raise RuntimeError("内置画布导入失败，回滚事务")
 
                 # 7. 将导入成功的画布对象标记为内置
@@ -217,4 +261,4 @@ class Command(BaseCommand):
             return
 
         self.stdout.write(self.style.SUCCESS(f"内置画布导入完成: {result['summary']}, 标记 {marked_count} 个内置对象"))
-        logger.info(f"内置画布导入完成: {result['summary']}, 标记 {marked_count} 个内置对象")
+        logger.info("[BuiltinCanvas] 内置画布导入完成：%s，标记 %s 个内置对象", result["summary"], marked_count)

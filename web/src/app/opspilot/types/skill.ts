@@ -195,12 +195,32 @@ export interface SkillDetailPayload {
   [key: string]: unknown;
 }
 
+/** skill_tools API 返回的 kwarg 条目 */
+export interface SkillToolKwarg {
+  key: string;
+  value: unknown;
+  description?: string;
+  type?: string;
+  isRequired?: boolean;
+  [k: string]: unknown;
+}
+
+/** skill_tools API 返回的 params 结构 */
+export interface SkillToolParams {
+  kwargs: SkillToolKwarg[];
+  [k: string]: unknown;
+}
+
 export interface SkillTool {
   id: number;
   name: string;
+  /** 翻译后的展示名称（内置工具按当前语言返回，自定义工具回退为 name） */
+  display_name?: string;
   description?: string;
+  description_tr?: string;
   icon?: string;
   enabled: boolean;
+  params: SkillToolParams;
 }
 
 export interface SkillTemplate {

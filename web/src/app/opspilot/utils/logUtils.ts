@@ -94,7 +94,21 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
     const shouldProcessOpenAI = normalizedRole === 'bot' && entryType === 'OpenAI';
     const shouldProcessAGUI = normalizedRole === 'bot' && !shouldProcessOpenAI && (entryType === 'AG-UI' || (typeof rawContent === 'string' && rawContent.trim().startsWith('[')));
 
-    let processed: { content: any; thinking: any; isThinking: boolean; browserStepProgress: any; browserStepsHistory: any; toolCalls?: any } = {
+    let processed: {
+      content: any;
+      thinking: any;
+      isThinking: boolean;
+      browserStepProgress: any;
+      browserStepsHistory: any;
+      agentStepProgress?: any;
+      configDiffReports?: any;
+      configAnalysisReports?: any;
+      userChoiceRequests?: any;
+      approvalRequests?: any;
+      repairCommands?: any;
+      reportFileDownloads?: any;
+      toolCalls?: any;
+    } = {
       content: rawContent,
       thinking: '',
       isThinking: false,
@@ -109,6 +123,13 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
         isThinking: parsed.isThinking ?? false,
         browserStepProgress: parsed.browserStepProgress ?? null,
         browserStepsHistory: parsed.browserStepsHistory ?? null,
+        agentStepProgress: parsed.agentStepProgress,
+        configDiffReports: parsed.configDiffReports,
+        configAnalysisReports: parsed.configAnalysisReports,
+        userChoiceRequests: parsed.userChoiceRequests,
+        approvalRequests: parsed.approvalRequests,
+        repairCommands: parsed.repairCommands,
+        reportFileDownloads: parsed.reportFileDownloads,
         toolCalls: parsed.toolCalls
       };
     } else if (shouldProcessOpenAI) {
@@ -149,6 +170,13 @@ export const createConversation = async (data: any, get: any): Promise<CustomCha
       isThinking: processed.isThinking,
       browserStepProgress: processed.browserStepProgress ?? null,
       browserStepsHistory: processed.browserStepsHistory ?? null,
+      agentStepProgress: processed.agentStepProgress,
+      configDiffReports: processed.configDiffReports,
+      configAnalysisReports: processed.configAnalysisReports,
+      userChoiceRequests: processed.userChoiceRequests,
+      approvalRequests: processed.approvalRequests,
+      repairCommands: processed.repairCommands,
+      reportFileDownloads: processed.reportFileDownloads,
       toolCalls: processed.toolCalls,
     } as CustomChatMessage;
   }));

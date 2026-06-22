@@ -3,6 +3,7 @@
 import React from 'react';
 import EntityCard from '@/app/opspilot/components/entity-card';
 import { Studio } from '@/app/opspilot/types/studio';
+import { useTranslation } from '@/utils/i18n';
 
 interface StudioCardProps extends Studio {
   index: number;
@@ -11,6 +12,7 @@ interface StudioCardProps extends Studio {
 
 const StudioCard: React.FC<StudioCardProps> = (props) => {
   const { id, name, introduction, created_by, team_name, team, online, bot_type, is_pinned, permissions, onMenuClick } = props;
+  const { t } = useTranslation();
   const iconTypeMapping: [string, string] = ['jiqirenjiaohukapian', 'jiqiren'];
   const botTypeMapping: { [key: number]: string } = {
     1: 'Pilot',
@@ -35,6 +37,7 @@ const StudioCard: React.FC<StudioCardProps> = (props) => {
       onMenuClick={onMenuClick}
       redirectUrl="/opspilot/studio/detail"
       iconTypeMapping={iconTypeMapping}
+      teamLabel={t('studio.form.manageGroup')}
     />
   );
 };

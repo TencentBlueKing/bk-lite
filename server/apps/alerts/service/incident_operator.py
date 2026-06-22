@@ -6,8 +6,8 @@
 from django.db import transaction
 from django.utils import timezone
 
-from apps.alerts.models.operator_log import  OperatorLog
 from apps.alerts.models.models import  Incident
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.core.logger import alert_logger as logger
 from apps.alerts.constants.constants import IncidentStatus, IncidentOperate, LogAction, LogTargetType
 
@@ -32,11 +32,11 @@ class IncidentOperator:
         """
         执行事故操作
         """
-        logger.info(f"用户 {self.user} 开始执行事故操作: action={action}, incident_id={incident_id}")
+        logger.info("[AlertIncident] 用户 %s 开始执行事故操作: action=%s, incident_id=%s", self.user, action, incident_id)
 
         func = getattr(self, f"_{action}_incident", None)
         if not func:
-            logger.error(f"不支持的操作类型: {action}")
+            logger.error("[AlertIncident] 不支持的操作类型: %s", action)
             return {
                 "result": False,
                 "message": f"不支持的操作类型: {action}",
@@ -44,7 +44,7 @@ class IncidentOperator:
             }
 
         if not self._is_incident_allowed(incident_id):
-            logger.warning(f"用户 {self.user} 无权限操作事故: incident_id={incident_id}")
+            logger.warning("[AlertIncident] 用户 %s 无权限操作事故: incident_id=%s", self.user, incident_id)
             return {
                 "result": False,
                 "message": "您没有权限操作此事故",
@@ -53,10 +53,10 @@ class IncidentOperator:
 
         try:
             result = func(incident_id, data)
-            logger.info(f"事故操作执行成功: action={action}, incident_id={incident_id}")
+            logger.info("[AlertIncident] 事故操作执行成功: action=%s, incident_id=%s", action, incident_id)
             return result
         except Exception as e:
-            logger.error(f"事故操作执行失败: action={action}, incident_id={incident_id}, error={str(e)}")
+            logger.error("[AlertIncident] 事故操作执行失败: action=%s, incident_id=%s, error=%s", action, incident_id, e, exc_info=True)
             return {
                 "result": False,
                 "message": str(e),
@@ -70,7 +70,7 @@ class IncidentOperator:
             incident = Incident.objects.select_for_update().get(incident_id=incident_id)
             return incident
         except Incident.DoesNotExist:
-            logger.error(f"事故不存在: incident_id={incident_id}")
+            logger.error("[AlertIncident] 事故不存在: incident_id=%s", incident_id)
             return {
                 "result": False,
                 "message": "事故不存在",
@@ -206,4 +206,4 @@ class IncidentOperator:
         记录告警操作日志
         :param log_data: 日志数据字典
         """
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)

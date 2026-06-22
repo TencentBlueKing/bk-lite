@@ -9,7 +9,7 @@ from django_minio_backend import MinioBackend, iso_date_prefix
 from apps.core.mixinx import PeriodicTaskUtils
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.opspilot.enum import DocumentStatus
+from apps.opspilot.enum import DocumentStatus, KnowledgeTaskStatus
 
 KNOWLEDGE_TYPES = [
     "md",
@@ -217,7 +217,7 @@ class QAPairs(MaintainerInfo, TimeInfo):
 
 class KnowledgeGraph(MaintainerInfo, TimeInfo):
     knowledge_base = models.OneToOneField("KnowledgeBase", on_delete=models.CASCADE)
-    llm_model = models.ForeignKey("LLMModel", on_delete=models.CASCADE)
+    llm_model = models.ForeignKey("LLMModel", on_delete=models.PROTECT)
     rerank_model = models.ForeignKey("RerankProvider", on_delete=models.CASCADE, null=True, blank=True)
     embed_model = models.ForeignKey("EmbedProvider", on_delete=models.CASCADE, null=True, blank=True)
     rebuild_community = models.BooleanField(default=False, verbose_name="是否重建社区")
@@ -235,9 +235,16 @@ class KnowledgeTask(models.Model):
     task_name = models.CharField(max_length=100, verbose_name="Task Name")
     train_progress = models.FloatField(default=0, verbose_name="Train Progress")
     knowledge_ids = models.JSONField(default=list, verbose_name="Knowledge IDs")
-    knowledge_base_id = models.IntegerField(default=0, verbose_name="Knowledge IDs")
-    created_by = models.CharField(max_length=100, verbose_name="Created By")
-    domain = models.CharField(max_length=100, default="domain.com", verbose_name="Domain")
-    is_qa_task = models.BooleanField(default=False, verbose_name="Is QA Task")
+    knowledge_base_id = models.IntegerField(default=0, db_index=True, verbose_name="Knowledge IDs")
+    created_by = models.CharField(max_length=100, db_index=True, verbose_name="Created By")
+    domain = models.CharField(max_length=100, default="domain.com", db_index=True, verbose_name="Domain")
+    is_qa_task = models.BooleanField(default=False, db_index=True, verbose_name="Is QA Task")
     completed_count = models.IntegerField(default=0)
     total_count = models.IntegerField(default=0)
+    status = models.CharField(
+        max_length=20,
+        choices=KnowledgeTaskStatus.choices,
+        default=KnowledgeTaskStatus.RUNNING,
+        db_index=True,
+        verbose_name="Status",
+    )

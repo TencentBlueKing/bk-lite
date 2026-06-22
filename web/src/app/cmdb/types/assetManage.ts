@@ -4,6 +4,8 @@ export interface GroupItem {
   classification_id: string;
   count: number;
   list: ModelItem[];
+  is_visible?: boolean;
+  order?: number;
   [key: string]: any;
 }
 
@@ -14,6 +16,8 @@ export interface ModelItem {
   icn: string;
   organization?: number;
   group?: number | number[];
+  is_visible?: boolean;
+  order_id?: number;
   [key: string]: any;
 }
 
@@ -76,6 +80,7 @@ export interface AttrFieldType {
   public_library_id?: string | null;
   enum_select_mode?: 'single' | 'multiple';
   default_value?: string[];
+  governance?: AttrGovernance;
   [key: string]: unknown;
 }
 
@@ -298,12 +303,20 @@ export interface AttrItem {
   is_required: boolean;
   editable: boolean;
   is_only: boolean;
+  governance?: AttrGovernance;
   unique_display_type?: UniqueDisplayType;
   group_id?: string;
   order?: number;
 }
 
 export type UniqueDisplayType = 'none' | 'single' | 'joint'
+
+export type AttrGovernanceFreshness = '' | 'timely' | 'occasional' | 'stable';
+
+export interface AttrGovernance {
+  key_attribute: boolean;
+  freshness: AttrGovernanceFreshness;
+}
 
 export interface ModelUniqueRuleItem {
   rule_id: string;

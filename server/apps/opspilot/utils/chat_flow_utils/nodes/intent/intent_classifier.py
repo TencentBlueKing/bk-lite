@@ -47,10 +47,6 @@ class IntentClassifierNode(BaseNodeExecutor):
 ❌ "知识问答。"
 """
 
-    def __init__(self, variable_manager, workflow_instance=None):
-        super().__init__(variable_manager)
-        self.workflow_instance = workflow_instance
-
     def _render_prompt(self, prompt: str, node_id: str) -> str:
         """渲染补充分类规则中的模板变量。"""
         if not prompt:

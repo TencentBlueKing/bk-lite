@@ -20,6 +20,7 @@ import (
 
 	"github.com/nats-io/nats.go"
 	"golang.org/x/crypto/ssh"
+	"golang.org/x/crypto/ssh/knownhosts"
 )
 
 var sshpassPasswordPattern = regexp.MustCompile(`sshpass -p '(?:[^']|'"'"')*'`)
@@ -221,6 +222,19 @@ func shellQuote(value string) string {
 
 func shellQuoteRemoteTarget(user, host, targetPath string) string {
 	return shellQuote(fmt.Sprintf("%s@%s:%s", user, host, targetPath))
+}
+
+func buildHostKeyCallback() (ssh.HostKeyCallback, error) {
+	knownHostsFile := configuredKnownHostsFile()
+	if knownHostsFile == "" {
+		return ssh.InsecureIgnoreHostKey(), nil
+	}
+
+	callback, err := knownhosts.New(knownHostsFile)
+	if err != nil {
+		return nil, fmt.Errorf("failed to load SSH known_hosts file %s: %w", knownHostsFile, err)
+	}
+	return callback, nil
 }
 
 func redactSensitiveCommand(command string) string {
@@ -891,11 +905,18 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 		}
 	}
 
+	hostKeyCallback, err := buildHostKeyCallback()
+	if err != nil {
+		errMsg := fmt.Sprintf("Failed to configure SSH host key verification: %v", err)
+		logger.Errorf("[SSH Execute] Instance: %s, %s", instanceId, errMsg)
+		return newSSHFailureResponse(instanceId, utils.ErrorCodeDependencyFailure, errMsg, sshStageSSHDial, sshCategoryDependency)
+	}
+
 	sshConfig := &ssh.ClientConfig{
 		User:              req.User,
 		Auth:              authMethods,
 		Timeout:           minDuration(sshConnectTimeout, remaining),
-		HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+		HostKeyCallback:   hostKeyCallback,
 		HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileModern),
 	}
 
@@ -936,7 +957,7 @@ func executeWithConn(req ExecuteRequest, instanceId string, nc *nats.Conn) Execu
 				User:              req.User,
 				Auth:              legacyAuthMethods,
 				Timeout:           minDuration(sshConnectTimeout, remaining),
-				HostKeyCallback:   ssh.InsecureIgnoreHostKey(),
+				HostKeyCallback:   hostKeyCallback,
 				HostKeyAlgorithms: hostKeyAlgorithmsForProfile(profileLegacy),
 			}
 

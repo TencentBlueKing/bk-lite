@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Alert, Button, Form, Input, InputNumber, Radio, Select, message } from 'antd';
 import { InfoCircleOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -9,6 +9,13 @@ import useMonitorApi from '@/app/monitor/api';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useUserInfoContext } from '@/context/userInfo';
 import type { FlowProtocol } from '@/app/monitor/types/integration';
+import {
+  buildFlowExistingAssetOptions,
+  buildExistingFlowAssetFormPatch,
+  FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
+  filterFlowExistingAssetsByCloudRegion,
+  type FlowExistingAssetItem
+} from '@/app/monitor/utils/flowAsset';
 import type { FlowAssetWizardState } from './flowConfiguration';
 
 interface FlowAssetFormValues {
@@ -21,15 +28,6 @@ interface FlowAssetFormValues {
   fallback_sampling_rate?: number;
 }
 
-interface ExistingAssetItem {
-  instance_id?: string;
-  id?: string;
-  instance_name?: string;
-  name?: string;
-  agent_id?: string;
-  time?: string;
-}
-
 interface AccessAssetProps {
   protocol: FlowProtocol;
   objectId?: number;
@@ -38,7 +36,6 @@ interface AccessAssetProps {
 }
 
 const FORM_CONTROL_WIDTH = 360;
-const FALLBACK_SAMPLING_RATE_DEFAULT = 1000;
 
 const protocolLabelMap: Record<FlowProtocol, string> = {
   netflow: 'NetFlow',
@@ -60,8 +57,19 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
   const [cloudRegionLoading, setCloudRegionLoading] = useState(false);
   const [cloudRegionList, setCloudRegionList] = useState<any[]>([]);
   const [assetLoading, setAssetLoading] = useState(false);
-  const [existingAssets, setExistingAssets] = useState<ExistingAssetItem[]>([]);
+  const [existingAssets, setExistingAssets] = useState<FlowExistingAssetItem[]>([]);
   const accessType = Form.useWatch('accessType', form);
+  const cloudRegionId = Form.useWatch('cloud_region_id', form);
+  const getCloudRegionListRef = useRef(getCloudRegionList);
+  const getInstanceListRef = useRef(getInstanceList);
+
+  useEffect(() => {
+    getCloudRegionListRef.current = getCloudRegionList;
+  }, [getCloudRegionList]);
+
+  useEffect(() => {
+    getInstanceListRef.current = getInstanceList;
+  }, [getInstanceList]);
 
   useEffect(() => {
     const fetchOptions = async () => {
@@ -69,9 +77,9 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
       setAssetLoading(true);
       try {
         const [regions, assets] = await Promise.all([
-          getCloudRegionList({ page_size: -1 }),
+          getCloudRegionListRef.current({ page_size: -1 }),
           objectId
-            ? getInstanceList(objectId, { page_size: -1 })
+            ? getInstanceListRef.current(objectId, { page_size: -1 })
             : Promise.resolve({ results: [] })
         ]);
         const nextRegions = regions || [];
@@ -87,7 +95,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
               organizations: selectedGroup?.id
                 ? [Number(selectedGroup.id)]
                 : undefined,
-              fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT,
+              fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
               cloud_region_id: nextRegions[0]?.id
             }
         );
@@ -98,58 +106,54 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
     };
 
     fetchOptions();
-  }, [form, getCloudRegionList, getInstanceList, initialState, objectId, selectedGroup?.id]);
+  }, [form, initialState, objectId, selectedGroup?.id]);
+
+  const filteredExistingAssets = useMemo(
+    () => filterFlowExistingAssetsByCloudRegion(existingAssets, cloudRegionId),
+    [existingAssets, cloudRegionId]
+  );
 
   const existingAssetMap = useMemo(
     () =>
-      existingAssets.reduce<Record<string, ExistingAssetItem>>((acc, item) => {
+      filteredExistingAssets.reduce<Record<string, FlowExistingAssetItem>>((acc, item) => {
         const key = String(item.instance_id || item.id || '');
         if (key) {
           acc[key] = item;
         }
         return acc;
       }, {}),
-    [existingAssets]
+    [filteredExistingAssets]
   );
 
   const assetOptions = useMemo(
-    () =>
-      existingAssets.map((item) => {
-        const value = String(item.instance_id || item.id || '');
-        const name = item.instance_name || item.name || value;
-        const suffix = value && value !== name ? value : '';
-        return {
-          value,
-          label: suffix ? `${name} (${suffix})` : name
-        };
-      }),
-    [existingAssets]
+    () => buildFlowExistingAssetOptions(filteredExistingAssets),
+    [filteredExistingAssets]
   );
 
   const handleAccessTypeChange = (value: FlowAssetFormValues['accessType']) => {
-    if (value === 'existing') {
+    if (value === 'new') {
       form.setFieldsValue({
-        organizations: undefined,
-        fallback_sampling_rate: undefined
+        organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
+        fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT
       });
-      return;
     }
-
-    form.setFieldsValue({
-      organizations: selectedGroup?.id ? [Number(selectedGroup.id)] : undefined,
-      fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
-    });
   };
 
   const handleExistingAssetChange = (value: string) => {
     const selectedAsset = existingAssetMap[String(value)];
+    form.setFieldsValue(buildExistingFlowAssetFormPatch(value, selectedAsset));
+  };
+
+  const handleCloudRegionChange = () => {
+    if (accessType !== 'existing') {
+      return;
+    }
     form.setFieldsValue({
-      instance_id: value,
-      name: selectedAsset?.instance_name || selectedAsset?.name,
-      cloud_region_id: undefined,
+      instance_id: undefined,
       ip: undefined,
+      name: undefined,
       organizations: undefined,
-      fallback_sampling_rate: undefined
+      fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT
     });
   };
 
@@ -164,7 +168,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
         ip: values.ip!,
         name: values.name!,
         fallback_sampling_rate:
-          values.fallback_sampling_rate ?? FALLBACK_SAMPLING_RATE_DEFAULT,
+          values.fallback_sampling_rate ?? FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
         organizations: values.organizations || [],
         instance_id:
           values.accessType === 'existing' ? values.instance_id : undefined
@@ -178,7 +182,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
         name: values.name!,
         organizations: values.organizations || [],
         fallback_sampling_rate:
-          values.fallback_sampling_rate ?? FALLBACK_SAMPLING_RATE_DEFAULT,
+          values.fallback_sampling_rate ?? FLOW_FALLBACK_SAMPLING_RATE_DEFAULT,
         enabled_protocols: result?.enabled_protocols
       });
     } catch (error: any) {
@@ -209,7 +213,7 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
         className="w-full"
         initialValues={{
           accessType: 'new',
-          fallback_sampling_rate: FALLBACK_SAMPLING_RATE_DEFAULT
+          fallback_sampling_rate: FLOW_FALLBACK_SAMPLING_RATE_DEFAULT
         }}
       >
         <div className="flex items-center mb-6">
@@ -246,6 +250,34 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
           </div>
         </Form.Item>
 
+        <Form.Item label={t('monitor.integrations.flow.cloudRegion')} required>
+          <div className="flex items-start gap-4">
+            <Form.Item
+              name="cloud_region_id"
+              noStyle
+              rules={[{ required: true, message: t('common.required') }]}
+            >
+              <Select
+                style={{ width: FORM_CONTROL_WIDTH }}
+                loading={cloudRegionLoading}
+                placeholder={t('monitor.integrations.flow.selectCloudRegion')}
+                options={cloudRegionList.map((item) => ({
+                  value: item.id,
+                  label: item.name
+                }))}
+                onChange={handleCloudRegionChange}
+              />
+            </Form.Item>
+            <div className="text-[var(--color-text-3)] flex-1">
+              {t(
+                accessType === 'existing'
+                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
+                  : 'monitor.integrations.flow.cloudRegionDesc'
+              )}
+            </div>
+          </div>
+        </Form.Item>
+
         {accessType === 'existing' && (
           <Form.Item label={t('monitor.integrations.flow.existingAsset')} required>
             <div className="flex items-start gap-4">
@@ -278,33 +310,6 @@ const AccessAsset: React.FC<AccessAssetProps> = ({
             description={t('monitor.integrations.flow.existingAssetReviewNoticeDesc')}
           />
         )}
-
-        <Form.Item label={t('monitor.integrations.flow.cloudRegion')} required>
-          <div className="flex items-start gap-4">
-            <Form.Item
-              name="cloud_region_id"
-              noStyle
-              rules={[{ required: true, message: t('common.required') }]}
-            >
-              <Select
-                style={{ width: FORM_CONTROL_WIDTH }}
-                loading={cloudRegionLoading}
-                placeholder={t('monitor.integrations.flow.selectCloudRegion')}
-                options={cloudRegionList.map((item) => ({
-                  value: item.id,
-                  label: item.name
-                }))}
-              />
-            </Form.Item>
-            <div className="text-[var(--color-text-3)] flex-1">
-              {t(
-                accessType === 'existing'
-                  ? 'monitor.integrations.flow.existingAssetReviewDesc'
-                  : 'monitor.integrations.flow.cloudRegionDesc'
-              )}
-            </div>
-          </div>
-        </Form.Item>
 
         <Form.Item label={t('monitor.integrations.flow.assetIp')} required>
           <div className="flex items-start gap-4">

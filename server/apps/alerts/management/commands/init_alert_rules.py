@@ -42,6 +42,6 @@ class Command(BaseCommand):
         instance_count = AlarmStrategy.objects.all().count()
         if not instance_count:
             AlarmStrategy.objects.create(**self.data)
-            logger.info(f"===成功初始化内置的告警聚合规则===")
+            logger.info("[AlertInit] 成功初始化内置的告警聚合规则")
         else:
-            logger.info(f"===存在告警聚合规则，跳过初始化===")
+            logger.info("[AlertInit] 存在告警聚合规则，跳过初始化")

@@ -1,6 +1,5 @@
 import hashlib
 import json
-import logging
 import os
 from typing import Any, Dict, Optional
 
@@ -8,8 +7,7 @@ import requests
 
 from apps.alerts.constants.constants import EventAction
 from apps.alerts.models.alert_source import AlertSource
-
-logger = logging.getLogger(__name__)
+from apps.core.logger import alert_logger as logger
 
 # 未命中规则时走保守兜底：只产生事件，不尝试自动恢复，避免误关单。
 DEFAULT_UNKNOWN_RULE = {

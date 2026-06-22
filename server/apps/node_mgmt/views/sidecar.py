@@ -4,6 +4,7 @@ import requests
 
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.core.utils.web_utils import WebUtils
+from apps.core.utils.webhook_tls import get_webhook_tls_verify
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.node_mgmt.models import PackageVersion, SidecarEnv
 from apps.node_mgmt.services.install_token import InstallTokenService
@@ -306,7 +307,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
 
         Business Logic:
             - 首次调用：创建节点、关联组织、创建默认配置
-            - 后续调用：更新节点信息、更新组织关联（覆盖模式）
+            - 后续调用：更新节点运行信息；组织归属由服务端/UI维护，避免旧 sidecar tag 覆盖用户修改
             - 处理待执行操作（actions）并在响应后删除
             - 返回分配给该节点的所有配置信息
 
@@ -330,7 +331,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
         """
         node_name = request.data.get("node_name", "")
         node_ip = request.data.get("node_details", {}).get("ip", "")
-        logger.info(f"Received sidecar node update request node_id={node_id}, node_ip={node_ip}, node_name={node_name}")
+        logger.debug(f"Received sidecar node update request node_id={node_id}, node_ip={node_ip}, node_name={node_name}")
         check_token_auth(node_id, request)
         return Sidecar.update_node_client(request, node_id)
 
@@ -421,7 +422,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
             - 下载地址包含临时 token，防止未授权下载
 
         Usage:
-            if [ "$(id -u)" -eq 0 ]; then curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | bash; elif command -v sudo >/dev/null 2>&1; then curl -sSLk http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash; else echo "Error: root or sudo is required"; fi
+            if [ "$(id -u)" -eq 0 ]; then curl -sSL http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | bash; elif command -v sudo >/dev/null 2>&1; then curl -sSL http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx | sudo bash; else echo "Error: root or sudo is required"; fi
             iwr http://server/api/v1/node_mgmt/open_api/installer/render?token=xxx -useb | iex
 
         示例:
@@ -496,7 +497,7 @@ class OpenSidecarViewSet(OpenAPIViewSet):
                 json=webhook_params,
                 headers={"Content-Type": "application/json"},
                 timeout=CloudRegionServiceConstants.WEBHOOK_REQUEST_TIMEOUT,
-                verify=False,  # 跳过 SSL 证书验证（内网环境）
+                verify=get_webhook_tls_verify(),
             )
 
             # 检查响应状态
@@ -622,9 +623,9 @@ cleanup() {{
 trap cleanup EXIT
 
 mkdir -p "$INSTALL_DIR"
-curl -sSLk "{installer_url}" -o "$INSTALLER_PATH"
+curl -sSL "{installer_url}" -o "$INSTALLER_PATH"
 chmod +x "$INSTALLER_PATH"
-        exec "$INSTALLER_PATH" --url "{config_url}" --install-dir "$INSTALL_DIR" --skip-tls
+        exec "$INSTALLER_PATH" --url "{config_url}" --install-dir "$INSTALL_DIR"
 '''
 
         return HttpResponse(script.encode("utf-8"), content_type="text/plain; charset=utf-8")

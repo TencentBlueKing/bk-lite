@@ -17,7 +17,12 @@ from apps.core.utils.web_utils import WebUtils
 from apps.log.constants.collect_type import DISPLAY_CATEGORY_ORDER
 from apps.log.constants.language import LanguageConstants
 from apps.log.constants.permission import PermissionConstants
-from apps.log.models import CollectType, CollectInstance, CollectConfig
+from apps.log.models import (
+    CollectConfig,
+    CollectInstance,
+    CollectInstanceOrganization,
+    CollectType,
+)
 from apps.log.models.policy import Policy
 from apps.log.serializers.collect_config import CollectTypeSerializer
 from apps.log.filters.collect_config import CollectTypeFilter
@@ -25,12 +30,81 @@ from apps.log.services.collect_type import CollectTypeService
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.core.utils.team_utils import get_current_team
+
+
+def should_hide_collect_type_entry(result: dict) -> bool:
+    return result.get("collector") == "Packetbeat" and result.get("name") == "http"
 
 
 class CollectTypeViewSet(ModelViewSet):
     queryset = CollectType.objects.all()
     serializer_class = CollectTypeSerializer
     filterset_class = CollectTypeFilter
+
+    LOG_GROUP_CREATE_SCOPE = "log_group_create"
+
+    @staticmethod
+    def _escape_logsql_value(value):
+        return str(value).replace("\\", "\\\\").replace('"', '\\"')
+
+    @classmethod
+    def _build_instance_scope_query(cls, instance_ids):
+        expressions = [
+            f'instance_id:"{cls._escape_logsql_value(instance_id)}"'
+            for instance_id in instance_ids
+        ]
+        if not expressions:
+            return ""
+        if len(expressions) == 1:
+            return expressions[0]
+        return f"({' OR '.join(expressions)})"
+
+    @classmethod
+    def _append_creation_scope_filter(cls, query, instance_ids):
+        scope_query = cls._build_instance_scope_query(instance_ids)
+        if not scope_query:
+            return ""
+
+        base_query = (query or "").strip()
+        if not base_query or base_query == "*":
+            return scope_query
+        return f"({base_query}) AND {scope_query}"
+
+    @staticmethod
+    def _is_log_group_create_scope(request):
+        return (
+            request.query_params.get("scope")
+            == CollectTypeViewSet.LOG_GROUP_CREATE_SCOPE
+        )
+
+    def _get_log_group_create_attrs(self, request, query, start_time, end_time):
+        try:
+            organization_ids = LogAccessScopeService.get_manageable_organization_ids(
+                request
+            )
+        except ValueError as exc:
+            return WebUtils.response_error(error_message=str(exc), status_code=403)
+
+        if not organization_ids:
+            return WebUtils.response_error(error_message="当前用户无权限创建日志分组", status_code=403)
+
+        instance_ids = list(
+            CollectInstanceOrganization.objects.filter(
+                organization__in=list(organization_ids)
+            )
+            .order_by("collect_instance_id")
+            .values_list("collect_instance_id", flat=True)
+            .distinct()
+        )
+        final_query = self._append_creation_scope_filter(query, instance_ids)
+        if not final_query:
+            return WebUtils.response_success([])
+
+        data = SearchService.all_field_names(
+            final_query, start_time, end_time, [], resolved_groups=[]
+        )
+        return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="display_category_enum")
     def display_category_enum(self, request, *args, **kwargs):
@@ -61,7 +135,7 @@ class CollectTypeViewSet(ModelViewSet):
         # 获取基础查询集
         queryset = self.filter_queryset(self.get_queryset())
         serializer = self.get_serializer(queryset, many=True)
-        results = serializer.data
+        results = [result for result in serializer.data if not should_hide_collect_type_entry(result)]
 
         # 加载语言包
         lan = LanguageLoader(app=LanguageConstants.APP, default_lang=request.user.locale)
@@ -83,7 +157,7 @@ class CollectTypeViewSet(ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "log",
                 PermissionConstants.POLICY_MODULE,
                 include_children=include_children,
@@ -122,7 +196,7 @@ class CollectTypeViewSet(ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             instance_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "log",
                 PermissionConstants.INSTANCE_MODULE,
                 include_children=include_children,
@@ -166,6 +240,9 @@ class CollectTypeViewSet(ModelViewSet):
         start_time = request.query_params.get("start_time", "")
         end_time = request.query_params.get("end_time", "")
         log_groups = request.query_params.getlist("log_groups") or request.query_params.getlist("log_groups[]")
+
+        if self._is_log_group_create_scope(request):
+            return self._get_log_group_create_attrs(request, query, start_time, end_time)
 
         try:
             scope = LogAccessScopeService.resolve_scope(request, log_groups)
@@ -224,7 +301,7 @@ class CollectInstanceViewSet(ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission_result = get_permissions_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "log",
             PermissionConstants.INSTANCE_MODULE,
             include_children=include_children,
@@ -383,7 +460,7 @@ class CollectInstanceViewSet(ViewSet):
             return WebUtils.response_error(error_message=str(exc))
 
         # 获取当前用户选择的组织（必填）
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
 
         if collect_type_id:
             # 单采集类型查询 - 使用与监控模块完全一致的权限检查方式

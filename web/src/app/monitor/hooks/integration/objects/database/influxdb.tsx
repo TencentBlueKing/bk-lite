@@ -43,13 +43,6 @@ export const useInfluxDBConfig = () => {
         },
       },
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'influxdb_database_numSeries' },
-      { type: 'value', key: 'influxdb_httpd_writeReq_rate' },
-      { type: 'value', key: 'influxdb_httpd_pointsWrittenFail_rate' },
-      { type: 'value', key: 'influxdb_httpd_pointsWrittenDropped_rate' },
-      { type: 'value', key: 'influxdb_runtime_HeapAlloc' },
-    ],
     groupIds: {},
     collectTypes: {
       InfluxDB: 'database',

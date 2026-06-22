@@ -10,6 +10,7 @@ class BotSerializer(TeamSerializer, AuthSerializer):
     permission_key = "bot"
 
     is_pinned = serializers.SerializerMethodField()
+    usage_team_name = serializers.SerializerMethodField()
 
     def __init__(self, instance=None, data=empty, **kwargs):
         super().__init__(instance=instance, data=data, **kwargs)
@@ -26,10 +27,16 @@ class BotSerializer(TeamSerializer, AuthSerializer):
     class Meta:
         model = Bot
         fields = "__all__"
+        # api_token 是敏感凭证，仅允许写入、禁止在响应中回显（其余字段保持原样）
+        extra_kwargs = {"api_token": {"write_only": True}}
 
     def get_is_pinned(self, instance: Bot) -> bool:
         """获取当前用户对此 Bot 的置顶状态"""
         return instance.id in self.pinned_bot_ids
+
+    def get_usage_team_name(self, instance: Bot):
+        """使用组织 id → 名称（与 team_name 同款，基于当前用户 group_list）"""
+        return [self.group_map.get(i) for i in (instance.usage_team or []) if i in self.group_map]
 
     def get_fields(self):
         """根据操作类型动态返回字段"""

@@ -1,19 +1,36 @@
 {
   "plugin": "Website",
   "plugin_desc": "The purpose of the website monitoring plugin is to periodically check the availability and performance of HTTP/HTTPS connections.",
-  "status_query": "any({instance_type='web', collect_type='web'}) by (instance_id)",
+  "status_query": "any(http_response_result_type{instance_type='web', collect_type='web', result='success'}) by (instance_id)",
   "name": "Website",
   "icon": "mm-website_网站",
   "type": "Web",
   "description": "",
   "default_metric": "any({instance_type='web'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["http_node_success_rate", "http_response_response_time", "http_response_http_response_code"],
+  "supplementary_indicators": ["http_response_result_code", "http_node_success_rate", "http_response_response_time", "http_response_http_response_code"],
+  "display_fields": [{"name": "Probe Result", "sort_order": 0, "metrics": [{"plugin": "Website", "metric": "http_response_result_code"}]}, {"name": "Node Success Rate", "sort_order": 1, "metrics": [{"plugin": "Website", "metric": "http_node_success_rate"}]}, {"name": "Response Time", "sort_order": 2, "metrics": [{"plugin": "Website", "metric": "http_response_response_time"}]}, {"name": "HTTP Code", "sort_order": 3, "metrics": [{"plugin": "Website", "metric": "http_response_http_response_code"}]}],
   "metrics": [
     {
       "metric_group": "HTTP",
+      "name": "http_response_result_code",
+      "query": "http_response_result_code{__$labels__}",
+      "display_name": "Probe Result",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"响应内容不匹配\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"响应体读取失败\",\"id\":2,\"color\":\"#faad14\"},{\"name\":\"连接失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"超时\",\"id\":4,\"color\":\"#ff4d4f\"},{\"name\":\"DNS错误\",\"id\":5,\"color\":\"#ff4d4f\"},{\"name\":\"响应状态码不匹配\",\"id\":6,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Represents the Telegraf http_response result_code field. It identifies whether the probe succeeded or failed due to content mismatch, body read error, connection failure, timeout, DNS error, or status code mismatch."
+    },
+    {
+      "metric_group": "HTTP",
       "name": "http_node_success_rate",
-      "query": "count_over_time(http_response_result_type{result=\"success\",__$labels__}[5m]) / count_over_time(http_response_result_type{__$labels__}[5m]) * 100",
+      "query": "(sum without (result) (count_over_time(http_response_result_type{result=\"success\",__$labels__}[5m])) or sum without (result) (count_over_time(http_response_result_type{__$labels__}[5m])) * 0) / sum without (result) (count_over_time(http_response_result_type{__$labels__}[5m])) * 100",
       "display_name": "Node Success Rate",
       "data_type": "Number",
       "unit": "percent",

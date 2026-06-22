@@ -52,17 +52,14 @@ export const useRouterConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'snmp_uptime' },
-      { type: 'value', key: 'device_total_incoming_traffic' },
-      { type: 'value', key: 'device_total_outgoing_traffic' }
-    ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id']
     },
     collectTypes: {
       'Router SNMP General': 'snmp',
+      'Router Juniper MX SNMP': 'snmp_juniper_mx',
+      'Router Huawei AR SNMP': 'snmp_huawei_ar',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

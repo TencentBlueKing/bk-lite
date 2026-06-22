@@ -275,3 +275,25 @@ def test_update_enum_instances_display(fake_graph):
     # 只有实例 1 含 status → 更新 1 个
     assert count == 1
     assert any(c[0] == "batch_update_node_properties" for c in fg.calls)
+
+
+def test_rebuild_file_instances_display_backfills_stem(fake_graph):
+    # 实例 1 有附件但无 _display（历史数据）；实例 2 无附件值
+    fg = fake_graph(
+        MODULE,
+        query_entity=([{"_id": 1, "doc": [{"name": "report.pdf"}]}, {"_id": 2}], 2),
+    )
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+    # 只有实例 1 含 doc → 回填 1 个
+    assert count == 1
+    update_calls = [c for c in fg.calls if c[0] == "batch_update_node_properties"]
+    assert len(update_calls) == 1
+    # 写入的是文件名词干（去扩展名），而非原始元数据 JSON
+    assert update_calls[0][1][2] == {"doc_display": "report"}
+
+
+def test_rebuild_file_instances_display_no_instances(fake_graph):
+    fg = fake_graph(MODULE, query_entity=([], 0))
+    count = ModelManage.rebuild_file_instances_display("host", "doc")
+    assert count == 0
+    assert not any(c[0] == "batch_update_node_properties" for c in fg.calls)

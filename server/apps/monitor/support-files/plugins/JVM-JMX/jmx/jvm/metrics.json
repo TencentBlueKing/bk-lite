@@ -9,6 +9,7 @@
   "default_metric": "any({instance_type='jvm'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["jvm_memory_usage_used_value", "jvm_threads_count_value", "jvm_gc_collectiontime_seconds_value"],
+  "display_fields": [{"name": "Memory Used", "sort_order": 0, "metrics": [{"plugin": "JVM", "metric": "jvm_memory_usage_used_value"}]}, {"name": "Current Threads Count", "sort_order": 1, "metrics": [{"plugin": "JVM", "metric": "jvm_threads_count_value"}]}, {"name": "GC Collection Time", "sort_order": 2, "metrics": [{"plugin": "JVM", "metric": "jvm_gc_collectiontime_seconds_value"}]}],
   "metrics": [
     {
       "metric_group": "JMXselfMonitor",

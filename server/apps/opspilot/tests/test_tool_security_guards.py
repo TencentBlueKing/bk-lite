@@ -61,3 +61,41 @@ def test_python_execute_preserves_explicit_print_output():
 def test_python_execute_blocks_forbidden_code_patterns(code, message):
     with pytest.raises(ValueError, match=message):
         _execute_python_code(code)
+
+
+@pytest.mark.parametrize(
+    "code",
+    [
+        # BL-NEW-001 文档 PoC：经无害对象继承链取得 os.system 执行系统命令。
+        "().__class__.__bases__[0].__subclasses__()",
+        "''.__class__.__mro__[1].__subclasses__()",
+        "[].__class__.__base__.__subclasses__()[0].__init__.__globals__",
+        "(lambda: 0).__globals__",
+        "type('x', (), {}).__subclasses__",
+    ],
+)
+def test_python_execute_blocks_object_chain_sandbox_escape(code):
+    """对象继承链 / dunder 反射逃逸必须被拦截（攻击者借此拿到 os/subprocess）。"""
+    with pytest.raises(ValueError, match="(危险属性|禁止使用的标识符)"):
+        _execute_python_code(code)
+
+
+@pytest.mark.parametrize(
+    ("code", "message"),
+    [
+        ("getattr(str, 'mro')", "getattr"),
+        ("globals()", "globals"),
+        ("open('/etc/passwd')", "open"),
+        ("compile('1', 'x', 'eval')", "compile"),
+        ("vars(str)", "vars"),
+    ],
+)
+def test_python_execute_blocks_reflection_builtins(code, message):
+    """反射 / 文件 / 动态编译类内建函数被 AST 层按名字拦截。"""
+    with pytest.raises(ValueError, match=message):
+        _execute_python_code(code)
+
+
+def test_python_execute_allows_dunder_free_attribute_access():
+    """非 dunder 的普通属性访问不受影响（如 str 方法），确保不误伤正常代码。"""
+    assert _execute_python_code("'Hello'.upper()") == "HELLO"

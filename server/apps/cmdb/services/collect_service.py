@@ -13,6 +13,8 @@ from apps.cmdb.constants.constants import CollectPluginTypes, CollectRunStatusTy
 from apps.cmdb.models import CREATE_INST, UPDATE_INST, DELETE_INST, EXECUTE
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.collection.collect_tasks.protocol_collect import ProtocolCollect
+from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
+from apps.cmdb.services.collect_hit_state_service import CollectHitStateService
 from apps.cmdb.models.change_record import COLLECT_AUTOMATION_CHANGE
 from apps.cmdb.utils.change_record import create_change_record
 from apps.cmdb.utils.base import get_current_team_from_request
@@ -289,11 +291,29 @@ class CollectModelService(object):
                 data["credential"]["regions"] = regions
         else:
             old_credential = instance.decrypt_credentials
-            if not isinstance(old_credential, dict):
-                old_credential = {}
             if credential is None:
                 data["credential"] = old_credential
                 return
+            if isinstance(credential, list):
+                old_pool = old_credential if isinstance(old_credential, list) else []
+                old_pool_map = {
+                    item.get("credential_id"): dict(item)
+                    for item in old_pool
+                    if isinstance(item, dict) and item.get("credential_id")
+                }
+                merged_pool = []
+                for item in credential:
+                    if not isinstance(item, dict):
+                        raise BaseAppException("采集凭据格式错误！")
+                    credential_id = item.get("credential_id")
+                    merged = dict(old_pool_map.get(credential_id, {}))
+                    merged.update(item)
+                    merged_pool.append(merged)
+                data["credential"] = merged_pool
+                return
+
+            if not isinstance(old_credential, dict):
+                old_credential = {}
             if not isinstance(credential, dict):
                 raise BaseAppException("采集凭据格式错误！")
             old_credential.update(credential)
@@ -355,10 +375,10 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main()
-        logger.debug(f"推送节点参数: {node_params}")
+        logger.debug("[CollectTask] 推送节点参数 task_id=%s, node_params=%s", instance.id, node_params)
         node_mgmt = NodeMgmt()
         result = node_mgmt.batch_add_node_child_config(node_params)
-        logger.debug(f"推送节点参数结果: {result}")
+        logger.debug("[CollectTask] 推送节点参数结果 task_id=%s, result=%s", instance.id, result)
 
     @staticmethod
     def delete_butch_node_params(instance):
@@ -367,14 +387,17 @@ class CollectModelService(object):
         """
         node = NodeParamsFactory.get_node_params(instance)
         node_params = node.main(operator="delete")
-        logger.debug(f"删除节点参数: {node_params}")
+        logger.debug("[CollectTask] 删除节点参数 task_id=%s, node_params=%s", instance.id, node_params)
         node_mgmt = NodeMgmt()
         result = node_mgmt.delete_child_configs(node_params)
-        logger.debug(f"删除节点参数结果: {result}")
+        logger.debug("[CollectTask] 删除节点参数结果 task_id=%s, result=%s", instance.id, result)
 
     @classmethod
     def create(cls, request, view_self):
         create_data, is_interval, scan_cycle = cls.format_params(request.data)
+        if create_data.get("credential"):
+            create_data["credential"] = CollectCredentialPoolService.normalize_pool(create_data["credential"])
+            CollectCredentialPoolService.validate_pool_shape(create_data["credential"])
         cls.enrich_host_cloud_snapshot_payload(create_data)
 
         # 使用数据库事务保证原子性：DB + 外部操作要么全成功，要么全失败
@@ -399,7 +422,12 @@ class CollectModelService(object):
                     cls.push_butch_node_params(instance)
             except Exception as e:
                 # 外部操作失败，记录详细错误日志并抛出异常，触发事务回滚
-                logger.error(f"创建采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
+                logger.error(
+                    "[CollectTask] 创建采集任务时外部操作失败，事务将回滚 task_name=%s, error=%s",
+                    instance.name,
+                    e,
+                    exc_info=True,
+                )
                 # 重新抛出异常，让事务回滚
                 raise BaseAppException(f"创建采集任务失败：{str(e)}")
 
@@ -427,6 +455,14 @@ class CollectModelService(object):
         cls.has_permission(request, instance, view_self)
         update_data, is_interval, scan_cycle = cls.format_params(request.data)
         cls.format_update_credential(instance, update_data)
+        if update_data.get("credential"):
+            old_pool = CollectCredentialPoolService.normalize_pool(instance.decrypt_credentials)
+            new_pool = CollectCredentialPoolService.normalize_pool(update_data["credential"])
+            CollectCredentialPoolService.validate_pool_shape(new_pool)
+            update_data["credential"] = new_pool
+            credential_pool_diff = CollectCredentialPoolService.diff_pool(old_pool, new_pool)
+        else:
+            credential_pool_diff = ([], [], [])
         cls.enrich_host_cloud_snapshot_payload(update_data)
         # 使用数据库事务保证原子性
         with transaction.atomic():
@@ -452,10 +488,25 @@ class CollectModelService(object):
                     cls.push_butch_node_params(instance)
             except Exception as e:
                 # 外部操作失败，记录错误并抛出异常，触发事务回滚
-                logger.error(f"更新采集任务时外部操作失败，事务将回滚: task_name={instance.name}, error={str(e)}")
+                logger.error(
+                    "[CollectTask] 更新采集任务时外部操作失败，事务将回滚 task_name=%s, error=%s",
+                    instance.name,
+                    e,
+                    exc_info=True,
+                )
                 raise BaseAppException(f"更新采集任务失败：{str(e)}")
 
             cls.delete_team(instance.id, old_instance.team, request.data["team"], view_self)
+            invalidated_credential_ids = list(dict.fromkeys(credential_pool_diff[1] + credential_pool_diff[2]))
+            cleared_hit_count = CollectHitStateService.clear_by_credential_ids(instance.id, invalidated_credential_ids)
+            logger.info(
+                "[CollectCredentialPool] update task_id=%s added=%s removed=%s edited=%s cleared_hit_count=%s",
+                instance.id,
+                credential_pool_diff[0],
+                credential_pool_diff[1],
+                credential_pool_diff[2],
+                cleared_hit_count,
+            )
             # 只有所有操作都成功，才创建变更记录
             create_change_record(
                 operator=request.user.username,
@@ -497,7 +548,12 @@ class CollectModelService(object):
                     cls.delete_butch_node_params(instance_copy)
             except Exception as e:
                 # 外部资源清理失败，记录错误并抛出异常，触发事务回滚
-                logger.error(f"删除采集任务时外部资源清理失败，事务将回滚: task_name={instance_name}, error={str(e)}")
+                logger.error(
+                    "[CollectTask] 删除采集任务时外部资源清理失败，事务将回滚 task_name=%s, error=%s",
+                    instance_name,
+                    e,
+                    exc_info=True,
+                )
                 raise BaseAppException(f"删除采集任务失败：{str(e)}")
 
             # 外部资源清理成功后，再删除数据库记录

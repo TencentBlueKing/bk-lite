@@ -1,0 +1,49 @@
+@use '../common/simple-dashboard.module.scss';
+
+// 分区标题:与 k8s-cluster 同款(borderless),保证 集群→节点→Pod 下钻视觉一致。
+.sectionLabel {
+  margin: 6px 2px 2px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8c95a8;
+}
+.dashboardSection + .sectionLabel,
+.kpiGrid + .sectionLabel {
+  margin-top: 14px;
+}
+
+.chartLegendHeader {
+  justify-content: flex-end;
+  max-width: none;
+  white-space: nowrap;
+}
+
+.compactTrend {
+  .chartWrap {
+    height: 164px;
+  }
+}
+
+@media (max-width: 768px) {
+  .chartLegendHeader {
+    justify-content: flex-start;
+    max-width: 100%;
+    white-space: normal;
+  }
+
+  .compactTrend {
+    .chartWrap {
+      height: 138px;
+    }
+  }
+}
+
+@media (max-width: 480px) {
+  .compactTrend {
+    .chartWrap {
+      height: 120px;
+    }
+  }
+}

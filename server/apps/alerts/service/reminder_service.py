@@ -120,7 +120,7 @@ class ReminderService:
 
             if existing_task:
                 if existing_task.is_active:
-                    logger.warning(f"告警 {alert.alert_id} 已存在活跃的提醒任务")
+                    logger.warning("[AlertReminder] 告警 %s 已存在活跃的提醒任务", alert.alert_id)
                     return existing_task
 
                 existing_task.assignment = assignment
@@ -164,12 +164,13 @@ class ReminderService:
             )
 
             logger.info(
-                f"为告警 {alert.alert_id} 创建提醒任务，频率: {interval_minutes}分钟，最大次数: {max_count}"
+                "[AlertReminder] 为告警 %s 创建提醒任务，频率: %s分钟，最大次数: %s",
+                alert.alert_id, interval_minutes, max_count,
             )
             return reminder_task
 
         except Exception as e:
-            logger.error(f"创建提醒任务失败: alert_id={alert.alert_id}, error={str(e)}")
+            logger.error("[AlertReminder] 创建提醒任务失败: alert_id=%s, error=%s", alert.alert_id, e, exc_info=True)
             return None
 
     @classmethod
@@ -229,15 +230,16 @@ class ReminderService:
 
                 if updated_count > 0:
                     logger.info(
-                        f"停止告警 {alert.alert_id} 的 {updated_count} 个提醒任务"
+                        "[AlertReminder] 停止告警 %s 的 %s 个提醒任务",
+                        alert.alert_id, updated_count,
                     )
                     return True
                 else:
-                    logger.warning(f"告警 {alert.alert_id} 没有找到活跃的提醒任务")
+                    logger.warning("[AlertReminder] 告警 %s 没有找到活跃的提醒任务", alert.alert_id)
                     return False
 
         except Exception as e:
-            logger.error(f"停止提醒任务失败: alert_id={alert.alert_id}, error={str(e)}")
+            logger.error("[AlertReminder] 停止提醒任务失败: alert_id=%s, error=%s", alert.alert_id, e, exc_info=True)
             return False
 
     @classmethod
@@ -278,15 +280,15 @@ class ReminderService:
                 reminder.save()
 
                 logger.info(
-                    f"更新提醒任务配置: alert_id={reminder.alert.alert_id}, "
-                    f"频率: {old_frequency}->{new_frequency}分钟, "
-                    f"最大次数: {old_max_count}->{new_max_count}"
+                    "[AlertReminder] 更新提醒任务配置: alert_id=%s, 频率: %s->%s分钟, 最大次数: %s->%s",
+                    reminder.alert.alert_id, old_frequency, new_frequency, old_max_count, new_max_count,
                 )
                 return True
 
         except Exception as e:
             logger.error(
-                f"更新提醒任务配置失败: reminder_id={reminder.id}, error={str(e)}"
+                "[AlertReminder] 更新提醒任务配置失败: reminder_id=%s, error=%s",
+                reminder.id, e, exc_info=True,
             )
             return False
 
@@ -371,7 +373,7 @@ class ReminderService:
                     )
 
         except Exception as e:
-            logger.error(f"检查提醒任务失败: {str(e)}")
+            logger.error("[AlertReminder] 检查提醒任务失败: %s", e, exc_info=True)
 
         return {"processed": processed, "success": success}
 
@@ -395,26 +397,32 @@ class ReminderService:
                 )
                 return False
 
-            username_list = assignment.personnel
+            from apps.alerts.service.escalation_service import EscalationService
+
+            roster, layer_channels = EscalationService.active_roster_for_reminder(alert)
+            username_list = roster if roster is not None else assignment.personnel
             if not username_list:
                 logger.warning(
-                    f"提醒任务 {assignment.id} 没有配置接收人员，无法发送通知"
+                    "[AlertReminder] 提醒任务 %s 没有配置接收人员，无法发送通知",
+                    assignment.id,
                 )
                 return False
 
-            channel_list = assignment.notify_channels
+            channel_list = layer_channels if layer_channels else assignment.notify_channels
             if isinstance(channel_list, str):
                 try:
                     channel_list = json.loads(channel_list)
                 except json.JSONDecodeError:
                     logger.error(
-                        f"提醒任务 {assignment.id} 的通知渠道配置错误: {channel_list}"
+                        "[AlertReminder] 提醒任务 %s 的通知渠道配置错误: %s",
+                        assignment.id, channel_list,
                     )
                     channel_list = []
 
             if not channel_list:
                 logger.warning(
-                    f"提醒任务 {assignment.id} 没有配置通知渠道，无法发送通知"
+                    "[AlertReminder] 提醒任务 %s 没有配置通知渠道，无法发送通知",
+                    assignment.id,
                 )
                 return False
 
@@ -563,9 +571,9 @@ class ReminderService:
                 is_active=False, updated_at__lt=cutoff_time
             ).delete()[0]
 
-            logger.info(f"清理了 {deleted_count} 条过期的提醒任务记录")
+            logger.info("[AlertReminder] 清理了 %s 条过期的提醒任务记录", deleted_count)
             return deleted_count
 
         except Exception as e:
-            logger.error(f"清理过期提醒任务失败: {str(e)}")
+            logger.error("[AlertReminder] 清理过期提醒任务失败: %s", e, exc_info=True)
             return 0

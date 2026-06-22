@@ -1,4 +1,9 @@
-"""HTTP请求工具 - 使用requests库"""
+"""HTTP请求工具 - 使用统一的安全 HTTP 客户端 (safe_requests)
+
+BL-NEW-003：本模块原先直接用 requests.* 且 allow_redirects=True，只校验初始 URL，
+重定向 Location 不再校验，攻击者可让公网 URL 返回 302 跳到内网/云元数据实现 SSRF
+绕过。改为统一走 apps.core.utils.safe_requests，对每一跳重定向目标都做 SSRF 校验。
+"""
 
 from typing import Any, Dict, Optional, Union
 
@@ -6,6 +11,7 @@ import requests
 from langchain_core.runnables import RunnableConfig
 from langchain_core.tools import tool
 
+from apps.core.utils.safe_requests import safe_delete, safe_get, safe_patch, safe_post, safe_put
 from apps.opspilot.metis.llm.tools.fetch.utils import (
     format_error_response,
     parse_content_type_encoding,
@@ -55,7 +61,8 @@ def _http_get_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.get(
+        # 走安全客户端：禁用 requests 自动重定向，逐跳对 Location 做 SSRF 校验后再跟随
+        response = safe_get(
             url,
             headers=req_headers,
             params=params,
@@ -122,7 +129,7 @@ def _http_post_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.post(
+        response = safe_post(
             url,
             data=data,
             json=json_data,
@@ -185,7 +192,7 @@ def _http_put_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.put(
+        response = safe_put(
             url,
             data=data,
             json=json_data,
@@ -246,7 +253,7 @@ def _http_delete_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.delete(
+        response = safe_delete(
             url,
             headers=req_headers,
             params=params,
@@ -307,7 +314,7 @@ def _http_patch_impl(
             pass  # 使用默认值
 
     try:
-        response = requests.patch(
+        response = safe_patch(
             url,
             data=data,
             json=json_data,

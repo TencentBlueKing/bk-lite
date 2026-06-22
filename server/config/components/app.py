@@ -1,12 +1,13 @@
 import os
 
 from config.components.base import BASE_DIR, DEBUG
+from config.components.enterprise import detect_enterprise_footprint, require_enterprise_license_management
 
 ROOT_URLCONF = "urls"
 
 # 检查当前数据库环境
 _db_engine = os.getenv("DB_ENGINE", "postgresql").lower()
-_migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase"}
+_migrate_patch_db_engines = {"dameng", "gaussdb", "goldendb", "oceanbase", "mysql"}
 
 # 模板页面配置
 TEMPLATES = [
@@ -88,11 +89,11 @@ MIDDLEWARE = (
 
 _install_apps = {item.strip() for item in os.getenv("INSTALL_APPS", "").split(",") if item.strip()}
 
-# 企业版：如果 apps/license_mgmt 目录存在，强制加载，无需依赖环境变量
-if os.path.isdir(os.path.join(BASE_DIR, "apps", "license_mgmt")):
-    _install_apps.add("license_mgmt")
+# 企业版：检测 enterprise footprint，拒绝无 license_mgmt 时启动，按需加载
+require_enterprise_license_management(BASE_DIR)
+_enterprise_status = detect_enterprise_footprint(BASE_DIR)
 
-if "license_mgmt" in _install_apps:
+if _enterprise_status.should_enable_license_mgmt:
     INSTALLED_APPS += ("apps.license_mgmt",)
     MIDDLEWARE += (
         "apps.license_mgmt.middleware.license_guard.LicenseAppGuardMiddleware",
@@ -131,13 +132,23 @@ APPS_DIR = os.path.join(BASE_DIR, "apps")
 if os.path.exists(APPS_DIR):
     install_apps = os.getenv("INSTALL_APPS", "")
     if install_apps:
-        app_folders = [name for name in os.listdir(APPS_DIR) if os.path.isdir(os.path.join(APPS_DIR, name)) and name in install_apps.split(",")]
+        app_folders = [
+            name
+            for name in os.listdir(APPS_DIR)
+            if os.path.isdir(os.path.join(APPS_DIR, name))
+            and name in install_apps.split(",")
+            and (name != "license_mgmt" or _enterprise_status.should_enable_license_mgmt)
+        ]
     else:
         exclude_apps = ["base", "core", "rpc"]
         app_folders = [
             name
             for name in os.listdir(APPS_DIR)
-            if os.path.isdir(os.path.join(APPS_DIR, name)) and name not in exclude_apps and not name.startswith("_") and not name.startswith(".")
+            if os.path.isdir(os.path.join(APPS_DIR, name))
+            and name not in exclude_apps
+            and not name.startswith("_")
+            and not name.startswith(".")
+            and (name != "license_mgmt" or _enterprise_status.should_enable_license_mgmt)
         ]
 
 else:

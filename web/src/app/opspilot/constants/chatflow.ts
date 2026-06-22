@@ -1,5 +1,6 @@
 export const nodeConfig = {
   celery: { icon: 'a-icon-dingshichufa1x', color: 'green' as const },
+  nats: { icon: 'WebSphereMQ', color: 'cyan' as const },
   restful: { icon: 'RESTfulAPI', color: 'purple' as const },
   openai: { icon: 'icon-test2', color: 'blue' as const },
   agents: { icon: 'zhinengti', color: 'orange' as const },
@@ -18,7 +19,7 @@ export const nodeConfig = {
   memory_write: { icon: 'bianji', color: 'indigo' as const },
 } as const;
 
-export const TRIGGER_NODE_TYPES = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
+export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
 
 export const handleColorClasses = {
   green: 'bg-green-500!',
@@ -46,6 +47,8 @@ export const getDefaultConfig = (nodeType: string) => {
         time: '00:00',
         message: ''
       };
+    case 'nats':
+      return baseConfig;
     case 'http':
       return {
         ...baseConfig,
@@ -64,6 +67,13 @@ export const getDefaultConfig = (nodeType: string) => {
         agentName: '',
         prompt: '',
         uploadedFiles: []
+      };
+    case 'notification':
+      return {
+        ...baseConfig,
+        notificationType: 'email',
+        notificationMethod: '',
+        notificationChannels: []
       };
     case 'agui':
       return {
@@ -116,9 +126,6 @@ export const getDefaultConfig = (nodeType: string) => {
         appTags: [],
         appDescription: ''
       };
-    case 'restful':
-    case 'openai':
-      return baseConfig;
     case 'memory_read':
       return {
         ...baseConfig,
@@ -129,8 +136,11 @@ export const getDefaultConfig = (nodeType: string) => {
       return {
         ...baseConfig,
         memory_space_id: null,
-        title: ''
+        title: '',
+        writeBatchSize: 30
       };
+    case 'restful':
+    case 'openai':
     default:
       return baseConfig;
   }

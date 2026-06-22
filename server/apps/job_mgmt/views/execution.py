@@ -1,8 +1,8 @@
 """作业执行视图"""
 
-import json
-
 from celery import current_app
+from django.http import StreamingHttpResponse
+from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -10,19 +10,32 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.logger import job_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
+from apps.job_mgmt.constants import ExecutionStatus
 from apps.job_mgmt.filters.execution import JobExecutionFilter
-from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
+from apps.job_mgmt.models import JobExecution
 from apps.job_mgmt.serializers.execution import (
     FileDistributionSerializer,
     JobExecutionDetailSerializer,
     JobExecutionListSerializer,
     QuickExecuteSerializer,
 )
-from apps.job_mgmt.services.dangerous_checker import DangerousChecker
-from apps.job_mgmt.services.script_params_service import ScriptParamsService
-from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
+from apps.job_mgmt.services.execution_service import ExecutionAuthorizationError, ExecutionDispatchError, ExecutionService
+from apps.job_mgmt.services.execution_stream_service import (
+    JOB_LOG_MAX_AGE_SECONDS,
+    JOB_LOG_MAX_BYTES,
+    JOB_LOG_STREAM_NAME,
+    JOB_LOG_SUBJECTS,
+    snapshot_sse_from_results,
+    stream_execution_events,
+)
+from apps.job_mgmt.tasks import finalize_cancelling_execution
+from apps.job_mgmt.utils.team_authz import normalize_authorized_team_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from nats_client.clients import ensure_stream_sync
+
+# CANCELLING 兜底收敛任务的额外缓冲（秒）：在 execution.timeout 之后再等一段时间，
+# 给真实结果回写留出余量，仍未回写才强制收敛为 CANCELLED。
+CANCEL_CONVERGE_BUFFER_SECONDS = 60
 
 
 class JobExecutionViewSet(AuthViewSet):
@@ -44,6 +57,31 @@ class JobExecutionViewSet(AuthViewSet):
         elif self.action == "file_distribution":
             return FileDistributionSerializer
         return JobExecutionListSerializer
+
+    def _get_authorized_team_ids(self, request):
+        """当前用户有权访问的团队 ID 集合；超管返回 None（不做团队归属限制）。
+
+        用于 quick_execute / file_distribution 在按 ID 加载 Script / Playbook /
+        Target / DistributionFile 后校验对象归属，防止跨团队越权引用（BL-NEW-002）。
+        """
+        user = getattr(request, "user", None)
+        if getattr(user, "is_superuser", False):
+            return None
+        return normalize_authorized_team_ids(getattr(user, "group_list", []))
+
+    def _resolve_execution_team(self, request, data):
+        """确定本次执行归属的 team，并校验用户对其有权限。
+
+        - 请求体显式传 team：必须全部落在用户可管理范围内，否则 PermissionDenied。
+        - 未传 team：回退到已校验权限的 current_team。
+        禁止信任请求体 team 越权指定他人团队（BL-NEW-002）。
+        """
+        current_team = self._validate_current_team_permission(request)
+        requested_team = data.get("team", [])
+        if requested_team:
+            self._validate_org_field_permission(request, requested_team)
+            return requested_team
+        return [current_team]
 
     @HasPermission("job_record-View")
     def list(self, request, *args, **kwargs):
@@ -68,98 +106,23 @@ class JobExecutionViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # 获取目标来源和目标列表
-        target_source = data["target_source"]
-        target_list = data["target_list"]
-
-        # 验证目标（仅 manual 来源需要验证 target_id 存在）
-        if target_source == TargetSource.MANUAL:
-            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
-            if target_ids:
-                existing_count = Target.objects.filter(id__in=target_ids).count()
-                if existing_count != len(target_ids):
-                    return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
-
+        # BL-NEW-002：禁止信任请求体 team 越权；按服务端授权 team 校验所引用对象。
+        authorized_team_ids = self._get_authorized_team_ids(request)
+        team = self._resolve_execution_team(request, data)
         username = request.user.username if request.user else ""
-        name = data["name"]
-        timeout = data.get("timeout", 600)
-        team = data.get("team", []) or [int(request.COOKIES.get("current_team") or 0)]
-        params = data.get("params", [])
 
-        # 处理新格式参数：解析 is_modified=False 的参数
-        script = None
-        if data.get("script_id"):
-            script = Script.objects.filter(id=data["script_id"]).first()
-            # 如果前端未显式传 timeout，使用脚本库定义的超时时间
-            if script and "timeout" not in request.data:
-                timeout = script.timeout
-        resolved_params = ScriptParamsService.resolve_params(params, script=script)
-        params_str = ScriptParamsService.params_to_string(resolved_params)
-        # 根据模式创建执行记录
-        if data.get("playbook_id"):
-            # Playbook 模式：params 存为 JSON 字符串，保留完整 key-value 关系
-            playbook = Playbook.objects.get(id=data["playbook_id"])
-            playbook_params_dict = ScriptParamsService.params_to_dict(resolved_params)
-            execution = JobExecution.objects.create(
-                name=name,
-                job_type=JobType.PLAYBOOK,
-                status=ExecutionStatus.PENDING,
-                playbook=playbook,
-                params=json.dumps(playbook_params_dict, ensure_ascii=False),
-                timeout=timeout,
-                total_count=len(target_list),
-                target_source=target_source,
-                target_list=target_list,
+        try:
+            execution = ExecutionService.create_quick_execution(
+                data=data,
                 team=team,
-                executor_user=username,
-                created_by=username,
-                updated_by=username,
+                authorized_team_ids=authorized_team_ids,
+                username=username,
+                timeout_explicit="timeout" in request.data,
             )
-            task_func = execute_playbook_task
-        else:
-            # 脚本模式（脚本库 或 临时输入）
-            script_content = data.get("script_content", "")
-            script_type = data.get("script_type", "")
+        except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
+            return Response({"error": e.message}, status=e.status_code)
 
-            if data.get("script_id"):
-                script = Script.objects.get(id=data["script_id"])
-                script_content = script.content
-                script_type = script.script_type
-
-            # 高危命令检测
-            check_result = DangerousChecker.check_command(script_content, team)
-            if not check_result.can_execute:
-                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-                return Response(
-                    {"error": f"脚本包含高危命令，禁止执行: {', '.join(forbidden_rules)}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            execution = JobExecution.objects.create(
-                name=name,
-                job_type=JobType.SCRIPT,
-                status=ExecutionStatus.PENDING,
-                script=script,
-                params=params_str,
-                script_type=script_type,
-                script_content=script_content,
-                timeout=timeout,
-                total_count=len(target_list),
-                target_source=target_source,
-                target_list=target_list,
-                team=team,
-                executor_user=username,
-                created_by=username,
-                updated_by=username,
-            )
-            task_func = execute_script_task
-
-        # 触发异步任务并保存 Celery task_id
-        result = task_func.delay(execution.id)
-        execution.celery_task_id = result.id
-        execution.save(update_fields=["celery_task_id", "updated_at"])
-
-        playbook_name = playbook.name if data.get("playbook_id") else name
+        playbook_name = execution.playbook.name if execution.playbook_id else execution.name
         log_operation(request, "execute", "job", f"快速执行作业: {playbook_name}")
 
         return Response(
@@ -191,70 +154,20 @@ class JobExecutionViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         data = serializer.validated_data
 
-        # 获取目标来源和目标列表
-        target_source = data["target_source"]
-        target_list = data["target_list"]
-
-        # 验证目标（仅 manual 来源需要验证 target_id 存在）
-        if target_source == TargetSource.MANUAL:
-            target_ids = [t.get("target_id") for t in target_list if t.get("target_id")]
-            if target_ids:
-                existing_count = Target.objects.filter(id__in=target_ids).count()
-                if existing_count != len(target_ids):
-                    return Response({"error": "部分目标不存在"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 验证文件
-        file_ids = data["file_ids"]
-        distribution_files = DistributionFile.objects.filter(id__in=file_ids)
-        if distribution_files.count() != len(file_ids):
-            return Response({"error": "部分文件不存在或已过期"}, status=status.HTTP_400_BAD_REQUEST)
-
+        # BL-NEW-002：禁止信任请求体 team 越权；按服务端授权 team 校验所引用对象。
+        authorized_team_ids = self._get_authorized_team_ids(request)
+        team = self._resolve_execution_team(request, data)
         username = request.user.username if request.user else ""
 
-        target_path = data["target_path"]
-        team = data.get("team", [])
-
-        # 高危路径检测
-        check_result = DangerousChecker.check_path(target_path, team)
-        if not check_result.can_execute:
-            forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-            return Response(
-                {"error": f"目标路径为高危路径，禁止分发: {', '.join(forbidden_rules)}"},
-                status=status.HTTP_400_BAD_REQUEST,
+        try:
+            execution = ExecutionService.create_file_distribution(
+                data=data,
+                team=team,
+                authorized_team_ids=authorized_team_ids,
+                username=username,
             )
-
-        # 从数据库获取文件信息，构建 files 列表
-        files_info = []
-        for df in distribution_files:
-            files_info.append(
-                {
-                    "name": df.original_name,
-                    "file_key": df.file_key,
-                }
-            )
-
-        # 创建执行记录
-        execution = JobExecution.objects.create(
-            name=data["name"],
-            job_type=JobType.FILE_DISTRIBUTION,
-            status=ExecutionStatus.PENDING,
-            files=files_info,
-            target_path=data["target_path"],
-            overwrite_strategy=data.get("overwrite_strategy", "overwrite"),
-            timeout=data.get("timeout", 600),
-            total_count=len(target_list),
-            target_source=target_source,
-            target_list=target_list,
-            team=data.get("team", []),
-            executor_user=username,
-            created_by=username,
-            updated_by=username,
-        )
-
-        # 触发异步任务并保存 Celery task_id
-        result = distribute_files_task.delay(execution.id)
-        execution.celery_task_id = result.id
-        execution.save(update_fields=["celery_task_id", "updated_at"])
+        except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
+            return Response({"error": e.message}, status=e.status_code)
 
         log_operation(request, "execute", "job", "文件分发")
 
@@ -272,24 +185,68 @@ class JobExecutionViewSet(AuthViewSet):
         execution = self.get_object()
         return Response(execution.execution_results or [])
 
+    @action(detail=True, methods=["get"])
+    @HasPermission("job_record-View")
+    def stream(self, request, pk=None):
+        """SSE 实时流式输出：非终态走 JetStream 实时回放+tail，终态走结果快照。"""
+        execution = self.get_object()
+        target_keys = [(t.get("node_id") or str(t.get("target_id", ""))) for t in (execution.target_list or [])]
+
+        if execution.status in ExecutionStatus.TERMINAL_STATES:
+            logger.info(
+                "[stream] SSE 连接(终态快照): execution_id=%s status=%s targets=%s",
+                execution.id,
+                execution.status,
+                target_keys,
+            )
+            generator = snapshot_sse_from_results(execution.execution_results or [])
+        else:
+            logger.info(
+                "[stream] SSE 连接(实时): execution_id=%s status=%s targets=%s",
+                execution.id,
+                execution.status,
+                target_keys,
+            )
+            try:
+                ensure_stream_sync(JOB_LOG_STREAM_NAME, JOB_LOG_SUBJECTS, JOB_LOG_MAX_AGE_SECONDS, JOB_LOG_MAX_BYTES)
+            except Exception as e:
+                logger.warning(f"[stream] JetStream 流声明失败(降级继续): execution_id={execution.id}, error={e}")
+            generator = stream_execution_events(execution.id, target_keys)
+
+        response = StreamingHttpResponse(generator, content_type="text/event-stream")
+        response["Cache-Control"] = "no-cache"
+        response["X-Accel-Buffering"] = "no"
+        return response
+
     @action(detail=True, methods=["post"])
     @HasPermission("job_record-Edit")
     def cancel(self, request, pk=None):
         """
-        取消执行（仅限等待中或执行中的任务）
+        取消执行（按当前状态 CAS 分流，消除竞态与"假取消"）
 
-        L0: 尝试 revoke Celery 队列中尚未被 worker 取走的任务
-        L1: 设置 CANCELLED 状态，Runner 循环中检测到后停止后续目标执行
+        - PENDING：worker 尚未取走，CAS 直接置 CANCELLED 终态；
+        - RUNNING：已在执行，CAS 置 CANCELLING 过渡态（非终态，等真实结果回写后收敛为
+          CANCELLED），并调度兜底收敛任务；Runner 检查点会据此停止后续目标；
+        - 终态 / 取消中：拒绝（400）；
+        - CAS 未命中（状态被并发改变）：按最新状态拒绝（400）。
+
+        L0: 无论 PENDING/RUNNING，都尽力 revoke 队列中尚未取走的 Celery 任务（失败不阻断）。
         """
         execution = self.get_object()
+        status_now = execution.status
 
-        if execution.status in ExecutionStatus.TERMINAL_STATES:
+        if status_now in ExecutionStatus.TERMINAL_STATES:
             return Response(
                 {"error": f"任务已处于终态({execution.get_status_display()})，无法取消"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+        if status_now == ExecutionStatus.CANCELLING:
+            return Response(
+                {"error": "任务正在取消中，请勿重复操作"},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
-        # L0: 尝试 revoke Celery 任务（仅对队列中尚未被 worker 取走的任务有效）
+        # L0: 尽力 revoke Celery 任务（仅对队列中尚未被 worker 取走的任务有效；失败不阻断取消）
         if execution.celery_task_id:
             try:
                 current_app.control.revoke(execution.celery_task_id)
@@ -297,13 +254,31 @@ class JobExecutionViewSet(AuthViewSet):
             except Exception as e:
                 logger.warning(f"[cancel] revoke Celery 任务失败: execution_id={execution.id}, error={e}")
 
-        # L1: 更新状态为 CANCELLED，Runner 循环中会检测此状态并停止后续目标
-        execution.status = ExecutionStatus.CANCELLED
-        execution.save(update_fields=["status", "updated_at"])
-        logger.info(f"[cancel] 执行已取消: execution_id={execution.id}")
-        log_operation(request, "execute", "job", f"取消执行: {execution.id}")
+        now = timezone.now()
+        if status_now == ExecutionStatus.PENDING:
+            # PENDING→CANCELLED：worker 尚未执行，直接落终态
+            updated = JobExecution.objects.filter(id=pk, status=ExecutionStatus.PENDING).update(
+                status=ExecutionStatus.CANCELLED, finished_at=now, updated_at=now
+            )
+            if updated:
+                logger.info(f"[cancel] 等待中任务已取消: execution_id={execution.id}")
+                log_operation(request, "execute", "job", f"取消执行: {execution.id}")
+                return Response({"message": "已取消执行", "status": ExecutionStatus.CANCELLED})
+        elif status_now == ExecutionStatus.RUNNING:
+            # RUNNING→CANCELLING：已在执行，进入过渡态，等真实结果回写后收敛
+            updated = JobExecution.objects.filter(id=pk, status=ExecutionStatus.RUNNING).update(status=ExecutionStatus.CANCELLING, updated_at=now)
+            if updated:
+                # 兜底收敛任务：execution.timeout + 缓冲后仍滞留 CANCELLING 则强制收敛为 CANCELLED
+                finalize_cancelling_execution.apply_async(args=[execution.id], countdown=execution.timeout + CANCEL_CONVERGE_BUFFER_SECONDS)
+                logger.info(f"[cancel] 执行中任务进入取消中: execution_id={execution.id}")
+                log_operation(request, "execute", "job", f"取消执行: {execution.id}")
+                return Response({"message": "正在取消执行", "status": ExecutionStatus.CANCELLING})
 
-        return Response({"message": "已取消执行"})
+        # CAS 未命中：检查后状态被并发改变，按最新状态拒绝
+        return Response(
+            {"error": "状态已变更，请刷新后重试"},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
     @action(detail=True, methods=["post"])
     @HasPermission("job_record-Edit")
@@ -314,93 +289,14 @@ class JobExecutionViewSet(AuthViewSet):
         基于现有执行记录创建一个新的执行任务，使用相同的参数重新执行。
         """
         original = self.get_object()
-
         username = request.user.username if request.user else ""
+        # BL-NEW-002 / #3403：与 quick_execute 一致，按服务端授权 team 校验原作业归属
+        authorized_team_ids = self._get_authorized_team_ids(request)
 
-        # 获取原执行记录的目标列表
-        target_list = original.target_list or []
-        if not target_list:
-            return Response({"error": "原执行目标已不存在"}, status=status.HTTP_400_BAD_REQUEST)
-
-        # 根据作业类型创建新的执行记录
-        if original.job_type == JobType.FILE_DISTRIBUTION:
-            execution = JobExecution.objects.create(
-                name=original.name,
-                job_type=JobType.FILE_DISTRIBUTION,
-                trigger_source=TriggerSource.MANUAL,
-                status=ExecutionStatus.PENDING,
-                files=original.files,
-                target_path=original.target_path,
-                overwrite_strategy=original.overwrite_strategy,
-                timeout=original.timeout,
-                total_count=len(target_list),
-                target_source=original.target_source,
-                target_list=target_list,
-                team=original.team,
-                executor_user=username,
-                created_by=username,
-                updated_by=username,
-            )
-            task_func = distribute_files_task
-        elif original.job_type == JobType.PLAYBOOK:
-            if not original.playbook:
-                return Response({"error": "原关联 Playbook 已不存在"}, status=status.HTTP_400_BAD_REQUEST)
-
-            # 高危命令检测（Playbook 内容可能已变更）
-            # Playbook 暂不做高危检测
-
-            execution = JobExecution.objects.create(
-                name=original.name,
-                job_type=JobType.PLAYBOOK,
-                trigger_source=TriggerSource.MANUAL,
-                status=ExecutionStatus.PENDING,
-                playbook=original.playbook,
-                params=original.params,
-                timeout=original.timeout,
-                total_count=len(target_list),
-                target_source=original.target_source,
-                target_list=target_list,
-                team=original.team,
-                executor_user=username,
-                created_by=username,
-                updated_by=username,
-            )
-            task_func = execute_playbook_task
-        else:
-            # 脚本执行
-            # 高危命令检测
-            check_result = DangerousChecker.check_command(original.script_content, original.team)
-            if not check_result.can_execute:
-                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
-                return Response(
-                    {"error": f"脚本包含高危命令，禁止执行: {', '.join(forbidden_rules)}"},
-                    status=status.HTTP_400_BAD_REQUEST,
-                )
-
-            execution = JobExecution.objects.create(
-                name=original.name,
-                job_type=JobType.SCRIPT,
-                trigger_source=TriggerSource.MANUAL,
-                status=ExecutionStatus.PENDING,
-                script=original.script,
-                params=original.params,
-                script_type=original.script_type,
-                script_content=original.script_content,
-                timeout=original.timeout,
-                total_count=len(target_list),
-                target_source=original.target_source,
-                target_list=target_list,
-                team=original.team,
-                executor_user=username,
-                created_by=username,
-                updated_by=username,
-            )
-            task_func = execute_script_task
-
-        # 触发异步任务并保存 Celery task_id
-        result = task_func.delay(execution.id)
-        execution.celery_task_id = result.id
-        execution.save(update_fields=["celery_task_id", "updated_at"])
+        try:
+            execution = ExecutionService.create_re_execution(original=original, username=username, authorized_team_ids=authorized_team_ids)
+        except (ExecutionAuthorizationError, ExecutionDispatchError) as e:
+            return Response({"error": e.message}, status=e.status_code)
 
         return Response(
             JobExecutionDetailSerializer(execution).data,

@@ -50,6 +50,16 @@ MODEL_ASSOCIATION = "model_association"
 # 实例关联标签
 INSTANCE_ASSOCIATION = "instance_association"
 
+# 拓扑主题：模型 -> 可用主题。network 主题表示「网络拓扑」视图
+TOPO_THEME_NETWORK = "network"
+# 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
+NETWORK_INTERFACE_MODEL = "interface"
+NETWORK_INTERFACE_BELONG_ASST = "belong"
+# 网络拓扑展开策略：默认展开 2 跳，最多 4 跳，节点上限 100（超出截断并提示，不静默丢弃）
+NETWORK_TOPO_DEFAULT_HOP = 2
+NETWORK_TOPO_MAX_HOP = 4
+NETWORK_TOPO_NODE_LIMIT = 100
+
 
 class ModelConstraintKey(BaseEnum):
     """模型约束键"""
@@ -377,6 +387,16 @@ COLLECT_OBJ_TREE = [
                 "encrypted_fields": ["password"],
             },
             {
+                "id": "influxdb",
+                "model_id": "influxdb",
+                "name": "【BETA】InfluxDB",
+                "task_type": CollectPluginTypes.PROTOCOL,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "HTTP", "Beta"],
+                "desc": "采集InfluxDB关键配置信息（兼容1.x/2.x，优先2.x）",
+                "encrypted_fields": ["password", "token"],
+            },
+            {
                 "id": "postgresql",
                 "model_id": "postgresql",
                 "name": "PostgreSQL",
@@ -436,14 +456,20 @@ COLLECT_OBJ_TREE = [
                 "desc": "采集HBase关键配置信息",
                 "encrypted_fields": ["password"],
             },
+        ],
+    },
+    {
+        "id": "storage_device",
+        "name": "存储设备",
+        "children": [
             {
-                "id": "tidb",
-                "model_id": "tidb",
-                "name": "【BETA】TiDB",
-                "task_type": CollectPluginTypes.DB,
-                "type": CollectDriverTypes.JOB,
-                "tag": ["Agent", "JOB", "Linux"],
-                "desc": "发现与采集TiDB基础配置信息",
+                "id": "storage",
+                "model_id": "storage",
+                "name": "【BETA】华为存储",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "HTTPS", "Beta"],
+                "desc": "采集华为 OceanStor 存储设备及其存储池、磁盘、卷（LUN）",
                 "encrypted_fields": ["password"],
             },
         ],
@@ -470,6 +496,26 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.PROTOCOL,
                 "tag": ["SDK"],
                 "desc": "采集腾讯云账户下CVM、VPC、云数据库等资产清单",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "hwcloud",
+                "model_id": "hwcloud",
+                "name": "华为云【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集华为云平台及其下 ECS 等资产清单",
+                "encrypted_fields": ["accessKey", "accessSecret"],
+            },
+            {
+                "id": "fusioninsight",
+                "model_id": "fusioninsight",
+                "name": "FusionInsight【beta】",
+                "task_type": CollectPluginTypes.CLOUD,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["SDK"],
+                "desc": "采集 FusionInsight 平台及其下集群、主机",
                 "encrypted_fields": ["accessKey", "accessSecret"],
             },
         ],
@@ -533,6 +579,16 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.JOB,
                 "tag": ["JOB", "Linux"],
                 "desc": "发现与采集Nginx基础配置信息",
+                "encrypted_fields": ["password"],
+            },
+            {
+                "id": "minio",
+                "model_id": "minio",
+                "name": "【BETA】MinIO",
+                "task_type": CollectPluginTypes.MIDDLEWARE,
+                "type": CollectDriverTypes.JOB,
+                "tag": ["JOB", "Linux", "Beta"],
+                "desc": "发现与采集MinIO对象存储的基础配置信息",
                 "encrypted_fields": ["password"],
             },
             {
@@ -617,26 +673,6 @@ COLLECT_OBJ_TREE = [
                 "encrypted_fields": ["password"],
             },
             {
-                "id": "jetty",
-                "model_id": "jetty",
-                "name": "Jetty",
-                "task_type": CollectPluginTypes.MIDDLEWARE,
-                "type": CollectDriverTypes.JOB,
-                "tag": ["JOB", "Linux", "Beta"],
-                "desc": "发现与采集Jetty基础配置信息",
-                "encrypted_fields": ["password"],
-            },
-            {
-                "id": "weblogic",
-                "model_id": "weblogic",
-                "name": "WebLogic",
-                "task_type": CollectPluginTypes.MIDDLEWARE,
-                "type": CollectDriverTypes.JOB,
-                "tag": ["JOB", "Linux", "Beta"],
-                "desc": "发现与采集WebLogic基础配置信息",
-                "encrypted_fields": ["password"],
-            },
-            {
                 "id": "iis",
                 "model_id": "iis",
                 "name": "IIS",
@@ -687,26 +723,6 @@ COLLECT_OBJ_TREE = [
                 "encrypted_fields": ["password"],
             },
             {
-                "id": "ceph",
-                "model_id": "ceph",
-                "name": "Ceph",
-                "task_type": CollectPluginTypes.MIDDLEWARE,
-                "type": CollectDriverTypes.JOB,
-                "tag": ["JOB", "Linux", "Beta"],
-                "desc": "发现与采集Ceph基础配置信息",
-                "encrypted_fields": ["password"],
-            },
-            {
-                "id": "jboss",
-                "model_id": "jboss",
-                "name": "JBoss",
-                "task_type": CollectPluginTypes.MIDDLEWARE,
-                "type": CollectDriverTypes.JOB,
-                "tag": ["JOB", "Linux", "Beta"],
-                "desc": "发现与采集JBoss基础配置信息",
-                "encrypted_fields": ["password"],
-            },
-            {
                 "id": "squid",
                 "model_id": "squid",
                 "name": "Squid",
@@ -717,16 +733,6 @@ COLLECT_OBJ_TREE = [
                 "encrypted_fields": ["password"],
             },
             {
-                "id": "websphere",
-                "model_id": "websphere",
-                "name": "WebSphere",
-                "task_type": CollectPluginTypes.MIDDLEWARE,
-                "type": CollectDriverTypes.JOB,
-                "tag": ["JOB", "Linux", "Beta"],
-                "desc": "发现与采集WebSphere基础配置信息",
-                "encrypted_fields": ["password"],
-            },
-            {
                 "id": "haproxy",
                 "model_id": "haproxy",
                 "name": "HAProxy",
@@ -734,6 +740,16 @@ COLLECT_OBJ_TREE = [
                 "type": CollectDriverTypes.JOB,
                 "tag": ["JOB", "Linux", "Beta"],
                 "desc": "发现与采集HAProxy基础配置信息",
+                "encrypted_fields": ["password"],
+            },
+            {
+                "id": "keepalive",
+                "model_id": "keepalive",
+                "name": "KeepAlive【beta】",
+                "task_type": CollectPluginTypes.MIDDLEWARE,
+                "type": CollectDriverTypes.JOB,
+                "tag": ["JOB", "Linux", "Beta"],
+                "desc": "采集 KeepAlive 实例的 IP、端口、版本、优先级、状态、虚拟路由 ID 等信息",
                 "encrypted_fields": ["password"],
             },
             {
@@ -764,4 +780,7 @@ VIEW = "View"
 APP_NAME = "cmdb"
 
 # ===========
-SECRET_KEY = os.getenv("SECRET_KEY", "cmdb_secret_key_2025_cb9c88c61e374c51a9a83f1b2b2c1b1d")
+# BL-NEW-006：移除源码内置的固定加密密钥（源码/库泄露后可被用于解密凭据）。
+# 与 Django 主 SECRET_KEY（config/components/base.py）一致，仅从环境变量读取；
+# 未配置时为空串，凭据加解密会显式失败，而非静默使用已知的硬编码密钥。
+SECRET_KEY = os.getenv("SECRET_KEY", "")

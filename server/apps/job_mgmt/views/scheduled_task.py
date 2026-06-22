@@ -18,6 +18,7 @@ from apps.job_mgmt.serializers.scheduled_task import (
     ScheduledTaskToggleSerializer,
     ScheduledTaskUpdateSerializer,
 )
+from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
@@ -138,6 +139,7 @@ class ScheduledTaskViewSet(AuthViewSet):
             status=ExecutionStatus.PENDING,
             script=instance.script,
             playbook=instance.playbook,
+            playbook_version=instance.playbook.version if instance.playbook else "",
             params=params_str,
             script_type=instance.script_type,
             script_content=instance.script_content,
@@ -152,13 +154,18 @@ class ScheduledTaskViewSet(AuthViewSet):
             updated_by=request.user.username if request.user else "",
         )
 
-        # 触发异步任务
-        if instance.job_type == JobType.SCRIPT:
-            execute_script_task.delay(execution.id)
-        elif instance.job_type == JobType.FILE_DISTRIBUTION:
-            distribute_files_task.delay(execution.id)
-        elif instance.job_type == JobType.PLAYBOOK:
-            execute_playbook_task.delay(execution.id)
+        # 触发异步任务；broker 不可用时置 FAILED 并返回 503
+        task_func_map = {
+            JobType.SCRIPT: execute_script_task,
+            JobType.FILE_DISTRIBUTION: distribute_files_task,
+            JobType.PLAYBOOK: execute_playbook_task,
+        }
+        task_func = task_func_map.get(instance.job_type)
+        if task_func and not dispatch_celery_task(task_func, execution):
+            return Response(
+                {"error": "任务调度服务暂不可用，请稍后重试"},
+                status=status.HTTP_503_SERVICE_UNAVAILABLE,
+            )
 
         log_operation(request, "execute", "job", f"立即执行定时任务: {instance.name}")
 

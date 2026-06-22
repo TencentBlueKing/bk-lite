@@ -13,7 +13,14 @@ class ClassificationViewSet(viewsets.ViewSet):
 
     @HasPermission("model_management-View")
     def list(self, request):
-        result = ClassificationManage.search_model_classification(request.user.locale)
+        raw_include = request.query_params.get("include_hidden", "").lower()
+        include_hidden = (
+            raw_include in ("1", "true", "yes") and bool(getattr(request.user, "is_superuser", False))
+        )
+        result = ClassificationManage.search_model_classification(
+            request.user.locale,
+            include_hidden=include_hidden,
+        )
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-Delete Group")

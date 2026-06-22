@@ -11,7 +11,7 @@ from apps.alerts.serializers import AlertAssignmentModelSerializer, AlertShieldM
 from apps.core.decorators.api_permission import HasPermission
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask, AlertShield
 from apps.core.logger import alert_logger as logger
 from django.db import transaction
@@ -47,7 +47,7 @@ class AlertAssignmentModelViewSet(ModelViewSet):
             "target_id": serializer.data["id"],
             "overview": f"创建告警分派策略[{serializer.data['name']}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @HasPermission("alert_assign-Edit")
@@ -62,7 +62,7 @@ class AlertAssignmentModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"修改告警分派策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return super().update(request, *args, **kwargs)
 
     @HasPermission("alert_assign-Delete")
@@ -77,7 +77,7 @@ class AlertAssignmentModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"删除告警分派策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
 
@@ -114,19 +114,20 @@ class AlertAssignmentModelViewSet(ModelViewSet):
                 if not level_config or level_config.get('interval_minutes', 0) <= 0:
                     # 停止该级别的提醒任务
                     ReminderService.stop_reminder_task(reminder.alert)
-                    logger.info(f"停止级别为 {alert_level} 的告警 {reminder.alert.alert_id} 的提醒任务")
+                    logger.info("[AlertView] 停止级别为 %s 的告警 %s 的提醒任务", alert_level, reminder.alert.alert_id)
                 else:
                     # 更新提醒配置
                     new_frequency = level_config.get('interval_minutes', 0)
                     new_max_count = level_config.get('max_count', 10)
                     ReminderService._update_reminder_task(reminder, new_frequency, new_max_count)
                     logger.info(
-                        f"更新级别为 {alert_level} 的告警 {reminder.alert.alert_id} 的提醒配置: 频率={new_frequency}分钟, 最大次数={new_max_count}")
+                        "[AlertView] 更新级别为 %s 的告警 %s 的提醒配置: 频率=%s分钟, 最大次数=%s",
+                        alert_level, reminder.alert.alert_id, new_frequency, new_max_count)
 
-            logger.info(f"分派策略 {assignment.name} 相关提醒任务配置更新完成")
+            logger.info("[AlertView] 分派策略 %s 相关提醒任务配置更新完成", assignment.name)
 
         except Exception as e:
-            logger.error(f"更新提醒任务配置失败: assignment_id={assignment.id}, error={str(e)}")
+            logger.error("[AlertView] 更新提醒任务配置失败: assignment_id=%s, error=%s", assignment.id, e, exc_info=True)
             raise
 
 
@@ -160,7 +161,7 @@ class AlertShieldModelViewSet(ModelViewSet):
             "target_id": serializer.data["id"],
             "overview": f"创建告警屏蔽策略[{serializer.data['name']}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
 
     @HasPermission("shield_strategy-Edit")
@@ -175,7 +176,7 @@ class AlertShieldModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"修改告警屏蔽策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         return super().update(request, *args, **kwargs)
 
     @HasPermission("shield_strategy-Delete")
@@ -190,6 +191,6 @@ class AlertShieldModelViewSet(ModelViewSet):
             "target_id": instance.id,
             "overview": f"删除告警屏蔽策略[{instance.name}]"
         }
-        OperatorLog.objects.create(**log_data)
+        record_operator_log(**log_data)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

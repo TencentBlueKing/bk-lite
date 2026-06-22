@@ -1,0 +1,238 @@
+.sidebarInner {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+  // 外壳本身透明,补回侧边栏底色,避免树列表透出页面背景、与其它树页面(白底)不一致
+  background: var(--color-bg-1);
+}
+
+.searchBox {
+  padding: 16px 12px 12px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(220, 229, 241, 0.72);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.96) 0%, rgba(247, 250, 255, 0.88) 100%);
+}
+
+.searchInput {
+  width: 100%;
+  height: 36px;
+  font-size: 14px;
+}
+
+.searchInput :global(.ant-input-affix-wrapper) {
+  border-radius: 12px;
+  border-color: #dce6f3;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 6px 16px rgba(36, 64, 110, 0.06);
+}
+
+.searchInput :global(.ant-input-affix-wrapper:hover),
+.searchInput :global(.ant-input-affix-wrapper-focused) {
+  border-color: #b8ccf1;
+  box-shadow: 0 8px 20px rgba(38, 75, 128, 0.1);
+}
+
+.list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 12px 10px 18px 12px;
+}
+
+.group + .group {
+  margin-top: 10px;
+}
+
+.groupHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 6px 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #203047;
+  font-size: 13px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  cursor: pointer;
+  text-align: left;
+}
+
+.groupArrow {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 14px;
+  height: 14px;
+  color: #6c7f98;
+  font-size: 11px;
+  transform: rotate(-90deg);
+  transition: transform 0.18s ease;
+}
+
+.groupArrowExpanded {
+  transform: rotate(0deg);
+}
+
+.groupLabel {
+  min-width: 0;
+}
+
+.groupItems {
+  position: relative;
+  margin-left: 8px;
+  padding-left: 16px;
+}
+
+.groupItems::before {
+  content: '';
+  position: absolute;
+  top: 6px;
+  bottom: 8px;
+  left: 4px;
+  width: 1px;
+  background: linear-gradient(180deg, rgba(207, 218, 233, 0.7) 0%, rgba(207, 218, 233, 0.24) 100%);
+}
+
+.item {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 9px 12px 9px 0;
+  border: 0;
+  background: transparent;
+  border-radius: 12px;
+  cursor: pointer;
+  font-size: 13px;
+  color: #34475f;
+  text-align: left;
+  transition: color 0.2s ease, background 0.2s ease, box-shadow 0.2s ease, transform 0.2s ease;
+
+  &:hover {
+    color: #1758df;
+    background: linear-gradient(90deg, rgba(232, 241, 255, 0.72) 0%, rgba(244, 248, 255, 0.52) 100%);
+  }
+
+  &.active {
+    color: #165dff;
+    font-weight: 800;
+    background: linear-gradient(90deg, rgba(225, 238, 255, 0.95) 0%, rgba(238, 246, 255, 0.86) 100%);
+    box-shadow: inset 0 0 0 1px rgba(22, 93, 255, 0.08);
+  }
+}
+
+.itemBranch {
+  position: relative;
+  width: 0;
+  height: 16px;
+  flex: 0 0 0;
+}
+
+.itemIcon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: inset 0 0 0 1px rgba(199, 212, 229, 0.6);
+}
+
+.itemBranch::before {
+  content: '';
+  position: absolute;
+  background: rgba(207, 218, 233, 0.72);
+  top: 50%;
+  left: -12px;
+  width: 12px;
+  height: 1px;
+  transform: translateY(-50%);
+}
+
+.itemLabel {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: inherit;
+}
+
+.layout {
+  display: flex;
+  // 绑定到视口可用高度,使 sidebar 与 content 各自独立滚动、整页 body 不滚动。
+  // 88px = 顶部 sticky 导航(~56px)+ 全局 <main> 的 p-4 上下内边距(32px)。
+  // 父级链(layout.tsx 是 min-h-screen + flex-1,非固定高)不提供有界高度,故这里显式绑定;
+  // 原先是 .page 用 calc(100vh-88px) 兜底,但那会与 .content 形成双层滚动 + 底部留白。
+  height: calc(100vh - 88px);
+  width: 100%;
+  overflow: hidden;
+}
+
+.content {
+  flex: 1;
+  overflow: auto;
+  min-width: 0;
+}
+
+@media (max-width: 768px) {
+  .searchBox {
+    padding: 12px 10px 10px;
+  }
+
+  .list {
+    padding: 10px 8px 14px 10px;
+  }
+
+  .item {
+    padding: 8px 10px 8px 0;
+  }
+}
+
+:global(html.dark) .searchBox {
+  border-bottom-color: rgba(44, 61, 83, 0.92);
+  background: linear-gradient(180deg, rgba(16, 28, 44, 0.96) 0%, rgba(13, 24, 39, 0.9) 100%);
+}
+
+:global(html.dark) .searchInput :global(.ant-input-affix-wrapper) {
+  border-color: #2b3b50;
+  background: rgba(18, 31, 49, 0.92);
+  box-shadow: none;
+}
+
+:global(html.dark) .searchInput :global(.ant-input),
+:global(html.dark) .searchInput :global(.ant-input::placeholder),
+:global(html.dark) .groupHeader,
+:global(html.dark) .item {
+  color: #b8c7da;
+}
+
+:global(html.dark) .groupArrow {
+  color: #8ea3c0;
+}
+
+:global(html.dark) .groupItems::before,
+:global(html.dark) .itemBranch::before {
+  background: rgba(93, 116, 145, 0.5);
+}
+
+:global(html.dark) .itemIcon {
+  background: rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 0 0 1px rgba(106, 130, 161, 0.28);
+}
+
+:global(html.dark) .item:hover {
+  color: #d8e5ff;
+  background: linear-gradient(90deg, rgba(26, 52, 90, 0.82) 0%, rgba(18, 35, 61, 0.58) 100%);
+}
+
+:global(html.dark) .item.active {
+  color: #dce8ff;
+  background: linear-gradient(90deg, rgba(34, 68, 121, 0.92) 0%, rgba(24, 45, 78, 0.82) 100%);
+  box-shadow: inset 0 0 0 1px rgba(118, 160, 255, 0.18);
+}

@@ -30,6 +30,7 @@ from apps.monitor.services.alert_lifecycle_notify import AlertLifecycleNotifier
 from apps.monitor.services.policy_baseline import PolicyBaselineService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorAlertViewSet(
@@ -63,7 +64,7 @@ class MonitorAlertViewSet(
         """
         获取当前用户所有有权限的策略ID
         """
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
 
         # 获取所有采集类型下policy模块的权限规则
@@ -107,7 +108,7 @@ class MonitorAlertViewSet(
             include_children = request.COOKIES.get("include_children", "0") == "1"
             permission = get_permission_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
                 include_children=include_children,
@@ -201,6 +202,9 @@ class MonitorAlertViewSet(
                     "time": now.isoformat(),
                 }
             ]
+            # 只有 new → closed 的转换才需要补偿推送，避免重复关闭触发多余的告警中心推送
+            if old_status == "new":
+                updated_data["alert_center_notified"] = False
 
             if instance.alert_type == "no_data" and instance.metric_instance_id:
                 update_baseline = request.data.get("update_baseline", False)
@@ -290,7 +294,7 @@ class MonitorAlertViewSet(
 
 class MonitorEventViewSet(viewsets.ViewSet):
     def _get_all_accessible_policy_ids(self, request):
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
 
         permissions_result = get_permissions_rules(

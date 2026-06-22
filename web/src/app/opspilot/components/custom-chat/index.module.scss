@@ -175,6 +175,7 @@
   }
 
   .bubbleWrapper {
+    width: 100%;
     cursor: pointer;
     &:hover {
       .operationContainer {
@@ -212,6 +213,16 @@
 }
 
 .chatContainer :global(.ant-bubble-content-wrapper) {
+  max-width: 100%;
+}
+
+.chatContainer :global(.ant-bubble-start .ant-bubble-content-wrapper) {
+  width: 100%;
+  min-width: 0;
+}
+
+.chatContainer :global(.ant-bubble-start .ant-bubble-content) {
+  width: 100%;
   max-width: 100%;
 }
 

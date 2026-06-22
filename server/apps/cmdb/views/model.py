@@ -9,10 +9,12 @@ from apps.cmdb.constants.constants import (
     VIEW,
 )
 from apps.cmdb.constants.field_constraints import TAG_ATTR_ID
+from apps.cmdb.model_ops.extensions import is_file_attr_type
 from apps.cmdb.validators import IdentifierValidator
 from apps.cmdb.language.service import SettingLanguage
 from apps.cmdb.models import DELETE_INST, UPDATE_INST, FieldGroup
 from apps.cmdb.models.change_record import MODEL_MANAGEMENT_CHANGE
+from apps.cmdb.services.classification import ClassificationManage
 from apps.cmdb.services.model import ModelManage
 from apps.cmdb.utils.base import get_default_group_id, get_current_team_from_request
 from apps.cmdb.utils.change_record import create_change_record
@@ -47,9 +49,15 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                     if _permission not in model_info["permission"]:
                         model_info["permission"].append(_permission)
 
-            if not model_info["permission"]:
-                if model_info["model_id"] in group_instances_map:
-                    model_info["permission"] = list(group_instances_map[model_info["model_id"]]["permission"])
+            permission_data = group_instances_map.get(model_info["model_id"])
+            if not permission_data:
+                continue
+
+            organization_permission_map = permission_data.get("organization_permission_map", {})
+            for group in groups:
+                for _permission in organization_permission_map.get(group, set()):
+                    if _permission not in model_info["permission"]:
+                        model_info["permission"].append(_permission)
 
         return permission_instances_map
 
@@ -110,7 +118,17 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
 
         default_group_id_permission = permissions_map.pop(default_group_id, default_group_permission)
         permissions_map[default_group_id] = default_group_id_permission
-        result = ModelManage.search_model(language=request.user.locale, permissions_map=permissions_map)
+
+        raw_include = request.query_params.get("include_hidden", "").lower()
+        include_hidden = (
+            raw_include in ("1", "true", "yes") and bool(getattr(request.user, "is_superuser", False))
+        )
+
+        result = ModelManage.search_model(
+            language=request.user.locale,
+            permissions_map=permissions_map,
+            include_hidden=include_hidden,
+        )
         # 重新把配置了的默认组织权限加上，因为默认组织权限是全部人都有查看的权限的 但是操作权限需要单独配置
         permissions_map[default_group_id]["inst_names"] = default_group_id_permission["inst_names"]
         # 补充权限
@@ -121,6 +139,35 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         )
 
         return WebUtils.response_success(result)
+
+    @action(detail=False, methods=["post"], url_path="save_layout")
+    def save_layout(self, request):
+        if not getattr(request.user, "is_superuser", False):
+            return WebUtils.response_error(
+                "permission denied", status_code=status.HTTP_403_FORBIDDEN,
+            )
+        classifications = request.data.get("classifications") or []
+        models = request.data.get("models") or []
+        if not isinstance(classifications, list) or not isinstance(models, list):
+            return WebUtils.response_error(
+                "classifications and models must be lists",
+                status_code=status.HTTP_400_BAD_REQUEST,
+            )
+        # Snapshot prior classification state so we can revert if the
+        # subsequent model write fails (graph DB has no native transaction).
+        prior_classifications = ClassificationManage.snapshot_classification_layout(
+            [c.get("classification_id") for c in classifications if c.get("classification_id")]
+        )
+        ClassificationManage.update_classification_layout(classifications)
+        try:
+            ModelManage.update_model_orders(models)
+        except Exception:
+            # Best-effort revert of classification side. Model side either
+            # raised before any write or partially wrote; partial model state
+            # can be safely re-applied on user retry because save is idempotent.
+            ClassificationManage.update_classification_layout(prior_classifications)
+            raise
+        return WebUtils.response_success()
 
     @HasPermission("model_management-Delete Model")
     def destroy(self, request, pk: str):
@@ -530,6 +577,10 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             attr_id = request.data.get("attr_id")
             new_options = request.data.get("option", [])
             ModelManage.update_enum_instances_display(model_id, attr_id, new_options)
+        elif is_file_attr_type(attr_type):
+            # 附件/图片字段：回填历史实例的文件名词干 _display，使其可被全文检索命中
+            attr_id = request.data.get("attr_id")
+            ModelManage.rebuild_file_instances_display(model_id, attr_id)
 
         return WebUtils.response_success(result)
 
@@ -755,11 +806,15 @@ class ModelViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         return WebUtils.response_success(result)
 
     @HasPermission("model_management-View")
-    @action(detail=False, methods=["get"], url_path="export_model_config")
+    @action(detail=False, methods=["post"], url_path="export_model_config")
     def export_model_config(self, request):
         from django.http import HttpResponse
 
-        file_stream = ModelManage.export_model_config(language=request.user.locale)
+        model_ids = request.data.get("model_ids") or []
+
+        file_stream = ModelManage.export_model_config(
+            language=request.user.locale, model_ids=model_ids
+        )
 
         response = HttpResponse(
             file_stream.read(),

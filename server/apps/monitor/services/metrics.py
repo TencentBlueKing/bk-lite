@@ -7,6 +7,10 @@ from apps.core.logger import monitor_logger as logger
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.display_fields_metrics import (
+    display_field_key,
+    extract_metric_bindings,
+)
 from apps.monitor.utils.instance_id_keys import resolve_metric_instance_id_keys
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -189,32 +193,31 @@ class Metrics:
             return instances
 
         monitor_obj = MonitorObject.objects.filter(id=monitor_object_id).first()
-        if not monitor_obj or not monitor_obj.supplementary_indicators:
+        if not monitor_obj:
             return instances
 
-        indicator_names = monitor_obj.supplementary_indicators
+        # 取数 key 必须与 MonitorObjectService._fill_display_metrics 一致:
+        # display_fields 绑定用 (plugin, metric) 复合 key,supplementary 兜底用裸指标名。
+        targets = Metrics._resolve_convert_targets(monitor_object_id, monitor_obj)
+        if not targets:
+            return instances
 
-        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=indicator_names).values("name", "unit", "data_type")
-        metric_unit_map = {m["name"]: m["unit"] for m in metrics}
-        metric_data_type_map = {m["name"]: m["data_type"] for m in metrics}
-
-        for metric_name in indicator_names:
-            source_unit = metric_unit_map.get(metric_name)
+        for out_key, source_unit, data_type in targets:
             if not source_unit:
                 continue
 
-            if metric_data_type_map.get(metric_name) == "Enum":
+            if data_type == "Enum":
                 for instance in instances:
-                    raw_value = instance.get(metric_name)
-                    if raw_value is not None:
-                        instance[metric_name] = {"value": str(raw_value), "unit": ""}
+                    raw_value = instance.get(out_key)
+                    if raw_value is not None and not isinstance(raw_value, dict):
+                        instance[out_key] = {"value": str(raw_value), "unit": ""}
                 continue
 
             values = []
             valid_indices = []
             for idx, instance in enumerate(instances):
-                raw_value = instance.get(metric_name)
-                if raw_value is not None:
+                raw_value = instance.get(out_key)
+                if raw_value is not None and not isinstance(raw_value, dict):
                     try:
                         values.append(float(raw_value))
                         valid_indices.append(idx)
@@ -228,9 +231,42 @@ class Metrics:
             display_unit = UnitConverter.get_display_unit(target_unit)
 
             for i, idx in enumerate(valid_indices):
-                instances[idx][metric_name] = {
+                instances[idx][out_key] = {
                     "value": str(converted_values[i]),
                     "unit": display_unit,
                 }
 
         return instances
+
+    @staticmethod
+    def _resolve_convert_targets(monitor_object_id, monitor_obj):
+        """返回 [(out_key, source_unit, data_type), ...],与回填 key 规则保持一致。"""
+        bindings = extract_metric_bindings(monitor_obj.display_fields)
+        if bindings:
+            metrics = (
+                Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=[b["metric"] for b in bindings])
+                .select_related("monitor_plugin")
+                .values("name", "unit", "data_type", "monitor_plugin__name")
+            )
+            by_plugin = {((m["monitor_plugin__name"] or ""), m["name"]): m for m in metrics}
+            by_name = {}
+            for m in metrics:
+                by_name.setdefault(m["name"], m)
+            targets = []
+            for binding in bindings:
+                plugin_name, metric_name = binding["plugin"], binding["metric"]
+                meta = by_plugin.get((plugin_name, metric_name)) if plugin_name else by_name.get(metric_name)
+                if not meta:
+                    continue
+                targets.append((display_field_key(plugin_name, metric_name), meta["unit"], meta["data_type"]))
+            return targets
+
+        supplementary = monitor_obj.supplementary_indicators
+        if not supplementary:
+            return []
+        metrics = Metric.objects.filter(monitor_object_id=monitor_object_id, name__in=supplementary).values(
+            "name", "unit", "data_type"
+        )
+        unit_map = {m["name"]: m["unit"] for m in metrics}
+        dtype_map = {m["name"]: m["data_type"] for m in metrics}
+        return [(name, unit_map.get(name), dtype_map.get(name)) for name in supplementary]

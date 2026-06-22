@@ -101,7 +101,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   onExternalXRangeChange
 }) => {
   const { isLoading } = useApiClient();
-  const { getMonitorPlugin, getMonitorMetrics, getMetricsGroup } =
+  const { getEffectivePlugins, getMonitorMetrics, getMetricsGroup } =
     useMonitorApi();
   const { get } = useApiClient();
   const { t } = useTranslation();
@@ -249,8 +249,8 @@ const MetricViews: React.FC<ViewDetailProps> = ({
 
   const initPage = async () => {
     setLoading(true);
-    const responseData = await getMonitorPlugin({
-      monitor_object_id: monitorObjectId
+    const responseData = await getEffectivePlugins(monitorObjectId, {
+      instance_id: instanceId
     });
     const _plugins = responseData
       .sort((a: IntegrationItem, b: IntegrationItem) => {
@@ -265,6 +265,12 @@ const MetricViews: React.FC<ViewDetailProps> = ({
     setPlugins(_plugins);
     const _activeTab = _plugins[0]?.value || '';
     setActiveTab(_activeTab);
+    if (!_activeTab) {
+      setMetricData([]);
+      setOriginMetricData([]);
+      setLoading(false);
+      return;
+    }
     getInitData(_activeTab);
   };
 
@@ -711,8 +717,9 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   const linkToSearch = (row: TableDataItem) => {
     const _row = {
       monitor_object: monitorObjectId + '',
+      plugin_id: activeTab,
       instance_id: instanceId as string,
-      metric_id: row.name
+      metric_id: row.id ? String(row.id) : row.name
     };
     const queryString = new URLSearchParams(_row).toString();
     const url = `/monitor/search?${queryString}`;

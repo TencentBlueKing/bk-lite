@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { Form, Input, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useClientData } from '@/context/client';
@@ -12,7 +12,20 @@ import {
   DataPermission as PermissionDataType
 } from '@/app/system-manager/types/permission';
 
-const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = {}, node, onOk, onCancel }) => {
+interface PermissionModalStoryProps {
+  clientModules?: string[];
+  fetchGroupDataRule?: (params: { params: { group_id: string } }) => Promise<PermissionDataType[]>;
+}
+
+const PermissionModal: React.FC<PermissionModalProps & PermissionModalStoryProps> = ({
+  visible,
+  rules = {},
+  node,
+  onOk,
+  onCancel,
+  clientModules: injectedClientModules,
+  fetchGroupDataRule: injectedFetchGroupDataRule,
+}) => {
   const { t } = useTranslation();
   const [form] = Form.useForm<PermissionFormValues>();
   const { clientData } = useClientData();
@@ -22,7 +35,12 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = {}, 
   const [appData, setAppData] = useState<AppPermission[]>([]);
   const [appLoadingStates, setAppLoadingStates] = useState<{ [key: string]: boolean }>({});
 
-  const clientModules = clientData.filter(client => client.name !== 'ops-console').map(r=> r.name);
+  const clientModules = useMemo(
+    () => injectedClientModules
+      ?? clientData.filter(client => client.name !== 'ops-console').map(client => client.name),
+    [clientData, injectedClientModules]
+  );
+  const fetchGroupDataRule = injectedFetchGroupDataRule ?? getGroupDataRule;
 
   useEffect(() => {
     if (visible && node) {
@@ -53,7 +71,7 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = {}, 
       
       setAppData(newAppData);
     }
-  }, [visible, node, rules]);
+  }, [visible, node, rules, form, clientModules]);
 
   const fetchAllAppDataRules = async () => {
     if (!node?.key) return;
@@ -65,7 +83,7 @@ const PermissionModal: React.FC<PermissionModalProps> = ({ visible, rules = {}, 
     setAppLoadingStates(initialLoadingStates);
 
     try {
-      const allData = await getGroupDataRule({
+      const allData = await fetchGroupDataRule({
         params: { 
           group_id: node.key.toString()
         }

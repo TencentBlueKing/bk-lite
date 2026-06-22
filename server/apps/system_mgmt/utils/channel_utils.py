@@ -7,10 +7,10 @@ import smtplib
 import time
 import urllib.parse
 from email import encoders
+from email.header import Header
 from email.mime.base import MIMEBase
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
-from email.utils import encode_rfc2231
 from urllib.parse import unquote, urlparse
 
 import requests
@@ -129,11 +129,11 @@ def send_email_to_user(channel_config, content, receivers, title, attachments=No
 
                 part = MIMEBase("application", "octet-stream")
                 part.set_payload(file_data)
-                # 使用 RFC 2231 编码处理中文文件名
+                header_filename = filename if filename.isascii() else Header(filename, "utf-8").encode()
                 part.add_header(
                     "Content-Disposition",
                     "attachment",
-                    filename=encode_rfc2231(filename, "utf-8"),
+                    filename=header_filename,
                 )
                 # 对附件内容进行 base64 编码
                 encoders.encode_base64(part)
@@ -280,13 +280,21 @@ def send_nats_message(channel_obj: Channel, content: dict):
     config = channel_obj.config
     namespace = config.get("namespace")
     method_name = config.get("method_name")
+    bot_id = config.get("bot_id")
+    node_id = config.get("node_id")
     timeout = config.get("timeout", 60)
 
     if not namespace or not method_name:
         return {"result": False, "message": "NATS channel config missing namespace or method_name"}
 
+    payload = dict(content)
+    if method_name == "trigger_workflow_by_nats":
+        if bot_id is None or not node_id:
+            return {"result": False, "message": "NATS channel config missing bot_id or node_id"}
+        payload.update({"bot_id": bot_id, "node_id": node_id})
+
     try:
-        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **content)
+        result = nats_client.request_sync(namespace, method_name, _timeout=timeout, _raw=True, **payload)
         return result
     except Exception as e:
         logger.exception(e)

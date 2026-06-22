@@ -4,22 +4,31 @@ import React, {
   useMemo,
   useCallback,
 } from 'react';
-import { Input, Select, DatePicker, Tooltip } from 'antd';
-import { SearchOutlined } from '@ant-design/icons';
+import { Button, Dropdown, Input, Select, DatePicker, Tooltip, message } from 'antd';
+import { MoreOutlined, SearchOutlined } from '@ant-design/icons';
 import type { ColumnsType } from 'antd/es/table';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
-import type {
-  ResponseFieldDefinition,
-  DatasourceItem,
-} from '@/app/ops-analysis/types/dataSource';
+import {
+  parseTableLikeData,
+  resolveTableLikeColumns,
+  type TableLikePaginationState,
+} from './shared/tableLikeData';
+import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   ValueConfig,
   TableColumnConfigItem,
   TableFilterFieldConfig,
+  DashboardActionConfig,
 } from '@/app/ops-analysis/types/dashBoard';
+import {
+  buildDashboardActionUrl,
+  resolveDashboardActionParams,
+} from '@/app/ops-analysis/utils/dashboardActions';
+import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
+import { getColorByThreshold } from '@/app/ops-analysis/utils/thresholdUtils';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -52,53 +61,19 @@ const ComTable: React.FC<ComTableProps> = ({
   );
   const [activeKeywordFieldKey, setActiveKeywordFieldKey] =
     useState<string>('');
-  const [queryPagination, setQueryPagination] = useState<{
-    current: number;
-    pageSize: number;
-  }>({
-    current: 1,
-    pageSize: 20,
-  });
+  const [queryPagination, setQueryPagination] =
+    useState<TableLikePaginationState>({
+      current: 1,
+      pageSize: 20,
+    });
   
   const { tableData, pagination } = useMemo(() => {
-    const empty = {
-      tableData: [],
-      pagination: {
-        current: queryPagination.current,
-        pageSize: queryPagination.pageSize,
-        total: 0,
-      },
+    const parsed = parseTableLikeData<TableDataItem>(rawData, queryPagination);
+
+    return {
+      tableData: parsed.rows,
+      pagination: parsed.pagination,
     };
-
-    if (!rawData) return empty;
-
-    if (
-      typeof rawData === 'object' &&
-      !Array.isArray(rawData) &&
-      Array.isArray(rawData.items)
-    ) {
-      return {
-        tableData: rawData.items as TableDataItem[],
-        pagination: {
-          current: queryPagination.current,
-          pageSize: queryPagination.pageSize,
-          total: Number(rawData.count) || rawData.items.length,
-        },
-      };
-    }
-
-    if (Array.isArray(rawData)) {
-      return {
-        tableData: rawData as TableDataItem[],
-        pagination: {
-          current: queryPagination.current,
-          pageSize: queryPagination.pageSize,
-          total: rawData.length,
-        },
-      };
-    }
-
-    return empty;
   }, [rawData, queryPagination.current, queryPagination.pageSize]);
 
   const filterFields = useMemo<TableFilterFieldConfig[]>(() => {
@@ -136,59 +111,185 @@ const ComTable: React.FC<ComTableProps> = ({
   }, [searchableFilterFields, activeKeywordFieldKey]);
 
   const columnConfigs = useMemo((): TableColumnConfigItem[] => {
-    const widgetColumns = config?.tableConfig?.columns;
-    if (widgetColumns && widgetColumns.length > 0) {
-      return widgetColumns
-        .filter((col) => col.visible)
-        .sort((a, b) => a.order - b.order);
-    }
-
-    const schemaFields = dataSource?.field_schema;
-    if (schemaFields && schemaFields.length > 0) {
-      return schemaFields.map(
-        (field: ResponseFieldDefinition, index: number) => ({
-          key: field.key,
-          title: field.title || field.key,
-          visible: true,
-          order: index,
-        }),
-      );
-    }
-
-    if (tableData.length > 0) {
-      const firstRow = tableData[0];
-      return Object.keys(firstRow).map((key, index) => ({
-        key,
-        title: key,
-        visible: true,
-        order: index,
-      }));
-    }
-
-    return [];
+    return resolveTableLikeColumns({
+      configuredColumns: config?.tableConfig?.columns,
+      schemaFields: dataSource?.field_schema,
+      rows: tableData,
+    }).filter((col) => col.visible);
   }, [config?.tableConfig?.columns, dataSource?.field_schema, tableData]);
 
+  const handleActionClick = useCallback(
+    (action: DashboardActionConfig, record: TableDataItem) => {
+      const params = resolveDashboardActionParams(action.params, record);
+      const url = buildDashboardActionUrl(action.url, params);
+      if (!url) {
+        message.warning(t('dashboard.actionUrlUnavailable'));
+        return;
+      }
+
+      if (action.openMode === 'newTab') {
+        window.open(url, '_blank', 'noopener,noreferrer');
+        return;
+      }
+
+      window.location.href = url;
+    },
+    [t],
+  );
+
+  const renderActionButtons = useCallback(
+    (actions: DashboardActionConfig[], record: TableDataItem) => {
+      if (actions.length === 0) {
+        return '-';
+      }
+
+      const visibleActions = actions.slice(0, 2);
+      const dropdownActions = actions.slice(2);
+
+      return (
+        <div className="flex items-center gap-1">
+          {visibleActions.map((action, index) => (
+            <Button
+              key={`${action.columnKey}_${index}_${action.text}`}
+              type="link"
+              size="small"
+              className="p-0"
+              onClick={() => handleActionClick(action, record)}
+            >
+              {action.text}
+            </Button>
+          ))}
+          {dropdownActions.length > 0 && (
+            <Dropdown
+              trigger={['click']}
+              menu={{
+                items: dropdownActions.map((action, index) => ({
+                  key: String(index),
+                  label: action.text,
+                })),
+                onClick: ({ key }) => {
+                  const action = dropdownActions[Number(key)];
+                  if (action) {
+                    handleActionClick(action, record);
+                  }
+                },
+              }}
+            >
+              <Button type="link" size="small" className="p-0">
+                {t('common.more')}
+                <MoreOutlined />
+              </Button>
+            </Dropdown>
+          )}
+        </div>
+      );
+    },
+    [handleActionClick, t],
+  );
+
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
+    // 为 gauge 单元格预计算各列数值最大值（cellMax 未设时用）
+    const colGaugeMax: Record<string, number> = {};
+    columnConfigs.forEach((col) => {
+      if (col.cellType === 'gauge' && col.cellMax == null) {
+        let m = 0;
+        for (const row of tableData) {
+          const n = Number((row as any)?.[col.key]);
+          if (!Number.isNaN(n) && n > m) m = n;
+        }
+        colGaugeMax[col.key] = m;
+      }
+    });
     return columnConfigs.map((col) => {
+      const columnActions = (config?.actions || []).filter(
+        (action) => action.columnKey === col.key,
+      );
       const column: any = {
         title: col.title,
         dataIndex: col.key,
         key: col.key,
         ellipsis: { showTitle: false },
-        render: (text: any) => (
-          <Tooltip placement="topLeft" title={text?.toString()}>
-            <div
-              style={{
-                maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
-                overflow: 'hidden',
-                textOverflow: 'ellipsis',
-                whiteSpace: 'nowrap',
-              }}
-            >
-              {text?.toString() ?? '-'}
-            </div>
-          </Tooltip>
-        ),
+        render: (text: any, record: TableDataItem) => {
+          if (col.columnType === 'actions') {
+            return renderActionButtons(columnActions, record);
+          }
+
+          // 单元格值映射：命中则用映射文本/颜色（对齐 Grafana 表格单元格映射）
+          const mapping = applyValueMapping(text, col.valueMappings);
+          const cellText = text === null || text === undefined ? '' : String(text);
+          const baseText = cellText.trim() ? cellText : '--';
+          const displayText =
+            mapping?.text !== undefined ? mapping.text : baseText;
+
+          // 单元格颜色：值映射优先，其次按阈值
+          const numVal =
+            typeof text === 'number' ? text : parseFloat(String(text));
+          const cellColor =
+            mapping?.color ||
+            (col.cellThresholdColors?.length && !Number.isNaN(numVal)
+              ? getColorByThreshold(numVal, col.cellThresholdColors, undefined as any)
+              : undefined);
+
+          // 色背景单元格
+          if (col.cellType === 'colorBackground' && cellColor) {
+            return (
+              <Tooltip placement="topLeft" title={displayText}>
+                <div
+                  style={{
+                    background: cellColor,
+                    color: '#fff',
+                    fontWeight: 600,
+                    borderRadius: 4,
+                    padding: '1px 8px',
+                    textAlign: 'center',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {displayText}
+                </div>
+              </Tooltip>
+            );
+          }
+
+          // 条形量规单元格
+          if (col.cellType === 'gauge' && !Number.isNaN(numVal)) {
+            const max = col.cellMax || colGaugeMax[col.key] || 100;
+            const ratio = max > 0 ? Math.min(Math.max(numVal / max, 0), 1) : 0;
+            const barColor = cellColor || '#366ce4';
+            return (
+              <div className="flex items-center gap-2">
+                <div
+                  className="relative flex-1 overflow-hidden rounded"
+                  style={{ height: 10, background: 'var(--color-fill-2, #f0f0f0)' }}
+                >
+                  <div
+                    className="absolute left-0 top-0 h-full rounded"
+                    style={{ width: `${ratio * 100}%`, background: barColor }}
+                  />
+                </div>
+                <span className="shrink-0 tabular-nums text-xs">{displayText}</span>
+              </div>
+            );
+          }
+
+          return (
+            <Tooltip placement="topLeft" title={displayText}>
+              <div
+                style={{
+                  maxWidth: col.width || DEFAULT_CELL_MAX_WIDTH,
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  whiteSpace: 'nowrap',
+                  ...(mapping?.color ? { color: mapping.color, fontWeight: 600 } : {}),
+                }}
+              >
+                {displayText}
+              </div>
+            </Tooltip>
+          );
+        },
       };
 
       if (col.width) {
@@ -197,7 +298,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
       return column;
     });
-  }, [columnConfigs]);
+  }, [columnConfigs, config?.actions, handleActionClick, renderActionButtons, tableData]);
 
   useEffect(() => {
     if (!onQueryChange) return;

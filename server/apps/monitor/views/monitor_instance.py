@@ -19,13 +19,16 @@ from apps.monitor.services.node_mgmt import InstanceConfigService
 from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.services.policy_source_cleanup import cleanup_policy_sources
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.services.effective_plugins import MonitorEffectivePluginService
 from apps.monitor.services.metrics import Metrics as MetricsService
+from apps.monitor.utils.dimension import normalize_instance_identity
 from apps.monitor.utils.pagination import parse_page_params
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 
@@ -149,7 +152,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
     def monitor_instance_list(self, request, monitor_object_id):
         """非特殊对象的通用列表接口"""
         include_children = request.COOKIES.get("include_children", "0") == "1"
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
 
         permission = get_permission_rules(
             request.user,
@@ -183,6 +186,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
             request.GET.get("name"),
             qs,
             add_metrics,
+            request.GET.get("monitor_plugin_id"),
         )
         # 如果有权限规则，则添加到数据中
         inst_permission_map = {i["id"]: i["permission"] for i in permission.get("instance", [])}
@@ -208,7 +212,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
             include_children=include_children,
@@ -240,6 +244,29 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
 
         return WebUtils.response_success(data)
 
+    @action(methods=["get"], detail=False, url_path="(?P<monitor_object_id>[^/.]+)/effective_plugins")
+    def effective_plugins(self, request, monitor_object_id):
+        instance_id = request.GET.get("instance_id")
+        if not instance_id:
+            raise BaseAppException("instance_id is required")
+
+        # 前端下传的可能是干净标量(如 "mssql_1433"),也可能是完整 tuple 串
+        # (如 VMware ESXi 的 "('vcenter-a', 'host-3171')")。统一归一为存储键形态：
+        # - 单维实例补齐为 "('mssql_1433',)"
+        # - 多维实例保持完整 tuple
+        # 这样既匹配存在性校验,也保证 get_effective_plugins 内部按存储键比对上报数据,
+        # 避免误报"监控实例不存在"。
+        instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
+
+        actor_context = _build_actor_context(request)
+        _ensure_operate_instances(request, [instance_id], actor_context)
+        data = MonitorEffectivePluginService.get_effective_plugins(
+            int(monitor_object_id),
+            instance_id,
+            getattr(request.user, "locale", "zh-Hans"),
+        )
+        return WebUtils.response_success(data)
+
     @action(
         methods=["post"],
         detail=False,
@@ -255,7 +282,7 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "monitor",
             f"{PermissionConstants.INSTANCE_MODULE}.{monitor_object_id}",
             include_children=include_children,

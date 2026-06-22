@@ -7,10 +7,12 @@
 处理各种插件（MySQL、Redis、Nginx等）的数据采集任务
 """
 
+import re
 import time
 import traceback
 import ntpath
 import posixpath
+from datetime import datetime, timezone, timedelta
 from typing import Dict, Any
 from sanic.log import logger
 
@@ -61,25 +63,37 @@ async def collect_plugin_task(
         任务执行结果
     """
     plugin_name = params.get("plugin_name")
+    metrics_published = False
+    execution_result = None
     logger.info(f"[Plugin Task] Processing: {task_id}, plugin: {plugin_name}")
 
     try:
         # 导入服务和工具（延迟导入避免循环依赖）
+        from core.credential_state_cache import CredentialStateCache
+        from core.task_queue import get_task_queue
         from service.collection_service import CollectionService
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.nats_helper import publish_callback_to_nats
-        from tasks.utils.metrics_helper import generate_plugin_error_metrics
 
         # 执行采集
         collect_service = CollectionService(params)
         metrics_data = await collect_service.collect()
+        execution_result = _build_credential_execution_result(params, metrics_data)
 
         logger.info(f"[Plugin Task] {task_id} completed successfully")
 
         if params.get("callback_subject"):
+            await _handle_multicred_pre_callback(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
             await publish_callback_to_nats(metrics_data, params, task_id)
         else:
-            await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+            delivered_count = await publish_metrics_to_nats(ctx, metrics_data, params, task_id)
+            metrics_published = delivered_count > 0
+            if metrics_published:
+                await _handle_multicred_post_execute(
+                    params, task_id, execution_result, CredentialStateCache, get_task_queue
+                )
 
         return {
             "task_id": task_id,
@@ -94,9 +108,36 @@ async def collect_plugin_task(
         )
 
         # 导入工具函数
+        from tasks.utils.nats_helper import MetricsPublishError
         from tasks.utils.nats_helper import publish_metrics_to_nats
         from tasks.utils.nats_helper import publish_callback_to_nats
         from tasks.utils.metrics_helper import generate_plugin_error_metrics
+        from core.credential_state_cache import CredentialStateCache
+        from core.task_queue import get_task_queue
+
+        real_metrics_delivered = metrics_published or (
+            isinstance(e, MetricsPublishError)
+            and (
+                getattr(e, "success_count", 0) > 0
+                or getattr(e, "delivery_detected", False)
+            )
+        )
+        should_skip_failure_reconciliation = (
+            not params.get("callback_subject")
+            and real_metrics_delivered
+            and isinstance(execution_result, dict)
+            and execution_result.get("success") is True
+        )
+        if not should_skip_failure_reconciliation:
+            preserved_execution_result = (
+                execution_result
+                if isinstance(execution_result, dict) and not execution_result.get("success", True)
+                else None
+            )
+            execution_result = preserved_execution_result or _build_credential_execution_result(params, None, e)
+            await _handle_multicred_post_execute(
+                params, task_id, execution_result, CredentialStateCache, get_task_queue
+            )
 
         if params.get("callback_subject"):
             identity = _resolve_callback_identity(params) if _is_config_file_callback(params) else {
@@ -120,7 +161,7 @@ async def collect_plugin_task(
                 params,
                 task_id,
             )
-        else:
+        elif not real_metrics_delivered:
             error_metrics = generate_plugin_error_metrics(params, e)
             await publish_metrics_to_nats(ctx, error_metrics, params, task_id)
 
@@ -131,3 +172,201 @@ async def collect_plugin_task(
             "plugin_name": plugin_name,
             "completed_at": int(time.time() * 1000),
         }
+
+
+def _build_credential_execution_result(params: Dict[str, Any], metrics_data: Any, error: Exception | None = None) -> Dict[str, Any]:
+    host = str(params.get("host") or "")
+    credential_id = str(params.get("credential_id") or "")
+    success = error is None and not _is_failed_metrics_payload(metrics_data)
+    error_message = ""
+    if error is not None:
+        error_message = str(error)
+    elif not success:
+        error_message = _extract_metrics_error(metrics_data)
+
+    failure_kind = ""
+    if not success:
+        failure_kind = _classify_failure_kind(error_message)
+
+    return {
+        "collect_task_id": params.get("collect_task_id"),
+        "host": host,
+        "credential_id": credential_id,
+        "credential_index": params.get("credential_index"),
+        "model_id": params.get("model_id"),
+        "plugin_name": params.get("plugin_name"),
+        "success": success,
+        "failure_kind": failure_kind,
+        "error_message": error_message,
+        "finished_at": datetime.now(timezone.utc).isoformat(),
+        "snapshot": {"host": host, "model_id": params.get("model_id")},
+    }
+
+
+async def _handle_multicred_pre_callback(params, task_id, execution_result, cache_cls, get_queue_func):
+    await _handle_multicred_post_execute(params, task_id, execution_result, cache_cls, get_queue_func)
+
+
+async def _handle_multicred_post_execute(params, task_id, execution_result, cache_cls, get_queue_func):
+    credentials_pool = params.get("credentials_pool") or []
+    collect_task_id = params.get("collect_task_id")
+    host = params.get("host")
+    credential_id = params.get("credential_id")
+    credential_index = int(params.get("credential_index") or 0)
+    # 单凭据(无 credentials_pool)与多凭据一律走冷却：只需 task/host/credential 即可记录状态。
+    # credentials_pool 仅用于失败后"换下一个凭据"的链式逻辑(见末尾)。
+    if collect_task_id in (None, "") or not host or not credential_id:
+        return
+
+    await cache_cls.append_result_event(execution_result)
+
+    if execution_result["success"]:
+        await cache_cls.mark_success(collect_task_id, host, credential_id)
+        return
+
+    await cache_cls.clear_success(collect_task_id, host)
+
+    has_pool = len(credentials_pool) > 1
+    failure_kind = execution_result["failure_kind"]
+    # 是否冷却当前凭据（让下一轮跳过它）：
+    #  - credential（认证失败）/unreachable（连接不可达）：持久失败，冷却。
+    #  - SNMP 无响应/超时：对 SNMP 而言“错误凭据/版本”就是静默无响应，等价持久失败；
+    #    仅在多凭据池下据此冷却（单凭据保持原“不冷却、下一轮重试”行为，避免误伤瞬时抖动）。
+    #  - 其它 task 类失败：疑似瞬时，不冷却。
+    persistent = failure_kind in ("credential", "unreachable")
+    if has_pool and _is_snmp_no_response(execution_result["error_message"]):
+        persistent = True
+
+    consecutive_failures = int(params.get("credential_failures", 0))
+    if persistent:
+        consecutive_failures += 1
+        cooldown_level = 1 if consecutive_failures == 1 else 2 if consecutive_failures == 2 else 3
+        cooldown_hours = _cooldown_hours_for_failure(consecutive_failures)
+        next_retry_at = (datetime.now(timezone.utc) + timedelta(hours=cooldown_hours)).isoformat()
+        await cache_cls.mark_failure(
+            collect_task_id,
+            host,
+            credential_id,
+            execution_result["error_message"],
+            cooldown_level,
+            consecutive_failures,
+            next_retry_at,
+        )
+        logger.info(
+            f"[Cooldown] host={host} credential={credential_id} kind={failure_kind} "
+            f"cooled {cooldown_hours}h (consecutive={consecutive_failures}) "
+            f"err={str(execution_result['error_message'])[:80]}"
+        )
+
+    # 轮询：多凭据池的语义是“挨个试到一个能用为止”，因此当前凭据任何失败都尝试换下一个
+    # 未冷却的凭据；持久失败的凭据已被上面冷却，下一轮会被跳过。单凭据无可换，结束。
+    if not has_pool:
+        return
+    next_task = await _build_next_credential_task(params, credential_index, consecutive_failures, cache_cls)
+    if not next_task:
+        return
+    queue = get_queue_func()
+    await queue.enqueue_collect_task(next_task)
+
+
+async def _build_next_credential_task(
+    params: Dict[str, Any],
+    current_index: int,
+    consecutive_failures: int,
+    cache_cls,
+) -> Dict[str, Any] | None:
+    credentials_pool = params.get("credentials_pool") or []
+    collect_task_id = params.get("collect_task_id")
+    host = params.get("host")
+    for next_index in range(current_index + 1, len(credentials_pool)):
+        next_credential = dict(credentials_pool[next_index])
+        failure_state = await cache_cls.get_failure_state(collect_task_id, host, next_credential.get("credential_id"))
+        if failure_state.get("is_cooled"):
+            continue
+        return {
+            **{k: v for k, v in params.items() if k not in next_credential and k != "credential_failures"},
+            **next_credential,
+            "credential_index": next_index,
+            "credentials_pool": credentials_pool,
+            "credential_failures": consecutive_failures,
+        }
+    return None
+
+
+def _is_failed_metrics_payload(metrics_data: Any) -> bool:
+    if metrics_data is None:
+        return True
+    if isinstance(metrics_data, dict):
+        status = str(metrics_data.get("status") or metrics_data.get("collect_status") or "").lower()
+        return status in ("error", "failed")
+    text = str(metrics_data)
+    # 采集失败的指标形态为 ..._info{...collect_status="failed",collect_error="..."}，
+    # 历史判定只认 status="error"/cmdb_collect_error，会漏判，需一并识别。
+    return (
+        'status="error"' in text
+        or 'collect_status="failed"' in text
+        or 'collect_status="error"' in text
+        or "cmdb_collect_error" in text
+    )
+
+
+def _extract_metrics_error(metrics_data: Any) -> str:
+    if isinstance(metrics_data, dict):
+        return str(
+            metrics_data.get("error")
+            or metrics_data.get("cmdb_collect_error")
+            or metrics_data.get("collect_error")
+            or ""
+        )
+    text = str(metrics_data or "")
+    # 从 prometheus/influx 文本里抽取 collect_error="..." 的真实错误信息
+    match = re.search(r'collect_error="((?:[^"\\]|\\.)*)"', text)
+    if match:
+        return match.group(1).replace('\\"', '"').replace("\\\\", "\\")
+    if "cmdb_collect_error" in text:
+        return text
+    return "collection failed"
+
+
+def _classify_failure_kind(error_message: str) -> str:
+    text = str(error_message or "").lower()
+    credential_keywords = ("auth", "password", "credential", "denied", "unauthorized", "community", "authkey", "privkey")
+    if any(keyword in text for keyword in credential_keywords):
+        return "credential"
+    # 连接不可达类失败（假 IP：TCP 连不上 / SSH 拨号失败 / 拒绝 / 路由不可达）：
+    # 纳入冷却，避免每轮都对死 IP 重复探测，拖垮串行执行端。
+    # 注意：仅限“连接建立阶段”的失败。刻意不含：
+    #   - "nats: timeout" / "no responders"（executor 侧无响应，非目标主机不可达，避免误伤一批正常 host）
+    #   - "SSH execution timed out"（已连上、只是命令跑得久，属于慢主机而非不可达）
+    unreachable_keywords = (
+        "tcp connect", "connect timed out", "connect failed",
+        "dial timed out", "connection refused", "no route",
+        "host is down", "unreachable",
+    )
+    if any(keyword in text for keyword in unreachable_keywords):
+        return "unreachable"
+    return "task"
+
+
+def _is_snmp_no_response(error_message: str) -> bool:
+    """SNMP 无响应/超时。对 SNMP 而言“错误的团体字/版本”不会报认证错误，而是设备静默丢包、
+    重试耗尽后超时——所以多凭据轮询要把它当作“此凭据对该设备不可用”的持久信号。
+    刻意只匹配 SNMP 专有措辞，不误伤 SSH/NATS 等的 timeout（那些保持 task 语义）。"""
+    text = str(error_message or "").lower()
+    return any(
+        keyword in text
+        for keyword in (
+            "no snmp response",
+            "empty snmp response",
+            "requesttimedout",
+            "no response received before timeout",
+        )
+    )
+
+
+def _cooldown_hours_for_failure(consecutive_failures: int) -> int:
+    if consecutive_failures <= 1:
+        return 1
+    if consecutive_failures == 2:
+        return 4
+    return 24

@@ -16,7 +16,8 @@ from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
 from apps.rpc.ansible import AnsibleExecutor
 from apps.system_mgmt import nats_api
 from apps.system_mgmt.models import User
-from apps.system_mgmt.nats_api import get_all_users, get_authorized_groups_scoped
+from apps.system_mgmt.nats_api import get_all_users, get_authorized_groups_scoped, reset_pwd
+from apps.system_mgmt.utils.channel_utils import send_email_to_user
 
 logger = logging.getLogger(__name__)
 
@@ -213,6 +214,47 @@ def test_get_authorized_groups_scoped_keeps_include_children(monkeypatch):
         "target_group_id": 1,
         "include_children": True,
     }
+
+
+def test_send_email_to_user_keeps_ascii_attachment_filename_clean(monkeypatch):
+    captured = {}
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def login(self, username, password):
+            return None
+
+        def send_message(self, msg):
+            captured["message"] = msg
+
+        def quit(self):
+            return None
+
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.smtplib.SMTP", FakeSMTP)
+
+    result = send_email_to_user(
+        {
+            "mail_sender": "sender@example.com",
+            "smtp_server": "smtp.example.com",
+            "port": 25,
+            "smtp_user": "sender",
+            "smtp_pwd": "pwd",
+            "smtp_usessl": False,
+            "smtp_usetls": False,
+        },
+        "<p>hello</p>",
+        ["receiver@example.com"],
+        "test",
+        attachments=[{"filename": "20260604.md", "content": "aGVsbG8="}],
+    )
+
+    attachment_part = captured["message"].get_payload()[1]
+
+    assert result["result"] is True
+    assert 'filename="20260604.md"' in attachment_part["Content-Disposition"]
+    assert "utf-8''" not in attachment_part["Content-Disposition"]
 
 
 def test_get_authorized_groups_scoped_rejects_invalid_current_team(monkeypatch):
@@ -1002,3 +1044,559 @@ def test_file_distribution_raises_when_ansible_task_query_stays_running(monkeypa
             timeout=2,
             overwrite=True,
         )
+
+
+# ---------------------------------------------------------------------------
+# Task 1: NATS alert trigger – send_msg_with_channel / send_nats_message
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_send_msg_with_channel_nats_rejects_invalid_content(monkeypatch):
+    """NATS channel must reject malformed content before trying to send."""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import send_msg_with_channel
+
+    channel = Channel.objects.create(
+        name="test-nats-validation",
+        channel_type=ChannelChoices.NATS,
+        description="",
+        config={"namespace": "opspilot", "method_name": "trigger_workflow_by_nats", "bot_id": 1, "node_id": "node-1"},
+    )
+
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats_api.send_nats_message",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("send_nats_message should not be called")),
+    )
+
+    # missing 'message' key entirely
+    result = send_msg_with_channel(channel.id, "title", {"team": [1], "user_ids": ["alice"]}, [])
+    assert result["result"] is False, "Expected rejection when message key is missing"
+    assert "message" in result["message"]
+
+    # empty string message
+    result2 = send_msg_with_channel(channel.id, "title", {"message": "", "team": [1], "user_ids": ["alice"]}, [])
+    assert result2["result"] is False, "Expected rejection when message is empty string"
+    assert "message" in result2["message"]
+
+    # team is not a valid integer
+    result3 = send_msg_with_channel(channel.id, "title", {"message": "alert", "team": "bad", "user_ids": ["alice"]}, [])
+    assert result3["result"] is False, "Expected rejection when team is not a valid integer"
+    assert "team" in result3["message"]
+
+    # more than one team id (only a single team is allowed now)
+    result4 = send_msg_with_channel(channel.id, "title", {"message": "alert", "team": [1, 2], "user_ids": ["alice"]}, [])
+    assert result4["result"] is False, "Expected rejection when more than one team is provided"
+    assert "team" in result4["message"]
+
+
+@pytest.mark.django_db
+def test_send_msg_with_channel_nats_normalizes_valid_content(monkeypatch):
+    """NATS content should be normalized before it is forwarded downstream."""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import send_msg_with_channel
+
+    channel = Channel.objects.create(
+        name="test-nats-normalization",
+        channel_type=ChannelChoices.NATS,
+        description="",
+        config={"namespace": "opspilot", "method_name": "trigger_alert", "bot_id": 1, "node_id": "node-1"},
+    )
+
+    captured = {}
+
+    def fake_send_nats_message(channel_obj, normalized_content):
+        captured["channel_id"] = channel_obj.id
+        captured["content"] = normalized_content
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", fake_send_nats_message)
+
+    result = send_msg_with_channel(
+        channel.id,
+        "title",
+        {"message": "  alert  ", "team": "2", "user_ids": [0, " alice ", "", None]},
+        [],
+    )
+
+    assert result == {"result": True}
+    assert captured["channel_id"] == channel.id
+    assert captured["content"] == {"message": "alert", "team": 2, "user_ids": ["0", "alice"]}
+
+
+@pytest.mark.django_db
+def test_send_msg_with_channel_nats_passthrough_for_alert_center(monkeypatch):
+    """告警中心通道（receive_alert_events）应原样透传 content，不做 message/team/user_ids 规范化。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import send_msg_with_channel
+
+    channel = Channel.objects.create(
+        name="告警中心",
+        channel_type=ChannelChoices.NATS,
+        description="",
+        config={"namespace": "bklite", "method_name": "receive_alert_events", "timeout": 60},
+    )
+
+    captured = {}
+
+    def fake_send_nats_message(channel_obj, content):
+        captured["channel_id"] = channel_obj.id
+        captured["content"] = content
+        return {"result": True}
+
+    # 若误走 normalize 这里会被调用并抛错，从而暴露回归
+    monkeypatch.setattr(
+        "apps.system_mgmt.nats_api._normalize_nats_content",
+        lambda *a, **k: (_ for _ in ()).throw(AssertionError("alert center content must not be normalized")),
+    )
+    monkeypatch.setattr("apps.system_mgmt.nats_api.send_nats_message", fake_send_nats_message)
+
+    payload = {"source_id": "nats", "pusher": "lite-monitor", "events": [{"title": "x", "organizations": [3]}]}
+    result = send_msg_with_channel(channel.id, "", payload, [])
+
+    assert result == {"result": True}
+    assert captured["channel_id"] == channel.id
+    # content 原样透传，source_id / pusher / events 一个不丢
+    assert captured["content"] == payload
+
+
+def test_send_nats_message_merges_bot_id_and_node_id_from_config(monkeypatch):
+    """send_nats_message must inject bot_id and node_id from channel config into the NATS payload."""
+    import types as _types
+
+    from apps.system_mgmt.utils.channel_utils import send_nats_message
+
+    captured = {}
+
+    def fake_request_sync(namespace, method_name, _timeout=None, _raw=False, **kwargs):
+        captured["namespace"] = namespace
+        captured["method_name"] = method_name
+        captured["kwargs"] = kwargs
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.nats_client.request_sync", fake_request_sync)
+
+    channel_obj = _types.SimpleNamespace(
+        config={
+            "namespace": "opspilot",
+            "method_name": "trigger_workflow_by_nats",
+            "bot_id": 42,
+            "node_id": "node-xyz",
+            "timeout": 30,
+        }
+    )
+
+    result = send_nats_message(channel_obj, {"message": "alert!", "team": 2, "user_ids": ["alice"]})
+
+    assert result["result"] is True
+    assert captured["kwargs"]["bot_id"] == 42, "bot_id must be injected from channel config"
+    assert captured["kwargs"]["node_id"] == "node-xyz", "node_id must be injected from channel config"
+    assert captured["kwargs"]["message"] == "alert!"
+    assert captured["kwargs"]["team"] == 2
+    assert captured["kwargs"]["user_ids"] == ["alice"]
+
+
+def test_send_nats_message_requires_bot_id_and_node_id_in_config(monkeypatch):
+    """send_nats_message must return error when bot_id or node_id is absent from config."""
+    import types as _types
+
+    from apps.system_mgmt.utils.channel_utils import send_nats_message
+
+    # Ensure nats_client is never reached
+    monkeypatch.setattr(
+        "apps.system_mgmt.utils.channel_utils.nats_client.request_sync",
+        lambda *args, **kwargs: (_ for _ in ()).throw(AssertionError("should not be called")),
+    )
+
+    channel_obj = _types.SimpleNamespace(
+        config={
+            "namespace": "opspilot",
+            "method_name": "trigger_workflow_by_nats",
+            # bot_id and node_id intentionally missing
+        }
+    )
+
+    result = send_nats_message(channel_obj, {"message": "alert!", "team": 2, "user_ids": ["alice"]})
+    assert result["result"] is False
+    assert "bot_id" in result["message"] or "node_id" in result["message"]
+
+
+def test_send_nats_message_allows_non_workflow_methods_without_bot_context(monkeypatch):
+    """Non-workflow NATS methods should not require or inject bot_id/node_id."""
+    import types as _types
+
+    from apps.system_mgmt.utils.channel_utils import send_nats_message
+
+    captured = {}
+
+    def fake_request_sync(namespace, method_name, _timeout=None, _raw=False, **kwargs):
+        captured["namespace"] = namespace
+        captured["method_name"] = method_name
+        captured["kwargs"] = kwargs
+        return {"result": True}
+
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.nats_client.request_sync", fake_request_sync)
+
+    channel_obj = _types.SimpleNamespace(
+        config={
+            "namespace": "system_mgmt",
+            "method_name": "get_all_users",
+            "timeout": 30,
+        }
+    )
+
+    result = send_nats_message(channel_obj, {"scope": "all"})
+
+    assert result == {"result": True}
+    assert captured["namespace"] == "system_mgmt"
+    assert captured["method_name"] == "get_all_users"
+    assert captured["kwargs"] == {"scope": "all"}
+
+
+@pytest.mark.django_db
+def test_send_msg_with_channel_email_accepts_username_receivers(monkeypatch):
+    """Email channel must accept a list of usernames (non-numeric strings) as receivers."""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import send_msg_with_channel
+
+    User.objects.create(
+        username="alice_nats_test",
+        display_name="Alice",
+        email="alice_nats@example.com",
+        password=make_password("password"),
+    )
+
+    channel = Channel.objects.create(
+        name="test-email-username-recv",
+        channel_type=ChannelChoices.EMAIL,
+        description="",
+        config={
+            "mail_sender": "no-reply@example.com",
+            "smtp_server": "smtp.example.com",
+            "port": 25,
+            "smtp_user": "smtp",
+            "smtp_pwd": "pwd",
+            "smtp_usessl": False,
+            "smtp_usetls": False,
+        },
+    )
+
+    sent_to = []
+
+    class FakeSMTP:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def login(self, u, p):
+            pass
+
+        def send_message(self, msg):
+            sent_to.append(msg["To"])
+
+        def quit(self):
+            pass
+
+    monkeypatch.setattr("apps.system_mgmt.utils.channel_utils.smtplib.SMTP", FakeSMTP)
+
+    result = send_msg_with_channel(channel.id, "Test Alert", "<p>alert</p>", ["alice_nats_test"])
+
+    assert result["result"] is True, f"Expected success but got: {result}"
+    assert len(sent_to) == 1
+    assert "alice_nats@example.com" in sent_to[0]
+
+
+@pytest.mark.django_db
+def test_sync_opspilot_nats_channels_create_update_delete():
+    """OpsPilot 通道对账：新增、改名/换组、对账删除已移除节点。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import OPSPILOT_NATS_NAMESPACE, sync_opspilot_nats_channels
+
+    res = sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="K8sBot",
+        team=[2],
+        nodes=[{"node_id": "n1", "name": "NATS触发"}, {"node_id": "n2", "name": "NATS触发 1"}],
+    )
+    assert res["result"] is True
+    assert res["data"] == {"created": 2, "updated": 0, "deleted": 0}
+
+    def _bot_channels(bot_id=7):
+        return [
+            c
+            for c in Channel.objects.filter(channel_type=ChannelChoices.NATS)
+            if (c.config or {}).get("source") == "opspilot" and (c.config or {}).get("bot_id") == bot_id
+        ]
+
+    chans = _bot_channels()
+    assert len(chans) == 2
+    c1 = next(c for c in chans if c.config["node_id"] == "n1")
+    assert c1.name == "K8sBot - NATS触发"
+    assert c1.config["source"] == "opspilot"
+    assert c1.config["bot_id"] == 7
+    assert c1.config["namespace"] == OPSPILOT_NATS_NAMESPACE
+    assert c1.config["method_name"] == "trigger_workflow_by_nats"
+    assert c1.team == [2]
+
+    # 再次发布：n1 改名换组、删除 n2、新增 n3
+    res2 = sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="K8sBot",
+        team=[3],
+        nodes=[{"node_id": "n1", "name": "改名后"}, {"node_id": "n3", "name": "新节点"}],
+    )
+    assert res2["data"] == {"created": 1, "updated": 1, "deleted": 1}
+
+    chans2 = {c.config["node_id"]: c for c in _bot_channels()}
+    assert set(chans2.keys()) == {"n1", "n3"}
+    assert chans2["n1"].name == "K8sBot - 改名后"
+    assert chans2["n1"].team == [3]
+
+
+@pytest.mark.django_db
+def test_delete_opspilot_nats_channels_keeps_manual_channels():
+    """删除 bot 名下托管通道，但不动用户手建的 NATS 通道。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import delete_opspilot_nats_channels, sync_opspilot_nats_channels
+
+    sync_opspilot_nats_channels(bot_id=7, bot_name="B", team=[1], nodes=[{"node_id": "n1", "name": "x"}])
+    Channel.objects.create(name="manual", channel_type=ChannelChoices.NATS, config={"namespace": "x"}, team=[1], description="")
+
+    res = delete_opspilot_nats_channels(bot_id=7)
+    assert res["data"]["deleted"] == 1
+    assert Channel.objects.filter(name="manual").exists()
+    assert not Channel.objects.filter(config__node_id="n1").exists()
+
+
+def test_channel_viewset_rejects_opspilot_managed_channel():
+    """ChannelViewSet 拒绝编辑/删除 OpsPilot 托管的 NATS 通道。"""
+    import types as _types
+
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.viewset.channel_viewset import ChannelViewSet
+
+    viewset = ChannelViewSet()
+    request = _types.SimpleNamespace(user=_types.SimpleNamespace(locale="en"))
+
+    managed = Channel(
+        name="m",
+        channel_type=ChannelChoices.NATS,
+        config={"source": "opspilot", "bot_id": 1, "node_id": "n1"},
+        team=[1],
+        description="",
+    )
+    resp = viewset._reject_if_opspilot_managed(request, managed)
+    assert resp is not None and resp.status_code == 403
+
+    normal = Channel(name="m2", channel_type=ChannelChoices.NATS, config={"namespace": "x"}, team=[1], description="")
+    assert viewset._reject_if_opspilot_managed(request, normal) is None
+
+
+# ── reset_pwd 调用方身份校验测试（Issue #3441）─────────────────────────────────
+
+
+def _make_caller(username, domain="domain.com"):
+    """构造一个伪调用方用户对象（用于 _verify_token 返回值）。"""
+    return types.SimpleNamespace(username=username, domain=domain)
+
+
+def test_reset_pwd_无caller_token时拒绝请求(monkeypatch):
+    """caller_token 缺失时应直接拒绝，不执行任何 DB 写入。"""
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: _make_caller("alice"))
+    result = reset_pwd("alice", "domain.com", "NewPass123!", caller_token="")
+    assert result["result"] is False
+    assert "caller_token" in result["message"]
+
+
+def test_reset_pwd_caller_token无效时拒绝请求(monkeypatch):
+    """_verify_token 抛异常（token 过期/篡改）时应返回 Unauthorized。"""
+
+    def _raise(token):
+        raise Exception("Token is invalid")
+
+    monkeypatch.setattr(nats_api, "_verify_token", _raise)
+    result = reset_pwd("alice", "domain.com", "NewPass123!", caller_token="bad.token")
+    assert result["result"] is False
+    assert "Unauthorized" in result["message"]
+
+
+def test_reset_pwd_caller与目标用户不一致时拒绝(monkeypatch):
+    """token 属于 bob，却要重置 alice 的密码——应拒绝（防止跨账号密码覆盖）。"""
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: _make_caller("bob"))
+    result = reset_pwd("alice", "domain.com", "NewPass123!", caller_token="bob.token")
+    assert result["result"] is False
+    assert "Unauthorized" in result["message"]
+
+
+def test_reset_pwd_caller与目标用户一致时允许执行(monkeypatch):
+    """token 属于 alice，重置 alice 自己的密码——应通过校验并更新密码。"""
+    caller = _make_caller("alice", "domain.com")
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: caller)
+
+    saved = {}
+
+    class _FakeUser:
+        username = "alice"
+        domain = "domain.com"
+        temporary_pwd = True
+
+        def save(self):
+            saved["password"] = self.password
+            saved["temporary_pwd"] = self.temporary_pwd
+
+    class _FakeQS:
+        def first(self):
+            return _FakeUser()
+
+    class _FakeManager:
+        def filter(self, **kwargs):
+            return _FakeQS()
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeManager())
+
+    # 使用真实的 PasswordValidator（不 mock，确保测试覆盖完整路径）
+    result = reset_pwd("alice", "domain.com", "ValidPass1!", caller_token="alice.token")
+    assert result["result"] is True
+    assert "password" in saved  # 密码已被写入
+    assert saved["temporary_pwd"] is False
+
+
+def test_reset_pwd_空domain与default_domain等价_不被跨domain绕过(monkeypatch):
+    """caller.domain='domain.com' 与 target domain='' 应被视为同一域，不应误拒或被绕过。"""
+    # caller domain 为 domain.com（默认域），目标 domain 为空（等价 domain.com）
+    caller = _make_caller("alice", "domain.com")
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: caller)
+
+    saved = {}
+
+    class _FakeUser:
+        username = "alice"
+        domain = "domain.com"
+        temporary_pwd = True
+
+        def save(self):
+            saved["password"] = self.password
+            saved["temporary_pwd"] = self.temporary_pwd
+
+    class _FakeQS:
+        def first(self):
+            return _FakeUser()
+
+    class _FakeManager:
+        def filter(self, **kwargs):
+            return _FakeQS()
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeManager())
+    # domain="" should normalise to "domain.com" on both sides → allowed
+    result = reset_pwd("alice", "", "ValidPass1!", caller_token="alice.token")
+    assert result["result"] is True
+
+
+def test_reset_pwd_不同domain时拒绝(monkeypatch):
+    """caller 属于 domain.com，target domain 为 corp.com——应拒绝跨域改密。"""
+    caller = _make_caller("alice", "domain.com")
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: caller)
+    result = reset_pwd("alice", "corp.com", "ValidPass1!", caller_token="alice.token")
+    assert result["result"] is False
+    assert "Unauthorized" in result["message"]
+
+
+@pytest.mark.django_db
+def test_search_opspilot_nats_channels_filters_by_source_and_bot():
+    """新增接口：只返回 opspilot 托管的 NATS 通道，支持按 bot_id 过滤、全局列举，带 bot_id/node_id。"""
+    from apps.system_mgmt.models import Channel, ChannelChoices
+    from apps.system_mgmt.nats_api import search_opspilot_nats_channels, sync_opspilot_nats_channels
+
+    # bot 7 两个托管通道
+    sync_opspilot_nats_channels(
+        bot_id=7,
+        bot_name="BotA",
+        team=[2],
+        nodes=[{"node_id": "n1", "name": "NATS触发"}, {"node_id": "n2", "name": "NATS触发 1"}],
+    )
+    # bot 8 一个托管通道
+    sync_opspilot_nats_channels(bot_id=8, bot_name="BotB", team=[3], nodes=[{"node_id": "m1", "name": "入口"}])
+    # 一个用户手建的普通 NATS 通道（无 source），不应出现
+    Channel.objects.create(
+        name="manual", channel_type=ChannelChoices.NATS, config={"namespace": "bklite", "method_name": "x"}, team=[2], description=""
+    )
+
+    # 全局列举：只含 opspilot 托管（3 条），不含手建
+    all_res = search_opspilot_nats_channels()
+    assert all_res["result"] is True
+    names = {c["name"] for c in all_res["data"]}
+    assert "manual" not in names
+    assert len(all_res["data"]) == 3
+    # 返回路由字段
+    sample = all_res["data"][0]
+    assert set(sample.keys()) >= {"id", "name", "description", "team", "bot_id", "node_id"}
+
+    # 按 bot_id 过滤
+    bot7 = search_opspilot_nats_channels(bot_id=7)
+    assert {c["node_id"] for c in bot7["data"]} == {"n1", "n2"}
+    assert all(c["bot_id"] == 7 for c in bot7["data"])
+
+    # 按 teams 过滤（team 3 → 只 bot8）
+    team3 = search_opspilot_nats_channels(teams=[3])
+    assert {c["node_id"] for c in team3["data"]} == {"m1"}
+
+
+def test_wechat_user_register_uses_select_for_update_inside_transaction(monkeypatch):
+    """
+    验证 wechat_user_register 的 RMW 操作受 select_for_update 保护。
+    若将修复代码 revert（去掉 transaction.atomic + select_for_update），本测试必须失败。
+    """
+    import threading
+    from unittest.mock import MagicMock, patch, call
+    from apps.system_mgmt.nats_api import wechat_user_register
+
+    select_for_update_called = threading.Event()
+    atomic_entered = threading.Event()
+
+    # 拦截 User.objects.select_for_update() 调用链
+    original_user_objects = nats_api.User.objects
+
+    class _SFUQuerSet:
+        """模拟 select_for_update() 返回的 queryset，支持 get_or_create"""
+        def get_or_create(self, username, defaults=None):
+            select_for_update_called.set()
+            # 构造最小 User 对象
+            user = MagicMock()
+            user.group_list = []
+            user.role_list = []
+            user.last_login = None
+            user.id = 1
+            user.username = username
+            user.display_name = defaults.get("display_name", "") if defaults else ""
+            user.locale = "zh-Hans"
+            user.timezone = "Asia/Shanghai"
+            return user, True
+
+    class _FakeUserObjects:
+        def select_for_update(self):
+            return _SFUQuerSet()
+
+        def get_or_create(self, *args, **kwargs):
+            # 未经 select_for_update 直接调用——不应发生
+            return MagicMock(group_list=[], role_list=[]), True
+
+    monkeypatch.setattr(nats_api.User, "objects", _FakeUserObjects())
+
+    # 让 Group / Role 查询返回空，简化测试
+    monkeypatch.setattr(nats_api.Group, "objects", MagicMock(**{
+        "filter.return_value.first.return_value": None,
+    }))
+    monkeypatch.setattr(nats_api.Role, "objects", MagicMock(**{
+        "filter.return_value.values_list.return_value": [],
+    }))
+
+    # 屏蔽 JWT 签名
+    monkeypatch.setattr(nats_api, "_build_jwt_payload", lambda user_id: {})
+    import jwt as _jwt
+    monkeypatch.setattr(_jwt, "encode", lambda **kwargs: "fake-token")
+
+    result = wechat_user_register("wx_test_race", "测试用户")
+
+    assert result["result"] is True, "wechat_user_register 应返回 result=True"
+    assert select_for_update_called.is_set(), (
+        "select_for_update() 未被调用——RMW 操作缺少悲观锁，并发时会丢失更新（issue #3460）"
+    )

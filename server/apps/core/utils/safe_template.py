@@ -12,9 +12,11 @@
 """
 
 import re
+from collections.abc import Mapping, Sequence
 from typing import Any
 
 from jinja2 import BaseLoader, DebugUndefined
+from jinja2 import meta
 from jinja2.sandbox import SandboxedEnvironment
 
 from apps.core.logger import logger
@@ -26,11 +28,44 @@ class TemplateSecurityError(ValueError):
     pass
 
 
+class StrictSandboxedEnvironment(SandboxedEnvironment):
+    """SandboxedEnvironment with stricter attribute and callable access rules."""
+
+    FORBIDDEN_ATTRIBUTES = {
+        "mro",
+        "base",
+        "bases",
+        "subclasses",
+        "globals",
+        "func_globals",
+        "builtins",
+        "gi_frame",
+        "f_globals",
+        "f_locals",
+        "cr_frame",
+        "tb_frame",
+    }
+
+    def is_safe_attribute(self, obj: Any, attr: str, value: Any) -> bool:
+        if attr.startswith("_") or attr.lower() in self.FORBIDDEN_ATTRIBUTES:
+            return False
+        if callable(value):
+            return False
+        return super().is_safe_attribute(obj, attr, value)
+
+    def is_safe_callable(self, obj: Any) -> bool:
+        return False
+
+
 # ============================================================
 # 危险模式检测（基于已知 SSTI bypass 技术）
 # ============================================================
 
-DANGEROUS_PATTERNS: list[tuple[str, str]] = [
+GLOBAL_DANGEROUS_PATTERNS: list[tuple[str, str]] = [
+    (r"\{%", "Jinja2 控制语句"),
+]
+
+EXPRESSION_DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     # Python 内省
     (r"__\w+__", "dunder 属性访问 (如 __class__, __globals__)"),
     (r"\bmro\b", "MRO 链访问"),
@@ -55,8 +90,7 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\bgetattr\b", "getattr 函数"),
     (r"\bsetattr\b", "setattr 函数"),
     (r"\bdelattr\b", "delattr 函数"),
-    # Jinja2 语法
-    (r"\{%", "Jinja2 控制语句"),
+    # Jinja2 表达式语法
     (r"\|", "Jinja2 过滤器"),
     (r"\[", "下标/切片访问"),
     (r"\(", "函数调用"),
@@ -67,6 +101,15 @@ DANGEROUS_PATTERNS: list[tuple[str, str]] = [
     (r"\burl_for\b", "url_for 函数"),
     (r"\bg\b", "Flask g 对象"),
 ]
+
+JINJA_EXPRESSION_PATTERN = re.compile(r"\{\{.*?\}\}", re.DOTALL)
+
+
+def _find_dangerous_pattern(content: str, patterns: list[tuple[str, str]]) -> str | None:
+    for pattern, description in patterns:
+        if re.search(pattern, content, re.IGNORECASE):
+            return description
+    return None
 
 
 def check_dangerous_patterns(template_str: str) -> None:
@@ -80,8 +123,16 @@ def check_dangerous_patterns(template_str: str) -> None:
         TemplateSecurityError: 发现危险模式时抛出
     """
     template_lower = template_str.lower()
-    for pattern, description in DANGEROUS_PATTERNS:
-        if re.search(pattern, template_lower, re.IGNORECASE):
+
+    description = _find_dangerous_pattern(template_lower, GLOBAL_DANGEROUS_PATTERNS)
+    if description:
+        logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
+        raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
+
+    # 仅在真正的 Jinja2 表达式内部检查高危替代，避免将普通文本字符误判为 SSTI。
+    for expression in JINJA_EXPRESSION_PATTERN.findall(template_lower):
+        description = _find_dangerous_pattern(expression, EXPRESSION_DANGEROUS_PATTERNS)
+        if description:
             logger.warning(f"[SSTI] 检测到危险模式: {description}, template={template_str[:100]}...")
             raise TemplateSecurityError(f"模板包含禁止的模式: {description}")
 
@@ -139,6 +190,41 @@ def safe_render(template_str: str, context: dict[str, Any]) -> str:
     return SAFE_VAR_PATTERN.sub(replace_var, template_str)
 
 
+SAFE_PRIMITIVE_TYPES = (str, int, float, bool, type(None))
+
+
+def sanitize_template_context(value: Any, *, max_depth: int = 8) -> Any:
+    """
+    Convert template context to plain data so templates cannot traverse Python
+    objects, Django model instances, modules, functions, or classes.
+    """
+    if max_depth < 0:
+        return ""
+    if isinstance(value, SAFE_PRIMITIVE_TYPES):
+        return value
+    if isinstance(value, Mapping):
+        return {
+            str(key): sanitize_template_context(item, max_depth=max_depth - 1)
+            for key, item in value.items()
+            if isinstance(key, SAFE_PRIMITIVE_TYPES)
+        }
+    if isinstance(value, Sequence) and not isinstance(value, (str, bytes, bytearray)):
+        return [sanitize_template_context(item, max_depth=max_depth - 1) for item in value]
+    return str(value)
+
+
+def validate_template_variables(template_str: str, env: SandboxedEnvironment, allowed_variables: set[str]) -> None:
+    """
+    Ensure a Jinja template references only explicitly allowed top-level
+    business variables.
+    """
+    ast = env.parse(template_str)
+    referenced = meta.find_undeclared_variables(ast)
+    unexpected = sorted(referenced - allowed_variables)
+    if unexpected:
+        raise TemplateSecurityError(f"模板包含未授权变量: {', '.join(unexpected)}")
+
+
 # ============================================================
 # 方案 C：安全 Jinja2 沙箱环境（需要完整模板能力时使用）
 # ============================================================
@@ -165,7 +251,7 @@ def build_sandboxed_env(
     Returns:
         配置好的 SandboxedEnvironment 实例
     """
-    env = SandboxedEnvironment(
+    env = StrictSandboxedEnvironment(
         loader=loader or BaseLoader(),
         undefined=undefined,
     )

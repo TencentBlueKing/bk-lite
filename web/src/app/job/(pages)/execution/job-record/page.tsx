@@ -10,6 +10,11 @@ import {
   Input,
   Drawer,
   DatePicker,
+  Tabs,
+  Table,
+  Empty,
+  Modal,
+  Alert,
 } from 'antd';
 import {
   ArrowLeftOutlined,
@@ -22,12 +27,19 @@ import {
   ArrowDownOutlined,
   CheckCircleFilled,
   CloseCircleFilled,
+  FolderOutlined,
+  FileOutlined,
+  ProfileOutlined,
+  StopOutlined,
 } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
+import MarkdownRenderer from '@/components/markdown';
 import { useTranslation } from '@/utils/i18n';
 import useApiClient from '@/utils/request';
+import { useAuth } from '@/context/auth';
 import useJobApi from '@/app/job/api';
-import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget } from '@/app/job/types';
+import { useExecutionStream } from '@/app/job/hooks/useExecutionStream';
+import { JobRecord, JobRecordStatus, JobRecordSource, JobRecordDetail, ExecutionTarget, Playbook, FileTreeNode, PlaybookFilePreview } from '@/app/job/types';
 import { ColumnItem } from '@/types';
 import SearchCombination from '@/components/search-combination';
 import { SearchFilters, FieldConfig } from '@/components/search-combination/types';
@@ -44,7 +56,7 @@ const JobRecordPage = () => {
   const searchParams = useSearchParams();
   const recordId = searchParams.get('id');
   const { isLoading: isApiReady } = useApiClient();
-  const { getJobRecordList, getJobRecordDetail } = useJobApi();
+  const { getJobRecordList, getJobRecordDetail, getPlaybookDetail, previewPlaybookFile, cancelExecution } = useJobApi();
 
   // List state
   const [data, setData] = useState<JobRecord[]>([]);
@@ -65,6 +77,13 @@ const JobRecordPage = () => {
   const [logSearch, setLogSearch] = useState('');
   const [autoScroll, setAutoScroll] = useState(false);
   const [scriptDrawerOpen, setScriptDrawerOpen] = useState(false);
+  const [playbookDrawerOpen, setPlaybookDrawerOpen] = useState(false);
+  const [viewingPlaybook, setViewingPlaybook] = useState<Playbook | null>(null);
+  const [playbookDetailLoading, setPlaybookDetailLoading] = useState(false);
+  const [filePreviewModalOpen, setFilePreviewModalOpen] = useState(false);
+  const [filePreviewLoading, setFilePreviewLoading] = useState(false);
+  const [filePreviewData, setFilePreviewData] = useState<PlaybookFilePreview | null>(null);
+  const [filePreviewError, setFilePreviewError] = useState<string | null>(null);
   const logContainerRef = useRef<HTMLDivElement>(null);
   const pollingTimerRef = useRef<NodeJS.Timeout | null>(null);
 
@@ -148,6 +167,7 @@ const JobRecordPage = () => {
         res.execution_targets = res.execution_results.map((result: any, index: number) => ({
           id: index,
           target: index,
+          target_key: result.target_key != null ? String(result.target_key) : undefined,
           target_name: result.name || result.ip,
           target_ip: result.ip,
           status: result.status,
@@ -166,6 +186,7 @@ const JobRecordPage = () => {
         res.execution_targets = res.target_list.map((target: any, index: number) => ({
           id: Number(target.target_id || target.node_id || index),
           target: Number(target.target_id || target.node_id || index),
+          target_key: String(target.node_id || target.target_id || index),
           target_name: target.name || target.ip || `Target ${index + 1}`,
           target_ip: target.ip || '-',
           status: res.status,
@@ -186,6 +207,30 @@ const JobRecordPage = () => {
       }
     }
   }, [getJobRecordDetail]);
+
+  const handleCancelExecution = useCallback(() => {
+    if (!detail) return;
+    Modal.confirm({
+      title: t('job.cancelExecution'),
+      content: t('job.cancelExecutionConfirm'),
+      okText: t('job.confirm'),
+      cancelText: t('job.cancel'),
+      okButtonProps: { danger: true },
+      onOk: async () => {
+        try {
+          const res = await cancelExecution(detail.id);
+          // 后端按 CAS 分流：cancelled=确实未执行；cancelling=已开始执行，等待远端结果回写
+          if (res?.status === 'cancelling') {
+            message.warning(t('job.cancelRequested'));
+          } else {
+            message.success(t('job.cancelSuccess'));
+          }
+        } finally {
+          fetchDetail(detail.id, true);
+        }
+      },
+    });
+  }, [detail, cancelExecution, fetchDetail, t]);
 
   const handleReExecute = useCallback(async () => {
     if (!detail) return;
@@ -252,6 +297,24 @@ const JobRecordPage = () => {
 
     router.push('/job/execution/quick-exec?mode=reexecute');
   }, [detail, router]);
+
+  const handleOpenPlaybook = useCallback(async () => {
+    if (!detail?.playbook) {
+      return;
+    }
+
+    setPlaybookDrawerOpen(true);
+    setPlaybookDetailLoading(true);
+    try {
+      const playbookDetail = await getPlaybookDetail(detail.playbook);
+      setViewingPlaybook(playbookDetail);
+    } catch {
+      message.error(t('job.loadPlaybookDetailFailed'));
+      setPlaybookDrawerOpen(false);
+    } finally {
+      setPlaybookDetailLoading(false);
+    }
+  }, [detail?.playbook, getPlaybookDetail, t]);
 
   useEffect(() => {
     if (!isApiReady) {
@@ -333,7 +396,9 @@ const JobRecordPage = () => {
       running: { color: 'processing', label: t('job.statusRunning') },
       success: { color: 'success', label: t('job.statusSuccess') },
       failed: { color: 'error', label: t('job.statusFailed') },
-      canceled: { color: 'warning', label: t('job.statusCanceled') },
+      timeout: { color: 'error', label: t('job.statusTimeout') },
+      cancelled: { color: 'warning', label: t('job.statusCanceled') },
+      cancelling: { color: 'processing', label: t('job.statusCancelling') },
     };
     return configs[status] || configs.pending;
   };
@@ -382,7 +447,9 @@ const JobRecordPage = () => {
         { id: 'running', name: t('job.statusRunning') },
         { id: 'success', name: t('job.statusSuccess') },
         { id: 'failed', name: t('job.statusFailed') },
-        { id: 'canceled', name: t('job.statusCanceled') },
+        { id: 'timeout', name: t('job.statusTimeout') },
+        { id: 'cancelled', name: t('job.statusCanceled') },
+        { id: 'cancelling', name: t('job.statusCancelling') },
       ],
     },
     {
@@ -509,11 +576,39 @@ const JobRecordPage = () => {
   };
 
   // Get selected target for detail view
-  const selectedTarget = useMemo(() => {
+  const rawSelectedTarget = useMemo(() => {
     if (!detail?.execution_targets?.length) return null;
     if (selectedTargetId === null) return detail.execution_targets[0];
     return detail.execution_targets.find(t => t.id === selectedTargetId) || detail.execution_targets[0];
   }, [detail, selectedTargetId]);
+
+  // 实时流式输出：执行中（pending/running）订阅 SSE，按 target 累积 stdout/stderr
+  const authContext = useAuth();
+  const isExecuting = detail?.status === 'pending' || detail?.status === 'running';
+  const { liveOutput, streaming } = useExecutionStream({
+    executionId: recordId ? Number(recordId) : null,
+    enabled: !!recordId && isExecuting,
+    token: authContext?.token || null,
+    onAllDone: () => {
+      if (recordId) fetchDetail(Number(recordId), true);
+    },
+  });
+
+  // 用实时输出覆盖选中目标的内容：
+  // - 仅执行中（pending/running）覆盖；终态回落到权威 execution_results。
+  // - 优先该目标自己的流（SSH/本地按 target_key）；无则回退 ansible 合并流（key='ansible'）。
+  const selectedTarget = useMemo(() => {
+    if (!rawSelectedTarget) return null;
+    if (!isExecuting) return rawSelectedTarget;
+    const perTarget = rawSelectedTarget.target_key ? liveOutput[rawSelectedTarget.target_key] : undefined;
+    const live = perTarget && (perTarget.stdout || perTarget.stderr) ? perTarget : liveOutput['ansible'];
+    if (!live || (!live.stdout && !live.stderr)) return rawSelectedTarget;
+    return {
+      ...rawSelectedTarget,
+      stdout: live.stdout || rawSelectedTarget.stdout,
+      stderr: live.stderr || rawSelectedTarget.stderr,
+    };
+  }, [rawSelectedTarget, liveOutput, isExecuting]);
 
   // Auto-select first target when detail loads
   useEffect(() => {
@@ -560,6 +655,182 @@ const JobRecordPage = () => {
     if (!detail?.script_content) return 0;
     return detail.script_content.split('\n').length;
   }, [detail?.script_content]);
+
+  // Execution parameters text (脚本执行为按顺序拼接的位置参数字符串)
+  const executeParamsText = useMemo(() => {
+    const p = detail?.params as unknown;
+    if (p === null || p === undefined || p === '') return '';
+    if (typeof p === 'string') return p;
+    try {
+      return JSON.stringify(p);
+    } catch {
+      return String(p);
+    }
+  }, [detail?.params]);
+
+  const handlePreviewPlaybookFile = useCallback(async (filePath: string, parentPaths: string[] = []) => {
+    if (!viewingPlaybook) {
+      return;
+    }
+
+    const fullPath = [...parentPaths, filePath].join('/');
+    setFilePreviewLoading(true);
+    setFilePreviewError(null);
+    setFilePreviewData(null);
+    setFilePreviewModalOpen(true);
+
+    try {
+      const result = await previewPlaybookFile(viewingPlaybook.id, fullPath);
+      setFilePreviewData(result);
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string }; status?: number } };
+      const detailMessage = err?.response?.data?.detail;
+      const status = err?.response?.status;
+
+      if (status === 413) {
+        setFilePreviewError(t('job.filePreviewTooLarge'));
+      } else if (status === 404) {
+        setFilePreviewError(t('job.filePreviewNotFound'));
+      } else if (detailMessage) {
+        setFilePreviewError(detailMessage);
+      } else {
+        setFilePreviewError(t('job.filePreviewError'));
+      }
+    } finally {
+      setFilePreviewLoading(false);
+    }
+  }, [previewPlaybookFile, t, viewingPlaybook]);
+
+  const renderPlaybookFileTree = useCallback((nodes: FileTreeNode[], depth = 0, parentPaths: string[] = []) => {
+    return nodes.map((node, idx) => (
+      <div key={`${depth}-${idx}-${node.name}`}>
+        <div
+          className="flex items-center justify-between rounded px-2 py-1.5 hover:bg-(--color-fill-2)"
+          style={{ paddingLeft: `${depth * 20 + 8}px` }}
+        >
+          <div className="flex items-center gap-2">
+            {node.type === 'directory' ? (
+              <FolderOutlined style={{ color: '#faad14' }} />
+            ) : (
+              <FileOutlined style={{ color: 'var(--color-text-3)' }} />
+            )}
+            <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+              {node.name}
+            </span>
+          </div>
+          {node.type === 'file' && (
+            <a
+              className="cursor-pointer text-sm text-[var(--color-primary)]"
+              onClick={() => handlePreviewPlaybookFile(node.name, parentPaths)}
+            >
+              {t('job.preview')}
+            </a>
+          )}
+        </div>
+        {node.type === 'directory' && node.children && renderPlaybookFileTree(node.children, depth + 1, [...parentPaths, node.name])}
+      </div>
+    ));
+  }, [handlePreviewPlaybookFile, t]);
+
+  const playbookViewTabs = useMemo(() => {
+    if (!viewingPlaybook) {
+      return [];
+    }
+
+    const basicInfoItems = [
+      { label: t('job.executionVersion'), value: detail?.playbook ? (detail.playbook_version || '-') : null },
+      { label: t('job.playbookName'), value: viewingPlaybook.name },
+      { label: t('job.playbookDescription'), value: viewingPlaybook.description || '-' },
+      { label: t('job.currentVersion'), value: viewingPlaybook.version || '-' },
+      { label: t('job.recentUpdateTime'), value: viewingPlaybook.updated_at ? dayjs(viewingPlaybook.updated_at).format('YYYY-MM-DD HH:mm:ss') : '-' },
+      { label: t('job.uploader'), value: viewingPlaybook.created_by || '-' },
+    ].filter((item): item is { label: string; value: string | null } => item.value !== null);
+
+    return [
+      {
+        key: 'basicInfo',
+        label: t('job.basicInfoTab'),
+        children: (
+          <div className="space-y-4 py-2">
+            {basicInfoItems.map((item, idx) => (
+              <div key={idx} className="flex">
+                <span
+                  className="w-32 shrink-0 text-sm"
+                  style={{ color: 'var(--color-text-3)' }}
+                >
+                  {item.label}
+                </span>
+                <span className="text-sm" style={{ color: 'var(--color-text-1)' }}>
+                  {item.value}
+                </span>
+              </div>
+            ))}
+          </div>
+        ),
+      },
+      {
+        key: 'params',
+        label: t('job.paramsDescriptionTab'),
+        children:
+          viewingPlaybook.params && viewingPlaybook.params.length > 0 ? (
+            <Table
+              dataSource={viewingPlaybook.params}
+              rowKey="name"
+              pagination={false}
+              size="small"
+              columns={[
+                {
+                  title: t('job.parameterName'),
+                  dataIndex: 'name',
+                  key: 'name',
+                  render: (text: string) => (
+                    <span className="font-mono text-[var(--color-primary)]">{text}</span>
+                  ),
+                },
+                {
+                  title: t('job.defaultVal'),
+                  dataIndex: 'default',
+                  key: 'default',
+                  render: (text: string) => text || '-',
+                },
+                {
+                  title: t('job.paramDesc'),
+                  dataIndex: 'description',
+                  key: 'description',
+                  render: (text: string) => text || '-',
+                },
+              ]}
+            />
+          ) : (
+            <Empty description={t('job.noParams')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ),
+      },
+      {
+        key: 'fileList',
+        label: t('job.fileListTab'),
+        children:
+          viewingPlaybook.file_list && viewingPlaybook.file_list.length > 0 ? (
+            <div
+              className="rounded-md border p-2"
+              style={{ borderColor: 'var(--color-border-1)' }}
+            >
+              {renderPlaybookFileTree(viewingPlaybook.file_list)}
+            </div>
+          ) : (
+            <Empty description={t('job.noFiles')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          ),
+      },
+      {
+        key: 'readme',
+        label: t('job.readmeTab'),
+        children: viewingPlaybook.readme ? (
+          <MarkdownRenderer content={viewingPlaybook.readme} />
+        ) : (
+          <Empty description={t('job.noReadme')} image={Empty.PRESENTED_IMAGE_SIMPLE} />
+        ),
+      },
+    ];
+  }, [detail?.playbook, detail?.playbook_version, renderPlaybookFileTree, t, viewingPlaybook]);
 
   // Download log as file
   const handleDownloadLog = () => {
@@ -657,13 +928,35 @@ const JobRecordPage = () => {
                 {getStatusConfig(detail.status).label}
               </Tag>
             </div>
-            <Button
-              icon={<ReloadOutlined />}
-              onClick={handleReExecute}
-            >
-              {t('job.reExecute')}
-            </Button>
+            <div className="flex items-center gap-2">
+              {['pending', 'running', 'cancelling'].includes(detail.status) && (
+                <Button
+                  danger
+                  icon={<StopOutlined />}
+                  disabled={detail.status === 'cancelling'}
+                  onClick={handleCancelExecution}
+                >
+                  {detail.status === 'cancelling' ? t('job.statusCancelling') : t('job.cancelExecution')}
+                </Button>
+              )}
+              <Button
+                icon={<ReloadOutlined />}
+                onClick={handleReExecute}
+              >
+                {t('job.reExecute')}
+              </Button>
+            </div>
           </div>
+
+          {/* Cancelling Tip */}
+          {detail.status === 'cancelling' && (
+            <Alert
+              message={t('job.cancellingTip')}
+              type="warning"
+              showIcon
+              className="mb-4"
+            />
+          )}
 
           {/* Meta Info Row */}
           <div className="flex items-center justify-between">
@@ -719,14 +1012,21 @@ const JobRecordPage = () => {
                 </span>
               </div>
             </div>
-            {detail.job_type === 'script' && detail.script_content && (
-              <Button
-                icon={<FileTextOutlined />}
-                onClick={() => setScriptDrawerOpen(true)}
-              >
-                {t('job.viewScriptBtn')}
-              </Button>
-            )}
+            <div className="flex items-center gap-2">
+              {detail.playbook && (
+                <Button icon={<FileTextOutlined />} onClick={handleOpenPlaybook}>
+                  {t('job.viewVersion')}
+                </Button>
+              )}
+              {detail.job_type === 'script' && detail.script_content && (
+                <Button
+                  icon={<FileTextOutlined />}
+                  onClick={() => setScriptDrawerOpen(true)}
+                >
+                  {t('job.viewScriptBtn')}
+                </Button>
+              )}
+            </div>
           </div>
         </div>
 
@@ -814,6 +1114,12 @@ const JobRecordPage = () => {
                 <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
                   {t('job.executionLog')}
                 </span>
+                {streaming && (
+                  <Tag color="processing" className="m-0">
+                    <span className="inline-block w-2 h-2 rounded-full bg-current mr-1 animate-pulse align-middle" />
+                    {t('job.streamingLive')}
+                  </Tag>
+                )}
                 {selectedTarget && (
                   <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
                     {selectedTarget.target_name} ({selectedTarget.target_ip})
@@ -896,12 +1202,20 @@ const JobRecordPage = () => {
         <Drawer
           title={t('job.scriptDetail')}
           placement="right"
-          width={480}
+          width={720}
           open={scriptDrawerOpen}
           onClose={() => setScriptDrawerOpen(false)}
+          styles={{
+            body: {
+              display: 'flex',
+              flexDirection: 'column',
+              overflow: 'hidden',
+              padding: 24,
+            },
+          }}
         >
           <div
-            className="rounded-lg mb-4"
+            className="rounded-lg mb-4 shrink-0"
             style={{
               background: 'var(--color-bg-1)',
               border: '1px solid var(--color-border-1)',
@@ -943,14 +1257,14 @@ const JobRecordPage = () => {
           </div>
 
           <div
-            className="rounded-lg overflow-hidden"
+            className="rounded-lg overflow-hidden flex-1 min-h-0 flex flex-col"
             style={{
               background: 'var(--color-bg-1)',
               border: '1px solid var(--color-border-1)',
             }}
           >
             <div
-              className="px-4 py-3 flex items-center justify-between"
+              className="px-4 py-3 flex items-center justify-between shrink-0"
               style={{ borderBottom: '1px solid var(--color-border-1)' }}
             >
               <div className="flex items-center gap-2">
@@ -969,10 +1283,9 @@ const JobRecordPage = () => {
               </Button>
             </div>
             <pre
-              className="p-0 text-sm overflow-auto font-mono m-0"
+              className="p-0 text-sm overflow-auto font-mono m-0 flex-1 min-h-0"
               style={{
                 background: '#1e1e1e',
-                maxHeight: 'calc(100vh - 380px)',
               }}
             >
               {detail.script_content?.split('\n').map((line, index) => (
@@ -993,7 +1306,118 @@ const JobRecordPage = () => {
               ))}
             </pre>
           </div>
+
+          {/* Execution Parameters */}
+          <div
+            className="rounded-lg overflow-hidden mt-4 shrink-0"
+            style={{
+              background: 'var(--color-bg-1)',
+              border: '1px solid var(--color-border-1)',
+            }}
+          >
+            <div
+              className="px-4 py-3 flex items-center gap-2"
+              style={{ borderBottom: '1px solid var(--color-border-1)' }}
+            >
+              <ProfileOutlined style={{ color: 'var(--color-primary)' }} />
+              <span className="font-medium" style={{ color: 'var(--color-text-1)' }}>
+                {t('job.executeParams')}
+              </span>
+            </div>
+            <div className="p-4">
+              {executeParamsText ? (
+                <pre
+                  className="m-0 whitespace-pre-wrap break-all font-mono text-sm overflow-auto"
+                  style={{ color: 'var(--color-text-1)', maxHeight: '20vh' }}
+                >
+                  {executeParamsText}
+                </pre>
+              ) : (
+                <span className="text-sm" style={{ color: 'var(--color-text-3)' }}>
+                  {t('job.noExecuteParams')}
+                </span>
+              )}
+            </div>
+          </div>
         </Drawer>
+
+        <Drawer
+          open={playbookDrawerOpen}
+          onClose={() => {
+            setPlaybookDrawerOpen(false);
+            setViewingPlaybook(null);
+            setFilePreviewModalOpen(false);
+            setFilePreviewData(null);
+            setFilePreviewError(null);
+          }}
+          placement="right"
+          width={600}
+          title={
+            viewingPlaybook ? (
+              <div className="flex items-center gap-3">
+                <span>{viewingPlaybook.name}</span>
+                <Tag color="blue">{viewingPlaybook.version || 'v1.0.0'}</Tag>
+              </div>
+            ) : null
+          }
+          loading={playbookDetailLoading}
+          styles={{
+            body: {
+              padding: '0 24px 24px',
+            },
+          }}
+        >
+          {viewingPlaybook && (
+            <Tabs
+              items={playbookViewTabs}
+              className="h-full [&_.ant-tabs-content]:h-full [&_.ant-tabs-tabpane]:h-full [&_.ant-tabs-tabpane]:overflow-auto"
+            />
+          )}
+        </Drawer>
+
+        <Modal
+          title={filePreviewData ? `${t('job.preview')}: ${filePreviewData.file_name}` : t('job.preview')}
+          open={filePreviewModalOpen}
+          onCancel={() => {
+            setFilePreviewModalOpen(false);
+            setFilePreviewData(null);
+            setFilePreviewError(null);
+          }}
+          footer={null}
+          width={800}
+          styles={{ body: { maxHeight: '70vh', overflow: 'auto' } }}
+        >
+          {filePreviewLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Spin tip={t('job.loading')} />
+            </div>
+          ) : filePreviewError ? (
+            <Alert
+              message={t('job.filePreviewFailed')}
+              description={filePreviewError}
+              type="error"
+              showIcon
+            />
+          ) : filePreviewData ? (
+            <div>
+              <div className="mb-2 text-xs" style={{ color: 'var(--color-text-3)' }}>
+                {filePreviewData.file_path} ({filePreviewData.file_size} bytes)
+              </div>
+              <pre
+                className="overflow-auto rounded p-4 text-sm"
+                style={{
+                  backgroundColor: 'var(--color-bg-1)',
+                  border: '1px solid var(--color-border)',
+                  maxHeight: '60vh',
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                }}
+              >
+                <code>{filePreviewData.content}</code>
+              </pre>
+            </div>
+          ) : null}
+        </Modal>
       </div>
     );
   }

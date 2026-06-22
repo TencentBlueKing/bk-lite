@@ -26,8 +26,8 @@ class BaseCollect(object):
         "_error",
     )
 
-    def __init__(self, instance_id, default_metrics=None):
-        self.task = CollectModels.objects.get(id=instance_id)
+    def __init__(self, instance_id, default_metrics=None, task=None):
+        self.task = task or CollectModels.objects.get(id=instance_id)
         self.default_metrics = default_metrics
         self.model_id, self.inst_name, self.organization, self.inst_id, self.filter_collect_task = self.format_params()
         self.plugin_kwargs = self.build_plugin_kwargs()

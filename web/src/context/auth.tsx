@@ -328,7 +328,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         if (sessionExpiredOpen) {
           setIsCheckingAuth(false);
         } else {
-          router.push('/auth/signin');
+          const currentUrl = typeof window !== 'undefined' ? window.location.href : pathname;
+          router.push(`/auth/signin?callbackUrl=${encodeURIComponent(currentUrl)}`);
         }
       }
       return;

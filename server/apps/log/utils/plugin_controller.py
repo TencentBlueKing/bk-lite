@@ -38,7 +38,10 @@ def _build_log_template_env(template_dir: str):
     env = build_sandboxed_env(
         loader=FileSystemLoader(template_dir),
         undefined=DebugUndefined,
-        extra_filters={"to_json": lambda obj: json.dumps(obj, ensure_ascii=False)},
+        extra_filters={
+            "split": lambda value, separator=",": str(value).split(separator),
+            "to_json": lambda obj: json.dumps(obj, ensure_ascii=False),
+        },
     )
 
     missing_filters = [name for name in _LOG_TEMPLATE_ALLOWED_FILTERS if name not in _DEFAULT_JINJA_ENV.filters]
@@ -128,6 +131,56 @@ class Controller:
         sort_order = 1 if collect_type == "flows" else 0
         return sort_order
 
+    @staticmethod
+    def validate_packetbeat_network_switches(config_info: dict):
+        if config_info.get("collector") != "Packetbeat" or config_info.get("collect_type") != "flows":
+            return
+
+        enable_http = config_info.get("enable_http", True)
+        enable_tcp_udp = config_info.get("enable_tcp_udp", True)
+        if not enable_http and not enable_tcp_udp:
+            raise BaseAppException("网络流量采集至少开启 HTTP 或 TCP/UDP")
+
+    @staticmethod
+    def validate_packetbeat_http_ports(config_info: dict):
+        if config_info.get("collector") != "Packetbeat" or config_info.get("collect_type") not in ("flows", "http"):
+            return
+        if config_info.get("collect_type") == "flows" and not config_info.get("enable_http", True):
+            return
+
+        ports = config_info.get("ports")
+        if isinstance(ports, str):
+            port_values = [port.strip() for port in ports.split(",")]
+        elif isinstance(ports, list):
+            port_values = [str(port).strip() for port in ports]
+        else:
+            port_values = []
+
+        if not port_values or any(not port.isdigit() or not 1 <= int(port) <= 65535 for port in port_values):
+            raise BaseAppException("HTTP 监听端口必须是 1-65535 的数字")
+
+    @staticmethod
+    def normalize_packetbeat_device(device: str, operating_system: str = "linux") -> str:
+        default_device = "0" if operating_system == "windows" else "any"
+        device_value = str(device or "").strip()
+        if not device_value:
+            return default_device
+
+        devices = [item.strip() for item in device_value.split(",") if item.strip()]
+        if len(devices) > 1 and operating_system != "windows":
+            return "any"
+        return devices[0] if devices else default_device
+
+    @staticmethod
+    def build_child_env_config(env_config: dict, config_id: str, config_info: dict):
+        child_env_config = {f"{key.upper()}__{config_id.upper()}": value for key, value in env_config.items()}
+        if config_info.get("collector") == "Packetbeat" and config_info.get("collect_type") == "flows":
+            raw_device = config_info.get("device") or "any"
+            operating_system = config_info.get("operating_system", "linux")
+            child_env_config["PACKETBEAT_DEVICE_INPUT"] = raw_device
+            child_env_config["PACKETBEAT_DEVICE"] = Controller.normalize_packetbeat_device(raw_device, operating_system)
+        return child_env_config
+
     def controller(self):
         """
         创建采集配置的控制器方法
@@ -154,6 +207,8 @@ class Controller:
 
         # 步骤1：准备所有配置数据（渲染模板）
         for config_info in configs:
+            self.validate_packetbeat_network_switches(config_info)
+            self.validate_packetbeat_http_ports(config_info)
             template_dir = os.path.join(
                 base_dir, config_info["collector"], config_info["collect_type"]
             )
@@ -183,10 +238,11 @@ class Controller:
                 # 节点管理创建配置
                 if is_child:
                     # 子配置环境变量加上config_id作后缀，确保环境变量名为大写
-                    child_env_config = {
-                        f"{k.upper()}__{config_id.upper()}": v
-                        for k, v in env_config.items()
-                    }
+                    child_env_config = self.build_child_env_config(
+                        env_config,
+                        config_id,
+                        {**config_info, "operating_system": node_os_map.get(config_info["node_id"], "linux")},
+                    )
                     node_child_config = dict(
                         id=config_id,
                         collect_type=config_info["collect_type"],
@@ -269,6 +325,13 @@ class Controller:
             tls_context = {}
         if not isinstance(context_data, Mapping):
             context_data = {}
+        validation_context = {
+            "collector": self.data.get("collector"),
+            "collect_type": self.data.get("collect_type"),
+            **context_data,
+        }
+        self.validate_packetbeat_network_switches(validation_context)
+        self.validate_packetbeat_http_ports(validation_context)
 
         # 查询节点操作系统信息
         operating_system = "linux"

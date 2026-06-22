@@ -25,6 +25,7 @@ import type { ChatflowEditorRef, ChatflowEditorProps, ChatflowNode } from './typ
 import { isChatflowNode } from './types';
 import {
   TimeTriggerNode,
+  NatsTriggerNode,
   RestfulApiNode,
   OpenAIApiNode,
   AgentsNode,
@@ -197,6 +198,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       latestExecutionId: executionProps.latestExecutionId,
       openPreview: executionProps.openPreviewPanel,
       closePreview: executionProps.closePreviewPanel,
+      stopExecution: executionProps.stopExecution,
     });
   }, [
     executionProps.closePreviewPanel,
@@ -204,6 +206,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
     executionProps.isPreviewOpen,
     executionProps.latestExecutionId,
     executionProps.openPreviewPanel,
+    executionProps.stopExecution,
     onExecutionStateChange,
   ]);
 
@@ -275,6 +278,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
     return {
       celery: createNodeComponent(TimeTriggerNode),
+      nats: createNodeComponent(NatsTriggerNode),
       restful: createNodeComponent(RestfulApiNode),
       openai: createNodeComponent(OpenAIApiNode),
       agents: createNodeComponent(AgentsNode),
@@ -331,7 +335,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
           if (targetNodeId && targetNodeId !== sourceNodeId) {
             const targetNodeData = nodes.find(n => n.id === targetNodeId);
-            const noInputTypes = ['celery', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
+            const noInputTypes = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
             const nodeType = targetNodeData?.data?.type as string;
             const hasInputHandle = nodeType && !noInputTypes.includes(nodeType);
 

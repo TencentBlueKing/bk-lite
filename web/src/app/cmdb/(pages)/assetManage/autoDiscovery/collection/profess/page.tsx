@@ -1135,11 +1135,15 @@ const ProfessionalCollection: React.FC = () => {
         }
         placement="right"
         width={
-          (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 960 : 640
+          (currentPlugin?.task_type || currentPlugin?.type) === 'k8s' ? 960 : 680
         }
         onClose={closeDrawer}
         open={drawerVisible}
+        maskClosable={false}
+        keyboard={false}
         getContainer={false}
+        className={styles.collectionTaskDrawer}
+        rootClassName={styles.collectionTaskDrawer}
         rootStyle={{
           position: 'fixed',
         }}

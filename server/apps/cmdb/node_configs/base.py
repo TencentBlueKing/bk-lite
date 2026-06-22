@@ -3,6 +3,7 @@
 # @Time: 2025/11/13 14:16
 # @Author: windyzhao
 import os
+import json
 from abc import abstractmethod, ABCMeta
 
 from django.conf import settings
@@ -46,7 +47,12 @@ class BaseNodeParams(metaclass=ABCMeta):
     def __init__(self, instance):
         self.instance = instance
         self.model_id = instance.model_id  # 当出现多对象采集的时候这个model_id就不能准确的标识唯一的model_id
-        self.credential = self.instance.decrypt_credentials or {}
+        raw_credential = self.instance.decrypt_credentials or {}
+        self.credential_pool = raw_credential if isinstance(raw_credential, list) else ([raw_credential] if raw_credential else [])
+        # 节点管理仍沿用“单凭据 + 一批目标”契约；多凭据任务下发配置时默认取首凭据保持兼容。
+        if isinstance(raw_credential, list):
+            raw_credential = raw_credential[0] if raw_credential else {}
+        self.credential = raw_credential
         self.base_path = "${STARGAZER_URL}/api/collect/collect_info"
         # 只有当子类没有定义 host_field 类属性时才设置默认值,避免覆盖子类定义
         if not hasattr(self.__class__, 'host_field'):
@@ -105,6 +111,40 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         raise NotImplementedError
 
+    def build_credentials_pool(self):
+        return []
+
+    @property
+    def has_multiple_credentials(self):
+        return len(self.credential_pool or []) > 1
+
+    @staticmethod
+    def strip_flattened_credential_fields(params, credentials_pool):
+        if not isinstance(params, dict) or not credentials_pool:
+            return params
+        credential_fields = set()
+        for credential in credentials_pool:
+            if isinstance(credential, dict):
+                credential_fields.update(credential.keys())
+        for field_name in credential_fields:
+            params.pop(field_name, None)
+        return params
+
+    @staticmethod
+    def flatten_credentials_pool(credentials_pool):
+        flattened = {}
+        if not credentials_pool:
+            return flattened
+        flattened["credential_count"] = len(credentials_pool)
+        for index, credential in enumerate(credentials_pool):
+            if not isinstance(credential, dict):
+                continue
+            for field_name, field_value in credential.items():
+                if field_value in (None, ""):
+                    continue
+                flattened[f"credential_{index}_{field_name}"] = field_value
+        return flattened
+
     @property
     def tags(self):
         tags = {
@@ -132,8 +172,15 @@ class BaseNodeParams(metaclass=ABCMeta):
                 "executor_type": self.executor_type,
                 "model_id": _model_id,
                 "timeout": self.timeout,
+                "collect_task_id": self.instance.id,
+                "credential_result_subject": "receive_collect_credential_result",
             }
         )
+        credentials_pool = self.build_credentials_pool()
+        if credentials_pool:
+            if self.has_multiple_credentials:
+                params = self.strip_flattened_credential_fields(params, credentials_pool)
+            params.update(self.flatten_credentials_pool(credentials_pool))
         _params = {f"cmdb{k}": str(v) for k, v in params.items()}
         # 加入tags 冗余一份
         _params.update(self.tags)
@@ -196,7 +243,7 @@ class BaseNodeParams(metaclass=ABCMeta):
             cls._jinja_env = build_sandboxed_env(
                 loader=FileSystemLoader(template_dir),
                 undefined=DebugUndefined,
-                extra_filters={"to_toml": cls.to_toml_dict},
+                extra_filters={"to_toml": cls.to_toml_dict, "default": cls.jinja_default},
             )
         return cls._jinja_env
 
@@ -214,6 +261,15 @@ class BaseNodeParams(metaclass=ABCMeta):
             return "{}"
         escaped = {k: BaseNodeParams.escape_toml_string(v) for k, v in d.items()}
         return "{ " + ", ".join(f'"{k}" = "{v}"' for k, v in escaped.items()) + " }"
+
+    @staticmethod
+    def jinja_default(value, default_value="", use_falsey=False):
+        """为节点模板提供最小兼容的 default filter。"""
+        if value is None:
+            return default_value
+        if use_falsey and not value:
+            return default_value
+        return value
 
     def render_template(self, context: dict):
         """

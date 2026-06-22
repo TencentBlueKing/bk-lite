@@ -52,17 +52,13 @@ export const useLoadbalanceConfig = () => {
         }
       }
     ],
-    tableDiaplay: [
-      { type: 'value', key: 'snmp_uptime' },
-      { type: 'value', key: 'device_total_incoming_traffic' },
-      { type: 'value', key: 'device_total_outgoing_traffic' }
-    ],
     groupIds: {
       list: ['instance_id'],
       default: ['instance_id']
     },
     collectTypes: {
       'Loadbalance SNMP General': 'snmp',
+      'Loadbalance F5 SNMP': 'snmp_f5',
       'Loadbalance Flow NetFlow': 'netflow',
       'Loadbalance Flow sFlow': 'sflow'
     }
