@@ -1,6 +1,12 @@
 {
   "zh": [
     {
+      "title": "知识库",
+      "icon": "zhishiku",
+      "url": "/opspilot/wiki",
+      "name": "wiki_list"
+    },
+    {
       "title": "工作台",
       "icon": "jiqiren2",
       "url": "/opspilot/studio",
@@ -125,6 +131,12 @@
     }
   ],
   "en": [
+    {
+      "title": "Knowledge Base",
+      "icon": "zhishiku",
+      "url": "/opspilot/wiki",
+      "name": "wiki_list"
+    },
     {
       "title": "Studio",
       "icon": "jiqiren2",
