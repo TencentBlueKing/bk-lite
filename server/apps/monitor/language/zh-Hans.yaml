@@ -3453,6 +3453,15 @@ monitor_object_plugin:
   Switch H3C SNMP:
     name: H3C（Telegraf）
     desc: H3C / HPE Comware 交换机专用 SNMP 采集模板（HH3C-ENTITY-EXT-MIB，企业号 25506）。在标准 IF-MIB 接口指标之外，额外采集 H3C 私有 OID 的设备健康指标：按物理实体的 CPU 使用率（hh3cEntityExtCpuUsage）与内存使用率（hh3cEntityExtMemUsage）。二者按物理实体上报，多数实体为 0、仅承载 CPU/内存的板卡为真实值，故设备级 CPU/内存取各实体的最大值。温度不采集（Comware 上各实体的 hh3cEntityExtTemperature 均报 0）；风扇与电源状态在 ENTITY-MIB 中需按 entPhysicalClass 行级过滤，telegraf inputs.snmp 无法支持，故为 N/A。适用品牌型号——H3C S 系列 Comware 交换机（S5100/S5500/S5800 等）。
+  Switch DCN SNMP:
+    name: 神州数码 DCN（Telegraf）
+    desc: 神州数码（DCN）交换机专用 SNMP 采集模板（DCN-MIB，企业号 6339）。除标准 IF-MIB 接口指标外，额外采集 DCN 私有 OID 的设备健康指标：CPU 使用率（switchCpuUsage，直接百分比）与系统内存（switchMemorySize 总量 / switchMemoryBusy 已用，字节，用量按 已用/总量 推导）。DCN-MIB 的 switchInfo 系统表仅含 CPU 与内存标量，无温度/风扇/电源传感器，故为 N/A。适用品牌型号——神州数码 DCN DCS/DCRS/CS 系列园区交换机（企业号 6339）。
+  Switch FS SNMP:
+    name: FS.com（Telegraf）
+    desc: FS.com 交换机专用 SNMP 采集模板（FS-PROCESS/MEMORY/SYSTEM-MIB，企业号 52642）。除标准 IF-MIB 接口指标外，额外采集 FS 私有 OID 的全套设备健康指标：CPU 使用率（fsNodeCPUTotal5min）、系统内存（容量/已用，KB）、机箱温度（fsSystemMultipleTemperatureCurrent）、风扇状态（fsSystemFanStatus）与电源状态（fsSystemElectricalInformationStatus）。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 已用/总量 计算。适用品牌型号——FS.com S 系列数据中心/园区交换机（S5810/S5800/N8560 等，企业号 52642）。
+  Switch Netonix SNMP:
+    name: Netonix（Telegraf）
+    desc: Netonix WISP 交换机专用 SNMP 采集模板（NETONIX-SWITCH-MIB，企业号 46242）。除标准 IF-MIB 接口指标外，额外采集 Netonix 私有 OID 的机箱温度（temp，专用温度表，℃）。NETONIX-SWITCH-MIB 不提供 CPU/内存 OID；风扇为转速（RPM）而非状态枚举、PoE 为端口级状态，均非设备级健康状态，故仅采集温度（其余 N/A）。适用品牌型号——Netonix WISP Switch 系列 PoE 交换机（企业号 46242）。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，并转换为标准化设备流量指标。

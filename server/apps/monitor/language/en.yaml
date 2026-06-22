@@ -3949,6 +3949,15 @@ monitor_object_plugin:
   Switch H3C SNMP:
     name: H3C (Telegraf)
     desc: H3C / HPE Comware switch-specific SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). In addition to standard IF-MIB interface metrics, it collects H3C private OIDs for device health including per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both are reported per physical entity where most entities return 0 and the CPU/memory-bearing board carries the real value, so device-level CPU/memory are taken as the maximum across entities. Temperature is not collected because all entities report 0 for hh3cEntityExtTemperature on Comware; fan and power-supply state live in ENTITY-MIB with per-row entPhysicalClass filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).
+  Switch DCN SNMP:
+    name: DCN (Telegraf)
+    desc: Digital China (DCN) switch-specific SNMP collection (DCN-MIB, IANA PEN 6339). Beyond standard IF-MIB interface metrics, it collects DCN private OIDs for device health including CPU utilisation (switchCpuUsage, direct percentage) and system memory (switchMemorySize total / switchMemoryBusy used, in bytes, usage derived as used/total). The DCN-MIB switchInfo system table exposes only CPU and memory scalars and no temperature/fan/power sensors, so those dimensions are N/A. Supported brands/models — Digital China DCN DCS/DCRS/CS series campus switches (enterprise 6339).
+  Switch FS SNMP:
+    name: FS.com (Telegraf)
+    desc: FS.com switch-specific SNMP collection (FS-PROCESS/MEMORY/SYSTEM-MIB, IANA PEN 52642). Beyond standard IF-MIB interface metrics, it collects the full set of FS private OIDs for device health including CPU utilisation (fsNodeCPUTotal5min), system memory (capacity/used, in KB), chassis temperature (fsSystemMultipleTemperatureCurrent), fan state (fsSystemFanStatus) and power-supply state (fsSystemElectricalInformationStatus). Fan/PSU raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault; memory utilisation is computed from used/total. Supported brands/models — FS.com S-series data-center/campus switches (e.g. S5810/S5800/N8560 series; enterprise 52642).
+  Switch Netonix SNMP:
+    name: Netonix (Telegraf)
+    desc: Netonix WISP switch-specific SNMP collection (NETONIX-SWITCH-MIB, IANA PEN 46242). Beyond standard IF-MIB interface metrics, it collects the Netonix private OID for chassis temperature (a dedicated temperature table, °C). NETONIX-SWITCH-MIB does not provide CPU/memory OIDs; fan is reported as speed (RPM) rather than a state enum and PoE is per-port status, neither of which is a device-level health state, so this plugin collects temperature only (other dimensions N/A). Supported brands/models — Netonix WISP Switch series PoE switches (enterprise 46242).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic and convert it into normalized device
