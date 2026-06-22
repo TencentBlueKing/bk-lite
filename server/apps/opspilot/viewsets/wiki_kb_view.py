@@ -5,6 +5,8 @@ from apps.core.utils.viewset_utils import AuthViewSet
 from apps.opspilot.models import WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.check_service import scan_health
+from apps.opspilot.services.wiki.embedding_service import reindex_knowledge_base
+from apps.opspilot.services.wiki.embedding_service import semantic_search as wiki_semantic_search
 from apps.opspilot.services.wiki.graph_service import analyze_graph, build_graph
 from apps.opspilot.services.wiki.overview_service import get_overview
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
@@ -99,6 +101,20 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         """混合检索:关键词召回 + 语义重排 + RRF 融合(知识库需配置 EmbedProvider 才启用语义)。"""
         kb = self.get_object()
         results = wiki_hybrid_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
+        return JsonResponse({"result": True, "data": results})
+
+    @action(methods=["POST"], detail=True)
+    def reindex(self, request, pk=None):
+        """构建/刷新语义索引:为所有有效页面当前版本生成并存储嵌入向量。"""
+        kb = self.get_object()
+        count = reindex_knowledge_base(kb)
+        return JsonResponse({"result": True, "data": {"indexed": count}})
+
+    @action(methods=["POST"], detail=True)
+    def semantic_search(self, request, pk=None):
+        """纯语义检索:基于已存储的页面嵌入做余弦相似检索(需先 reindex 且配置 EmbedProvider)。"""
+        kb = self.get_object()
+        results = wiki_semantic_search(kb, request.data.get("query", ""), top_k=int(request.data.get("top_k", 5)))
         return JsonResponse({"result": True, "data": results})
 
     @action(methods=["POST"], detail=True)

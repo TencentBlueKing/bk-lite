@@ -88,6 +88,8 @@ class PageVersion(TimeInfo):
     page = models.ForeignKey(KnowledgePage, on_delete=models.CASCADE, related_name="page_versions")
     no = models.IntegerField(default=1)
     body = models.TextField(default="")
+    # 语义索引:构建/编辑时生成的正文嵌入向量(JSON 存储,无需 pgvector;规模化可换 pgvector 列)
+    embedding = models.JSONField(default=list, blank=True)
     meta_snapshot = models.JSONField(default=dict)
     # human_edit / ai_create / ai_merge / material_update / rebuild / restore / candidate
     change_type = models.CharField(max_length=30)

@@ -38,6 +38,63 @@ def rrf_fuse(rank_lists, k=60, top_k=None):
     return fused[:top_k] if top_k else fused
 
 
+def index_version(version, embed_provider, embed_fn=None):
+    """为页面版本生成并存储正文嵌入(语义索引)。返回是否成功写入。
+
+    无 provider/正文为空/嵌入失败时静默跳过(置空),不影响主流程。embed_fn 可注入测试。
+    """
+    body = (getattr(version, "body", "") or "").strip()
+    if not body:
+        return False
+    embed = embed_fn or (lambda texts: embed_texts(texts, embed_provider))
+    vecs = embed([body[:8000]])
+    if not vecs or not vecs[0]:
+        return False
+    version.embedding = vecs[0]
+    version.save(update_fields=["embedding"])
+    return True
+
+
+def reindex_knowledge_base(knowledge_base, embed_fn=None):
+    """为知识库所有有效页面的当前版本(重新)生成语义索引,返回成功建索引的页面数。"""
+    from apps.opspilot.models import KnowledgePage
+
+    count = 0
+    pages = KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").select_related("current_version")
+    for page in pages:
+        cv = page.current_version
+        if cv and index_version(cv, knowledge_base.embed_provider, embed_fn=embed_fn):
+            count += 1
+    return count
+
+
+def semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
+    """基于已存储的页面嵌入做语义检索(余弦),返回 [{id,title,snippet,score}]。
+
+    仅覆盖已建索引(current_version.embedding 非空)的页面;无嵌入则返回 []。
+    """
+    from apps.opspilot.models import KnowledgePage
+
+    embed = embed_fn or (lambda texts: embed_texts(texts, knowledge_base.embed_provider))
+    qvecs = embed([query])
+    if not qvecs or not qvecs[0]:
+        return []
+    qv = qvecs[0]
+    results = []
+    pages = KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").select_related("current_version")
+    for page in pages:
+        cv = page.current_version
+        vec = getattr(cv, "embedding", None) if cv else None
+        if not vec:
+            continue
+        score = cosine(qv, vec)
+        if score > 0:
+            body = cv.body or ""
+            results.append({"kind": "page", "id": page.id, "title": page.title, "snippet": body[:300], "score": score})
+    results.sort(key=lambda r: r["score"], reverse=True)
+    return results[:top_k]
+
+
 def embed_texts(texts, embed_provider):
     """用 EmbedProvider(OpenAI 兼容)批量生成嵌入向量;失败返回 []。"""
     if not texts or embed_provider is None:
