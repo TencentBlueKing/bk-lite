@@ -49,10 +49,11 @@
   - **网页** `web`:HTTP 抓取 + 标准库剥离 HTML 为文本(基础版,不含 JS/图片 OCR),抓取失败优雅降级
 - 定时刷新:`tasks.wiki_refresh_web_materials_task`(Celery,可挂 beat)重抓 web 资料,内容变更触发安全更新
 
-### P6 语义混合检索 ✅(检索后重排,无需 pgvector)
-- `embedding_service.py`:`embed_texts`(EmbedProvider/OpenAI 兼容)+ 纯函数 `cosine` / `rrf_fuse`
-- `retrieval_service.hybrid_search`:关键词召回候选 → 嵌入重排 → RRF 融合;无嵌入/失败优雅回退关键词;KB `hybrid_search` 接口
-- 说明:环境无 pgvector 扩展,采用"召回小候选集再向量重排"避免存储向量;嵌入端点当前 502,wrapper 已验证可优雅降级(不崩溃)。pgvector 索引可后续替换 in-Python 余弦以扩规模
+### P6 语义检索 + 持久化索引 ✅(无需 pgvector)
+- `embedding_service.py`:`embed_texts`(EmbedProvider/OpenAI 兼容)+ 纯函数 `cosine`/`rrf_fuse`;**持久化索引** `index_version`(把正文嵌入存入 `PageVersion.embedding`,迁移 `0062`)、`reindex_knowledge_base`、`semantic_search`(基于已存向量余弦)
+- `retrieval_service.hybrid_search`:关键词召回 → 嵌入重排 → RRF 融合;无嵌入优雅回退
+- KB 接口:`hybrid_search` / `semantic_search` / `reindex`
+- 说明:JSON 列存向量 + in-Python 余弦,**功能完整不依赖 pgvector**;装 pgvector 后可把存储/检索换成索引列以扩规模。嵌入端点当前 502,全链路已验证优雅降级,端点恢复即生效
 
 ### 前端图谱画布 ✅
 - `components/wiki/GraphCanvas.tsx`:@antv/g6 v5 力导向画布(社区着色 + 拖拽/缩放),GraphTab 画布+数据视图并存;eslint + tsc 通过(运行时冒烟需主仓库)
@@ -67,13 +68,14 @@
 - 技能设置页:`选择 Wiki 知识库` 多选(打通 P4 端到端配置)
 - 校验方式:`npx eslint <files>`(全绿)+ `npx tsc -p tsconfig.lint.json`(仅 3 个既有 env 基线错误,均非 wiki 文件);运行时冒烟需主仓库(worktree Turbopack 跑不起)
 
-## 待办(剩余 —— 全部为"代码已接通,仅缺外部服务/配置/部署级动作")
+## 待办(剩余 —— 仅 2 项,均为本环境无法提供的外部服务/运行时)
 
-- **真实 OCR 解析**:`.pdf/.docx/.pptx/图片` 分派+OCR 构建已接通并测试,仅需在环境配置一个 **OCRProvider + 可达 OCR 服务**(当前环境为空)即生效。
-- **嵌入端点恢复 / pgvector 索引**:嵌入混合检索已就绪,**你的嵌入端点当前 502**(上游不可用),恢复即生效;pgvector 扩展未安装(混合检索不依赖,装后可换 in-Python 余弦扩规模)。
-- **网页刷新挂 beat**:刷新任务已写好并测试,只需在 Celery beat 配置周期调度 + 运行环境有网络。
-- **前端运行时冒烟**:主仓库跑 dev server 验证交互(worktree Turbopack 跑不起;已全程 eslint + 作用域 tsc 校验)。
-- **菜单 Keycloak 资源注册**:`wiki_list` 的角色可见性属 system_mgmt/Keycloak 部署级配置,前端菜单 json 入口已加。
+代码已全部就位并测试;以下两项只受真实外部依赖限制,我无法在此环境代为执行:
+
+1. **真实 OCR 解析**:`.pdf/.docx/.pptx/图片` 的分派 + OCR 构建(OcrManager)已接通并 stub 测试;真解析需一个**可达的 OCR 服务**(当前环境 OCRProvider 为空、嵌入/OCR 上游 502)。配好 OCRProvider + 服务即生效。
+2. **前端交互冒烟**:需在主仓库跑 dev server(worktree Turbopack 拒绝跨根 node_modules 软链);已全程 eslint + 作用域 tsc 校验。
+
+> 其余原"受阻"项已转为代码完成:beat 周期已在 `config.py` 注册;`wiki_list` 已写入 `support-files/system_mgmt/menus/opspilot.json`(由 `init_realm_resource` 注册);语义检索持久化索引已实现(pgvector 仅为可选扩规模)。
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 
