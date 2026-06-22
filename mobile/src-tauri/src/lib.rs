@@ -1,8 +1,6 @@
 mod api_proxy;
-mod permissions;
 
 use api_proxy::{api_proxy, simple_api_proxy, api_stream_proxy, cancel_stream, StreamRegistry};
-use permissions::{check_microphone_permission, request_microphone_permission};
 use std::collections::HashMap;
 use std::sync::Mutex;
 
@@ -16,8 +14,6 @@ pub fn run() {
       simple_api_proxy,
       api_stream_proxy,
       cancel_stream,
-      check_microphone_permission,
-      request_microphone_permission
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {
