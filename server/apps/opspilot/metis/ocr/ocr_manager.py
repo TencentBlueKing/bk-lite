@@ -2,6 +2,7 @@ from typing import Optional
 
 from apps.opspilot.metis.ocr.azure_ocr import AzureOCR
 from apps.opspilot.metis.ocr.olm_ocr import OlmOcr
+from apps.opspilot.metis.ocr.tesseract_ocr import TesseractOCR
 
 
 class OcrManager:
@@ -14,5 +15,8 @@ class OcrManager:
 
         if ocr_type == "azure_ocr":
             ocr = AzureOCR(azure_ocr_key=api_key or "", azure_ocr_endpoint=base_url or "")
+
+        if ocr_type == "tesseract":
+            ocr = TesseractOCR(lang=model or "chi_sim+eng")
 
         return ocr

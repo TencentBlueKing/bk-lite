@@ -94,20 +94,25 @@ def _import_ocr_loader(ext):
 
 
 def _build_ocr(material):
-    """从已启用的 OCRProvider 构建 OCR 实例;无 provider 返回 None。测试可 monkeypatch。"""
+    """构建 OCR 实例。优先用已启用的 OCRProvider;否则在本机 Tesseract 可用时回退到本地 OCR
+    (无需任何外部服务);都不可用则返回 None。测试可 monkeypatch。"""
     from apps.opspilot.metis.ocr.ocr_manager import OcrManager
+    from apps.opspilot.metis.ocr.tesseract_ocr import TesseractOCR
     from apps.opspilot.models import OCRProvider
 
     provider = OCRProvider.objects.filter(enabled=True).first()
-    if not provider:
-        return None
-    cfg = provider.runtime_ocr_config
-    return OcrManager.load_ocr(
-        ocr_type=cfg.get("ocr_type"),
-        model=cfg.get("model"),
-        base_url=cfg.get("base_url") or cfg.get("endpoint"),
-        api_key=cfg.get("api_key"),
-    )
+    if provider:
+        cfg = provider.runtime_ocr_config
+        return OcrManager.load_ocr(
+            ocr_type=cfg.get("ocr_type"),
+            model=cfg.get("model"),
+            base_url=cfg.get("base_url") or cfg.get("endpoint"),
+            api_key=cfg.get("api_key"),
+        )
+    # 无云端 OCRProvider:本机装了 tesseract 即可本地识别(无需服务)
+    if TesseractOCR.available():
+        return TesseractOCR()
+    return None
 
 
 def _extract_file_text(material):
