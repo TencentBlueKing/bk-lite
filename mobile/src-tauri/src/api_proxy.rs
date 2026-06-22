@@ -38,9 +38,9 @@ fn is_allowed_host(url: &str) -> bool {
     if allowed_hosts_env.trim().is_empty() {
         // 未配置白名单时，仅放行本地开发地址
         log::warn!(
-            "[Tauri-Proxy] TAURI_ALLOWED_HOSTS 未配置，生产环境请显式设置允许的后端域名。当前仅放行 127.0.0.1/localhost。"
+            "[Tauri-Proxy] TAURI_ALLOWED_HOSTS 未配置，生产环境请显式设置允许的后端域名。当前仅放行 127.0.0.1/::1/localhost。"
         );
-        return host == "127.0.0.1" || host == "localhost";
+        return host == "127.0.0.1" || host == "::1" || host == "localhost";
     }
 
     for entry in allowed_hosts_env.split(',') {
@@ -557,6 +557,7 @@ mod tests {
         with_env("TAURI_ALLOWED_HOSTS", None, || {
             assert!(is_allowed_host("http://127.0.0.1:8011/api"));
             assert!(is_allowed_host("http://localhost:3001/dev"));
+            assert!(is_allowed_host("http://[::1]:8011/api"));
         });
     }
 
