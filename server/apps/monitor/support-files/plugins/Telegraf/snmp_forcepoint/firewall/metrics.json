@@ -1,7 +1,7 @@
 {
-  "plugin": "Firewall Sophos XG SNMP",
-  "plugin_desc": "Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health: CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067), and Cyberoam UTM appliances (CYBEROAM-MIB, same enterprise 21067 and identical health OIDs — Sophos acquired Cyberoam and SFOS forked its MIB).",
-  "status_query": "any({instance_type='firewall', collect_type='snmp_sophos'}) by (instance_id)",
+  "plugin": "Firewall Forcepoint SNMP",
+  "plugin_desc": "Forcepoint NGFW (formerly Stonesoft/McAfee NGFW) SNMP collection (STONESOFT-FIREWALL-MIB, IANA PEN 1369). Beyond standard IF-MIB interface metrics, it collects Forcepoint private OIDs for device health: per-core CPU utilisation (fwCpuTotal, averaged) and memory (fwMemBytesTotal/fwMemBytesUsed in bytes, usage derived as used/total). The Stonesoft MIB does not expose a scalar session count or temperature/fan/power, so those are N/A. Supported brands/models — Forcepoint NGFW / Stonesoft / McAfee NGFW appliances and virtual engines (enterprise 1369).",
+  "status_query": "any({instance_type='firewall', collect_type='snmp_forcepoint'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",
@@ -43,20 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization of the Sophos XG firewall (SFOS-FIREWALL-MIB cpuPercentUsage). Sustained high CPU indicates heavy traffic inspection load."
-    },
-    {
-      "metric_group": "Firewall",
-      "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
-      "display_name": "Memory Usage",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Main memory utilization of the Sophos XG firewall (SFOS-FIREWALL-MIB memoryPercentUsage), reported directly. High usage may indicate session/buffer pressure."
+      "description": "Per-core CPU utilisation of the Forcepoint NGFW (STONESOFT-FIREWALL-MIB fwCpuTotal, averaged)."
     },
     {
       "metric_group": "Status",
@@ -317,6 +304,45 @@
         "instance_id"
       ],
       "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "device_memory_total{instance_type='firewall', __$labels__}",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total memory of the Forcepoint NGFW in bytes (fwMemBytesTotal)."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_used",
+      "display_name": "内存已用",
+      "query": "sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Used memory of the Forcepoint NGFW in bytes (fwMemBytesUsed)."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='firewall', __$labels__}) by (instance_id) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the Forcepoint NGFW, derived as used/total."
     }
   ]
 }

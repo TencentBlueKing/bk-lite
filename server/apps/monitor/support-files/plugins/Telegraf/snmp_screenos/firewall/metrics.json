@@ -1,7 +1,7 @@
 {
-  "plugin": "Firewall Sophos XG SNMP",
-  "plugin_desc": "Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health: CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067), and Cyberoam UTM appliances (CYBEROAM-MIB, same enterprise 21067 and identical health OIDs — Sophos acquired Cyberoam and SFOS forked its MIB).",
-  "status_query": "any({instance_type='firewall', collect_type='snmp_sophos'}) by (instance_id)",
+  "plugin": "Firewall ScreenOS SNMP",
+  "plugin_desc": "Juniper ScreenOS (NetScreen) firewall SNMP collection (NETSCREEN-RESOURCE-MIB, IANA PEN 3224). Beyond standard IF-MIB interface metrics, it collects ScreenOS private OIDs for device health: CPU utilisation over the last 5 minutes (nsResCpuLast5Min) and memory (nsResMemAllocate used + nsResMemLeft free, with usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Juniper NetScreen / SSG firewalls running ScreenOS (enterprise 3224).",
+  "status_query": "any({instance_type='firewall', collect_type='snmp_screenos'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",
@@ -43,20 +43,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization of the Sophos XG firewall (SFOS-FIREWALL-MIB cpuPercentUsage). Sustained high CPU indicates heavy traffic inspection load."
-    },
-    {
-      "metric_group": "Firewall",
-      "name": "device_memory_usage",
-      "query": "avg(device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
-      "display_name": "Memory Usage",
-      "data_type": "Number",
-      "unit": "percent",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "Main memory utilization of the Sophos XG firewall (SFOS-FIREWALL-MIB memoryPercentUsage), reported directly. High usage may indicate session/buffer pressure."
+      "description": "CPU utilisation (last 5 min) of the Juniper ScreenOS firewall (NETSCREEN-RESOURCE-MIB nsResCpuLast5Min)."
     },
     {
       "metric_group": "Status",
@@ -317,6 +304,45 @@
         "instance_id"
       ],
       "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_used",
+      "display_name": "内存已用",
+      "query": "sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Used memory of the ScreenOS firewall in bytes (nsResMemAllocate)."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲",
+      "query": "sum(device_memory_free{instance_type='firewall', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free memory of the ScreenOS firewall in bytes (nsResMemLeft)."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='firewall', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='firewall', __$labels__}) by (instance_id)) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the ScreenOS firewall, derived as used/(used+free)."
     }
   ]
 }
