@@ -643,7 +643,7 @@
         "lastSeenAt": "Last Seen At",
         "effectiveSamplingRate": "Effective Sampling Rate",
         "samplingRateSource": "Sampling Rate Source",
-        "viewAssetList": "View Monitoring View",
+        "viewAssetList": "View Instance List",
         "addAnotherAsset": "Add Another Asset",
         "backToTemplateList": "Back to Template List"
       },

@@ -30,6 +30,7 @@ from apps.log.services.collect_type import CollectTypeService
 from apps.log.services.access_scope import LogAccessScopeService
 from apps.log.services.search import SearchService
 from apps.rpc.node_mgmt import NodeMgmt
+from apps.core.utils.team_utils import get_current_team
 
 
 def should_hide_collect_type_entry(result: dict) -> bool:
@@ -156,7 +157,7 @@ class CollectTypeViewSet(ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "log",
                 PermissionConstants.POLICY_MODULE,
                 include_children=include_children,
@@ -195,7 +196,7 @@ class CollectTypeViewSet(ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             instance_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "log",
                 PermissionConstants.INSTANCE_MODULE,
                 include_children=include_children,
@@ -300,7 +301,7 @@ class CollectInstanceViewSet(ViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission_result = get_permissions_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "log",
             PermissionConstants.INSTANCE_MODULE,
             include_children=include_children,
@@ -459,7 +460,7 @@ class CollectInstanceViewSet(ViewSet):
             return WebUtils.response_error(error_message=str(exc))
 
         # 获取当前用户选择的组织（必填）
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
 
         if collect_type_id:
             # 单采集类型查询 - 使用与监控模块完全一致的权限检查方式

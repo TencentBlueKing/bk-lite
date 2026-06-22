@@ -9,17 +9,20 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '../components/chartLegend';
+import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 
 interface BarChartProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
+  config?: ValueConfig;
 }
 
 const BarChart: React.FC<BarChartProps> = ({
   rawData,
   loading = false,
   onReady,
+  config,
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
@@ -161,6 +164,7 @@ const BarChart: React.FC<BarChartProps> = ({
       type: 'bar',
       data: item.data,
       barMaxWidth: 40,
+      ...(config?.stack ? { stack: 'total' } : {}),
       itemStyle: {
         borderRadius: [2, 2, 0, 0],
       },
@@ -183,6 +187,29 @@ const BarChart: React.FC<BarChartProps> = ({
         },
       },
     ];
+  }
+
+  // 阈值线（对齐 Grafana）：按 config.thresholdColors 在 Y 轴画水平虚线，
+  // 跳过基线 0，只挂在第一条系列上。
+  const thresholdLines = (config?.thresholdColors || [])
+    .map((th) => ({ value: Number(th.value), color: th.color }))
+    .filter((th) => !Number.isNaN(th.value) && th.value !== 0);
+  if (thresholdLines.length > 0 && option.series.length > 0) {
+    option.series[0].markLine = {
+      symbol: 'none',
+      silent: true,
+      data: thresholdLines.map((th) => ({
+        yAxis: th.value,
+        lineStyle: { color: th.color, type: 'dashed', width: 1.5 },
+        label: {
+          show: true,
+          position: 'insideEndTop',
+          formatter: String(th.value),
+          color: th.color,
+          fontSize: 10,
+        },
+      })),
+    };
   }
 
   const legendData = option.series.map((item: { name?: string }) => ({

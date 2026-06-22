@@ -65,6 +65,10 @@ export class ChartDataTransformer {
         const hasExplicitDateMarkers = /[-/:T\s]/.test(trimmed);
         if (!hasExplicitDateMarkers) return false;
 
+        // 必须以数字开头才可能是日期/时间，排除 "node-1"、"host-a" 等带连字符的普通标签
+        // （dayjs 宽松解析会把这类字符串误判为合法日期）
+        if (!/^\d/.test(trimmed)) return false;
+
         return dayjs(trimmed).isValid();
       }
 
@@ -116,7 +120,8 @@ export class ChartDataTransformer {
       } else {
         const trimmed = value.trim();
         const hasExplicitDateMarkers = /[-/:T\s]/.test(trimmed);
-        if (!hasExplicitDateMarkers) {
+        // 非日期标记、或不以数字开头（如 "node-1"）一律按原始类目返回，不当时间格式化
+        if (!hasExplicitDateMarkers || !/^\d/.test(trimmed)) {
           return value;
         }
         dateValue = dayjs(value);

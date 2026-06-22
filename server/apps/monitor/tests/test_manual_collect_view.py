@@ -1492,11 +1492,14 @@ def test_update_flow_asset_api_checks_operate_permission_before_cross_object_dup
     assert target.ip == "10.0.0.13"
 
 
-def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, db):
+def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeypatch, settings, db):
     from apps.monitor.models import MonitorInstance, MonitorObject
+    from apps.monitor.utils.dimension import build_safe_instance_id
     from apps.monitor.views import manual_collect as manual_collect_view
 
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    settings.LICENSE_MGMT_ENABLED = False
+    monkeypatch.setenv("LICENSE_MGMT_ENABLED", "0")
     monkeypatch.setattr(
         manual_collect_view,
         "_ensure_operate_instances",
@@ -1520,7 +1523,7 @@ def test_flow_asset_api_normalizes_ip_for_creation_and_reuse(api_client, monkeyp
     assert create_response.status_code == 200, create_response.content
     created_instance_id = create_response.json()["data"]["instance_id"]
     created_instance = MonitorInstance.objects.get(id=created_instance_id)
-    assert f"flow:{switch_object.id}:1:10.0.0.12" in created_instance.id
+    assert created_instance.id == str((build_safe_instance_id(1, "10.0.0.12"),))
     assert " 10.0.0.12 " not in created_instance.id
     assert created_instance.ip == "10.0.0.12"
     assert created_instance.enabled_protocols == ["netflow"]

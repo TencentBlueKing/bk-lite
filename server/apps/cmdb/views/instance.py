@@ -22,6 +22,7 @@ from apps.cmdb.utils.base import (
     get_organization_and_children_ids,
 )
 from apps.cmdb.services.topology_theme import get_topo_themes
+from apps.cmdb.services.rack_room import get_room_layout, get_rack_layout
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
 from apps.core.decorators.api_permission import HasPermission
@@ -29,6 +30,7 @@ from apps.core.logger import cmdb_logger as logger
 from apps.core.utils.web_utils import WebUtils
 from apps.rpc.node_mgmt import NodeMgmt
 from apps.system_mgmt.utils.group_utils import GroupUtils
+from apps.core.utils.team_utils import get_current_team
 
 
 class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
@@ -199,7 +201,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     def search(self, request):
         """
         查询实例权限：
-        1. 若前端不做组织筛选，默认查询组织 request.COOKIES.get("current_team")
+        1. 若前端不做组织筛选，默认查询组织 get_current_team(request)
             若做组织筛选，则查询所选组织
         2. 用户所在的组织，and （组织单独设置的实例权限过滤条件 or 创建人是我）
         3. 若有额外的字段过滤条件，则在上述基础上做and过滤
@@ -670,7 +672,7 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
     @action(methods=["post"], detail=False, url_path=r"(?P<model_id>.+?)/inst_import")
     def inst_import(self, request, model_id):
         try:
-            current_team_raw = request.COOKIES.get("current_team")
+            current_team_raw = get_current_team(request)
             if not current_team_raw:
                 return JsonResponse(
                     {
@@ -1024,6 +1026,50 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             permission_map=permissions_map,
             user=request.user,
         )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"room_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def room_layout(self, request, model_id: str, inst_id: int):
+        """机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率，供平面图布局。"""
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = get_room_layout(int(inst_id), permission_map=permissions_map, user=request.user)
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["get"],
+        url_path=r"rack_layout/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def rack_layout(self, request, model_id: str, inst_id: int):
+        """机柜正视 U 图：返回机柜 u_count 及其 contains 设备的 U 位排布。"""
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = get_rack_layout(int(inst_id), permission_map=permissions_map, user=request.user)
         return WebUtils.response_success(result)
 
     @action(

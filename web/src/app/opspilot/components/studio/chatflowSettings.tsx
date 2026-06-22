@@ -1,14 +1,14 @@
 'use client';
 
-import React, { useState, useRef } from 'react';
-import { Form, Input, Select, Collapse } from 'antd';
+import React, { useState, useRef, useEffect } from 'react';
+import { Form, Input, Collapse } from 'antd';
 import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import ChatflowEditor, { ChatflowEditorRef } from '@/app/opspilot/components/chatflow/ChatflowEditor';
 import type { ChatflowExecutionState } from '@/app/opspilot/components/chatflow/types';
 import Icon from '@/components/icon';
+import GroupTreeSelect from '@/components/group-tree-select';
 
-const { Option } = Select;
 const { TextArea } = Input;
 const { Panel } = Collapse;
 
@@ -118,7 +118,6 @@ interface ChatflowSettingsProps {
 
 const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
   form,
-  groups,
   onClear,
   onSaveWorkflow,
   workflowData,
@@ -129,6 +128,16 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [activeAccordionKeys, setActiveAccordionKeys] = useState<string[]>(['nodes']);
   const chatflowEditorRef = useRef<ChatflowEditorRef>(null);
+
+  // 管理组织（group 字段）当前值：自动并入使用组织、且在使用组织里锁定不可删
+  const manageGroup: number[] = Form.useWatch('group', form) || [];
+  useEffect(() => {
+    const current: number[] = form.getFieldValue('usage_team') || [];
+    const merged = Array.from(new Set([...(manageGroup || []), ...current]));
+    if (JSON.stringify(merged) !== JSON.stringify(current)) {
+      form.setFieldsValue({ usage_team: merged });
+    }
+  }, [JSON.stringify(manageGroup)]);
 
   const onDragStart = (event: React.DragEvent, nodeType: string) => {
     event.dataTransfer.setData('application/reactflow', nodeType);
@@ -162,7 +171,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
     <div className="w-full flex h-full">
       {/* Left Sidebar - Combined Information and Nodes */}
       <div className={`transition-all duration-300 ease-in-out border-r border-(--color-border-2) overflow-y-auto h-[calc(100vh-200px)] ${
-        isSidebarCollapsed ? 'w-0 opacity-0' : 'w-80'
+        isSidebarCollapsed ? 'w-0 opacity-0' : 'w-72'
       }`}>
         <div>
           <Collapse
@@ -183,7 +192,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
               }
             >
               <div className="pt-2">
-                <Form form={form} labelCol={{ flex: '0 0 60px' }} wrapperCol={{ flex: '1' }}>
+                <Form form={form} layout="vertical">
                   <Form.Item
                     label={t('common.name')}
                     name="name"
@@ -192,17 +201,22 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
                     <Input />
                   </Form.Item>
                   <Form.Item
-                    label={t('common.organization')}
+                    label={t('studio.form.manageGroup')}
                     name="group"
-                    rules={[{ required: true, message: `${t('common.inputMsg')}${t('common.organization')}` }]}
+                    rules={[{ required: true, message: `${t('common.selectMsg')}${t('studio.form.manageGroup')}` }]}
                   >
-                    <Select mode="multiple">
-                      {groups.map((group) => (
-                        <Option key={group.id} value={group.id}>
-                          {group.name}
-                        </Option>
-                      ))}
-                    </Select>
+                    <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('studio.form.manageGroup')}`} />
+                  </Form.Item>
+                  <Form.Item
+                    label={t('studio.form.usageGroup')}
+                    name="usage_team"
+                    tooltip={t('studio.form.usageGroupTip')}
+                    rules={[{ required: true, message: `${t('common.selectMsg')}${t('studio.form.usageGroup')}` }]}
+                  >
+                    <GroupTreeSelect
+                      placeholder={`${t('common.selectMsg')}${t('studio.form.usageGroup')}`}
+                      lockedValues={manageGroup}
+                    />
                   </Form.Item>
                   <Form.Item
                     label={t('studio.form.introduction')}
@@ -228,7 +242,7 @@ const ChatflowSettings: React.FC<ChatflowSettingsProps> = ({
                 <Collapse
                   size="small"
                   ghost
-                  defaultActiveKey={['triggers', 'applications', 'agents', 'logic', 'actions']}
+                  defaultActiveKey={['triggers']}
                   expandIcon={({ isActive }) => <CaretRightOutlined rotate={isActive ? 90 : 0} />}
                 >
                   {nodeCategories.map((category) => (

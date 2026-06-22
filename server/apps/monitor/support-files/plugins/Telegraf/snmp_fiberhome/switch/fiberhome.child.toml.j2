@@ -1,0 +1,108 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_fiberhome"
+        config_type = "fiberhome"
+        brand = "fiberhome"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- FiberHome 烽火 CPU (WRI-CPU-MIB cpuUsage, precision 100, per-cpu table, PEN 3807) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.3807.1.8012.1.4.1.1.2（精度100→原值/100，snmprec .1=297→2.97%）。
+    # device_cpu_usage 在 metrics.json 用 avg()/100。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3807.1.8012.1.4.1.1.2"
+        name = "usage"
+    # ---- FiberHome system memory (WRI-MEMORY-MIB memoryPoolAllocBytesNum/TotalBytes, bytes, per-pool table) ----
+    # 待现网核验：used=AllocBytesNum 列 ...1.5.4.1.7 / total=TotalBytes 列 ...1.5.4.1.11（字节，snmprec used65502560/total88593152=73.9%）。
+    # 利用率在共享盘按 used/total 计算。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3807.1.8012.1.5.4.1.7"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3807.1.8012.1.5.4.1.11"
+        name = "total"
+    # ---- FiberHome chassis temperature (WRI-TEMPERATURE-MIB temperatureValue, °C, per-sensor table) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.3807.1.8012.1.6.2.1.5（°C 直采 divisor=1，snmprec=36）。device_temperature_celsius max()。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3807.1.8012.1.6.2.1.5"
+        name = "celsius"
+    # ---- FiberHome PSU state (WRI-POWER-MIB powerState, per-supply table) ----
+    # 待现网核验：state 列 1.3.6.1.4.1.3807.1.8012.1.2.1.1.3（snmprec=0 Normal/1 Insufficient）。
+    # 原始码 0=Normal/1=Insufficient/2=Overload；下方 processors.enum 归一为 1=正常(0)/2=异常(1/2)。注意正常码=0。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3807.1.8012.1.2.1.1.3"
+        name = "state"
+
+# ---- 电源状态归一：0=Normal→1(正常)，1=Insufficient/2=Overload→2(异常)。注意 FiberHome 正常码=0(与各厂不同)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+    # ---- FiberHome fan speed (FAN-MIB fanCtrlSpeed, RPM, per-fan table) ----
+    # 待现网核验：转速列 1.3.6.1.4.1.3807.1.8012.1.11.4.1.2（LibreNMS os_discovery fanspeed 段确认;测试 snmprec 多为无风扇机型故无值,需现网核）。device_fan_speed max() by instance_id。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3807.1.8012.1.11.4.1.2"
+        name = "speed"
+# ---- 风扇状态:WRI 仅提供风扇转速(上方 device_fan_speed)、无风扇状态枚举 → device_fan_state N/A(盘风扇状态面板显示--)。----
+# ---- 电压(WRI-VOLTAGE)为后续增补项。----

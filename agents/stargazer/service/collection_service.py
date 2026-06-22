@@ -347,7 +347,17 @@ class CollectionService:
             return
 
         try:
-            exec_params = {"args": [{"page_size": -1, "skip_permission": True}], "kwargs": {}}
+            # 优先使用任务上下文中携带的 organization_id 限定查询范围，
+            # 避免跨租户拉取全量节点数据。仅当调用方未提供组织上下文时，
+            # 才回退到 skip_permission=True（单租户或无多租户隔离的部署场景）。
+            organization_id = self.params.get("organization_id")
+            query: dict = {"ip": self.connect_ip, "page_size": 1}
+            if organization_id:
+                query["organization_ids"] = [organization_id]
+            else:
+                query["skip_permission"] = True
+
+            exec_params = {"args": [query], "kwargs": {}}
             subject = f"{self.namespace}.node_list"
             payload = json.dumps(exec_params).encode()
 

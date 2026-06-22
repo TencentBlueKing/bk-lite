@@ -19,7 +19,7 @@ class PolicyPreviewService:
         query_condition = self._require_dict("query_condition")
         period = self._require_dict("period")
         algorithm = self._require_value("algorithm")
-        group_by = self._require_list("group_by")
+        group_by = self._require_string_list("group_by")
         step = self._format_period(period)
         group_by_clause = ",".join(group_by)
 
@@ -148,6 +148,19 @@ class PolicyPreviewService:
         if not isinstance(value, list) or not value:
             raise BaseAppException(f"{key} is required")
         return value
+
+    def _require_string_list(self, key):
+        value = self._require_list(key)
+        result = []
+        seen = set()
+        for item in value:
+            item = str(item or "").strip()
+            if item and item not in seen:
+                result.append(item)
+                seen.add(item)
+        if not result:
+            raise BaseAppException(f"{key} is required")
+        return result
 
     def _require_value(self, key):
         value = self.payload.get(key)

@@ -59,6 +59,9 @@
       "replicaCountTip": "The number of Pilot instances running the AI application. Increasing the number of instances enhances the fault tolerance and availability of the application. The default is 1.",
       "introduction": "Introduction",
       "group": "Organization",
+      "manageGroup": "Management Organization",
+      "usageGroup": "Usage Organization",
+      "usageGroupTip": "Usage organizations can chat with / call this app via API; management organizations are auto-included and cannot be removed.",
       "name": "Name"
     },
     "deleteConfirm": "Are you sure you want to delete this studio?",

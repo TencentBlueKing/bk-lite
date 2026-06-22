@@ -12,7 +12,11 @@ import pytest
 
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobExecution
+from apps.job_mgmt.nats_api import ansible_task_callback
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
+from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
+from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
+from apps.job_mgmt.tasks import finalize_cancelling_execution
 
 pytestmark = pytest.mark.unit
 
@@ -212,8 +216,6 @@ class TestFinalizeCancellingExecutionTask:
     """兜底收敛任务：CANCELLING 滞留超时后强制收敛为 CANCELLED"""
 
     def test_stuck_cancelling_is_forced_to_cancelled(self):
-        from apps.job_mgmt.tasks import finalize_cancelling_execution
-
         execution = _make_execution(
             ExecutionStatus.CANCELLING,
             target_list=[
@@ -240,8 +242,6 @@ class TestFinalizeCancellingExecutionTask:
         mock_sentinel.assert_called_once_with(execution.id, "6", ExecutionStatus.CANCELLED)
 
     def test_already_converged_is_noop(self):
-        from apps.job_mgmt.tasks import finalize_cancelling_execution
-
         execution = _make_execution(
             ExecutionStatus.CANCELLED,
             execution_results=[{"target_key": "5", "name": "h1", "ip": "1.1.1.1", "status": ExecutionStatus.SUCCESS}],
@@ -255,14 +255,10 @@ class TestFinalizeCancellingExecutionTask:
         mock_sentinel.assert_not_called()
 
     def test_missing_execution_does_not_raise(self):
-        from apps.job_mgmt.tasks import finalize_cancelling_execution
-
         finalize_cancelling_execution(999999)  # 不抛异常即可
 
     def test_execution_deleted_after_cas_returns_silently(self):
         """CAS 命中后记录被删除（防御分支）：静默返回不抛异常"""
-        from apps.job_mgmt.tasks import finalize_cancelling_execution
-
         cas_qs = MagicMock()
         cas_qs.update.return_value = 1
         gone_qs = MagicMock()
@@ -284,8 +280,6 @@ class TestAnsibleCallbackWithCancelling:
         }
 
     def test_cancelling_lands_results_and_converges_to_cancelled(self):
-        from apps.job_mgmt.nats_api import ansible_task_callback
-
         execution = _make_execution(ExecutionStatus.CANCELLING)
         data = self._callback_data()
         data["task_id"] = execution.id
@@ -304,8 +298,6 @@ class TestAnsibleCallbackWithCancelling:
 
     def test_cancelled_terminal_callback_still_rejected(self):
         """已是 CANCELLED 终态时回调仍幂等拒绝（防重复处理，回归守护）"""
-        from apps.job_mgmt.nats_api import ansible_task_callback
-
         execution = _make_execution(ExecutionStatus.CANCELLED)
         data = self._callback_data()
         data["task_id"] = execution.id
@@ -327,8 +319,6 @@ class TestBatchedSubmitStopsOnCancel:
         return [{"target_id": i, "name": f"h{i}", "ip": f"1.1.1.{i}"} for i in range(1, n + 1)]
 
     def test_script_runner_stops_submitting_after_cancel(self, monkeypatch):
-        from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
-
         targets = self._targets(4)
         execution = _make_execution(ExecutionStatus.RUNNING, target_list=targets)
         monkeypatch.setattr(ScriptExecutionRunner, "MAX_WORKERS", 2)
@@ -355,8 +345,6 @@ class TestBatchedSubmitStopsOnCancel:
         assert len(results) == 2
 
     def test_file_runner_stops_submitting_after_cancel(self, monkeypatch):
-        from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
-
         targets = self._targets(4)
         execution = _make_execution(
             ExecutionStatus.RUNNING,
@@ -388,8 +376,6 @@ class TestBatchedSubmitStopsOnCancel:
 
     def test_script_runner_target_exception_recorded_as_failed(self, monkeypatch):
         """批内单目标抛异常：补 FAILED 结果并发 FAILED 哨兵，不中断其余目标"""
-        from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
-
         targets = self._targets(2)
         execution = _make_execution(ExecutionStatus.RUNNING, target_list=targets)
         runner = ScriptExecutionRunner(execution.id)
@@ -410,8 +396,6 @@ class TestBatchedSubmitStopsOnCancel:
         assert "node down" in failed[0]["error_message"]
 
     def test_file_runner_target_exception_recorded_as_failed(self, monkeypatch):
-        from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
-
         targets = self._targets(2)
         execution = _make_execution(
             ExecutionStatus.RUNNING,

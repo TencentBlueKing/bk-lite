@@ -9,6 +9,7 @@ from apps.job_mgmt.filters.dangerous_rule import DangerousRuleFilter
 from apps.job_mgmt.models import DangerousRule
 from apps.job_mgmt.serializers.dangerous_rule import DangerousRuleCreateSerializer, DangerousRuleSerializer, DangerousRuleUpdateSerializer
 from apps.job_mgmt.views.dangerous_base import BaseDangerousItemViewSet
+from apps.core.utils.team_utils import get_current_team
 
 
 class DangerousRuleViewSet(BaseDangerousItemViewSet):
@@ -46,7 +47,7 @@ class DangerousRuleViewSet(BaseDangerousItemViewSet):
 
     @action(detail=False, methods=["GET"])
     def enabled_rules(self, request):
-        current_team = int(request.COOKIES.get("current_team", 0))
+        current_team = int(get_current_team(request, 0))
         rules = DangerousRule.objects.filter(is_enabled=True, team__contains=current_team)
         result = {DangerousLevel.CONFIRM: [], DangerousLevel.FORBIDDEN: []}
         for rule in rules:

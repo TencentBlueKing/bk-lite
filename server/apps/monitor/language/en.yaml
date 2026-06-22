@@ -482,6 +482,18 @@ monitor_object_metric:
       name: Power Consumption
       desc: The power indicator is measured in watts and reflects the current power consumption of the device. This indicator helps evaluate the device's energy efficiency and power consumption trends. It facilitates the implementation of energy-saving policies and resource optimization.
   Loadbalance:
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each cooling fan (enum). A non-normal state indicates a cooling fault that can quickly lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each power supply unit (enum). A non-normal state indicates a power redundancy or hardware fault and should be remediated promptly.
+    device_memory_free:
+      name: Memory Free
+      desc: Number of free physical memory bytes currently available on the device. A persistently low value indicates memory pressure.
     device_cpu_usage:
       name: CPU Usage
       desc: This metric reports the overall CPU utilization of the F5 BIG-IP load balancer (F5-BIGIP-SYSTEM-MIB sysGlobalHostCpuUsageRatio5s, 5-second sample). Sustained high usage indicates heavy traffic-processing or SSL-offload load.
@@ -545,18 +557,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   Jetty-JMX:
     jetty_queuedthreadpool_threads_value:
       name: Thread Count
@@ -656,6 +719,12 @@ monitor_object_metric:
       desc: Indicates the maximum keep-alive time (seconds) for HTTP connections without
         data transfer, releasing idle resources to prevent waste and malicious occupation.
   Firewall:
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each power supply unit (enum). A non-normal state indicates a power redundancy or hardware fault and should be remediated promptly.
     firewall_pf_states:
       name: PF State Table Entries
       desc: This metric reports the current number of entries in the pfSense firewall pf state table (BEGEMOT-PF-MIB pfStateTableCount), roughly equal to the number of active connections. A rapidly rising count can indicate a connection flood or the state table approaching its limit.
@@ -770,18 +839,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   ActiveMQ:
     activemq_topics_consumer_count:
       name: Topic Consumer Count
@@ -1093,6 +1213,9 @@ monitor_object_metric:
       desc: Percentage of busy threads relative to maximum threads, indicating thread
         resource utilization efficiency
   Website:
+    http_response_result_code:
+      name: Probe Result
+      desc: Identifies the probe result from the Telegraf http_response result_code field. 0 means success, while non-zero values represent response string mismatch, body read error, connection failure, timeout, DNS error, or response status code mismatch.
     http_node_success_rate:
       name: Node Success Rate
       desc: Calculate the 5-minute probe success rate for each probing node, reflecting the access experience in a specific region or network environment.
@@ -2071,6 +2194,15 @@ monitor_object_metric:
         speed of the interface helps administrators optimize traffic and utilize network
         resources effectively.
   Switch:
+    device_voltage_volts:
+      name: Input Voltage
+      desc: Device input voltage reading in volts. Values outside the rated range may indicate unstable power and hardware risk.
+    device_optical_rx_power:
+      name: SFP RX Power
+      desc: Optical receive power reading of the SFP/SFP+ module. Abnormally low Rx power may indicate link attenuation, dirty fiber, or a faulty peer transmitter.
+    device_optical_tx_power:
+      name: SFP TX Power
+      desc: Optical transmit power reading of the SFP/SFP+ module. Abnormal Tx power may indicate an aging or failing optical module.
     snmp_uptime:
       name: System Uptime
       desc: This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues.
@@ -2119,18 +2251,6 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
     device_cpu_usage:
       name: CPU Utilization
       desc: This metric reports the CPU utilization of the device control plane (typically the 5-minute average), as a percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays. Sourced from vendor-specific SNMP OIDs and normalized to a 0-100 percentage.
@@ -2155,7 +2275,91 @@ monitor_object_metric:
     device_psu_state:
       name: Power Supply Status
       desc: This metric reports the operational state of each power supply unit on the device. A non-normal state signals a power redundancy or hardware fault; on devices with redundant PSUs a single failure may not cause an outage but removes redundancy and must be remediated promptly.
+    device_fan_speed:
+      name: Fan Speed
+      desc: This metric reports the fan rotation speed (RPM) of the device, taken as the maximum across fans. Abnormally low or zero RPM indicates a stalled or failed fan and a risk of overheating; abnormally high RPM may indicate the device is compensating for high temperature. For devices that expose only fan speed without a fan-state enum, speed is the only signal of fan health.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   Router:
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each cooling fan (enum). A non-normal state indicates a cooling fault that can quickly lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each power supply unit (enum). A non-normal state indicates a power redundancy or hardware fault and should be remediated promptly.
+    device_memory_total:
+      name: Total Memory
+      desc: This metric reports the total physical memory capacity of the router (UCD-SNMP-MIB memTotalReal, reported in KB and converted to bytes).
+    device_memory_free:
+      name: Free Memory
+      desc: This metric reports the amount of free physical memory in bytes on the router (UCD-SNMP-MIB memAvailReal, reported in KB and converted to bytes). Persistently low free memory can indicate rising memory pressure.
+    device_memory_used:
+      name: Used Memory
+      desc: This metric reports the amount of used physical memory in bytes on the router, derived as total memory minus free memory. It helps gauge absolute memory consumption and pressure.
     device_cpu_usage:
       name: CPU Usage
       desc: This metric reports the average CPU utilization across the operating entities of the Juniper MX router (JUNIPER-MIB jnxOperatingCPU, aggregated per instance_id). Sustained high usage indicates heavy forwarding or control-plane load.
@@ -2210,18 +2414,69 @@ monitor_object_metric:
     device_total_outgoing_traffic:
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
-    device_total_incoming_netflow_traffic:
-      name: Device Total Incoming NetFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_outgoing_netflow_traffic:
-      name: Device Total Outgoing NetFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from NetFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from NetFlow flow records for capacity planning and troubleshooting.
-    device_total_incoming_sflow_traffic:
-      name: Device Total Incoming sFlow Traffic Rate
-      desc: This metric indicates the average rate of total bytes received by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor inbound traffic derived from sFlow samples for capacity planning and troubleshooting.
-    device_total_outgoing_sflow_traffic:
-      name: Device Total Outgoing sFlow Traffic Rate
-      desc: This metric represents the average rate of total bytes sent by the entire device from sFlow over the past 5 minutes, measured in bytes per second. It helps administrators monitor outbound traffic derived from sFlow samples for capacity planning and troubleshooting.
+    device_flow_bytes_rate:
+      name: Device Flow Traffic Rate
+      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+    device_flow_packets_rate:
+      name: Device Flow Packet Rate
+      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+    device_flow_in_bytes_rate:
+      name: Device Flow Inbound Traffic Rate
+      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+    device_flow_out_bytes_rate:
+      name: Device Flow Outbound Traffic Rate
+      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+    device_flow_in_packets_rate:
+      name: Device Flow Inbound Packet Rate
+      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+    device_flow_out_packets_rate:
+      name: Device Flow Outbound Packet Rate
+      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+    device_flow_avg_packet_size:
+      name: Device Flow Average Packet Size
+      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+    device_flow_effective_sampling_rate:
+      name: Device Flow Effective Sampling Rate
+      desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
+    device_flow_interface_bytes_rate:
+      name: Interface Flow Traffic Rate
+      desc: Flow traffic rate grouped by interface and direction, used to locate interface-level traffic hotspots.
+    device_flow_interface_packets_rate:
+      name: Interface Flow Packet Rate
+      desc: Flow packet rate grouped by interface and direction, used to locate interface-level packet hotspots.
+    device_flow_top_interfaces_by_bytes:
+      name: Top Interfaces by Flow Traffic Rate
+      desc: Interfaces ranked by Flow traffic rate, used to quickly identify high-traffic interfaces.
+    device_flow_protocol_bytes_rate:
+      name: Protocol Flow Traffic Rate
+      desc: Flow traffic rate grouped by protocol, used to identify TCP, UDP, ICMP, and other protocol traffic distribution.
+    device_flow_protocol_packets_rate:
+      name: Protocol Flow Packet Rate
+      desc: Flow packet rate grouped by protocol, used to identify protocol-level packet anomalies.
+    device_flow_dst_port_bytes_rate:
+      name: Destination Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by destination port, used to analyze application or service port hotspots.
+    device_flow_dst_port_packets_rate:
+      name: Destination Port Flow Packet Rate
+      desc: Flow packet rate grouped by destination port, used to analyze application or service port packet hotspots.
+    device_flow_src_port_bytes_rate:
+      name: Source Port Flow Traffic Rate
+      desc: Flow traffic rate grouped by source port, used to analyze client-side port traffic distribution.
+    device_flow_top_src_bytes_rate:
+      name: Top Source Flow Traffic Rate
+      desc: Flow traffic rate ranked by source address, used to discover major traffic sources.
+    device_flow_top_dst_bytes_rate:
+      name: Top Destination Flow Traffic Rate
+      desc: Flow traffic rate ranked by destination address, used to discover major traffic destinations.
+    device_flow_top_src_packets_rate:
+      name: Top Source Flow Packet Rate
+      desc: Flow packet rate ranked by source address, used to discover packet-heavy sources.
+    device_flow_top_dst_packets_rate:
+      name: Top Destination Flow Packet Rate
+      desc: Flow packet rate ranked by destination address, used to discover packet-heavy destinations.
+    device_flow_top_conversation_bytes_rate:
+      name: Top Conversation Flow Traffic Rate
+      desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
   Consul:
     consul_health_checks_passing:
       name: Health Checks Passing
@@ -3358,6 +3613,13 @@ monitor_object_metric_group:
     Bandwidth: Bandwidth
     Status: Status
     Router: Router
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   vCenter:
     Quantity: Quantity
   Oracle:
@@ -3389,6 +3651,13 @@ monitor_object_metric_group:
     Bandwidth: Bandwidth
     Traffic: Traffic
     Firewall: Firewall
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   VM:
     CPU: CPU
     Memory: Memory
@@ -3481,6 +3750,13 @@ monitor_object_metric_group:
     Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   ElasticSearch:
     Base: Base
     Node: Node
@@ -3496,6 +3772,13 @@ monitor_object_metric_group:
     Status: Status
     Packet Error: Packet Error
     Loadbalance: Load Balance
+    Traffic Overview: Traffic Overview
+    Sampling: Sampling
+    Interface Traffic: Interface Traffic
+    Protocol: Protocol
+    Application Port: Application Port
+    Endpoint: Endpoint
+    Conversation: Conversation
   Redis:
     Base: Base
     Memory: Memory
@@ -3643,6 +3926,7 @@ monitor_object_plugin:
       IF-MIB interface metrics, it collects Cisco private OIDs for device health
       including CPU utilization, memory pools, temperature sensors, fan and
       power-supply status.
+      Supported brands/models — Cisco Catalyst campus switches (2960/3650/3850/9200/9300/9500, etc.) and IOS/IOS-XE switches; Nexus (NX-OS) partially compatible.
   Switch Huawei SNMP:
     name: Huawei (Telegraf)
     desc: Huawei-specific SNMP collection template for switches. In addition to standard
@@ -3650,6 +3934,7 @@ monitor_object_plugin:
       for device health including CPU utilization, memory utilization, temperature
       sensors and fan status. Huawei reports memory as a utilization percentage
       directly and this template exposes no power-supply state OID.
+      Supported brands/models — Huawei S-series campus switches (S5700/S6700/S7700/S9300, etc.) and CloudEngine CE series.
   Switch Aruba SNMP:
     name: Aruba (Telegraf)
     desc: Aruba-specific SNMP collection template for switches (ArubaOS-CX). In addition
@@ -3658,6 +3943,7 @@ monitor_object_plugin:
       sensors, fan and power-supply status. Aruba reports memory as a utilization
       percentage directly; fan/psu states are normalized to the unified 1=normal
       convention.
+      Supported brands/models — Aruba / HPE ArubaOS-CX and ArubaOS-Switch (some formerly HP ProCurve; 2530/2930/3810/5400/6300/8300, etc.).
   Switch Juniper SNMP:
     name: Juniper (Telegraf)
     desc: Juniper-specific SNMP collection template for switches (Junos). In addition
@@ -3666,6 +3952,7 @@ monitor_object_plugin:
       temperature sensors, fan and power-supply status. Juniper reports memory as a
       utilization percentage directly; the jnxOperatingState of fans/psus is
       normalized to the unified 1=normal convention.
+      Supported brands/models — Juniper EX-series campus switches (EX2300/3400/4300/4600, etc., Junos).
   Switch Extreme SNMP:
     name: Extreme (Telegraf)
     desc: Extreme Networks-specific SNMP collection template for switches (EXOS). In
@@ -3674,6 +3961,7 @@ monitor_object_plugin:
       (total/free), temperature, fan and power-supply status. Memory utilization is
       computed as (total - free) / total; fan/psu states are normalized to the
       unified 1=normal convention.
+      Supported brands/models — Extreme Networks ExtremeXOS (EXOS) switches (X440/X460/X670/X690, etc.).
   Switch Brocade SNMP:
     name: Brocade (Telegraf)
     desc: Brocade/Foundry-specific SNMP collection template for switches
@@ -3683,6 +3971,7 @@ monitor_object_plugin:
       temperature sensors, fan and power-supply status. Brocade reports CPU and
       memory as utilization percentages directly; fan/psu states are normalized to
       the unified 1=normal convention.
+      Supported brands/models — Brocade ICX/FCX/NetIron, Ruckus ICX (formerly Brocade ICX, running FastIron), and Foundry/IronWare switches — all share FOUNDRY-SN-AGENT-MIB (enterprise 1991); Ruckus ICX users can select this template directly.
   Switch Alcatel-Lucent SNMP:
     name: Alcatel-Lucent (Telegraf)
     desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
@@ -3692,6 +3981,7 @@ monitor_object_plugin:
       power-supply status. Memory utilization is computed from used/(used+free);
       fan/psu states (TmnxDeviceState) are normalized to the unified 1=normal
       convention.
+      Supported brands/models — Alcatel-Lucent / Nokia service routers 7750 SR, 7450 ESS, 7950 XRS (SR-OS/TiMOS, enterprise 6527); NOT for Alcatel OmniSwitch (enterprise 6486, different OIDs).
   Switch MikroTik SNMP:
     name: MikroTik (Telegraf)
     desc: MikroTik (RouterOS)-specific SNMP collection template for switches
@@ -3701,6 +3991,7 @@ monitor_object_plugin:
       system memory (used/total), and board temperature. MikroTik exposes fan as raw
       RPM and lacks a standardized power-supply state, so fan/psu health is not
       collected (N/A). Memory utilization is computed from used/total.
+      Supported brands/models — MikroTik RouterOS devices (CRS/CCR/RB series).
   Switch D-Link SNMP:
     name: D-Link (Telegraf)
     desc: D-Link DES/DGS-specific SNMP collection template for switches (EQUIPMENT-MIB,
@@ -3710,6 +4001,7 @@ monitor_object_plugin:
       CPU and memory as utilization percentages directly; fan status is natively
       1=normal and power-supply status is normalized to the unified 1=normal
       convention.
+      Supported brands/models — D-Link DES / DGS series and DES-7200 (all D-Link enterprise 171; specific health OIDs vary by model).
   Switch Netgear SNMP:
     name: Netgear (Telegraf)
     desc: Netgear (FASTPATH)-specific SNMP collection template for switches. In
@@ -3718,6 +4010,7 @@ monitor_object_plugin:
       (total/free), temperature sensors, fan and power-supply status. Memory
       utilization is computed as (total - free) / total; fan and power-supply states
       are natively 1=normal.
+      Supported brands/models — NETGEAR smart / managed switches (GS/M series, etc.).
   Switch TP-Link SNMP:
     name: TP-Link (Telegraf)
     desc: TP-Link (JetStream)-specific SNMP collection template for switches (TPLINK
@@ -3726,6 +4019,7 @@ monitor_object_plugin:
       memory utilization, both reported directly as percentages. TP-Link SMB switches
       expose no temperature/fan/power-supply sensors, so those health items are not
       collected (N/A).
+      Supported brands/models — TP-Link JetStream managed switches (T1500/T1600/T2600 series, etc.).
   Switch Zyxel SNMP:
     name: Zyxel (Telegraf)
     desc: Zyxel-specific SNMP collection template for switches (ZYXEL private MIB,
@@ -3734,6 +4028,7 @@ monitor_object_plugin:
       percentage) and hardware temperature sensors. Zyxel exposes fan as raw RPM (not
       a state) and this switch line has no memory-utilization or power-supply-state
       OID, so those health items are not collected (N/A).
+      Supported brands/models — Zyxel GS/XGS/XS-series managed switches.
   Switch QTech SNMP:
     name: QTech (Telegraf)
     desc: QTech (QSW)-specific SNMP collection template for switches (QTECH-MIB,
@@ -3742,6 +4037,7 @@ monitor_object_plugin:
       (used/total), temperature, fan and power-supply status. Memory utilization is
       computed from used/total; fan/psu states (native 0=normal) are normalized to
       the unified 1=normal convention.
+      Supported brands/models — QTech QSW-series switches.
   Switch Dell Force10 SNMP:
     name: Dell Force10 (Telegraf)
     desc: Dell Force10 (S-Series)-specific SNMP collection template for switches
@@ -3750,6 +4046,7 @@ monitor_object_plugin:
       including per-processor CPU and memory utilization, per-stack-unit temperature,
       fan-tray and power-supply status. CPU and memory are reported directly as
       percentages; fan/psu states are normalized to the unified 1=normal convention.
+      Supported brands/models — Dell Networking / Force10 (PowerSwitch S/Z series, FTOS/OS9, enterprise 6027).
   Switch HP ProCurve SNMP:
     name: HP ProCurve (Telegraf)
     desc: HP ProCurve / HP Networking-specific SNMP collection template for switches
@@ -3759,14 +4056,131 @@ monitor_object_plugin:
       ENTITY-SENSOR / hpicfSensorTable that requires per-row type/class filtering,
       which telegraf inputs.snmp cannot do, so those are not collected (N/A). Memory
       utilization is computed from used/total.
+      Supported brands/models — HP / HPE ProCurve switches (2500/2600/2900/2920/3500/5400 ProCurve series, etc., enterprise 11).
+  Switch Datacom SNMP:
+    name: Datacom (Telegraf)
+    desc: Datacom DmOS-specific SNMP collection template for switches (DMOS-SYSMON-MIB,
+      IANA PEN 3709). In addition to standard IF-MIB interface metrics, it collects
+      Datacom private OIDs for device health including per-slot CPU load
+      (cpuLoadOneMinuteActive) and system memory (used/total bytes). The DmOS SYSMON
+      MIB only models CPU and memory subtrees; temperature/fan/power-supply objects
+      exist only in the legacy DMswitch-MIB (incompatible with DmOS) and are not
+      collected here (N/A). CPU utilization is averaged across slots; memory
+      utilization is computed from used/total.
+      Supported brands/models — Datacom DmOS switches (DM4xxx series).
+  Switch Eltex SNMP:
+    name: Eltex (Telegraf)
+    desc: Eltex MES-series switch-specific SNMP collection template (RADLAN/Marvell-based
+      MIBs plus ELTEX private OIDs, IANA PEN 89/35265). In addition to standard IF-MIB
+      interface metrics, it collects Eltex private OIDs for device health including
+      CPU utilization (rlCpuUtilDuringLast5Minutes), system memory (total/free),
+      chassis temperature (rlPhdUnitEnvParamTempSensorValue, a dedicated typed column),
+      fan state (rlEnvMonFanState) and power-supply state (rlPhdUnitEnvParamMainPSStatus).
+      Fan/PSU raw codes are normalized via telegraf processors.enum to 1=healthy /
+      2=fault. Memory utilization is computed from (total-free)/total. This is the
+      first switch brand exposing real temperature/fan/PSU because Eltex provides them
+      as typed value columns (no per-row type filtering needed).
+      Supported brands/models — Eltex MES-series switches.
+  Switch SNR SNMP:
+    name: SNR (Telegraf)
+    desc: SNR (NAG) switch-specific SNMP collection template (NAG-MIB, IANA PEN 40418).
+      In addition to standard IF-MIB interface metrics, it collects SNR private OIDs
+      for device health including per-slot CPU utilization (sysCpuUsage), system memory
+      (total/used), chassis temperature (sysTemperature, a dedicated typed column) and
+      fan state (sysFanStatus). Fan raw codes (0=Normal / 1=Abnormal) are normalized
+      via telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is
+      computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
+      object, so PSU is not collected (N/A).
+      Supported brands/models — SNR (NAG) managed switches.
+  Switch Parks SNMP:
+    name: Parks (Telegraf)
+    desc: Parks PK700-series switch-specific SNMP collection template (PARKS-PK700 MIB,
+      IANA PEN 50224). In addition to standard IF-MIB interface metrics, it collects
+      Parks private OIDs for device health including CPU utilization (cpuUsage), memory
+      utilization (a direct percent-used scalar) and chassis chip temperature
+      (mainChipTemperature). The PARKS-PK700 MIB exposes no fan or power-supply state
+      object, so those are not collected (N/A); per-SFP optical power/temperature are
+      port-level diagnostics, not device health, and are also omitted.
+      Supported brands/models — Parks PK-series switches.
+  Switch Ubiquiti SNMP:
+    name: Ubiquiti (Telegraf)
+    desc: Ubiquiti EdgeSwitch-specific SNMP collection template (EdgeSwitch-SWITCHING-MIB
+      plus EdgeSwitch-BOXSERVICES-PRIVATE-MIB, IANA PEN 4413, Broadcom FASTPATH). In
+      addition to standard IF-MIB interface metrics, it collects EdgeSwitch private
+      OIDs for device health including system memory (available/free, KB), chassis
+      temperature (boxServicesTempSensorTemperature) and fan state
+      (boxServicesFanItemState). Fan raw codes are normalized via telegraf
+      processors.enum to 1=healthy / 2=fault. Memory utilization is computed from
+      (total-free)/total. CPU is exposed only as a per-process table with no aggregate
+      device-CPU scalar that telegraf inputs.snmp can reduce, so CPU is not collected
+      (N/A); the BOXSERVICES MIB has no power-supply state object, so PSU is also N/A.
+      Applies to EdgeSwitch/UniFi wired switches; airOS/UniFi wireless APs are a
+      different object and out of scope.
+      Supported brands/models — Ubiquiti EdgeSwitch (ES series).
+  Switch Ruijie SNMP:
+    name: Ruijie (Telegraf)
+    desc: Ruijie switch-specific SNMP collection template (RUIJIE-PROCESS/MEMORY/SYSTEM
+      MIBs, IANA PEN 4881). In addition to standard IF-MIB interface metrics, it
+      collects Ruijie private OIDs for the full device-health set including CPU
+      utilization (ruijieNodeCPUTotal5min), system memory (size/used, KB), chassis
+      temperature (ruijieSystemMultipleTemperatureCurrent), fan state
+      (ruijieSystemFanStatus) and power-supply state
+      (ruijieSystemElectricalInformationStatus). Fan/PSU raw codes are normalized via
+      telegraf processors.enum to 1=healthy / 2=fault. Memory utilization is computed
+      from used/total.
+      Supported brands/models — Ruijie Networks RG-series switches.
+  Switch ZTE SNMP:
+    name: ZTE (Telegraf)
+    desc: ZTE ZXR10-series switch-specific SNMP collection template (ZXR10-MIB, IANA
+      PEN 3902). In addition to standard IF-MIB interface metrics, it collects ZTE
+      private OIDs for device health including per-unit CPU utilization
+      (zxr10SystemCpuUtility5m) and memory utilization (zxr10SystemMemUsed, a direct
+      percent-used value). The ZXR10-MIB system table exposes no temperature/fan/power
+      sensors (those live in ZTE-AN-ENVMON-MIB for the access-node/OLT line, not the
+      ZXR10 switch), so those are not collected (N/A).
+      Supported brands/models — ZTE ZXR10-series switches.
+  Switch Alcatel OmniSwitch SNMP:
+    name: Alcatel OmniSwitch (Telegraf)
+    desc: Alcatel-Lucent Enterprise OmniSwitch (AOS) switch-specific SNMP collection (ALCATEL-IND1-HEALTH-MIB, IANA PEN 6486). In addition to standard IF-MIB interface metrics, it collects OmniSwitch private OIDs for device health including 1-minute average CPU utilization (healthDeviceCpu1MinAvg) and memory utilization (healthDeviceMemoryLatest), both reported directly as percentages. Temperature lives in the chassis hardware table and fan/power-supply state in the chasEntPhysical entity table with per-entity-type row filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — Alcatel-Lucent Enterprise OmniSwitch (OS6xxx/OS9xxx, AOS6/AOS8; enterprise 6486); distinct from Switch Alcatel-Lucent SNMP which covers Nokia/ALU 7750 SR service routers.
+  Switch Yamaha SNMP:
+    name: Yamaha (Telegraf)
+    desc: Yamaha SWX-series switch SNMP collection (YAMAHA-SWHUB-MIB, IANA PEN 1182). In addition to standard IF-MIB interface metrics, it collects Yamaha private OIDs for device health including 1-minute average CPU utilization (yshCpuUtil1min) and memory utilization (yshMemoryUtil), both reported directly as percentages. The SWX-series exposes no temperature/fan/power SNMP sensors, so those are N/A. Supported brands/models — Yamaha SWX-series L2/L2+ switches (SWX2200 / SWX2300 / SWX3100, etc.; enterprise 1182). Yamaha RTX routers are not covered (no public SNMP health template).
+  Switch Arista SNMP:
+    name: Arista (Telegraf)
+    desc: Arista EOS switch SNMP collection. Beyond standard IF-MIB interface metrics, it adds device CPU utilization via HOST-RESOURCES hrProcessorLoad (averaged across cores), which the generic SNMP switch plugin does not provide. Arista exposes memory only through the multi-row hrStorage table (RAM row index not fixed) and temperature/fan/power only through the ENTITY-SENSOR table (sensor types mixed in one table), neither row/type-filterable by the SNMP input, so those are N/A. Supported brands/models — Arista Networks EOS data-center switches (7050 / 7060 / 7280 / 7300 / 7500 series and other EOS platforms).
+  Switch Mellanox SNMP:
+    name: Mellanox (Telegraf)
+    desc: Mellanox (NVIDIA) Spectrum Ethernet switch SNMP collection (Onyx / MLNX-OS). Beyond standard IF-MIB interface metrics, it adds device CPU utilization via HOST-RESOURCES hrProcessorLoad (averaged across cores), which the generic SNMP switch plugin does not provide. Memory is exposed only through the multi-row hrStorage table and temperature/fan/power only through the ENTITY-SENSOR table (sensor types mixed in one table), neither row/type-filterable by the SNMP input, so those are N/A. Supported brands/models — Mellanox/NVIDIA Spectrum Ethernet switches running Onyx or MLNX-OS (SN2000 / SN3000 / SN4000 series). InfiniBand-only fabrics are out of scope.
+  Switch Allied Telesis SNMP:
+    name: Allied Telesis (Telegraf)
+    desc: Allied Telesis AlliedWare Plus (AW+) switch SNMP collection (AT-SYSINFO-MIB / AT-ENVMONv2-MIB, IANA PEN 207). Beyond standard IF-MIB interface metrics, it collects Allied Telesis private OIDs for device health including per-stack-member CPU utilisation (cpuUtilisationStackAvgLastMinute, averaged), chassis temperature sensors (atEnvMonv2TemperatureCurrent, max) and fan and power-supply status, normalised to 1=normal / 2=abnormal. AlliedWare Plus does not expose a standard memory-utilisation OID, so memory is N/A. Supported brands/models — Allied Telesis AlliedWare Plus switches (x-series / IE industrial series / SwitchBlade running AW+; enterprise 207).
+  Switch Dell OS10 SNMP:
+    name: Dell OS10 (Telegraf)
+    desc: Dell EMC OS10 (SmartFabric OS10) switch SNMP collection (DELLEMC-OS10-CHASSIS-MIB, IANA PEN 674). Beyond standard IF-MIB interface metrics, it collects device health including CPU utilisation (HOST-RESOURCES hrProcessorLoad, averaged), card temperature sensors (os10CardTemp, max), and fan and power-supply operational status (os10FanOperStatus / os10PowerSupplyOperStatus, natively 1=normal / 2=abnormal). Memory is exposed only through the multi-row hrStorage table (RAM row index not fixed), so it is N/A. Distinct from the Force10/FTOS plugin. Supported brands/models — Dell EMC PowerSwitch running OS10 / SmartFabric OS10 (S-series / Z-series; enterprise 674).
+  Switch Lenovo CNOS SNMP:
+    name: Lenovo CNOS (Telegraf)
+    desc: Lenovo CNOS (Cloud Network OS) switch SNMP collection (LENOVO-ENV-MIB, IANA PEN 19046). Beyond standard IF-MIB interface metrics, it collects device health including temperature sensors (lenovoEnvMibTempSensorTemperature, max), fan state (lenovoEnvMibFanState) and power-supply state (lenovoEnvMibPowerSupplyState), normalised to 1=normal / 2=abnormal, plus CPU utilisation via HOST-RESOURCES hrProcessorLoad where the platform exposes it. Memory is not exposed via a usable private OID, so it is N/A. Supported brands/models — Lenovo ThinkSystem / RackSwitch switches running CNOS (NE-series, e.g. NE1032 / NE2572 / NE10032; enterprise 19046).
+  Switch FiberHome SNMP:
+    name: FiberHome (Telegraf)
+    desc: FiberHome switch-specific SNMP collection template (WRI-CPU/MEMORY/TEMPERATURE/POWER
+      MIBs, IANA PEN 3807). In addition to standard IF-MIB interface metrics, it
+      collects FiberHome private OIDs for device health including CPU utilization
+      (cpuUsage, precision-100), system memory (alloc/total bytes), chassis temperature
+      (temperatureValue) and power-supply state (powerState, where 0=Normal). Fan is
+      exposed only as fan speed (RPM) with no fan-state enum, so fan state is not
+      collected (N/A); fan speed and voltage are new-metric candidates for later
+      enrichment. PSU raw codes are normalized via telegraf processors.enum to 1=healthy
+      / 2=fault. Memory utilization is computed from used/total.
+      Supported brands/models — FiberHome switches.
+  Switch H3C SNMP:
+    name: H3C (Telegraf)
+    desc: H3C / HPE Comware switch-specific SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). In addition to standard IF-MIB interface metrics, it collects H3C private OIDs for device health including per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both are reported per physical entity where most entities return 0 and the CPU/memory-bearing board carries the real value, so device-level CPU/memory are taken as the maximum across entities. Temperature is not collected because all entities report 0 for hh3cEntityExtTemperature on Comware; fan and power-supply state live in ENTITY-MIB with per-row entPhysicalClass filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect switch traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use NetFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Switch Flow sFlow:
     name: Switch Flow Analysis (sFlow)
-    desc: Use sFlow to collect switch traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use sFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   WebLogic-JMX:
     name: WebLogic(JMX)
     desc: Through the WebLogic-JMX collector, regularly collect key WebLogic metrics,
@@ -3803,14 +4217,25 @@ monitor_object_plugin:
       F5-BIGIP-SYSTEM-MIB private OIDs for device health (host CPU utilization, host
       memory total/used and derived usage) and load-balancer-specific state (current
       client connections). Memory usage is derived as used / total.
+      Supported brands/models — F5 BIG-IP (LTM/GTM/DNS; iSeries / VIPRION / VE).
+  Loadbalance Citrix NetScaler SNMP:
+    name: Citrix NetScaler (Telegraf)
+    desc: Citrix NetScaler (NetScaler ADC, formerly Citrix ADC) load-balancer SNMP collection (NS-ROOT-MIB, IANA PEN 5951). In addition to standard IF-MIB interface metrics, it collects NetScaler private OIDs for device health including CPU utilization averaged across the management and packet-engine CPUs (resCpuUsage), system memory utilization reported directly as a percentage (resMemUsage), and current client connections (tcpCurClientConn). Temperature/voltage sensors live in the nsSysHealth table keyed by sensor name with per-name row filtering that telegraf inputs.snmp cannot do, so temperature/fan/power are N/A. Supported brands/models — Citrix / NetScaler ADC (MPX / SDX / VPX / CPX, NetScaler OS; enterprise 5951).
+  Loadbalance A10 Thunder SNMP:
+    name: A10 Thunder (Telegraf)
+    desc: A10 Networks Thunder / AX (ACOS) ADC SNMP collection (A10-AX-MIB, IANA PEN 22610). In addition to standard IF-MIB interface metrics, it collects A10 private OIDs for device health including CPU utilization averaged across the control and data-plane CPUs (axSysCpuUsage) and system memory (axSysMemoryTotal / axSysMemoryUsage, in KB, utilization computed as used/total). Current-connection and temperature/fan/power OIDs are not exposed in a row-filter-free form on ACOS, so those are N/A. Supported brands/models — A10 Networks Thunder ADC / AX series (ACOS; physical and vThunder; enterprise 22610).
+  Loadbalance FortiADC SNMP:
+    name: FortiADC (Telegraf)
+    desc: Fortinet FortiADC application delivery controller / load balancer SNMP collection (FORTINET-FORTIADC-MIB, IANA PEN 12356). Beyond standard IF-MIB interface metrics, it collects FortiADC private OIDs for device health and load including system CPU utilization (fadcSysCpuUsage) and memory utilization (fadcSysMemUsage), both reported directly as percentages, plus current concurrent client connections (fadcConcurrentClientConnections). Temperature/fan/power are not exposed via the FortiADC MIB, so they are N/A. Supported brands/models — Fortinet FortiADC hardware and VM appliances (FortiADC D / E / F series; enterprise 12356).
+  Loadbalance Radware Alteon SNMP:
+    name: Radware Alteon (Telegraf)
+    desc: Radware Alteon application switch / load balancer SNMP collection (ALTEON-CHEETAH-SWITCH-MIB, IANA PEN 1872). Beyond standard IF-MIB interface metrics, it collects Alteon private OIDs for device health including management-processor CPU utilization (mpCpuStatsUtil1Second, reported directly as a percentage) and main memory (mpMemStatsTotal/mpMemStatsFree in bytes, usage derived as (total-free)/total). The CHEETAH MIB does not expose a scalar connection/session count or temperature/fan/power, so those are N/A. Supported brands/models — Radware Alteon ADC / application switches running AlteonOS (Alteon 4408 / 5208 / 6420 / 8420 / 9800 and VA virtual appliances; enterprise 1872).
   Loadbalance Flow NetFlow:
     name: Load Balancer Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect load balancer traffic and convert it into normalized
-      device traffic metrics.
+    desc: Use NetFlow to collect load balancer traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Loadbalance Flow sFlow:
     name: Load Balancer Flow Analysis (sFlow)
-    desc: Use sFlow to collect load balancer traffic and convert it into normalized
-      device traffic metrics.
+    desc: Use sFlow to collect load balancer traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Bastion Host SNMP General:
     desc: The SNMP universal plugin is designed to monitor and manage bastion hosts
       via SNMP. It enables administrators to retrieve critical device information
@@ -3845,6 +4270,13 @@ monitor_object_plugin:
       FORTINET-FORTIGATE-MIB private OIDs for device health (CPU and memory utilization,
       total memory) and firewall-specific state (IPv4 active sessions, active IPsec
       VPN tunnels and HA mode). Memory is reported directly as a utilization percentage.
+      Supported brands/models — Fortinet FortiGate firewalls (FortiOS).
+  Firewall Hillstone SNMP:
+    name: Hillstone (Telegraf)
+    desc: Hillstone Networks (StoneOS) firewall SNMP collection (HILLSTONE-SYSTEM/TEMPERATURE/POWER-MIB, IANA PEN 28557). In addition to standard IF-MIB interface metrics, it collects Hillstone private OIDs for device health including CPU utilization (sysCPU), system memory (sysMemTotal/sysMemUsed in KB, utilization computed as used/total), chassis temperature (dedicated per-sensor table) and power-supply state. Power codes (fine/absent/warning/fail/unsupport) are normalized to 1=healthy / 2=fault. Fan and session-count OIDs have no confirmed numeric form, so those are N/A. Supported brands/models — Hillstone Networks SG-6000 / E-series / A-series next-gen firewalls (StoneOS; enterprise 28557).
+  Firewall Sophos XG SNMP:
+    name: Sophos XG (Telegraf)
+    desc: Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health including CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
@@ -3853,6 +4285,7 @@ monitor_object_plugin:
       memory total/free/used and derived usage) and firewall-specific VPN throughput
       (encrypted and decrypted packets per second). Memory usage is derived as
       (total - free) / total.
+      Supported brands/models — Check Point Security Gateways (GAiA OS).
   Firewall Stormshield SNMP:
     name: Stormshield (Telegraf)
     desc: Stormshield SNS-specific SNMP collection template for Stormshield Network
@@ -3861,6 +4294,7 @@ monitor_object_plugin:
       UCD-SNMP real memory (total/free, used and derived usage) and STORMSHIELD-SNS-MIB
       private OIDs for firewall-specific state (ASQ active TCP/UDP connections and
       mature VPN tunnels). Memory usage is derived as (total - free) / total.
+      Supported brands/models — Stormshield SNS-series firewalls.
   Firewall Palo Alto SNMP:
     name: Palo Alto (Telegraf)
     desc: Palo Alto Networks-specific SNMP collection template for PAN-OS firewalls. In
@@ -3871,6 +4305,7 @@ monitor_object_plugin:
       temperature/fan/psu are not collected because PAN-OS exposes them only via
       row-filtered hrStorage / entity-sensor tables that telegraf inputs.snmp cannot
       filter.
+      Supported brands/models — Palo Alto Networks PA-series firewalls (PAN-OS).
   Firewall SonicWall SNMP:
     name: SonicWall (Telegraf)
     desc: SonicWall-specific SNMP collection template for SonicOS firewalls. In addition
@@ -3878,6 +4313,7 @@ monitor_object_plugin:
       SONICWALL-FIREWALL-IP-STATISTICS-MIB private OIDs for device health (CPU and RAM
       utilization, both reported directly as percentages) and firewall-specific state
       (current and maximum connection-cache entries and NAT translation count).
+      Supported brands/models — SonicWall TZ/NSa-series firewalls (SonicOS).
   Firewall WatchGuard SNMP:
     name: WatchGuard (Telegraf)
     desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
@@ -3887,6 +4323,7 @@ monitor_object_plugin:
       temperature/fan/psu are not collected because Fireware exposes no standard SNMP
       memory-utilization scalar or sensor table that telegraf inputs.snmp can read
       without row-level filtering.
+      Supported brands/models — WatchGuard Firebox firewalls (Fireware OS).
   Firewall pfSense SNMP:
     name: pfSense (Telegraf)
     desc: pfSense-specific SNMP collection template for pfSense (FreeBSD/pf) firewalls.
@@ -3895,6 +4332,7 @@ monitor_object_plugin:
       pf state-table entry count (equivalent to active connections). Memory and
       temperature/fan/psu are not collected because pfSense exposes memory only via
       row-filtered hrStorage and has no standard sensor table.
+      Supported brands/models — pfSense open-source firewall (FreeBSD).
   Firewall OPNsense SNMP:
     name: OPNsense (Telegraf)
     desc: OPNsense-specific SNMP collection template for OPNsense (FreeBSD/pf) firewalls.
@@ -3903,14 +4341,13 @@ monitor_object_plugin:
       pf state-table entry count (equivalent to active connections). Memory and
       temperature/fan/psu are not collected because OPNsense exposes memory only via
       row-filtered hrStorage and has no standard sensor table.
+      Supported brands/models — OPNsense open-source firewall (FreeBSD).
   Firewall Flow NetFlow:
     name: Firewall Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect firewall traffic and convert it into normalized
-      device traffic metrics.
+    desc: Use NetFlow to collect firewall traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Firewall Flow sFlow:
     name: Firewall Flow Analysis (sFlow)
-    desc: Use sFlow to collect firewall traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use sFlow to collect firewall traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   SNMP Trap:
     desc: The SNMP Trap monitoring plugin is designed to receive and process alerts
       or status notifications (Trap messages) actively pushed by network devices,
@@ -3928,6 +4365,7 @@ monitor_object_plugin:
       counters, it collects JUNIPER-MIB jnxOperating private OIDs for device health
       (CPU utilization and memory-buffer utilization, both reported as percentages and
       averaged across routing-engine/FPC operating entities).
+      Supported brands/models — Juniper MX-series service routers (MX240/480/960, etc., Junos).
   Router Huawei AR SNMP:
     name: Huawei AR (Telegraf)
     desc: Huawei AR-specific SNMP collection template for Huawei AR-series routers (VRP).
@@ -3935,14 +4373,27 @@ monitor_object_plugin:
       it collects HUAWEI-ENTITY-EXTENT-MIB private OIDs for device health (CPU and
       memory utilization, both reported directly as percentages and averaged across
       entities).
+      Supported brands/models — Huawei AR-series enterprise routers (AR1200/AR2200/AR3200, etc.).
+  Router Vyatta SNMP:
+    name: Vyatta (Telegraf)
+    desc: Vyatta/VyOS-specific SNMP collection template for Vyatta/VyOS (Linux) routers.
+      In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters,
+      it collects HOST-RESOURCES CPU load (averaged across cores) and UCD-SNMP real
+      memory (total/free, used and derived usage). Memory usage is derived as
+      (total - free) / total.
+      Supported brands/models — Vyatta / VyOS software routers.
+  Router NEC SNMP:
+    name: NEC (Telegraf)
+    desc: NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health including 1-minute CPU utilization, memory utilization and chassis temperature, all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000 / IX3000 and other UNIVERGE IX platforms; enterprise 119).
+  Router DrayTek SNMP:
+    name: DrayTek (Telegraf)
+    desc: DrayTek Vigor router / firewall SNMP collection (DrayTek private MIB, IANA PEN 7367). Beyond standard IF-MIB interface metrics, it collects device memory utilisation from the DrayTek private OID (1.3.6.1.4.1.7367.3.7.0, reported directly as a percentage) and CPU utilisation via HOST-RESOURCES hrProcessorLoad. Temperature/fan/power are not exposed by the Vigor MIB, so they are N/A. Supported brands/models — DrayTek Vigor series routers / firewalls (Vigor 2xxx / 3xxx, e.g. Vigor2962 / Vigor3900; enterprise 7367). CPU requires firmware exposing HOST-RESOURCES.
   Router Flow NetFlow:
     name: Router Flow Analysis (NetFlow)
-    desc: Use NetFlow to collect router traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use NetFlow to collect router traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Router Flow sFlow:
     name: Router Flow Analysis (sFlow)
-    desc: Use sFlow to collect router traffic and convert it into normalized device
-      traffic metrics.
+    desc: Use sFlow to collect router traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: The ActiveMQ plugin, based on JMX collection, acquires key performance metrics

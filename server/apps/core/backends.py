@@ -1,3 +1,5 @@
+import os
+import re
 from typing import Any, Dict, List, Optional, Set
 
 import pytz
@@ -23,11 +25,42 @@ COOKIE_CURRENT_TEAM = "current_team"
 CLIENT_ID_ENV_KEY = "CLIENT_ID"
 
 
+def _collect_ancestor_group_ids(seed_ids: List) -> Set[int]:
+    """
+    从 seed_ids 出发，沿 parent_id 链向上收集所有祖先组 ID（含自身）。
+
+    仅使用轻量级 values_list 查询（不加载角色关联），避免全表 prefetch。
+    返回的集合可用于后续有针对性地加载完整 Group 对象。
+
+    算法与 system_mgmt/nats_api.py 中的 _collect_ancestor_group_ids 保持一致。
+    """
+    if not seed_ids:
+        return set()
+    # 一次轻量查询：只取 (id, parent_id, allow_inherit_roles)，不加载角色关联
+    all_meta = {
+        row[0]: (row[1], row[2])
+        for row in Group.objects.values_list("id", "parent_id", "allow_inherit_roles")
+    }
+    result: Set[int] = set()
+    stack = list(seed_ids)
+    while stack:
+        gid = stack.pop()
+        if gid in result:
+            continue
+        result.add(gid)
+        meta = all_meta.get(gid)
+        if meta:
+            parent_id, _allow_inherit = meta
+            if parent_id and parent_id not in result:
+                stack.append(parent_id)
+    return result
+
+
 class APISecretAuthBackend(ModelBackend):
     """API密钥认证后端"""
 
-    # 缓存配置
-    PERMISSION_CACHE_TTL = 60  # 权限缓存 TTL（秒）
+    # 缓存配置：默认 600s，可通过 API_TOKEN_PERMISSION_CACHE_TTL 环境变量覆盖
+    PERMISSION_CACHE_TTL = int(os.getenv("API_TOKEN_PERMISSION_CACHE_TTL", "600"))
     PERMISSION_CACHE_KEY_PREFIX = "api_token_permissions"
 
     def authenticate(self, request=None, username=None, password=None, api_token=None, **kwargs) -> Optional[User]:
@@ -148,8 +181,15 @@ class APISecretAuthBackend(ModelBackend):
         user_groups = user.group_list or []
 
         if user_groups:
-            # 单次查询所有组织，内存中完成递归，避免 N+1
-            all_groups = {g.id: g for g in Group.objects.prefetch_related("roles").all()}
+            # 两步有界查询，避免全表 prefetch（修复 thundering herd）：
+            # 1. 轻量 values_list 找出用户相关祖先组 ID（见 _collect_ancestor_group_ids）
+            # 2. 按 ID 集合有界加载含角色关联的 Group 对象
+            seed_ids = [gid.get("id") if isinstance(gid, dict) else gid for gid in user_groups if gid]
+            ancestor_ids = _collect_ancestor_group_ids(seed_ids)
+            all_groups = {
+                g.id: g
+                for g in Group.objects.prefetch_related("roles").filter(id__in=ancestor_ids)
+            }
             visited: Set[int] = set()
 
             def collect_roles(group_id: int) -> None:
@@ -172,12 +212,8 @@ class APISecretAuthBackend(ModelBackend):
                     if parent and parent.allow_inherit_roles:
                         collect_roles(parent_id)
 
-            for gid in user_groups:
-                # 处理 group_list 可能是 [{"id": 1}] 或 [1] 的情况
-                if isinstance(gid, dict):
-                    gid = gid.get("id")
-                if gid:
-                    collect_roles(gid)
+            for gid in seed_ids:
+                collect_roles(gid)
 
         return personal_role_ids | group_role_ids
 
@@ -282,21 +318,50 @@ class AuthBackend(ModelBackend):
             logger.error(f"Failed to get user rules for {username}: {e}")
             return {}
 
-    @staticmethod
-    def get_is_superuser(request, user_info) -> bool:
+    # URL 前缀 → 角色名前缀映射（仅对命名不一致的应用需要映射）
+    _APP_NAME_MAP = {
+        "system_mgmt": "system-manager",
+        "node_mgmt": "node",
+        "console_mgmt": "ops-console",
+        "operation_analysis": "ops-analysis",
+        "job_mgmt": "job",
+    }
+
+    # 匹配 /api/v1/<app_name>/ 格式的路径（锚定起始 /）
+    _API_V1_PATH_RE = re.compile(r"^/api/v1/([^/]+)/")
+
+    @classmethod
+    def _extract_app_name_from_request(cls, request) -> str:
+        """从请求中提取应用名。
+
+        优先使用 request.resolver_match.route（Django 路由解析后的稳定路由前缀），
+        其次使用锚定正则对 request.path 做匹配。
+        两种方式均锚定路径起点，避免多段 api/v1/ 被末段覆盖的问题。
+        """
+        # 优先：使用已路由解析的 route（process_view 阶段 resolver_match 已就绪）
+        resolver_match = getattr(request, "resolver_match", None)
+        if resolver_match is not None:
+            route = getattr(resolver_match, "route", None)
+            # route 格式：'api/v1/<app_name>/...' （不含前导 /）；仅在为字符串时使用
+            if isinstance(route, str) and route:
+                m = re.match(r"^api/v1/([^/]+)/", route)
+                if m:
+                    return m.group(1)
+
+        # 兜底：对 request.path 做锚定正则匹配
+        m = cls._API_V1_PATH_RE.match(request.path)
+        return m.group(1) if m else ""
+
+    @classmethod
+    def get_is_superuser(cls, request, user_info) -> bool:
         """检查用户是否为超级用户"""
         is_superuser = bool(user_info.get("is_superuser", False))
         if is_superuser:
             return True
-        app_name = request.path.split("api/v1/")[-1].split("/", 1)[0]
-        app_name_map = {
-            "system_mgmt": "system-manager",
-            "node_mgmt": "node",
-            "console_mgmt": "ops-console",
-            "operation_analysis": "ops-analysis",
-            "job_mgmt": "job",
-        }
-        app_name = app_name_map.get(app_name, app_name)
+        app_name = cls._extract_app_name_from_request(request)
+        if not app_name:
+            return False
+        app_name = cls._APP_NAME_MAP.get(app_name, app_name)
         app_admin = f"{app_name}--admin"
         return app_admin in user_info.get("roles", [])
 
@@ -311,16 +376,37 @@ class AuthBackend(ModelBackend):
             domain = user_info.get("domain", "domain.com")
             user, created = User._default_manager.get_or_create(username=username, domain=domain)
             is_superuser = self.get_is_superuser(request, user_info)
-            # 更新用户基本信息
-            user.email = user_info.get("email", "")
-            user.is_superuser = is_superuser
-            user.is_staff = user.is_superuser
-            user.is_active = True
-            user.group_list = user_info.get("group_list", [])
-            user.roles = user_info.get("roles", [])
-            user.locale = user_info.get("locale", DEFAULT_LOCALE)
-            user.save()
-            # 设置运行时属性
+            # 计算各字段新值
+            new_email = user_info.get("email", "")
+            new_group_list = user_info.get("group_list", [])
+            new_roles = user_info.get("roles", [])
+            new_locale = user_info.get("locale", DEFAULT_LOCALE)
+            # 仅在有字段实际变化时才写库，避免认证热路径产生无谓 DB UPDATE
+            update_fields = []
+            if user.email != new_email:
+                user.email = new_email
+                update_fields.append("email")
+            if user.is_superuser != is_superuser:
+                user.is_superuser = is_superuser
+                update_fields.append("is_superuser")
+            if user.is_staff != is_superuser:
+                user.is_staff = is_superuser
+                update_fields.append("is_staff")
+            if not user.is_active:
+                user.is_active = True
+                update_fields.append("is_active")
+            if user.group_list != new_group_list:
+                user.group_list = new_group_list
+                update_fields.append("group_list")
+            if user.roles != new_roles:
+                user.roles = new_roles
+                update_fields.append("roles")
+            if user.locale != new_locale:
+                user.locale = new_locale
+                update_fields.append("locale")
+            if created or update_fields:
+                user.save(update_fields=update_fields if not created else None)
+            # 设置运行时属性（不持久化到 DB）
             user.timezone = user_info.get("timezone", "Asia/Shanghai")
             user.rules = rules
             user.permission = {key: set(value) for key, value in user_info.get("permission", {}).items()}

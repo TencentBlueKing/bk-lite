@@ -9,6 +9,7 @@ from typing import Optional, Tuple, Type
 from rest_framework import serializers, status
 from rest_framework.response import Response
 
+from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -52,8 +53,8 @@ class TeamResolveMixin:
         if getattr(request, "api_pass", False):
             return user_group_ids[0], None
 
-        # 会话认证：优先使用 current_team cookie
-        current_team_str = request.COOKIES.get("current_team")
+        # 会话认证：优先使用 current_team（API Key 注入属性或 cookie）
+        current_team_str = get_current_team(request)
         if current_team_str:
             try:
                 current_team = int(current_team_str)

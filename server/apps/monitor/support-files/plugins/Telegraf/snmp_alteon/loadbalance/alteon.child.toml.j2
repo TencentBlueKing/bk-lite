@@ -1,0 +1,67 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_alteon"
+        config_type = "alteon"
+        brand = "alteon"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Radware Alteon CPU (ALTEON-CHEETAH-SWITCH-MIB mpCpuStatsUtil1Second, 直接%, PEN 1872) ----
+    # 待现网核验：mpCpuStatsUtil1Second 1.3.6.1.4.1.1872.2.5.1.2.2.1.0（MP CPU 1 秒利用率%，alteonos.snmprec 实测 42）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1872.2.5.1.2.2.1.0"
+        name = "usage"
+    # ---- Alteon memory (mpMemStatsTotal/Free, bytes；用量=(total-free)/total*100，盘自适应) ----
+    # 待现网核验：mpMemStatsTotal .1872.2.5.1.2.8.1.0 / mpMemStatsFree .1872.2.5.1.2.8.3.0（字节，snmprec 实测 total=67108863 free=23495324）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1872.2.5.1.2.8.1.0"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1872.2.5.1.2.8.3.0"
+        name = "free"
+# ---- 连接/温度/风扇/电源：Alteon CHEETAH MIB 未暴露标量会话/温/风/电(或 per-row 混表) → N/A。CPU+内存(total/free)干净可采。----

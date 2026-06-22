@@ -217,6 +217,78 @@ def test_instance_association_delete(fake_graph, patch_side_effects, monkeypatch
 
 
 @pytest.mark.django_db
+def test_instance_association_create_unresolved_endpoint(fake_graph, patch_side_effects, monkeypatch):
+    """回归：端点实体未完全解析（dst 为空、src 缺 model_id，如接口↔接口并行边时
+    query_edge_by_id 偶发回空端点）时，创建关联不应因拼接变更记录文案 KeyError 而 500。"""
+    monkeypatch.setattr(f"{MODULE}.create_change_record_by_asso", lambda *a, **k: None)
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage.instance_association_by_asso_id",
+        lambda aid: {"src": {"_id": 1, "inst_name": "if-a"}, "dst": {}},
+    )
+    fake_graph(MODULE, create_edge={"_id": 101, "model_asst_id": "interface_connect_interface"})
+    out = InstanceManage.instance_association_create(
+        {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
+         "src_model_id": "interface", "dst_model_id": "interface",
+         "model_asst_id": "interface_connect_interface"},
+        "admin",
+    )
+    assert out["_id"] == 101
+
+
+@pytest.mark.django_db
+def test_instance_association_delete_unresolved_endpoint(fake_graph, patch_side_effects, monkeypatch):
+    """回归：删除关联时端点实体未完全解析也不应 KeyError。"""
+    monkeypatch.setattr(f"{MODULE}.create_change_record_by_asso", lambda *a, **k: None)
+    monkeypatch.setattr(
+        f"{MODULE}.InstanceManage.instance_association_by_asso_id",
+        lambda aid: {"src": {"_id": 1, "inst_name": "if-a"}, "dst": {}},
+    )
+    fg = fake_graph(MODULE)
+    InstanceManage.instance_association_delete(101, "admin")
+    assert any(c[0] == "delete_edge" for c in fg.calls)
+
+
+@pytest.mark.django_db
+def test_instance_association_create_duplicate_raises_friendly(fake_graph, patch_side_effects, monkeypatch):
+    """create_edge 报「edge already exists」时转成可读的 repetition 提示。"""
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
+
+    def dup(*a, **k):
+        raise BaseAppException("edge already exists")
+
+    fake_graph(MODULE, create_edge=dup)
+    with pytest.raises(BaseAppException) as ei:
+        InstanceManage.instance_association_create(
+            {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
+             "src_model_id": "interface", "dst_model_id": "interface",
+             "model_asst_id": "interface_connect_interface"},
+            "admin",
+        )
+    assert "repetition" in str(ei.value.message)
+
+
+@pytest.mark.django_db
+def test_instance_association_create_propagates_graph_error(fake_graph, patch_side_effects, monkeypatch):
+    """回归：create_edge 抛非「edge already exists」异常时必须原样抛出，
+    而不是被吞掉导致后续 edge 未赋值 UnboundLocalError 掩盖真实错误。"""
+    monkeypatch.setattr(f"{MODULE}.InstanceManage.check_asso_mapping", lambda data: None)
+
+    def boom(*a, **k):
+        raise BaseAppException("graph down")
+
+    fake_graph(MODULE, create_edge=boom)
+    with pytest.raises(BaseAppException) as ei:
+        InstanceManage.instance_association_create(
+            {"src_inst_id": 1, "dst_inst_id": 2, "asst_id": "connect",
+             "src_model_id": "interface", "dst_model_id": "interface",
+             "model_asst_id": "interface_connect_interface"},
+            "admin",
+        )
+    assert "graph down" in str(ei.value.message)
+
+
+@pytest.mark.django_db
 def test_instance_association_by_asso_id_found(fake_graph):
     fake_graph(MODULE, query_edge_by_id={"src": {"_id": 1}, "dst": {"_id": 2}, "_id": 100})
     out = InstanceManage.instance_association_by_asso_id(100)

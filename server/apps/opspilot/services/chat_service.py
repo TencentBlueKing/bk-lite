@@ -258,6 +258,10 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
+        if kwargs.get("session_id"):
+            extra_config["session_id"] = kwargs["session_id"]
+        if kwargs.get("bot_id"):
+            extra_config["bot_id"] = kwargs["bot_id"]
 
         # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
         # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。

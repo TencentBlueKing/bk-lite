@@ -3,17 +3,7 @@ import json
 
 import nats_client
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.models import (
-    Bot,
-    BotConversationHistory,
-    BotWorkFlow,
-    EmbedProvider,
-    LLMModel,
-    LLMSkill,
-    OCRProvider,
-    RerankProvider,
-    SkillTools,
-)
+from apps.opspilot.models import Bot, BotConversationHistory, BotWorkFlow, EmbedProvider, LLMModel, LLMSkill, OCRProvider, RerankProvider, SkillTools
 from apps.opspilot.utils.bot_utils import get_user_info
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 
@@ -195,7 +185,7 @@ def consume_bot_event(kwargs):
             conversation_role=kwargs["event"],
             conversation=kwargs["text"] or "",
         )
-    except (KeyError, ValueError, TypeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
+    except (KeyError, ValueError, TypeError, AttributeError, Bot.DoesNotExist, json.JSONDecodeError) as e:
         # 预期内的数据/解析错误：记录详细堆栈并向 NATS 调用方回传失败结果，
         # 避免对话历史被静默丢弃。
         logger.exception(f"对话历史保存失败: {e}, 传入参数如下：{kwargs}")

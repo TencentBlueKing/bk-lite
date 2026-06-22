@@ -9,6 +9,13 @@ from core.task_queue import get_task_queue
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
 
 
+def _mask_credential(secret_id: str) -> str:
+    """对凭证 ID 做脱敏处理，仅保留前4位便于区分账号，不暴露完整凭证值。"""
+    if not secret_id:
+        return "***"
+    return secret_id[:4] + "***" if len(secret_id) > 4 else "***"
+
+
 def _monitor_error_response(monitor_type: str, error: str, status: int = 400):
     current_timestamp = int(time.time() * 1000)
     error_lines = [
@@ -240,7 +247,7 @@ async def qcloud_metrics(request):
         prometheus_lines = [
             "# HELP monitor_request_accepted Indicates that monitor request was accepted",
             "# TYPE monitor_request_accepted gauge",
-            f'monitor_request_accepted{{monitor_type="qcloud",username="{username}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
+            f'monitor_request_accepted{{monitor_type="qcloud",username="{_mask_credential(username)}",task_id="{task_info["task_id"]}",status="queued"}} 1 {current_timestamp}',
         ]
 
         metrics_response = "\n".join(prometheus_lines) + "\n"
@@ -263,7 +270,7 @@ async def qcloud_metrics(request):
         error_lines = [
             "# HELP monitor_request_error Monitor request error",
             "# TYPE monitor_request_error gauge",
-            f'monitor_request_error{{monitor_type="qcloud",username="{username}",error="{str(e)}"}} 1 {current_timestamp}',
+            f'monitor_request_error{{monitor_type="qcloud",username="{_mask_credential(username)}",error="{str(e)}"}} 1 {current_timestamp}',
         ]
 
         return response.raw(

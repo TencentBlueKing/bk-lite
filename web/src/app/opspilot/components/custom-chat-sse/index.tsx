@@ -1,4 +1,4 @@
-import React, {ReactNode, useCallback, useEffect, useRef, useState} from 'react';
+import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, ButtonProps, Flex, Image, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
@@ -16,6 +16,7 @@ import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
+import {postUserChoice} from './submitUserChoice';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
@@ -104,12 +105,16 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS
+// Sanitize HTML to prevent XSS and CSS injection.
+// SECURITY: 'style' tag (block CSS) is intentionally excluded — allowing it enables CSS injection
+// via LLM prompt injection (e.g. `<style>*{background:url(//attacker.com)}</style>`).
+// Inline 'style' attribute is kept in ALLOWED_ATTR as it is used by guide/reference link renderers.
+// ALLOW_DATA_ATTR is false; all required data-* attributes are listed explicitly in ALLOWED_ATTR.
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: true,
+    ALLOW_DATA_ATTR: false,
   });
 };
 
@@ -404,8 +409,49 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     currentBotMessageRef.current = null;
   };
 
+  // 当前是否有正在等待用户回答的选择（B 在等待）：用于把主对话框输入直接投递给该节点，
+  // 而非新建对话；同时让发送框在等待期间可交互（不显示"停止"态）。
+  const pendingChoice = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const reqs = messages[i].userChoiceRequests;
+      if (reqs && reqs.length) {
+        const pending = reqs.find(r => r.status === 'pending');
+        if (pending) return pending;
+      }
+    }
+    return null;
+  }, [messages]);
+
   const handleSend = useCallback(
     async (msg: string, images?: UploadFile[]) => {
+      // 命中"正在等待回答的选择"：把本条消息当作该选择的答案投递给等待中的节点，
+      // 不新建对话、不中断原流（B 会在原 SSE 流上继续输出）。
+      if (pendingChoice && msg.trim() && token) {
+        const answer = msg.trim();
+        try {
+          await postUserChoice(token, {
+            execution_id: pendingChoice.execution_id,
+            node_id: pendingChoice.node_id,
+            choice_id: pendingChoice.choice_id,
+            selected: [answer],
+          });
+          updateMessages(prev => prev.map(m => {
+            if (!m.userChoiceRequests) return m;
+            return {
+              ...m,
+              userChoiceRequests: m.userChoiceRequests.map(r =>
+                r.choice_id === pendingChoice.choice_id
+                  ? { ...r, status: 'submitted' as const, selected: [answer] }
+                  : r
+              ),
+            };
+          }));
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
+        }
+        return;
+      }
+
       if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
 
@@ -435,7 +481,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         await sendMessage(msg, messages, imageData);
       }
     },
-    [loading, token, sendMessage, messages]
+    [pendingChoice, loading, token, sendMessage, messages, updateMessages, t]
   );
 
   const handleCopyMessage = (content: string) => {
@@ -828,14 +874,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           className={styles.sender}
           value={value}
           onChange={setValue}
-          loading={loading}
+          loading={loading && !pendingChoice}
           onSubmit={(msg: string) => {
             setValue('');
             const currentImages = [...imageList];
             setImageList([]);
             handleSend(msg, currentImages);
           }}
-          placeholder={placeholder}
+          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题…') : placeholder}
           onCancel={stopSSEConnection}
           prefix={uploadButton}
           onPaste={(event: React.ClipboardEvent) => {

@@ -32,6 +32,7 @@ from apps.log.serializers.policy import (
     EventRawDataSerializer,
 )
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 def get_accessible_log_policy_ids(request, collect_type_id=None):
@@ -45,7 +46,7 @@ def get_accessible_log_policy_ids(request, collect_type_id=None):
     if normalized_collect_type_id in cached_policy_ids:
         return cached_policy_ids[normalized_collect_type_id]
 
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if not current_team:
         cached_policy_ids[normalized_collect_type_id] = []
         return []
@@ -140,7 +141,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permissions_result = get_permissions_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "log",
             PermissionConstants.POLICY_MODULE,
             include_children=include_children,
@@ -220,7 +221,7 @@ class PolicyViewSet(viewsets.ModelViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permissions_result = get_permissions_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "log",
             PermissionConstants.POLICY_MODULE,
             include_children=include_children,
@@ -528,7 +529,7 @@ class AlertViewSet(viewsets.ModelViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permissions_result = get_permissions_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "log",
             PermissionConstants.POLICY_MODULE,
             include_children=include_children,
@@ -581,7 +582,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             permission = get_permission_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "log",
                 f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
                 include_children=include_children,
@@ -596,7 +597,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             )
             policy_qs = policy_qs.filter(
                 collect_type_id=collect_type_id,
-                policyorganization__organization=request.COOKIES.get("current_team"),
+                policyorganization__organization=get_current_team(request),
             ).distinct()
 
             # 获取有权限的policy_ids
@@ -728,7 +729,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             permission = get_permission_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "log",
                 f"{PermissionConstants.POLICY_MODULE}.{collect_type_id}",
                 include_children=include_children,
@@ -743,7 +744,7 @@ class AlertViewSet(viewsets.ModelViewSet):
             )
             policy_qs = policy_qs.filter(
                 collect_type_id=collect_type_id,
-                policyorganization__organization=request.COOKIES.get("current_team"),
+                policyorganization__organization=get_current_team(request),
             ).distinct()
 
             # 获取有权限的policy_ids

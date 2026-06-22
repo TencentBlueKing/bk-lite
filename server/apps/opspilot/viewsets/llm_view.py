@@ -15,6 +15,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.viewset_utils import AuthViewSet, LanguageViewSet
 from apps.opspilot.metis.llm.tools.elasticsearch.connection import normalize_es_instance, test_es_instance
 from apps.opspilot.metis.llm.tools.jenkins.connection import normalize_jenkins_instance, test_jenkins_instance
@@ -129,7 +130,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
-        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
+        params["team"] = params.get("team", []) or [self._parse_current_team_cookie(request)]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
@@ -166,7 +167,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
     def update(self, request, *args, **kwargs):
         instance: LLMSkill = self.get_object()
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = get_current_team(request, "0")
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
@@ -260,7 +261,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 获取客户端IP
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
-                current_team = request.COOKIES.get("current_team", "0")
+                current_team = get_current_team(request, "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
                 has_permission = self.get_has_permission(
                     request.user,
@@ -329,7 +330,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
         try:
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
-                current_team = request.COOKIES.get("current_team", "0")
+                current_team = get_current_team(request, "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
                 has_permission = self.get_has_permission(
                     request.user,

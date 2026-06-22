@@ -7,6 +7,7 @@ from apps.base.models.user import UserAPISecret
 from apps.base.user_api_secret_mgmt.serializers import UserAPISecretCreateSerializer, UserAPISecretSerializer
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.team_utils import get_current_team
 
 
 def _get_loader(request) -> LanguageLoader:
@@ -16,7 +17,7 @@ def _get_loader(request) -> LanguageLoader:
 
 
 def _parse_current_team(request, loader: LanguageLoader):
-    current_team = request.COOKIES.get("current_team", "0")
+    current_team = get_current_team(request, "0")
     try:
         return int(current_team), None
     except (TypeError, ValueError):
@@ -40,7 +41,7 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
         if not request or not user or not user.is_authenticated:
             return UserAPISecret.objects.none()
 
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         try:
             current_team = int(current_team)
         except (TypeError, ValueError):

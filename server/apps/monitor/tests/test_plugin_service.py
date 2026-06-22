@@ -332,6 +332,21 @@ def test_normalize_instance_identity_supports_raw_and_legacy_formats():
     }
 
 
+def test_build_safe_instance_id_encodes_parts_without_label_special_chars():
+    dimension_module = _load_module(
+        "monitor_dimension_safe_id_test_module",
+        Path(__file__).resolve().parents[1] / "utils" / "dimension.py",
+    )
+
+    result = dimension_module.build_safe_instance_id(1, " 10.0.0.12 ")
+
+    assert result == "MToxMC4wLjAuMTI"
+    assert all(char not in result for char in ":.=")
+
+    with pytest.raises(ValueError, match="empty"):
+        dimension_module.build_safe_instance_id(1, "")
+
+
 def test_normalize_instance_identity_rejects_empty_value():
     dimension_module = _load_module(
         "monitor_dimension_identity_empty_test_module",

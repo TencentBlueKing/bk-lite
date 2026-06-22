@@ -552,6 +552,10 @@ class AlertSourceAdapter(ABC):
         if not bulk_events:
             return
 
+        # 先执行屏蔽：被屏蔽的事件不应再产出告警，因此屏蔽必须先于即时旁路与聚合，
+        # 确保即时旁路按最新屏蔽状态过滤。
+        self.event_operator(bulk_events)
+
         # 即时告警旁路：与下方现有聚合主路径并行。dispatch 自身吞掉全部异常，
         # 永不阻断主流程；未配置 INSTANT 策略时直接 no-op，零开销。
         try:
@@ -563,7 +567,6 @@ class AlertSourceAdapter(ABC):
         except Exception:  # noqa
             logger.exception("instant dispatch invocation failed; main pipeline continues")
 
-        self.event_operator(bulk_events)
         self.handle_recovery_events(bulk_events)
 
     @staticmethod

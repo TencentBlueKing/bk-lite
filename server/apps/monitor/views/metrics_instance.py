@@ -12,6 +12,7 @@ from apps.monitor.models import MonitorInstance
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.services.metrics import Metrics as MetricsService
 from apps.monitor.utils.unit_converter import UnitConverter
+from apps.core.utils.team_utils import get_current_team
 
 
 class MetricsInstanceViewSet(viewsets.ViewSet):
@@ -268,7 +269,7 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         if not all([monitor_object_id, metric_id, instance_id]):
             raise BaseAppException("monitor_object_id, metric_id, instance_id are required")
 
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         include_children = request.COOKIES.get("include_children", "0") == "1"
 
         if not request.user.is_superuser:

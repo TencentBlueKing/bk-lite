@@ -65,6 +65,8 @@ const StudioSettingsPage: React.FC = () => {
           name: botData.name,
           introduction: botData.introduction,
           group: botData.team,
+          // 使用组织：后端未返回时回退到管理组织（不变式 team ⊆ usage_team）
+          usage_team: botData.usage_team ?? botData.team,
         });
 
         setOnline(botData.online);
@@ -145,6 +147,7 @@ const StudioSettingsPage: React.FC = () => {
         name: values.name,
         introduction: values.introduction,
         team: values.group,
+        usage_team: values.usage_team,
         workflow_data: workflowData,
         is_publish: isPublish
       };
