@@ -6,6 +6,8 @@ import { MinusCircleOutlined, PlusOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useSettingApi } from '@/app/alarm/api/settings';
 import { EnrichmentRuleListItem } from '@/app/alarm/types/settings';
+import { ruleList } from '@/app/alarm/constants/settings';
+import MatchRule from '@/app/alarm/(pages)/settings/components/matchRule';
 
 interface OperateModalProps {
   open: boolean;
@@ -13,6 +15,12 @@ interface OperateModalProps {
   currentRow?: EnrichmentRuleListItem | null;
   onSuccess?: () => void;
 }
+
+// 默认展示一条起始匹配条件行（参考相关性规则，避免空白难理解）；
+// 用户不填条件值则提交时被清理为空 = 对全部事件生效。
+const DEFAULT_MATCH_RULES = [
+  [{ key: 'resource_type', operator: 'eq', value: '' }],
+];
 
 const OperateModal: React.FC<OperateModalProps> = ({
   open,
@@ -38,6 +46,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
         name: currentRow.name,
         provider_type: currentRow.provider_type || 'cmdb',
         namespace: currentRow.namespace,
+        match_rules: currentRow.match_rules?.length
+          ? currentRow.match_rules
+          : DEFAULT_MATCH_RULES,
         on_multiple: currentRow.on_multiple || 'first',
         input_binding: Object.entries(currentRow.input_binding || {}).map(
           ([param, field]) => ({ param, field })
@@ -51,6 +62,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
       form.resetFields();
       form.setFieldsValue({
         provider_type: 'cmdb',
+        namespace: 'cmdb',
+        match_rules: DEFAULT_MATCH_RULES,
         on_multiple: 'first',
         input_binding: [
           { param: 'model_id', field: 'resource_type' },
@@ -74,12 +87,22 @@ const OperateModal: React.FC<OperateModalProps> = ({
           r.as ? { source: r.source, as: r.as } : { source: r.source }
         );
 
+      // 清理未填全的匹配条件行；若全部未填则为空 = 对全部事件生效
+      const match_rules = (values.match_rules || [])
+        .map((group: any[]) =>
+          (group || []).filter(
+            (it: any) =>
+              it?.key && it?.operator && it?.value !== undefined && it?.value !== ''
+          )
+        )
+        .filter((group: any[]) => group.length > 0);
+
       const payload = {
         name: values.name,
         is_active: currentRow?.is_active ?? true,
         provider_type: values.provider_type,
         namespace: values.namespace || '',
-        match_rules: currentRow?.match_rules || [],
+        match_rules,
         provider_config: currentRow?.provider_config || {},
         input_binding,
         output_projection,
@@ -145,8 +168,22 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <Select options={[{ label: 'CMDB', value: 'cmdb' }]} />
         </Form.Item>
 
-        <Form.Item name="namespace" label={t('settings.enrichmentNamespace')}>
+        <Form.Item
+          name="namespace"
+          label={t('settings.enrichmentNamespace')}
+          tooltip={t('settings.enrichmentNamespaceTip')}
+          extra={t('settings.enrichmentNamespaceTip')}
+          rules={[{ required: true, message: t('common.inputTip') }]}
+        >
           <Input placeholder="cmdb" />
+        </Form.Item>
+
+        <Form.Item
+          name="match_rules"
+          label={t('settings.enrichmentMatchRules')}
+          tooltip={t('settings.enrichmentMatchRulesTip')}
+        >
+          <MatchRule levelType="event" />
         </Form.Item>
 
         <Form.Item label={t('settings.enrichmentInputBinding')} required>
@@ -169,12 +206,18 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     <Form.Item
                       {...rest}
                       name={[name, 'field']}
-                      rules={[{ required: true, message: t('common.inputTip') }]}
+                      rules={[{ required: true, message: t('common.selectTip') }]}
                       noStyle
                     >
-                      <Input
+                      <Select
+                        showSearch
+                        optionFilterProp="label"
                         placeholder={t('settings.enrichmentBindField')}
                         style={{ width: 280 }}
+                        options={ruleList.map((r) => ({
+                          label: r.verbose_name,
+                          value: r.name,
+                        }))}
                       />
                     </Form.Item>
                     <MinusCircleOutlined onClick={() => remove(name)} />

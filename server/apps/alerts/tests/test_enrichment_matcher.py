@@ -24,3 +24,16 @@ def test_or_across_groups():
 
 def test_missing_field_is_not_match():
     assert event_matches({"title": "x"}, [[{"key": "level", "operator": "eq", "value": "0"}]]) is False
+
+
+def test_regex_operator_matches():
+    # 前端「正则」操作符 re 必须被引擎支持，否则规则会静默永不命中
+    event = {"resource_name": "10.10.69.248-switch"}
+    assert event_matches(event, [[{"key": "resource_name", "operator": "re", "value": r"^10\.10\..*-switch$"}]]) is True
+    assert event_matches(event, [[{"key": "resource_name", "operator": "re", "value": r"^192\."}]]) is False
+
+
+def test_invalid_regex_does_not_raise():
+    # 非法正则不得抛异常，按不匹配处理
+    event = {"title": "x"}
+    assert event_matches(event, [[{"key": "title", "operator": "re", "value": "("}]]) is False
