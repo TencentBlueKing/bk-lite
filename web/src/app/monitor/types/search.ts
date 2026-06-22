@@ -5,6 +5,7 @@ export interface InstanceItem {
   instance_id: string;
   instance_name: string;
   instance_id_values: string[];
+  interval?: number;
 }
 
 export interface PluginItem {

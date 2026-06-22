@@ -625,6 +625,7 @@
         "guideIntroDesc": "请按以下 {protocol} 指引完成设备侧配置，导出流量后再执行检测。",
         "protocol": "协议",
         "endpoint": "接入端点",
+        "listenerPorts": "监听版本与端口",
         "normalizationRule": "归一化与采样规则",
         "deviceGuide": "设备侧指引",
         "guideStepSelectProtocol": "请先在源设备上启用 {protocol} 导出。",

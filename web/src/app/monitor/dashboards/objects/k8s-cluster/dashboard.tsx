@@ -66,6 +66,7 @@ interface InstanceOption {
   value: string;
   instanceIdValues: string[];
   searchTokens: string[];
+  interval?: number;
 }
 
 type RawMap = Record<string, any>;
@@ -160,7 +161,8 @@ export default function K8sClusterDashboardPage() {
             label,
             value,
             instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
-            searchTokens: buildInstanceSearchTokens(item, label)
+            searchTokens: buildInstanceSearchTokens(item, label),
+            interval: Number(item.interval) || undefined
           });
         });
         setInstanceOptions(Array.from(map.values()));
@@ -175,12 +177,15 @@ export default function K8sClusterDashboardPage() {
     };
   }, [monitorObjectId]);
 
+  const currentOption = instanceOptions.find((o) => o.value === String(instanceId));
+  const currentInstanceInterval = currentOption?.interval;
+
   // 数据加载:hero 先到,面板后到
   const runGroup = async (keys: string[], tv: TimeValuesProps) =>
     runWithConcurrency(keys, QUERY_CONCURRENCY, async (key) => {
       const q = QUERIES[key];
       try {
-        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, RAW_VALUE_METRICS));
+        const result = await getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, tv, RAW_VALUE_METRICS, undefined, currentInstanceInterval));
         return [key, result] as const;
       } catch {
         return [key, null] as const;
@@ -212,7 +217,7 @@ export default function K8sClusterDashboardPage() {
     }
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idValuesKey, timeValues]);
+  }, [currentInstanceInterval, idValuesKey, timeValues]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -283,9 +288,9 @@ export default function K8sClusterDashboardPage() {
     const series = (name: string, src: any): ChartData[] =>
       src
         ? toMetricSeries(
-            { name, display_name: '', description: '', unit: 'none', query: '', color: NEUTRAL_BLUE },
-            src, instanceId, resolvedInstanceName, idValues, instanceIdKeys
-          ).viewData
+          { name, display_name: '', description: '', unit: 'none', query: '', color: NEUTRAL_BLUE },
+          src, instanceId, resolvedInstanceName, idValues, instanceIdKeys
+        ).viewData
         : [];
     const wlSeries = sumSeries([series('deployTotal', raw.deployTotal), series('dsTotal', raw.dsTotal), series('stsTotal', raw.stsTotal)]);
     const prevWl = latestScalar(previousRaw.deployTotal) + latestScalar(previousRaw.dsTotal) + latestScalar(previousRaw.stsTotal);
@@ -413,8 +418,6 @@ export default function K8sClusterDashboardPage() {
     router.push(`?${params.toString()}`);
   };
   const goBack = () => router.back();
-
-  const currentOption = instanceOptions.find((o) => o.value === String(instanceId));
 
   const guide = (label: string, detail: string) => [{ label, detail }];
 

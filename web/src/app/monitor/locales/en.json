@@ -625,6 +625,7 @@
         "guideIntroDesc": "Follow the {protocol} device steps below, then run detection after traffic is exported to the listener endpoint.",
         "protocol": "Protocol",
         "endpoint": "Endpoint",
+        "listenerPorts": "Listener Version and Port",
         "normalizationRule": "Normalization and sampling rule",
         "deviceGuide": "Device guide",
         "guideStepSelectProtocol": "Enable {protocol} export on the source device.",

@@ -8,10 +8,24 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 class FlowAccessGuideService:
     PROTOCOL_PORT_MAP = {"netflow": 2056, "sflow": 6343}
+    LISTENER_ENDPOINT_SPECS = {
+        "netflow": [
+            ("netflow_v5", "NetFlow v5", 2055),
+            ("netflow_v9", "NetFlow v9", 2056),
+        ],
+        "sflow": [
+            ("sflow", "sFlow", 6343),
+        ],
+    }
 
     @classmethod
     def get_listener_endpoint(cls, protocol, cloud_region_id):
         FlowOnboardingService._validate_protocol(protocol)
+        host = cls._get_listener_host(cloud_region_id)
+        return cls._build_udp_endpoint(host, cls.PROTOCOL_PORT_MAP[protocol])
+
+    @classmethod
+    def _get_listener_host(cls, cloud_region_id):
         env_config = NodeMgmt().get_cloud_region_envconfig(cloud_region_id)
         if not isinstance(env_config, dict):
             raise BaseAppException("获取云区域环境变量失败")
@@ -26,24 +40,50 @@ class FlowAccessGuideService:
             raise BaseAppException("NODE_SERVER_URL 配置不合法，无法拼接 Flow 接入地址")
         if ":" in host:
             host = f"[{host}]"
-        return f"udp://{host}:{cls.PROTOCOL_PORT_MAP[protocol]}"
+        return host
+
+    @classmethod
+    def _build_udp_endpoint(cls, host, port):
+        return f"udp://{host}:{port}"
+
+    @classmethod
+    def get_listener_endpoints(cls, protocol, cloud_region_id):
+        FlowOnboardingService._validate_protocol(protocol)
+        host = cls._get_listener_host(cloud_region_id)
+        return [
+            {
+                "protocol": item_protocol,
+                "protocol_name": protocol_name,
+                "endpoint": cls._build_udp_endpoint(host, port),
+                "port": port,
+            }
+            for item_protocol, protocol_name, port in cls.LISTENER_ENDPOINT_SPECS[protocol]
+        ]
 
     @classmethod
     def build_document(cls, *, protocol, cloud_region_id, monitor_object=None, monitor_object_id=None):
         FlowOnboardingService._validate_protocol(protocol)
         monitor_object = cls._resolve_monitor_object(monitor_object=monitor_object, monitor_object_id=monitor_object_id)
         endpoint = cls.get_listener_endpoint(protocol, cloud_region_id)
+        listener_endpoints = cls.get_listener_endpoints(protocol, cloud_region_id)
         protocol_name = "NetFlow" if protocol == "netflow" else "sFlow"
+        endpoint_tip = (
+            "NetFlow v5 使用 UDP 2055，NetFlow v9 使用 UDP 2056，请按设备导出版本选择对应端口。"
+            if protocol == "netflow"
+            else "sFlow 使用 UDP 6343。"
+        )
 
         return {
             "protocol": protocol,
             "protocol_name": protocol_name,
             "endpoint": endpoint,
+            "listener_endpoints": listener_endpoints,
             "cloud_region_id": cloud_region_id,
             "monitor_object_id": monitor_object.id,
             "monitor_object_name": monitor_object.display_name or monitor_object.name,
             "instructions": [
                 f"在设备上开启 {protocol_name} 导出，并将目标地址指向当前接入地址。",
+                endpoint_tip,
                 "保持设备源地址与已绑定的 Flow 资产 IP 一致。",
                 "完成配置后使用检测接口确认最近时间窗内已收到对应协议数据。",
             ],

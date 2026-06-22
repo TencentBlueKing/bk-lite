@@ -11,6 +11,7 @@ import {
   getRecentTimeRange,
   mergeViewQueryKeyValues
 } from '@/app/monitor/utils/common';
+import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 
 export const getMetricsMapKey = (
   objectId: React.Key,
@@ -57,9 +58,12 @@ export const buildSearchQueryParams = ({
   timeRange
 }: BuildSearchQueryParamsArgs): SearchParams => {
   const metricItem = resolveMetricSelection(metrics, group.metric);
-  const queryValues: string[][] = instances
-    .filter((item) => group.instanceIds.includes(item.instance_id))
-    .map((item) => item.instance_id_values);
+  const selectedInstances = instances.filter((item) =>
+    group.instanceIds.includes(item.instance_id)
+  );
+  const queryValues: string[][] = selectedInstances.map(
+    (item) => item.instance_id_values
+  );
   const querykeys: string[] = metricItem?.instance_id_keys || [];
   const queryList = queryValues.map((values) => ({
     keys: querykeys,
@@ -72,16 +76,13 @@ export const buildSearchQueryParams = ({
   const recentTimeRange = getRecentTimeRange(timeRange);
   const startTime = recentTimeRange.at(0);
   const endTime = recentTimeRange.at(1);
-  if (startTime && endTime) {
-    const MAX_POINTS = 100;
-    const DEFAULT_STEP = 360;
+  if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
     params.start = startTime;
     params.end = endTime;
-    params.step = Math.max(
-      Math.ceil(
-        (params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP
-      ),
-      1
+    params.step = calculateQueryStep(
+      params.start,
+      params.end,
+      Math.max(0, ...selectedInstances.map((item) => Number(item.interval) || 0))
     );
   }
   let query = '';

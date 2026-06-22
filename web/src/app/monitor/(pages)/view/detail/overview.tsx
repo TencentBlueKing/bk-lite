@@ -28,6 +28,7 @@ import {
   renderChart,
   getRecentTimeRange
 } from '@/app/monitor/utils/common';
+import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
 import dayjs, { Dayjs } from 'dayjs';
@@ -41,7 +42,8 @@ const Overview: React.FC<ViewDetailProps> = ({
   monitorObjectName,
   instanceName,
   idValues,
-  instanceId
+  instanceId,
+  collectionInterval
 }) => {
   const { isLoading } = useApiClient();
   const { getMonitorMetrics } = useMonitorApi();
@@ -136,17 +138,10 @@ const Overview: React.FC<ViewDetailProps> = ({
     const recentTimeRange = getRecentTimeRange(timeValues);
     const startTime = recentTimeRange.at(0);
     const endTime = recentTimeRange.at(1);
-    const MAX_POINTS = 100; // 最大数据点数
-    const DEFAULT_STEP = 360; // 默认步长
-    if (startTime && endTime) {
+    if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
       params.start = startTime;
       params.end = endTime;
-      params.step = Math.max(
-        Math.ceil(
-          (params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP
-        ),
-        1
-      );
+      params.step = calculateQueryStep(params.start, params.end, collectionInterval);
     }
     return params;
   };

@@ -44,7 +44,7 @@ export default function PostgresqlDashboardPage() {
 
   // 「数据库压力排行」为 bespoke 取数:config-driven 核心无法表达按 db 的动态 TopN,
   // 故复用实例/时间上下文,自行发 topk(by db) 查询并解析为 BarList。
-  const { idValues, timeValues, isDashboardMode, loadTick } = dashboard;
+  const { idValues, timeValues, isDashboardMode, loadTick, currentInstanceInterval } = dashboard;
   const [topDb, setTopDb] = useState<Record<string, BarItem[]>>({});
   const idValuesKey = JSON.stringify(idValues);
   const timeKey = JSON.stringify(timeValues);
@@ -58,7 +58,7 @@ export default function PostgresqlDashboardPage() {
     runWithConcurrency(PG_TOP_DB_QUERIES, TOP_DB_CONCURRENCY, async (q) =>
       // autoConvert=false:禁用服务端单位自动换算,否则会与前端 formatMetricValue 双重换算
       //(如 counts 被后端先 ÷1000 成 thousand,前端再按 counts 缩放,量级错乱)。见 k8s-node 同因。
-      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false))
+      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, false, currentInstanceInterval))
         .then((res: any) => [q.key, topDbBars(res, q.unit, q.color)] as const)
         .catch(() => [q.key, [] as BarItem[]] as const)
     ).then((entries) => {
@@ -71,7 +71,7 @@ export default function PostgresqlDashboardPage() {
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
   return (
     <DashboardShell

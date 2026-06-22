@@ -11,6 +11,12 @@ import type { FlowAssetWizardState } from './flowConfiguration';
 interface FlowGuideDocument {
   protocol: FlowProtocol;
   endpoint: string;
+  listener_endpoints?: {
+    protocol: string;
+    protocol_name: string;
+    endpoint: string;
+    port: number;
+  }[];
 }
 
 interface FlowDetectResult {
@@ -81,6 +87,7 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
 
   const protocolLabel = protocolLabelMap[protocol];
   const endpoint = guide?.endpoint || '--';
+  const listenerEndpoints = guide?.listener_endpoints || [];
   const guideSteps = useMemo(
     () => [
       t('monitor.integrations.flow.guideStepSelectProtocol', undefined, {
@@ -142,6 +149,19 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
               <Descriptions.Item label={t('monitor.integrations.flow.endpoint')}>
                 <span className="break-all">{endpoint}</span>
               </Descriptions.Item>
+              {listenerEndpoints.length > 0 && (
+                <Descriptions.Item label={t('monitor.integrations.flow.listenerPorts')}>
+                  <div className="space-y-1">
+                    {listenerEndpoints.map((item) => (
+                      <div key={item.protocol} className="break-all">
+                        <span className="font-medium">{item.protocol_name}</span>
+                        <span className="mx-1">UDP {item.port}</span>
+                        <span className="text-[var(--color-text-3)]">{item.endpoint}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label={t('monitor.integrations.flow.assetName')}>
                 {assetState.name}
               </Descriptions.Item>
