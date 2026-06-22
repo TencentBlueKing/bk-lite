@@ -83,17 +83,19 @@
 - Purpose/Schema 生成:真实输出(purpose 325 字 / schema 347 字)
 - 环境事实:**聊天 LLM 端点可用**(模型 130);**嵌入端点仍 502**(单一 EmbedProvider#36 上游不可用);**pgvector 0.8.1 服务端可用**(未启用)。
 
-## 待办(剩余 —— 受外部服务/运行时限制,我无法在此代为执行)
+## 语义检索 + 图片 OCR 真实验证 ✅(2026-06-22,经你授权用开发库)
+关键发现:**网关 `https://api.v36.cm/v1`(模型 130 的 vendor)同时提供 chat + embeddings + vision**;你的 EmbedProvider#36 / OCRProvider 指向了别处/未配,换到此网关即全部可用。已实跑验证(数据用完即删):
+- **语义检索**:用 `text-embedding-3-small`(dim=1536)生成**真实向量**;`semantic_search('怎么重启 nginx')` 正确把"重启服务"页排第一(`SEM_OK=True`);`chunk_search`/`hybrid_search` 同样命中正确页。**真实向量验证通过**。
+- **图片 OCR**:配 OCRProvider(vendor=网关, model=`gpt-4o`)→ 对含 "RESTART NGINX 2025" 的图片 `extract_text` **真实识别出文字**(`OCR_OK=True`),走 ImageLoader→OlmOcr(OpenAI 兼容 vision,通用模型即可)。
+- 配置提示:把 EmbedProvider#36 的 vendor.api_base 改为 `https://api.v36.cm/v1`、新建一个 vendor=该网关、model=gpt-4o 的 OCRProvider,即在你环境生效。
 
-LLM 链路已真实验证(上方);以下受真实外部依赖限制:
+## 待办(剩余 —— 仅 1 项:前端浏览器点击,worktree 结构性跑不起)
 
-1. **嵌入/语义检索 + pgvector 的实际运行**:`semantic_search`/`chunk_search`/`hybrid_search` 与持久化索引(JSON+余弦)代码完整 + stub 单测;**真实运行受你的嵌入端点 502 阻塞**(单一 EmbedProvider#36 上游不可用)——无法生成向量,故 JSON 与 pgvector 两条路径都无法在此跑真实数据。pgvector 0.8.1 服务端已就绪,嵌入端点恢复后:启用扩展即可把 JSON 向量换索引列(功能不变,扩规模)。
-2. **纯图片 OCR 的实际运行**:云端 OCRProvider **或** 本机 Tesseract/RapidOCR 路径均已接通 + 优雅降级;当前环境无引擎(私有源无 rapidocr、无 tesseract 二进制、OCRProvider 为空)。装好其一即生效。注:**pdf/docx/pptx/表格/文本/网页均已无需 OCR**,仅"纯图片"子集需引擎。
-3. **前端交互冒烟**:需在主仓库跑 dev server(worktree `prepare-enterprise` 缺 `fs-extra`、Turbopack 拒绝跨根软链;此为你既定流程「前端冒烟去主仓库」);代码已全程 eslint + 作用域 tsc 校验。
+LLM / 语义检索 / 图片 OCR 均已**真实端到端验证**(上方);仅剩:
 
-> 其余原"受阻"项已完成:beat 周期已注册;`wiki_list` 已写入菜单 json;两步构建/Louvain/PageChunk/版本diff 已补齐;**LLM 链路已用模型 130 真实端到端验证**。
-- **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
-- **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
+1. **前端浏览器点击冒烟**:worktree 前端运行时**结构性跑不起**——dev server(Turbopack/webpack)与 Storybook 三次尝试均崩在 web `node_modules`/`prepare-enterprise`(缺 `fs-extra`)。代码已全程 eslint + 作用域 tsc 校验。此为你既定流程「前端冒烟去主仓库」,需在主仓库(依赖完整)对 `/opspilot/wiki` 点验。
+
+> 其余原"受阻"项均已**真实验证或完成**:LLM 构建/问答/摘要/Purpose 生成(模型 130)、语义检索/分块/混合(真实向量,api.v36.cm 嵌入)、图片 OCR(api.v36.cm gpt-4o vision)全部**真实端到端跑通**;beat 周期已注册;`wiki_list` 已入菜单;两步构建/Louvain/PageChunk/版本 diff 已补齐。pgvector 为多 DB 可移植性故意不作默认(JSON+余弦跨 7 种库,pgvector 仅 Postgres 专属可选)。
 
 ## 已上线 API(`/api/v1/opspilot/wiki_mgmt/`)
 - `knowledge_base/`(CRUD)+ 动作 `templates` `generate_purpose_schema` `search` `qa` `scan` `rebuild_relations` `relations` `graph` `overview` `context`(detail=False)
