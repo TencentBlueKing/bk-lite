@@ -36,3 +36,24 @@ def load_session_history(bot_id, user_id, session_id, exclude_execution_id, cap:
         event = "user" if row.conversation_role == "user" else "bot"
         history.append({"event": event, "message": row.conversation_content})
     return history
+
+
+def build_node_chat_history(variable_manager, raw_input_message: Any, final_message: Any) -> List[Dict[str, Any]]:
+    """为 LLM 节点构建 chat_history。
+
+    规则：仅当本节点的"原始输入" == 本轮用户原话（锚点）时注入会话历史；
+    否则只返回当前这条（维持原行为）。返回列表末尾恒为当前用户消息。
+    """
+    current = {"event": "user", "message": final_message}
+    anchor = variable_manager.get_variable("original_user_message", "")
+    # 锚点缺失，或本节点吃的是上游产物 → 不注入
+    if not anchor or raw_input_message != anchor:
+        return [current]
+    flow_input = variable_manager.get_variable("flow_input") or {}
+    history = load_session_history(
+        bot_id=variable_manager.get_variable("bot_id"),
+        user_id=flow_input.get("user_id", "anonymous"),
+        session_id=flow_input.get("session_id", ""),
+        exclude_execution_id=variable_manager.get_variable("execution_id", ""),
+    )
+    return history + [current]
