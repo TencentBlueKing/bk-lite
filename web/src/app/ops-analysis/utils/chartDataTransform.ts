@@ -87,7 +87,11 @@ export class ChartDataTransformer {
   static isStructurallyEmpty(rawData: any): boolean {
     if (!rawData) return true;
     if (Array.isArray(rawData)) return rawData.length === 0;
-    if (typeof rawData === 'object') return Object.keys(rawData).length === 0;
+    if (typeof rawData === 'object') {
+      const values = Object.values(rawData);
+      if (values.length === 0) return true;
+      return values.every((value) => Array.isArray(value) && value.length === 0);
+    }
     return false;
   }
 

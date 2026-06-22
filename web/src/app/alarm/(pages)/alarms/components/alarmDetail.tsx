@@ -352,6 +352,22 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
           {isBaseInfo && (
             <div className="flex flex-col gap-4">
               <BaseInfo detail={formData} />
+              {formData?.enrichment && Object.keys(formData.enrichment).length > 0 && (
+                <div className="mt-2">
+                  <div className="font-medium mb-2">{t('settings.enrichmentTitle')}</div>
+                  {Object.entries(formData.enrichment as Record<string, Record<string, any>>).map(([ns, fields]) => (
+                    <div key={ns} className="mb-2">
+                      <div className="text-[var(--color-text-3)] mb-1">{ns}</div>
+                      {Object.entries(fields || {}).map(([k, v]) => (
+                        <div key={k} className="flex gap-2 text-sm">
+                          <span className="text-[var(--color-text-3)]">{k}:</span>
+                          <span>{typeof v === 'object' ? JSON.stringify(v) : String(v)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              )}
               <RelatedAlertsPanel alert={formData} onRefresh={handleAction} />
             </div>
           )}
