@@ -45,13 +45,22 @@
 ### P1 文件解析 ✅(.txt/.md)
 - `material_service.extract_text`:file 资料按扩展名分派 loader;`.txt/.md` 经 TextLoader/MarkdownLoader 解析(MinIO 读取在 `_read_file`,可注入测试);OCR 格式返回空串待接入
 
-> 测试合计 **61 passed**(`apps/opspilot/tests/wiki/`)。后端 P0–P6(除下列纯基础设施项)已完成。
+> 后端测试合计 **61 passed**(`apps/opspilot/tests/wiki/`)。后端 P0–P6(除下列纯基础设施项)已完成。
 
-## 待办(剩余 —— 100% 受基础设施 / 前端环境约束,本环境无可测核心)
+### 前端 ✅(`web/src/app/opspilot`,eslint + 作用域 tsc 校验通过)
+- `api/wiki.ts`(useWikiApi 全量接口)+ `types/wiki.ts`;i18n `wiki.*`(zh/en)
+- `(pages)/wiki/page.tsx`:知识库列表(增删改 + AI 生成 Purpose/Schema)
+- `(pages)/wiki/detail/page.tsx`:详情 7 工作区 Tabs —— 概览 / 资料(增/解析/构建/删) / 知识页面(版本+恢复) / 构建记录 / 检查审核(接受/拒绝/扫描) / 关系图谱(4 信号加权+社区) / 问答试用(引用)
+- `constants/menu.json`:注册知识库入口(zh/en)
+- 技能设置页:`选择 Wiki 知识库` 多选(打通 P4 端到端配置)
+- 校验方式:`npx eslint <files>`(全绿)+ `npx tsc -p tsconfig.lint.json`(仅 3 个既有 env 基线错误,均非 wiki 文件);运行时冒烟需主仓库(worktree Turbopack 跑不起)
+
+## 待办(剩余 —— 100% 受基础设施约束,本环境无可测核心)
 
 - **OCR 文件 + 真实 MinIO 读取 + 网页抓取(P1/P6)**:分派已就绪,缺 OCRProvider + MinIO + 网络;`.pdf/.docx/.xlsx/.pptx/图片/web` 仍空串待接入
 - **pgvector 语义检索 + 网页定时刷新(P6)**:需 pgvector 扩展 + 嵌入模型 + Celery beat + 网络
-- **前端 6 工作区 + 技能选库 UI + 引用展示**:worktree 前端环境跑不通,需主仓库或修依赖
+- **前端运行时冒烟 + 关系图谱画布**:在主仓库跑 dev server 验证交互;图谱画布(G6/@ant-design/graphs)可在数据视图上叠加
+- **菜单权限注册**:`wiki_list` 菜单名可能需在 system_mgmt 菜单/权限中注册才对部分角色可见
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 
