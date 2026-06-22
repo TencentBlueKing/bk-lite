@@ -37,6 +37,46 @@ from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_re
 class NodeFilterHandler:
     """节点查询过滤器处理器 - 统一管理所有特殊字段的过滤逻辑"""
 
+    # 允许通过 filters 参数过滤的字段白名单（Node 模型直接字段）
+    ALLOWED_FILTER_FIELDS = frozenset(
+        {
+            "id",
+            "name",
+            "ip",
+            "operating_system",
+            "cpu_architecture",
+            "collector_configuration_directory",
+            "status",
+            "tags",
+            "cloud_region_id",
+            "install_method",
+            "node_type",
+            "created_at",
+            "updated_at",
+        }
+    )
+
+    # 允许使用的 Django ORM lookup 表达式白名单
+    ALLOWED_LOOKUP_EXPRS = frozenset(
+        {
+            "exact",
+            "iexact",
+            "contains",
+            "icontains",
+            "in",
+            "isnull",
+            "gte",
+            "lte",
+            "gt",
+            "lt",
+            "startswith",
+            "istartswith",
+            "endswith",
+            "iendswith",
+            # "bool" 是内部归一化标记，在此之前已转换为 "exact"
+        }
+    )
+
     @staticmethod
     def normalize_bool_value(value):
         """规范化布尔值"""
@@ -115,6 +155,10 @@ class NodeFilterHandler:
         final_q = Q()
 
         for field_name, conditions in params.items():
+            # 白名单校验：field_name 必须在允许列表中，否则静默跳过
+            if field_name not in NodeFilterHandler.ALLOWED_FILTER_FIELDS:
+                continue
+
             if not conditions or not isinstance(conditions, list):
                 continue
 
@@ -131,6 +175,10 @@ class NodeFilterHandler:
                 # 规范化布尔值
                 if lookup_expr == "bool":
                     value = NodeFilterHandler.normalize_bool_value(value)
+                    lookup_expr = "exact"
+
+                # 白名单校验：lookup_expr 不在允许列表中时降级为 exact
+                if lookup_expr not in NodeFilterHandler.ALLOWED_LOOKUP_EXPRS:
                     lookup_expr = "exact"
 
                 # 构建查询键
