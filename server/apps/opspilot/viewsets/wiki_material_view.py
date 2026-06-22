@@ -6,6 +6,7 @@ from apps.opspilot.models import Material
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
 from apps.opspilot.services.wiki.build_service import build_from_material
 from apps.opspilot.services.wiki.material_service import ingest_material
+from apps.opspilot.services.wiki.update_service import propose_update
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -62,6 +63,17 @@ class WikiMaterialViewSet(AuthViewSet):
         """从该资料构建知识页面(Schema 驱动生成),返回构建记录。"""
         material = self.get_object()
         record = build_from_material(
+            material,
+            llm_model_id=material.knowledge_base.llm_model_id,
+            operator=getattr(request.user, "username", ""),
+        )
+        return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
+
+    @action(methods=["POST"], detail=True)
+    def propose_update(self, request, pk=None):
+        """资料更新后安全合并:AI 页面直接更新,含人工编辑的生成候选待审。"""
+        material = self.get_object()
+        record = propose_update(
             material,
             llm_model_id=material.knowledge_base.llm_model_id,
             operator=getattr(request.user, "username", ""),
