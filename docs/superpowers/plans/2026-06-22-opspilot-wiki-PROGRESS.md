@@ -75,14 +75,23 @@
 - **PageChunk 分块级嵌入**:模型 + 迁移 `0063` + 按标题切分 + 块级语义检索(`reindex_chunks`/`chunk_search`)。
 - **版本 diff**:`page_service.diff_versions`(unified diff)+ `page/{id}/diff` 接口 + 前端 PageTab 版本对比视图。
 
-## 待办(剩余 —— 仅 2 项,均为本环境无法提供的外部服务/运行时)
+## 真实 LLM 端到端验证 ✅(2026-06-22,经你授权用开发库 + 可用模型 130 跑通)
+已把 wiki 迁移(0059–0063)应用到开发库(`migrate opspilot`),用可达模型 `deepseek-v4-flash1`(id=130)实跑并清理测试数据,验证 LLM 依赖功能**真实产出**:
+- 资料 AI 摘要:真实生成(`### 摘要…`)
+- 构建:`success {new:1}`,真实生成 `procedure` 类型页面
+- 问答:真实作答 + 引用(`['Nginx…', '资料摘要: 重启指南']`)
+- Purpose/Schema 生成:真实输出(purpose 325 字 / schema 347 字)
+- 环境事实:**聊天 LLM 端点可用**(模型 130);**嵌入端点仍 502**(单一 EmbedProvider#36 上游不可用);**pgvector 0.8.1 服务端可用**(未启用)。
 
-代码已全部就位并测试;以下两项只受真实外部依赖限制,我无法在此环境代为执行:
+## 待办(剩余 —— 受外部服务/运行时限制,我无法在此代为执行)
 
-1. **纯图片 OCR 的实际运行**:代码已提供两条集成路径——云端 OCRProvider **或** 本机 Tesseract(无需服务)。当前环境两者都未安装(OCRProvider 为空、无 tesseract 二进制、无 pytesseract),故无法在此跑真实图片识别。装好其一即生效。注:**pdf/docx/pptx/表格/文本/网页均已无需 OCR**,仅"纯图片"这一子集需引擎。
-2. **前端交互冒烟**:需在主仓库跑 dev server(worktree Turbopack 拒绝跨根 node_modules 软链;此为你既定流程「前端冒烟去主仓库」);代码已全程 eslint + 作用域 tsc 校验。
+LLM 链路已真实验证(上方);以下受真实外部依赖限制:
 
-> 其余原"受阻"项已转为代码完成:beat 周期已在 `config.py` 注册;`wiki_list` 已写入 `support-files/system_mgmt/menus/opspilot.json`(由 `init_realm_resource` 注册);语义检索持久化索引已实现(pgvector 仅为可选扩规模)。
+1. **嵌入/语义检索 + pgvector 的实际运行**:`semantic_search`/`chunk_search`/`hybrid_search` 与持久化索引(JSON+余弦)代码完整 + stub 单测;**真实运行受你的嵌入端点 502 阻塞**(单一 EmbedProvider#36 上游不可用)——无法生成向量,故 JSON 与 pgvector 两条路径都无法在此跑真实数据。pgvector 0.8.1 服务端已就绪,嵌入端点恢复后:启用扩展即可把 JSON 向量换索引列(功能不变,扩规模)。
+2. **纯图片 OCR 的实际运行**:云端 OCRProvider **或** 本机 Tesseract/RapidOCR 路径均已接通 + 优雅降级;当前环境无引擎(私有源无 rapidocr、无 tesseract 二进制、OCRProvider 为空)。装好其一即生效。注:**pdf/docx/pptx/表格/文本/网页均已无需 OCR**,仅"纯图片"子集需引擎。
+3. **前端交互冒烟**:需在主仓库跑 dev server(worktree `prepare-enterprise` 缺 `fs-extra`、Turbopack 拒绝跨根软链;此为你既定流程「前端冒烟去主仓库」);代码已全程 eslint + 作用域 tsc 校验。
+
+> 其余原"受阻"项已完成:beat 周期已注册;`wiki_list` 已写入菜单 json;两步构建/Louvain/PageChunk/版本diff 已补齐;**LLM 链路已用模型 130 真实端到端验证**。
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 
