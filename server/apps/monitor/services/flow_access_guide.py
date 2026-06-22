@@ -7,7 +7,7 @@ from apps.rpc.node_mgmt import NodeMgmt
 
 
 class FlowAccessGuideService:
-    PROTOCOL_PORT_MAP = {"netflow": 2055, "sflow": 6343}
+    PROTOCOL_PORT_MAP = {"netflow": 2056, "sflow": 6343}
 
     @classmethod
     def get_listener_endpoint(cls, protocol, cloud_region_id):

@@ -279,7 +279,7 @@ class HostCollector(BaseCollector):
         script = build_script(os_type, modules)
 
         connection = "ssh" if os_type == "linux" else "winrm"
-        module = "shell" if os_type == "linux" else "win_shell"
+        module = "raw" if os_type == "linux" else "win_shell"
 
         host_credential = {
             "host": host,

@@ -14,10 +14,18 @@ def test_telegraf_default_config_includes_passive_flow_udp_listeners():
     for collector in collectors:
         add_config = collector["default_config"]["add_config"]
 
-        assert "[[inputs.netflow]]" in add_config
-        assert 'service_address = "udp://:2055"' in add_config
+        assert add_config.count("[[inputs.netflow]]") == 2
+        assert (
+            'protocol = "netflow v5"\n'
+            '    service_address = "udp://:2055"'
+        ) in add_config
+        assert (
+            'protocol = "netflow v9"\n'
+            '    service_address = "udp://:2056"'
+        ) in add_config
         assert 'read_buffer_size = "64MiB"' in add_config
-        assert 'tags = { collect_type = "netflow" }' in add_config
+        assert 'tags = { collect_type = "netflow", netflow_version = "v5" }' in add_config
+        assert 'tags = { collect_type = "netflow", netflow_version = "v9" }' in add_config
         assert "[[inputs.sflow]]" in add_config
         assert 'service_address = "udp://:6343"' in add_config
         assert 'tags = { collect_type = "sflow" }' in add_config
