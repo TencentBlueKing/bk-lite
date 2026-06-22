@@ -6,6 +6,10 @@ import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/monitor/api/integration';
 import type { FlowProtocol } from '@/app/monitor/types/integration';
+import {
+  buildFlowEndpointGuideStep,
+  shouldShowSingleFlowEndpoint
+} from '@/app/monitor/utils/flowAccessGuide';
 import type { FlowAssetWizardState } from './flowConfiguration';
 
 interface FlowGuideDocument {
@@ -88,20 +92,23 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
   const protocolLabel = protocolLabelMap[protocol];
   const endpoint = guide?.endpoint || '--';
   const listenerEndpoints = guide?.listener_endpoints || [];
+  const showSingleEndpoint = shouldShowSingleFlowEndpoint(listenerEndpoints);
   const guideSteps = useMemo(
     () => [
       t('monitor.integrations.flow.guideStepSelectProtocol', undefined, {
         protocol: protocolLabel
       }),
-      t('monitor.integrations.flow.guideStepSetEndpoint', undefined, {
-        endpoint
+      buildFlowEndpointGuideStep({
+        endpoint,
+        listenerEndpoints,
+        t
       }),
       t('monitor.integrations.flow.guideStepConfirmSourceIp', undefined, {
         ip: assetState.ip
       }),
       t('monitor.integrations.flow.guideStepVerifyTraffic')
     ],
-    [assetState.ip, endpoint, protocolLabel, t]
+    [assetState.ip, endpoint, listenerEndpoints, protocolLabel, t]
   );
 
   const handleDetect = async () => {
@@ -146,9 +153,11 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
               <Descriptions.Item label={t('monitor.integrations.flow.protocol')}>
                 {protocolLabel}
               </Descriptions.Item>
-              <Descriptions.Item label={t('monitor.integrations.flow.endpoint')}>
-                <span className="break-all">{endpoint}</span>
-              </Descriptions.Item>
+              {showSingleEndpoint && (
+                <Descriptions.Item label={t('monitor.integrations.flow.endpoint')}>
+                  <span className="break-all">{endpoint}</span>
+                </Descriptions.Item>
+              )}
               {listenerEndpoints.length > 0 && (
                 <Descriptions.Item label={t('monitor.integrations.flow.listenerPorts')}>
                   <div className="space-y-1">
