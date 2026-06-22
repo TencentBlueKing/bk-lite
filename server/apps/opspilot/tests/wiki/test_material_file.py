@@ -97,12 +97,37 @@ def test_ocr_dispatch_uses_provider_and_loader(monkeypatch):
 
 
 @pytest.mark.django_db
-def test_ocr_format_without_provider_returns_empty(monkeypatch):
+def test_image_without_provider_returns_empty(monkeypatch):
+    # 图片纯图像内容,必须 OCR;无 OCRProvider → 空串
     kb = _kb()
-    mat = _file_material(kb, "scan.pdf")
-    monkeypatch.setattr(material_service, "_read_file", lambda m: ("scan.pdf", b"%PDF-1.4 fake"))
-    monkeypatch.setattr(material_service, "_build_ocr", lambda m: None)  # 无 OCRProvider(同当前环境)
+    mat = _file_material(kb, "scan.png")
+    monkeypatch.setattr(material_service, "_read_file", lambda m: ("scan.png", b"\x89PNG\r\n\x1a\n fake"))
+    monkeypatch.setattr(material_service, "_build_ocr", lambda m: None)
     assert material_service.extract_text(mat) == ""
+
+
+def _docx_bytes():
+    import io
+
+    from docx import Document as Docx
+
+    d = Docx()
+    d.add_paragraph("运维手册标题")
+    d.add_paragraph("重启服务的步骤说明")
+    buf = io.BytesIO()
+    d.save(buf)
+    return buf.getvalue()
+
+
+@pytest.mark.django_db
+def test_docx_native_text_without_ocr(monkeypatch):
+    # 文档型 .docx:原生抽取文本,无需 OCR 服务(OCR 仅增强内嵌图片)
+    kb = _kb()
+    mat = _file_material(kb, "manual.docx")
+    monkeypatch.setattr(material_service, "_read_file", lambda m: ("manual.docx", _docx_bytes()))
+    monkeypatch.setattr(material_service, "_build_ocr", lambda m: None)  # 无 OCRProvider
+    text = material_service.extract_text(mat)
+    assert "运维手册标题" in text and "重启服务的步骤说明" in text
 
 
 @pytest.mark.django_db
