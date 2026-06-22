@@ -8,14 +8,16 @@ import {
   Form,
   Input,
   InputNumber,
-  ColorPicker,
+  Select,
   Switch,
   TreeSelect,
   Tooltip,
 } from 'antd';
 import { ReloadOutlined, QuestionCircleOutlined } from '@ant-design/icons';
 import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
+import { getUnitCategories } from '@/app/ops-analysis/utils/unitFormat';
 import { ThresholdColorConfigSection } from '@/app/ops-analysis/components/thresholdColorConfigSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 
 /** Switch + Tooltip 包装：透传 Form.Item 注入的 checked/onChange，同时支持 hover 提示 */
 const TooltipSwitch: React.FC<{
@@ -211,12 +213,41 @@ export const SingleValueSettingsSection: React.FC<
         />
       </Form.Item>
 
-      <Form.Item label={t('topology.nodeConfig.unit')} name="unit">
-        <Input
-          placeholder={t('common.inputMsg')}
+      <Form.Item label={t('topology.nodeConfig.unit')} name="unitId">
+        <Select
+          allowClear
+          placeholder={t('common.selectMsg')}
           disabled={readonly}
           style={{ width: '200px' }}
+          options={[
+            { value: '', label: t('topology.nodeConfig.customSuffix') },
+            ...getUnitCategories().map((cat) => ({
+              label: cat.label,
+              options: cat.units.map((u) => ({ value: u.id, label: u.label })),
+            })),
+          ]}
         />
+      </Form.Item>
+
+      {/* unitId 为空（自定义/未设）时回退到自由文本后缀，兼容旧配置 */}
+      <Form.Item
+        noStyle
+        shouldUpdate={(prev, cur) => prev.unitId !== cur.unitId}
+      >
+        {({ getFieldValue }) =>
+          !getFieldValue('unitId') ? (
+            <Form.Item
+              label={t('topology.nodeConfig.customSuffix')}
+              name="unit"
+            >
+              <Input
+                placeholder={t('common.inputMsg')}
+                disabled={readonly}
+                style={{ width: '200px' }}
+              />
+            </Form.Item>
+          ) : null
+        }
       </Form.Item>
 
       <Form.Item
@@ -256,6 +287,13 @@ export const SingleValueSettingsSection: React.FC<
         onRemoveThreshold={onRemoveThreshold}
         readonly={readonly}
       />
+
+      <Form.Item
+        label={t('topology.nodeConfig.valueMappings')}
+        name="valueMappings"
+      >
+        <ValueMappingsConfigSection t={t} readonly={readonly} />
+      </Form.Item>
     </div>
   );
 };

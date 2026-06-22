@@ -5,10 +5,11 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
+from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 

@@ -524,7 +524,32 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' },
   { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
   { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
-  { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' }
+  { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
+  { match: /hillstone|stoneos/i, label: 'Hillstone', icon: 'mm-hillstone_hillstone' },
+  { match: /sophos|\bxg\b|sfos/i, label: 'Sophos XG', icon: 'mm-sophos_sophos' },
+  { match: /netscaler|citrix/i, label: 'Citrix NetScaler', icon: 'mm-netscaler_netscaler' },
+  { match: /\ba10\b|thunder|acos/i, label: 'A10 Thunder', icon: 'mm-a10_a10' },
+  { match: /fortiadc|fad\b/i, label: 'FortiADC', icon: 'mm-fortiadc_fortiadc' },
+  { match: /alteon|radware/i, label: 'Radware Alteon', icon: 'mm-alteon_alteon' },
+  { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' },
+  { match: /\bnec\b|univerge|\bix[0-9]{3,4}\b/i, label: 'NEC', icon: 'mm-nec_nec' },
+  { match: /draytek|vigor/i, label: 'DrayTek', icon: 'mm-draytek_draytek' },
+  { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
+  { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' },
+  { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' },
+  { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
+  { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
+  { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
+  { match: /\bzte\b|zxr10/i, label: 'ZTE', icon: 'mm-zte_zte' },
+  { match: /omniswitch|alcatel.?os|\baos\b/i, label: 'Alcatel OmniSwitch', icon: 'mm-omniswitch_omniswitch' },
+  { match: /yamaha|\bswx\b/i, label: 'Yamaha', icon: 'mm-yamaha_yamaha' },
+  { match: /arista|\beos\b|dcs-/i, label: 'Arista', icon: 'mm-arista_arista' },
+  { match: /mellanox|nvidia|spectrum|onyx|mlnx|\bsn[0-9]{4}\b/i, label: 'Mellanox', icon: 'mm-mellanox_mellanox' },
+  { match: /allied|awplus|aw\+|at-/i, label: 'Allied Telesis', icon: 'mm-alliedtelesis_alliedtelesis' },
+  { match: /os10|smartfabric|\bz9[0-9]|powerswitch/i, label: 'Dell OS10', icon: 'mm-dellos10_dellos10' },
+  { match: /cnos|lenovo|thinksystem|\bne[0-9]{4}\b/i, label: 'Lenovo CNOS', icon: 'mm-lenovocnos_lenovocnos' },
+  { match: /fiberhome|烽火|\bwri\b/i, label: 'FiberHome', icon: 'mm-fiberhome_fiberhome' },
+  { match: /\bh3c\b|comware|hh3c/i, label: 'H3C', icon: 'mm-h3c_h3c' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

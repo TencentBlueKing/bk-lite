@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, Segmented, Button, message } from 'antd';
-import { DownloadOutlined } from '@ant-design/icons';
+import { Empty, Spin, Segmented, Button, message, Modal } from 'antd';
+import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
 import { Export } from '@antv/x6-plugin-export';
 import {
@@ -17,21 +17,38 @@ import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
 import { getIconUrl } from '@/app/cmdb/utils/common';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
+import { useModelApi } from '@/app/cmdb/api';
+import { useRelationships } from '@/app/cmdb/context/relationships';
 import type {
   NetworkTopoData,
   NetworkTopoLink,
   NetworkTopoNode,
 } from '@/app/cmdb/types/assetData';
+import EditToolbar from './networkTopo/EditToolbar';
+import PortLinkModal, { type PortEndpoint } from './networkTopo/PortLinkModal';
+import AddDevicePanel, {
+  type AddableDevice,
+} from './networkTopo/AddDevicePanel';
+import {
+  useTopoEditing,
+  type PendingLink,
+  type ContextMenuInfo,
+} from './networkTopo/useTopoEditing';
+import {
+  buildConnectPayload,
+  buildLinkFromConnection,
+  nextFloatingPosition,
+  validateConnection,
+} from './networkTopo/topoEditingUtils';
+import { HUB_COLOR, NODE_LIMIT } from './networkTopo/constants';
 
 const NODE_WIDTH = 260;
 const NODE_HEIGHT = 72;
 const DEVICE_NODE_SHAPE = 'topo-network-device';
-const HUB_COLOR = '#0070fa';
 
 // 展开策略：首屏 2 跳，最多 4 跳，节点上限 100（与后端常量一致）
 const DEFAULT_HOP = 2;
 const MAX_HOP = 4;
-const NODE_LIMIT = 100;
 
 // 分层布局列距/行距：列距需足够大，让接口标签落在设备卡片之间的空隙、不遮挡卡片
 const HIER_COL_GAP = 720;
@@ -80,7 +97,15 @@ const ensureDeviceNodeRegistered = () => {
           cursor: 'pointer',
           ...DEFAULT_BODY_ATTRS,
         },
-        img: { width: 44, height: 44, x: 18, y: (NODE_HEIGHT - 44) / 2 },
+        // img/lbl 设为 pointer-events:none，让整张卡片的命中目标始终是 body —
+        // 否则从图标/文字区域起拖会落在子元素上、拿不到 body 的 magnet，连线起拖不稳定
+        img: {
+          width: 44,
+          height: 44,
+          x: 18,
+          y: (NODE_HEIGHT - 44) / 2,
+          style: { pointerEvents: 'none' },
+        },
         lbl: {
           refX: 0.27,
           refY: 0.5,
@@ -90,6 +115,7 @@ const ensureDeviceNodeRegistered = () => {
           fontWeight: 600,
           fill: 'var(--color-text-1)',
           textWrap: { width: NODE_WIDTH - 84, height: 24, ellipsis: true },
+          style: { pointerEvents: 'none' },
         },
       },
     },
@@ -353,6 +379,8 @@ interface GraphLoaderProps {
   onExpand: (node: NetworkTopoNode) => void;
   nodesMap: Map<string, NetworkTopoNode>;
   graphRef: React.MutableRefObject<Graph | null>;
+  editing: boolean;
+  onGraphReady?: (g: Graph | null) => void;
 }
 
 const GraphLoader: React.FC<GraphLoaderProps> = ({
@@ -362,6 +390,8 @@ const GraphLoader: React.FC<GraphLoaderProps> = ({
   onExpand,
   nodesMap,
   graphRef,
+  editing,
+  onGraphReady,
 }) => {
   const initData = useGraphStore((state) => state.initData);
   const graph = useGraphInstance();
@@ -375,13 +405,15 @@ const GraphLoader: React.FC<GraphLoaderProps> = ({
   useEffect(() => {
     if (!graph) return;
     graphRef.current = graph;
+    onGraphReady?.(graph);
     if (!graph.getPlugin('export')) {
       graph.use(new Export());
     }
     return () => {
       graphRef.current = null;
+      onGraphReady?.(null);
     };
-  }, [graph, graphRef]);
+  }, [graph, graphRef, onGraphReady]);
 
   // 数据/布局变化后重新适配视口，避免切换布局后节点跑到画布外
   useEffect(() => {
@@ -399,6 +431,7 @@ const GraphLoader: React.FC<GraphLoaderProps> = ({
   useEffect(() => {
     if (!graph) return;
     const handleNodeClick = ({ node }: { node: any }) => {
+      if (editing) return; // 编辑态点节点不展开，让位连线/选择
       const id = node.id as string;
       if (id === centerId || expandedRef.current.has(id)) return;
       const target = nodesMap.get(id);
@@ -408,14 +441,20 @@ const GraphLoader: React.FC<GraphLoaderProps> = ({
     return () => {
       graph.off('node:click', handleNodeClick);
     };
-  }, [graph, centerId, expandedRef, onExpand, nodesMap]);
+  }, [graph, centerId, expandedRef, onExpand, nodesMap, editing]);
 
   return null;
 };
 
 const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const { t } = useTranslation();
-  const { getNetworkTopo } = useInstanceApi();
+  const {
+    getNetworkTopo,
+    createInstanceAssociation,
+    deleteInstanceAssociation,
+  } = useInstanceApi();
+  const { getModelAssociations } = useModelApi();
+  const { modelList } = useRelationships();
   const [loading, setLoading] = useState<boolean>(false);
   const [centerId, setCenterId] = useState<string>('');
   const [layoutMode, setLayoutMode] = useState<LayoutMode>('hierarchical');
@@ -427,6 +466,32 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const mountedRef = useRef<boolean>(true);
   const [graphData, setGraphData] = useState<BuiltGraph>({ nodes: [], edges: [] });
 
+  // 编辑态
+  const [editing, setEditing] = useState(false);
+  const [addPanelOpen, setAddPanelOpen] = useState(false);
+  const [pendingLink, setPendingLink] = useState<PendingLink | null>(null);
+  const [graphInstance, setGraphInstance] = useState<Graph | null>(null);
+  const [networkModels, setNetworkModels] = useState<string[]>([]);
+  // 右键连线交互：已选起点 + 右键上下文菜单
+  const [linkingSourceId, setLinkingSourceId] = useState<string | null>(null);
+  const [menu, setMenu] = useState<ContextMenuInfo | null>(null);
+  // 游离节点：id -> {node, x, y}，单独维护、并入渲染；仅内存，刷新即清空
+  const floatingRef = useRef<
+    Map<string, { node: NetworkTopoNode; x: number; y: number }>
+  >(new Map());
+
+  const modelOf = useCallback(
+    (id: string) =>
+      mergedRef.current.nodes.get(id)?.model_id ||
+      floatingRef.current.get(id)?.node.model_id,
+    []
+  );
+  const modelNameOf = useCallback(
+    (mid: string) =>
+      modelList.find((m: any) => m.model_id === mid)?.model_name || mid,
+    [modelList]
+  );
+
   useEffect(() => {
     mountedRef.current = true;
     return () => {
@@ -434,7 +499,26 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     };
   }, []);
 
+  // 预取网络设备模型集（interface 的 belong 关联的 dst 模型）。
+  // 只跑一次：getModelAssociations 每次渲染都是新引用，若入依赖会无限请求后端。
+  useEffect(() => {
+    getModelAssociations('interface')
+      .then((assoc: any[]) =>
+        setNetworkModels(
+          (assoc || [])
+            .filter(
+              (a) => a.asst_id === 'belong' && a.src_model_id === 'interface'
+            )
+            .map((a) => a.dst_model_id)
+        )
+      )
+      .catch(() => setNetworkModels([]));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   const rebuild = useCallback(async (center: string, mode: LayoutMode) => {
+    // 渲染节点集 = 已合并节点 + 未连线的游离节点
+    const renderNodes = new Map(mergedRef.current.nodes);
     hopMapRef.current = computeHops(mergedRef.current, center);
     const positions = await computePositions(
       mergedRef.current,
@@ -443,12 +527,18 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
       posRef.current
     );
     if (!mountedRef.current) return;
+    floatingRef.current.forEach((f, id) => {
+      if (!renderNodes.has(id)) {
+        renderNodes.set(id, f.node);
+        positions.set(id, { x: f.x, y: f.y });
+      }
+    });
     posRef.current = positions;
     setGraphData(
       buildGraphData(
-        mergedRef.current,
+        { nodes: renderNodes, links: mergedRef.current.links },
         center,
-        (id) => mergedRef.current.nodes.get(id)?.name || id,
+        (id) => renderNodes.get(id)?.name || id,
         positions
       )
     );
@@ -572,6 +662,164 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     });
   }, []);
 
+  // 删除连线（已落库），更新合并图并 rebuild
+  const handleDeleteLink = useCallback(
+    async (relationshipId: string) => {
+      await deleteInstanceAssociation(relationshipId);
+      mergedRef.current.links.delete(relationshipId);
+      message.success(t('successfullyDisassociated'));
+      await rebuild(centerId, layoutMode);
+    },
+    [deleteInstanceAssociation, rebuild, centerId, layoutMode, t]
+  );
+
+  // 删除连线（带「采集可能加回」提示）
+  const confirmDeleteLink = useCallback(
+    (relationshipId: string) => {
+      Modal.confirm({
+        title: t('Model.networkTopoDeleteLinkTitle'),
+        content: t('Model.networkTopoDeleteLinkContent'),
+        centered: true,
+        onOk: () => handleDeleteLink(relationshipId),
+      });
+    },
+    [handleDeleteLink, t]
+  );
+
+  // 右键菜单：节点->新增连线菜单；边->删除连线菜单
+  const handleContextMenu = useCallback((info: ContextMenuInfo) => {
+    setMenu(info);
+  }, []);
+
+  // 连线进行中点击目标设备：校验后弹端口小窗
+  const handlePickTarget = useCallback(
+    (targetId: string) => {
+      const sourceId = linkingSourceId;
+      setLinkingSourceId(null);
+      if (!sourceId) return;
+      const v = validateConnection({
+        sourceId,
+        targetId,
+        modelOf,
+        networkModels,
+      });
+      if (!v.ok) {
+        if (v.reason === 'self') message.warning(t('Model.networkTopoNoSelfLink'));
+        else if (v.reason === 'not_network')
+          message.warning(t('Model.networkTopoOnlyNetwork'));
+        return;
+      }
+      setPendingLink({ sourceId, targetId });
+    },
+    [linkingSourceId, modelOf, networkModels, t]
+  );
+
+  // X6 编辑副作用：右键菜单 + 连线目标选择（左键拖动=移动设备）
+  useTopoEditing({
+    graph: graphInstance,
+    editing,
+    linkingSourceId,
+    // 节点+边总数作为版本：连线/加设备/删线后变化，触发光标/高亮重应用
+    revision: graphData.nodes.length + graphData.edges.length,
+    onContextMenu: handleContextMenu,
+    onPickTarget: handlePickTarget,
+    onCancel: () => setLinkingSourceId(null),
+  });
+
+  // Esc 取消连线 / 关闭菜单
+  useEffect(() => {
+    if (!editing) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setLinkingSourceId(null);
+        setMenu(null);
+      }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [editing]);
+
+  // 退出编辑态时清理连线/菜单状态
+  useEffect(() => {
+    if (!editing) {
+      setLinkingSourceId(null);
+      setMenu(null);
+    }
+  }, [editing]);
+
+  // 端口小窗的端点信息
+  const endpointOf = useCallback((id: string): PortEndpoint => {
+    const n =
+      mergedRef.current.nodes.get(id) || floatingRef.current.get(id)?.node;
+    return { id, name: n?.name || id, model_id: n?.model_id || '' };
+  }, []);
+
+  // 端口小窗确认 -> 建 connect 关联 + 合并链路（游离节点转正）
+  const handleConfirmLink = useCallback(
+    async (r: {
+      sourcePortId: string;
+      sourcePortName: string;
+      targetPortId: string;
+      targetPortName: string;
+    }) => {
+      if (!pendingLink) return;
+      const res = await createInstanceAssociation(
+        buildConnectPayload(r.sourcePortId, r.targetPortId)
+      );
+      const { sourceId, targetId } = pendingLink;
+      [sourceId, targetId].forEach((id) => {
+        const f = floatingRef.current.get(id);
+        if (f && !mergedRef.current.nodes.has(id)) {
+          mergedRef.current.nodes.set(id, f.node);
+          floatingRef.current.delete(id);
+        }
+      });
+      const link = buildLinkFromConnection({
+        relationshipId: String(res._id),
+        sourceDevice: sourceId,
+        targetDevice: targetId,
+        sourcePortName: r.sourcePortName,
+        targetPortName: r.targetPortName,
+      });
+      mergedRef.current.links.set(link.relationship_id, link);
+      setPendingLink(null);
+      message.success(t('successfullyAssociated'));
+      await rebuild(centerId, layoutMode);
+    },
+    [pendingLink, createInstanceAssociation, rebuild, centerId, layoutMode, t]
+  );
+
+  // 添加画布外设备 -> 游离节点（受节点上限约束）
+  const handleAddDevices = useCallback(
+    (devices: AddableDevice[]) => {
+      let idx = floatingRef.current.size + mergedRef.current.nodes.size;
+      devices.forEach((d) => {
+        if (mergedRef.current.nodes.has(d.id) || floatingRef.current.has(d.id))
+          return;
+        if (
+          mergedRef.current.nodes.size + floatingRef.current.size >=
+          NODE_LIMIT
+        ) {
+          message.warning(t('Model.networkTopoNodeLimit'));
+          return;
+        }
+        const pos = nextFloatingPosition(idx++);
+        floatingRef.current.set(d.id, {
+          node: { id: d.id, name: d.name, model_id: d.model_id, expanded: false },
+          x: pos.x,
+          y: pos.y,
+        });
+      });
+      rebuild(centerId, layoutMode);
+    },
+    [rebuild, centerId, layoutMode, t]
+  );
+
+  const existingIds = new Set<string>([
+    ...Array.from(mergedRef.current.nodes.keys()),
+    ...Array.from(floatingRef.current.keys()),
+  ]);
+
   const hasGraph = graphData.nodes.length > 0;
 
   return (
@@ -586,14 +834,39 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
             { label: t('Model.layoutCircular'), value: 'circular' },
           ]}
         />
-        <Button
-          icon={<DownloadOutlined />}
-          onClick={handleExportImage}
-          disabled={!hasGraph}
-        >
-          {t('Model.exportImage')}
-        </Button>
+        <div className="flex items-center gap-2">
+          <EditToolbar
+            editing={editing}
+            onToggle={() => setEditing((v) => !v)}
+            onAddDevice={() => setAddPanelOpen(true)}
+          />
+          <Button
+            icon={<DownloadOutlined />}
+            onClick={handleExportImage}
+            disabled={!hasGraph}
+          >
+            {t('Model.exportImage')}
+          </Button>
+        </div>
       </div>
+      {editing && (
+        <div
+          className="mb-[8px] px-3 py-1.5 rounded text-[13px] flex items-center gap-1.5"
+          style={{
+            background: linkingSourceId
+              ? 'var(--color-primary-bg, #e8f3ff)'
+              : 'var(--color-fill-1, #f2f3f5)',
+            color: linkingSourceId
+              ? HUB_COLOR
+              : 'var(--color-text-3, #86909c)',
+          }}
+        >
+          <InfoCircleOutlined style={{ color: HUB_COLOR }} />
+          {linkingSourceId
+            ? t('Model.networkTopoPickTargetHint')
+            : t('Model.networkTopoEditHint')}
+        </div>
+      )}
       <Spin spinning={loading}>
         <div style={{ height: '66vh', position: 'relative' }}>
           {hasGraph ? (
@@ -617,6 +890,8 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
                 onExpand={handleExpand}
                 nodesMap={mergedRef.current.nodes}
                 graphRef={graphRef}
+                editing={editing}
+                onGraphReady={setGraphInstance}
               />
             </XFlow>
           ) : (
@@ -631,6 +906,64 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
           )}
         </div>
       </Spin>
+      <PortLinkModal
+        open={!!pendingLink}
+        source={pendingLink ? endpointOf(pendingLink.sourceId) : null}
+        target={pendingLink ? endpointOf(pendingLink.targetId) : null}
+        onCancel={() => setPendingLink(null)}
+        onConfirm={handleConfirmLink}
+      />
+      <AddDevicePanel
+        open={addPanelOpen}
+        onClose={() => setAddPanelOpen(false)}
+        existingIds={existingIds}
+        modelNameOf={modelNameOf}
+        onAdd={handleAddDevices}
+      />
+      {menu && (
+        <>
+          {/* 透明遮罩：点空白处关闭菜单 */}
+          <div
+            className="fixed inset-0 z-[1000]"
+            onClick={() => setMenu(null)}
+            onContextMenu={(e) => {
+              e.preventDefault();
+              setMenu(null);
+            }}
+          />
+          <div
+            className="fixed z-[1001] min-w-[120px] py-1 rounded shadow-lg"
+            style={{
+              left: menu.x,
+              top: menu.y,
+              background: 'var(--color-bg-1, #fff)',
+              border: '1px solid var(--color-border-2, #e5e6eb)',
+            }}
+          >
+            {menu.kind === 'node' ? (
+              <div
+                className="px-3 py-1.5 text-[13px] cursor-pointer hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                onClick={() => {
+                  setLinkingSourceId(menu.id);
+                  setMenu(null);
+                }}
+              >
+                {t('Model.networkTopoAddLink')}
+              </div>
+            ) : (
+              <div
+                className="px-3 py-1.5 text-[13px] cursor-pointer text-[var(--color-error,#f53f3f)] hover:bg-[var(--color-fill-1,#f2f3f5)]"
+                onClick={() => {
+                  confirmDeleteLink(menu.id);
+                  setMenu(null);
+                }}
+              >
+                {t('Model.networkTopoDeleteLink')}
+              </div>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 };

@@ -2,6 +2,7 @@
 API Token 权限填充和权限检查的单元测试
 
 测试覆盖：
+- _collect_ancestor_group_ids: 有界祖先组 ID 收集（两步查询修复 thundering herd）
 - APISecretAuthBackend._get_user_all_roles: 直接角色、组织角色、继承角色
 - APISecretAuthBackend._populate_user_permissions: 普通用户、超级用户
 - HasRole 装饰器: API Token 请求的权限检查
@@ -10,11 +11,11 @@ API Token 权限填充和权限检查的单元测试
 """
 
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 
-from apps.core.backends import APISecretAuthBackend
+from apps.core.backends import APISecretAuthBackend, _collect_ancestor_group_ids
 from apps.core.decorators.api_permission import HasPermission, HasRole
 from apps.core.utils.web_utils import WebUtils
 
@@ -72,22 +73,118 @@ class MockGroupWithRoles:
 
 
 # ============================================================================
+# _collect_ancestor_group_ids 测试（两步查询修复核心）
+# ============================================================================
+
+
+class TestCollectAncestorGroupIds:
+    """测试 _collect_ancestor_group_ids：有界祖先 ID 收集，不触发 prefetch_related().all()"""
+
+    def _make_values_list(self, rows):
+        """构造 Group.objects.values_list(...) 返回值"""
+        mock_qs = MagicMock()
+        mock_qs.__iter__ = lambda s: iter(rows)
+        return mock_qs
+
+    def test_empty_seed_returns_empty(self):
+        """空种子 ID 不查 DB"""
+        result = _collect_ancestor_group_ids([])
+        assert result == set()
+
+    def test_single_group_no_parent(self):
+        """单个无父组：只返回自身 ID"""
+        rows = [(10, 0, True)]
+        with patch("apps.core.backends.Group") as MockGroup:
+            MockGroup.objects.values_list.return_value = self._make_values_list(rows)
+            result = _collect_ancestor_group_ids([10])
+        assert result == {10}
+
+    def test_ancestor_chain_collected(self):
+        """沿 parent_id 链向上收集祖先 ID"""
+        # 10 -> 20 -> 30 (根)，所有层都 allow_inherit_roles=True
+        rows = [(10, 20, True), (20, 30, True), (30, 0, True)]
+        with patch("apps.core.backends.Group") as MockGroup:
+            MockGroup.objects.values_list.return_value = self._make_values_list(rows)
+            result = _collect_ancestor_group_ids([10])
+        assert result == {10, 20, 30}
+
+    def test_collects_all_ancestors_regardless_of_allow_inherit(self):
+        """
+        _collect_ancestor_group_ids 收集所有物理祖先（含 allow_inherit_roles=False 的节点），
+        allow_inherit 的角色继承过滤由 collect_roles 负责（职责分离）。
+        """
+        # 10 -> 20 (allow=False) -> 30
+        rows = [(10, 20, True), (20, 30, False), (30, 0, True)]
+        with patch("apps.core.backends.Group") as MockGroup:
+            MockGroup.objects.values_list.return_value = self._make_values_list(rows)
+            result = _collect_ancestor_group_ids([10])
+        # 所有祖先均被收入，以确保有界加载包含完整父链供 collect_roles 判断
+        assert result == {10, 20, 30}
+
+    def test_only_values_list_called_not_prefetch_all(self):
+        """修复验证：_collect_ancestor_group_ids 只用 values_list，不调用 prefetch_related().all()"""
+        rows = [(10, 0, True)]
+        with patch("apps.core.backends.Group") as MockGroup:
+            MockGroup.objects.values_list.return_value = self._make_values_list(rows)
+            _collect_ancestor_group_ids([10])
+        # 必须调用过 values_list
+        MockGroup.objects.values_list.assert_called_once_with("id", "parent_id", "allow_inherit_roles")
+        # 不能调用 prefetch_related（那是全表扫描的旧路径）
+        MockGroup.objects.prefetch_related.assert_not_called()
+
+
+# ============================================================================
 # APISecretAuthBackend._get_user_all_roles 测试
 # ============================================================================
 
 
+def _make_group_qs(groups):
+    """构造 Group.objects.prefetch_related('roles').filter(id__in=...) 返回值"""
+    mock_qs = MagicMock()
+    mock_qs.__iter__ = lambda s: iter(groups)
+    return mock_qs
+
+
+def _patch_two_step_query(groups, ancestor_ids=None):
+    """
+    同时 patch values_list（轻量查询）和 prefetch_related+filter（有界加载）。
+
+    groups: MockGroupWithRoles 列表（这些就是要被加载的 Group 对象）
+    ancestor_ids: 若为 None 则自动从 groups 推断
+    """
+    if ancestor_ids is None:
+        ancestor_ids = {g.id for g in groups}
+
+    # 构造 values_list 返回值：(id, parent_id, allow_inherit_roles)
+    vl_rows = [(g.id, g.parent_id or 0, g.allow_inherit_roles) for g in groups]
+    vl_mock = MagicMock()
+    vl_mock.__iter__ = lambda s: iter(vl_rows)
+
+    # 构造 prefetch_related().filter() 返回值
+    pf_mock = MagicMock()
+    pf_mock.filter.return_value = _make_group_qs(groups)
+
+    group_mock = MagicMock()
+    group_mock.objects.values_list.return_value = vl_mock
+    group_mock.objects.prefetch_related.return_value = pf_mock
+
+    return group_mock
+
+
 @pytest.mark.django_db
 class TestGetUserAllRoles:
-    """测试 _get_user_all_roles 方法"""
+    """测试 _get_user_all_roles 方法（使用两步有界查询）"""
 
     def test_user_direct_roles_only(self):
-        """测试用户只有直接授权的角色"""
+        """测试用户只有直接授权的角色（无 group_list，不触发 DB 查询）"""
         backend = APISecretAuthBackend()
         user = MockUser(role_list=[1, 2, 3], group_list=[])
 
-        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
-            MockGroupModel.objects.prefetch_related.return_value.all.return_value = []
+        with patch("apps.core.backends.Group") as MockGroupModel:
             result = backend._get_user_all_roles(user)
+            # group_list 为空，不应查询 Group 表
+            MockGroupModel.objects.values_list.assert_not_called()
+            MockGroupModel.objects.prefetch_related.assert_not_called()
 
         assert result == {1, 2, 3}
 
@@ -98,8 +195,7 @@ class TestGetUserAllRoles:
 
         group = MockGroupWithRoles(id=10, roles=[MockRole(100), MockRole(101)])
 
-        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
-            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group]
+        with patch("apps.core.backends.Group", _patch_two_step_query([group])):
             result = backend._get_user_all_roles(user)
 
         assert result == {100, 101}
@@ -111,27 +207,24 @@ class TestGetUserAllRoles:
 
         group = MockGroupWithRoles(id=10, roles=[MockRole(100)])
 
-        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
-            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group]
+        with patch("apps.core.backends.Group", _patch_two_step_query([group])):
             result = backend._get_user_all_roles(user)
 
         assert result == {1, 2, 100}
 
     def test_role_inheritance_chain(self):
-        """测试角色继承链"""
+        """测试角色继承链：有界加载仅包含祖先组"""
         backend = APISecretAuthBackend()
         user = MockUser(role_list=[], group_list=[10])
 
-        # 组织结构: 10 -> 20 -> 30 (parent)
+        # 组织结构: 10 -> 20 -> 30 (根)
         group10 = MockGroupWithRoles(id=10, parent_id=20, allow_inherit_roles=True, roles=[MockRole(100)])
         group20 = MockGroupWithRoles(id=20, parent_id=30, allow_inherit_roles=True, roles=[MockRole(200)])
         group30 = MockGroupWithRoles(id=30, parent_id=None, allow_inherit_roles=True, roles=[MockRole(300)])
 
-        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
-            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group10, group20, group30]
+        with patch("apps.core.backends.Group", _patch_two_step_query([group10, group20, group30])):
             result = backend._get_user_all_roles(user)
 
-        # 应该收集所有继承链上的角色
         assert result == {100, 200, 300}
 
     def test_inheritance_stops_when_disabled(self):
@@ -140,17 +233,16 @@ class TestGetUserAllRoles:
         user = MockUser(role_list=[], group_list=[10])
 
         # 组织结构: 10 -> 20 (allow_inherit_roles=False) -> 30
-        # 当父级 allow_inherit_roles=False 时，不继承父级角色
+        # collect_roles(10) 收集 role100，检查 parent(20).allow_inherit_roles=False → 不追 20
         group10 = MockGroupWithRoles(id=10, parent_id=20, allow_inherit_roles=True, roles=[MockRole(100)])
         group20 = MockGroupWithRoles(id=20, parent_id=30, allow_inherit_roles=False, roles=[MockRole(200)])
         group30 = MockGroupWithRoles(id=30, parent_id=None, allow_inherit_roles=True, roles=[MockRole(300)])
 
-        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
-            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group10, group20, group30]
+        with patch("apps.core.backends.Group", _patch_two_step_query([group10, group20, group30])):
             result = backend._get_user_all_roles(user)
 
-        # 继承在 group20 停止（因为 group20.allow_inherit_roles=False），
-        # 所以只收集 group10 的角色，不收集 group20 和 group30 的角色
+        # collect_roles 检查父级的 allow_inherit_roles：group20.allow_inherit=False → 停止
+        # 所以只收集 group10 的 role100
         assert result == {100}
 
     def test_group_list_with_dict_format(self):
@@ -160,11 +252,34 @@ class TestGetUserAllRoles:
 
         group = MockGroupWithRoles(id=10, roles=[MockRole(100)])
 
-        with patch("apps.system_mgmt.models.Group") as MockGroupModel:
-            MockGroupModel.objects.prefetch_related.return_value.all.return_value = [group]
+        with patch("apps.core.backends.Group", _patch_two_step_query([group])):
             result = backend._get_user_all_roles(user)
 
         assert result == {100}
+
+    def test_bounded_query_not_full_table_scan(self):
+        """
+        修复核心验证：有 group_list 时必须使用 filter(id__in=...)，
+        不能使用 .all()（全表扫描）。若 revert 修复此测试将失败。
+        """
+        backend = APISecretAuthBackend()
+        user = MockUser(role_list=[], group_list=[10])
+
+        group = MockGroupWithRoles(id=10, roles=[MockRole(100)])
+        mock_group_cls = _patch_two_step_query([group])
+
+        with patch("apps.core.backends.Group", mock_group_cls):
+            backend._get_user_all_roles(user)
+
+        # 必须调用 prefetch_related("roles").filter(id__in=...)
+        mock_group_cls.objects.prefetch_related.assert_called_once_with("roles")
+        pf_mock = mock_group_cls.objects.prefetch_related.return_value
+        # filter 被调用且参数包含 id__in（有界查询）
+        pf_mock.filter.assert_called_once()
+        call_kwargs = pf_mock.filter.call_args[1]
+        assert "id__in" in call_kwargs, "必须使用 filter(id__in=...) 有界查询，而非 .all() 全表扫描"
+        # .all() 不应被直接调用（全表扫描的旧路径）
+        pf_mock.all.assert_not_called()
 
 
 # ============================================================================

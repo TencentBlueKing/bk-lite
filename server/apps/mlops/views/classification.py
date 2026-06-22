@@ -632,6 +632,13 @@ class ClassificationServingViewSet(TeamModelViewSet):
             if not isinstance(texts, list):
                 return Response({"error": "texts 必须是数组格式"}, status=status.HTTP_400_BAD_REQUEST)
 
+            max_batch_size = int(os.getenv("MLOPS_PREDICT_MAX_BATCH_SIZE", "10000"))
+            if len(texts) > max_batch_size:
+                return Response(
+                    {"error": f"批量预测上限为 {max_batch_size} 条，当前请求包含 {len(texts)} 条"},
+                    status=status.HTTP_413_REQUEST_ENTITY_TOO_LARGE,
+                )
+
             try:
                 predict_url = build_predict_url(
                     serving_id=f"Classification_Serving_{serving.id}",

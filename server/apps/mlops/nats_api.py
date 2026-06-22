@@ -1,3 +1,5 @@
+import os
+
 import nats_client
 
 from apps.mlops.models.anomaly_detection import (
@@ -113,6 +115,9 @@ INHERITED_MODULE_MODEL_MAP = {
     "train_job": {},
 }
 
+MAX_PAGE_SIZE = int(os.getenv("MLOPS_NATS_MAX_PAGE_SIZE", "500"))
+
+
 MODULE_DISPLAY_NAMES = {
     "dataset": "数据集",
     "train_job": "训练任务",
@@ -185,7 +190,18 @@ def get_mlops_module_list():
 @nats_client.register
 def get_mlops_module_data(module, child_module, page, page_size, group_id):
     registry = _get_module_registry()
-    model, team_lookup = registry[module][child_module]
+
+    module_map = registry.get(module)
+    if module_map is None:
+        return {"result": False, "message": f"未知模块：{module}"}
+
+    entry = module_map.get(child_module)
+    if entry is None:
+        return {"result": False, "message": f"未知子模块：{module}/{child_module}"}
+
+    page_size = max(1, min(int(page_size), MAX_PAGE_SIZE))
+
+    model, team_lookup = entry
     queryset = model.objects.filter(**{f"{team_lookup}__contains": int(group_id)})
 
     total_count = queryset.count()
@@ -193,4 +209,4 @@ def get_mlops_module_data(module, child_module, page, page_size, group_id):
     end = page * page_size
     data_list = queryset.values("id", "name")[start:end]
 
-    return {"count": total_count, "items": list(data_list)}
+    return {"result": True, "count": total_count, "items": list(data_list)}

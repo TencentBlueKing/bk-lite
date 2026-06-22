@@ -103,6 +103,8 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         nameFontSize: styleConfig.nameFontSize,
         nameColor: styleConfig.nameColor,
         unit: editingNodeData.unit,
+        unitId: valueConfig.unitId,
+        valueMappings: valueConfig.valueMappings,
         conversionFactor: editingNodeData.conversionFactor,
         decimalPlaces: editingNodeData.decimalPlaces,
       };

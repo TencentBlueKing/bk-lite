@@ -1,5 +1,6 @@
 import { TopologyNodeData } from './topology';
 import type { ParamItem, DatasourceItem } from './dataSource';
+import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import type { Dayjs } from 'dayjs';
 
 export type FilterType = 'selector' | 'fixed';
@@ -66,6 +67,14 @@ export interface TableColumnConfigItem {
   order: number;
   width?: number;
   columnType?: 'data' | 'actions';
+  /** 单元格值映射：把该列的值映射为文本/颜色（对齐 Grafana 表格单元格映射） */
+  valueMappings?: ValueMapping[];
+  /** 单元格渲染类型（对齐 Grafana cell display mode）：纯文本/色背景/条形量规 */
+  cellType?: 'text' | 'colorBackground' | 'gauge';
+  /** 单元格按阈值着色（色背景/量规填充用）；未命中值映射时生效 */
+  cellThresholdColors?: ThresholdColorConfig[];
+  /** gauge 单元格的最大值；不设则取该列数值最大值 */
+  cellMax?: number;
 }
 
 /** 表格组件配置 */
@@ -88,6 +97,17 @@ export interface ValueConfig {
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
+  /** 结构化单位 id（bytesIEC/bps/ms/percent/short…）。设置后启用单位库自动量纲；
+   *  未设置时回退到自由文本 unit（向后兼容）。 */
+  unitId?: string;
+  /** 值映射规则（值→文本/色），命中时覆盖数值展示与颜色。 */
+  valueMappings?: ValueMapping[];
+  /** 折线/柱状多系列堆叠（对齐 Grafana stacking）。 */
+  stack?: boolean;
+  /** 折线面积填充透明度 0~1（对齐 Grafana Fill opacity）。 */
+  fillOpacity?: number;
+  /** Text/Markdown 面板内容（对齐 Grafana Text panel），支持轻量 markdown。 */
+  content?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
   thresholdColors?: ThresholdColorConfig[];

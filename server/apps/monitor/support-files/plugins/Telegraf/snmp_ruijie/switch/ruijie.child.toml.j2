@@ -1,0 +1,149 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ruijie"
+        config_type = "ruijie"
+        brand = "ruijie"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Ruijie CPU (RUIJIE-PROCESS-MIB ruijieNodeCPUTotal5min, %, per-node table, PEN 4881) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.4881.1.1.10.2.36.1.2.1.5（5 分钟 CPU%，snmprec .1=1）。device_cpu_usage avg() by instance_id。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.36.1.2.1.5"
+        name = "usage"
+    # ---- Ruijie system memory (RUIJIE-MEMORY-MIB ruijieMemoryPoolSize/Used, KB, per-pool table) ----
+    # 待现网核验：total=Size 列 ...2.35.1.1.1.6 / used 列 ...1.7（KB，snmprec used 1124896KB；precision 1024）。
+    # 利用率在共享盘按 used/total 计算（KB 相消，比值精确）；绝对字节在 metrics.json 查询里 *1024。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.35.1.1.1.6"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.35.1.1.1.7"
+        name = "used"
+    # ---- Ruijie chassis temperature (RUIJIE-SYSTEM-MIB ruijieSystemMultipleTemperatureCurrent, °C, per-sensor table) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.4881.1.1.10.2.1.1.44.1.5（°C，snmprec 31/37/57°C，专用温度列）。device_temperature_celsius max()。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.44.1.5"
+        name = "celsius"
+    # ---- Ruijie fan state (RUIJIE-SYSTEM-MIB ruijieSystemFanStatus, per-fan table) ----
+    # 待现网核验：state 列 1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.4（snmprec=4 normal）。
+    # 原始码 1=noexist/2=existnopower/3=existreadypower/4=normal/5=powerbutabnormal/6=unknown；
+    # 下方 processors.enum 归一为 1=正常(1缺位/3就绪/4正常)/2=异常(2无电/5异常/6未知)。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.4"
+        name = "state"
+    # ---- Ruijie fan speed (RUIJIE-SYSTEM-MIB ruijieSystemFanStatusSpeed, RPM, 同风扇表) ----
+    # 待现网核验：转速列 1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.6（snmprec 6657/6696/6944/6999 RPM）。device_fan_speed max() by instance_id。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.43.1.6"
+        name = "speed"
+    # ---- Ruijie PSU state (RUIJIE-SYSTEM-MIB ruijieSystemElectricalInformationStatus, per-supply table) ----
+    # 待现网核验：state 列 1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.3（snmprec PSU1=4 normal/PSU2=1 noexist）。
+    # 同 fan 枚举码；processors.enum 归一为 1=正常(1/3/4)/2=异常(2/5/6)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.3"
+        name = "state"
+    # ---- Ruijie input voltage (RUIJIE-SYSTEM-MIB ruijieSystemElectricalInformationInVoltage, V, per-supply table) ----
+    # 待现网核验：电压列 1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.11（伏特直采,snmprec PSU1=231V/PSU2=0 缺位）。
+    # device_voltage_volts max() by instance_id 取在位电源的供电电压(避开缺位 0)。
+    [[inputs.snmp.table]]
+        name = "device_voltage"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.1.1.41.1.11"
+        name = "volts"
+    # ---- Ruijie SFP optical DDM (RUIJIE-FIBER-MIB, per-fiber-port table, raw value ÷100 = dBm) ----
+    # 待现网核验：RX=ruijieFiberRXpower 1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.76 / TX=ruijieFiberTXpower ...1.81（原始值÷100=dBm,负值常见;无模块/不支持 DDM 报哨兵 -10000）。
+    # 端口名 ruijieFiberPortDescr ...1.2 作 is_tag。metrics.json 用 (x != -10000)/100 过滤哨兵,min() by instance_id 取最弱光口(最易劣化)。
+    [[inputs.snmp.table]]
+        name = "device_optical"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.76"
+        name = "rx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.81"
+        name = "tx_power"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4881.1.1.10.2.105.1.1.1.2"
+        name = "portName"
+        is_tag = true
+
+# ---- 风扇状态归一：1=noexist(缺位)/3=existreadypower(就绪)/4=normal→1(正常)，2=existnopower/5=powerbutabnormal/6=unknown→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+            "3" = 1
+            "4" = 1
+# ---- 电源状态归一：同枚举码，1/3/4→1(正常)，2/5/6→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+            "3" = 1
+            "4" = 1

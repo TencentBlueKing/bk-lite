@@ -10,6 +10,7 @@ from rest_framework.exceptions import ValidationError
 
 from apps.cmdb.models.collect_model import CollectModels
 from apps.rpc.stargazer import Stargazer
+from apps.core.utils.team_utils import get_current_team
 
 MASKED_PASSWORD = "••••••"
 
@@ -43,7 +44,7 @@ class CollectToolService:
         return {
             "username": getattr(request.user, "username", ""),
             "domain": getattr(request.user, "domain", ""),
-            "current_team": request.COOKIES.get("current_team"),
+            "current_team": get_current_team(request),
             "include_children": include_children,
         }
 

@@ -41,13 +41,22 @@ def _acceptable(attr_type):
 
 
 def _iter_cloud_plugins():
+    # 社区云插件（始终存在）
     from apps.cmdb.collection.plugins.community.cloud.hwcloud import HwCloudCollectionPlugin
-    from apps.cmdb.collection.plugins.community.cloud.manageone import ManageOneCollectionPlugin
-    from apps.cmdb.collection.plugins.community.cloud.openstack import OpenStackCollectionPlugin
-    from apps.cmdb.collection.plugins.community.cloud.smartx import SmartXCollectionPlugin
     from apps.cmdb.collection.plugins.community.cloud.fusioninsight import FusionInsightCollectionPlugin
-    return [HwCloudCollectionPlugin, ManageOneCollectionPlugin, OpenStackCollectionPlugin,
-            SmartXCollectionPlugin, FusionInsightCollectionPlugin]
+    plugins = [HwCloudCollectionPlugin, FusionInsightCollectionPlugin]
+    # 企业云插件（仅打包企业版时存在；社区构建缺失则跳过，不破坏社区 CI）
+    for mod, cls_name in [
+        ("apps.cmdb_enterprise.collect.openstack", "OpenStackCollectionPlugin"),
+        ("apps.cmdb_enterprise.collect.smartx", "SmartXCollectionPlugin"),
+        ("apps.cmdb_enterprise.collect.manageone", "ManageOneCollectionPlugin"),
+    ]:
+        try:
+            import importlib
+            plugins.append(getattr(importlib.import_module(mod), cls_name))
+        except ImportError:
+            pass
+    return plugins
 
 
 def test_cloud_plugins_field_types_align_with_model():

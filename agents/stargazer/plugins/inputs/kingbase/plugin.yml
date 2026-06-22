@@ -1,0 +1,18 @@
+name: kingbase
+version: "1.0.0"
+category: database
+metadata:
+  display_name: "人大金仓 KingbaseES"
+  description: "KingbaseES 数据库协议采集插件（PG 兼容）"
+  author: "WeOps"
+  tags: [database, kingbase]
+  cloud_protocol: false
+  model_id: kingbase
+executors:
+  protocol:
+    type: protocol
+    timeout: 30
+    collector:
+      module: plugins.inputs.kingbase.kingbase_info
+      class: KingbaseInfo
+default_executor: protocol

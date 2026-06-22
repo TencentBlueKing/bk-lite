@@ -27,6 +27,8 @@ import {
   buildDashboardActionUrl,
   resolveDashboardActionParams,
 } from '@/app/ops-analysis/utils/dashboardActions';
+import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
+import { getColorByThreshold } from '@/app/ops-analysis/utils/thresholdUtils';
 
 const { RangePicker } = DatePicker;
 const DEFAULT_CELL_MAX_WIDTH = 260;
@@ -186,6 +188,18 @@ const ComTable: React.FC<ComTableProps> = ({
   );
 
   const antColumns = useMemo((): ColumnsType<TableDataItem> => {
+    // 为 gauge 单元格预计算各列数值最大值（cellMax 未设时用）
+    const colGaugeMax: Record<string, number> = {};
+    columnConfigs.forEach((col) => {
+      if (col.cellType === 'gauge' && col.cellMax == null) {
+        let m = 0;
+        for (const row of tableData) {
+          const n = Number((row as any)?.[col.key]);
+          if (!Number.isNaN(n) && n > m) m = n;
+        }
+        colGaugeMax[col.key] = m;
+      }
+    });
     return columnConfigs.map((col) => {
       const columnActions = (config?.actions || []).filter(
         (action) => action.columnKey === col.key,
@@ -200,8 +214,65 @@ const ComTable: React.FC<ComTableProps> = ({
             return renderActionButtons(columnActions, record);
           }
 
+          // 单元格值映射：命中则用映射文本/颜色（对齐 Grafana 表格单元格映射）
+          const mapping = applyValueMapping(text, col.valueMappings);
           const cellText = text === null || text === undefined ? '' : String(text);
-          const displayText = cellText.trim() ? cellText : '--';
+          const baseText = cellText.trim() ? cellText : '--';
+          const displayText =
+            mapping?.text !== undefined ? mapping.text : baseText;
+
+          // 单元格颜色：值映射优先，其次按阈值
+          const numVal =
+            typeof text === 'number' ? text : parseFloat(String(text));
+          const cellColor =
+            mapping?.color ||
+            (col.cellThresholdColors?.length && !Number.isNaN(numVal)
+              ? getColorByThreshold(numVal, col.cellThresholdColors, undefined as any)
+              : undefined);
+
+          // 色背景单元格
+          if (col.cellType === 'colorBackground' && cellColor) {
+            return (
+              <Tooltip placement="topLeft" title={displayText}>
+                <div
+                  style={{
+                    background: cellColor,
+                    color: '#fff',
+                    fontWeight: 600,
+                    borderRadius: 4,
+                    padding: '1px 8px',
+                    textAlign: 'center',
+                    overflow: 'hidden',
+                    textOverflow: 'ellipsis',
+                    whiteSpace: 'nowrap',
+                  }}
+                >
+                  {displayText}
+                </div>
+              </Tooltip>
+            );
+          }
+
+          // 条形量规单元格
+          if (col.cellType === 'gauge' && !Number.isNaN(numVal)) {
+            const max = col.cellMax || colGaugeMax[col.key] || 100;
+            const ratio = max > 0 ? Math.min(Math.max(numVal / max, 0), 1) : 0;
+            const barColor = cellColor || '#366ce4';
+            return (
+              <div className="flex items-center gap-2">
+                <div
+                  className="relative flex-1 overflow-hidden rounded"
+                  style={{ height: 10, background: 'var(--color-fill-2, #f0f0f0)' }}
+                >
+                  <div
+                    className="absolute left-0 top-0 h-full rounded"
+                    style={{ width: `${ratio * 100}%`, background: barColor }}
+                  />
+                </div>
+                <span className="shrink-0 tabular-nums text-xs">{displayText}</span>
+              </div>
+            );
+          }
 
           return (
             <Tooltip placement="topLeft" title={displayText}>
@@ -211,6 +282,7 @@ const ComTable: React.FC<ComTableProps> = ({
                   overflow: 'hidden',
                   textOverflow: 'ellipsis',
                   whiteSpace: 'nowrap',
+                  ...(mapping?.color ? { color: mapping.color, fontWeight: 600 } : {}),
                 }}
               >
                 {displayText}
@@ -226,7 +298,7 @@ const ComTable: React.FC<ComTableProps> = ({
 
       return column;
     });
-  }, [columnConfigs, config?.actions, handleActionClick, renderActionButtons]);
+  }, [columnConfigs, config?.actions, handleActionClick, renderActionButtons, tableData]);
 
   useEffect(() => {
     if (!onQueryChange) return;

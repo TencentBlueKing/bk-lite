@@ -2,6 +2,7 @@ from rest_framework import serializers
 from rest_framework.fields import empty
 
 from apps.core.utils.permission_utils import get_permission_rules
+from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import User
 
 
@@ -44,7 +45,7 @@ class AuthSerializer(UsernameSerializer):
         super().__init__(instance=instance, data=data, **kwargs)
         request = self.context["request"]
         self.rule_map = {}
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         app_name = self.get_app_name()
         permission_rules = get_permission_rules(request.user, current_team, app_name, self.permission_key, include_children)
