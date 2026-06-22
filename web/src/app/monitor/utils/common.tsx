@@ -554,7 +554,9 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /fiberhome|烽火|\bwri\b/i, label: 'FiberHome', icon: 'mm-fiberhome_fiberhome' },
   { match: /\bh3c\b|comware|hh3c/i, label: 'H3C', icon: 'mm-h3c_h3c' },
   { match: /hirschmann|belden|\brs[234]0\b|greyhound/i, label: 'Hirschmann', icon: 'mm-hirschmann_hirschmann' },
-  { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' }
+  { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' },
+  { match: /adtran|netvanta|adtran.?aos/i, label: 'Adtran', icon: 'mm-adtran_adtran' },
+  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

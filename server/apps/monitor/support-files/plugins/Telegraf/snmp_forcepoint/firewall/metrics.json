@@ -1,6 +1,6 @@
 {
   "plugin": "Firewall Forcepoint SNMP",
-  "plugin_desc": "Forcepoint NGFW (formerly Stonesoft/McAfee NGFW) SNMP collection (STONESOFT-FIREWALL-MIB, IANA PEN 1369). Beyond standard IF-MIB interface metrics, it collects Forcepoint private OIDs for device health: per-core CPU utilisation (fwCpuTotal, averaged) and memory (fwMemBytesTotal/fwMemBytesUsed in bytes, usage derived as used/total). The Stonesoft MIB does not expose a scalar session count or temperature/fan/power, so those are N/A. Supported brands/models — Forcepoint NGFW / Stonesoft / McAfee NGFW appliances and virtual engines (enterprise 1369).",
+  "plugin_desc": "Forcepoint NGFW（原 Stonesoft/McAfee NGFW）专用 SNMP 采集模板（STONESOFT-FIREWALL-MIB，企业号 1369）。除标准 IF-MIB 接口指标外，额外采集 Forcepoint 私有 OID 的设备健康指标：每核 CPU 使用率（fwCpuTotal，取均值）与内存（fwMemBytesTotal/fwMemBytesUsed，字节，用量按 已用/总量 推导）。Stonesoft MIB 未暴露标量会话计数与温度/风扇/电源，故为 N/A。适用品牌型号——Forcepoint NGFW / Stonesoft / McAfee NGFW 硬件及虚拟引擎（企业号 1369）。",
   "status_query": "any({instance_type='firewall', collect_type='snmp_forcepoint'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",

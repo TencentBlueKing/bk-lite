@@ -1,6 +1,6 @@
 {
   "plugin": "Switch FortiSwitch SNMP",
-  "plugin_desc": "Fortinet FortiSwitch SNMP collection (FORTINET-FORTISWITCH-MIB, IANA PEN 12356). Beyond standard IF-MIB interface metrics, it collects FortiSwitch private OIDs for device health: CPU utilisation (fsSysCpuUsage, reported directly as a percentage) and memory (fsSysMemUsage used + fsSysMemCapacity total in KB, usage derived as used/total). Temperature/fan/power are exposed only via the type-mixed ENTITY-SENSOR table, which the SNMP input cannot row-filter, so those are N/A. Supported brands/models — Fortinet FortiSwitch managed switches (FortiSwitch 100/200/400/500/1000 series; enterprise 12356).",
+  "plugin_desc": "Fortinet FortiSwitch 交换机专用 SNMP 采集模板（FORTINET-FORTISWITCH-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiSwitch 私有 OID 的设备健康指标：CPU 使用率（fsSysCpuUsage，直接以百分比上报）与内存（fsSysMemUsage 已用 + fsSysMemCapacity 总量，KB，用量按 已用/总量 推导）。温度/风扇/电源仅通过类型混合的 ENTITY-SENSOR 表暴露，SNMP 采集端无法按行过滤，故为 N/A。适用品牌型号——Fortinet FortiSwitch 网管交换机（FortiSwitch 100/200/400/500/1000 系列，企业号 12356）。",
   "status_query": "any({instance_type='switch', collect_type='snmp_fortiswitch'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",
