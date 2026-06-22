@@ -4,6 +4,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Spin, Empty, Alert } from 'antd';
 import { useRouter } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
+import { useTheme } from '@/context/theme';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import type { RackLayoutData, RackDevice } from '@/app/cmdb/types/rackRoom';
 import { RACK_TOP, deviceColor, deviceTypeName, TECH } from '@/app/cmdb/utils/rackRoomLayout';
@@ -27,12 +28,14 @@ const MAX_U = 26;  // 每 U 最大像素（避免太空旷）
 
 const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceClick }) => {
   const { t } = useTranslation();
+  const { themeName } = useTheme();
   const router = useRouter();
   const { getRackLayout } = useInstanceApi();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RackLayoutData | null>(null);
   const [uPx, setUPx] = useState(16);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const isDark = themeName === 'dark';
 
   useEffect(() => {
     if (!modelId || !instId) return;
@@ -73,7 +76,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
 
   if (loading) {
     return (
-      <div style={{ padding: 40, textAlign: 'center', background: TECH.bg1 }}>
+      <div style={{ padding: 40, textAlign: 'center', background: isDark ? '#141820' : TECH.bg1 }}>
         <Spin spinning />
       </div>
     );
@@ -106,7 +109,7 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
   const usedU = u - data.free_u;
 
   return (
-    <div className="rk-wrap" style={{ background: TECH.bg1 }}>
+    <div className="rk-wrap" style={{ background: isDark ? '#141820' : TECH.bg1 }}>
       {/* 概览：总U / 已用 / 空闲 / 连续空闲U位 */}
       <div className="rk-ov">
         <span className="rk-ov-i"><b>{u}</b><i>{t('Model.rackTotalU')}</i></span>
@@ -118,58 +121,62 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
         <svg width={SVG_W} height={svgH} style={{ display: 'block', margin: '0 auto' }}>
           <defs>
             <linearGradient id="rkFrame" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#eef4fb" />
-              <stop offset="0.16" stopColor="#f6f9fd" />
-              <stop offset="0.5" stopColor="#ffffff" />
-              <stop offset="0.84" stopColor="#f6f9fd" />
-              <stop offset="1" stopColor="#eef4fb" />
+              <stop offset="0" stopColor={isDark ? '#18222e' : '#eef4fb'} />
+              <stop offset="0.16" stopColor={isDark ? '#202b38' : '#f6f9fd'} />
+              <stop offset="0.5" stopColor={isDark ? '#273342' : '#ffffff'} />
+              <stop offset="0.84" stopColor={isDark ? '#202b38' : '#f6f9fd'} />
+              <stop offset="1" stopColor={isDark ? '#18222e' : '#eef4fb'} />
             </linearGradient>
             <linearGradient id="rkRail" x1="0" y1="0" x2="1" y2="0">
-              <stop offset="0" stopColor="#e3ebf5" />
-              <stop offset="0.5" stopColor="#f8fafc" />
-              <stop offset="1" stopColor="#dce6f2" />
+              <stop offset="0" stopColor={isDark ? '#253241' : '#e3ebf5'} />
+              <stop offset="0.5" stopColor={isDark ? '#151c26' : '#f8fafc'} />
+              <stop offset="1" stopColor={isDark ? '#253241' : '#dce6f2'} />
             </linearGradient>
             <linearGradient id="rkDev" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#ffffff" />
-              <stop offset="1" stopColor="#f8fafc" />
+              <stop offset="0" stopColor={isDark ? '#1b2430' : '#ffffff'} />
+              <stop offset="1" stopColor={isDark ? '#151d27' : '#f8fafc'} />
             </linearGradient>
             <linearGradient id="rkInner" x1="0" y1="0" x2="0" y2="1">
-              <stop offset="0" stopColor="#ffffff" />
-              <stop offset="1" stopColor="#f6f9fd" />
+              <stop offset="0" stopColor={isDark ? '#16202b' : '#ffffff'} />
+              <stop offset="1" stopColor={isDark ? '#111821' : '#f6f9fd'} />
             </linearGradient>
             <filter id="rkSoftShadow" x="-30%" y="-30%" width="160%" height="160%">
-              <feDropShadow dx="0" dy="9" stdDeviation="9" floodColor="#1f334f" floodOpacity="0.08" />
+              <feDropShadow dx="0" dy={isDark ? '7' : '5'} stdDeviation={isDark ? '8' : '6'}
+                floodColor={isDark ? '#000000' : '#1f334f'} floodOpacity={isDark ? '0.20' : '0.045'} />
             </filter>
           </defs>
 
           {/* 机柜外框 */}
           <rect x={FRAME_X - 6} y={RACK_TOP - 6} width={FRAME_W + 12} height={u * uPx + 12}
-            rx={16} fill="url(#rkFrame)" stroke="rgba(43,63,96,0.10)" strokeWidth={0.9} filter="url(#rkSoftShadow)" />
+            rx={16} fill="url(#rkFrame)" stroke={isDark ? 'rgba(148,163,184,0.13)' : 'rgba(43,63,96,0.08)'}
+            strokeWidth={0.8} filter="url(#rkSoftShadow)" />
           <rect x={INNER_X} y={RACK_TOP - 2} width={INNER_W} height={u * uPx + 4}
-            rx={9} fill="url(#rkInner)" stroke="rgba(43,63,96,0.10)" strokeWidth={0.85} />
+            rx={9} fill="url(#rkInner)" stroke={isDark ? 'rgba(148,163,184,0.14)' : 'rgba(43,63,96,0.09)'} strokeWidth={0.75} />
           <rect x={DEV_X} y={RACK_TOP - 7} width={DEV_W} height={2}
-            rx={2} fill="rgba(43, 63, 96, 0.12)" />
+            rx={2} fill={isDark ? 'rgba(148,163,184,0.16)' : 'rgba(43, 63, 96, 0.10)'} />
           <rect x={DEV_X} y={RACK_TOP + u * uPx + 7} width={DEV_W} height={2}
-            rx={2} fill="rgba(43, 63, 96, 0.12)" />
+            rx={2} fill={isDark ? 'rgba(148,163,184,0.16)' : 'rgba(43, 63, 96, 0.10)'} />
 
           {/* 立柱导轨 + U 孔 */}
           <rect x={INNER_X} y={RACK_TOP} width={10} height={u * uPx} rx={3} fill="url(#rkRail)" opacity={0.78} />
           <rect x={INNER_X + INNER_W - 10} y={RACK_TOP} width={10} height={u * uPx} rx={3} fill="url(#rkRail)" opacity={0.78} />
           {Array.from({ length: u + 1 }).map((_, i) => (
             <line key={`line${i}`} x1={DEV_X} x2={DEV_X + DEV_W} y1={RACK_TOP + i * uPx} y2={RACK_TOP + i * uPx}
-              stroke="rgba(43,63,96,0.075)" />
+              stroke={isDark ? 'rgba(148,163,184,0.10)' : 'rgba(43,63,96,0.065)'} />
           ))}
           {Array.from({ length: u }).map((_, i) => (
             <g key={`h${i}`}>
-              <circle cx={INNER_X + 5} cy={RACK_TOP + i * uPx + uPx / 2} r={0.95} fill="#9aa7bd" opacity={0.42} />
-              <circle cx={INNER_X + INNER_W - 5} cy={RACK_TOP + i * uPx + uPx / 2} r={0.95} fill="#9aa7bd" opacity={0.42} />
+              <circle cx={INNER_X + 5} cy={RACK_TOP + i * uPx + uPx / 2} r={0.9}
+                fill={isDark ? '#8ea0b8' : '#9aa7bd'} opacity={isDark ? 0.34 : 0.38} />
+              <circle cx={INNER_X + INNER_W - 5} cy={RACK_TOP + i * uPx + uPx / 2} r={0.9}
+                fill={isDark ? '#8ea0b8' : '#9aa7bd'} opacity={isDark ? 0.34 : 0.38} />
             </g>
           ))}
 
           {/* U 标尺 */}
           {ruler.map((n) => (
-            <text key={`u${n}`} x={FRAME_X - 12} y={yFor(n, 1) + uPx / 2 + 3}
-              textAnchor="end" fontSize={10} fill={TECH.textDim}
+            <text key={`u${n}`} x={INNER_X - 10} y={yFor(n, 1) + uPx / 2 + 3}
+              textAnchor="end" fontSize={10} fill={isDark ? '#90a0b5' : TECH.textDim}
               style={{ fontFamily: 'ui-monospace, monospace' }}>{n}</text>
           ))}
 
@@ -192,16 +199,16 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
               <g key={d.inst_id} className="rk-dev" style={{ cursor: 'pointer' }}
                 onClick={() => onDevice(d)}>
                 <rect x={dx} y={y + 1.5} width={wDev} height={h} rx={6}
-                  fill="url(#rkDev)" stroke={bad ? TECH.danger : 'rgba(23,54,106,0.18)'}
+                  fill="url(#rkDev)" stroke={bad ? TECH.danger : (isDark ? 'rgba(148,163,184,0.16)' : 'rgba(23,54,106,0.15)')}
                   strokeWidth={bad ? 1.5 : 0.8} />
                 <rect x={dx + 5} y={y + 4} width={wDev - 10} height={Math.max(3, h * 0.28)} rx={5}
-                  fill="rgba(255,255,255,0.46)" />
+                  fill={isDark ? 'rgba(255,255,255,0.035)' : 'rgba(255,255,255,0.42)'} />
                 <circle cx={dx + 12} cy={cy} r={3.4} fill={bad ? TECH.danger : c} opacity={0.16} />
                 <circle cx={dx + 12} cy={cy} r={1.9} fill={bad ? TECH.danger : c} />
                 <text x={tx} y={cy - (twoLine ? 4 : -3.5)} fontSize={11}
-                  fill={TECH.text} dominantBaseline="middle">{clip(d.inst_name)}</text>
+                  fill={isDark ? '#e5edf8' : TECH.text} dominantBaseline="middle">{clip(d.inst_name)}</text>
                 {twoLine && (
-                  <text x={tx} y={cy + 9} fontSize={9.5} fill={TECH.textDim}>
+                  <text x={tx} y={cy + 9} fontSize={9.5} fill={isDark ? '#90a0b5' : TECH.textDim}>
                     {clip(`${deviceTypeName(d.model_id)} · U${d.rack_u_start}-${d.u_end}`)}
                   </text>
                 )}
@@ -226,33 +233,38 @@ const RackElevation: React.FC<Props> = ({ modelId, instId, embedded, onDeviceCli
           border: ${embedded ? 'none' : `1px solid ${TECH.line}`};
           display: flex; flex-direction: column;
           overflow: hidden;
-          box-shadow: ${embedded ? 'none' : '0 18px 42px rgba(31, 47, 75, 0.07)'};
+          color: ${isDark ? '#e5edf8' : TECH.text};
+          box-shadow: ${embedded ? 'none' : (isDark ? '0 16px 36px rgba(0,0,0,0.22)' : '0 14px 34px rgba(31, 47, 75, 0.045)')};
           ${embedded ? '' : 'max-width: 420px; margin: 12px auto;'}
         }
         .rk-scroll {
           flex: 1;
           padding: 13px 8px 14px;
           background:
-            linear-gradient(90deg, rgba(58, 83, 125, 0.055) 1px, transparent 1px),
-            linear-gradient(0deg, rgba(58, 83, 125, 0.055) 1px, transparent 1px),
-            #f6f9fd;
+            linear-gradient(90deg, ${isDark ? 'rgba(140,160,190,0.075)' : 'rgba(58,83,125,0.045)'} 1px, transparent 1px),
+            linear-gradient(0deg, ${isDark ? 'rgba(140,160,190,0.075)' : 'rgba(58,83,125,0.045)'} 1px, transparent 1px),
+            ${isDark ? '#111821' : '#f9fcff'};
           background-size: 28px 28px;
         }
         .rk-ov {
           display: flex; gap: 8px; padding: 10px 14px;
-          border-bottom: 1px solid ${TECH.line};
-          background: #ffffff;
+          border-bottom: 1px solid ${isDark ? 'rgba(148,163,184,0.14)' : TECH.line};
+          background: ${isDark ? '#141820' : '#ffffff'};
         }
         .rk-ov-i {
           flex: 1; display: flex; flex-direction: column; align-items: center;
           gap: 2px; padding: 7px 4px; border-radius: 8px;
-          background: #f8fafc; border: 1px solid ${TECH.line};
+          background: ${isDark ? 'rgba(255,255,255,0.035)' : '#f8fafc'};
+          border: 1px solid ${isDark ? 'rgba(148,163,184,0.14)' : TECH.line};
         }
-        .rk-ov-i :global(b) { font-size: 17px; font-weight: 760; color: ${TECH.text};
+        .rk-ov-i :global(b) { font-size: 17px; font-weight: 760; color: ${isDark ? '#e5edf8' : TECH.text};
           font-family: ui-monospace, monospace; line-height: 1.1; }
-        .rk-ov-i :global(i) { font-size: 11px; color: ${TECH.textDim}; font-style: normal; }
-        .rk-ov-i.hl { background: rgba(43,101,217,0.08); border-color: rgba(43,101,217,0.32); }
-        .rk-ov-i.hl :global(b) { color: ${TECH.cyan}; }
+        .rk-ov-i :global(i) { font-size: 11px; color: ${isDark ? '#90a0b5' : TECH.textDim}; font-style: normal; }
+        .rk-ov-i.hl {
+          background: ${isDark ? 'rgba(77,130,255,0.13)' : 'rgba(43,101,217,0.08)'};
+          border-color: ${isDark ? 'rgba(122,168,255,0.28)' : 'rgba(43,101,217,0.32)'};
+        }
+        .rk-ov-i.hl :global(b) { color: ${isDark ? '#7aa8ff' : TECH.cyan}; }
         .rk-dev :global(rect),
         .rk-dev :global(text) { transition: fill .15s ease, stroke .15s ease; }
         .rk-dev:hover :global(text) { fill: ${TECH.cyan}; }

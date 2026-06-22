@@ -3,6 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Spin, Empty, Alert, Drawer, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
+import { useTheme } from '@/context/theme';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import type { RoomLayoutData, RoomRack, RackDevice } from '@/app/cmdb/types/rackRoom';
@@ -19,12 +20,14 @@ interface Props {
 
 const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
   const { t } = useTranslation();
+  const { themeName } = useTheme();
   const { getRoomLayout } = useInstanceApi();
   const [loading, setLoading] = useState(false);
   const [data, setData] = useState<RoomLayoutData | null>(null);
   const [rack, setRack] = useState<RoomRack | null>(null);
   const [device, setDevice] = useState<RackDevice | null>(null);
   const [devOpen, setDevOpen] = useState(false);
+  const isDark = themeName === 'dark';
 
   useEffect(() => {
     if (!modelId || !instId) return;
@@ -47,6 +50,15 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
   const width = PAD + cols * CELL + 16;
   const height = PAD + rows * CELL + 16;
   const box = CELL - GAP;
+  const roomBg = isDark
+    ? 'linear-gradient(180deg, #151922 0%, #12161d 58%, #10141a 100%)'
+    : 'linear-gradient(180deg, #ffffff 0%, #fbfdff 58%, #f7fbff 100%)';
+  const cellBg = isDark
+    ? 'linear-gradient(180deg, rgba(255,255,255,0.035), rgba(255,255,255,0.015))'
+    : 'linear-gradient(180deg, rgba(255,255,255,0.62), rgba(255,255,255,0.34))';
+  const rackHoverShadow = isDark
+    ? '0 1px 2px rgba(0,0,0,0.24), 0 14px 28px rgba(0,0,0,0.24)'
+    : '0 1px 2px rgba(24,39,63,0.06), 0 12px 22px rgba(31,51,82,0.07)';
 
   return (
     <div className="rf">
@@ -91,8 +103,12 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
               <div key={r.inst_id} className="rf-rack"
                 style={{
                   left: x + GAP / 2, top: y + GAP / 2, width: box, height: box,
-                  borderColor: `color-mix(in srgb, ${c} 22%, rgba(41, 61, 93, 0.16))`,
-                  boxShadow: '0 1px 2px rgba(24, 39, 63, 0.07), 0 10px 22px rgba(31, 51, 82, 0.045)',
+                  borderColor: isDark
+                    ? `color-mix(in srgb, ${c} 30%, rgba(148, 163, 184, 0.18))`
+                    : `color-mix(in srgb, ${c} 14%, rgba(41, 61, 93, 0.10))`,
+                  boxShadow: isDark
+                    ? '0 1px 2px rgba(0, 0, 0, 0.18), 0 10px 24px rgba(0, 0, 0, 0.12)'
+                    : '0 1px 2px rgba(24, 39, 63, 0.035), 0 6px 14px rgba(31, 51, 82, 0.025)',
                   ['--rack-tone' as string]: c,
                 }}
                 onClick={() => setRack(r)}>
@@ -132,16 +148,22 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
         title={null}
         closable={false}
         styles={{
-          body: { padding: 0, background: TECH.bg1 },
-          content: { background: TECH.bg1 },
-          wrapper: { boxShadow: '-12px 0 40px rgba(23,54,106,0.15)' },
+          body: { padding: 0, background: isDark ? '#141820' : '#f7fbff' },
+          content: { background: isDark ? '#141820' : '#f7fbff' },
+          wrapper: {
+            boxShadow: isDark
+              ? '-14px 0 42px rgba(0,0,0,0.38)'
+              : '-12px 0 34px rgba(23,54,106,0.11)',
+          },
         }}
       >
         {rack && (
           <div className="rd">
             <div className="rd-hd" style={{
-              background: 'linear-gradient(180deg, #ffffff 0%, #f8fafc 100%)',
-              borderBottom: `1px solid ${TECH.line}`,
+              background: isDark
+                ? 'linear-gradient(180deg, #171c25 0%, #141820 100%)'
+                : 'linear-gradient(180deg, #ffffff 0%, #f8fbff 100%)',
+              borderBottom: `1px solid ${isDark ? 'rgba(148,163,184,0.14)' : TECH.line}`,
             }}>
               <span className="rd-led" style={{
                 background: rackTypeColor(rack.datacenter_type),
@@ -174,8 +196,8 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
       <style jsx>{`
         .rf {
           padding: 12px;
-          color: ${TECH.text};
-          background: linear-gradient(180deg, #f8fbff 0%, ${TECH.bg1} 52%, #eef4fb 100%);
+          color: ${isDark ? '#e5edf8' : TECH.text};
+          background: ${roomBg};
           border-radius: 10px;
         }
         .rf-legend {
@@ -184,16 +206,16 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           padding: 5px 6px;
           margin-bottom: 12px;
           border-radius: 8px;
-          border: 1px solid ${TECH.line};
-          background: #f8fafc;
-          box-shadow: inset 0 1px 0 rgba(255,255,255,0.9);
+          border: 1px solid ${isDark ? 'rgba(148,163,184,0.16)' : 'rgba(43,63,96,0.08)'};
+          background: ${isDark ? 'rgba(20,24,32,0.96)' : '#ffffff'};
+          box-shadow: ${isDark ? 'inset 0 1px 0 rgba(255,255,255,0.03)' : 'inset 0 1px 0 rgba(255,255,255,0.95)'};
         }
         .rf-legend-t {
           display: inline-flex;
           align-items: center;
           min-height: 24px;
           padding: 0 8px;
-          color: ${TECH.textDim};
+          color: ${isDark ? '#8d9caf' : TECH.textDim};
           font-size: 11px;
           font-weight: 650;
         }
@@ -201,29 +223,29 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           display: inline-flex; align-items: center; gap: 6px;
           min-height: 24px;
           padding: 0 8px;
-          border: 1px solid rgba(43, 63, 96, 0.10);
+          border: 1px solid ${isDark ? 'rgba(148,163,184,0.14)' : 'rgba(43, 63, 96, 0.075)'};
           border-radius: 999px;
-          background: #ffffff;
-          color: #536176; font-size: 11px; font-weight: 650;
+          background: ${isDark ? 'rgba(255,255,255,0.035)' : '#ffffff'};
+          color: ${isDark ? '#b5c0cf' : '#536176'}; font-size: 11px; font-weight: 650;
         }
         .rf-legend-i > i {
           width: 8px; height: 8px; border-radius: 2px; display: inline-block;
         }
         .rf-stage {
           border-radius: 10px; padding: 10px; overflow: auto;
-          background: rgba(255,255,255,0.9);
-          border: 1px solid ${TECH.line};
-          box-shadow: 0 18px 42px rgba(31, 47, 75, 0.07);
+          background: ${isDark ? 'rgba(18,22,29,0.92)' : 'rgba(255,255,255,0.96)'};
+          border: 1px solid ${isDark ? 'rgba(148,163,184,0.14)' : 'rgba(43,63,96,0.08)'};
+          box-shadow: ${isDark ? '0 16px 38px rgba(0,0,0,0.18)' : '0 10px 26px rgba(31, 47, 75, 0.035)'};
         }
         .rf-canvas {
           position: relative;
           overflow: hidden;
-          border: 1px solid rgba(43, 63, 96, 0.08);
+          border: 1px solid ${isDark ? 'rgba(148,163,184,0.12)' : 'rgba(43, 63, 96, 0.06)'};
           border-radius: 9px;
-          background-color: #f6f9fd;
+          background-color: ${isDark ? '#111821' : '#fcfeff'};
           background-image:
-            linear-gradient(rgba(58, 83, 125, 0.11) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(58, 83, 125, 0.11) 1px, transparent 1px);
+            linear-gradient(${isDark ? 'rgba(140,160,190,0.10)' : 'rgba(58,83,125,0.065)'} 1px, transparent 1px),
+            linear-gradient(90deg, ${isDark ? 'rgba(140,160,190,0.10)' : 'rgba(58,83,125,0.065)'} 1px, transparent 1px);
           background-size: ${CELL}px ${CELL}px, ${CELL}px ${CELL}px;
           background-position: ${PAD}px ${PAD}px, ${PAD}px ${PAD}px;
         }
@@ -236,13 +258,13 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           height: ${CELL}px;
           z-index: 0;
           pointer-events: none;
-          opacity: .42;
+          opacity: ${isDark ? '.22' : '.20'};
           background:
-            linear-gradient(90deg, transparent, rgba(255, 255, 255, .58), transparent),
-            repeating-linear-gradient(135deg, rgba(43, 63, 96, .06) 0 1px, transparent 1px 10px);
+            linear-gradient(90deg, transparent, ${isDark ? 'rgba(255,255,255,.08)' : 'rgba(255,255,255,.58)'}, transparent),
+            repeating-linear-gradient(135deg, ${isDark ? 'rgba(180,195,220,.08)' : 'rgba(43,63,96,.032)'} 0 1px, transparent 1px 10px);
         }
         .rf-hdr {
-          position: absolute; z-index: 3; color: ${TECH.cyan}; opacity: .95;
+          position: absolute; z-index: 3; color: ${isDark ? '#7aa8ff' : TECH.cyan}; opacity: .95;
           font-family: ui-monospace, monospace; font-size: 11px;
           font-weight: 700;
           display: flex; align-items: center; justify-content: center;
@@ -251,15 +273,15 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
         .rf-row { left: 4px; width: 28px; }
         .rf-cell {
           position: absolute; z-index: 1; border-radius: 9px;
-          border: 1px solid rgba(75, 96, 130, 0.08);
-          background: linear-gradient(180deg, rgba(255,255,255,0.34), rgba(255,255,255,0.16));
+          border: 1px solid ${isDark ? 'rgba(148,163,184,0.10)' : 'rgba(75,96,130,0.055)'};
+          background: ${cellBg};
         }
         .rf-rack {
           position: absolute; z-index: 2; border-radius: 10px; cursor: pointer;
           border: 1px solid; overflow: hidden;
           background:
-            radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--rack-tone) 9%, transparent), transparent 40%),
-            linear-gradient(180deg, color-mix(in srgb, var(--rack-tone) 3%, #ffffff), #f9fbfe);
+            radial-gradient(circle at 100% 0%, color-mix(in srgb, var(--rack-tone) ${isDark ? '10%' : '3%'}, transparent), transparent 38%),
+            linear-gradient(180deg, color-mix(in srgb, var(--rack-tone) ${isDark ? '7%' : '1.2%'}, ${isDark ? '#18202a' : '#ffffff'}), ${isDark ? '#151b24' : '#ffffff'});
           transition: transform .16s ease, box-shadow .16s ease, border-color .16s ease;
           padding: 11px 10px 9px;
         }
@@ -268,22 +290,20 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           position: absolute;
           inset: 6px;
           border-radius: 7px;
-          border: 1px solid color-mix(in srgb, var(--rack-tone) 12%, transparent);
+          border: 1px solid color-mix(in srgb, var(--rack-tone) ${isDark ? '18%' : '6%'}, transparent);
           pointer-events: none;
         }
         .rf-rack:hover {
           transform: translateY(-2px);
           border-color: var(--rack-tone);
-          box-shadow:
-            0 1px 2px rgba(24, 39, 63, 0.08),
-            0 14px 26px rgba(31, 51, 82, 0.10) !important;
+          box-shadow: ${rackHoverShadow} !important;
         }
         .rf-rack-led {
           position: absolute; top: 10px; right: 10px;
           width: 7px; height: 7px; border-radius: 50%;
         }
         :global(.rf-rack-name) {
-          color: ${TECH.text}; font-size: 11.5px; font-weight: 760; line-height: 1.2;
+          color: ${isDark ? '#e5edf8' : TECH.text}; font-size: 11.5px; font-weight: 760; line-height: 1.2;
           letter-spacing: 0;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
           margin-top: 0; padding-right: 16px;
@@ -293,29 +313,29 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .rf-rack-free {
-          font-size: 10px; margin-top: 5px; color: ${TECH.textDim};
+          font-size: 10px; margin-top: 5px; color: ${isDark ? '#8d9caf' : TECH.textDim};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .rf-rack-free > b { font-weight: 600; font-family: ui-monospace, monospace; }
         .rf-bar {
           position: absolute; left: 10px; right: 10px; bottom: 18px; height: 4px;
-          border-radius: 999px; background: rgba(23, 32, 51, 0.08); overflow: hidden;
+          border-radius: 999px; background: ${isDark ? 'rgba(148,163,184,0.14)' : 'rgba(23,32,51,0.07)'}; overflow: hidden;
         }
         .rf-bar > i { display: block; height: 100%; border-radius: 999px; }
         .rf-rack-usage {
           position: absolute; right: 10px; bottom: 5px;
-          font-size: 10px; color: ${TECH.textDim}; font-family: ui-monospace, monospace;
+          font-size: 10px; color: ${isDark ? '#8d9caf' : TECH.textDim}; font-family: ui-monospace, monospace;
         }
-        .rd { color: ${TECH.text}; display: flex; flex-direction: column;
-          min-height: 100%; background: ${TECH.bg1}; }
+        .rd { color: ${isDark ? '#e5edf8' : TECH.text}; display: flex; flex-direction: column;
+          min-height: 100%; background: ${isDark ? '#141820' : '#f7fbff'}; }
         .rd-hd { display: flex; align-items: center; gap: 12px; padding: 18px 20px; }
         .rd-led { width: 11px; height: 11px; border-radius: 50%; flex: none; }
         :global(.rd-name) {
-          font-size: 17px; font-weight: 600; color: ${TECH.text};
+          font-size: 17px; font-weight: 600; color: ${isDark ? '#e5edf8' : TECH.text};
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .rd-sub { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
-        .rd-meta { font-size: 12px; color: ${TECH.textDim}; font-family: ui-monospace, monospace; }
+        .rd-meta { font-size: 12px; color: ${isDark ? '#8d9caf' : TECH.textDim}; font-family: ui-monospace, monospace; }
       `}</style>
     </div>
   );

@@ -32,14 +32,22 @@
 }
 
 .header {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  min-height: 42px;
+  padding: 10px 0 8px;
+  isolation: isolate;
+  background: var(--color-bg-1);
+  box-shadow: 0 10px 18px -16px rgba(24, 39, 63, 0.28);
 
   .operation {
     display: flex;
     align-items: center;
     position: absolute;
-    top: 0;
+    top: 10px;
     right: 0;
+    z-index: 1;
 
     .expand {
       display: flex;
@@ -53,6 +61,48 @@
       }
     }
   }
+}
+
+.header :global(.ant-segmented) {
+  position: relative;
+  z-index: 1;
+}
+
+:global(html.dark) .header {
+  background: #121212;
+  box-shadow: 0 10px 18px -16px rgba(0, 0, 0, 0.75);
+}
+
+.header::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -44px;
+  height: 44px;
+  pointer-events: none;
+  background: var(--color-bg-1);
+}
+
+:global(html.dark) .header::before {
+  background: #121212;
+}
+
+.header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -12px;
+  height: 12px;
+  pointer-events: none;
+  background: var(--color-bg-1);
+  box-shadow: 0 10px 18px -18px rgba(24, 39, 63, 0.32);
+}
+
+:global(html.dark) .header::after {
+  background: #121212;
+  box-shadow: 0 10px 18px -18px rgba(0, 0, 0, 0.75);
 }
 
 .header :global(.ant-btn-link) {
