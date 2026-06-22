@@ -25,8 +25,10 @@ from apps.monitor.services.alert_lifecycle_notify import (
 from apps.monitor.services.policy import PolicyService
 from apps.monitor.services.policy_bulk import build_bulk_policy_payloads
 from apps.monitor.services.policy_baseline import PolicyBaselineService
+from apps.monitor.services.policy_preview import PolicyPreviewService
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorPolicyViewSet(viewsets.ModelViewSet):
@@ -41,7 +43,7 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "monitor",
             f"{PermissionConstants.POLICY_MODULE}.{monitor_object_id}",
             include_children=include_children,
@@ -460,6 +462,11 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 "policy_ids": [policy.id for policy in created],
             }
         )
+
+    @action(methods=["post"], detail=False, url_path="preview")
+    def preview(self, request):
+        data = PolicyPreviewService(request.data).preview()
+        return WebUtils.response_success(data)
 
     def get_bulk_policy_assets(self, monitor_object_id, asset_ids):
         from apps.monitor.models.monitor_object import MonitorInstance, MonitorInstanceOrganization

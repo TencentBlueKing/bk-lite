@@ -34,6 +34,22 @@ class TestDashboardTrend:
         assert resp.status_code == 200
         assert len(resp.data) == 30
 
+    def test_trend_includes_cancelled_count(self, api_client):
+        _make(ExecutionStatus.CANCELLED)
+        resp = api_client.get(TREND_URL + "?days=7")
+        assert resp.status_code == 200
+        assert "cancelled_count" in resp.data[0]
+        assert resp.data[-1]["cancelled_count"] == 1  # 今日（序列末位）含 1 条已取消
+
+    def test_trend_includes_daily_avg_duration(self, api_client):
+        execution = _make(ExecutionStatus.SUCCESS)
+        started = timezone.now()
+        JobExecution.objects.filter(id=execution.id).update(started_at=started, finished_at=started + timedelta(seconds=10))
+        resp = api_client.get(TREND_URL + "?days=7")
+        assert resp.status_code == 200
+        assert "avg_duration_seconds" in resp.data[0]
+        assert resp.data[-1]["avg_duration_seconds"] == 10.0  # 今日平均时长 10s
+
 
 class TestDashboardSuccessRateCompare:
     def test_rate_aggregates_current_period(self, api_client):

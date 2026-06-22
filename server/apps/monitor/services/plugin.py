@@ -14,6 +14,31 @@ from apps.monitor.utils.node_selector import normalize_node_selector
 
 class MonitorPluginService:
     @staticmethod
+    def normalize_metric_dimensions(dimensions):
+        if not isinstance(dimensions, list):
+            return []
+
+        normalized = []
+        seen = set()
+        for dimension in dimensions:
+            if isinstance(dimension, dict):
+                name = str(dimension.get("name") or "").strip()
+                if not name or name in seen:
+                    continue
+                item = dict(dimension)
+                item["name"] = name
+                normalized.append(item)
+                seen.add(name)
+                continue
+
+            name = str(dimension or "").strip()
+            if name and name not in seen:
+                normalized.append({"name": name})
+                seen.add(name)
+
+        return normalized
+
+    @staticmethod
     def _extract_monitor_object_names(data: dict) -> list[str]:
         if data.get("is_compound_object"):
             return [item.get("name") for item in data.get("objects", []) if item.get("name")]
@@ -169,6 +194,9 @@ class MonitorPluginService:
                 existing_metrics.pop(metric_name)
 
         for metric in metrics:
+            metric["dimensions"] = MonitorPluginService.normalize_metric_dimensions(
+                metric.get("dimensions", [])
+            )
             metric_instance_id_keys = resolve_metric_instance_id_keys(
                 metric.get("instance_id_keys", []),
                 monitor_obj.instance_id_keys,

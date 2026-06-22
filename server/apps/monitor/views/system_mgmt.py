@@ -5,10 +5,11 @@ from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.web_utils import WebUtils
 from apps.monitor.utils.system_mgmt_api import SystemMgmtUtils
+from apps.core.utils.team_utils import get_current_team
 
 
 def _build_actor_context(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 
@@ -34,7 +35,10 @@ class SystemMgmtView(ViewSet):
     def get_user_all(self, request):
         # 通知人列表必须收口到调用方授权范围，避免把全平台用户暴露给任意登录用户（#3140）
         actor_context = _build_actor_context(request)
-        data = SystemMgmtUtils.get_user_all(actor_context=actor_context)
+        data = SystemMgmtUtils.get_user_all(
+            actor_context=actor_context,
+            include_children=actor_context["include_children"],
+        )
         return WebUtils.response_success(data)
 
     @action(methods=["get"], detail=False, url_path="search_channel_list")

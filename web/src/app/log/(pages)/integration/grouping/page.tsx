@@ -16,6 +16,8 @@ import CustomTable from '@/components/custom-table';
 import { useCommon } from '@/app/log/context/common';
 import { showGroupName } from '@/app/log/utils/common';
 import EditInstance from './editInstance';
+import { discoverLogGroupRuleFields } from './fieldBootstrap';
+import type { LogGroupFieldSource } from './fieldBootstrap';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -42,6 +44,8 @@ const Grouping = () => {
   const [searchText, setSearchText] = useState<string>('');
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [fields, setFields] = useState<string[]>([]);
+  const [fieldSource, setFieldSource] =
+    useState<LogGroupFieldSource>('fallback');
 
   const columns: ColumnItem[] = [
     {
@@ -161,9 +165,10 @@ const Grouping = () => {
     )}`;
   };
 
-  const getCollectTypeList = async (params = {}) => {
-    const data = await getFields(params);
-    setFields(data);
+  const getCollectTypeList = async () => {
+    const data = await discoverLogGroupRuleFields(getFields);
+    setFields(data.fields);
+    setFieldSource(data.source);
   };
 
   const openInstanceModal = (row: TableDataItem, type: string) => {
@@ -251,7 +256,12 @@ const Grouping = () => {
           onChange={handleTableChange}
         ></CustomTable>
       </Spin>
-      <EditInstance ref={instanceRef} fields={fields} onSuccess={onRefresh} />
+      <EditInstance
+        ref={instanceRef}
+        fields={fields}
+        fieldSource={fieldSource}
+        onSuccess={onRefresh}
+      />
     </div>
   );
 };

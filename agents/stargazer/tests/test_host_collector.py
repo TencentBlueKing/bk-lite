@@ -711,6 +711,66 @@ class TestHostCollectorHelpers:
         assert _escape_prometheus_label_value(value) == 'foo\\"bar\\\\baz\\nqux'
 
 
+class TestHostCollectorCredentialDecoding:
+    """前端对 encrypted 字段做了 encodeURIComponent，后端需在送往 SSH/WinRM 前解码还原。"""
+
+    def test_linux_password_is_url_decoded(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "password": "CW%40roger1117!%40%23",  # encodeURIComponent('CW@roger1117!@#')
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "CW@roger1117!@#"
+
+    def test_windows_password_is_url_decoded(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "windows",
+            "username": "administrator",
+            "password": "p%40ss%20word",  # encodeURIComponent('p@ss word')
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "p@ss word"
+
+    def test_private_key_content_and_passphrase_are_url_decoded(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "auth_type": "private_key",
+            "private_key_content": "line1%0Aline2%2Bend",  # encodeURIComponent('line1\nline2+end')
+            "private_key_passphrase": "pa%40ss",
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+        cred = config["host_credentials"][0]
+
+        assert cred["private_key_content"] == "line1\nline2+end"
+        assert cred["private_key_passphrase"] == "pa@ss"
+
+    def test_plain_password_without_encoding_is_unchanged(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "password": "simplepass123",
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "simplepass123"
+
+
 @pytest.mark.asyncio
 class TestHostRemoteMonitorTask:
     async def test_collect_host_metrics_task_submits_callback_flow_and_returns_queued_status(

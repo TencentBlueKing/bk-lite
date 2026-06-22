@@ -14,6 +14,7 @@ from apps.operation_analysis.models.models import Architecture, Dashboard, Direc
 from apps.operation_analysis.services.directory_service import DictDirectoryService
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
 from apps.operation_analysis.views import view as view_module
+from apps.system_mgmt.models import OperationLog
 
 
 def _request(method, path, user, data=None, team="1", include_children="0"):
@@ -54,6 +55,19 @@ def test_directory_create_as_superuser_returns_201(authenticated_user):
     assert response.status_code == status.HTTP_201_CREATED
     assert payload["data"]["name"] == "目录A"
     assert Directory.objects.filter(name="目录A").exists()
+
+
+@pytest.mark.django_db
+def test_directory_create_writes_operation_log(authenticated_user):
+    user = _superuser(authenticated_user)
+    request = _request("post", "/directory/", user, data={"name": "目录审计", "groups": [1], "parent": None})
+
+    response = view_module.DirectoryModelViewSet.as_view({"post": "create"})(request)
+    _render(response)
+
+    log = OperationLog.objects.get(app="ops-analysis", action_type="create")
+    assert log.username == "testuser"
+    assert log.summary == "新增目录: 目录审计"
 
 
 @pytest.mark.django_db
@@ -284,9 +298,7 @@ def test_get_operation_analysis_module_data_dispatch(authenticated_user):
     from apps.operation_analysis.constants.constants import PERMISSION_DIRECTORY
 
     Topology.objects.create(name="拓扑Z", groups=[1], created_by="testuser")
-    result = DictDirectoryService.get_operation_analysis_module_data(
-        PERMISSION_DIRECTORY, "topology", page=1, page_size=10, group_id=1
-    )
+    result = DictDirectoryService.get_operation_analysis_module_data(PERMISSION_DIRECTORY, "topology", page=1, page_size=10, group_id=1)
     assert result["count"] == 1
 
 

@@ -6,7 +6,7 @@ from rest_framework.response import Response
 
 from apps.alerts.constants.constants import IncidentUpdateType, LogAction, LogTargetType
 from apps.alerts.models.models import Incident, IncidentUpdate
-from apps.alerts.models.operator_log import OperatorLog
+from apps.alerts.utils.operator_log import record_operator_log
 from apps.alerts.serializers.incident_update import IncidentUpdateSerializer
 from apps.alerts.utils.permission_scope import filter_incident_queryset_for_request
 from apps.core.decorators.api_permission import HasPermission
@@ -91,7 +91,7 @@ class IncidentUpdateViewSet(ModelViewSet):
         serializer.save(**save_kwargs)
 
         action_label = "协作回复-添加" if parent_id else "协作更新-添加"
-        OperatorLog.objects.create(
+        record_operator_log(
             action=LogAction.ADD,
             target_type=LogTargetType.INCIDENT,
             operator=request.user.username,
@@ -129,7 +129,7 @@ class IncidentUpdateViewSet(ModelViewSet):
         if instance.author != request.user.username:
             return Response({"detail": "只有作者可以删除更新"}, status=status.HTTP_403_FORBIDDEN)
 
-        OperatorLog.objects.create(
+        record_operator_log(
             action=LogAction.DELETE,
             target_type=LogTargetType.INCIDENT,
             operator=request.user.username,
@@ -158,7 +158,7 @@ class IncidentUpdateViewSet(ModelViewSet):
         instance.save(update_fields=["is_key_info", "updated_at"])
 
         action_text = "标记为关键信息" if instance.is_key_info else "取消关键信息标记"
-        OperatorLog.objects.create(
+        record_operator_log(
             action=LogAction.MODIFY,
             target_type=LogTargetType.INCIDENT,
             operator=username,

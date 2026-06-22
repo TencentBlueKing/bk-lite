@@ -5,6 +5,7 @@ import { Button } from 'antd';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
 import Icon from '@/components/icon';
+import { buildFlowAssetListUrl } from '@/app/monitor/utils/flowNavigation';
 
 interface AccessCompleteProps {
   onReset: () => void;
@@ -17,7 +18,7 @@ const AccessComplete: React.FC<AccessCompleteProps> = ({ onReset }) => {
   const objectId = params.get('id') || params.get('objId') || '';
 
   const handleViewMonitorView = () => {
-    router.push(`/monitor/view`);
+    router.push(buildFlowAssetListUrl(objectId));
   };
 
   const handleBackToTemplateList = () => {

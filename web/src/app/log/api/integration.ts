@@ -16,6 +16,7 @@ interface NodeConfigParam {
 
 interface GetFieldsParams {
   query?: string;
+  scope?: string;
   start_time?: string;
   end_time?: string;
   log_groups?: React.Key[];

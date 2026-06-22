@@ -3,6 +3,7 @@ import types
 
 from apps.monitor.models import MonitorInstance, MonitorObject
 from apps.monitor.services.flow_onboarding import FlowOnboardingService
+from apps.monitor.utils.dimension import build_safe_instance_id
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.models import CloudRegion, Collector, CollectorConfiguration, Node
 
@@ -77,6 +78,27 @@ def test_build_flow_asset_map_uses_cloud_region_ip_composite_key(db):
             "protocols": ["netflow", "sflow"],
         }
     }
+
+
+def test_build_flow_asset_map_emits_clean_flow_instance_id_label(db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+    logical_id = build_safe_instance_id(1, "10.0.0.12")
+    MonitorInstance.objects.create(
+        id=str((logical_id,)),
+        name="Core Switch",
+        monitor_object_id=switch_object.id,
+        cloud_region_id=1,
+        ip="10.0.0.12",
+        fallback_sampling_rate=1000,
+        enabled_protocols=["netflow", "sflow"],
+    )
+
+    from apps.monitor.services.flow_env_config import FlowEnvConfigService
+
+    payload = FlowEnvConfigService.build_asset_map(cloud_region_id=1)
+
+    assert payload["1:10.0.0.12"]["instance_id"] == logical_id
+    assert all(char not in logical_id for char in ":.")
 
 
 def test_build_flow_asset_map_excludes_unsupported_monitor_objects(db):

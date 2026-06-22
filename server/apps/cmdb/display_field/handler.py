@@ -202,6 +202,53 @@ class DisplayFieldConverter:
 
         return DISPLAY_VALUES_SEPARATOR.join(cell_values)
 
+    @staticmethod
+    def convert_file(file_value) -> str:
+        """将附件/图片字段的元数据 JSON 转换为可搜索的文件名词干字符串。
+
+        取每个文件 name 的「主体」：去目录路径、去最后一个扩展名，用于全文检索冗余。
+        URL/ID/大小等元数据不进入索引。解析失败返回 "" 而非原始 JSON，避免污染索引。
+
+        Args:
+            file_value: 文件元数据，[{"name": "report.pdf", ...}, ...] 或其 JSON 字符串
+
+        Returns:
+            逗号分隔的文件名词干，如 "report, logo"；空/解析失败返回 ""
+        """
+        import json
+        import os
+
+        if not file_value:
+            return ""
+
+        if isinstance(file_value, str):
+            try:
+                items = json.loads(file_value)
+            except (json.JSONDecodeError, TypeError, ValueError):
+                return ""
+        elif isinstance(file_value, list):
+            items = file_value
+        else:
+            return ""
+
+        if not isinstance(items, list):
+            return ""
+
+        stems = []
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            name = item.get("name")
+            if not name:
+                continue
+            # 去目录路径（兼容 Windows 分隔符）+ 去最后一个扩展名
+            base = os.path.basename(str(name).replace("\\", "/"))
+            stem, _ext = os.path.splitext(base)
+            if stem:
+                stems.append(stem)
+
+        return DISPLAY_VALUES_SEPARATOR.join(stems)
+
 
 class DisplayFieldHandler:
     """
@@ -258,13 +305,18 @@ class DisplayFieldHandler:
             logger.warning(f"[DisplayFieldHandler] 模型 {model_id} 没有字段定义，跳过")
             return instance_data
 
+        # 文件型（附件/图片）字段判定：缺企业版时恒 False，社区行为不变
+        from apps.cmdb.model_ops.extensions import is_file_attr_type
+
         # 遍历所有字段定义
         for attr in attrs:
             attr_id = attr.get("attr_id")
             attr_type = attr.get("attr_type")
 
-            # 跳过非目标类型的字段
-            if attr_type not in DISPLAY_FIELD_TYPES:
+            is_file = is_file_attr_type(attr_type)
+
+            # 跳过非目标类型的字段（展示型 or 文件型）
+            if attr_type not in DISPLAY_FIELD_TYPES and not is_file:
                 continue
 
             # 跳过实例中不存在的字段
@@ -280,7 +332,10 @@ class DisplayFieldHandler:
 
             try:
                 # 根据类型转换为显示名称（使用统一的转换器）
-                if attr_type == FIELD_TYPE_ORGANIZATION:
+                if is_file:
+                    # 附件/图片：冗余为文件名词干，原始元数据 JSON 仍排除出全文检索
+                    display_value = DisplayFieldConverter.convert_file(original_value)
+                elif attr_type == FIELD_TYPE_ORGANIZATION:
                     display_value = DisplayFieldConverter.convert_organization(
                         original_value
                     )
@@ -312,8 +367,8 @@ class DisplayFieldHandler:
                     f"字段={attr_id}, 类型={attr_type}, 原始值={original_value}, 错误={e}",
                     exc_info=True,
                 )
-                # 失败时使用原始值的字符串表示作为降级方案
-                instance_data[display_field_name] = str(original_value)
+                # 文件型降级为 "" 避免把元数据 JSON 灌进索引；其余沿用原始值字符串
+                instance_data[display_field_name] = "" if is_file else str(original_value)
 
         logger.info(
             f"[DisplayFieldHandler] _display 字段构建完成, 模型: {model_id}, "

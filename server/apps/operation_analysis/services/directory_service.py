@@ -7,6 +7,7 @@ from apps.operation_analysis.filters.base_filters import GroupPermissionMixin
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
 from apps.operation_analysis.models.models import Directory, Dashboard, Topology, Architecture
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
+from apps.core.utils.team_utils import get_current_team
 
 
 class DictDirectoryService:
@@ -18,7 +19,7 @@ class DictDirectoryService:
         获取目录树形结构,目录和仪表盘统一作为树节点
         """
         # 验证用户组织权限，构建组织ID列表（支持 include_children）
-        current_team = int(request.COOKIES.get("current_team"))
+        current_team = int(get_current_team(request))
         group_ids = [current_team]
         if request.COOKIES.get("include_children", "0") == "1":
             from apps.core.utils.viewset_utils import GenericViewSetFun

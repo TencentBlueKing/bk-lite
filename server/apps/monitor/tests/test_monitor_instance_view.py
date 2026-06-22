@@ -4,6 +4,7 @@ import types
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.monitor_object import MonitorInstance, MonitorObject
 from apps.monitor.models.plugin import MonitorPlugin
+from apps.monitor.utils.dimension import build_safe_instance_id
 from apps.monitor.views import monitor_instance as monitor_instance_view
 
 
@@ -413,6 +414,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
     from apps.monitor.constants.plugin import PluginConstants
     from apps.monitor.services import monitor_instance
 
+    logical_id = build_safe_instance_id(1, "10.10.41.149")
     monitor_object = MonitorObject.objects.create(
         name="Switch",
         display_name="Switch",
@@ -420,7 +422,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
         instance_id_keys=["instance_id"],
     )
     instance = MonitorInstance.objects.create(
-        id="('flow:15:1:10.10.41.149',)",
+        id=str((logical_id,)),
         name="NetFlow-10.10.41.149",
         monitor_object=monitor_object,
         cloud_region_id=1,
@@ -454,7 +456,7 @@ def test_primary_object_plugin_list_deduplicates_flow_configured_and_reported_pl
                 "data": {
                     "result": [
                         {
-                            "metric": {"instance_id": "flow:15:1:10.10.41.149"},
+                            "metric": {"instance_id": logical_id},
                             "value": [1781234567, "1"],
                         }
                     ]
@@ -660,4 +662,63 @@ def test_effective_plugins_action_normalizes_clean_instance_id(db, monkeypatch):
     payload = json.loads(response.content)
 
     assert service_calls["args"] == (monitor_object.id, "('host-a',)", "zh-Hans")
+    assert payload["data"] == expected
+
+
+def test_effective_plugins_action_keeps_multi_dimension_instance_id(monkeypatch):
+    """多维实例ID(如 VMware ESXi 的 instance_id+resource_id)不能被裁成单维。
+
+    回归场景：详情页下传完整 tuple 串 "('vcenter-a', 'host-3171')"，如果视图把它归一成
+    "('vcenter-a',)"，存在性校验与服务查询都会误报实例不存在。
+    """
+    service_calls = {}
+    expected = [{"id": 88, "name": "VMWare"}]
+
+    class StubService:
+        @staticmethod
+        def get_effective_plugins(monitor_object_id, instance_id, locale):
+            service_calls["args"] = (monitor_object_id, instance_id, locale)
+            return expected
+
+    monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_ensure_operate_instances",
+        lambda request, instance_ids, actor_context=None: instance_ids,
+    )
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_build_actor_context",
+        lambda request: {
+            "is_superuser": True,
+            "current_team": 1,
+            "username": "tester",
+            "domain": "default",
+            "group_list": [],
+            "include_children": False,
+        },
+    )
+
+    request = types.SimpleNamespace(
+        GET={"instance_id": "('vcenter-a', 'host-3171')"},
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(
+            username="tester",
+            domain="default",
+            locale="zh-Hans",
+            is_superuser=True,
+            group_list=[],
+        ),
+    )
+
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(
+        request, "19"
+    )
+    payload = json.loads(response.content)
+
+    assert service_calls["args"] == (
+        19,
+        "('vcenter-a', 'host-3171')",
+        "zh-Hans",
+    )
     assert payload["data"] == expected

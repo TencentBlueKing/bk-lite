@@ -25,9 +25,10 @@ import {
   useTermList
 } from '@/app/log/hooks/integration/common/other';
 import { v4 as uuidv4 } from 'uuid';
+import type { LogGroupFieldSource } from './fieldBootstrap';
 
 const EditInstance = forwardRef<ModalRef, ModalProps>(
-  ({ onSuccess, fields }, ref) => {
+  ({ onSuccess, fields = [], fieldSource }, ref) => {
     const { createLogStreams, updateLogStreams, updateDefaultLogStreams } =
       useLogApi();
     const { t } = useTranslation();
@@ -55,6 +56,20 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
     const isBuiltIn = useMemo(() => {
       return modalType === 'builtIn';
     }, [modalType]);
+
+    const fieldHelpText = useMemo(() => {
+      const source = fieldSource as LogGroupFieldSource | undefined;
+      if (source === 'expanded') {
+        return t('log.integration.fieldDiscoveryExpandedTip');
+      }
+      if (source === 'fallback') {
+        return t('log.integration.fieldDiscoveryFallbackTip');
+      }
+      if (source === 'permission-blocked') {
+        return t('log.integration.fieldDiscoveryPermissionTip');
+      }
+      return '';
+    }, [fieldSource, t]);
 
     useImperativeHandle(ref, () => ({
       showModal: ({ title, form, type }) => {
@@ -246,16 +261,32 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
                             key={index}
                           >
                             <Select
+                              mode="tags"
                               style={{
                                 width: '180px'
                               }}
                               placeholder={t('log.label')}
                               showSearch
-                              value={conditionItem.field}
-                              onChange={(val) => handleLabelChange(val, index)}
+                              optionFilterProp="label"
+                              value={
+                                conditionItem.field
+                                  ? [conditionItem.field]
+                                  : []
+                              }
+                              onChange={(val: string[]) =>
+                                handleLabelChange(
+                                  val[val.length - 1] || '',
+                                  index
+                                )
+                              }
+                              notFoundContent={
+                                <span className="text-xs text-[var(--color-text-3)]">
+                                  {t('log.integration.fieldDiscoveryEmptyTip')}
+                                </span>
+                              }
                             >
                               {fields.map((item: string) => (
-                                <Option value={item} key={item}>
+                                <Option value={item} key={item} label={item}>
                                   {item}
                                 </Option>
                               ))}
@@ -302,6 +333,11 @@ const EditInstance = forwardRef<ModalRef, ModalProps>(
                         icon={<PlusOutlined />}
                         onClick={addConditionItem}
                       />
+                    )}
+                    {fieldHelpText && (
+                      <div className="mt-[8px] text-xs text-[var(--color-text-3)]">
+                        {fieldHelpText}
+                      </div>
                     )}
                   </div>
                 </Form.Item>

@@ -28,6 +28,7 @@ from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
 from apps.alerts.constants.constants import SNMP_TRAP_SOURCE_ID
+from apps.core.utils.team_utils import get_current_team
 
 K8S_SOURCE_ID = "k8s"
 K8S_IMAGE_REFERENCE = "ghcr.io/resmoio/kubernetes-event-exporter:latest"
@@ -47,7 +48,7 @@ K8S_DOWNLOAD_FILES = {
 
 
 def _get_valid_current_team(request):
-    current_team = request.COOKIES.get("current_team")
+    current_team = get_current_team(request)
     if current_team in (None, ""):
         raise BaseAppException("缺少 current_team 参数")
 

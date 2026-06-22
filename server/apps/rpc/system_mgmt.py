@@ -149,13 +149,14 @@ class SystemMgmt(object):
         return_data = self.client.run("login", username=username, password=password)
         return return_data
 
-    def reset_pwd(self, username, domain, password):
+    def reset_pwd(self, username, domain, password, caller_token=""):
         """
         :param username: 用户名
-        :param domain: 用户名
+        :param domain: 域
         :param password: 密码
+        :param caller_token: 调用方 JWT token（必须与 username 对应的会话 token 一致）
         """
-        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password)
+        return_data = self.client.run("reset_pwd", username=username, domain=domain, password=password, caller_token=caller_token)
         return return_data
 
     def revoke_token(self, token):
@@ -174,7 +175,8 @@ class SystemMgmt(object):
         """
         return self.client.run("save_error_log", username=username, app=app, module=module, error_message=error_message, domain=domain)
 
-    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com"):
+    def save_operation_log(self, username, source_ip, app, action_type, summary="", domain="domain.com",
+                           target_type="", target_id="", detail=None):
         """
         保存操作日志
         :param username: 用户名
@@ -183,9 +185,13 @@ class SystemMgmt(object):
         :param action_type: 操作类型 (create/update/delete/execute)
         :param summary: 操作概要
         :param domain: 域名
+        :param target_type: 操作目标类型（可选）
+        :param target_id: 操作目标ID（可选）
+        :param detail: 操作详情 JSON（可选，默认空字典）
         """
         return self.client.run(
-            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type, summary=summary, domain=domain
+            "save_operation_log", username=username, source_ip=source_ip, app=app, action_type=action_type,
+            summary=summary, domain=domain, target_type=target_type, target_id=target_id, detail=detail,
         )
 
     def search_channel_list(self, channel_type, teams, include_children):
@@ -213,6 +219,19 @@ class SystemMgmt(object):
         """
         return_data = self.client.run("search_groups", query_params=query_params)
         return return_data
+
+    def search_opspilot_nats_channels(self, teams=None, bot_id=None, include_children=False):
+        """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。
+        :param teams: 可选，组织 ID 列表；为空则跨团队全局列举
+        :param bot_id: 可选，仅返回该 Bot 的通道
+        :param include_children: 传 teams 时是否含子组织
+        """
+        return self.client.run(
+            "search_opspilot_nats_channels",
+            teams=teams,
+            bot_id=bot_id,
+            include_children=include_children,
+        )
 
     def search_users(self, query_params):
         """
@@ -271,8 +290,8 @@ class SystemMgmt(object):
         return_data = self.client.run("verify_bk_token", bk_token=bk_token)
         return return_data
 
-    def verify_otp_code(self, username, otp_code):
-        return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code)
+    def verify_otp_code(self, username, otp_code, client_ip=""):
+        return_data = self.client.run("verify_otp_code", username=username, otp_code=otp_code, client_ip=client_ip)
         return return_data
 
     def verify_otp_code_by_user_id(self, user_id, otp_code):

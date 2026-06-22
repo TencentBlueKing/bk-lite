@@ -34,6 +34,7 @@ const StudioSettingsPage: React.FC = () => {
     latestExecutionId: '',
     openPreview: () => {},
     closePreview: () => {},
+    stopExecution: () => {},
   });
 
   const [hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
@@ -64,6 +65,8 @@ const StudioSettingsPage: React.FC = () => {
           name: botData.name,
           introduction: botData.introduction,
           group: botData.team,
+          // 使用组织：后端未返回时回退到管理组织（不变式 team ⊆ usage_team）
+          usage_team: botData.usage_team ?? botData.team,
         });
 
         setOnline(botData.online);
@@ -144,6 +147,7 @@ const StudioSettingsPage: React.FC = () => {
         name: values.name,
         introduction: values.introduction,
         team: values.group,
+        usage_team: values.usage_team,
         workflow_data: workflowData,
         is_publish: isPublish
       };
@@ -219,7 +223,7 @@ const StudioSettingsPage: React.FC = () => {
   );
 
   const renderChatflowExecutionAction = () => {
-    const { summary, previewOpen, latestExecutionId, openPreview } = chatflowExecutionState;
+    const { summary, previewOpen, latestExecutionId, openPreview, stopExecution } = chatflowExecutionState;
     if (summary.status === 'idle') {
       return null;
     }
@@ -261,6 +265,17 @@ const StudioSettingsPage: React.FC = () => {
       </Tag>
     );
 
+    const stopButton = summary.status === 'running' ? (
+      <Button
+        size="small"
+        danger
+        className={actionButtonClassName}
+        onClick={stopExecution}
+      >
+        {t('common.stop')}
+      </Button>
+    ) : null;
+
     if (summary.status === 'failed' && summary.reason) {
       return (
         <div className="flex items-center gap-2">
@@ -275,6 +290,7 @@ const StudioSettingsPage: React.FC = () => {
         <div className="flex items-center gap-2">
           <span title={latestExecutionId}>{logButton}</span>
           <span title={latestExecutionId}>{statusTag}</span>
+          {stopButton}
         </div>
       );
     }
@@ -283,6 +299,7 @@ const StudioSettingsPage: React.FC = () => {
       <div className="flex items-center gap-2">
         {logButton}
         {statusTag}
+        {stopButton}
       </div>
     );
   };

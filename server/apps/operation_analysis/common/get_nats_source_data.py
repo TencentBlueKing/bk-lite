@@ -4,6 +4,7 @@
 # @Author: windyzhao
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
+from apps.core.utils.team_utils import get_current_team
 
 
 class GetNatsData:
@@ -38,7 +39,7 @@ class GetNatsData:
         :return:
         """
         username = self.request.user.username
-        team = int(self.request.COOKIES.get("current_team"))
+        team = int(get_current_team(self.request))
         include_children = self.request.COOKIES.get("include_children", "0") == "1"
         permission = getattr(self.request.user, "permission", {})
         if isinstance(permission, dict):

@@ -40,11 +40,20 @@ def test_verify_token_转发(client):
 
 
 def test_reset_pwd_转发全部具名参数(client):
+    client.reset_pwd("alice", "domain.com", "newpw", caller_token="tok123")
+    assert client.client.calls[0] == (
+        "reset_pwd",
+        (),
+        {"username": "alice", "domain": "domain.com", "password": "newpw", "caller_token": "tok123"},
+    )
+
+
+def test_reset_pwd_缺省caller_token时转发空字符串(client):
     client.reset_pwd("alice", "domain.com", "newpw")
     assert client.client.calls[0] == (
         "reset_pwd",
         (),
-        {"username": "alice", "domain": "domain.com", "password": "newpw"},
+        {"username": "alice", "domain": "domain.com", "password": "newpw", "caller_token": ""},
     )
 
 

@@ -312,10 +312,14 @@ export const mergeViewQueryKeyValues = (
     });
   });
 
-  // 值会被拼进 PromQL 正则匹配器 key=~"v1|v2",必须逐个转义正则元字符与引号/反斜杠,
+  // 值会被拼进 PromQL 正则匹配器 key=~"v1|v2",必须逐个转义正则元字符,
+  // 再转义 PromQL 字符串中的反斜杠和双引号,
   // 否则含 . + ( ) 等字符的实例标识(如 IP/主机名)会被当作正则,匹配到错误/多余的序列,
   // 含 " 的值还会直接破坏查询语法。
-  const escapeRegexValue = (v: string): string => v.replace(/[\\^$.*+?()[\]{}|"]/g, '\\$&');
+  const escapeRegexValue = (v: string): string =>
+    v.replace(/[\\^$.*+?()[\]{}|]/g, '\\$&')
+      .replace(/\\/g, '\\\\')
+      .replace(/"/g, '\\"');
 
   const resultArray: string[] = [];
   for (const key in mergedObject) {

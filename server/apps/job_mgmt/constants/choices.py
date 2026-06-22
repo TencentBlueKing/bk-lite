@@ -73,6 +73,7 @@ class ExecutionStatus:
     SUCCESS = "success"
     FAILED = "failed"
     TIMEOUT = "timeout"
+    CANCELLING = "cancelling"
     CANCELLED = "cancelled"
 
     CHOICES = (
@@ -81,10 +82,11 @@ class ExecutionStatus:
         (SUCCESS, "成功"),
         (FAILED, "失败"),
         (TIMEOUT, "超时"),
+        (CANCELLING, "取消中"),
         (CANCELLED, "已取消"),
     )
 
-    # 终态
+    # 终态（CANCELLING 是非终态的过渡态：已请求取消、等待真实结果回写后收敛为 CANCELLED）
     TERMINAL_STATES = (SUCCESS, FAILED, TIMEOUT, CANCELLED)
 
 

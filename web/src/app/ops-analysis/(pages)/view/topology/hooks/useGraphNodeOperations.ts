@@ -23,6 +23,8 @@ import { useTranslation } from '@/utils/i18n';
 import { buildValueConfig } from '../utils/namespaceUtils';
 import { createNodeByType, updateNodeAttributes } from '../utils/registerNode';
 import { getColorByThreshold } from '../utils/thresholdUtils';
+import { formatUnit } from '@/app/ops-analysis/utils/unitFormat';
+import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import {
   adjustSingleValueNodeSize,
   formatDisplayValue,
@@ -179,13 +181,25 @@ export const useGraphNodeOperations = ({
           )
           : null;
 
-        let displayValue = formatNumericValue(
-          value,
-          nodeConfig.conversionFactor,
-          nodeConfig.decimalPlaces,
-        );
-        if (nodeConfig.unit?.trim()) {
-          displayValue = `${displayValue} ${nodeConfig.unit}`;
+        // 值映射优先；其次结构化单位库自动量纲；最后回退到原数值+自由文本单位
+        const valueMapping = applyValueMapping(value, valueConfig.valueMappings);
+        let displayValue: string;
+        if (valueMapping?.text !== undefined) {
+          displayValue = valueMapping.text;
+        } else if (valueConfig.unitId) {
+          displayValue = formatUnit(value as number | string | null, valueConfig.unitId, {
+            decimals: nodeConfig.decimalPlaces,
+            conversionFactor: nodeConfig.conversionFactor,
+          }).text;
+        } else {
+          displayValue = formatNumericValue(
+            value,
+            nodeConfig.conversionFactor,
+            nodeConfig.decimalPlaces,
+          );
+          if (nodeConfig.unit?.trim()) {
+            displayValue = `${displayValue} ${nodeConfig.unit}`;
+          }
         }
 
         const compareSuffix = valueConfig.compare
@@ -209,6 +223,10 @@ export const useGraphNodeOperations = ({
             nodeConfig.styleConfig.thresholdColors,
             nodeConfig.styleConfig.textColor,
           );
+        }
+        // 值映射命中颜色时覆盖阈值/默认色
+        if (valueMapping?.color) {
+          textColor = valueMapping.color;
         }
 
         node.setData(
@@ -301,6 +319,8 @@ export const useGraphNodeOperations = ({
           values.dataSourceParams || valueConfig?.dataSourceParams,
         topNLabelField: values.topNLabelField ?? valueConfig?.topNLabelField,
         topNValueField: values.topNValueField ?? valueConfig?.topNValueField,
+        unitId: values.unitId ?? valueConfig?.unitId,
+        valueMappings: values.valueMappings ?? valueConfig?.valueMappings,
       },
       styleConfig: mergeStyleConfig(values, styleConfig, [
         'textColor',

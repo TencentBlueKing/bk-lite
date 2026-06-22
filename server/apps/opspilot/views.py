@@ -38,6 +38,7 @@ from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
+from apps.core.utils.team_utils import get_current_team
 
 
 def parse_json_body(request, default=None):
@@ -634,22 +635,30 @@ async def execute_chat_flow(request, bot_id, node_id):
 
     # 验证token
     token = extract_api_token(request)
-    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = await sync_to_async(validate_openai_token, thread_sensitive=False)(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg)
 
     # 验证Bot — 始终按已验证用户所属团队作用域解析 bot，所有客户端一致
     # (此前移动端基于可伪造的 User-Agent 绕过 team 校验，构成跨租户越权，已移除)
     user = msg
-    # 构建 team 过滤：用户所属团队 + OpsPilotGuest 顶级组（若有）
-    guest_group_ids = {
-        int(group["id"])
-        for group in getattr(user, "group_list", [])
-        if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
-    }
-    team_filter = Q(team__contains=[int(user.team)])
-    for gid in guest_group_ids:
-        team_filter |= Q(team__contains=[gid])
+    current_team = int(user.team)
+    # 构建 team 过滤：
+    # - 测试(is_test=True，管理页测试)：仅【管理组织】可发起。测试会回填管理画布、占用"同 bot
+    #   同时仅一个测试"的槽位，属管理活动，使用组织不得触发(即便经 API)。
+    # - 正常对话(is_test=False)：【使用组织】即可对话(管理组织因 team ⊆ usage_team 已被包含)，
+    #   外加 OpsPilotGuest 顶级组(嵌入/访客对话，维持原行为)。
+    if is_test:
+        team_filter = Q(team__contains=[current_team])
+    else:
+        guest_group_ids = {
+            int(group["id"])
+            for group in getattr(user, "group_list", [])
+            if isinstance(group, dict) and group.get("name") == "OpsPilotGuest" and group.get("id") is not None
+        }
+        team_filter = Q(usage_team__contains=[current_team])
+        for gid in guest_group_ids:
+            team_filter |= Q(team__contains=[gid])
 
     bot_query = Bot.objects.filter(Q(id=bot_id) & team_filter)
     if not is_test:
@@ -691,7 +700,7 @@ async def execute_chat_flow(request, bot_id, node_id):
 
         if is_test:
             has_running_test = await sync_to_async(
-                WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING).exists,
+                WorkFlowTaskResult.objects.filter(bot_work_flow__bot_id=bot_obj.id, status=WorkFlowTaskStatus.RUNNING, is_test=True).exists,
                 thread_sensitive=False,
             )()
             if has_running_test:
@@ -739,7 +748,7 @@ def interrupt_chat_flow_execution(request):
     execution_id = validated["execution_id"]
 
     token = extract_api_token(request)
-    is_valid, msg = validate_openai_token(token, request.COOKIES.get("current_team") or None)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
     if not is_valid:
         return JsonResponse(msg)
     user = msg
@@ -778,16 +787,26 @@ def interrupt_chat_flow_execution(request):
     )
 
 
-@api_exempt
 def submit_approval(request):
-    """提交审批决策 — 用户对 Agent 危险操作的批准/拒绝。"""
+    """提交审批决策 — 用户对 Agent 危险操作的批准/拒绝。
+
+    要求有效的 API Token（与 interrupt_chat_flow_execution 保持一致），并校验
+    execution_id 归属于 Token 所属团队的 Bot，防止跨租户伪造审批决策。
+    """
+    loader = get_loader(request)
     if request.method != "POST":
         return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
 
-    try:
-        kwargs = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError) as e:
-        return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse({"result": False, "message": parse_error}, status=400)
+
+    # 认证：要求有效 Token
+    token = extract_api_token(request)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
+    if not is_valid:
+        return JsonResponse(msg, status=401)
+    user = msg
 
     serializer = SubmitApprovalRequestSerializer(data=kwargs)
     if not serializer.is_valid():
@@ -804,6 +823,21 @@ def submit_approval(request):
     tool_call_id = validated["tool_call_id"]
     decision = validated["decision"]
 
+    # 归属校验：execution_id 必须属于调用者所在团队的 Bot
+    task_result = (
+        WorkFlowTaskResult.objects.filter(
+            execution_id=execution_id,
+            bot_work_flow__bot__team__contains=int(user.team),
+        )
+        .order_by("-id")
+        .first()
+    )
+    if not task_result:
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+            status=404,
+        )
+
     from apps.opspilot.services.approval import submit_approval_decision
 
     submit_approval_decision(
@@ -812,22 +846,32 @@ def submit_approval(request):
         tool_call_id=tool_call_id,
         decision=decision,
         reason=validated["reason"],
-        decided_by=kwargs.get("decided_by", getattr(request.user, "username", "")),
+        decided_by=kwargs.get("decided_by", getattr(user, "username", "")),
     )
 
     return JsonResponse({"result": True, "data": {"execution_id": execution_id, "node_id": node_id, "decision": decision}})
 
 
-@api_exempt
 def submit_choice(request):
-    """提交用户选择 — 用户从多个选项中选择的结果。"""
+    """提交用户选择 — 用户从多个选项中选择的结果。
+
+    要求有效的 API Token，并校验 execution_id 归属于 Token 所属团队的 Bot，
+    防止攻击者劫持他人工作流的选项决策。
+    """
+    loader = get_loader(request)
     if request.method != "POST":
         return JsonResponse({"result": False, "message": "Method not allowed"}, status=405)
 
-    try:
-        kwargs = json.loads(request.body)
-    except (json.JSONDecodeError, ValueError) as e:
-        return JsonResponse({"result": False, "message": f"Invalid JSON: {e}"}, status=400)
+    kwargs, parse_error = parse_json_body(request)
+    if parse_error:
+        return JsonResponse({"result": False, "message": parse_error}, status=400)
+
+    # 认证：要求有效 Token
+    token = extract_api_token(request)
+    is_valid, msg = validate_openai_token(token, get_current_team(request) or None)
+    if not is_valid:
+        return JsonResponse(msg, status=401)
+    user = msg
 
     serializer = SubmitChoiceRequestSerializer(data=kwargs)
     if not serializer.is_valid():
@@ -843,6 +887,21 @@ def submit_choice(request):
     node_id = validated["node_id"]
     choice_id = validated["choice_id"]
     selected = validated["selected"]
+
+    # 归属校验：execution_id 必须属于调用者所在团队的 Bot
+    task_result = (
+        WorkFlowTaskResult.objects.filter(
+            execution_id=execution_id,
+            bot_work_flow__bot__team__contains=int(user.team),
+        )
+        .order_by("-id")
+        .first()
+    )
+    if not task_result:
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+            status=404,
+        )
 
     from apps.opspilot.utils.user_choice import submit_user_choice
 
