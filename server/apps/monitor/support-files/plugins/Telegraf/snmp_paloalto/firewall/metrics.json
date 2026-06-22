@@ -18,68 +18,6 @@
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
-  "display_fields": [
-    {
-      "name": "System Uptime",
-      "sort_order": 0,
-      "metrics": [
-        {
-          "plugin": "Firewall Palo Alto SNMP",
-          "metric": "snmp_uptime"
-        }
-      ]
-    },
-    {
-      "name": "CPU Usage",
-      "sort_order": 1,
-      "metrics": [
-        {
-          "plugin": "Firewall Palo Alto SNMP",
-          "metric": "device_cpu_usage"
-        }
-      ]
-    },
-    {
-      "name": "Session Utilization",
-      "sort_order": 2,
-      "metrics": [
-        {
-          "plugin": "Firewall Palo Alto SNMP",
-          "metric": "firewall_session_utilization"
-        }
-      ]
-    },
-    {
-      "name": "Active Sessions",
-      "sort_order": 3,
-      "metrics": [
-        {
-          "plugin": "Firewall Palo Alto SNMP",
-          "metric": "firewall_active_sessions"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Incoming Traffic Rate",
-      "sort_order": 4,
-      "metrics": [
-        {
-          "plugin": "Firewall Palo Alto SNMP",
-          "metric": "device_total_incoming_traffic"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Outgoing Traffic Rate",
-      "sort_order": 5,
-      "metrics": [
-        {
-          "plugin": "Firewall Palo Alto SNMP",
-          "metric": "device_total_outgoing_traffic"
-        }
-      ]
-    }
-  ],
   "metrics": [
     {
       "metric_group": "Base",

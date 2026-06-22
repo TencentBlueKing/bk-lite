@@ -11,6 +11,7 @@ import {
 } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { getBrandLabel } from '@/app/monitor/utils/common';
+import { resolveCapability, isMetricVisible } from '../../shared/capability-matrix';
 import { ROUTER_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
@@ -22,14 +23,30 @@ const CHART_TITLES = ['CPU 与内存使用率趋势', '设备收发流量趋势'
 export default function RouterDashboardPage() {
   const dashboard = useSimpleDashboardData(ROUTER_DASHBOARD_CONFIG);
 
-  const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, KPI_TITLES);
+  const idText =
+    (dashboard.idValues?.length ? dashboard.idValues.join('_') : '') ||
+    String(dashboard.instanceId ?? '');
+  const resolved = resolveCapability('router', idText);
+
+  const filteredCards = useFilteredSummaryCards(dashboard.summaryCards, KPI_TITLES);
+  // 品牌命中时按"矩阵×数据"门控卡片（不支持→剔除；支持但无数据→保留显示 --）；未命中不动。
+  const summaryCards = resolved.matched
+    ? filteredCards.filter((c) =>
+      isMetricVisible(
+        resolved,
+        'router',
+        c.card?.metric,
+        Array.isArray(c.trendData) && c.trendData.length > 0
+      )
+    )
+    : filteredCards;
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
 
   const cpuMemChart = charts.find((c) => c?.chart.title === 'CPU 与内存使用率趋势');
   const trafficChart = charts.find((c) => c?.chart.title === '设备收发流量趋势');
 
   const renderTrend = (chart: (typeof charts)[number], className: string) =>
-    chart ? (
+    chart && isMetricVisible(resolved, 'router', chart.chart.metric, true) ? (
       <TrendChartPanel
         key={chart.chart.title}
         title={chart.chart.title}
@@ -47,12 +64,8 @@ export default function RouterDashboardPage() {
       />
     ) : null;
 
-  // 共享 Router 盘按当前实例品牌在头部标识（如 Juniper）。品牌按 instance_id 识别
-  // （品牌采集模板把 collect_type 如 snmp_juniper_mx 写进 instance_id 模板，可靠且不受自定义实例名影响）。
-  const brandLabel = getBrandLabel(
-    (dashboard.idValues?.length ? dashboard.idValues.join('_') : '') ||
-      String(dashboard.instanceId ?? '')
-  );
+  // 头部品牌标签：识别到品牌显示品牌名，否则降级「通用 SNMP」。
+  const brandLabel = getBrandLabel(idText) ?? '通用 SNMP';
 
   return (
     <DashboardShell

@@ -15,38 +15,7 @@
     "haproxy_rtime",
     "haproxy_hrsp_5xx"
   ],
-  "display_fields": [
-    {
-      "name": "Current Sessions",
-      "sort_order": 0,
-      "metrics": [
-        {
-          "plugin": "Haproxy",
-          "metric": "haproxy_scur"
-        }
-      ]
-    },
-    {
-      "name": "Average Response Time",
-      "sort_order": 1,
-      "metrics": [
-        {
-          "plugin": "Haproxy",
-          "metric": "haproxy_rtime"
-        }
-      ]
-    },
-    {
-      "name": "5xx Responses",
-      "sort_order": 2,
-      "metrics": [
-        {
-          "plugin": "Haproxy",
-          "metric": "haproxy_hrsp_5xx"
-        }
-      ]
-    }
-  ],
+  "display_fields": [{"name": "当前会话数", "sort_order": 0, "metrics": [{"plugin": "Haproxy", "metric": "haproxy_scur"}]}, {"name": "HTTP请求速率", "sort_order": 1, "metrics": [{"plugin": "Haproxy", "metric": "haproxy_req_rate"}]}, {"name": "平均响应时间", "sort_order": 2, "metrics": [{"plugin": "Haproxy", "metric": "haproxy_rtime"}]}, {"name": "5xx响应数", "sort_order": 3, "metrics": [{"plugin": "Haproxy", "metric": "haproxy_hrsp_5xx"}]}],
   "metrics": [
     {
       "metric_group": "Session",

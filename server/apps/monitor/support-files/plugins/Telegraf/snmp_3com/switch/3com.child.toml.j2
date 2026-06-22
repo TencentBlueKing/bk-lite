@@ -1,0 +1,70 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_3com"
+        config_type = "3com"
+        brand = "3com"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- 3Com CPU (A3COM-HUAWEI-LswDEVM-MIB hwCpuCostRatePer1Min, 近1分钟占用率%, 每板卡表, PEN 43；3com.snmprec 实测 34/99, avg by instance) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.43.45.1.6.1.1"
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43.45.1.6.1.1.1.3"
+        name = "usage"
+    # ---- 3Com 内存 (hwMemSize 总量 + hwMemFree 空闲, 字节, 每板卡表；usage = (total-free)/total) ----
+    # 待现网核验：hwMemSize .43.45.1.6.1.2.1.1.2(总量) / hwMemFree .43.45.1.6.1.2.1.1.3(空闲)；snmprec total=36212352 free=21029498。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.43.45.1.6.1.2"
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43.45.1.6.1.2.1.1.2"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.43.45.1.6.1.2.1.1.3"
+        name = "free"
+# ---- 温度/风扇/电源:A3COM-HUAWEI-LswDEVM-MIB 未暴露温度/风扇/电源专用标量 → N/A。CPU/内存干净可采。----
