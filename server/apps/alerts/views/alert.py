@@ -163,7 +163,7 @@ class AlertModelViewSet(AuthViewSet):
         )
         return Response(result)
 
-    # @HasPermission("Alarms-Edit")
+    @HasPermission("Alarms-Edit")
     @action(
         methods=["post"],
         detail=False,
