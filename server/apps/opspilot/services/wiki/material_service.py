@@ -1,20 +1,26 @@
 """资料(Material)摄取:解析为文本 + 生成 AI 摘要。
 
-P1 首个增量:支持 text / markdown / 纯文本提取与摘要。
-PDF/Office/网页等依赖 OCR 的解析在后续增量接入(loader 已就绪,见 metis/llm/loader)。
+支持:text(纯文本)、file 中的 .txt/.md(经 loader 解析)。
+PDF/Office/图片/网页等依赖 OCR/抓取的解析仍待接入(loader 已就绪,需 OCRProvider + 网络),
+此类返回空串,由调用方标记 failed。
 """
 
 import hashlib
 import logging
+import os
+import tempfile
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.metis.llm.loader.markdown_loader import MarkdownLoader
 from apps.opspilot.metis.llm.loader.raw_loader import RawLoader
+from apps.opspilot.metis.llm.loader.text_loader import TextLoader
 from apps.opspilot.models import LLMModel
 
 logger = logging.getLogger("opspilot")
 
-_SUPPORTED_TEXT_TYPES = {"text"}
+# 无需 OCR、可直接经 loader 解析的文件扩展名 → loader 类
+_FILE_LOADERS = {".txt": TextLoader, ".text": TextLoader, ".md": MarkdownLoader, ".markdown": MarkdownLoader}
 
 
 def _docs_to_text(docs):
@@ -26,14 +32,49 @@ def _docs_to_text(docs):
     return "\n\n".join(parts)
 
 
+def _read_file(material):
+    """读取文件资料内容,返回 (文件名, bytes)。从 MinIO 读取;测试可 monkeypatch 本函数。"""
+    f = material.file
+    name = (getattr(f, "name", "") or material.name) or ""
+    f.open("rb")
+    try:
+        data = f.read()
+    finally:
+        f.close()
+    return name, data
+
+
+def _extract_file_text(material):
+    """文件资料:按扩展名选 loader(仅 .txt/.md 无需 OCR),写临时文件解析。其余返回空串。"""
+    name, data = _read_file(material)
+    ext = (os.path.splitext(name)[1] or "").lower()
+    loader_cls = _FILE_LOADERS.get(ext)
+    if not loader_cls:
+        logger.info("material %s 扩展名 %s 需 OCR/暂未支持,待后续接入", material.id, ext)
+        return ""
+    if isinstance(data, str):
+        data = data.encode("utf-8")
+    tmp_path = None
+    try:
+        with tempfile.NamedTemporaryFile(suffix=ext, delete=False) as tmp:
+            tmp.write(data)
+            tmp_path = tmp.name
+        return _docs_to_text(loader_cls(tmp_path).load())
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+
+
 def extract_text(material):
     """从 Material 提取纯文本正文。
 
-    返回提取到的文本;无法处理的类型返回空串(由调用方决定状态)。
+    返回提取到的文本;无法处理的类型/格式返回空串(由调用方决定状态)。
     """
     if material.material_type == "text":
         return _docs_to_text(RawLoader(material.text_content or "").load())
-    # file / web 等需要 OCR 的解析在后续增量接入
+    if material.material_type == "file":
+        return _extract_file_text(material)
+    # web 等需要抓取/OCR 的解析在后续增量接入
     logger.info("material %s type=%s 暂未支持解析(后续增量接入)", material.id, material.material_type)
     return ""
 
