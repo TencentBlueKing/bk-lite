@@ -174,7 +174,9 @@ class AgentNode(BaseNodeExecutor):
                 break
         return message
 
-    def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "", raw_message: Any = "") -> Dict[str, Any]:
+    def _build_llm_params(
+        self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "", raw_message: Any = ""
+    ) -> Dict[str, Any]:
         """构建LLM调用参数
 
         Args:

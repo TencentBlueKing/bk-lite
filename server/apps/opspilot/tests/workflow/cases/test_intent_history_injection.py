@@ -1,4 +1,5 @@
 """意图节点多轮：第二轮应能拿到第一轮的会话历史（端到端）。"""
+
 import pytest
 
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor

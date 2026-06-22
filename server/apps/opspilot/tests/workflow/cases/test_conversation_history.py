@@ -1,10 +1,10 @@
 """conversation_history helper 单元测试。"""
+
 import pytest
 from django.utils import timezone
 
 from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory
-from apps.opspilot.utils.chat_flow_utils.conversation_history import load_session_history
-from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
+from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history, load_session_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.variable_manager import VariableManager
 
 
@@ -78,9 +78,7 @@ class TestBuildNodeChatHistory:
         _add_history(bot.id, "user", "广州天气如何", "exec-1")
         vm = _vm_with_anchor(bot.id)
 
-        result = build_node_chat_history(
-            vm, raw_input_message="agent_processed: 广州天气如何", final_message="agent_processed: 广州天气如何"
-        )
+        result = build_node_chat_history(vm, raw_input_message="agent_processed: 广州天气如何", final_message="agent_processed: 广州天气如何")
 
         assert result == [{"event": "user", "message": "agent_processed: 广州天气如何"}]
 

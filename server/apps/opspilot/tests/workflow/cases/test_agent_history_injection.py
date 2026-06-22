@@ -1,4 +1,5 @@
 """agent 节点 _build_llm_params 应在"面向用户原话"时注入会话历史。"""
+
 import types
 
 import pytest
@@ -44,15 +45,24 @@ def _vm(bot_id):
 @pytest.mark.django_db(transaction=True)
 def test_agent_injects_history_when_user_facing(bot):
     WorkFlowConversationHistory.objects.create(
-        bot_id=bot.id, node_id="entry", user_id="u@test.com", conversation_role="user",
-        conversation_content="广州天气如何", conversation_time=timezone.now(),
-        entry_type="web_chat", session_id="s1", execution_id="exec-1",
+        bot_id=bot.id,
+        node_id="entry",
+        user_id="u@test.com",
+        conversation_role="user",
+        conversation_content="广州天气如何",
+        conversation_time=timezone.now(),
+        entry_type="web_chat",
+        session_id="s1",
+        execution_id="exec-1",
     )
     node = AgentNode(_vm(bot.id))
 
     params = node._build_llm_params(
-        _fake_skill(), final_message="深圳呢", flow_input={"user_id": "u@test.com"},
-        node_id="agent_node", raw_message="深圳呢",
+        _fake_skill(),
+        final_message="深圳呢",
+        flow_input={"user_id": "u@test.com"},
+        node_id="agent_node",
+        raw_message="深圳呢",
     )
 
     messages = [h["message"] for h in params["chat_history"]]
@@ -63,15 +73,24 @@ def test_agent_injects_history_when_user_facing(bot):
 @pytest.mark.django_db(transaction=True)
 def test_agent_no_history_when_consuming_upstream_output(bot):
     WorkFlowConversationHistory.objects.create(
-        bot_id=bot.id, node_id="entry", user_id="u@test.com", conversation_role="user",
-        conversation_content="广州天气如何", conversation_time=timezone.now(),
-        entry_type="web_chat", session_id="s1", execution_id="exec-1",
+        bot_id=bot.id,
+        node_id="entry",
+        user_id="u@test.com",
+        conversation_role="user",
+        conversation_content="广州天气如何",
+        conversation_time=timezone.now(),
+        entry_type="web_chat",
+        session_id="s1",
+        execution_id="exec-1",
     )
     node = AgentNode(_vm(bot.id))
 
     params = node._build_llm_params(
-        _fake_skill(), final_message="agent_processed: x", flow_input={"user_id": "u@test.com"},
-        node_id="agent2", raw_message="agent_processed: x",  # 上游输出，非用户原话
+        _fake_skill(),
+        final_message="agent_processed: x",
+        flow_input={"user_id": "u@test.com"},
+        node_id="agent2",
+        raw_message="agent_processed: x",  # 上游输出，非用户原话
     )
 
     assert params["chat_history"] == [{"event": "user", "message": "agent_processed: x"}]

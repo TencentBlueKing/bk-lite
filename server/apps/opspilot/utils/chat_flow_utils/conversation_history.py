@@ -3,6 +3,7 @@
 把 WorkFlowConversationHistory 里已存的 (用户原话, 系统最终输出) 读回来，
 注入到"面向用户原话"的 agent / 意图节点。不改表、不改记录逻辑。
 """
+
 from typing import Any, Dict, List
 
 from apps.core.logger import opspilot_logger as logger
@@ -21,9 +22,7 @@ def load_session_history(bot_id, user_id, session_id, exclude_execution_id, cap:
         return []
     try:
         rows = list(
-            WorkFlowConversationHistory.objects.filter(
-                bot_id=bot_id, user_id=user_id, session_id=session_id
-            )
+            WorkFlowConversationHistory.objects.filter(bot_id=bot_id, user_id=user_id, session_id=session_id)
             .exclude(execution_id=exclude_execution_id)
             .order_by("-conversation_time", "-id")[:cap]
         )
