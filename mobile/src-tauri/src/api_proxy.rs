@@ -216,7 +216,7 @@ pub async fn api_stream_proxy(
     // 创建取消通道：JS 侧调用 cancel_stream 时，通过 tx 发送取消信号
     let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
     {
-        let mut map = registry.0.lock().unwrap();
+        let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
         map.insert(stream_id.clone(), cancel_tx);
     }
 
@@ -238,7 +238,7 @@ pub async fn api_stream_proxy(
                     });
                     // 清理注册表后退出
                     let reg = app_clone.state::<StreamRegistry>();
-                    reg.0.lock().unwrap().remove(&stream_id_clone);
+                    reg.0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                     return;
                 }
 
@@ -253,6 +253,7 @@ pub async fn api_stream_proxy(
 
                 loop {
                     let chunk_result = tokio::select! {
+                        biased; // 优先检查取消信号，确保取消语义立即生效
                         // 收到取消信号，立即终止读循环
                         _ = &mut cancel_rx => {
                             log::info!("🛑 [Tauri-Stream-{}] Cancelled by client", request_id);
@@ -385,7 +386,7 @@ pub async fn api_stream_proxy(
                                         stream_id: stream_id_clone.clone(),
                                         error: format!("UTF-8 decode error: {}", e),
                                     });
-                                    app_clone.state::<StreamRegistry>().0.lock().unwrap().remove(&stream_id_clone);
+                                    app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                                     return;
                                 }
                             }
@@ -396,7 +397,7 @@ pub async fn api_stream_proxy(
                                 stream_id: stream_id_clone.clone(),
                                 error: format!("Stream read error: {}", e),
                             });
-                            app_clone.state::<StreamRegistry>().0.lock().unwrap().remove(&stream_id_clone);
+                            app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                             return;
                         }
                     }
@@ -421,7 +422,7 @@ pub async fn api_stream_proxy(
                 }
 
                 // 从注册表中移除
-                app_clone.state::<StreamRegistry>().0.lock().unwrap().remove(&stream_id_clone);
+                app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
 
                 if cancelled {
                     log::info!("🛑 [Tauri-Stream-{}] Task exiting after cancellation", request_id);
@@ -435,7 +436,7 @@ pub async fn api_stream_proxy(
             }
             Err(err) => {
                 log::error!("❌ [Tauri-Stream-{}] HTTP request failed: {}", request_id, err);
-                app_clone.state::<StreamRegistry>().0.lock().unwrap().remove(&stream_id_clone);
+                app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                 let _ = app_clone.emit("stream-error", StreamError {
                     stream_id: stream_id_clone,
                     error: format!("HTTP request failed: {}", err),
@@ -454,7 +455,7 @@ pub async fn cancel_stream(
     registry: State<'_, StreamRegistry>,
     stream_id: String,
 ) -> Result<(), String> {
-    let mut map = registry.0.lock().unwrap();
+    let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
     if let Some(tx) = map.remove(&stream_id) {
         let _ = tx.send(());
         log::info!("🛑 [cancel_stream] Cancelled stream: {}", &stream_id[..8.min(stream_id.len())]);
