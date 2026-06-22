@@ -42,8 +42,13 @@ def _docs_to_text(docs):
 
 
 def _read_file(material):
-    """读取文件资料内容,返回 (文件名, bytes)。从 MinIO 读取;测试可 monkeypatch 本函数。"""
+    """读取文件资料内容,返回 (文件名, bytes)。从 MinIO 读取;测试可 monkeypatch 本函数。
+
+    file 资料未上传文件时返回 ("", b"")(由调用方按"无内容"处理为 failed,而非抛错)。
+    """
     f = material.file
+    if not f:
+        return "", b""
     name = (getattr(f, "name", "") or material.name) or ""
     f.open("rb")
     try:

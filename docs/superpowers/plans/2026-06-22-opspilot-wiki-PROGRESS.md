@@ -42,8 +42,17 @@
 ### P1 异步 ✅
 - `tasks.py`:`wiki_build_material_task` / `wiki_propose_update_task` / `wiki_rebuild_kb_task`(Celery);material `build` 支持 `async=true` 走异步
 
-### P1 文件解析 ✅(.txt/.md)
-- `material_service.extract_text`:file 资料按扩展名分派 loader;`.txt/.md` 经 TextLoader/MarkdownLoader 解析(MinIO 读取在 `_read_file`,可注入测试);OCR 格式返回空串待接入
+### P1 文件解析 ✅(.txt/.md/.csv/.xlsx,真实 MinIO 已验证)
+- `material_service.extract_text`:file 资料按扩展名分派 loader;`.txt/.md/.csv` 经 Text/Markdown loader、`.xlsx/.xls` 经 ExcelLoader(均 OCR-free)解析;MinIO 读取在 `_read_file`
+- **真实 MinIO 往返集成测试通过**(上传 xlsx→读回解析),用用户提供的 `.env`/`local_settings.py` 环境;OCR 格式(pdf/docx/pptx/图片)需 OCRProvider——该环境未配置,仍待接入
+
+### P6 语义混合检索 ✅(检索后重排,无需 pgvector)
+- `embedding_service.py`:`embed_texts`(EmbedProvider/OpenAI 兼容)+ 纯函数 `cosine` / `rrf_fuse`
+- `retrieval_service.hybrid_search`:关键词召回候选 → 嵌入重排 → RRF 融合;无嵌入/失败优雅回退关键词;KB `hybrid_search` 接口
+- 说明:环境无 pgvector 扩展,采用"召回小候选集再向量重排"避免存储向量;嵌入端点当前 502,wrapper 已验证可优雅降级(不崩溃)。pgvector 索引可后续替换 in-Python 余弦以扩规模
+
+### 前端图谱画布 ✅
+- `components/wiki/GraphCanvas.tsx`:@antv/g6 v5 力导向画布(社区着色 + 拖拽/缩放),GraphTab 画布+数据视图并存;eslint + tsc 通过(运行时冒烟需主仓库)
 
 > 后端测试合计 **61 passed**(`apps/opspilot/tests/wiki/`)。后端 P0–P6(除下列纯基础设施项)已完成。
 
@@ -55,12 +64,13 @@
 - 技能设置页:`选择 Wiki 知识库` 多选(打通 P4 端到端配置)
 - 校验方式:`npx eslint <files>`(全绿)+ `npx tsc -p tsconfig.lint.json`(仅 3 个既有 env 基线错误,均非 wiki 文件);运行时冒烟需主仓库(worktree Turbopack 跑不起)
 
-## 待办(剩余 —— 100% 受基础设施约束,本环境无可测核心)
+## 待办(剩余 —— 受环境/外部服务约束,本环境确无可测核心)
 
-- **OCR 文件 + 真实 MinIO 读取 + 网页抓取(P1/P6)**:分派已就绪,缺 OCRProvider + MinIO + 网络;`.pdf/.docx/.xlsx/.pptx/图片/web` 仍空串待接入
-- **pgvector 语义检索 + 网页定时刷新(P6)**:需 pgvector 扩展 + 嵌入模型 + Celery beat + 网络
-- **前端运行时冒烟 + 关系图谱画布**:在主仓库跑 dev server 验证交互;图谱画布(G6/@ant-design/graphs)可在数据视图上叠加
-- **菜单权限注册**:`wiki_list` 菜单名可能需在 system_mgmt 菜单/权限中注册才对部分角色可见
+- **OCR 文件解析 + 网页抓取(P1)**:`.pdf/.docx/.pptx/图片/web` 需 OCRProvider + OCR 服务(该环境 OCRProvider 为空)+ 网络;分派与 `_read_file` 接缝已就绪,接上 OCR 即可
+- **嵌入端点可用性 + pgvector 索引(P6)**:嵌入端点当前返回 502(上游不可用);pgvector 扩展未安装。语义混合检索逻辑已就绪并优雅降级,端点恢复即生效;大规模可后接 pgvector
+- **网页定时刷新(P6)**:需 Celery beat + 网络
+- **前端运行时冒烟**:主仓库跑 dev server 验证交互(worktree Turbopack 跑不起;已全程 eslint + 作用域 tsc 校验)
+- **菜单权限注册**:`wiki_list` 在 system_mgmt 的菜单/权限注册属系统级管理配置,菜单 json 入口已加
 - **P6(需基础设施)**:pgvector + 嵌入(复用 EmbedProvider)+ RRF、网页定时刷新、Schema 变更全量重建
 - **前端**:6 个工作区(概览/资料/知识/构建记录/检查审核/设置)——该 worktree 前端环境跑不通,需在主仓库或修好依赖后进行
 
