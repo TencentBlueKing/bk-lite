@@ -3582,6 +3582,12 @@ monitor_object_plugin:
     name: Vyatta（Telegraf）
     desc: 面向 Vyatta/VyOS（Linux）路由器的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 HOST-RESOURCES 的 CPU 负载（按各核取平均）与 UCD-SNMP 真实内存（总量/空闲、已用及推算使用率）。内存使用率按 (总量-空闲)/总量 推算。
       适用品牌型号——Vyatta / VyOS 软件路由器。
+  Router Adtran SNMP:
+    name: Adtran（Telegraf）
+    desc: Adtran AOS 路由器专用 SNMP 采集模板（ADTRAN-AOS MIB，企业号 664）。除标准 IF-MIB 接口指标外，额外采集 Adtran 私有 OID 的设备健康指标：CPU 使用率（adGenAOSCurrentCpuUtil，直接以百分比上报）与内存（adGenAOSMemPool 总量 + adGenAOSHeapFree 空闲，字节，用量按 （总量-空闲）/总量 推导）。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——Adtran AOS 路由器/网关（NetVanta 系列及其他 adtran-aos 平台，企业号 664）。
+  Router LANCOM SNMP:
+    name: LANCOM（Telegraf）
+    desc: LANCOM LCOS 路由器/VPN 网关专用 SNMP 采集模板（LCOS-MIB，企业号 2356）。除标准 IF-MIB 接口指标外，额外采集 LANCOM 私有硬件温度传感器（lcsStatusHardwareInfoTemperatureDegrees，℃）。LCOS os_discovery 未暴露 CPU/内存利用率或风扇/电源状态 OID，故为 N/A。适用品牌型号——LANCOM LCOS 路由器与 VPN 网关（1xxx / ic- / ISG 系列及其他 LCOS 平台，企业号 2356）。
   Router NEC SNMP:
     name: NEC（Telegraf）
     desc: NEC UNIVERGE IX 系列路由器专用 SNMP 采集模板（NEC 私有企业 MIB，企业号 119）。除标准 IF-MIB 接口指标外，额外采集 NEC 私有标量 OID 的设备健康指标：1 分钟 CPU 使用率、内存使用率、机箱温度，均直接上报。风扇与电源状态仅以每单元 LLD 状态行（厂商私有状态码）暴露，SNMP 采集端无法规范化，故为 N/A。适用品牌型号——NEC UNIVERGE IX 系列路由器（IX2000/IX3000 及其他 UNIVERGE IX 平台，企业号 119）。

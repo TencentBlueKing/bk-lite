@@ -4168,6 +4168,12 @@ monitor_object_plugin:
       memory (total/free, used and derived usage). Memory usage is derived as
       (total - free) / total.
       Supported brands/models — Vyatta / VyOS software routers.
+  Router Adtran SNMP:
+    name: Adtran (Telegraf)
+    desc: Adtran AOS router SNMP collection (ADTRAN-AOS MIB, IANA PEN 664). Beyond standard IF-MIB interface metrics, it collects Adtran private OIDs for device health including CPU utilisation (adGenAOSCurrentCpuUtil, reported directly as a percentage) and memory (adGenAOSMemPool total + adGenAOSHeapFree free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not exposed, so those are N/A. Supported brands/models — Adtran AOS routers/gateways (NetVanta series and other adtran-aos platforms; enterprise 664).
+  Router LANCOM SNMP:
+    name: LANCOM (Telegraf)
+    desc: LANCOM LCOS router/VPN-gateway SNMP collection (LCOS-MIB, IANA PEN 2356). Beyond standard IF-MIB interface metrics, it collects the LANCOM private hardware temperature sensor (lcsStatusHardwareInfoTemperatureDegrees, degrees Celsius). LCOS os_discovery does not expose CPU/memory utilisation or fan/power-supply state OIDs, so those are N/A. Supported brands/models — LANCOM LCOS routers and VPN gateways (1xxx / ic- / ISG series and other LCOS platforms; enterprise 2356).
   Router NEC SNMP:
     name: NEC (Telegraf)
     desc: NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health including 1-minute CPU utilization, memory utilization and chassis temperature, all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000 / IX3000 and other UNIVERGE IX platforms; enterprise 119).

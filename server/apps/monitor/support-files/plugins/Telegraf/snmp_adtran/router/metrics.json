@@ -1,12 +1,12 @@
 {
-  "plugin": "Switch 3Com SNMP",
-  "plugin_desc": "3Com 交换机专用 SNMP 采集模板（A3COM-HUAWEI-LswDEVM-MIB，企业号 43）。除标准 IF-MIB 接口指标外，额外采集 3Com 私有 OID 的设备健康指标：CPU 使用率（hwCpuCostRatePer1Min，近 1 分钟占用率%，按板卡表取平均）与内存（hwMemSize 总量 + hwMemFree 空闲，字节，用量按 （总量-空闲）/总量 推导）。该 MIB（企业号 43.45）与已支持的 H3C（企业号 25506 HH3C-ENTITY-EXT）不同，故单独支持。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——3Com 网管交换机（Switch 4200/4500/5500 等 A3COM-HUAWEI 平台，企业号 43）。",
-  "status_query": "any({instance_type='switch', collect_type='snmp_3com'}) by (instance_id)",
-  "name": "Switch",
-  "icon": "mm-switch_交换机",
+  "plugin": "Router Adtran SNMP",
+  "plugin_desc": "Adtran AOS 路由器专用 SNMP 采集模板（ADTRAN-AOS MIB，企业号 664）。除标准 IF-MIB 接口指标外，额外采集 Adtran 私有 OID 的设备健康指标：CPU 使用率（adGenAOSCurrentCpuUtil，直接以百分比上报）与内存（adGenAOSMemPool 总量 + adGenAOSHeapFree 空闲，字节，用量按 （总量-空闲）/总量 推导）。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——Adtran AOS 路由器/网关（NetVanta 系列及其他 adtran-aos 平台，企业号 664）。",
+  "status_query": "any({instance_type='router', collect_type='snmp_adtran'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
   "type": "Network Device",
   "description": "",
-  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
   "instance_id_keys": [
     "instance_id"
   ],
@@ -15,9 +15,9 @@
   ],
   "metrics": [
     {
-      "metric_group": "CPU",
+      "metric_group": "Router",
       "name": "device_cpu_usage",
-      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
       "display_name": "CPU Utilization",
       "data_type": "Number",
       "unit": "percent",
@@ -25,12 +25,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilisation of the 3Com switch (A3COM-HUAWEI-LswDEVM-MIB hwCpuCostRatePer1Min, averaged across boards)."
+      "description": "CPU utilisation of the Adtran router (ADTRAN-AOSCPU adGenAOSCurrentCpuUtil)."
     },
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -48,7 +48,7 @@
     {
       "metric_group": "Traffic",
       "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -64,43 +64,43 @@
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
     },
     {
-      "metric_group": "Memory",
+      "metric_group": "Router",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total memory of the 3Com switch in bytes (hwMemSize)."
+      "description": "Total memory of the Adtran router in bytes (adGenAOSMemPool)."
     },
     {
-      "metric_group": "Memory",
+      "metric_group": "Router",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free memory of the 3Com switch in bytes (hwMemFree)."
+      "description": "Free memory of the Adtran router in bytes (adGenAOSHeapFree)."
     },
     {
-      "metric_group": "Memory",
+      "metric_group": "Router",
       "dimensions": [],
       "instance_id_keys": [
         "instance_id"
       ],
       "name": "device_memory_usage",
       "display_name": "内存使用率",
-      "query": "(sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
       "unit": "percent",
       "data_type": "Number",
-      "description": "Memory utilisation of the 3Com switch, derived as (total-free)/total."
+      "description": "Memory utilisation of the Adtran router, derived as (total-free)/total."
     }
   ]
 }
