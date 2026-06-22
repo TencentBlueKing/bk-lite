@@ -10,6 +10,7 @@ from apps.log.models.log_group import SearchCondition
 from apps.log.serializers.log_group import SearchConditionSerializer
 from apps.log.serializers.search import LogFieldValuesSerializer, LogHitsSerializer, LogSearchSerializer, LogTopStatsSerializer
 from apps.log.filters.log_group import SearchConditionFilter
+from apps.core.utils.team_utils import get_current_team
 
 
 class LogSearchViewSet(ViewSet):
@@ -181,7 +182,7 @@ class SearchConditionViewSet(ModelViewSet):
 
     def get_queryset(self):
         """根据当前组织过滤查询集"""
-        current_team = self.request.COOKIES.get("current_team")
+        current_team = get_current_team(self.request)
         if not current_team:
             return SearchCondition.objects.none()
 
@@ -206,7 +207,7 @@ class SearchConditionViewSet(ModelViewSet):
 
     def create(self, request, *args, **kwargs):
         """创建搜索条件"""
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if not current_team:
             return WebUtils.response_error("当前组织信息不存在，请重新登录")
 
@@ -229,7 +230,7 @@ class SearchConditionViewSet(ModelViewSet):
 
     def list(self, request, *args, **kwargs):
         """获取搜索条件列表"""
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if not current_team:
             return WebUtils.response_error("当前组织信息不存在，请重新登录")
 
@@ -246,7 +247,7 @@ class SearchConditionViewSet(ModelViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         """获取搜索条件详情"""
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if not current_team:
             return WebUtils.response_error("当前组织信息不存在，请重新登录")
 
@@ -256,7 +257,7 @@ class SearchConditionViewSet(ModelViewSet):
 
     def update(self, request, *args, **kwargs):
         """更新搜索条件"""
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if not current_team:
             return WebUtils.response_error("当前组织信息不存在，请重新登录")
 
@@ -285,7 +286,7 @@ class SearchConditionViewSet(ModelViewSet):
 
     def destroy(self, request, *args, **kwargs):
         """删除搜索条件"""
-        current_team = request.COOKIES.get("current_team")
+        current_team = get_current_team(request)
         if not current_team:
             return WebUtils.response_error("当前组织信息不存在，请重新登录")
 

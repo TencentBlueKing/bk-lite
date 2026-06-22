@@ -16,15 +16,13 @@ from django.utils import timezone
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
 from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus, SNMP_TRAP_SOURCE_ID, DEFAULT_GROUP_ID
-from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
 from apps.alerts.error import AuthenticationSourceError
-from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.alerts.utils.permission_scope import normalize_team_ids
-from apps.rpc.cmdb import CMDB
+from apps.alerts.enrichment.engine import EnrichmentEngine
 
 
 class AlertSourceAdapter(ABC):
@@ -35,29 +33,14 @@ class AlertSourceAdapter(ABC):
         self.config = alert_source.config
         self.secret = secret
         self.events = events or []
-        # 单次接入过程内的 CMDB 富化缓存，按 (resource_type, resource_id|resource_name) 去重，
-        # 避免同一资源的多条事件重复发起 CMDB RPC（N+1）。
-        self._enrich_cache: Dict[str, Any] = {}
         # 可信内部推送（如监控中心经 NATS 内部源直推）：采信 event 自带的 organizations 作为归属组织，
         # 不走组织级 secret 解析。仅影响内部通道，外部告警源安全模型不变。
         self.trusted_internal = trusted_internal
         self.mapping = self.alert_source.config.get("event_fields_mapping", {})
         self.unique_fields = ["title"]
         self.info_level, self.levels = self.get_event_level()
-        self.enable_rich_event = self.enable_enrich()
         self.resolved_team = self._resolve_team_from_secret(secret)
         self.team_secrets = set(self.alert_source.team_secrets.values())
-
-    @staticmethod
-    def enable_enrich():
-        """
-        是否开启告警丰富
-        默认不开启
-        """
-        instance = SystemSetting.objects.filter(key=INIT_ALERT_ENRICH).first()
-        if not instance:
-            return False
-        return instance.value.get("enable", False)
 
     def _resolve_team_from_secret(self, secret: str) -> List:
         if not secret:
@@ -190,19 +173,38 @@ class AlertSourceAdapter(ABC):
             data["_start_time_synthesized"] = True
 
     def create_events(self, add_events):
-        """将原始告警数据转换为Event对象"""
-        events = []
+        """将原始告警数据转换为Event对象（批量丰富）"""
+        event_dicts = []
         skipped_missing = 0  # 预期内丢弃：缺必填字段
         errored = 0  # 非预期错误：转换异常
         for add_event in add_events:
             try:
-                event = self._transform_alert_to_event(add_event)
-                if event is None:
+                data = self.mapping_fields_to_event(add_event)
+                if not data:
                     # 缺少必填字段（如 title）→ 丢弃，避免构造出 start_time=None 的空事件，
                     # 否则会在 bulk_create 时因 NOT NULL 约束令整批写入失败。
                     skipped_missing += 1
                     logger.warning("[AlertSource] 事件缺少必填字段，已跳过: %s", add_event)
                     continue
+                data.setdefault("enrichment", {})
+                event_dicts.append((data, add_event))
+            except Exception as e:
+                errored += 1
+                logger.error("[AlertSource] 事件映射失败: %s, error: %s", add_event, e, exc_info=True)
+
+        # 整批丰富（尽力而为，内部已隔离异常）
+        try:
+            EnrichmentEngine().enrich_batch([d for d, _ in event_dicts])
+        except Exception:
+            logger.error("[AlertSource] 批量丰富失败，跳过", exc_info=True)
+
+        events = []
+        for data, add_event in event_dicts:
+            try:
+                # 取出"系统补全 start_time"标记（非模型字段，不能传入 Event(**data)）
+                synthesized = data.pop("_start_time_synthesized", False)
+                event = Event(**data)
+                event._start_time_synthesized = synthesized
                 self.add_base_fields(event, add_event)
                 events.append(event)
             except Exception as e:
@@ -500,65 +502,6 @@ class AlertSourceAdapter(ABC):
         logger.debug("[AlertSource] 重新加载 %s 条带 pk 的事件", len(created_events_list))
         return result
 
-    def rich_event(self, event: dict):
-        """告警丰富"""
-        if not self.enable_rich_event:
-            return
-        try:
-            self.enrich_event(event, cache=self._enrich_cache)
-        except Exception as e:
-            logger.error("[AlertSource] 事件富化失败: %s", e, exc_info=True)
-
-    @staticmethod
-    def enrich_event(event, cache: Optional[Dict[str, Any]] = None):
-        """
-        对单个事件进行丰富处理
-        查询cmdb nats获取信息
-
-        cache: 单次接入过程内的资源富化缓存，命中则不再发起 CMDB RPC，缓解 N+1。
-        """
-        params = {}
-        resource_type = event.get("resource_type", None)
-        if not resource_type:
-            return
-        params["model_id"] = resource_type
-        resource_id = event.get("resource_id", None)
-        resource_name = event.get("resource_name", None)
-        if resource_id:
-            params["_id"] = resource_id
-        elif resource_name:
-            params["inst_name"] = resource_name
-        else:
-            return
-
-        cache_key = f"{resource_type}|{resource_id or ''}|{resource_name or ''}"
-        if cache is not None and cache_key in cache:
-            cmdb_instance = cache[cache_key]
-            if cmdb_instance:
-                event["labels"].update(cmdb_instance)
-            return
-
-        try:
-            cmdb_instance = CMDB().search_instances(params=params)
-            if cache is not None:
-                cache[cache_key] = cmdb_instance
-            # 将cmdb实例信息添加到事件中
-            event["labels"].update(cmdb_instance)
-        except Exception as err:
-            logger.error("[AlertSource] CMDB search_instances 调用失败", exc_info=True)
-
-    def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Optional[Event]:
-        """将单个告警数据转换为Event对象；缺少必填字段时返回 None。"""
-        data = self.mapping_fields_to_event(add_event)
-        if not data:
-            return None
-        # 取出"系统补全 start_time"标记（非模型字段，不能传入 Event(**data)）
-        synthesized = data.pop("_start_time_synthesized", False)
-        self.rich_event(data)
-        event = Event(**data)
-        event._start_time_synthesized = synthesized
-        return event
-
     @staticmethod
     def timestamp_to_datetime(timestamp: str) -> datetime:
         """将时间戳转换为datetime对象"""
@@ -616,7 +559,8 @@ class AlertSourceAdapter(ABC):
         if not bulk_events:
             return
 
-        # 先执行屏蔽：命中事件置 SHIELD。必须在即时旁路之前，否则被屏事件会先建出即时告警。
+        # 先执行屏蔽：被屏蔽的事件不应再产出告警，因此屏蔽必须先于即时旁路与聚合，
+        # 确保即时旁路按最新屏蔽状态过滤。
         self.event_operator(bulk_events)
 
         # 即时告警旁路：与下方现有聚合主路径并行。dispatch 自身吞掉全部异常，

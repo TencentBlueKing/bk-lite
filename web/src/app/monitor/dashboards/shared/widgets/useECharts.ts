@@ -48,7 +48,12 @@ export function useECharts(
 
   useEffect(() => {
     const instance = instanceRef.current;
-    if (!instance || !option) return;
+    if (!instance) return;
+    // option 为 null 表示当前无数据：清空画布，避免残留上一次的折线与空状态覆盖层叠加显示。
+    if (!option) {
+      instance.clear();
+      return;
+    }
     instance.setOption(option, { notMerge: opts?.notMerge ?? true });
     const frameId = requestAnimationFrame(() => {
       instance.resize();

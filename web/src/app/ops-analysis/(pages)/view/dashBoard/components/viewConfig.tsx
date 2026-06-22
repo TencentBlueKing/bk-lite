@@ -18,6 +18,7 @@ import {
   Form,
   Input,
   Radio,
+  Switch,
   Tooltip,
   message,
 } from 'antd';
@@ -30,6 +31,7 @@ import {
 } from '@/app/ops-analysis/constants/common';
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
+import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
@@ -73,6 +75,10 @@ interface FormValues {
   topNLabelField?: string;
   topNValueField?: string;
   unit?: string;
+  unitId?: string;
+  valueMappings?: ValueConfig['valueMappings'];
+  stack?: boolean;
+  content?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
   gaugeMin?: number;
@@ -527,6 +533,18 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     if (valueConfig?.unit !== undefined) {
       formValues.unit = valueConfig.unit;
     }
+    if ((valueConfig as ValueConfig | undefined)?.unitId !== undefined) {
+      formValues.unitId = (valueConfig as ValueConfig).unitId;
+    }
+    if ((valueConfig as ValueConfig | undefined)?.valueMappings !== undefined) {
+      formValues.valueMappings = (valueConfig as ValueConfig).valueMappings;
+    }
+    if ((valueConfig as ValueConfig | undefined)?.stack !== undefined) {
+      formValues.stack = (valueConfig as ValueConfig).stack;
+    }
+    if ((valueConfig as ValueConfig | undefined)?.content !== undefined) {
+      formValues.content = (valueConfig as ValueConfig).content;
+    }
     if (valueConfig?.conversionFactor !== undefined) {
       formValues.conversionFactor = valueConfig.conversionFactor;
     }
@@ -699,13 +717,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const conversionFactorValue = form.getFieldValue('conversionFactor');
         const decimalPlacesValue = form.getFieldValue('decimalPlaces');
         if (unitValue !== undefined) result.unit = unitValue;
+        result.unitId = form.getFieldValue('unitId') || undefined;
+        result.valueMappings = form.getFieldValue('valueMappings') || undefined;
         if (conversionFactorValue !== undefined)
           result.conversionFactor = conversionFactorValue;
         if (decimalPlacesValue !== undefined)
           result.decimalPlaces = decimalPlacesValue;
       }
 
-      if (chartType === 'gauge') {
+      if (chartType === 'gauge' || chartType === 'barGauge') {
         result.selectedFields = singleValueConfig.selectedFields;
         result.thresholdColors = singleValueConfig.thresholdColors;
         const unitValue = form.getFieldValue('unit');
@@ -715,6 +735,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
         const gaugeMaxValue = form.getFieldValue('gaugeMax');
         const gaugeShapeValue = form.getFieldValue('gaugeShape');
         if (unitValue !== undefined) result.unit = unitValue;
+        result.unitId = form.getFieldValue('unitId') || undefined;
+        result.valueMappings = form.getFieldValue('valueMappings') || undefined;
         if (conversionFactorValue !== undefined)
           result.conversionFactor = conversionFactorValue;
         if (decimalPlacesValue !== undefined)
@@ -925,7 +947,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           />
         )}
 
-        {chartType === 'gauge' && (
+        {(chartType === 'gauge' || chartType === 'barGauge') && (
           <GaugeSettingsSection
             t={t}
             sectionTitle={t('dashboard.gaugeSettings')}
@@ -955,6 +977,34 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             topNLabelFieldOptions={topNLabelFieldOptions}
             topNValueFieldOptions={topNValueFieldOptions}
           />
+        )}
+
+        {(chartType === 'line' || chartType === 'bar') && (
+          <Form.Item
+            label={t('dashboard.stackSeries')}
+            name="stack"
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+        )}
+
+        {chartType === 'stateTimeline' && (
+          <Form.Item
+            label={t('topology.nodeConfig.valueMappings')}
+            name="valueMappings"
+          >
+            <ValueMappingsConfigSection t={t} />
+          </Form.Item>
+        )}
+
+        {chartType === 'text' && (
+          <Form.Item label={t('dashboard.textContent')} name="content">
+            <Input.TextArea
+              rows={6}
+              placeholder={t('dashboard.textContentPlaceholder')}
+            />
+          </Form.Item>
         )}
       </Form>
       <ComponentSelector

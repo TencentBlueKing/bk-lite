@@ -13,6 +13,7 @@ node_result 为引擎内部契约，绝不流式输出。
 ChatFlowEngine 提供，以保留其对模块级 ORM 名称的引用（便于测试 patch）。
 并发相关的 _state_lock / 执行顺序计数同样由宿主类维护。
 """
+
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import Any, Dict, List, Set
@@ -189,6 +190,28 @@ class NodeRunnerMixin:
             node_input_data = {input_key: input_value}
             # 执行节点
             result = executor.execute(node_id, node, node_input_data)
+
+            # 节点以 in-band {"success": False} 表达业务失败（如 agent 节点 LLM 调用失败、意图越界）。
+            # 必须转成失败的 NodeResult，否则 _check_chain_result 只看包装层 success=True 会把失败
+            # 当成功——错误结果被当正常回复发给用户、WorkFlowTaskResult 被误记为成功
+            # （同步执行路径：celery / nats / 第三方渠道，非流式）。
+            if isinstance(result, dict) and result.get("success") is False:
+                context.end_time = time.time()
+                context.status = NodeStatus.FAILED
+                error_text = result.get("error") or result.get(output_key) or "节点执行失败"
+                context.error_message = str(error_text)
+                context.output_data = result
+                self._update_node_execution_order(node_id)
+                self._record_node_execution_result(node_id, context)
+                logger.warning(f"节点 {node_id}({node_type}) 业务失败: {error_text}")
+                return NodeResult(
+                    ok=False,
+                    node_id=node_id,
+                    node_type=node_type,
+                    error=str(error_text),
+                    execution_time=context.end_time - context.start_time,
+                ).to_dict()
+
             # 处理输出数据到全局变量
             if result and isinstance(result, dict):
                 # 获取节点的实际输出值

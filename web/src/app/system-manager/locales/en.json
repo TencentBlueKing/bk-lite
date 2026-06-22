@@ -373,6 +373,7 @@
         "disableConfirm": "Disabling will restrict the related modules from creating new authorized resources. Continue?",
         "disableSuccess": "License disabled",
         "disableFailed": "Failed to disable license",
+        "disable": "Disable",
         "licenseNo": "License No.: ",
         "validPeriod": "Valid Period: ",
         "validTo": "to",

@@ -59,6 +59,9 @@
       "replicaCountTip": "表示为AI应用运行的Pilot实例数量，通过增加实例数量提升应用的容错性和可用性，默认为1",
       "introduction": "简介",
       "group": "组织",
+      "manageGroup": "管理组织",
+      "usageGroup": "使用组织",
+      "usageGroupTip": "使用组织可调用该应用进行对话/接口请求；管理组织会自动加入且不可移除",
       "name": "名称"
     },
     "deleteConfirm": "你确定要删除此工作室吗？",

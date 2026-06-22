@@ -19,6 +19,7 @@ from apps.monitor.services.monitor_object import MonitorObjectService
 from apps.monitor.utils.display_fields import validate_display_fields
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorObjectViewSet(viewsets.ModelViewSet):
@@ -35,6 +36,29 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         if self.request.query_params.get("parent_only") in ["true", "True"]:
             queryset = queryset.filter(parent__isnull=True)
         return queryset
+
+    @staticmethod
+    def _translate_display_fields(lan, object_name, display_fields):
+        """展示列名国际化：列名一律取绑定指标在当前账号语言下的译名，跟随 request.user.locale
+        自动中/英切换；无绑定指标或无译名时回退原列名。
+
+        说明：display_fields[].name 是 metrics.json 写死的英文种子（且有时是另起的精简标签，
+        不等于指标英文名），数据模型里没有可靠区分“默认名 vs 用户手打名”的信号
+        （display_fields_customized 只要在弹窗里加/删/排序就置 True），故统一按绑定指标译名展示，
+        以保证编辑后仍跟随语言、不回退英文。不就地修改入参，返回新副本。
+        """
+        if not display_fields:
+            return display_fields
+        translated = []
+        for col in display_fields:
+            metrics = col.get("metrics") or []
+            metric_name = metrics[0].get("metric") if metrics else None
+            new_name = col.get("name")
+            if metric_name:
+                key = f"{LanguageConstants.MONITOR_OBJECT_METRIC}.{object_name}.{metric_name}.name"
+                new_name = lan.get(key) or new_name
+            translated.append({**col, "name": new_name})
+        return translated
 
     def list(self, request, *args, **kwargs):
         queryset = self.filter_queryset(self.get_queryset())
@@ -62,10 +86,14 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             result["is_builtin"] = bool(i18n_name) or not result.get("display_name")
             # 添加子对象数量
             result["children_count"] = children_count_map.get(result["id"], 0)
+            # 展示列名国际化：一律按绑定指标译名展示，跟随账号语言（编辑后也不回退英文）。
+            result["display_fields"] = self._translate_display_fields(
+                lan, result["name"], result.get("display_fields")
+            )
 
         if request.GET.get("add_instance_count") in ["true", "True"]:
             include_children = request.COOKIES.get("include_children", "0") == "1"
-            current_team = request.COOKIES.get("current_team")
+            current_team = get_current_team(request)
 
             inst_res = get_permissions_rules(
                 request.user,
@@ -106,7 +134,7 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             include_children = request.COOKIES.get("include_children", "0") == "1"
             policy_res = get_permissions_rules(
                 request.user,
-                request.COOKIES.get("current_team"),
+                get_current_team(request),
                 "monitor",
                 f"{PermissionConstants.POLICY_MODULE}",
                 include_children=include_children,

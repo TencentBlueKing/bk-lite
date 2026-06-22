@@ -4,10 +4,27 @@ import time
 import logging
 from pathlib import Path
 from typing import Dict, Any, List
+from urllib.parse import unquote
 
 from .base_collector import BaseCollector
 
 logger = logging.getLogger("stargazer.host_collector")
+
+
+def _url_decode_secret(value: Any) -> str:
+    """还原前端对 encrypted 字段做的 encodeURIComponent。
+
+    Web 端在提交时对标记为 encrypted 的字段（密码、SSH 私钥、passphrase）统一做了
+    encodeURIComponent。这些值对于"拼进 URL"的插件是正确的，但主机远程采集是把它们
+    直接当作 SSH/WinRM 凭据使用，必须先解码还原，否则像 ``CW@roger1117!@#`` 会以
+    ``CW%40roger1117!%40%23`` 的形式送达，导致认证失败。
+
+    解码是 encodeURIComponent 的逆运算，且 round-trip 安全：原文里的 ``%`` 会被前端
+    编码成 ``%25``，因此 unquote 不会误伤含字面 ``%`` 的口令。
+    """
+    if not value:
+        return value
+    return unquote(str(value))
 
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
 
@@ -262,7 +279,7 @@ class HostCollector(BaseCollector):
         script = build_script(os_type, modules)
 
         connection = "ssh" if os_type == "linux" else "winrm"
-        module = "shell" if os_type == "linux" else "win_shell"
+        module = "raw" if os_type == "linux" else "win_shell"
 
         host_credential = {
             "host": host,
@@ -275,14 +292,14 @@ class HostCollector(BaseCollector):
             if auth_type == "private_key":
                 private_key_content = self.params.get("private_key_content")
                 if private_key_content:
-                    host_credential["private_key_content"] = private_key_content
+                    host_credential["private_key_content"] = _url_decode_secret(private_key_content)
                 private_key_passphrase = self.params.get("private_key_passphrase")
                 if private_key_passphrase:
-                    host_credential["private_key_passphrase"] = private_key_passphrase
+                    host_credential["private_key_passphrase"] = _url_decode_secret(private_key_passphrase)
             else:
-                host_credential["password"] = self.params.get("password", "")
+                host_credential["password"] = _url_decode_secret(self.params.get("password", ""))
         else:
-            host_credential["password"] = self.params.get("password", "")
+            host_credential["password"] = _url_decode_secret(self.params.get("password", ""))
             host_credential["winrm_scheme"] = self.params.get("winrm_scheme") or "https"
             host_credential["winrm_transport"] = self.params.get("winrm_transport") or "ntlm"
             host_credential["winrm_cert_validation"] = _as_bool(

@@ -46,38 +46,36 @@ def get_user_group_paths(user_group_list):
     获取用户所在组的路径信息（包含所有父级组）
     :param user_group_list: 用户所属的组ID列表
     :return: 组路径列表
+
+    实现采用两阶段按需加载，避免全表扫描：
+    - Phase 1：仅查询 id/parent_id 轻量字段，BFS 收集从用户组到根的所有祖先 ID。
+    - Phase 2：按 ID 集合查询完整对象（含 prefetch_related("roles")），集合大小
+              与路径深度成正比（O(depth × fan-out)），而非系统组织总数 O(N)。
     """
     if not user_group_list:
         return []
 
-    # 一次性获取所有组数据（包含所有可能的父级组）
-    all_groups = Group.objects.all().prefetch_related("roles")
+    # Phase 1：轻量查询，仅取 id + parent_id，BFS 向上收集祖先 ID
+    # 从用户直属组出发，每轮查询当前层节点的 parent_id，直到到达根（parent_id=0 或 None）
+    all_group_ids: set = set(user_group_list)
+    current_ids: set = set(user_group_list)
 
-    # 构建组ID到组对象的映射
-    group_map = {group.id: group for group in all_groups}
-
-    # 收集用户所在组及其所有父级组ID
-    all_group_ids = set(user_group_list)
-
-    # 非递归方式获取所有父级组ID
-    current_ids = set(user_group_list)
     while current_ids:
-        parent_ids = set()
-        for group_id in current_ids:
-            group = group_map.get(group_id)
-            if group and hasattr(group, "parent_id") and group.parent_id:
-                parent_ids.add(group.parent_id)
+        # 仅查询当前层节点的 parent_id，不加载其余字段
+        parent_rows = Group.objects.filter(id__in=current_ids).values_list("id", "parent_id")
+        new_parent_ids = set()
+        for _gid, parent_id in parent_rows:
+            if parent_id and parent_id not in all_group_ids:
+                new_parent_ids.add(parent_id)
 
-        # 过滤出尚未处理的父级组ID
-        new_parent_ids = parent_ids - all_group_ids
         if not new_parent_ids:
             break
 
         all_group_ids.update(new_parent_ids)
         current_ids = new_parent_ids
 
-    # 获取所有相关组对象
-    related_groups = [group_map[gid] for gid in all_group_ids if gid in group_map]
+    # Phase 2：仅加载路径所需的组对象（含 roles prefetch）
+    related_groups = list(Group.objects.filter(id__in=all_group_ids).prefetch_related("roles"))
 
     return GroupUtils.build_group_paths(related_groups, user_group_list)
 
@@ -110,8 +108,15 @@ def init_user_set(request):
     except User.DoesNotExist:
         return JsonResponse({"result": False, "message": loader.get("error.user_not_found", "User not found")})
 
+    group_name_value = kwargs.get("group_name")
+    if not group_name_value:
+        return JsonResponse(
+            {"result": False, "message": loader.get("error.group_name_required", "group_name is required")},
+            status=400,
+        )
+
     client = SystemMgmt()
-    res = client.init_user_default_attributes(user.id, kwargs["group_name"], group_list[0]["id"])
+    res = client.init_user_default_attributes(user.id, group_name_value, group_list[0]["id"])
     if not res["result"]:
         return JsonResponse(res)
     log_operation(request, "create", "console_mgmt", f"初始化用户设置: {request.user.username}")
@@ -119,13 +124,17 @@ def init_user_set(request):
 
 
 def update_user_base_info(request):
-    params = json.loads(request.body)
-    username = request.user.username
-    domain = request.user.domain
-
     # 获取用户语言设置
     locale = getattr(request.user, "locale", "en")
     loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        params = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")}, status=400)
+
+    username = request.user.username
+    domain = request.user.domain
     try:
         # 通过username和domain获取用户
         user = User.objects.get(username=username, domain=domain)
@@ -145,14 +154,18 @@ def update_user_base_info(request):
 
 
 def validate_pwd(request):
-    body = json.loads(request.body)
-    password = body.get("password")
-    username = request.user.username
-    domain = request.user.domain
-
     # 获取用户语言设置
     locale = getattr(request.user, "locale", "en")
     loader = LanguageLoader(app="console_mgmt", default_lang=locale)
+
+    try:
+        body = json.loads(request.body)
+    except (json.JSONDecodeError, ValueError):
+        return JsonResponse({"result": False, "message": loader.get("error.invalid_json_format", "Invalid JSON format")}, status=400)
+
+    password = body.get("password")
+    username = request.user.username
+    domain = request.user.domain
 
     if not password:
         return JsonResponse({"result": False, "message": loader.get("error.password_required", "Password cannot be empty")})

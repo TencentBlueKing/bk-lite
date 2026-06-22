@@ -1,0 +1,62 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Ruijie SNMP",
+  "templates": [
+  {
+    "name": "Ruijie交换机CPU使用率过高",
+    "alert_name": "交换机${resource_name} CPU 使用率过高",
+    "description": "监控 Ruijie（锐捷）设备控制平面的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+    "metric_name": "device_cpu_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  },
+  {
+    "name": "Ruijie交换机内存使用率过高",
+    "alert_name": "交换机${resource_name} 内存使用率过高",
+    "description": "监控 Ruijie（锐捷）设备整体内存使用率（按 used/total 计算），当超过阈值时触发告警，便于及时发现内存泄漏、表项过大或容量不足等问题，防止设备不稳定或分配失败。",
+    "metric_name": "device_memory_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  },
+  {
+    "name": "Ruijie交换机温度过高",
+    "alert_name": "交换机${resource_name} 温度过高",
+    "description": "监控 Ruijie（锐捷）设备机箱温度，当超过阈值时触发告警，提示散热故障或风道堵塞，防止热保护停机。",
+    "metric_name": "device_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 70, "method": ">" },
+        { "level": "error", "value": 60, "method": ">" },
+        { "level": "warning", "value": 50, "method": ">" }
+    ]
+  },
+  {
+    "name": "Ruijie交换机风扇异常",
+    "alert_name": "交换机${resource_name} 风扇状态异常",
+    "description": "监控 Ruijie（锐捷）设备风扇状态（归一后 1=正常，>1=异常），当风扇故障时触发告警，防止设备过热。",
+    "metric_name": "device_fan_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  },
+  {
+    "name": "Ruijie交换机电源异常",
+    "alert_name": "交换机${resource_name} 电源状态异常",
+    "description": "监控 Ruijie（锐捷）设备电源状态（归一后 1=正常，>1=异常），当电源故障时触发告警，防止断电宕机。",
+    "metric_name": "device_psu_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  }
+  ]
+}

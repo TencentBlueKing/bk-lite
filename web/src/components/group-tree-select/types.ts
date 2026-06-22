@@ -87,6 +87,12 @@ export interface GroupTreeSelectProps {
    * 如果不传或为空，则显示完整树
    */
   filterByRootId?: number;
+
+  /**
+   * 锁定的组织ID列表：始终被选中、不可取消（Tag 不显示关闭叉、面板中置灰已勾选）。
+   * 用于「管理组织自动同步进使用组织且不可删除」这类场景。
+   */
+  lockedValues?: number[];
 }
 
 /**

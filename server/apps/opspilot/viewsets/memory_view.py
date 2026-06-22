@@ -41,7 +41,7 @@ class MemorySpaceViewSet(AuthViewSet):
     def create(self, request, *args, **kwargs):
         params = request.data
         if not params.get("team"):
-            params["team"] = [int(request.COOKIES.get("current_team"))]
+            params["team"] = [self._parse_current_team_cookie(request)]
         self._validate_org_field_permission(request, params["team"])
         response = super().create(request, *args, **kwargs)
         if response.status_code >= 200 and response.status_code < 300:

@@ -16,6 +16,7 @@ from apps.opspilot.tasks import create_qa_pairs, create_qa_pairs_by_chunk, creat
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.permission_check import CheckKnowledgePermission
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+from apps.core.utils.team_utils import get_current_team
 
 
 class QAPairsFilter(FilterSet):
@@ -96,7 +97,7 @@ class QAPairsViewSet(MaintainerViewSet):
 
     def _check_user_permission(self, knowledge_base_id, request):
         knowledge_base = KnowledgeBase.objects.get(id=knowledge_base_id)
-        current_team = request.COOKIES.get("current_team", "0")
+        current_team = get_current_team(request, "0")
         include_children = request.COOKIES.get("include_children", "0") == "1"
         has_permission = self.get_has_permission(request.user, knowledge_base, current_team, include_children=include_children)
         if not has_permission:
@@ -551,7 +552,7 @@ class QAPairsViewSet(MaintainerViewSet):
         instance_id = request.data.get("qa_pairs_id")
         instance = QAPairs.objects.get(id=instance_id)
         if not request.user.is_superuser:
-            current_team = request.COOKIES.get("current_team", "0")
+            current_team = get_current_team(request, "0")
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance.knowledge_base, current_team, include_children=include_children)
             if not has_permission:

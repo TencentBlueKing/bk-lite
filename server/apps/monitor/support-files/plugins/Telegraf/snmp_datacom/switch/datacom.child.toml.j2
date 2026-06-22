@@ -1,0 +1,75 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_datacom"
+        config_type = "datacom"
+        brand = "datacom"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Datacom DmOS CPU load (DMOS-SYSMON-MIB cpuSlotTable.cpuLoadOneMinuteActive, UnsignedPercent 0-100, per-slot) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.3709.3.6.4.1.2.1.4（cpuSlotEntry 第4列，1分钟活动负载%）。
+    # 多 slot/CPU 走表自动按 index 分行 → 指标 device_cpu_usage 在共享盘 avg() by instance_id 聚合。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3709.3.6.4.1.2.1.4"
+        name = "usage"
+    # ---- Datacom DmOS system memory (DMOS-SYSMON-MIB memory table, used + total, bytes, per management module) ----
+    # 待现网核验：used memoryOneMinuteUsed 1.3.6.1.4.1.3709.3.6.4.2.2.1.3；total memoryOneMinuteTotal ...2.2.1.2（字节）。
+    # 利用率在共享盘按 used/total 计算（多模块走表自动按 index 区分，sum 聚合）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3709.3.6.4.2.2.1.3"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3709.3.6.4.2.2.1.2"
+        name = "total"
+# ---- 温度/风扇/电源：DmOS SYSMON-MIB 仅含 CPU 与内存两棵子树，无温度/风扇/电源对象。----
+# ---- Datacom 温度只在旧 DMswitch-MIB（switchInfoTable swTemperature）上有，与 DmOS 是两套不兼容 MIB；----
+# ---- 当前面向现役 DmOS（DM4xxx）产线，温度/风扇/电源 → N/A 不采（MIB 不提供）。----

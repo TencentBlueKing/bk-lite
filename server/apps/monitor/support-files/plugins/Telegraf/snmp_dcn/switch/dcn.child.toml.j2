@@ -1,0 +1,74 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_dcn"
+        config_type = "dcn"
+        brand = "dcn"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- DCN CPU (DCN-MIB switchCpuUsage, 直接利用率%, 标量, PEN 6339) ----
+    # 待现网核验：标量 OID 1.3.6.1.4.1.6339.100.1.11.10.0（switchInfo.10，snmprec=5%）。device_cpu_usage avg() by instance_id（单值）。
+    # 标量用 table(measurement)+field 命名（避免顶层 field 变 snmp_usage）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.10.0"
+        name = "usage"
+    # ---- DCN system memory (DCN-MIB switchMemorySize/switchMemoryBusy, 字节, 标量) ----
+    # 待现网核验：total=switchMemorySize 1.3.6.1.4.1.6339.100.1.11.6.0（switchInfo.6，snmprec 268435456 bytes）
+    #            used=switchMemoryBusy 1.3.6.1.4.1.6339.100.1.11.7.0（switchInfo.7，snmprec 218152960 bytes）。
+    # 已是字节，不做 *1024；利用率在共享盘按 used/total 计算。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.6.0"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.6339.100.1.11.7.0"
+        name = "used"
+# ---- 温度/风扇/电源：DCN-MIB switchInfo 系统表仅含 CPU 与内存标量，无温度/风扇/电源 sensor → 本插件 N/A 不采。----

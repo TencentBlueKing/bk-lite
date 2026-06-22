@@ -35,7 +35,15 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '负载均衡主机内存使用率（百分比）。品牌自适应：①设备直报利用率；②已用/总量（F5）。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+      color: '#ff8a1f'
+    },
+    {
+      name: 'device_memory_used',
+      display_name: '内存已用',
+      description: '负载均衡设备各内存池当前已使用的字节数之和（F5 走 sysStatMemoryUsed）。物理/虚拟版均有值。',
+      unit: 'bytes',
+      query: 'sum(device_memory_used{__$labels__}) by (instance_id)',
       color: '#ff8a1f'
     },
     {
@@ -46,6 +54,33 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       unit: 'counts',
       query: 'lb_current_connections{__$labels__}',
       color: '#13c2c2'
+    },
+    {
+      name: 'device_temperature_celsius',
+      display_name: '最高温度',
+      description:
+        '负载均衡机箱最高温度（摄氏度）。品牌自适应：物理设备有值（F5 走 F5-BIGIP-SYSTEM sysChassisTempTemperature 专用温度表），虚拟版（F5 VE，无物理机箱）显示「--」。异常升高多为风扇故障或散热不良。',
+      unit: 'celsius',
+      query: 'max(device_temperature_celsius{__$labels__}) by (instance_id)',
+      color: '#f5222d'
+    },
+    {
+      name: 'device_fan_state',
+      display_name: '风扇状态',
+      description:
+        '负载均衡风扇状态（1=正常 / 2=异常）。品牌自适应：物理设备有值（F5 sysChassisFanStatus，空槽 notpresent 归一为正常）。折线偏离 1 即散热异常。虚拟版显示「--」。',
+      unit: 'none',
+      query: 'max(device_fan_state{__$labels__}) by (instance_id)',
+      color: '#13c2c2'
+    },
+    {
+      name: 'device_psu_state',
+      display_name: '电源状态',
+      description:
+        '负载均衡电源模块状态（1=正常 / 2=异常）。品牌自适应：物理设备有值（F5 sysChassisPowerSupplyStatus）。折线偏离 1 即电源冗余缺失或硬件故障。虚拟版显示「--」。',
+      unit: 'none',
+      query: 'max(device_psu_state{__$labels__}) by (instance_id)',
+      color: '#722ed1'
     },
     {
       name: 'device_total_incoming_traffic',
@@ -110,6 +145,16 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '当前连接', detail: '当前客户端连接数，快速攀升可能是连接突增或容量逼近上限。' }]
     },
     {
+      title: '最高温度',
+      metric: 'device_temperature_celsius',
+      unit: 'celsius',
+      color: '#f5222d',
+      icon: 'health',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: '最高温度', detail: '机箱所有传感器中的最高温度。异常升高可能是风扇故障或散热不良；虚拟版（无物理机箱）显示「--」。' }]
+    },
+    {
       title: '入向总流量',
       metric: 'device_total_incoming_traffic',
       unit: 'byteps',
@@ -147,6 +192,33 @@ export const LOADBALANCE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '当前连接', detail: '当前客户端连接数随时间变化，突增提示连接洪泛或异常流量。' }],
       series: [
         { metric: 'lb_connections', label: '当前连接', color: '#13c2c2', unit: 'counts' }
+      ]
+    },
+    {
+      title: '机箱温度趋势',
+      subtitle: '最高温度（℃）',
+      metric: 'device_temperature_celsius',
+      guide: [{ label: '机箱温度', detail: '机箱最高温度随时间变化（摄氏度）。持续升高需排查风扇/散热；虚拟版显示空。' }],
+      series: [
+        { metric: 'device_temperature_celsius', label: '最高温度', color: '#f5222d', unit: 'celsius' }
+      ]
+    },
+    {
+      title: '风扇状态',
+      subtitle: '状态值随时间（1=正常）',
+      metric: 'device_fan_state',
+      guide: [{ label: '风扇状态', detail: '风扇状态值随时间变化，1 为正常；折线偏离 1（2 异常）即散热异常。虚拟版/无风扇 OID 显示空。' }],
+      series: [
+        { metric: 'device_fan_state', label: '风扇状态', color: '#13c2c2', unit: 'none' }
+      ]
+    },
+    {
+      title: '电源状态',
+      subtitle: '状态值随时间（1=正常）',
+      metric: 'device_psu_state',
+      guide: [{ label: '电源状态', detail: '电源模块状态值随时间变化，1 为正常；折线偏离 1 即电源冗余缺失或硬件故障。虚拟版显示空。' }],
+      series: [
+        { metric: 'device_psu_state', label: '电源状态', color: '#722ed1', unit: 'none' }
       ]
     }
   ],

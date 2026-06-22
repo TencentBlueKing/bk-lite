@@ -12,6 +12,7 @@ from apps.monitor.models.monitor_condition import (
 from apps.monitor.serializers.monitor_condition import MonitorConditionSerializer
 from apps.monitor.utils.pagination import parse_page_params
 from config.drf.pagination import CustomPageNumberPagination
+from apps.core.utils.team_utils import get_current_team
 
 
 class MonitorConditionViewSet(viewsets.ModelViewSet):
@@ -24,7 +25,7 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         include_children = request.COOKIES.get("include_children", "0") == "1"
         permission = get_permission_rules(
             request.user,
-            request.COOKIES.get("current_team"),
+            get_current_team(request),
             "monitor",
             PermissionConstants.CONDITION_MODULE,
             include_children=include_children,

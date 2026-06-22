@@ -267,6 +267,8 @@ export const useNodeConfigFlow = ({
             chartType: values.chartType,
             dataSource: values.dataSource,
             dataSourceParams: values.dataSourceParams || [],
+            unitId: values.unitId || undefined,
+            valueMappings: values.valueMappings || undefined,
           },
           styleConfig: {
             width: values.width,

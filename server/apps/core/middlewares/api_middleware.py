@@ -67,10 +67,12 @@ class APISecretMiddleware(MiddlewareMixin):
             request.session.cycle_key()
 
         # API Key 调用不携带 current_team cookie，用 API Key 绑定的组织自动填充
+        # 使用 request._api_current_team 属性（而非直接写 request.COOKIES 只读 dict）
+        # 下游通过 apps.core.utils.team_utils.get_current_team(request) 统一读取
         if not request.COOKIES.get("current_team"):
             group_list = getattr(user, "group_list", [])
             if group_list:
-                request.COOKIES["current_team"] = str(group_list[0])
+                request._api_current_team = str(group_list[0])
 
         return None
 

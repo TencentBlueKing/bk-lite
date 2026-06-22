@@ -34,10 +34,29 @@ function appendTokenToRelativeUrl(targetUrl: string, token: string): string {
   return `${pathname}${nextSearch ? `?${nextSearch}` : ''}${hash}`;
 }
 
+function isSameOriginUrl(targetUrl: string, knownOrigin?: string): boolean {
+  try {
+    const parsed = new URL(targetUrl);
+    // Prefer an explicitly supplied origin (e.g. derived from request headers in
+    // server components) over window.location.origin so that this function works
+    // correctly in both SSR and client-side contexts.
+    const currentOrigin =
+      knownOrigin ?? (typeof window !== 'undefined' ? window.location.origin : '');
+    if (!currentOrigin) {
+      // No origin available (SSR without explicit origin) — cannot validate, reject.
+      return false;
+    }
+    return parsed.origin === currentOrigin;
+  } catch {
+    return false;
+  }
+}
+
 export function buildThirdLoginCallbackUrl(
   callbackUrl?: string,
   token?: string,
   thirdLogin?: string | boolean | null,
+  currentOrigin?: string,
 ): string {
   const targetUrl = callbackUrl || '/';
 
@@ -46,10 +65,26 @@ export function buildThirdLoginCallbackUrl(
   }
 
   try {
-    const isRelativePath = targetUrl.startsWith('/');
+    // Protocol-relative URLs (e.g. "//attacker.com/...") start with "/" but
+    // are interpreted by browsers as cross-origin. Detect and block them before
+    // the relative-path branch.
+    const isProtocolRelative = targetUrl.startsWith('//');
+    const isRelativePath = targetUrl.startsWith('/') && !isProtocolRelative;
 
     if (isRelativePath) {
       return appendTokenToRelativeUrl(targetUrl, token);
+    }
+
+    // Reject absolute URLs (including protocol-relative) pointing to a
+    // different origin to prevent open redirect attacks that could exfiltrate
+    // the auth token to an attacker-controlled server.
+    if (isProtocolRelative || !isSameOriginUrl(targetUrl, currentOrigin)) {
+      console.warn(
+        'buildThirdLoginCallbackUrl: cross-origin callbackUrl rejected, falling back to "/"',
+        // Log only the origin portion to avoid echoing attacker-controlled path/query into logs.
+        (() => { try { return new URL(targetUrl).origin; } catch { return '[invalid URL]'; } })(),
+      );
+      return '/';
     }
 
     const url = new URL(targetUrl);
@@ -57,7 +92,7 @@ export function buildThirdLoginCallbackUrl(
     return url.toString();
   } catch (error) {
     console.error('Failed to build third login callback URL:', error);
-    return targetUrl;
+    return '/';
   }
 }
 

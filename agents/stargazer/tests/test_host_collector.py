@@ -14,6 +14,7 @@ import asyncio
 import json
 import sys
 import os
+import subprocess
 import types
 from pathlib import Path
 from unittest.mock import AsyncMock, patch, MagicMock
@@ -341,6 +342,44 @@ class TestBuildScript:
         assert '\\"mount\\":\\"$mount_json\\"' in disk_script
         assert 'iface_json=$(json_escape "$iface")' in net_script
         assert '\\"interface\\":\\"$iface_json\\"' in net_script
+
+    def test_linux_disk_script_normalizes_dash_inode_percent_to_valid_json(self, tmp_path):
+        bin_dir = tmp_path / "bin"
+        bin_dir.mkdir()
+        fake_df = bin_dir / "df"
+        fake_df.write_text(
+            """#!/bin/sh
+if [ "$1" = "-P" ] && [ "$2" = "-B1" ]; then
+  cat <<'DATA'
+Filesystem 1B-blocks Used Available Capacity Mounted on
+/dev/sda1 100 50 50 50% /
+DATA
+  exit 0
+fi
+if [ "$1" = "-Pi" ]; then
+  cat <<'DATA'
+Filesystem Inodes IUsed IFree IUse% Mounted on
+/dev/sda1 100 50 50 - /
+DATA
+  exit 0
+fi
+exit 1
+""",
+            encoding="utf-8",
+        )
+        fake_df.chmod(0o755)
+        env = {**os.environ, "PATH": f"{bin_dir}:{os.environ.get('PATH', '')}"}
+
+        result = subprocess.run(
+            ["bash", "-c", build_script("linux", ["disk"])],
+            check=True,
+            env=env,
+            capture_output=True,
+            text=True,
+        )
+
+        payload = json.loads(result.stdout)
+        assert payload["disk"][0]["inodes_used_percent"] == 0
 
     def test_linux_net_script_filters_virtual_interfaces(self):
         script = build_script("linux", ["net"])
@@ -709,6 +748,66 @@ class TestHostCollectorHelpers:
         value = 'foo"bar\\baz\nqux'
 
         assert _escape_prometheus_label_value(value) == 'foo\\"bar\\\\baz\\nqux'
+
+
+class TestHostCollectorCredentialDecoding:
+    """前端对 encrypted 字段做了 encodeURIComponent，后端需在送往 SSH/WinRM 前解码还原。"""
+
+    def test_linux_password_is_url_decoded(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "password": "CW%40roger1117!%40%23",  # encodeURIComponent('CW@roger1117!@#')
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "CW@roger1117!@#"
+
+    def test_windows_password_is_url_decoded(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "windows",
+            "username": "administrator",
+            "password": "p%40ss%20word",  # encodeURIComponent('p@ss word')
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "p@ss word"
+
+    def test_private_key_content_and_passphrase_are_url_decoded(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "auth_type": "private_key",
+            "private_key_content": "line1%0Aline2%2Bend",  # encodeURIComponent('line1\nline2+end')
+            "private_key_passphrase": "pa%40ss",
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+        cred = config["host_credentials"][0]
+
+        assert cred["private_key_content"] == "line1\nline2+end"
+        assert cred["private_key_passphrase"] == "pa@ss"
+
+    def test_plain_password_without_encoding_is_unchanged(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "password": "simplepass123",
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "simplepass123"
 
 
 @pytest.mark.asyncio
@@ -1134,7 +1233,7 @@ class TestHostCollectorCollect:
         mock_adhoc.assert_called_once()
         call_kwargs = mock_adhoc.call_args[1]
         assert call_kwargs["ansible_node_id"] == "region1"
-        assert call_kwargs["module"] == "shell"
+        assert call_kwargs["module"] == "raw"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
         assert call_kwargs["task_id"] == "collect-123"
         assert call_kwargs["callback"] == {
@@ -1398,7 +1497,7 @@ class TestHostCollectorCollect:
         mock_adhoc.assert_called_once()
         call_kwargs = mock_adhoc.call_args[1]
         assert call_kwargs["ansible_node_id"] == "region1"
-        assert call_kwargs["module"] == "shell"
+        assert call_kwargs["module"] == "raw"
         assert call_kwargs["host_credentials"][0]["connection"] == "ssh"
 
     @patch("core.ansible_rpc.ansible_adhoc", new_callable=AsyncMock)

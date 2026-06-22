@@ -18,9 +18,6 @@ class SafeExpressionEvaluator:
         ast.IsNot: operator.is_not,
         ast.In: lambda x, y: x in y,
         ast.NotIn: lambda x, y: x not in y,
-        ast.And: operator.and_,
-        ast.Or: operator.or_,
-        ast.Not: operator.not_,
     }
 
     def __init__(self):

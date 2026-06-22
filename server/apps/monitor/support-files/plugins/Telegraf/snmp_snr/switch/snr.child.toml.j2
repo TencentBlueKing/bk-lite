@@ -1,0 +1,99 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_snr"
+        config_type = "snr"
+        brand = "snr"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- SNR (NAG-MIB, IANA PEN 40418) sysSlotTable per-slot health ----
+    # CPU：sysCpuUsage 列 OID 1.3.6.1.4.1.40418.7.100.1.8.1.11（%，snmprec .1=15）。多 slot 走表 → device_cpu_usage avg() by instance_id。
+    # 待现网核验。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.40418.7.100.1.8.1.11"
+        name = "usage"
+    # ---- SNR system memory (NAG-MIB sysMemorySize/sysMemoryBusy, bytes, per-slot) ----
+    # 待现网核验：total 列 ...8.1.7 / used 列 ...8.1.8（snmprec total512MB/used237MB→46%）。利用率共享盘按 used/total 计算。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.40418.7.100.1.8.1.7"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.40418.7.100.1.8.1.8"
+        name = "used"
+    # ---- SNR chassis temperature (NAG-MIB sysTemperature, °C, per-slot table) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.40418.7.100.1.8.1.10（snmprec .1=32°C，专用温度列）。device_temperature_celsius max()。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.40418.7.100.1.8.1.10"
+        name = "celsius"
+    # ---- SNR fan state (NAG-MIB sysFanStatus, per-fan table) ----
+    # 待现网核验：state 列 1.3.6.1.4.1.40418.7.100.1.12.1.1.3。原始码 0=Normal / 1=Abnormal。
+    # 下方 processors.enum 归一为 1=正常/2=异常（共享盘约定 1=正常,>1=异常）。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.40418.7.100.1.12.1.1.3"
+        name = "state"
+# ---- 风扇状态归一：0=Normal→1(正常)，1=Abnormal 及其余→2(异常)。共享盘 device_fan_state 约定 1=正常,>1=异常。----
+# ---- 注意：SNR 正常码为 0（与 Eltex 的 1 不同），故 0 映射到 1。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "0" = 1
+# ---- 温度/电源：NAG-MIB 无独立电源(PSU)状态列（仅 sysFanStatus 风扇 + sysTemperature 温度）。----
+# ---- 电源 → N/A（MIB 不提供 PSU 状态对象）。----

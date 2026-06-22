@@ -3,6 +3,7 @@ from django.http import JsonResponse
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.logger import system_mgmt_logger as logger
+from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import Group, User
 
 
@@ -120,8 +121,8 @@ class GroupFilterMixin:
     """
 
     def _parse_current_team_cookie(self, request, default=0):
-        """解析 current_team cookie"""
-        current_team = request.COOKIES.get("current_team", str(default))
+        """解析 current_team（优先读 API Key 注入属性，回退到 cookie）"""
+        current_team = get_current_team(request, str(default))
         try:
             return int(current_team)
         except (TypeError, ValueError):

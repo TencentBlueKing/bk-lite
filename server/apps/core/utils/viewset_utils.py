@@ -7,6 +7,7 @@ from rest_framework.response import Response
 from apps.core.logger import logger
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.permission_utils import delete_instance_rules, get_permission_rules
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.user_group import normalize_user_group_ids
 from apps.system_mgmt.models import Group
 
@@ -14,7 +15,7 @@ from apps.system_mgmt.models import Group
 class GenericViewSetFun(object):
     @staticmethod
     def _parse_current_team_cookie(request, default=0):
-        current_team = request.COOKIES.get("current_team", str(default))
+        current_team = get_current_team(request, str(default))
         try:
             return int(current_team)
         except (TypeError, ValueError):

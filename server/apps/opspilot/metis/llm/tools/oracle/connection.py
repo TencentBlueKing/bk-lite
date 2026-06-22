@@ -4,13 +4,7 @@ from typing import Any, Dict, Literal, Optional
 import oracledb
 from langchain_core.runnables import RunnableConfig
 
-from apps.opspilot.metis.llm.tools.common.credentials import (
-    CredentialItem,
-    CredentialValidationError,
-    NormalizedCredentials,
-    execute_with_credentials,
-    normalize_credentials,
-)
+from apps.opspilot.metis.llm.tools.common.credentials import CredentialItem, CredentialValidationError, NormalizedCredentials, normalize_credentials
 
 ORACLE_INSTANCE_FIELDS = (
     "id",

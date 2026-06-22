@@ -3,6 +3,7 @@
  * 共享模块：供 topology 和 dashBoard 使用
  */
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
+import { formatUnit } from '@/app/ops-analysis/utils/unitFormat';
 
 export interface ThresholdColorConfig {
   value: string;
@@ -103,17 +104,28 @@ export const validateThresholds = (thresholds: ThresholdColorConfig[]) => {
 /**
  * 格式化显示值（添加单位、小数位等）
  * @param value 原始值
- * @param unit 单位
+ * @param unit 单位（自由文本后缀，兼容旧逻辑）
  * @param decimalPlaces 小数位数
  * @param conversionFactor 换算系数，默认为1
+ * @param unitId 结构化单位 id（如 bytesIEC/bps/ms/percent/short）。传入时启用
+ *               单位库自动量纲缩放；不传则保持原有自由文本后缀行为（向后兼容）。
  * @returns 格式化后的显示值
  */
 export const formatDisplayValue = (
   value: number | string | null | undefined,
   unit?: string,
   decimalPlaces?: number,
-  conversionFactor?: number
+  conversionFactor?: number,
+  unitId?: string
 ): string => {
+  // 结构化单位：委托单位库（opt-in，旧调用不受影响）
+  if (unitId && unitId.trim()) {
+    return formatUnit(value, unitId, {
+      decimals: decimalPlaces,
+      conversionFactor,
+    }).text;
+  }
+
   if (value === null || value === undefined || value === '') {
     return '--';
   }

@@ -908,13 +908,13 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       const defaultEsTool = defaultTools.find((tool) => isEsTool(tool));
       const defaultJenkinsTool = defaultTools.find((tool) => isJenkinsTool(tool));
       const defaultKubernetesTool = defaultTools.find((tool) => isKubernetesTool(tool));
-      const fetchedTools = data.map((tool: any) => {
+      const fetchedTools = data.map((tool) => {
         const defaultTool = defaultToolMap.get(tool.id);
         const kwargs = (tool.params.kwargs || [])
-          .filter((kwarg: any) => kwarg.key)
-          .map((kwarg: any) => ({
+          .filter((kwarg) => kwarg.key)
+          .map((kwarg) => ({
             ...kwarg,
-            value: (defaultTool?.kwargs ?? []).find((dk: any) => dk.key === kwarg.key)?.value ?? kwarg.value,
+            value: (defaultTool?.kwargs ?? []).find((dk) => dk.key === kwarg.key)?.value ?? kwarg.value,
           }));
         return {
           id: tool.id,
@@ -1021,7 +1021,7 @@ const ToolSelector: React.FC<ToolSelectorProps> = ({ defaultTools, onChange }) =
       setSelectedKubernetesInstanceId(instances[0]?.id || null);
     } else {
       form.setFieldsValue({
-        kwargs: tool.kwargs?.map((item: any) => ({ key: item.key, value: item.value, type: item.type, isRequired: item.isRequired })) || [],
+        kwargs: tool.kwargs?.map((item) => ({ key: item.key, value: item.value, type: item.type, isRequired: item.isRequired })) || [],
       });
     }
     setEditModalVisible(true);

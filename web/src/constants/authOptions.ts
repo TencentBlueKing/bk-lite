@@ -1,9 +1,9 @@
 import CredentialsProvider from "next-auth/providers/credentials";
+import type { NextAuthOptions } from "next-auth";
 import type {JWT} from "next-auth/jwt";
 import {normalizeLocale, normalizeTimezone} from "@/utils/userPreferences";
 import WeChatProvider from "../lib/wechatProvider";
 
-type AuthOptions = any;
 type ExtendedJWT = JWT & { timezone?: string };
 
 const buildAuthUser = (userData: any) => ({
@@ -85,7 +85,6 @@ async function getWeChatConfig() {
       console.error("Failed to get WeChat settings:", responseData);
       return null;
     }
-    console.log("WeChat settings fetched successfully:", responseData.data);
     return responseData.data;
   } catch (error) {
     console.error("Error fetching WeChat settings:", error);
@@ -93,7 +92,7 @@ async function getWeChatConfig() {
   }
 }
 
-export async function getAuthOptions(): Promise<AuthOptions> {
+export async function getAuthOptions(): Promise<NextAuthOptions> {
   const wechatConfig = await getWeChatConfig();
   
   const providers = [
@@ -117,8 +116,7 @@ export async function getAuthOptions(): Promise<AuthOptions> {
           // This is used when the login validation has already been done in SigninClient
           if (credentials.skipValidation === 'true' && credentials.userData) {
             const userData = JSON.parse(credentials.userData);
-            console.log("Parsed userData:", userData);
-            
+
             // Ensure required fields are present
             if (!userData.id && !userData.username) {
               console.error("Invalid userData: missing id and username");
@@ -160,7 +158,6 @@ export async function getAuthOptions(): Promise<AuthOptions> {
     }),
   ];
   
-  console.log("Credentials wechatConfig", wechatConfig);
   if (wechatConfig && wechatConfig.app_id) {
     providers.push(
       WeChatProvider({
@@ -169,9 +166,6 @@ export async function getAuthOptions(): Promise<AuthOptions> {
         redirectUri: `${wechatConfig.redirect_uri}/api/auth/callback/wechat`,
       }) as unknown as any
     );
-    console.log("WeChat provider added successfully");
-  } else {
-    console.log("WeChat configuration is incomplete or unavailable. Skipping WeChat provider.");
   }
 
   return {
@@ -185,26 +179,27 @@ export async function getAuthOptions(): Promise<AuthOptions> {
       maxAge: 60 * 60 * 24,
     },
     callbacks: {
-      async jwt({ token, user, account, trigger, session }: { token: ExtendedJWT; user: any; account: any; trigger?: string; session?: any }) {
+      async jwt({ token, user, account, trigger, session }) {
+        const extToken = token as ExtendedJWT;
         if (user) {
-          return applyUserToToken(token, user, account);
+          return applyUserToToken(extToken, user, account);
         }
 
         if (trigger === 'update' && session) {
-          return applySessionUpdateToToken(token, session);
+          return applySessionUpdateToToken(extToken, session);
         }
 
-        return token;
+        return extToken;
       },
-      async session({ session, token }: { session: any; token: ExtendedJWT }) {
-        return buildSessionFromToken(session, token);
+      async session({ session, token }) {
+        return buildSessionFromToken(session, token as ExtendedJWT);
       },
     },
   };
 }
 
 // For backward compatibility, keep a default authOptions, but only include basic CredentialsProvider
-export const authOptions: AuthOptions = {
+export const authOptions: NextAuthOptions = {
   providers: [
     CredentialsProvider({
       name: "Credentials",
@@ -274,19 +269,20 @@ export const authOptions: AuthOptions = {
     maxAge: 60 * 60 * 24,
   },
   callbacks: {
-    async jwt({ token, user, account, trigger, session }: { token: ExtendedJWT; user: any; account: any; trigger?: string; session?: any }) {
+    async jwt({ token, user, account, trigger, session }) {
+      const extToken = token as ExtendedJWT;
       if (user) {
-        return applyUserToToken(token, user, account);
+        return applyUserToToken(extToken, user, account);
       }
 
       if (trigger === 'update' && session) {
-        return applySessionUpdateToToken(token, session);
+        return applySessionUpdateToToken(extToken, session);
       }
 
-      return token;
+      return extToken;
     },
-    async session({ session, token }: { session: any; token: ExtendedJWT }) {
-      return buildSessionFromToken(session, token);
+    async session({ session, token }) {
+      return buildSessionFromToken(session, token as ExtendedJWT);
     },
   },
 };

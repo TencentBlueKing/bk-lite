@@ -39,6 +39,9 @@ from .operator_log import SystemLogModelViewSet
 # 策略
 from .strategy import AlarmStrategyModelViewSet
 
+# 告警丰富
+from .enrichment import EnrichmentRuleModelViewSet
+
 # 接收器
 from .receiver import (
     receiver_data,
@@ -68,6 +71,8 @@ __all__ = [
     "SystemLogModelViewSet",
     # 策略
     "AlarmStrategyModelViewSet",
+    # 告警丰富
+    "EnrichmentRuleModelViewSet",
     # 接收器
     "receiver_data",
     "receiver_source_data",

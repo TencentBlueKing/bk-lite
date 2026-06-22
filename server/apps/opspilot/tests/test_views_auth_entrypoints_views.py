@@ -28,6 +28,7 @@ from types import SimpleNamespace
 
 import pytest
 from django.core import signing
+from django.db.models import Q
 
 from apps.opspilot import views
 
@@ -94,7 +95,7 @@ class TestOpenaiCompletions:
     def test_valid_token_proceeds_non_stream(self, request_factory, mocker):
         user = SimpleNamespace(username="alice", domain="d", team=1, locale="en")
         mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
-        skill_obj = SimpleNamespace(id=7, name="skill")
+        skill_obj = SimpleNamespace(id=7, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         params = {"user_message": "hi"}
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
         sentinel = object()
@@ -132,7 +133,7 @@ class TestLobeSkillExecute:
 
     def test_valid_token_proceeds_and_persists_history(self, request_factory, mocker):
         mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill")
+        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         params = {"user_message": "hello"}
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, params, None))
         hook = mocker.patch.object(views, "_lobe_persist_history", return_value="history_log")
@@ -152,7 +153,7 @@ class TestLobeSkillExecute:
 
     def test_valid_token_stream_path(self, request_factory, mocker):
         mocker.patch.object(views, "validate_header_token", return_value=(True, {"username": "bob"}))
-        skill_obj = SimpleNamespace(id=3, name="skill")
+        skill_obj = SimpleNamespace(id=3, name="skill", enable_km_route=False, km_llm_model=None, enable_suggest=False, enable_query_rewrite=False)
         mocker.patch.object(views, "get_skill_and_params", return_value=(skill_obj, {"user_message": "hi"}, None))
         mocker.patch.object(views, "_lobe_persist_history", return_value=None)
         sentinel = object()
@@ -207,9 +208,7 @@ class TestSkillExecute:
         qs = mocker.MagicMock()
         qs.first.return_value = bot
         mocker.patch.object(views.Bot.objects, "filter", return_value=qs)
-        exec_skill = mocker.patch.object(
-            views.SkillExecuteService, "execute_skill", return_value={"content": "ok"}
-        )
+        exec_skill = mocker.patch.object(views.SkillExecuteService, "execute_skill", return_value={"content": "ok"})
 
         request = _make_request(
             request_factory,
@@ -224,8 +223,21 @@ class TestSkillExecute:
 
 
 # --------------------------------------------------------------------------- #
-# execute_chat_flow — team scoping, no User-Agent bypass (F021)
+# execute_chat_flow — team scoping, no User-Agent bypass (F021) +
+# 使用组织(usage_team) 鉴权 + T2 测试仅管理组织
 # --------------------------------------------------------------------------- #
+def _q_leaf_map(q):
+    """把 Q 树拍平成 {lookup: value}，用于断言 execute_chat_flow 实际使用的过滤字段。"""
+    out = {}
+    for child in q.children:
+        if isinstance(child, Q):
+            out.update(_q_leaf_map(child))
+        else:
+            key, value = child
+            out[key] = value
+    return out
+
+
 class TestExecuteChatFlow:
     @pytest.mark.asyncio
     async def test_invalid_token_rejected(self, request_factory, mocker):
@@ -244,31 +256,49 @@ class TestExecuteChatFlow:
         engine.assert_not_called()
 
     @pytest.mark.asyncio
-    async def test_bot_outside_team_not_resolvable(self, request_factory, mocker):
+    async def test_chat_scopes_by_usage_team_no_ua_bypass(self, request_factory, mocker):
+        """正常对话(is_test=False)按【使用组织】过滤；伪造移动端 UA 不能绕过团队作用域。"""
         user = SimpleNamespace(username="alice", domain="d", team=99, locale="en")
         mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
-        # Scoped filter resolves no bot -> rejected with "No bot online"
+        # 解析不到 bot -> 走拒绝分支，不进异步下游。视图在 .first() 前会链式 .filter(online=True)，
+        # 因此 queryset mock 需自返回，末端 .first() 返回 None。
         qs = mocker.MagicMock()
+        qs.filter.return_value = qs
         qs.first.return_value = None
         bot_filter = mocker.patch.object(views.Bot.objects, "filter", return_value=qs)
         engine = mocker.patch.object(views, "create_chat_flow_engine")
 
-        # A spoofable mobile User-Agent must NOT bypass team scoping.
-        request = _make_request(
-            request_factory,
-            body={"message": "hi"},
-            token="Bearer good",
-        )
-        request.META["HTTP_USER_AGENT"] = "okhttp/4.9 mobile"
+        request = _make_request(request_factory, body={"message": "hi", "is_test": False}, token="Bearer good")
+        request.META["HTTP_USER_AGENT"] = "okhttp/4.9 mobile"  # 不得绕过
         resp = await views.execute_chat_flow(request, bot_id=1, node_id="n1")
 
         assert resp.status_code == 200
         assert json.loads(resp.content)["result"] is False
         engine.assert_not_called()
-        # Scoping filter must include the validated user's team.
-        _, called_kwargs = bot_filter.call_args
-        assert called_kwargs["team__contains"] == 99
-        assert called_kwargs["id"] == 1
+        leaves = _q_leaf_map(bot_filter.call_args.args[0])
+        assert leaves.get("usage_team__contains") == [99]  # 对话按使用组织
+        assert "team__contains" not in leaves  # 管理组织已含于 usage_team(不变式)，不再单独过滤
+        assert leaves.get("id") == 1
+
+    @pytest.mark.asyncio
+    async def test_test_mode_scopes_by_management_team_only(self, request_factory, mocker):
+        """测试(is_test=True)仅按【管理组织 team】过滤——使用组织即便经 API 也不能触发测试(T2)。"""
+        user = SimpleNamespace(username="alice", domain="d", team=99, locale="en")
+        mocker.patch.object(views, "validate_openai_token", return_value=(True, user))
+        qs = mocker.MagicMock()
+        qs.filter.return_value = qs
+        qs.first.return_value = None
+        bot_filter = mocker.patch.object(views.Bot.objects, "filter", return_value=qs)
+        engine = mocker.patch.object(views, "create_chat_flow_engine")
+
+        request = _make_request(request_factory, body={"message": "hi", "is_test": True}, token="Bearer good")
+        resp = await views.execute_chat_flow(request, bot_id=1, node_id="n1")
+
+        assert json.loads(resp.content)["result"] is False
+        engine.assert_not_called()
+        leaves = _q_leaf_map(bot_filter.call_args.args[0])
+        assert leaves.get("team__contains") == [99]  # 测试仅管理组织
+        assert "usage_team__contains" not in leaves
 
 
 # --------------------------------------------------------------------------- #

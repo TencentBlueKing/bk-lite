@@ -192,6 +192,8 @@ class GroupDataRuleViewSet(LanguageViewSet):
         params["page"] = int(params.get("page", "1"))
         params["page_size"] = int(params.get("page_size", "10"))
         return_data = fun(**params)
+        if isinstance(return_data, dict) and not return_data.get("result", True):
+            return JsonResponse({"result": False, "message": return_data.get("message", "")}, status=400)
         return JsonResponse({"result": True, "data": return_data})
 
     @action(methods=["GET"], detail=False)
