@@ -522,7 +522,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
   { match: /hillstone|stoneos/i, label: 'Hillstone', icon: 'mm-hillstone_hillstone' },
-  { match: /sophos|\bxg\b|sfos/i, label: 'Sophos XG', icon: 'mm-sophos_sophos' },
+  { match: /sophos|\bxg\b|sfos|cyberoam/i, label: 'Sophos XG', icon: 'mm-sophos_sophos' },
   { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
   { match: /screenos|netscreen|\bssg\b/i, label: 'Juniper ScreenOS', icon: 'mm-screenos_screenos' },
   { match: /netscaler|citrix/i, label: 'Citrix NetScaler', icon: 'mm-netscaler_netscaler' },
@@ -548,7 +548,9 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cnos|lenovo|thinksystem|\bne[0-9]{4}\b/i, label: 'Lenovo CNOS', icon: 'mm-lenovocnos_lenovocnos' },
   { match: /fortiswitch|fsw|fortinet.*switch/i, label: 'FortiSwitch', icon: 'mm-fortiswitch_fortiswitch' },
   { match: /fiberhome|烽火|\bwri\b/i, label: 'FiberHome', icon: 'mm-fiberhome_fiberhome' },
-  { match: /\bh3c\b|comware|hh3c/i, label: 'H3C', icon: 'mm-h3c_h3c' }
+  { match: /\bh3c\b|comware|hh3c/i, label: 'H3C', icon: 'mm-h3c_h3c' },
+  { match: /hirschmann|belden|\brs[234]0\b|greyhound/i, label: 'Hirschmann', icon: 'mm-hirschmann_hirschmann' },
+  { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

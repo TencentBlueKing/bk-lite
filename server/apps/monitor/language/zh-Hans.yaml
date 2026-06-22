@@ -3437,6 +3437,12 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS（Telegraf）
     desc: 联想 CNOS（Cloud Network OS）交换机专用 SNMP 采集模板（LENOVO-ENV-MIB，企业号 19046）。除标准 IF-MIB 接口指标外，额外采集设备健康指标：温度传感器（lenovoEnvMibTempSensorTemperature，取最高）、风扇状态（lenovoEnvMibFanState）与电源状态（lenovoEnvMibPowerSupplyState，归一为 1=正常/2=异常），以及在平台暴露时通过 HOST-RESOURCES hrProcessorLoad 采集 CPU 使用率。内存无可用私有 OID，故为 N/A。适用品牌型号——运行 CNOS 的联想 ThinkSystem/RackSwitch 交换机（NE 系列，如 NE1032/NE2572/NE10032，企业号 19046）。
+  Switch Hirschmann SNMP:
+    name: Hirschmann（Telegraf）
+    desc: Hirschmann 工业交换机专用 SNMP 采集模板（HMPRIV-MGMT-SNMP-MIB，企业号 248）。除标准 IF-MIB 接口指标外，额外采集 Hirschmann 私有 OID 的设备健康指标：CPU 使用率（hmCpuUtilization，直接以百分比上报）、主内存（hmMemoryAllocated 已用 + hmMemoryFree 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（hmTemperature，℃）与电源状态（hmPSState，经 telegraf processors.enum 归一为 1=正常/2=异常）。未暴露独立风扇状态 OID，故风扇为 N/A。适用品牌型号——Hirschmann（Belden）工业网管交换机（RS20/RS30/RS40、MACH/MICE/GREYHOUND/EAGLE 系列，企业号 248）。
+  Switch 3Com SNMP:
+    name: 3Com（Telegraf）
+    desc: 3Com 交换机专用 SNMP 采集模板（A3COM-HUAWEI-LswDEVM-MIB，企业号 43）。除标准 IF-MIB 接口指标外，额外采集 3Com 私有 OID 的设备健康指标：CPU 使用率（hwCpuCostRatePer1Min，近 1 分钟占用率%，按板卡表取平均）与内存（hwMemoryUsedSize 已用 + hwMemorySize 总量，字节，用量按 已用/总量 推导）。该 MIB（企业号 43.45）与已支持的 H3C（企业号 25506 HH3C-ENTITY-EXT）不同，故单独支持。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——3Com 网管交换机（Switch 4200/4500/5500 等 A3COM-HUAWEI 平台，企业号 43）。
   Switch FortiSwitch SNMP:
     name: FortiSwitch（Telegraf）
     desc: Fortinet FortiSwitch 交换机专用 SNMP 采集模板（FORTINET-FORTISWITCH-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiSwitch 私有 OID 的设备健康指标：CPU 使用率（fsSysCpuUsage，直接以百分比上报）与内存（fsSysMemUsage 已用 + fsSysMemCapacity 总量，KB，用量按 已用/总量 推导）。温度/风扇/电源仅通过类型混合的 ENTITY-SENSOR 表暴露，SNMP 采集端无法按行过滤，故为 N/A。适用品牌型号——Fortinet FortiSwitch 网管交换机（FortiSwitch 100/200/400/500/1000 系列，企业号 12356）。
@@ -3517,7 +3523,7 @@ monitor_object_plugin:
     desc: 山石网科（Hillstone，StoneOS）防火墙专用 SNMP 采集模板（HILLSTONE-SYSTEM/TEMPERATURE/POWER-MIB，企业号 28557）。在标准 IF-MIB 接口指标之外，额外采集 Hillstone 私有 OID 的设备健康指标：CPU 使用率（sysCPU）、系统内存（sysMemTotal/sysMemUsed，单位 KB，利用率按 used/total 计算）、机箱温度（专用每传感器表）与电源状态。电源原始码（fine/absent/warning/fail/unsupport）已归一化为 1=正常/2=异常。风扇与会话数 OID 无确认的数字形式，故为 N/A。适用品牌型号——山石网科 SG-6000 / E 系列 / A 系列下一代防火墙（StoneOS，企业号 28557）。
   Firewall Sophos XG SNMP:
     name: Sophos XG（Telegraf）
-    desc: Sophos XG / SFOS 防火墙专用 SNMP 采集模板（SFOS-FIREWALL-MIB，企业号 21067）。在标准 IF-MIB 接口指标之外，额外采集 Sophos 私有 OID 的设备健康指标：CPU 使用率（cpuPercentUsage）与主内存使用率（memoryPercentUsage），均以百分比直接上报。Sophos 暴露在线认证用户数与磁盘使用率而非标准会话/连接表，故会话数与温度/风扇/电源为 N/A。适用品牌型号——Sophos XG / XGS 防火墙及 SFOS 系列设备（Sophos Firewall OS，企业号 21067）。
+    desc: Sophos XG / SFOS 防火墙专用 SNMP 采集模板（SFOS-FIREWALL-MIB，企业号 21067）。在标准 IF-MIB 接口指标之外，额外采集 Sophos 私有 OID 的设备健康指标：CPU 使用率（cpuPercentUsage）与主内存使用率（memoryPercentUsage），均以百分比直接上报。Sophos 暴露在线认证用户数与磁盘使用率而非标准会话/连接表，故会话数与温度/风扇/电源为 N/A。适用品牌型号——Sophos XG / XGS 防火墙及 SFOS 系列设备（Sophos Firewall OS，企业号 21067），以及 Cyberoam UTM 设备（CYBEROAM-MIB，同企业号 21067、健康 OID 完全一致——Sophos 收购 Cyberoam 后 SFOS 沿用其 MIB）。
   Firewall Forcepoint SNMP:
     name: Forcepoint（Telegraf）
     desc: Forcepoint NGFW（原 Stonesoft/McAfee NGFW）专用 SNMP 采集模板（STONESOFT-FIREWALL-MIB，企业号 1369）。除标准 IF-MIB 接口指标外，额外采集 Forcepoint 私有 OID 的设备健康指标：每核 CPU 使用率（fwCpuTotal，取均值）与内存（fwMemBytesTotal/fwMemBytesUsed，字节，用量按 已用/总量 推导）。Stonesoft MIB 未暴露标量会话计数与温度/风扇/电源，故为 N/A。适用品牌型号——Forcepoint NGFW / Stonesoft / McAfee NGFW 硬件及虚拟引擎（企业号 1369）。
