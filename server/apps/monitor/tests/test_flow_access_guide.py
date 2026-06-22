@@ -72,6 +72,16 @@ def test_build_flow_guide_does_not_lock_monitor_object(monkeypatch, db):
     assert doc["monitor_object_id"] == switch_object.id
 
 
+def test_flow_access_guide_uses_netflow_v9_listener_port(monkeypatch):
+    class StubNodeMgmt:
+        def get_cloud_region_envconfig(self, cloud_region_id):
+            return {"NODE_SERVER_URL": "http://10.0.0.1:8000"}
+
+    monkeypatch.setattr("apps.monitor.services.flow_access_guide.NodeMgmt", StubNodeMgmt)
+
+    assert FlowAccessGuideService.get_listener_endpoint("netflow", 1) == "udp://10.0.0.1:2056"
+
+
 def test_detect_status_uses_protocol_scoped_recent_data_query(db, monkeypatch):
     switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
     instance = MonitorInstance.objects.create(

@@ -16,15 +16,13 @@ from django.utils import timezone
 from apps.alerts.aggregation.recovery.recovery_handler import RecoveryHandler
 from apps.alerts.common.shield import execute_shield_check_for_events
 from apps.alerts.constants.constants import LevelType, EventAction, AlertStatus, SNMP_TRAP_SOURCE_ID, DEFAULT_GROUP_ID
-from apps.alerts.constants.init_data import INIT_ALERT_ENRICH
 from apps.alerts.error import AuthenticationSourceError
-from apps.alerts.models.sys_setting import SystemSetting
 from apps.alerts.models.models import Alert, Event, Level
 from apps.alerts.models.alert_source import AlertSource
 from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.alerts.utils.permission_scope import normalize_team_ids
-from apps.rpc.cmdb import CMDB
+from apps.alerts.enrichment.engine import EnrichmentEngine
 
 
 class AlertSourceAdapter(ABC):
@@ -41,20 +39,8 @@ class AlertSourceAdapter(ABC):
         self.mapping = self.alert_source.config.get("event_fields_mapping", {})
         self.unique_fields = ["title"]
         self.info_level, self.levels = self.get_event_level()
-        self.enable_rich_event = self.enable_enrich()
         self.resolved_team = self._resolve_team_from_secret(secret)
         self.team_secrets = set(self.alert_source.team_secrets.values())
-
-    @staticmethod
-    def enable_enrich():
-        """
-        是否开启告警丰富
-        默认不开启
-        """
-        instance = SystemSetting.objects.filter(key=INIT_ALERT_ENRICH).first()
-        if not instance:
-            return False
-        return instance.value.get("enable", False)
 
     def _resolve_team_from_secret(self, secret: str) -> List:
         if not secret:
@@ -178,17 +164,31 @@ class AlertSourceAdapter(ABC):
             data["start_time"] = timezone.now()
 
     def create_events(self, add_events):
-        """将原始告警数据转换为Event对象"""
-        events = []
+        """将原始告警数据转换为Event对象（批量丰富）"""
+        event_dicts = []
         for add_event in add_events:
             try:
-                event = self._transform_alert_to_event(add_event)
+                data = self.mapping_fields_to_event(add_event)
+                data.setdefault("enrichment", {})
+                event_dicts.append((data, add_event))
+            except Exception as e:
+                logger.error("[AlertSource] 事件映射失败: %s, error: %s", add_event, e, exc_info=True)
+
+        # 整批丰富（尽力而为，内部已隔离异常）
+        try:
+            EnrichmentEngine().enrich_batch([d for d, _ in event_dicts])
+        except Exception:
+            logger.error("[AlertSource] 批量丰富失败，跳过", exc_info=True)
+
+        events = []
+        for data, add_event in event_dicts:
+            try:
+                event = Event(**data)
                 self.add_base_fields(event, add_event)
                 events.append(event)
             except Exception as e:
                 logger.error("[AlertSource] 事件转换失败: %s, error: %s", add_event, e, exc_info=True)
-        bulk_events = self.bulk_save_events(events)
-        return bulk_events
+        return self.bulk_save_events(events)
 
     @staticmethod
     def generate_external_id(item: str, resource_id: str, resource_name: str, resource_type: str, source_id) -> str:
@@ -451,49 +451,6 @@ class AlertSourceAdapter(ABC):
 
         logger.debug("[AlertSource] 重新加载 %s 条带 pk 的事件", len(created_events_list))
         return result
-
-    def rich_event(self, event: dict):
-        """告警丰富"""
-        if not self.enable_rich_event:
-            return
-        try:
-            self.enrich_event(event)
-        except Exception as e:
-            logger.error("[AlertSource] 事件富化失败: %s", e, exc_info=True)
-
-    @staticmethod
-    def enrich_event(event):
-        """
-        对单个事件进行丰富处理
-        查询cmdb nats获取信息
-        """
-        params = {}
-        resource_type = event.get("resource_type", None)
-        if not resource_type:
-            return
-        params["model_id"] = resource_type
-        resource_id = event.get("resource_id", None)
-        resource_name = event.get("resource_name", None)
-        if resource_id:
-            params["_id"] = resource_id
-        elif resource_name:
-            params["inst_name"] = resource_name
-        else:
-            return
-
-        try:
-            cmdb_instance = CMDB().search_instances(params=params)
-            # 将cmdb实例信息添加到事件中
-            event["labels"].update(cmdb_instance)
-        except Exception as err:
-            logger.error("[AlertSource] CMDB search_instances 调用失败", exc_info=True)
-
-    def _transform_alert_to_event(self, add_event: Dict[str, Any]) -> Event:
-        """将单个告警数据转换为Event对象"""
-        data = self.mapping_fields_to_event(add_event)
-        self.rich_event(data)
-        event = Event(**data)
-        return event
 
     @staticmethod
     def timestamp_to_datetime(timestamp: str) -> datetime:
