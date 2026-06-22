@@ -166,6 +166,8 @@ class BotViewSet(PinMixin, AuthViewSet):
         node_port = data.pop("node_port", None)
         workflow_data = data.pop("workflow_data", None)
         if "team" in data:
+            # 变更管理组织前校验目标组织权限，与 create 对齐，避免越权把 bot 改到无权组织（mass-assignment）
+            self._validate_org_field_permission(request, data["team"])
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)
         # 仅允许更新明确白名单内的字段，避免恶意请求批量覆盖 team/created_by/api_token 等敏感字段（mass-assignment）
