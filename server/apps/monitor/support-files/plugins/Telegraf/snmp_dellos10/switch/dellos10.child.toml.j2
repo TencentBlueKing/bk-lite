@@ -1,0 +1,74 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_dellos10"
+        config_type = "dellos10"
+        brand = "dellos10"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+        [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.3.3.1.2"
+        name = "usage"
+        [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.674.11000.5000.100.4.1.1.4.1.5"
+        name = "celsius"
+        [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.674.11000.5000.100.4.1.2.3.1.7"
+        name = "state"
+        [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.674.11000.5000.100.4.1.2.1.1.4"
+        name = "state"
+# ---- 内存:AlliedWare Plus 无标准 mempool 私有 OID(LibreNMS awplus 无 mempool 块) → 内存 N/A。CPU/温度/风扇/电源四项干净可采。----
+# ---- 状态归一:风扇/电源 good(2)→1(正常),其余(failed/notPowered/null)→2(异常)。----
+# ---- Dell EMC OS10 交换机:CPU=HOST-RESOURCES hrProcessorLoad(.25.3.3.1.2,每核avg);温度=os10CardTemp(.674.11000.5000.100.4.1.1.4.1.5,专用表max);风扇=os10FanOperStatus(.4.1.2.3.1.7);电源=os10PowerSupplyOperStatus(.4.1.2.1.1.4)。fan/psu 原生 1=normal/2=abnormal 恰为本约定,无需 enum。内存:hrStorage 多行(Physical memory 行索引不固定)→N/A。dell-os10.snmprec 实证 cpu30/温37/fan1/psu1。----

@@ -1,15 +1,84 @@
 {
   "plugin": "Firewall Check Point SNMP",
-  "plugin_desc": "Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects CHECKPOINT-MIB private OIDs for device health (CPU utilization, real memory total/free/used/usage) and firewall-specific VPN throughput (encrypted and decrypted packets per second).",
+  "plugin_desc": "Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects CHECKPOINT-MIB private OIDs for device health (CPU utilization, real memory total/free/used/usage) and firewall-specific VPN throughput (encrypted and decrypted packets per second). Supported brands/models — Check Point Security Gateways (GAiA OS).",
   "status_query": "any({instance_type='firewall', collect_type='snmp_checkpoint'}) by (instance_id)",
   "name": "Firewall",
   "icon": "mm-firewall_防火墙",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='firewall'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["snmp_uptime", "device_cpu_usage", "device_memory_usage", "device_total_incoming_traffic", "device_total_outgoing_traffic"],
-  "display_fields": [{"name": "System Uptime", "sort_order": 0, "metrics": [{"plugin": "Firewall Check Point SNMP", "metric": "snmp_uptime"}]}, {"name": "CPU Usage", "sort_order": 1, "metrics": [{"plugin": "Firewall Check Point SNMP", "metric": "device_cpu_usage"}]}, {"name": "Memory Usage", "sort_order": 2, "metrics": [{"plugin": "Firewall Check Point SNMP", "metric": "device_memory_usage"}]}, {"name": "VPN Encrypted Packets Rate", "sort_order": 3, "metrics": [{"plugin": "Firewall Check Point SNMP", "metric": "firewall_vpn_encrypted_pps"}]}, {"name": "Device Total Incoming Traffic Rate", "sort_order": 4, "metrics": [{"plugin": "Firewall Check Point SNMP", "metric": "device_total_incoming_traffic"}]}, {"name": "Device Total Outgoing Traffic Rate", "sort_order": 5, "metrics": [{"plugin": "Firewall Check Point SNMP", "metric": "device_total_outgoing_traffic"}]}],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "display_fields": [
+    {
+      "name": "System Uptime",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Firewall Check Point SNMP",
+          "metric": "snmp_uptime"
+        }
+      ]
+    },
+    {
+      "name": "CPU Usage",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Firewall Check Point SNMP",
+          "metric": "device_cpu_usage"
+        }
+      ]
+    },
+    {
+      "name": "Memory Usage",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Firewall Check Point SNMP",
+          "metric": "device_memory_usage"
+        }
+      ]
+    },
+    {
+      "name": "VPN Encrypted Packets Rate",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Firewall Check Point SNMP",
+          "metric": "firewall_vpn_encrypted_pps"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Incoming Traffic Rate",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Firewall Check Point SNMP",
+          "metric": "device_total_incoming_traffic"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Outgoing Traffic Rate",
+      "sort_order": 5,
+      "metrics": [
+        {
+          "plugin": "Firewall Check Point SNMP",
+          "metric": "device_total_outgoing_traffic"
+        }
+      ]
+    }
+  ],
   "metrics": [
     {
       "metric_group": "Base",
@@ -19,7 +88,9 @@
       "data_type": "Number",
       "unit": "s",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     },
     {
@@ -30,7 +101,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the overall CPU utilization of the Check Point firewall (CHECKPOINT-MIB procUsage). Sustained high CPU usage may indicate heavy traffic inspection load, policy complexity or an attack."
     },
     {
@@ -41,7 +114,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the total real memory of the Check Point firewall (CHECKPOINT-MIB memTotalReal64, in bytes)."
     },
     {
@@ -52,7 +127,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the free real memory of the Check Point firewall (CHECKPOINT-MIB memFreeReal64, in bytes)."
     },
     {
@@ -63,7 +140,9 @@
       "data_type": "Number",
       "unit": "bytes",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the used real memory of the Check Point firewall, derived as total real memory minus free real memory (in bytes)."
     },
     {
@@ -74,7 +153,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the real memory utilization of the Check Point firewall, derived as (total - free) / total * 100. High memory pressure can degrade connection handling performance."
     },
     {
@@ -85,7 +166,9 @@
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the rate of VPN packets encrypted per second by the Check Point firewall (CHECKPOINT-MIB fwEncPacketsPerSec). It reflects outbound IPsec/VPN throughput."
     },
     {
@@ -96,7 +179,9 @@
       "data_type": "Number",
       "unit": "cps",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the rate of VPN packets decrypted per second by the Check Point firewall (CHECKPOINT-MIB fwDecPacketsPerSec). It reflects inbound IPsec/VPN throughput."
     },
     {
@@ -106,8 +191,15 @@
       "display_name": "Interface Admin Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the administrative status of the network interface."
     },
     {
@@ -117,8 +209,15 @@
       "display_name": "Interface Oper Status",
       "data_type": "Enum",
       "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reflects the actual operational status of the network interface."
     },
     {
@@ -128,8 +227,15 @@
       "display_name": "Interface Bandwidth",
       "data_type": "Number",
       "unit": "bitps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the maximum data transmission speed supported by the network interface."
     },
     {
@@ -139,8 +245,15 @@
       "display_name": "Incoming Errors Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
     },
     {
@@ -150,8 +263,15 @@
       "display_name": "Outgoing Errors Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
     },
     {
@@ -161,8 +281,15 @@
       "display_name": "Incoming Discards Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
     },
     {
@@ -172,8 +299,15 @@
       "display_name": "Outgoing Discards Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
     },
     {
@@ -183,8 +317,15 @@
       "display_name": "Incoming Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
     },
     {
@@ -194,8 +335,15 @@
       "display_name": "Outgoing Unicast Packets Rate",
       "data_type": "Number",
       "unit": "cps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
     },
     {
@@ -205,8 +353,15 @@
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
     },
     {
@@ -216,8 +371,15 @@
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
     },
     {
@@ -227,8 +389,15 @@
       "display_name": "Interface Incoming Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
     },
     {
@@ -238,8 +407,15 @@
       "display_name": "Interface Outgoing Traffic Rate (HC)",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
     },
     {
@@ -250,7 +426,9 @@
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
     },
     {
@@ -261,7 +439,9 @@
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
     }
   ]

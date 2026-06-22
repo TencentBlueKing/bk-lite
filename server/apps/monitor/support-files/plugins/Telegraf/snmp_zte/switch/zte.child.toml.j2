@@ -1,0 +1,71 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_zte"
+        config_type = "zte"
+        brand = "zte"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- ZTE ZXR10 CPU (ZXR10-MIB zxr10SystemCpuUtility5m, %, per-unit table, PEN 3902) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.3902.3.3.1.1.12（5 分钟 CPU%，zxr10SystemUnitEntry 第12列；LibreNMS os_discovery 已用此 num_oid）。
+    # 多 unit 走表 → device_cpu_usage avg() by instance_id。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3902.3.3.1.1.12"
+        name = "usage"
+    # ---- ZTE ZXR10 memory (ZXR10-MIB zxr10SystemMemUsed, 直接利用率%, per-unit table) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.3902.3.3.1.1.4（zxr10SystemMemUsed=percent_used，LibreNMS os_discovery 标为 percent_used；第4列）。
+    # device_memory_usage 直采（直接百分比）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3902.3.3.1.1.4"
+        name = "usage"
+# ---- 温度/风扇/电源：ZXR10-MIB os_discovery 仅定义 CPU 与内存(zxr10System Unit 表)，无温度/风扇/电源 sensor。----
+# ---- 中兴温度/风扇/电源在 ZTE-AN-ENVMON-MIB(接入网 OLT 线,非 ZXR10 交换机)且按型号/行级 → 本交换机插件 N/A 不采。----

@@ -1,14 +1,19 @@
 {
   "plugin": "Switch TP-Link SNMP",
-  "plugin_desc": "TP-Link (JetStream)-specific SNMP collection for switches (TPLINK private MIB, enterprise 11863). In addition to standard IF-MIB interface metrics, it collects TP-Link private OIDs for device health: CPU and memory utilization, both reported directly as percentages. TP-Link SMB switches expose no temperature/fan/power-supply sensors, so those health items are not collected (N/A).",
+  "plugin_desc": "TP-Link (JetStream)-specific SNMP collection for switches (TPLINK private MIB, enterprise 11863). In addition to standard IF-MIB interface metrics, it collects TP-Link private OIDs for device health: CPU and memory utilization, both reported directly as percentages. TP-Link SMB switches expose no temperature/fan/power-supply sensors, so those health items are not collected (N/A). Supported brands/models — TP-Link JetStream managed switches (T1500/T1600/T2600 series, etc.).",
   "status_query": "any({instance_type='switch', collect_type='snmp_tplink'}) by (instance_id)",
   "name": "Switch",
   "icon": "mm-switch_交换机",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='switch'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
-  "supplementary_indicators": ["device_cpu_usage", "device_memory_usage"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
   "metrics": [
     {
       "metric_group": "CPU",
@@ -18,7 +23,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports the CPU utilization of the TP-Link (JetStream) device, read per processor from the TPLINK private MIB (tpSysMonitorCpu5Minutes), normalized to a 0-100 percentage. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
     },
     {
@@ -29,7 +36,9 @@
       "data_type": "Number",
       "unit": "percent",
       "dimensions": [],
-      "instance_id_keys": ["instance_id"],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric reports overall memory utilization of the TP-Link (JetStream) device (TPLINK private MIB tpSysMonitorMemoryUtilization), reported directly as a 0-100 percentage. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
     },
     {
@@ -39,8 +48,15 @@
       "display_name": "Interface Incoming Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
     },
     {
@@ -50,8 +66,15 @@
       "display_name": "Interface Outgoing Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
       "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
     }
   ]
