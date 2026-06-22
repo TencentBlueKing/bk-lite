@@ -18,6 +18,7 @@ from apps.alerts.views import (
     AlertAssignmentModelViewSet,
     AlertShieldModelViewSet,
     AlarmStrategyModelViewSet,
+    EnrichmentRuleModelViewSet,
     receiver_data,
     receiver_source_data,
     request_test,
@@ -31,6 +32,7 @@ router.register(r"api/level", LevelModelViewSet, basename="level")
 router.register(r"api/settings", SystemSettingModelViewSet, basename="settings")
 router.register(r"api/assignment", AlertAssignmentModelViewSet, basename="assignment")
 router.register(r"api/shield", AlertShieldModelViewSet, basename="shield")
+router.register(r"api/enrichment", EnrichmentRuleModelViewSet, basename="enrichment")
 router.register(r"api/incident", IncidentModelViewSet, basename="incident")
 router.register(
     r"api/incident/(?P<incident_pk>\d+)/updates",

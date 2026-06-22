@@ -12,7 +12,7 @@ import pytest
 
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource
 from apps.job_mgmt.models import JobExecution
-from apps.job_mgmt.nats_api import ansible_task_callback
+from apps.job_mgmt.nats_api import ansible_task_callback, job_task_terminate
 from apps.job_mgmt.services.execution_base_service import ExecutionTaskBaseService
 from apps.job_mgmt.services.file_distribution_runner import FileDistributionRunner
 from apps.job_mgmt.services.script_execution_runner import ScriptExecutionRunner
@@ -167,6 +167,36 @@ class TestCancelViewCAS:
             resp = self._cancel(api_client, execution)
         assert resp.status_code == 400
         assert "状态已变更" in resp.data["error"]
+
+
+@pytest.mark.django_db
+class TestTerminateTaskNatsAPI:
+    def test_pending_execution_is_cancelled_directly(self):
+        execution = _make_execution(ExecutionStatus.PENDING)
+
+        result = job_task_terminate({"task_id": execution.id})
+
+        assert result["result"] is True
+        assert result["data"]["status"] == ExecutionStatus.CANCELLED
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLED
+        assert execution.finished_at is not None
+
+    def test_running_execution_enters_cancelling(self):
+        execution = _make_execution(ExecutionStatus.RUNNING)
+
+        with patch("apps.job_mgmt.nats_api.finalize_cancelling_execution") as mock_task:
+            result = job_task_terminate({"task_id": execution.id})
+
+        assert result["result"] is True
+        assert result["data"]["status"] == ExecutionStatus.CANCELLING
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLING
+        assert execution.finished_at is None
+        mock_task.apply_async.assert_called_once()
+        _, kwargs = mock_task.apply_async.call_args
+        assert kwargs["args"] == [execution.id]
+        assert kwargs["countdown"] > execution.timeout
 
 
 @pytest.mark.django_db
