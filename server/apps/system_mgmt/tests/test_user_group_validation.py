@@ -43,3 +43,31 @@ def test_validate_selected_groups_accepts_selection_with_normal_group():
     message = user_viewset._validate_selected_groups([guest_group.id, normal_group.id], loader)
 
     assert message is None
+
+
+@pytest.mark.django_db
+def test_system_mgmt_exports_provider_and_integration_instance_models():
+    from apps.system_mgmt.models import IntegrationInstance, Provider
+
+    assert Provider._meta.model_name == "provider"
+    assert IntegrationInstance._meta.model_name == "integrationinstance"
+
+
+@pytest.mark.django_db
+def test_integration_instance_encrypts_shared_app_secret():
+    from apps.system_mgmt.models import IntegrationInstance, Provider
+
+    provider = Provider.objects.create(
+        provider_key="feishu",
+        display_name="Feishu",
+        capabilities=["login_auth", "user_sync", "im_notification"],
+        manifest={},
+    )
+
+    instance = IntegrationInstance.objects.create(
+        provider=provider,
+        name="feishu-default",
+        config={"app_secret": "plain-secret", "tenant_key": "tenant-key"},
+    )
+
+    assert instance.config["app_secret"] != "plain-secret"
