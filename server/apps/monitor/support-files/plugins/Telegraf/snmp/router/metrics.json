@@ -9,7 +9,12 @@
   "default_metric": "any({instance_type='router'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["snmp_uptime", "device_total_incoming_traffic", "device_total_outgoing_traffic"],
-  "display_fields": [{"name": "System Uptime", "sort_order": 0, "metrics": [{"plugin": "Router SNMP General", "metric": "snmp_uptime"}]}, {"name": "Device Total Incoming Traffic Rate", "sort_order": 1, "metrics": [{"plugin": "Router SNMP General", "metric": "device_total_incoming_traffic"}]}, {"name": "Device Total Outgoing Traffic Rate", "sort_order": 2, "metrics": [{"plugin": "Router SNMP General", "metric": "device_total_outgoing_traffic"}]}],
+  "display_fields": [
+  {"name":"入向总流量","sort_order":0,"metrics":[{"plugin":"","metric":"device_total_incoming_traffic"}]},
+  {"name":"出向总流量","sort_order":1,"metrics":[{"plugin":"","metric":"device_total_outgoing_traffic"}]},
+  {"name":"CPU使用率","sort_order":2,"metrics":[{"plugin":"","metric":"device_cpu_usage"}]},
+  {"name":"内存使用率","sort_order":3,"metrics":[{"plugin":"","metric":"device_memory_usage"}]}
+],
   "metrics": [
     {
       "metric_group": "Base",

@@ -17,58 +17,6 @@
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
-  "display_fields": [
-    {
-      "name": "System Uptime",
-      "sort_order": 0,
-      "metrics": [
-        {
-          "plugin": "Router Vyatta SNMP",
-          "metric": "snmp_uptime"
-        }
-      ]
-    },
-    {
-      "name": "CPU Usage",
-      "sort_order": 1,
-      "metrics": [
-        {
-          "plugin": "Router Vyatta SNMP",
-          "metric": "device_cpu_usage"
-        }
-      ]
-    },
-    {
-      "name": "Memory Usage",
-      "sort_order": 2,
-      "metrics": [
-        {
-          "plugin": "Router Vyatta SNMP",
-          "metric": "device_memory_usage"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Incoming Traffic Rate",
-      "sort_order": 3,
-      "metrics": [
-        {
-          "plugin": "Router Vyatta SNMP",
-          "metric": "device_total_incoming_traffic"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Outgoing Traffic Rate",
-      "sort_order": 4,
-      "metrics": [
-        {
-          "plugin": "Router Vyatta SNMP",
-          "metric": "device_total_outgoing_traffic"
-        }
-      ]
-    }
-  ],
   "metrics": [
     {
       "metric_group": "Base",

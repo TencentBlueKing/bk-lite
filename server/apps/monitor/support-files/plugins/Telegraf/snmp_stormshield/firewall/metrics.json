@@ -18,68 +18,6 @@
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
-  "display_fields": [
-    {
-      "name": "System Uptime",
-      "sort_order": 0,
-      "metrics": [
-        {
-          "plugin": "Firewall Stormshield SNMP",
-          "metric": "snmp_uptime"
-        }
-      ]
-    },
-    {
-      "name": "CPU Usage",
-      "sort_order": 1,
-      "metrics": [
-        {
-          "plugin": "Firewall Stormshield SNMP",
-          "metric": "device_cpu_usage"
-        }
-      ]
-    },
-    {
-      "name": "Memory Usage",
-      "sort_order": 2,
-      "metrics": [
-        {
-          "plugin": "Firewall Stormshield SNMP",
-          "metric": "device_memory_usage"
-        }
-      ]
-    },
-    {
-      "name": "ASQ TCP Connections",
-      "sort_order": 3,
-      "metrics": [
-        {
-          "plugin": "Firewall Stormshield SNMP",
-          "metric": "firewall_tcp_connections"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Incoming Traffic Rate",
-      "sort_order": 4,
-      "metrics": [
-        {
-          "plugin": "Firewall Stormshield SNMP",
-          "metric": "device_total_incoming_traffic"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Outgoing Traffic Rate",
-      "sort_order": 5,
-      "metrics": [
-        {
-          "plugin": "Firewall Stormshield SNMP",
-          "metric": "device_total_outgoing_traffic"
-        }
-      ]
-    }
-  ],
   "metrics": [
     {
       "metric_group": "Base",
