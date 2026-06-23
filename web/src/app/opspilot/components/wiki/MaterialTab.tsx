@@ -48,9 +48,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   const openCreate = () => {
     form.resetFields();
-    setType('text');
+    setType('file');
     setFileList([]);
-    form.setFieldsValue({ material_type: 'text' });
+    form.setFieldsValue({ material_type: 'file' });
     setOpen(true);
   };
 
@@ -154,13 +154,13 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
             <Input />
           </Form.Item>
-          <Form.Item label={t('wiki.materialType')} name="material_type" initialValue="text">
+          <Form.Item label={t('wiki.materialType')} name="material_type" initialValue="file">
             <Select
               onChange={(v: MaterialType) => setType(v)}
               options={[
+                { value: 'file', label: t('wiki.materialFile') },
                 { value: 'text', label: t('wiki.materialText') },
                 { value: 'web', label: t('wiki.materialWeb') },
-                { value: 'file', label: t('wiki.materialFile') },
               ]}
             />
           </Form.Item>
@@ -175,16 +175,25 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             </Form.Item>
           )}
           {type === 'file' && (
-            <Form.Item label={t('wiki.materialFile')}>
-              <Upload
+            <Form.Item label={t('wiki.materialFile')} required>
+              <Upload.Dragger
                 maxCount={1}
                 fileList={fileList}
                 beforeUpload={() => false}
-                onChange={({ fileList: fl }) => setFileList(fl.slice(-1))}
+                onChange={({ fileList: fl }) => {
+                  const last = fl.slice(-1);
+                  setFileList(last);
+                  const fname = last[0]?.name;
+                  if (fname && !form.getFieldValue('name')) form.setFieldsValue({ name: fname });
+                }}
                 accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.png,.jpg,.jpeg"
               >
-                <Button icon={<UploadOutlined />}>{t('wiki.materialFile')}</Button>
-              </Upload>
+                <p className="ant-upload-drag-icon">
+                  <UploadOutlined />
+                </p>
+                <p className="ant-upload-text">{t('wiki.uploadHint')}</p>
+                <p className="ant-upload-hint text-xs text-gray-400">pdf / docx / pptx / xlsx / csv / txt / md / 图片</p>
+              </Upload.Dragger>
             </Form.Item>
           )}
         </Form>

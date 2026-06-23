@@ -21,6 +21,7 @@
     "materialText": "文本",
     "materialFile": "文件",
     "materialWeb": "网页",
+    "uploadHint": "点击或拖拽文件到此处上传",
     "ingest": "解析",
     "build": "构建",
     "page": "知识页面",

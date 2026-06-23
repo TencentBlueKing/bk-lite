@@ -21,6 +21,7 @@
     "materialText": "Text",
     "materialFile": "File",
     "materialWeb": "Web",
+    "uploadHint": "Click or drag a file here to upload",
     "ingest": "Ingest",
     "build": "Build",
     "page": "Pages",
