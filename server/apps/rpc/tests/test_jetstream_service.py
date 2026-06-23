@@ -106,6 +106,69 @@ async def test_get_streaming_分块产出(svc):
     assert all(c[2] == 5 for c in chunks)
 
 
+async def test_connect_bucket已存在(monkeypatch):
+    s = JetStreamService(bucket_name="bkt")
+    nc = MagicMock()
+    js = MagicMock()
+    store = MagicMock()
+    nc.jetstream = MagicMock(return_value=js)
+    js.object_store = AsyncMock(return_value=store)
+    js.create_object_store = AsyncMock()
+    monkeypatch.setattr(
+        "apps.rpc.jetstream.get_nc_client", AsyncMock(return_value=nc)
+    )
+    await s.connect()
+    assert s.nc is nc
+    assert s.js is js
+    assert s.object_store is store
+    nc.jetstream.assert_called_once_with(timeout=120)
+    js.object_store.assert_awaited_once_with("bkt")
+    js.create_object_store.assert_not_called()
+
+
+async def test_connect_bucket不存在则创建(monkeypatch):
+    from nats.js.errors import BucketNotFoundError
+
+    s = JetStreamService(bucket_name="bkt")
+    nc = MagicMock()
+    js = MagicMock()
+    created = MagicMock()
+    nc.jetstream = MagicMock(return_value=js)
+    js.object_store = AsyncMock(side_effect=BucketNotFoundError())
+    js.create_object_store = AsyncMock(return_value=created)
+    monkeypatch.setattr(
+        "apps.rpc.jetstream.get_nc_client", AsyncMock(return_value=nc)
+    )
+    await s.connect()
+    assert s.object_store is created
+    js.create_object_store.assert_awaited_once_with("bkt")
+
+
+async def test_watch_updates_处理更新与删除事件(svc):
+    updated = SimpleNamespace(deleted=False, name="a")
+    deleted = SimpleNamespace(deleted=True, name="b")
+
+    class _Watcher:
+        def __init__(self):
+            self._events = [updated, deleted]
+
+        async def updates(self):
+            if self._events:
+                return self._events.pop(0)
+            raise StopAsyncIteration
+
+        async def updates_then_stop(self):
+            pass
+
+    watcher = _Watcher()
+    svc.object_store.watch = AsyncMock(return_value=watcher)
+
+    # watch_updates 是死循环，第三次 updates() 抛 StopAsyncIteration 以退出
+    with pytest.raises(StopAsyncIteration):
+        await svc.watch_updates()
+    svc.object_store.watch.assert_awaited_once_with(include_history=False)
+
+
 async def test_get_streaming_description为空用key末段做文件名(svc):
     info = SimpleNamespace(description=None, size=0)
     svc.object_store.get_info = AsyncMock(return_value=info)
