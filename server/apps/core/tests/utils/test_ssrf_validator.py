@@ -9,6 +9,7 @@ SSRFValidator 三层防护策略测试
 安全审计编号: BK-LITE-002
 """
 
+import ipaddress
 from unittest.mock import patch
 
 import pytest
@@ -391,3 +392,34 @@ class TestSSRFValidatorThreeLayerComparison:
 
         result3 = SSRFValidator.validate_llm_endpoint("https://example.com/")
         assert result3 is not None
+
+
+class TestSSRFValidatorWhitelist:
+    """白名单放行 + 元数据永封 + 空白名单零回归。"""
+
+    @patch("socket.getaddrinfo")
+    def test_whitelisted_private_ip_allowed(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.11.73.15", 8000))]
+        with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[ipaddress.ip_network("10.11.73.0/24")]):
+            assert SSRFValidator.validate("http://10.11.73.15:8000/sse") == "http://10.11.73.15:8000/sse"
+
+    @patch("socket.getaddrinfo")
+    def test_non_whitelisted_private_ip_blocked(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.0.0.1", 80))]
+        with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[ipaddress.ip_network("10.11.73.0/24")]):
+            with pytest.raises(SSRFError, match="禁止的网段"):
+                SSRFValidator.validate("http://10.0.0.1/api")
+
+    @patch("socket.getaddrinfo")
+    def test_metadata_blocked_even_if_whitelisted(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("169.254.169.254", 80))]
+        with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[ipaddress.ip_network("169.254.0.0/16")]):
+            with pytest.raises(SSRFError, match="云元数据"):
+                SSRFValidator.validate("http://169.254.169.254/latest/meta-data/")
+
+    @patch("socket.getaddrinfo")
+    def test_empty_whitelist_keeps_strict(self, mock_getaddrinfo):
+        mock_getaddrinfo.return_value = [(2, 1, 6, "", ("10.0.0.1", 80))]
+        with patch.object(SSRFValidator, "_get_allowed_networks", return_value=[]):
+            with pytest.raises(SSRFError, match="禁止的网段"):
+                SSRFValidator.validate("http://10.0.0.1/api")
