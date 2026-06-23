@@ -23,7 +23,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const { groups } = useGroups();
-  const { fetchTemplates } = useWikiApi();
+  const { fetchTemplates, fetchKnowledgeBase } = useWikiApi();
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
@@ -32,22 +32,28 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
     fetchTemplates()
       .then((tpls) => {
         setTemplates(tpls);
-        // 新建:默认套用「通用知识库」固定内容;编辑:保留已有内容
+        // 新建:默认套用「通用知识库」固定内容
         if (!initialValues) {
           const def = tpls.find((x) => x.key === 'general') || tpls[0];
           form.setFieldsValue({ template_key: def?.key, ...fillTemplate(def, '') });
         }
       })
       .catch(() => undefined);
-    if (initialValues) {
-      form.setFieldsValue({
-        name: initialValues.name,
-        introduction: initialValues.introduction,
-        team: initialValues.team,
-        template_key: initialValues.template_key || 'general',
-        purpose_md: initialValues.purpose_md,
-        schema_md: initialValues.schema_md,
-      });
+    if (initialValues?.id) {
+      form.resetFields();
+      // 卡片菜单只透传了部分字段,编辑时拉取完整知识库回写(含用途/结构)
+      fetchKnowledgeBase(initialValues.id)
+        .then((full) => {
+          form.setFieldsValue({
+            name: full.name,
+            introduction: full.introduction,
+            team: full.team,
+            template_key: full.template_key || 'general',
+            purpose_md: full.purpose_md,
+            schema_md: full.schema_md,
+          });
+        })
+        .catch(() => undefined);
     } else {
       form.resetFields();
     }

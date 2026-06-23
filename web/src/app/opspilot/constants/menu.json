@@ -4,7 +4,16 @@
       "title": "知识库",
       "icon": "zhishiku",
       "url": "/opspilot/wiki",
-      "name": "wiki_list"
+      "name": "wiki_list",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "详情",
+          "url": "/opspilot/wiki/detail",
+          "name": "wiki_detail",
+          "isNotMenuItem": true
+        }
+      ]
     },
     {
       "title": "工作台",
@@ -135,7 +144,16 @@
       "title": "Knowledge Base",
       "icon": "zhishiku",
       "url": "/opspilot/wiki",
-      "name": "wiki_list"
+      "name": "wiki_list",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "Detail",
+          "url": "/opspilot/wiki/detail",
+          "name": "wiki_detail",
+          "isNotMenuItem": true
+        }
+      ]
     },
     {
       "title": "Studio",
