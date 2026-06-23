@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import CustomTable from '@/components/custom-table';
 import useSearchApi from '@/app/log/api/search';
@@ -103,15 +103,19 @@ const LogPreview: React.FC<LogPreviewProps> = ({
   });
 
   return (
-    <div className="border border-[var(--color-border-2)] rounded-md p-4">
-      <div className="font-medium mb-3">{t('log.event.logPreview')}</div>
+    <div className="border border-[var(--color-border-2)] rounded-md bg-[var(--color-bg-1)] overflow-hidden">
+      <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--color-border-2)]">
+        <span className="font-medium">{t('log.event.logPreview')}</span>
+        <span className="text-[var(--color-text-3)]">
+          {t('log.event.latestTenLogs')}
+        </span>
+      </div>
       {!previewReady ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t('log.event.logPreviewGuide')}
-        />
+        <div className="m-4 border border-dashed border-[var(--color-primary)] rounded px-4 py-5 text-[var(--color-text-3)] bg-[var(--color-bg-2)]">
+          {t('log.event.logPreviewGuide')}
+        </div>
       ) : (
-        <Spin spinning={loading}>
+        <Spin spinning={loading} className="block">
           <CustomTable
             size="small"
             columns={columns}
@@ -120,6 +124,12 @@ const LogPreview: React.FC<LogPreviewProps> = ({
             rowKey="id"
             scroll={{ x: 520, y: 320 }}
           />
+          <div className="flex items-center justify-between px-4 py-3 border-t border-[var(--color-border-1)] text-[var(--color-text-3)]">
+            <span>
+              {t('log.event.displayFields')}：{fields.join('、')}
+            </span>
+            <span>{t('log.event.sortByTimeDesc')}</span>
+          </div>
         </Spin>
       )}
     </div>
