@@ -27,3 +27,19 @@ class JobMgmt:
     def get_module_list(self):
         """获取模块列表"""
         return self.client.run("get_job_mgmt_module_list")
+
+    def job_script_execute(self, data):
+        """触发脚本执行（NATS）。data 见 apps.job_mgmt.nats_api.job_script_execute。"""
+        return self.client.run("job_script_execute", data)
+
+    def get_script(self, script_id):
+        """读取单个脚本模板（content/params/script_type/timeout）。"""
+        result = self.client.run(
+            "get_job_mgmt_module_data",
+            {"module": "script", "id": script_id},
+        ) or {}
+        items = result.get("items") or result.get("data") or []
+        for it in items:
+            if str(it.get("id")) == str(script_id):
+                return it
+        return None
