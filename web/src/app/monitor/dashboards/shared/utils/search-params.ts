@@ -1,7 +1,8 @@
 import { TimeValuesProps } from '@/app/monitor/types';
 import { SearchParams } from '@/app/monitor/types/search';
 import { getRecentTimeRange, mergeViewQueryKeyValues } from '@/app/monitor/utils/common';
-import { MAX_POINTS, DEFAULT_STEP } from './constants';
+import { buildGapDetectionParams } from '@/app/monitor/utils/gapIntervals';
+import { calculateQueryStep } from '@/app/monitor/utils/queryStep';
 
 export const buildSearchParams = (
   query: string,
@@ -10,7 +11,8 @@ export const buildSearchParams = (
   instanceIdKeys: string[],
   timeValues: TimeValuesProps,
   rawValueMetrics?: Set<string>,
-  autoConvertUnit?: boolean
+  autoConvertUnit?: boolean,
+  minStepSeconds?: unknown
 ): SearchParams => {
   const effectiveIdValues = idValues.length ? idValues : [''];
   const labels = mergeViewQueryKeyValues([
@@ -28,14 +30,11 @@ export const buildSearchParams = (
     auto_convert_unit: resolvedAutoConvert
   };
 
-  if (startTime && endTime) {
+  if (Number.isFinite(startTime) && Number.isFinite(endTime)) {
     params.start = startTime;
     params.end = endTime;
-    params.step = Math.max(
-      Math.ceil((params.end / MAX_POINTS - params.start / MAX_POINTS) / DEFAULT_STEP),
-      1
-    );
+    params.step = calculateQueryStep(params.start, params.end, minStepSeconds);
   }
 
-  return params;
+  return buildGapDetectionParams(params, minStepSeconds);
 };

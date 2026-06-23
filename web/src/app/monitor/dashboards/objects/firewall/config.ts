@@ -37,7 +37,7 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         '防火墙内存使用率（百分比）。品牌自适应：①设备直报利用率（Fortinet/SonicWall）；②(总量-空闲)/总量（Check Point/Stormshield）。部分型号（Palo Alto/WatchGuard）无标准 SNMP 内存利用率，显示「--」。',
       unit: 'percent',
       query:
-        'avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100)',
+        'avg(device_memory_usage{__$labels__}) by (instance_id) or ((sum(device_memory_total{__$labels__}) by (instance_id) - sum(device_memory_free{__$labels__}) by (instance_id)) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / sum(device_memory_total{__$labels__}) by (instance_id) * 100) or (sum(device_memory_used{__$labels__}) by (instance_id) / (sum(device_memory_used{__$labels__}) by (instance_id) + sum(device_memory_free{__$labels__}) by (instance_id)) * 100)',
       color: '#ff8a1f'
     },
     {
@@ -49,6 +49,25 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       query:
         'firewall_active_sessions{__$labels__} or firewall_current_connections{__$labels__} or firewall_active_connections{__$labels__} or firewall_tcp_connections{__$labels__} or firewall_pf_states{__$labels__}',
       color: '#13c2c2'
+    },
+    {
+      name: 'firewall_session_utilization',
+      display_name: '会话利用率',
+      description:
+        '防火墙会话表利用率（百分比）。品牌自适应：设备直报（Palo Alto panSessionUtilization）→ 活动/上限计算（active_sessions/max_sessions、current/max_connections）。逼近 100% 说明会话表将满、新连接会被丢弃。无会话上限 SNMP 指标的品牌显示「--」。',
+      unit: 'percent',
+      query:
+        'firewall_session_utilization{__$labels__} or (firewall_active_sessions{__$labels__} / firewall_max_sessions{__$labels__} * 100) or (firewall_current_connections{__$labels__} / firewall_max_connections{__$labels__} * 100)',
+      color: '#9254de'
+    },
+    {
+      name: 'firewall_vpn_tunnels',
+      display_name: 'VPN 隧道数',
+      description:
+        '防火墙当前 IPsec VPN 隧道数量（Fortinet fgVpnTunEntStatus / Stormshield）。隧道数骤降提示站点到站点 VPN 中断或对端不可达。无 VPN 隧道 SNMP 指标的品牌显示「--」。',
+      unit: 'counts',
+      query: 'firewall_vpn_tunnels{__$labels__}',
+      color: '#f5222d'
     },
     {
       name: 'device_total_incoming_traffic',
@@ -112,6 +131,16 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '活动会话/连接', detail: '当前活动会话或连接数，快速攀升可能是连接洪泛或会话表逼近上限。' }]
     },
     {
+      title: '会话利用率',
+      metric: 'firewall_session_utilization',
+      unit: 'percent',
+      color: '#9254de',
+      icon: 'api',
+      compare: true,
+      compareFavorableDirection: 'down',
+      guide: [{ label: '会话利用率', detail: '会话表利用率，逼近 100% 说明会话表将满、新连接会被丢弃；无会话上限的品牌显示「--」。' }]
+    },
+    {
       title: '入向总流量',
       metric: 'device_total_incoming_traffic',
       unit: 'byteps',
@@ -149,6 +178,24 @@ export const FIREWALL_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       guide: [{ label: '活动会话/连接', detail: '活动会话或连接数随时间变化，突增提示连接洪泛或异常流量。' }],
       series: [
         { metric: 'firewall_sessions', label: '活动会话/连接', color: '#13c2c2', unit: 'counts' }
+      ]
+    },
+    {
+      title: '会话利用率趋势',
+      subtitle: '会话表利用率',
+      metric: 'firewall_session_utilization',
+      guide: [{ label: '会话利用率', detail: '会话表利用率随时间变化（百分比），持续逼近 100% 需扩容或排查异常连接。无会话上限的品牌显示空。' }],
+      series: [
+        { metric: 'firewall_session_utilization', label: '会话利用率', color: '#9254de', unit: 'percent' }
+      ]
+    },
+    {
+      title: 'VPN 隧道数趋势',
+      subtitle: 'IPsec 隧道数',
+      metric: 'firewall_vpn_tunnels',
+      guide: [{ label: 'VPN 隧道数', detail: 'IPsec VPN 隧道数量随时间变化，骤降提示站点到站点 VPN 中断。无 VPN 隧道指标的品牌显示空。' }],
+      series: [
+        { metric: 'firewall_vpn_tunnels', label: 'VPN 隧道数', color: '#f5222d', unit: 'counts' }
       ]
     }
   ],

@@ -85,7 +85,7 @@ export default function ElasticsearchDashboardPage() {
 
   // 「节点压力排行」为 bespoke 取数:config-driven 核心无法表达按 node_name 的动态 TopN,
   // 故复用实例/时间上下文,自行发 topk(by node_name) 查询并解析为 BarList(照搬 postgresql dbname TopN)。
-  const { idValues, timeValues, isDashboardMode, loadTick } = dashboard;
+  const { idValues, timeValues, isDashboardMode, loadTick, currentInstanceInterval } = dashboard;
   const [topNode, setTopNode] = useState<Record<string, BarItem[]>>({});
   const idValuesKey = JSON.stringify(idValues);
   const timeKey = JSON.stringify(timeValues);
@@ -97,7 +97,7 @@ export default function ElasticsearchDashboardPage() {
     }
     let active = true;
     runWithConcurrency(ES_TOP_NODE_QUERIES, TOP_NODE_CONCURRENCY, async (q) =>
-      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues))
+      getInstanceQuery(buildSearchParams(q.query, q.unit, idValues, instanceIdKeys, timeValues, undefined, undefined, currentInstanceInterval))
         .then((res: any) => [q.key, topNodeBars(res, q.unit, q.color)] as const)
         .catch(() => [q.key, [] as BarItem[]] as const)
     ).then((entries) => {
@@ -110,7 +110,7 @@ export default function ElasticsearchDashboardPage() {
     };
     // loadTick 随核心盘每次加载(含自动刷新)递增,使 TopN 与核心盘同步刷新。
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
+  }, [currentInstanceInterval, idValuesKey, timeKey, isDashboardMode, instanceIdKeys, getInstanceQuery, loadTick]);
 
   return (
     <DashboardShell

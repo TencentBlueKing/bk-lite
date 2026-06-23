@@ -1,0 +1,94 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ubiquiti"
+        config_type = "ubiquiti"
+        brand = "ubiquiti"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Ubiquiti EdgeSwitch system memory (EdgeSwitch-SWITCHING-MIB agentSwitchCpuProcessMem*, KB, PEN 4413, Broadcom FASTPATH) ----
+    # 待现网核验：total=MemAvailable 1.3.6.1.4.1.4413.1.1.1.1.4.2.0 / free=MemFree ...4.1.0（KB，snmprec total256404/free85068KB→66.8%）。
+    # 利用率在共享盘按 (total-free)/total 计算（KB 相消，比值精确）。绝对字节在 metrics.json 查询里 *1024。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4413.1.1.1.1.4.2.0"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4413.1.1.1.1.4.1.0"
+        name = "free"
+    # ---- Ubiquiti EdgeSwitch temperature (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesTempSensorTemperature, °C, per-sensor table) ----
+    # 待现网核验：列 OID 1.3.6.1.4.1.4413.1.1.43.1.8.1.5（°C，snmprec 多传感器 38-54°C，专用温度列）。device_temperature_celsius max()。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4413.1.1.43.1.8.1.5"
+        name = "celsius"
+    # ---- Ubiquiti EdgeSwitch fan state (EdgeSwitch-BOXSERVICES-PRIVATE-MIB boxServicesFanItemState, per-fan table) ----
+    # 待现网核验：state 列 1.3.6.1.4.1.4413.1.1.43.1.6.1.3（snmprec=2 operational）。
+    # 原始码 1=notpresent/2=operational/3=failed/4=powering/5=nopower/6=notpowering/7=incompatible；
+    # 下方 processors.enum 归一为 1=正常(1/2/4)/2=异常(3/5/6/7)。共享盘 device_fan_state 约定 1=正常,>1=异常。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4413.1.1.43.1.6.1.3"
+        name = "state"
+
+# ---- 风扇状态归一：1=notpresent(缺位)/2=operational/4=powering→1(正常)，3=failed/5=nopower/6=notpowering/7=incompatible→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+            "2" = 1
+            "4" = 1
+# ---- CPU/电源：EdgeSwitch SNMP 仅暴露 agentSwitchCpuProcessTable 逐进程 CPU(无设备级聚合标量,需行级选 Total 进程→inputs.snmp 不能行级过滤)→CPU N/A；----
+# ---- BOXSERVICES MIB 无独立电源(PSU)状态对象→电源 N/A。温度/风扇为专用值列,可直采。----

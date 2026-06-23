@@ -3,27 +3,27 @@ import type { RoomLayoutData } from '@/app/cmdb/types/rackRoom';
 // 主题色板（白色系，与周边页面一致；accent 蓝为主色）
 export const TECH = {
   bg0: '#ffffff',
-  bg1: '#f6f8fc',
+  bg1: '#f4f7fb',
   panel: '#ffffff',
-  panelHi: '#eef3fb',
-  line: 'rgba(23,54,106,0.12)',
-  lineHi: 'rgba(23,54,106,0.26)',
-  cyan: '#2f74e6',
-  text: '#1f2a3d',
-  textDim: '#7c8aa6',
-  ok: '#1f9d6b',
-  warn: '#d9871a',
-  danger: '#e24b4a',
+  panelHi: '#f8fafc',
+  line: 'rgba(43,63,96,0.13)',
+  lineHi: 'rgba(43,63,96,0.24)',
+  cyan: '#2b65d9',
+  text: '#172033',
+  textDim: '#667085',
+  ok: '#11856b',
+  warn: '#b97814',
+  danger: '#d9485e',
 };
 
 // 机柜类型枚举 → 主色（普通/网络/存储/配电/配线/其他）
 export const RACK_TYPE_COLOR: Record<string, string> = {
-  '1': '#3f8cff', // 普通柜
-  '2': '#22c98a', // 网络柜
-  '3': '#f2a93b', // 存储柜
-  '4': '#ff5a6a', // 配电柜
-  '5': '#d65bd0', // 配线柜
-  other: '#9b7bff', // 其他柜
+  '1': '#2b65d9', // 普通柜
+  '2': '#11856b', // 网络柜
+  '3': '#b97814', // 存储柜
+  '4': '#d9485e', // 配电柜
+  '5': '#6957d8', // 配线柜
+  other: '#64748b', // 其他柜
 };
 
 export const RACK_TYPE_NAME: Record<string, string> = {
@@ -40,11 +40,11 @@ export const rackTypeName = (t: string | null): string =>
 // 网格渲染尺寸：至少 12 列 × 12 行（对齐参考截图），不足补足
 export const roomGridSize = (data: RoomLayoutData) => ({
   cols: Math.max(12, data.grid.max_col),
-  rows: Math.max(12, data.grid.max_row),
+  rows: Math.max(6, data.grid.max_row),
 });
 
-export const CELL = 116;  // 网格单元像素
-export const PAD = 42;    // 行/列标题留白
+export const CELL = 112;  // 网格单元像素
+export const PAD = 44;    // 行/列标题留白
 export const GAP = 14;    // 机柜与格线间距
 
 export const cellXY = (row: number, col: number) => ({

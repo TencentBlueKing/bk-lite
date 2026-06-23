@@ -25,11 +25,11 @@ def discover_node_versions():
     # 一次性获取所有最新版本映射（只查询一次）
     latest_versions_map = VersionUpgradeService.get_latest_versions_map(component_type="controller")
 
-    nodes = Node.objects.all()
+    total_count = Node.objects.count()
     success_count = 0
     failed_count = 0
 
-    for node in nodes:
+    for node in Node.objects.all().iterator(chunk_size=500):
         try:
             _discover_controller_version(node, latest_versions_map)
             success_count += 1
@@ -38,7 +38,7 @@ def discover_node_versions():
             logger.error(f"节点 {node.name}({node.ip}) 控制器版本发现失败: {str(e)}")
 
     logger.info(f"节点控制器版本发现任务完成，成功: {success_count}, 失败: {failed_count}")
-    return {"success_count": success_count, "failed_count": failed_count, "total": nodes.count()}
+    return {"success_count": success_count, "failed_count": failed_count, "total": total_count}
 
 
 def _discover_controller_version(node: Node, latest_versions_map: dict):

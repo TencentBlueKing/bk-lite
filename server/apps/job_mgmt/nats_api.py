@@ -1,6 +1,7 @@
 """Job Management NATS API - 用于数据权限规则"""
 
 from asgiref.sync import async_to_sync
+from celery import current_app
 from django.utils import timezone
 
 import nats_client
@@ -12,9 +13,12 @@ from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
-from apps.job_mgmt.tasks import distribute_files_task, execute_script_task
+from apps.job_mgmt.tasks import distribute_files_task, execute_script_task, finalize_cancelling_execution
 from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
+
+
+CANCEL_CONVERGE_BUFFER_SECONDS = 60
 
 
 @nats_client.register
@@ -539,6 +543,68 @@ def job_detail_query(data: dict):
             "execution_results": execution.execution_results,
         },
     }
+
+
+@nats_client.register
+def job_task_terminate(data=None, task_id=None, **kwargs):
+    if isinstance(data, dict):
+        task_id = data.get("task_id", task_id)
+    if task_id is None:
+        task_id = kwargs.get("task_id")
+    if not task_id:
+        return {"result": False, "message": "task_id 不能为空"}
+
+    try:
+        execution = JobExecution.objects.get(id=task_id)
+    except JobExecution.DoesNotExist:
+        return {"result": False, "message": "任务不存在"}
+
+    status_now = execution.status
+    if status_now in ExecutionStatus.TERMINAL_STATES:
+        return {"result": False, "message": f"任务已处于终态({execution.get_status_display()})，无法取消"}
+    if status_now == ExecutionStatus.CANCELLING:
+        return {"result": False, "message": "任务正在取消中，请勿重复操作"}
+
+    if execution.celery_task_id:
+        try:
+            current_app.control.revoke(execution.celery_task_id)
+            logger.info("[job_task_terminate] 已 revoke Celery 任务: execution_id=%s, task_id=%s", execution.id, execution.celery_task_id)
+        except Exception as error:
+            logger.warning("[job_task_terminate] revoke Celery 任务失败: execution_id=%s, error=%s", execution.id, error)
+
+    now = timezone.now()
+    if status_now == ExecutionStatus.PENDING:
+        updated = JobExecution.objects.filter(id=task_id, status=ExecutionStatus.PENDING).update(
+            status=ExecutionStatus.CANCELLED,
+            finished_at=now,
+            updated_at=now,
+        )
+        if updated:
+            execution.refresh_from_db()
+            send_callback(execution)
+            return {
+                "result": True,
+                "data": {"task_id": execution.id, "status": ExecutionStatus.CANCELLED, "message": "已取消执行"},
+            }
+
+    if status_now == ExecutionStatus.RUNNING:
+        updated = JobExecution.objects.filter(id=task_id, status=ExecutionStatus.RUNNING).update(
+            status=ExecutionStatus.CANCELLING,
+            updated_at=now,
+        )
+        if updated:
+            finalize_cancelling_execution.apply_async(
+                args=[execution.id],
+                countdown=execution.timeout + CANCEL_CONVERGE_BUFFER_SECONDS,
+            )
+            execution.refresh_from_db()
+            send_callback(execution)
+            return {
+                "result": True,
+                "data": {"task_id": execution.id, "status": ExecutionStatus.CANCELLING, "message": "正在取消执行"},
+            }
+
+    return {"result": False, "message": "状态已变更，请刷新后重试"}
 
 
 @nats_client.register

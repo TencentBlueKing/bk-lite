@@ -5,6 +5,7 @@ export interface InstanceItem {
   instance_id: string;
   instance_name: string;
   instance_id_values: string[];
+  interval?: number;
 }
 
 export interface PluginItem {
@@ -30,6 +31,8 @@ export interface SearchParams {
   query: string;
   source_unit?: string;
   auto_convert_unit?: boolean;
+  detect_gaps?: boolean;
+  collection_interval?: number;
 }
 
 export interface QueryGroup {

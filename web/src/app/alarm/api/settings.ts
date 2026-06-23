@@ -88,6 +88,27 @@ export const useSettingApi = () => {
   const getChannelList = (params: any) =>
     get('/alerts/api/settings/get_channel_list/', { params });
 
+  const getEnrichmentList = (params: any) =>
+    get('/alerts/api/enrichment/', { params });
+
+  const getEnrichment = (id: string | number) =>
+    get(`/alerts/api/enrichment/${id}/`);
+
+  const createEnrichment = (params: any) =>
+    post('/alerts/api/enrichment/', params);
+
+  const updateEnrichment = (id: string | number, params: any) =>
+    put(`/alerts/api/enrichment/${id}/`, params);
+
+  const deleteEnrichment = (id: string | number) =>
+    del(`/alerts/api/enrichment/${id}/`);
+
+  const patchEnrichment = (id: string | number, params: any) =>
+    patch(`/alerts/api/enrichment/${id}/`, params);
+
+  const getEnrichmentMetrics = () =>
+    get('/alerts/api/enrichment/metrics/');
+
   return {
     getAssignmentList,
     getAssignment,
@@ -118,6 +139,13 @@ export const useSettingApi = () => {
     updateGlobalConfig,
     toggleGlobalConfig,
     getLogList,
-    getChannelList
+    getChannelList,
+    getEnrichmentList,
+    getEnrichment,
+    createEnrichment,
+    updateEnrichment,
+    deleteEnrichment,
+    patchEnrichment,
+    getEnrichmentMetrics,
   };
 };

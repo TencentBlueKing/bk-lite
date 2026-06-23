@@ -46,16 +46,16 @@ export default function K8sNodeDashboardPage() {
     if (idValues.length === 0) return;
     let active = true;
     const tv: TimeValuesProps = dashboard.timeValues;
-    getInstanceQuery(buildSearchParams(NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv))
+    getInstanceQuery(buildSearchParams(NODE_TOP_POD_CPU, 'none', idValues, instanceIdKeys, tv, undefined, undefined, dashboard.currentInstanceInterval))
       .then((r) => { if (active) setTopPodCpuRaw(r); })
       .catch(() => { if (active) setTopPodCpuRaw(null); });
     // 内存为字节类指标:禁用服务端单位自动换算,否则与前端 bytesDisplay 双重换算(见 k8s-cluster 同因)。
-    getInstanceQuery(buildSearchParams(NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false))
+    getInstanceQuery(buildSearchParams(NODE_TOP_POD_MEM, 'bytes', idValues, instanceIdKeys, tv, undefined, false, dashboard.currentInstanceInterval))
       .then((r) => { if (active) setTopPodMemRaw(r); })
       .catch(() => { if (active) setTopPodMemRaw(null); });
     return () => { active = false; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [idValuesKey, dashboard.timeValues]);
+  }, [idValuesKey, dashboard.currentInstanceInterval, dashboard.timeValues]);
 
   const nodeTopPodCpuBars = useMemo(() => buildTopBars(topPodCpuRaw, 'pod', '#9254de', coresDisplay), [topPodCpuRaw]);
   const nodeTopPodMemBars = useMemo(() => buildTopBars(topPodMemRaw, 'pod', '#13c2c2', bytesDisplay), [topPodMemRaw]);

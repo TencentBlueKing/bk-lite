@@ -55,6 +55,8 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
             start (int): 开始时间戳（毫秒）
             end (int): 结束时间戳（毫秒）
             step (str): 查询步长，如 '5m'
+            detect_gaps (bool): 是否检测断点区间，默认 False
+            collection_interval (int): 指标采集间隔（秒），开启 detect_gaps 时使用
             source_unit (str): 初始单位（必填），如 'B', 'bytes', 'ms', 's' 等
             unit (str): 指定目标单位，若提供则直接转换到该单位，不使用自动推荐
             auto_convert_unit (bool): 是否自动转换单位，默认 True（仅在未指定 unit 时生效）
@@ -66,6 +68,8 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         source_unit = request.GET.get("source_unit")
         target_unit = request.GET.get("unit")
         auto_convert = request.GET.get("auto_convert_unit", "true").lower() == "true"
+        detect_gaps = request.GET.get("detect_gaps", "false").lower() == "true"
+        collection_interval = request.GET.get("collection_interval")
 
         if not query:
             raise BaseAppException("query is required")
@@ -90,7 +94,14 @@ class MetricsInstanceViewSet(viewsets.ViewSet):
         except ValueError as e:
             raise BaseAppException(f"invalid step: {e}")
 
-        data = MetricsService.get_metrics_range(query, start, end, step)
+        data = MetricsService.get_metrics_range(
+            query,
+            start,
+            end,
+            step,
+            detect_gaps=detect_gaps,
+            collection_interval_seconds=collection_interval,
+        )
 
         if source_unit:
             if target_unit:

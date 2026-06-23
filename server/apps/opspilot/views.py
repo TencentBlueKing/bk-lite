@@ -17,6 +17,7 @@ from apps.core.decorators.api_permission import HasRole
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import WorkFlowTaskStatus
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, SkillRequestLog, WorkFlowTaskResult
 from apps.opspilot.serializers.request_serializers import (
@@ -34,11 +35,11 @@ from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.execution_interrupt import request_interrupt
+from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
-from apps.core.utils.team_utils import get_current_team
 
 
 def parse_json_body(request, default=None):
@@ -677,6 +678,18 @@ async def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
+        # 会话级 pending 拦截：若该 (bot, session) 当前有正在等待用户输入的智能体节点，
+        # 则把本条对话框消息当作答案直接投递回该节点（在原流续跑），不新建执行——
+        # 否则消息会从工作流入口重跑，回复跑回第一个智能体而非正在等待的那个。
+        if not is_test and session_id and message:
+            delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
+            if delivered:
+                logger.info(
+                    f"[ChatFlow] 消息已投递给待回答节点，跳过新建执行 - bot_id: {bot_id}, session_id: {session_id}, "
+                    f"execution_id: {delivered.get('execution_id')}, node_id: {delivered.get('node_id')}"
+                )
+                return JsonResponse({"result": True, "data": delivered})
+
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
 
