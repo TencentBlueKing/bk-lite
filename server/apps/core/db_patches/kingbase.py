@@ -70,7 +70,10 @@ def apply_early_patches():
     # 3. 仅 psycopg(v3)：容忍 Kingbase MySQL 模式 timestamptz 不带时区偏移（migrate 收尾阻断点）
     _patch_psycopg3_timestamptz_missing_tz()
 
-    logger.info("KingbaseES MySQL-mode patches applied (introspection + pattern_ops + psycopg3 timestamptz)")
+    # 4. 仅 psycopg(v3)：注册 Kingbase 自定义 date/time/timestamp OID 的 loader（运行期 Trunc/cast）
+    _patch_psycopg3_kingbase_datetime_oids()
+
+    logger.info("KingbaseES MySQL-mode patches applied (introspection + pattern_ops + psycopg3 timestamptz + datetime OIDs)")
 
 
 def _patch_introspection_pipe_concat():
@@ -277,3 +280,82 @@ def _patch_psycopg3_timestamptz_missing_tz():
 
     TimestamptzLoader.load = patched_load
     logger.info("[KINGBASE] psycopg3 TimestamptzLoader patched (tolerate missing tz offset, assume UTC)")
+
+
+def _patch_psycopg3_kingbase_datetime_oids():
+    """
+    运行期修复：Kingbase MySQL 模式为 date/time/timestamp 使用了**非标准 OID**
+    （实测 date=7944, time=7950, timestamp=7954，与标准 PG 的 1082/1083/1114/1184 同名并存）。
+    psycopg(v3) 没有这些 OID 的 loader → 一律按文本返回 **str**，导致例如 Django ``TruncDate``
+    （生成 ``(... AT TIME ZONE UTC)::date``）的结果是字符串，下游 ``timezone.is_naive(value)``
+    抛 ``'str' object has no attribute 'utcoffset'``（告警趋势等"按时间分桶"功能受影响）。
+
+    策略：给 psycopg3 全局 adapters 注册这三个 OID 的 loader，把文本解析为 date / time / datetime
+    （datetime 无时区时按连接时区补成 aware-UTC，与本项目 USE_TZ 及 ``-c timezone=UTC`` 一致）。
+    另在 ``connection_created`` 时按 typname 动态发现一次 OID 兜底（不同 Kingbase 版本 OID 可能不同）。
+
+    psycopg2 解析这些类型不受影响；仅装了 psycopg(v3) 时打此补丁。
+    """
+    try:
+        import datetime
+
+        import psycopg
+        from psycopg.adapt import Loader
+    except ImportError:
+        logger.info("[KINGBASE] psycopg(v3) 未安装，datetime OID 补丁跳过（psycopg2 不受影响）")
+        return
+
+    def _text(data):
+        return (data if isinstance(data, (bytes, bytearray)) else bytes(data)).decode("utf-8")
+
+    class _KbDateLoader(Loader):
+        def load(self, data):
+            return datetime.date.fromisoformat(_text(data))
+
+    class _KbTimeLoader(Loader):
+        def load(self, data):
+            return datetime.time.fromisoformat(_text(data))
+
+    class _KbTimestampLoader(Loader):
+        def load(self, data):
+            dt = datetime.datetime.fromisoformat(_text(data).replace(" ", "T", 1))
+            return dt if dt.tzinfo else dt.replace(tzinfo=datetime.timezone.utc)
+
+    name2loader = {
+        "date": _KbDateLoader,
+        "time": _KbTimeLoader,
+        "timestamp": _KbTimestampLoader,
+        "timestamptz": _KbTimestampLoader,
+    }
+
+    # 实测 Kingbase MySQL 模式内置 OID：全局注册，覆盖绝大多数情况
+    for oid, name in ((7944, "date"), (7950, "time"), (7954, "timestamp")):
+        psycopg.adapters.register_loader(oid, name2loader[name])
+
+    # 动态兜底：首个连接时发现 typname 同名但 OID 非标准的类型，注册到全局 + 当前连接
+    from django.db.backends.signals import connection_created
+
+    _std_oids = (1082, 1083, 1114, 1184)
+    _state = {"done": False}
+
+    def _discover_oids(sender, connection, **kwargs):
+        if _state["done"] or connection.vendor != "postgresql":
+            return
+        _state["done"] = True
+        try:
+            raw = connection.connection
+            with raw.cursor() as cur:
+                cur.execute(
+                    "SELECT oid, typname FROM pg_type WHERE typname IN %s AND oid NOT IN %s",
+                    (("date", "time", "timestamp", "timestamptz"), _std_oids),
+                )
+                for oid, typname in cur.fetchall():
+                    loader = name2loader.get(typname)
+                    if loader is not None:
+                        psycopg.adapters.register_loader(oid, loader)  # 后续连接
+                        raw.adapters.register_loader(oid, loader)  # 当前连接立即生效
+        except Exception:
+            logger.exception("[KINGBASE] 动态发现 datetime OID 失败（已忽略，静态注册仍兜底）")
+
+    connection_created.connect(_discover_oids, dispatch_uid="kingbase_datetime_oids")
+    logger.info("[KINGBASE] psycopg3 Kingbase date/time/timestamp OID loaders registered (7944/7950/7954 + dynamic)")
