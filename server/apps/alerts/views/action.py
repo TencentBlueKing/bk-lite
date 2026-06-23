@@ -2,6 +2,7 @@
 告警处理动作回调视图
 
 ActionCallbackView: 接收 job_mgmt 回调，校验 HMAC-SHA256 签名后更新 ActionExecution 状态。
+ActionRuleViewSet: ActionRule 的 CRUD REST 视图集。
 """
 
 import logging
@@ -10,8 +11,10 @@ from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
-from apps.alerts.models.action import ActionExecution
+from apps.alerts.models.action import ActionExecution, ActionRule
+from apps.alerts.serializers.action import ActionRuleSerializer
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
+from config.drf.viewsets import ModelViewSet
 
 logger = logging.getLogger(__name__)
 
@@ -83,3 +86,23 @@ class ActionCallbackView(APIView):
             status_val,
         )
         return Response({"result": True})
+
+
+class ActionRuleViewSet(ModelViewSet):
+    """告警处理动作规则 CRUD 视图集。"""
+
+    queryset = ActionRule.objects.all().order_by("-id")
+    serializer_class = ActionRuleSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        name = self.request.query_params.get("name")
+        action_type = self.request.query_params.get("action_type")
+        is_active = self.request.query_params.get("is_active")
+        if name:
+            qs = qs.filter(name__icontains=name)
+        if action_type:
+            qs = qs.filter(action_type=action_type)
+        if is_active is not None:
+            qs = qs.filter(is_active=(is_active in ("true", "1", "True")))
+        return qs
