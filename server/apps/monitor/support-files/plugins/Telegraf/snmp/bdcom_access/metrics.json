@@ -1,0 +1,129 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_bdcom",
+  "plugin": "Access BDCOM SNMP",
+  "plugin_desc": "BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。",
+  "status_query": "any({instance_type='access', collect_type='snmp_bdcom'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-bdcom_bdcom",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "display_fields": [
+    {
+      "name": "System Uptime",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Access BDCOM SNMP",
+          "metric": "snmp_uptime"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Incoming Traffic Rate",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Access BDCOM SNMP",
+          "metric": "device_total_incoming_traffic"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Outgoing Traffic Rate",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Access BDCOM SNMP",
+          "metric": "device_total_outgoing_traffic"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='access', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart, derived from IF-MIB sysUpTime."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='access', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
+    }
+  ]
+}

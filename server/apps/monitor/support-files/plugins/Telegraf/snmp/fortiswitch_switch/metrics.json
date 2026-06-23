@@ -1,0 +1,108 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_fortiswitch",
+  "plugin": "Switch FortiSwitch SNMP",
+  "plugin_desc": "Fortinet FortiSwitch 交换机专用 SNMP 采集模板（FORTINET-FORTISWITCH-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiSwitch 私有 OID 的设备健康指标：CPU 使用率（fsSysCpuUsage，直接以百分比上报）与内存（fsSysMemUsage 已用 + fsSysMemCapacity 总量，KB，用量按 已用/总量 推导）。温度/风扇/电源仅通过类型混合的 ENTITY-SENSOR 表暴露，SNMP 采集端无法按行过滤，故为 N/A。适用品牌型号——Fortinet FortiSwitch 网管交换机（FortiSwitch 100/200/400/500/1000 系列，企业号 12356）。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_fortiswitch'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilisation of the FortiSwitch (FORTINET-FORTISWITCH-MIB fsSysCpuUsage)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_used",
+      "display_name": "内存已用",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Used memory of the FortiSwitch in bytes (fsSysMemUsage)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "sum(device_memory_total{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total memory of the FortiSwitch in bytes (fsSysMemCapacity)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the FortiSwitch, derived as used/total."
+    }
+  ]
+}

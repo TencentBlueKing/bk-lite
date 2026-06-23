@@ -1,0 +1,129 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_opengear",
+  "plugin": "ConsoleServer Opengear SNMP",
+  "plugin_desc": "Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。",
+  "status_query": "any({instance_type='console_server', collect_type='snmp_opengear'}) by (instance_id)",
+  "name": "ConsoleServer",
+  "icon": "mm-opengear_opengear",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='console_server'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "display_fields": [
+    {
+      "name": "System Uptime",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "ConsoleServer Opengear SNMP",
+          "metric": "snmp_uptime"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Incoming Traffic Rate",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "ConsoleServer Opengear SNMP",
+          "metric": "device_total_incoming_traffic"
+        }
+      ]
+    },
+    {
+      "name": "Device Total Outgoing Traffic Rate",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "ConsoleServer Opengear SNMP",
+          "metric": "device_total_outgoing_traffic"
+        }
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='console_server', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the wireless device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='console_server', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='console_server', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='console_server', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire wireless device over the past 5 minutes, summed across all interfaces from the 64-bit ifHCInOctets counter."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='console_server', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire wireless device over the past 5 minutes, summed across all interfaces from the 64-bit ifHCOutOctets counter."
+    }
+  ]
+}

@@ -1,0 +1,109 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_dcn",
+  "plugin": "Switch DCN SNMP",
+  "plugin_desc": "神州数码（DCN）交换机专用 SNMP 采集（DCN-MIB，IANA 私有企业号 6339）。在标准 IF-MIB 接口指标之外，额外采集 DCN 私有 OID 的设备健康指标：CPU 利用率（switchCpuUsage，直接百分比）与系统内存（switchMemorySize 总量 / switchMemoryBusy 已用，单位为字节）。内存利用率按 已用/总量 计算。DCN-MIB 的 switchInfo 系统表仅提供 CPU 与内存标量，不暴露温度/风扇/电源传感器，故这些维度不采集（N/A）。适用品牌型号——神州数码 DCN DCS/DCRS/CS 系列园区交换机。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_dcn'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the DCN switch control plane (DCN-MIB switchCpuUsage, a direct percent value), normalized to 0-100. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "device_memory_total{instance_type='switch', __$labels__}",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total size in bytes of the DCN switch system memory (DCN-MIB switchMemorySize, reported directly in bytes). Together with the used bytes it determines overall memory utilization."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "device_memory_used{instance_type='switch', __$labels__}",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the number of bytes currently in use by the DCN switch system memory (DCN-MIB switchMemoryBusy, reported directly in bytes). It helps administrators understand absolute memory consumption and identify when the device is under memory pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / sum(device_memory_total{instance_type='switch', __$labels__}) by (instance_id) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the DCN switch, computed as used / total * 100. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}
