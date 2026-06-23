@@ -13,7 +13,6 @@
     "instance_id"
   ],
   "supplementary_indicators": [
-    "snmp_uptime",
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
