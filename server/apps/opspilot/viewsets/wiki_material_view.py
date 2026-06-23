@@ -37,8 +37,9 @@ class WikiMaterialViewSet(AuthViewSet):
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         material = serializer.instance
-        # P1 首个增量:文本资料同步摄取(后续增量改为 Celery 异步 + 文件/网页解析)
-        if material.material_type == "text":
+        # 文本/文件资料创建后同步摄取(解析 + AI 摘要),前端上传即得结果,无需再手动点"解析";
+        # 网页资料需外网抓取、耗时不可控,仍走手动 ingest。(规模化后文件解析可改 Celery 异步)
+        if material.material_type in ("text", "file"):
             ingest_material(material, llm_model_id=material.knowledge_base.llm_model_id)
             serializer = self.get_serializer(material)
         log_operation(request, "create", "opspilot", f"新增资料: {material.name}")

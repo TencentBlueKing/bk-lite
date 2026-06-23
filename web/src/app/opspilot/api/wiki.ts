@@ -1,4 +1,5 @@
 import useApiClient from '@/utils/request';
+import { LlmModel } from '@/app/opspilot/types/skill';
 import {
   BuildRecord,
   CheckItem,
@@ -34,6 +35,9 @@ export const useWikiApi = () => {
   const deleteKnowledgeBase = (id: number): Promise<void> => del(`${BASE}/knowledge_base/${id}/`);
 
   const fetchTemplates = (): Promise<PurposeSchemaTemplate[]> => get(`${BASE}/knowledge_base/templates/`);
+
+  // 知识库需绑定 LLM 模型用于"资料摘要"与"页面构建";复用模型供应商列表接口
+  const fetchLlmModels = (): Promise<LlmModel[]> => get('/opspilot/model_provider_mgmt/llm/');
 
   const generatePurposeSchema = (data: {
     template_key?: string;
@@ -133,6 +137,7 @@ export const useWikiApi = () => {
     updateKnowledgeBase,
     deleteKnowledgeBase,
     fetchTemplates,
+    fetchLlmModels,
     generatePurposeSchema,
     search,
     qa,

@@ -251,12 +251,34 @@ def _llm_summarize(text, llm_model_id):
         return snippet[:500]
 
 
+def _ingest_failure_reason(material):
+    """text 为空时给出贴合实际的失败原因,区分:未上传文件 / 无法抽取 / 抓取失败 / 类型不支持。
+
+    旧实现统一返回"暂不支持的资料类型解析: file",会把"文件没传上来"误报成"类型不支持",误导排查。
+    """
+    mt = material.material_type
+    if mt == "file":
+        if not material.file:
+            return "文件资料未上传文件,无法解析"
+        ext = (os.path.splitext(getattr(material.file, "name", "") or material.name)[1] or "").lower()
+        if ext in _OCR_IMAGE_EXTS:
+            return "图片资料未能识别出文本,请在 OCR 设置中启用 OCR 后重试"
+        return "未能从文件中提取到文本(文件可能为空、损坏,或为需 OCR 的扫描件)"
+    if mt == "web":
+        if not material.url:
+            return "网页资料缺少 URL,无法解析"
+        return "未能抓取到网页正文(URL 不可达或页面无可提取内容)"
+    if mt == "text":
+        return "文本内容为空"
+    return f"暂不支持的资料类型: {mt}"
+
+
 def ingest_material(material, llm_model_id=None):
     """解析资料 + 生成摘要 + 更新状态。返回更新后的 material。"""
     text = extract_text(material)
     if not text:
         material.status = "failed"
-        material.error_message = f"暂不支持的资料类型解析: {material.material_type}"
+        material.error_message = _ingest_failure_reason(material)
         material.save(update_fields=["status", "error_message", "updated_at"])
         return material
     material.content_hash = compute_hash(text)
