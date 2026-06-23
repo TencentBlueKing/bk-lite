@@ -125,12 +125,14 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         />
       </Card>
       <Card title={t('wiki.strongestRelations')} size="small">
+        {/* scroll x:undefined 关闭 CustomTable 默认强制的横向滚动,列宽自适应容器,消除底部多余横向滚动条 */}
         <CustomTable<GraphEdge>
           rowKey={(e) => `${e.from}-${e.to}`}
           columns={edgeColumns}
           dataSource={strongest}
           pagination={false}
           size="small"
+          scroll={{ x: undefined }}
         />
       </Card>
     </Spin>

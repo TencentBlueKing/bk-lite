@@ -99,12 +99,14 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {t('wiki.scan')}
         </Button>
       </div>
+      {/* scroll x:undefined 关闭 CustomTable 默认强制的横向滚动,列宽自适应容器,消除底部多余横向滚动条 */}
       <CustomTable<CheckItem>
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={data}
         pagination={false}
+        scroll={{ x: undefined }}
       />
     </div>
   );

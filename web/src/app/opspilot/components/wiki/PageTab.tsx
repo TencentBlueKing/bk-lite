@@ -98,12 +98,14 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   return (
     <div>
+      {/* scroll x:undefined 关闭 CustomTable 默认强制的横向滚动,列宽自适应容器,消除底部多余横向滚动条 */}
       <CustomTable<KnowledgePage>
         rowKey="id"
         loading={loading}
         columns={columns}
         dataSource={data}
         pagination={false}
+        scroll={{ x: undefined }}
       />
       <Drawer title={active?.title} open={drawer} width={640} onClose={() => setDrawer(false)}>
         <pre className="whitespace-pre-wrap text-sm mb-4">{active?.body}</pre>
