@@ -73,10 +73,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
     async (name?: string) => {
       setScriptLoading(true);
       try {
-        const data = (await getActionJobScripts({ name })) as JobScript[];
-        setScriptOptions(
-          (data || []).map((s) => ({ value: s.id, label: s.name }))
-        );
+        // request.ts 已 unwrap 到 data；job_mgmt 列表分页返回 { items, count }
+        const res = (await getActionJobScripts({ name })) as unknown;
+        const list: JobScript[] = Array.isArray(res)
+          ? (res as JobScript[])
+          : ((res as { items?: JobScript[]; data?: JobScript[] })?.items ||
+             (res as { items?: JobScript[]; data?: JobScript[] })?.data ||
+             []);
+        setScriptOptions(list.map((s) => ({ value: s.id, label: s.name })));
       } catch {
         // ignore
       } finally {

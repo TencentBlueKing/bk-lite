@@ -161,7 +161,8 @@ const AlarmAction: React.FC<AlarmActionProps> = ({
     setRulesLoading(true);
     try {
       const res = await getActionRuleList({ action_type: 'job', is_active: true, page: 1, page_size: 100 });
-      setJobRules(Array.isArray(res?.results) ? res.results : Array.isArray(res) ? res : []);
+      // request.ts 的 handleResponse 已 unwrap 到 data，本应用分页返回 { items, count }
+      setJobRules(Array.isArray(res?.items) ? res.items : Array.isArray(res) ? res : []);
     } catch (err) {
       console.error(err);
       setJobRules([]);
