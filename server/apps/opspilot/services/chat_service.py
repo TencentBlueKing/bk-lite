@@ -280,10 +280,6 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
-        if kwargs.get("session_id"):
-            extra_config["session_id"] = kwargs["session_id"]
-        if kwargs.get("bot_id"):
-            extra_config["bot_id"] = kwargs["bot_id"]
 
         # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
         # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
@@ -373,6 +369,16 @@ class ChatService:
                 }
             )
 
+        if kwargs.get("matched_skill_packages") is not None:
+            extra_config.update(
+                {
+                    "matched_skill_packages": kwargs.get("matched_skill_packages") or [],
+                    "skill_package_capabilities": kwargs.get("skill_package_capabilities") or [],
+                    "skill_package_reports": kwargs.get("skill_package_reports") or {},
+                    "skill_package_workflows": kwargs.get("skill_package_workflows") or {},
+                }
+            )
+
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
         elif extra_config:
@@ -383,10 +389,6 @@ class ChatService:
                 extra_config["node_id"] = kwargs["node_id"]
             if kwargs.get("trigger_type"):
                 extra_config["trigger_type"] = kwargs["trigger_type"]
-            if kwargs.get("session_id"):
-                extra_config["session_id"] = kwargs["session_id"]
-            if kwargs.get("bot_id"):
-                extra_config["bot_id"] = kwargs["bot_id"]
             chat_kwargs.update({"extra_config": extra_config})
         return chat_kwargs, doc_map, title_map
 

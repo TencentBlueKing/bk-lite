@@ -56,6 +56,53 @@ def test_skill_packages_are_serialized_and_updatable():
     assert "skill_packages" in LLMViewSet.UPDATABLE_SKILL_FIELDS
 
 
+def test_apply_skill_packages_records_visible_match_summary(mocker):
+    """执行智能体时要把命中的技能包注入提示词，并保留可观测的命中摘要。"""
+    mocker.patch("apps.opspilot.viewsets.llm_view.hydrate_skill_packages", side_effect=lambda packages: packages)
+
+    viewset = LLMViewSet()
+    skill = SimpleNamespace(
+        skill_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "Kubernetes workload troubleshooting",
+                "required_tools": ["kubernetes"],
+                "triggers": ["异常工作负载"],
+                "capabilities": ["config_analysis_report", "repair_diff_report"],
+                "reports": {"config_analysis": {"source_tool": "analyze_deployment_configurations"}},
+                "workflows": {"after_config_analysis": [{"type": "choice"}]},
+                "skill_markdown": "Use workload troubleshooting workflow.",
+            }
+        ],
+    )
+    params = {
+        "skill_prompt": skill.skill_prompt,
+        "user_message": "查看当前 K8s 集群有哪些异常工作负载",
+        "tools": [{"name": "kubernetes"}],
+    }
+
+    viewset._apply_skill_packages_to_params(params, skill)
+
+    assert "已命中技能包：Kubernetes Specialist" in params["skill_prompt"]
+    assert params["matched_skill_packages"] == [
+        {
+            "id": "kubernetes-specialist",
+            "name": "Kubernetes Specialist",
+            "package_id": "kubernetes-specialist",
+            "description": "Kubernetes workload troubleshooting",
+            "missing_tools": [],
+            "capabilities": ["config_analysis_report", "repair_diff_report"],
+            "reports": {"config_analysis": {"source_tool": "analyze_deployment_configurations"}},
+            "workflows": {"after_config_analysis": [{"type": "choice"}]},
+        }
+    ]
+    assert params["skill_package_capabilities"] == ["config_analysis_report", "repair_diff_report"]
+    assert params["skill_package_reports"] == {"config_analysis": {"source_tool": "analyze_deployment_configurations"}}
+    assert params["skill_package_workflows"] == {"after_config_analysis": [{"type": "choice"}]}
+
+
 class _FakeSkill:
     """最小化的 LLMSkill 替身：仅暴露白名单可能写入的属性与受保护字段。"""
 

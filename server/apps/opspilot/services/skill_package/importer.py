@@ -39,15 +39,21 @@ class SkillPackageImporter:
         with zipfile.ZipFile(archive_path) as archive:
             members = [item for item in archive.infolist() if not item.is_dir()]
             self._validate_members(members)
-            manifest_member = self._find_required_member(members, "skill.yaml")
             skill_doc_member = self._find_required_member(members, "SKILL.md")
+            package_root = PurePosixPath(skill_doc_member).parent
+            manifest_member = self._find_optional_member(members, "skill.yaml", package_root)
 
-            manifest = self._load_manifest(archive.read(manifest_member).decode("utf-8"))
             skill_markdown = archive.read(skill_doc_member).decode("utf-8")
-            skill_id = self._sanitize_id(str(manifest.get("id") or manifest.get("name") or "skill-package"))
+            frontmatter, skill_body = self._split_frontmatter(skill_markdown)
+            if manifest_member:
+                manifest = self._load_manifest(archive.read(manifest_member).decode("utf-8"), source="skill.yaml")
+            else:
+                manifest = self._load_manifest(frontmatter, source="SKILL.md frontmatter") if frontmatter else {}
+
+            inferred_id = package_root.name if package_root != PurePosixPath(".") else archive_path.stem
+            skill_id = self._sanitize_id(str(manifest.get("id") or manifest.get("name") or inferred_id))
             version = self._sanitize_version(str(manifest.get("version") or "0.1.0"))
 
-            package_root = PurePosixPath(manifest_member).parent
             storage_path = self.storage_root / organization_id / skill_id / version
             extracted_path = storage_path / "extracted"
             if storage_path.exists():
@@ -65,7 +71,7 @@ class SkillPackageImporter:
 
         return SkillPackageImportResult(
             skill_id=skill_id,
-            name=str(manifest.get("name") or skill_id),
+            name=str(manifest.get("name") or self._extract_markdown_title(skill_body) or skill_id),
             version=version,
             description=str(manifest.get("description") or ""),
             category=str(manifest.get("category") or ""),
@@ -73,7 +79,7 @@ class SkillPackageImporter:
             triggers=self._string_list(manifest.get("triggers")),
             storage_path=storage_path,
             manifest=manifest,
-            skill_markdown=skill_markdown,
+            skill_markdown=skill_body,
         )
 
     @staticmethod
@@ -84,13 +90,45 @@ class SkillPackageImporter:
         return sorted(matches, key=lambda value: (len(PurePosixPath(value).parts), value))[0]
 
     @staticmethod
-    def _load_manifest(content: str) -> dict[str, Any]:
+    def _find_optional_member(
+        members: list[zipfile.ZipInfo],
+        filename: str,
+        package_root: PurePosixPath,
+    ) -> str | None:
+        matches = [
+            item.filename
+            for item in members
+            if PurePosixPath(item.filename).name == filename and PurePosixPath(item.filename).parent == package_root
+        ]
+        if not matches:
+            return None
+        return sorted(matches)[0]
+
+    @staticmethod
+    def _load_manifest(content: str, source: str) -> dict[str, Any]:
         manifest = yaml.safe_load(content) or {}
         if not isinstance(manifest, dict):
-            raise ValueError("skill.yaml 必须是对象结构")
+            raise ValueError(f"{source} 必须是对象结构")
         if manifest.get("runtime", {}).get("execute_code"):
             raise ValueError("技能包第一版不允许执行代码")
         return manifest
+
+    @staticmethod
+    def _split_frontmatter(markdown: str) -> tuple[str, str]:
+        if not markdown.startswith("---"):
+            return "", markdown
+        match = re.match(r"^---\s*\n(.*?)\n---\s*(?:\n|$)(.*)$", markdown, re.DOTALL)
+        if not match:
+            return "", markdown
+        return match.group(1), match.group(2).lstrip()
+
+    @staticmethod
+    def _extract_markdown_title(markdown: str) -> str:
+        for line in markdown.splitlines():
+            match = re.match(r"^#\s+(.+?)\s*$", line)
+            if match:
+                return match.group(1)
+        return ""
 
     @staticmethod
     def _validate_members(members: list[zipfile.ZipInfo]) -> None:

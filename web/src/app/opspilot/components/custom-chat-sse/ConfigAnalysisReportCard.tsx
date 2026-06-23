@@ -162,6 +162,8 @@ const normalizeSection = (section: unknown, index: number): NormalizedSection | 
 };
 
 const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ report }) => {
+  const a2uiComponent = report.a2ui?.component || 'config-analysis-report';
+  const a2uiVersion = report.a2ui?.version || 'legacy';
   const severitySections = Array.isArray(report.severity_sections)
     ? report.severity_sections
       .map(normalizeSection)
@@ -194,7 +196,12 @@ const ConfigAnalysisReportCard: React.FC<ConfigAnalysisReportCardProps> = ({ rep
   const scanRangeEnd = hasScanRange ? report.scan_range!.offset! + report.scan_range!.limit! : null;
 
   return (
-    <section className="mt-3 w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+    <section
+      className="mt-3 w-full max-w-full overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+      data-a2ui-component={a2uiComponent}
+      data-a2ui-version={a2uiVersion}
+      data-a2ui-event={report.a2ui?.event_name || 'config_analysis_report'}
+    >
       <header className="border-b border-slate-200 bg-gradient-to-r from-sky-50 via-white to-white px-4 py-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-full bg-sky-100 px-2.5 py-1 text-xs font-medium text-sky-700">

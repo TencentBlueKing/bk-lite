@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Tag, Input, Select, Empty, Dropdown, Upload } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Input, Empty, Upload, Space } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
@@ -21,11 +21,10 @@ import Icon from '@/components/icon';
 
 const ToolListPage: React.FC = () => {
   const { useForm } = Form;
-  const { TextArea } = Input;
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
   const { fetchTools, createTool, updateTool, deleteTool, fetchAvailableTools } = useToolApi();
-  const { fetchSkillPackages, importSkillPackageZip, updateSkillPackage, deleteSkillPackage } = useSkillApi();
+  const { fetchSkillPackages, importSkillPackageZip, deleteSkillPackage } = useSkillApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
@@ -37,23 +36,20 @@ const ToolListPage: React.FC = () => {
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [fetchingTools, setFetchingTools] = useState<boolean>(false);
   const [enableAuth, setEnableAuth] = useState<boolean>(false);
-  const [assetView, setAssetView] = useState<'tools' | 'skills'>('tools');
+  const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('builtin');
   const [skillAssets, setSkillAssets] = useState<SkillPackage[]>([]);
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
-  const [selectedSkillCategory, setSelectedSkillCategory] = useState<string>('all');
-  const [isAddSkillModalVisible, setIsAddSkillModalVisible] = useState(false);
+  const [hoveredSkillAssetKey, setHoveredSkillAssetKey] = useState<string | null>(null);
   const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
-  const [editingSkillAsset, setEditingSkillAsset] = useState<SkillPackage | null>(null);
   const [skillPackageFileList, setSkillPackageFileList] = useState<UploadFile[]>([]);
 
   const iconTypes = ['yinliugongju-biaotiyouhua', 'yinliugongju-biaotifenxi', 'yinliugongju-dijiayinliu', 'gongjuqu', 'gongjuxiang', 'gongju1'];
-  
+
   const getRandomIcon = () => {
     return iconTypes[Math.floor(Math.random() * iconTypes.length)];
   };
 
   const [form] = useForm();
-  const [addSkillForm] = useForm();
 
   const handleFetchTools = async () => {
     const url = form.getFieldValue('url');
@@ -61,7 +57,7 @@ const ToolListPage: React.FC = () => {
       message.warning(`${t('common.inputMsg')}${t('tool.mcpUrl')}`);
       return;
     }
-    
+
     setFetchingTools(true);
     try {
       const enable_auth = form.getFieldValue('enable_auth') || false;
@@ -82,7 +78,7 @@ const ToolListPage: React.FC = () => {
 
   const renderToolsList = (tools: any[]) => {
     return tools.map((tool: any, index: number) => (
-      <div 
+      <div
         key={index}
         className="p-3 bg-gradient-to-br from-[var(--color-fill-1)] to-[var(--color-primary-bg-active)] rounded-lg hover:shadow-md transition-all duration-200"
       >
@@ -96,9 +92,9 @@ const ToolListPage: React.FC = () => {
                 {tool.name}
               </div>
             </Tooltip>
-            <Tooltip 
-              title={<div style={{ maxHeight: 300, overflowY: 'auto' }}>{tool.description || t('common.noData')}</div>} 
-              placement="topLeft" 
+            <Tooltip
+              title={<div style={{ maxHeight: 300, overflowY: 'auto' }}>{tool.description || t('common.noData')}</div>}
+              placement="topLeft"
               overlayStyle={{ maxWidth: 500 }}
             >
               <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
@@ -156,7 +152,7 @@ const ToolListPage: React.FC = () => {
       type: 'custom',
       label: t('tool.mcpUrl'),
       component: (
-        <UrlInputWithButton 
+        <UrlInputWithButton
           disabled={isBuiltIn}
           placeholder={`${t('common.inputMsg')}${t('tool.mcpUrl')}`}
           onFetch={handleFetchTools}
@@ -174,7 +170,7 @@ const ToolListPage: React.FC = () => {
         className: '-mt-3',
         component: (
           <div className="flex items-center gap-2 -mb-6">
-            <Switch 
+            <Switch
               size="small"
               checked={enableAuth}
               onChange={(checked) => {
@@ -257,12 +253,13 @@ const ToolListPage: React.FC = () => {
     setLoading(true);
     try {
       const data = await fetchTools();
-      const uniqueTags = Array.from(new Set(data.flatMap((tool: any) => tool.tags))) as string[];
+      const uniqueTags = Array.from(
+        new Set(data.filter((tool: any) => !tool.is_build_in).flatMap((tool: any) => tool.tags))
+      ) as string[];
       setAllTags(uniqueTags.map((tag: string) => ({ value: tag, label: t(`tool.${tag}`) })));
 
       const tools = data.map((tool: any) => ({
         ...tool,
-        // 内置工具的 name 是 ID 式名称，展示用翻译后的 display_name（自定义工具回退为 name）
         display_name: tool.display_name || tool.name,
         description: tool.description_tr,
         icon: tool.icon || 'gongjuji',
@@ -271,7 +268,7 @@ const ToolListPage: React.FC = () => {
       }));
 
       setToolData(tools);
-      setFilteredToolData(tools);
+      setFilteredToolData(tools.filter((tool: Tool) => !tool.is_build_in));
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
     } finally {
@@ -288,7 +285,7 @@ const ToolListPage: React.FC = () => {
           message.error(`${t('common.inputMsg')}Token`);
           return;
         }
-        
+
         try {
           setConfirmLoading(true);
           const kwargs = (values.variables || []).map((variable: { key: string; type: string; isRequired: boolean }) => ({
@@ -348,14 +345,14 @@ const ToolListPage: React.FC = () => {
     return (
       <Menu className={`${styles.menuContainer}`}>
         <Menu.Item key="edit">
-          <PermissionWrapper 
+          <PermissionWrapper
             requiredPermissions={['Edit']}
             instPermissions={tool.permissions}>
             <span className="block w-full" onClick={() => showModal(tool)}>{t('common.edit')}</span>
           </PermissionWrapper>
         </Menu.Item>
         {!tool.is_build_in && (<Menu.Item key="delete">
-          <PermissionWrapper 
+          <PermissionWrapper
             requiredPermissions={['Delete']}
             instPermissions={tool.permissions}>
             <span className="block w-full" onClick={() => handleDelete(tool)}>{t('common.delete')}</span>
@@ -379,8 +376,8 @@ const ToolListPage: React.FC = () => {
       setEnableAuth(enableAuthValue);
       // 编辑时：如果 params 存在，transport 默认为 sse（兼容旧数据）
       // 新增时：transport 默认为 streamable_http
-      const transportValue = tool?.params 
-        ? (tool.params.transport || 'sse') 
+      const transportValue = tool?.params
+        ? (tool.params.transport || 'sse')
         : 'streamable_http';
       form.setFieldsValue({
         ...tool,
@@ -410,10 +407,11 @@ const ToolListPage: React.FC = () => {
   }
 
   const changeFilter = (selectedTags: string[]) => {
+    const externalTools = toolData.filter((tool) => !tool.is_build_in);
     if (selectedTags.length === 0) {
-      setFilteredToolData(toolData);
+      setFilteredToolData(externalTools);
     } else {
-      const filteredData = toolData.filter((tool) =>
+      const filteredData = externalTools.filter((tool) =>
         tool.tags.some((tag: string) => selectedTags.includes(tag))
       );
       setFilteredToolData(filteredData);
@@ -424,10 +422,8 @@ const ToolListPage: React.FC = () => {
     setSelectedToolForDetail(tool);
   };
 
-  const skillCategoryOptions = Array.from(new Set(skillAssets.map((asset) => asset.category).filter(Boolean))) as string[];
   const filteredSkillAssets = skillAssets.filter((asset) => {
     const keyword = skillSearchKeyword.trim().toLowerCase();
-    const matchesCategory = selectedSkillCategory === 'all' || asset.category === selectedSkillCategory;
     const matchesKeyword = !keyword || [
       asset.name,
       asset.package_id,
@@ -436,36 +432,13 @@ const ToolListPage: React.FC = () => {
       (asset.required_tools || []).join(' '),
       (asset.triggers || []).join(' '),
     ].some((value) => value.toLowerCase().includes(keyword));
-    return matchesCategory && matchesKeyword;
+    return matchesKeyword;
   });
-
-  const splitInput = (value?: string) => (value || '')
-    .split(/[,，\n]/)
-    .map((item) => item.trim())
-    .filter(Boolean);
-
-  const handleAddSkillOk = async () => {
-    const values = await addSkillForm.validateFields();
-    if (!editingSkillAsset) return;
-    await updateSkillPackage(editingSkillAsset.id, {
-      name: values.name,
-      category: values.category,
-      description: values.description,
-      required_tools: splitInput(values.recommendedTools),
-      triggers: splitInput(values.triggers),
-      is_enabled: values.is_enabled,
-    });
-    await fetchSkillPackageData();
-    addSkillForm.resetFields();
-    setEditingSkillAsset(null);
-    setIsAddSkillModalVisible(false);
-    message.success('技能包已更新');
-  };
 
   const handleImportSkillOk = async () => {
     const file = (skillPackageFileList[0]?.originFileObj || skillPackageFileList[0]) as File | undefined;
     if (!file) {
-      message.warning('请选择包含 skill.yaml 和 SKILL.md 的 ZIP 技能包');
+      message.warning('请选择包含 SKILL.md 的 ZIP 技能包');
       return;
     }
     await importSkillPackageZip(file);
@@ -473,21 +446,6 @@ const ToolListPage: React.FC = () => {
     setSkillPackageFileList([]);
     setIsImportSkillModalVisible(false);
     message.success('技能包已导入');
-  };
-
-  const handleEditSkillAsset = (asset: SkillPackage) => {
-    setEditingSkillAsset(asset);
-    setIsAddSkillModalVisible(true);
-    Promise.resolve().then(() => {
-      addSkillForm.setFieldsValue({
-        name: asset.name,
-        category: asset.category,
-        recommendedTools: (asset.required_tools || []).join(', '),
-        description: asset.description,
-        triggers: (asset.triggers || []).join('\n'),
-        is_enabled: asset.is_enabled !== false,
-      });
-    });
   };
 
   const handleDeleteSkillAsset = (asset: SkillPackage) => {
@@ -502,56 +460,33 @@ const ToolListPage: React.FC = () => {
     });
   };
 
-  const renderSkillCardMenu = (asset: SkillPackage) => (
-    <Menu className={`${styles.menuContainer}`}>
-      <Menu.Item key="edit">
-        <span className="block w-full" onClick={() => handleEditSkillAsset(asset)}>编辑</span>
-      </Menu.Item>
-      <Menu.Item key="delete">
-        <span className="block w-full text-red-500" onClick={() => handleDeleteSkillAsset(asset)}>删除</span>
-      </Menu.Item>
-    </Menu>
-  );
-
   const renderAssetSwitcher = () => (
     <Segmented
       value={assetView}
-      onChange={(value) => setAssetView(value as 'tools' | 'skills')}
+      onChange={(value) => setAssetView(value as 'builtin' | 'mcp' | 'skills')}
       options={[
-        { label: '工具列表', value: 'tools' },
-        { label: '技能列表', value: 'skills' },
+        { label: '内置', value: 'builtin' },
+        { label: 'MCP', value: 'mcp' },
+        { label: '技能', value: 'skills' },
       ]}
     />
   );
 
   const renderSkillAssetControls = () => (
     <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
-      <Select
-        value={selectedSkillCategory}
-        className="w-40"
-        onChange={setSelectedSkillCategory}
-        options={[
-          { value: 'all', label: '技能类型' },
-          ...skillCategoryOptions.map((category) => ({ value: category, label: category })),
-        ]}
-      />
-      <Input.Search
-        value={skillSearchKeyword}
-        onChange={(event) => setSkillSearchKeyword(event.target.value)}
-        placeholder="搜索技能名称或说明"
-        allowClear
-        className="w-64"
-      />
+      <Space.Compact>
+        <Input.Search
+          value={skillSearchKeyword}
+          onChange={(event) => setSkillSearchKeyword(event.target.value)}
+          onSearch={setSkillSearchKeyword}
+          placeholder="搜索技能名称或说明"
+          allowClear
+          enterButton
+          size="middle"
+          className="w-60"
+        />
+      </Space.Compact>
       <Button onClick={() => setIsImportSkillModalVisible(true)}>导入技能包</Button>
-      <Button
-        type="primary"
-        onClick={() => {
-          setSkillPackageFileList([]);
-          setIsImportSkillModalVisible(true);
-        }}
-      >
-        新增技能包
-      </Button>
     </div>
   );
 
@@ -565,53 +500,61 @@ const ToolListPage: React.FC = () => {
   );
 
   const renderSkillAssetView = () => (
-    <div className="mx-auto max-w-[1440px]" aria-label="技能资产">
+    <div className="w-full" aria-label="技能资产">
       {renderSkillAssetToolbar()}
-      <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)] p-5">
-        {filteredSkillAssets.length ? (
-          <div className="grid grid-cols-[repeat(auto-fit,minmax(220px,1fr))] gap-3 xl:grid-cols-4">
-            {filteredSkillAssets.map((asset, index) => (
+      {filteredSkillAssets.length ? (
+        <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
+          {filteredSkillAssets.map((asset) => {
+            const skillAssetKey = `${asset.package_id}:${asset.version}`;
+
+            return (
               <div
-                key={`${asset.package_id}:${asset.version}`}
-                className={`min-h-[172px] rounded-lg border p-4 transition-colors hover:border-[var(--color-primary)] ${index === 0 ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]' : 'border-[var(--color-border)] bg-[var(--color-bg-1)]'}`}
+                key={skillAssetKey}
+                className="p-4 rounded-xl relative shadow-md flex h-[168px] flex-col border border-[var(--color-border)] bg-[var(--color-bg)] transition-all hover:border-[var(--color-primary)] hover:shadow-lg"
+                onMouseEnter={() => setHoveredSkillAssetKey(skillAssetKey)}
+                onMouseLeave={() => setHoveredSkillAssetKey((current) => (current === skillAssetKey ? null : current))}
               >
-                <div className="flex items-start justify-between gap-2">
-                  <div className="flex min-w-0 items-start gap-2.5">
-                    <span className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-md border border-[var(--color-primary)] bg-[var(--color-bg-1)] text-base font-semibold text-[var(--color-primary)]">
-                      {asset.name.slice(0, 1)}
-                    </span>
-                    <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-1.5">
-                        <span className="text-sm font-semibold text-[var(--color-text-1)]">{asset.name}</span>
-                      </div>
-                      <div className="mt-1 text-xs text-[var(--color-text-3)]">{asset.category}</div>
-                    </div>
+                <div className="relative flex items-center pr-8">
+                  <div className="shrink-0">
+                    <Icon type="jinengpeixun" className="text-4xl" />
                   </div>
-                  <Dropdown overlay={renderSkillCardMenu(asset) as React.ReactElement} trigger={['click']} placement="bottomRight">
-                    <span className="cursor-pointer text-xl leading-none text-[var(--color-text-3)]">⋮</span>
-                  </Dropdown>
+                  <div className="ml-3 min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-[var(--color-text-1)]">{asset.name}</h3>
+                    <div className="mt-1 truncate text-xs text-[var(--color-text-3)]">{asset.category}</div>
+                  </div>
+                  {hoveredSkillAssetKey === skillAssetKey && (
+                    <Tooltip title="删除">
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        className="absolute right-0 top-1/2 -translate-y-1/2"
+                        icon={<Icon type="shanchu" className="text-base" />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteSkillAsset(asset);
+                        }}
+                      />
+                    </Tooltip>
+                  )}
                 </div>
-                <p className="mt-3 line-clamp-2 min-h-12 text-sm leading-6 text-[var(--color-text-2)]">{asset.description}</p>
-                <div className="mt-3 flex flex-wrap gap-1.5">
-                  <Tag color={asset.source_type === 'builtin' ? 'blue' : 'default'}>{asset.source_type === 'builtin' ? '内置' : '导入'}</Tag>
-                  {asset.triggers?.slice(0, 2).map((tag) => (
-                    <Tag key={tag} color="green">{tag}</Tag>
-                  ))}
-                </div>
-                <div className="mt-3 flex flex-wrap items-center gap-1.5 text-xs leading-6 text-[var(--color-text-3)]">
-                  <span className="font-medium">工具</span>
-                  {(asset.required_tools || []).slice(0, 2).map((toolName) => (
-                    <Tag key={toolName} color="green">{toolName}</Tag>
-                  ))}
-                  {(asset.required_tools || []).length > 2 && <Tag>+{(asset.required_tools || []).length - 2}</Tag>}
-                </div>
+                <p
+                  className="mt-3 max-h-[72px] overflow-hidden text-sm leading-6 text-[var(--color-text-3)]"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitBoxOrient: 'vertical',
+                    WebkitLineClamp: 3,
+                  }}
+                >
+                  {asset.description}
+                </p>
               </div>
-            ))}
-          </div>
-        ) : (
-          <Empty description="没有匹配的技能" />
-        )}
-      </div>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty description="没有匹配的技能" />
+      )}
     </div>
   );
 
@@ -619,18 +562,24 @@ const ToolListPage: React.FC = () => {
     <div className="w-full h-full">
       {assetView === 'skills' ? renderSkillAssetView() : (
         <EntityList<Tool>
-          data={filteredToolData}
+          data={assetView === 'builtin' ? toolData.filter((tool) => tool.is_build_in) : filteredToolData}
           nameField="display_name"
+          showBuiltinTag={false}
           loading={loading}
-          menuActions={menuActions}
-          operateSection={
+          menuActions={assetView === 'mcp' ? menuActions : undefined}
+          singleActionType="button"
+          singleAction={assetView === 'builtin' ? () => ({
+            text: t('common.edit'),
+            onClick: showModal,
+          }) : undefined}
+          operateSection={assetView === 'mcp' ? (
             <PermissionWrapper requiredPermissions={['Add']}>
               <Button type="primary" className="ml-2" onClick={() => showModal(null)}>
                 {t('common.add')}
               </Button>
             </PermissionWrapper>
-          }
-          filter={true}
+          ) : undefined}
+          filter={assetView === 'mcp'}
           filterLoading={loading}
           filterOptions={allTags}
           toolbarPrefix={renderAssetSwitcher()}
@@ -693,45 +642,6 @@ const ToolListPage: React.FC = () => {
         </div>
       </OperateModal>
       <Modal
-        title="编辑技能包"
-        open={isAddSkillModalVisible}
-        onOk={handleAddSkillOk}
-        onCancel={() => {
-          setIsAddSkillModalVisible(false);
-          setEditingSkillAsset(null);
-          addSkillForm.resetFields();
-        }}
-        okText="保存修改"
-        cancelText="取消"
-        width={720}
-      >
-        <Form
-          form={addSkillForm}
-          layout="vertical"
-          initialValues={{ is_enabled: true }}
-        >
-          <Form.Item name="name" label="技能名称" rules={[{ required: true, message: '请输入技能名称' }]}>
-            <Input placeholder="例如：RCA 复盘" />
-          </Form.Item>
-          <Form.Item name="category" label="技能类型" rules={[{ required: true, message: '请输入技能类型' }]}>
-            <Input placeholder="例如：Kubernetes / 异常诊断" />
-          </Form.Item>
-          <Form.Item name="recommendedTools" label="推荐工具" rules={[{ required: true, message: '请输入推荐工具' }]}>
-            <Input placeholder="多个工具用逗号分隔，例如：kubernetes, 日志查询工具" />
-          </Form.Item>
-          <Form.Item name="description" label="技能简介" rules={[{ required: true, message: '请输入技能简介' }]}>
-            <TextArea rows={3} placeholder="说明这个技能解决什么问题、适合什么场景" />
-          </Form.Item>
-          <Form.Item name="triggers" label="触发词">
-            <TextArea rows={3} placeholder="每行一个触发词，例如：RCA、复盘、根因分析" />
-          </Form.Item>
-          <Form.Item name="is_enabled" valuePropName="checked">
-            <Switch size="small" />
-            <span className="ml-2 text-sm text-[var(--color-text-2)]">启用技能包</span>
-          </Form.Item>
-        </Form>
-      </Modal>
-      <Modal
         title="导入技能包"
         open={isImportSkillModalVisible}
         onOk={handleImportSkillOk}
@@ -745,7 +655,7 @@ const ToolListPage: React.FC = () => {
       >
         <div>
           <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3 text-sm leading-6 text-[var(--color-text-2)]">
-            上传 ZIP 技能包。包内必须包含 <code>skill.yaml</code> 和 <code>SKILL.md</code>，可选 <code>references/</code>、<code>templates/</code> 等目录。后端会校验路径穿越和危险执行配置，并保存到 server/.skill 运行时目录。
+            上传 ZIP 技能包。包内必须包含 <code>SKILL.md</code>，可选 <code>skill.yaml</code>、<code>references/</code>、<code>templates/</code> 等目录。没有 <code>skill.yaml</code> 时会读取 <code>SKILL.md</code> 顶部 YAML frontmatter，或从标题和目录名推导基础信息。
           </div>
           <Upload.Dragger
             accept=".zip"
@@ -765,7 +675,7 @@ const ToolListPage: React.FC = () => {
         </div>
       </Modal>
       <Drawer
-        title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.display_name || selectedToolForDetail.name}` : t('common.viewDetails')}
+        title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.name}` : t('common.viewDetails')}
         placement="right"
         onClose={() => setSelectedToolForDetail(null)}
         open={!!selectedToolForDetail}
@@ -784,7 +694,7 @@ const ToolListPage: React.FC = () => {
                 </div>
               </div>
             </div>
-            
+
             {selectedToolForDetail.tools && selectedToolForDetail.tools.length > 0 && (
               <div>
                 <div className="mb-3 flex items-center justify-between">

@@ -16,6 +16,7 @@ import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import { DeleteOutlined } from '@ant-design/icons';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -23,18 +24,6 @@ const { TextArea } = Input;
 const getPackageKey = (pkg: SkillPackage) => String(pkg.id || `${pkg.package_id}:${pkg.version}`);
 
 const getPackageRequiredTools = (pkg: SkillPackage) => pkg.required_tools || [];
-
-const getPackageTriggers = (pkg: SkillPackage) => pkg.triggers || [];
-
-const getPackageExamples = (pkg: SkillPackage) => {
-  const manifest = (pkg.manifest || {}) as Record<string, any>;
-  return Array.isArray(manifest.examples) ? manifest.examples.map(String) : [];
-};
-
-const getPackageBoundaries = (pkg: SkillPackage) => {
-  const manifest = (pkg.manifest || {}) as Record<string, any>;
-  return Array.isArray(manifest.boundaries) ? manifest.boundaries.map(String) : [];
-};
 
 const SkillSettingsPage: React.FC = () => {
   const [form] = Form.useForm();
@@ -47,7 +36,6 @@ const SkillSettingsPage: React.FC = () => {
 
   const [temperature, setTemperature] = useState(0.7);
   const [initialMessages] = useState<any[]>([]); // 稳定的空数组引用
-  const promptText = Form.useWatch('prompt', form) || '';
 
   const [chatHistoryEnabled, setChatHistoryEnabled] = useState(true);
   const [ragEnabled, setRagEnabled] = useState(true);
@@ -384,15 +372,6 @@ const SkillSettingsPage: React.FC = () => {
       .map((key) => availableSkillAssets.find((pkg) => getPackageKey(pkg) === key))
       .filter((asset): asset is SkillPackage => !!asset);
   }, [availableSkillAssets, selectedSkillAssetKeys]);
-  const selectedToolNames = selectedTools.map((tool: any) => String(tool.rawName || tool.name || '').toLowerCase());
-  const dependencyStatus = Array.from(new Set(effectiveSkillCapabilityProfiles.flatMap((asset) => getPackageRequiredTools(asset)))).map((toolName) => ({
-    name: toolName,
-    bound: selectedToolNames.includes(toolName.toLowerCase()),
-  }));
-  const missingDependencies = dependencyStatus.filter((item) => !item.bound);
-  const missingDependencyCount = missingDependencies.length;
-  const selectedSkillDescriptions = effectiveSkillCapabilityProfiles.map((asset) => asset.description).join('；');
-  const selectedSkillBoundaries = Array.from(new Set(effectiveSkillCapabilityProfiles.flatMap((asset) => getPackageBoundaries(asset))));
   const filteredAvailableSkillAssets = useMemo(() => {
     const keyword = skillPickerKeyword.trim().toLowerCase();
     if (!keyword) return availableSkillAssets;
@@ -431,74 +410,36 @@ const SkillSettingsPage: React.FC = () => {
     });
   };
 
-  const renderSelectedSkillCards = () => (
-    <div className="space-y-3">
-      {effectiveSkillCapabilityProfiles.map((asset) => {
-        const assetKey = getPackageKey(asset);
-        const canRemove = selectedSkillAssetKeys.includes(assetKey);
-        return (
-          <div
-            key={assetKey}
-            className="rounded-lg border border-[var(--color-primary-border)] bg-[var(--color-primary-bg)] p-4"
-          >
-            <div className="flex items-start gap-3">
-              <span className="mt-1 inline-flex h-5 w-5 flex-shrink-0 items-center justify-center rounded bg-[var(--color-primary)] text-xs font-semibold text-white">
-                ✓
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-start justify-between gap-2">
-                  <div>
-                    <div className="text-sm font-semibold text-[var(--color-text-1)]">{asset.name}</div>
-                    <div className="mt-1 text-xs text-[var(--color-text-3)]">{asset.category}</div>
-                  </div>
-                  <div className="flex flex-wrap justify-end gap-1.5">
-                    {getPackageRequiredTools(asset).slice(0, 2).map((toolName) => (
-                      <Tag key={toolName} color="blue" className="m-0">
-                        {toolName}
-                      </Tag>
-                    ))}
-                    {getPackageRequiredTools(asset).length > 2 && (
-                      <Tag className="m-0">+{getPackageRequiredTools(asset).length - 2}</Tag>
-                    )}
-                  </div>
-                </div>
-                <p className="mt-2 text-xs leading-5 text-[var(--color-text-2)]">
-                  {asset.description}
-                </p>
-              </div>
-              {canRemove && (
-                <Button
-                  type="text"
-                  size="small"
-                  onClick={() => handleRemoveSkillAsset(assetKey)}
-                >
-                  移除
-                </Button>
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-
-  const renderSelectedSkillSummary = () => (
-    <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-bg-1)]">
-      <div className="flex items-center justify-between gap-3 border-b border-[var(--color-border)] px-4 py-3">
-        <div>
-          <div className="text-sm font-semibold text-[var(--color-text-1)]">技能与工具</div>
-          <p className="mt-1 text-xs leading-5 text-[var(--color-text-3)]">
-            {selectedSkillDescriptions || '未添加技能时，智能体只使用基础提示词和已绑定工具。'}
-          </p>
-        </div>
-        <Button type="primary" ghost onClick={openSkillPicker}>
-          + 添加技能
-        </Button>
+  const renderSkillPackageSelector = () => (
+    <div className={`p-4 rounded-md pb-4 ${styles.contentWrapper}`}>
+      <div className="flex justify-between">
+        <h3 className="font-medium text-sm mb-4">技能包</h3>
+        <Button onClick={openSkillPicker}>+ 添加</Button>
       </div>
-      <div className="p-4">
-        {renderSelectedSkillCards()}
-        {effectiveSkillCapabilityProfiles.length === 0 && (
-          <Empty className="py-4" description="尚未添加技能，测试时不会注入技能包说明" />
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {effectiveSkillCapabilityProfiles.length === 0 ? (
+          <span className="col-span-full text-xs text-[var(--color-text-4)]">未选择</span>
+        ) : (
+          effectiveSkillCapabilityProfiles.map((asset) => {
+            const assetKey = getPackageKey(asset);
+            return (
+              <div
+                key={assetKey}
+                className="flex min-h-[58px] items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-3"
+              >
+                <div className="flex min-w-0 items-center gap-3">
+                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-primary-bg)] text-sm font-semibold text-[var(--color-primary)]">
+                    {(asset.name || 'S').slice(0, 1).toUpperCase()}
+                  </span>
+                  <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{asset.name}</span>
+                </div>
+                <DeleteOutlined
+                  className="ml-3 cursor-pointer text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+                  onClick={() => handleRemoveSkillAsset(assetKey)}
+                />
+              </div>
+            );
+          })
         )}
       </div>
     </div>
@@ -506,24 +447,26 @@ const SkillSettingsPage: React.FC = () => {
 
   const renderSkillPickerModal = () => (
     <Modal
-      title="添加技能"
+      title="选择技能包"
       open={isSkillPickerOpen}
       onOk={handleConfirmSkillPicker}
       onCancel={() => setIsSkillPickerOpen(false)}
-      okText="确认添加"
+      okText="确认选择"
       cancelText="取消"
-      width={720}
+      width={640}
     >
       <Input.Search
         allowClear
         className="mb-3"
-        placeholder="搜索技能名称、类型、说明或依赖工具"
+        placeholder="搜索技能包"
         value={skillPickerKeyword}
         onChange={(event) => setSkillPickerKeyword(event.target.value)}
       />
-      <div className="max-h-[420px] space-y-2 overflow-y-auto pr-1">
+      <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
         {filteredAvailableSkillAssets.length === 0 ? (
-          <Empty description="没有匹配的技能" />
+          <div className="col-span-full">
+            <Empty description="没有匹配的技能包" />
+          </div>
         ) : (
           filteredAvailableSkillAssets.map((asset) => {
             const assetKey = getPackageKey(asset);
@@ -531,36 +474,31 @@ const SkillSettingsPage: React.FC = () => {
             return (
               <label
                 key={assetKey}
-                className={`block cursor-pointer rounded-lg border p-4 transition ${
+                className={`block min-h-[132px] cursor-pointer rounded-lg border p-4 transition ${
                   checked
                     ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]'
                     : 'border-[var(--color-border)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary-border)]'
                 }`}
               >
-                <div className="flex items-start gap-3">
+                <div className="flex h-full items-start gap-3">
                   <Checkbox
                     checked={checked}
+                    className="mt-0.5"
                     onChange={(event) => toggleDraftSkillAsset(assetKey, event.target.checked)}
                   />
-                  <div className="min-w-0 flex-1">
-                    <div className="flex flex-wrap items-center justify-between gap-2">
-                      <div className="font-semibold text-[var(--color-text-1)]">{asset.name}</div>
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="truncate font-medium text-[var(--color-text-1)]">{asset.name}</div>
                       <Tag color={asset.source_type === 'builtin' ? 'blue' : 'purple'} className="m-0">
                         {asset.source_type === 'builtin' ? '内置' : '导入'}
                       </Tag>
                     </div>
-                    <div className="mt-1 text-xs text-[var(--color-text-3)]">{asset.category}</div>
-                    <p className="mt-2 text-xs leading-5 text-[var(--color-text-2)]">{asset.description}</p>
-                    <div className="mt-3 flex flex-wrap gap-1.5">
-                      {getPackageRequiredTools(asset).slice(0, 3).map((toolName) => (
-                        <Tag key={toolName} color="success" className="m-0">
-                          {toolName}
-                        </Tag>
-                      ))}
-                      {getPackageRequiredTools(asset).length > 3 && (
-                        <Tag className="m-0">+{getPackageRequiredTools(asset).length - 3}</Tag>
-                      )}
-                    </div>
+                    <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-[var(--color-text-3)]">
+                      {asset.description || '暂无描述'}
+                    </p>
+                    {asset.category && (
+                      <div className="mt-auto pt-2 text-xs text-[var(--color-text-4)]">{asset.category}</div>
+                    )}
                   </div>
                 </div>
               </label>
@@ -569,66 +507,6 @@ const SkillSettingsPage: React.FC = () => {
         )}
       </div>
     </Modal>
-  );
-
-  const renderSkillBoundaryPreview = () => (
-    <div className="rounded-md bg-[var(--color-fill-1)] p-3">
-      <div className="mb-2 text-xs font-semibold text-[var(--color-text-2)]">能力边界</div>
-      <div className="space-y-1 text-xs leading-5 text-[var(--color-text-3)]">
-        {selectedSkillBoundaries.slice(0, 5).map((boundary) => (
-          <div key={boundary}>- {boundary}</div>
-        ))}
-        {selectedSkillBoundaries.length > 5 && (
-          <div className="text-[var(--color-text-4)]">+{selectedSkillBoundaries.length - 5} 条边界</div>
-        )}
-      </div>
-    </div>
-  );
-
-  const renderSkillCapabilitySection = () => (
-    <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
-      <div className="mb-3 flex items-start justify-between gap-3">
-        <div>
-          <h3 className="font-medium text-sm mb-1">技能与工具</h3>
-          <p className="text-xs leading-5 text-[var(--color-text-4)]">
-            技能定义智能体会用哪套任务方法，工具负责提供事实数据。测试前确认选择技能和依赖工具是否匹配。
-          </p>
-        </div>
-        <Tag color={effectiveSkillCapabilityProfiles.every((asset) => asset.source_type === 'builtin') ? 'blue' : 'purple'}>
-          已选 {effectiveSkillCapabilityProfiles.length} 个技能
-        </Tag>
-      </div>
-      <div className="space-y-3">
-        {renderSelectedSkillSummary()}
-        {missingDependencyCount > 0 && (
-          <div className="mt-3 rounded-md border border-[var(--color-warning)] bg-[var(--color-warning-bg)] px-3 py-2 text-xs leading-5 text-[var(--color-text-2)]">
-            依赖工具未绑定：{missingDependencies.map((item) => item.name).join('、')}。测试可能只能输出推断，建议先在下方工具里绑定。
-          </div>
-        )}
-        <div className="mt-4 grid grid-cols-1 gap-3 lg:grid-cols-2">
-          <div className="rounded-md bg-[var(--color-fill-1)] p-3">
-            <div className="mb-2 text-xs font-semibold text-[var(--color-text-2)]">依赖工具</div>
-            <div className="flex flex-wrap gap-2">
-              {dependencyStatus.length === 0 ? (
-                <span className="text-xs text-[var(--color-text-4)]">暂无依赖工具</span>
-              ) : (
-                dependencyStatus.map((item) => (
-                  <Tag key={item.name} color={item.bound ? 'success' : 'default'}>
-                    {item.name}{item.bound ? ' 已绑定' : ' 未绑定'}
-                  </Tag>
-                ))
-              )}
-            </div>
-          </div>
-          {renderSkillBoundaryPreview()}
-        </div>
-        <div className="mt-3 rounded-md border border-[var(--color-border)] bg-[var(--color-fill-1)] px-3 py-2 text-xs leading-5 text-[var(--color-text-3)]">
-          <div className="mb-1 font-semibold text-[var(--color-text-2)]">运行时注入预览</div>
-          <div>测试时会注入：{effectiveSkillCapabilityProfiles.map((asset) => asset.name).join('、') || '未选择技能包'}</div>
-          <div>示例问题：{effectiveSkillCapabilityProfiles[0] ? getPackageExamples(effectiveSkillCapabilityProfiles[0])[0] || '可在技能包 manifest 中补充 examples' : '未选择技能包'}</div>
-        </div>
-      </div>
-    </div>
   );
 
   return (
@@ -830,9 +708,6 @@ const SkillSettingsPage: React.FC = () => {
               </div>
               <div className={`border rounded-md ${styles.llmContainer}`}>
                 <h2 className="font-semibold mb-3 text-base rounded-tl-md rounded-tr-md">{t('skill.chatEnhancement')}</h2>
-                {skillType !== 2 && (
-                  renderSkillCapabilitySection()
-                )}
                 <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
                   <Form labelCol={{flex: '0 0 80px'}} wrapperCol={{flex: '1'}}>
                     <div className="flex justify-between">
@@ -910,6 +785,9 @@ const SkillSettingsPage: React.FC = () => {
                     )}
                   </Form>
                 </div>
+                {skillType !== 2 && (
+                  renderSkillPackageSelector()
+                )}
                 {skillType !== 2 && (
                   <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
                     <Form labelCol={{flex: '0 0 135px'}} wrapperCol={{flex: '1'}}>

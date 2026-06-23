@@ -1,6 +1,3 @@
-from urllib.parse import urlparse
-
-import yaml
 import os
 import tempfile
 
@@ -49,17 +46,16 @@ from apps.opspilot.services.builtin_tools import (
     build_builtin_oracle_tool,
     build_builtin_redis_tool,
 )
-from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.services.skill_package.importer import SkillPackageImporter
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.utils.agui_chat import stream_agui_chat
 from apps.opspilot.utils.mcp_cache import get_cached_mcp_tools, set_cached_mcp_tools
+from apps.opspilot.services.mcp_client import MCPClient
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.skill_execution_params import resolve_request_tools
 from apps.opspilot.utils.sse_chat import stream_chat
 from apps.opspilot.utils.vendor_model_mixin import VendorModelMixin
 from apps.system_mgmt.utils.operation_log_utils import log_operation
-from apps.core.utils.team_utils import get_current_team
 
 
 class LLMFilter(FilterSet):
@@ -149,7 +145,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
     @HasPermission("skill_list-Add")
     def create(self, request, *args, **kwargs):
         params = request.data
-        params["team"] = params.get("team", []) or [self._parse_current_team_cookie(request)]
+        params["team"] = params.get("team", []) or [int(request.COOKIES.get("current_team"))]
         # 校验用户是否有目标组织的权限
         self._validate_org_field_permission(request, params["team"])
         validate_msg = self._validate_name(params["name"], request.user.group_list, params["team"])
@@ -186,7 +182,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
     def update(self, request, *args, **kwargs):
         instance: LLMSkill = self.get_object()
         if not request.user.is_superuser:
-            current_team = get_current_team(request, "0")
+            current_team = request.COOKIES.get("current_team", "0")
             include_children = request.COOKIES.get("include_children", "0") == "1"
             has_permission = self.get_has_permission(request.user, instance, current_team, include_children=include_children)
             if not has_permission:
@@ -295,7 +291,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
             # 获取客户端IP
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
-                current_team = get_current_team(request, "0")
+                current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
                 has_permission = self.get_has_permission(
                     request.user,
@@ -371,7 +367,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
         try:
             skill_obj = LLMSkill.objects.get(id=int(params["skill_id"]))
             if not request.user.is_superuser:
-                current_team = get_current_team(request, "0")
+                current_team = request.COOKIES.get("current_team", "0")
                 include_children = request.COOKIES.get("include_children", "0") == "1"
                 has_permission = self.get_has_permission(
                     request.user,
@@ -731,11 +727,7 @@ class SkillPackageViewSet(AuthViewSet):
 
 
 class ToolsFilter(FilterSet):
-    # display_name 是基于 language yaml 在序列化阶段动态翻译出来的派生字段，
-    # 数据库中并不存在该列，无法直接做 ORM 过滤；这里退化为按 name(即工具 ID)
-    # 进行模糊匹配，避免传入 display_name 参数时抛 FieldError。前端工具列表的
-    # 展示名搜索走客户端过滤，不依赖该后端过滤器。
-    display_name = filters.CharFilter(field_name="name", lookup_expr="icontains")
+    display_name = filters.CharFilter(field_name="display_name", lookup_expr="icontains")
 
 
 class SkillToolsViewSet(AuthViewSet):
@@ -766,6 +758,8 @@ class SkillToolsViewSet(AuthViewSet):
         # 去除可能误带的协议前缀，仅取主机名用于校验。
         netloc = host
         if "://" in netloc:
+            from urllib.parse import urlparse
+
             netloc = urlparse(host).hostname or host
         target = f"http://{netloc}"
         if port not in (None, ""):
@@ -788,6 +782,7 @@ class SkillToolsViewSet(AuthViewSet):
         """
         if not kubeconfig_data or not str(kubeconfig_data).strip():
             return
+        import yaml
 
         try:
             kubeconfig = yaml.safe_load(kubeconfig_data)

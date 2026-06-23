@@ -12,11 +12,16 @@ const apiSource = readWeb('src/app/opspilot/api/skill.ts');
 const typeSource = readWeb('src/app/opspilot/types/skill.ts');
 const toolPageSource = readWeb('src/app/opspilot/(pages)/tool/page.tsx');
 const skillSettingsSource = readWeb('src/app/opspilot/(pages)/skill/detail/settings/page.tsx');
+const customChatSseSource = readWeb('src/app/opspilot/components/custom-chat-sse/index.tsx');
+const skillViewSource = readWeb('src/app/opspilot/components/custom-chat-sse/SkillView.tsx');
+const aguiHandlerSource = readWeb('src/app/opspilot/components/custom-chat-sse/aguiMessageHandler.ts');
+const skillViewStorySource = readWeb('src/stories/skill-view.stories.tsx');
 const entityListSource = readWeb('src/components/entity-list/index.tsx');
 const entityTypesSource = readWeb('src/types/index.ts');
 const importerSource = readRepo('server/apps/opspilot/services/skill_package/importer.py');
 const runtimeSource = readRepo('server/apps/opspilot/services/skill_package/runtime.py');
 const llmViewSource = readRepo('server/apps/opspilot/viewsets/llm_view.py');
+const aguiChatSource = readRepo('server/apps/opspilot/utils/agui_chat.py');
 const modelSource = readRepo('server/apps/opspilot/models/model_provider_mgmt.py');
 const agentNodeSource = readRepo('server/apps/opspilot/utils/chat_flow_utils/nodes/agent/agent.py');
 
@@ -27,28 +32,52 @@ assert.match(typeSource, /triggers\?: string\[\]/, 'skill packages should expose
 
 assert.match(apiSource, /fetchSkillPackages/, 'frontend should fetch persisted skill packages');
 assert.match(apiSource, /importSkillPackageZip/, 'frontend should import skill package ZIP files');
-assert.match(apiSource, /updateSkillPackage/, 'frontend should edit skill package metadata');
 assert.match(apiSource, /deleteSkillPackage/, 'frontend should delete skill packages');
 assert.match(apiSource, /model_provider_mgmt\/skill_packages/, 'skill package API should use the backend viewset route');
 assert.match(apiSource, /FormData/, 'ZIP upload should be sent as multipart form data');
 
-assert.match(toolPageSource, /技能列表/, 'tool page should expose the skill package list view');
+assert.match(toolPageSource, /label: '内置'[\s\S]*label: 'MCP'[\s\S]*label: '技能'/, 'tool page should expose built-in, MCP, and skill package tabs');
 assert.match(toolPageSource, /fetchSkillPackages/, 'tool page should load real packages from the backend');
 assert.match(toolPageSource, /Upload\.Dragger/, 'tool page should import ZIP packages from a modal uploader');
 assert.match(toolPageSource, /importSkillPackageZip/, 'tool page should call the ZIP import API');
-assert.match(toolPageSource, /updateSkillPackage/, 'tool page should support editing package metadata');
+assert.match(toolPageSource, /导入技能包/, 'tool page should keep a ZIP import entry for skill packages');
+assert.doesNotMatch(toolPageSource, /新增技能包/, 'tool page should not expose manual skill package creation');
 assert.match(toolPageSource, /deleteSkillPackage/, 'tool page should support package deletion');
-assert.match(toolPageSource, /server\/\.skill/, 'import UI should explain server-side package storage');
+assert.match(toolPageSource, /handleDeleteSkillAsset/, 'tool page should keep a delete action for skill packages');
+assert.doesNotMatch(toolPageSource, /updateSkillPackage|handleEditSkillAsset|editingSkillAsset|isAddSkillModalVisible|编辑技能包|保存修改/, 'tool page should not expose skill package editing for now');
+assert.match(toolPageSource, /必须包含 <code>SKILL\.md<\/code>[\s\S]*可选 <code>skill\.yaml<\/code>/, 'import UI should explain the Claude-style SKILL.md-first package format');
 assert.doesNotMatch(toolPageSource, /loadToolSkillAssets|saveToolSkillAssets|buildSkillPromptAttachments/, 'tool page should not rely on browser-only mock skill storage');
 assert.doesNotMatch(toolPageSource, /审批|需审批/, 'skill package UI should not expose approval language');
+assert.match(toolPageSource, /assetView === 'builtin'[\s\S]*toolData\.filter\(\(tool\) => tool\.is_build_in\)/, 'built-in tab should show built-in tools');
+assert.match(toolPageSource, /data=\{assetView === 'builtin' \? toolData\.filter\(\(tool\) => tool\.is_build_in\) : filteredToolData\}/, 'MCP tab should show external tools');
+assert.match(toolPageSource, /menuActions=\{assetView === 'mcp' \? menuActions : undefined\}/, 'only MCP tools should keep the multi-action dropdown');
+assert.match(toolPageSource, /singleAction=\{assetView === 'builtin'[\s\S]*t\('common\.edit'\)/, 'built-in tools should expose a single edit action');
+assert.match(toolPageSource, /operateSection=\{assetView === 'mcp'[\s\S]*t\('common\.add'\)/, 'only MCP tab should expose the add action');
 
 assert.match(entityTypesSource, /toolbarPrefix\?: React\.ReactNode/, 'entity list should expose a left-side toolbar prefix slot');
 assert.match(entityListSource, /toolbarPrefix/, 'entity list should render the shared left-side toolbar prefix');
 assert.match(entityListSource, /justify-between/, 'entity list toolbar should align tabs left and search/actions right');
+assert.match(entityTypesSource, /showBuiltinTag\?: boolean/, 'entity list should allow pages to hide redundant built-in or external tags');
+assert.match(entityListSource, /showBuiltinTag && is_build_in !== undefined/, 'entity list should hide built-in or external tags when the page provides separate tabs');
+assert.match(entityListSource, /isSingleButtonAction[\s\S]*Tooltip[\s\S]*Icon type="bianji"/, 'single-action entity cards should reveal an icon action instead of a dropdown');
 assert.match(toolPageSource, /renderAssetSwitcher/, 'tool page should keep tool/skill tabs on the left of the toolbar');
 assert.match(toolPageSource, /renderSkillAssetControls/, 'skill search and actions should live on the right of the toolbar');
+assert.match(toolPageSource, /type="jinengpeixun"/, 'skill cards should use the skill package icon instead of name initials');
+assert.match(toolPageSource, /className="text-4xl"/, 'skill package icon should visually fill its icon tile like tool cards');
+assert.doesNotMatch(toolPageSource, /rounded-full[\s\S]*jinengpeixun|jinengpeixun[\s\S]*rounded-full/, 'skill package icon should not be clipped into a circle');
+assert.match(toolPageSource, /hoveredSkillAssetKey[\s\S]*Icon type="shanchu"/, 'skill package cards should reveal a delete action on hover');
+assert.doesNotMatch(toolPageSource, /renderSkillCardMenu|sangedian-copy[\s\S]*skillAssetKey|overlay=\{renderSkillCardMenu/, 'skill package cards should not use a dropdown for delete-only actions');
+assert.match(toolPageSource, /<Space\.Compact>[\s\S]*enterButton[\s\S]*className="w-60"/, 'skill package search should follow the tool list search style');
+assert.doesNotMatch(toolPageSource, /selectedSkillCategory|setSelectedSkillCategory|技能类型/, 'skill package toolbar should not expose a category filter');
+assert.match(toolPageSource, /w-full[\s\S]*grid-cols-\[repeat\(auto-fill,minmax\(280px,1fr\)\)\] gap-6/, 'skill cards should adapt across the full available width');
+assert.match(toolPageSource, /h-\[168px\]/, 'skill cards should keep a compact consistent height');
+assert.match(toolPageSource, /rounded-xl[\s\S]*shadow-md[\s\S]*flex[\s\S]*flex-col/, 'skill cards should use the same card surface vocabulary as OpsPilot entity cards');
+assert.doesNotMatch(toolPageSource, /rounded-lg border border-\[var\(--color-border\)\] bg-\[var\(--color-bg-1\)\] p-5/, 'skill list should not add a redundant container background around cards');
+assert.doesNotMatch(toolPageSource, /max-w-\[1440px\]|min-h-\[190px\]|h-fit|grid[^\n]*items-start|grid-cols-\[repeat\(auto-fit,minmax\(220px,1fr\)\)\]|index === 0/, 'skill cards should not use narrow containers, uneven content-fit heights, cramped auto-fit sizing, or auto-selected highlight styling');
+assert.doesNotMatch(toolPageSource, /visibleTools|无依赖工具/, 'skill package cards should not render runtime tool dependency rows');
+assert.doesNotMatch(toolPageSource, /visibleTriggers|,\s*Tag\s*,/, 'skill package cards should not render trigger or source tags');
 
-assert.match(skillSettingsSource, /技能与工具/, 'agent settings should include a skill package section');
+assert.match(skillSettingsSource, /技能包/, 'agent settings should include a compact skill package picker');
 assert.match(skillSettingsSource, /fetchSkillPackages/, 'agent settings should load available persisted packages');
 assert.match(skillSettingsSource, /selectedSkillAssetKeys/, 'agent settings should select multiple skill packages');
 assert.doesNotMatch(skillSettingsSource, /selectedSkillAssetKey[^s]/, 'agent settings should not keep a single selected skill state');
@@ -56,16 +85,16 @@ assert.match(skillSettingsSource, /skill_packages:/, 'saving or testing an agent
 assert.match(skillSettingsSource, /openSkillPicker/, 'agent settings should use a searchable package picker');
 assert.match(skillSettingsSource, /handleConfirmSkillPicker/, 'agent settings should confirm multiple selected packages from the picker');
 assert.match(skillSettingsSource, /handleRemoveSkillAsset/, 'agent settings should remove selected packages');
-assert.match(skillSettingsSource, /missingDependencyCount/, 'agent settings should warn about missing required tools');
-assert.match(skillSettingsSource, /运行时注入预览/, 'agent settings should preview package runtime injection');
-assert.match(skillSettingsSource, /未选择技能包/, 'agent settings should make an empty skill selection explicit');
+assert.match(skillSettingsSource, /未选择/, 'agent settings should make an empty skill selection explicit');
+assert.doesNotMatch(skillSettingsSource, /missingDependencyCount|依赖工具未绑定|运行时注入预览|能力边界/, 'agent settings should keep skill package selection lightweight');
 assert.doesNotMatch(skillSettingsSource, /getSkillCapabilityProfile|recommended \? \[recommended\]/, 'agent settings should not auto-inject an unselected recommended package');
 assert.doesNotMatch(skillSettingsSource, /loadToolSkillAssets|saveToolSkillAssets|buildSkillPromptAttachments|tool_skill_asset/, 'agent settings should use backend skill packages, not local mock assets');
 
 assert.match(importerSource, /class SkillPackageImporter/, 'backend should import skill packages from ZIP');
-assert.match(importerSource, /skill\.yaml/, 'backend importer should require a package manifest');
+assert.match(importerSource, /_find_optional_member[\s\S]*skill\.yaml/, 'backend importer should treat skill.yaml as optional metadata');
 assert.match(importerSource, /SKILL\.md/, 'backend importer should require skill instructions');
 assert.match(importerSource, /server.*\.skill|DEFAULT_SKILL_PACKAGE_ROOT/, 'backend importer should store packages under the server skill directory');
+assert.match(importerSource, /_split_frontmatter/, 'backend importer should read SKILL.md YAML frontmatter when no manifest exists');
 assert.match(importerSource, /is_absolute\(\)|\.\./, 'backend importer should reject path traversal entries');
 assert.match(importerSource, /execute_code/, 'backend importer should reject executable-code runtime declarations');
 
@@ -78,6 +107,13 @@ assert.match(llmViewSource, /partial_update/, 'backend should allow editing skil
 assert.match(llmViewSource, /_apply_skill_packages_to_params/, 'chat execution should apply selected packages');
 assert.match(runtimeSource, /select_skill_packages_for_message/, 'runtime should choose relevant selected packages by user message');
 assert.match(runtimeSource, /append_matching_skill_packages_to_prompt/, 'runtime should inject matched package instructions into the prompt');
-assert.match(agentNodeSource, /append_matching_skill_packages_to_prompt/, 'workflow agent nodes should use the same package injection logic');
+assert.match(agentNodeSource, /build_skill_package_prompt/, 'workflow agent nodes should use the same package injection logic');
+assert.match(llmViewSource, /matched_skill_packages/, 'backend should compute matched skill packages for visibility');
+assert.match(aguiChatSource, /skill_view/, 'AGUI stream should emit matched skill packages as a visible event');
+assert.match(aguiHandlerSource, /skill_view/, 'AGUI handler should consume visible skill view events');
+assert.match(customChatSseSource, /<SkillView/, 'chat UI should render matched skill packages');
+assert.match(skillViewSource, /技能包命中/, 'skill view component should expose the matched package summary');
+assert.match(skillViewStorySource, /OpsPilot\/SkillView/, 'skill view should have a browser-verifiable Storybook story');
+assert.match(skillViewStorySource, /MissingTools/, 'skill view story should cover tool binding prompts');
 
 console.log('opspilot skill package capability validation passed');

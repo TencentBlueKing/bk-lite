@@ -470,8 +470,9 @@ def build_config_analysis_next_step_hint(problematic_count: int, target_name: st
         )
     hint_parts.append(
         "本轮先输出一次完整检查结果。"
-        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式："
-        "按问题类别聚合、按工作负载聚合、或全部一次性展示。"
+        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式。"
+        "选项需要结合本次问题类别数量、受影响工作负载数量和风险集中度动态生成，"
+        "不要机械固定为同一组三个选项。"
         "等用户选择后，再调用 generate_repair_report。"
     )
     return "".join(hint_parts)

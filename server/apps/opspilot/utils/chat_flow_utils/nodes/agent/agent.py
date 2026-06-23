@@ -11,10 +11,9 @@ from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.chat_service import ChatService, chat_service
-from apps.opspilot.services.skill_package.runtime import append_matching_skill_packages_to_prompt
+from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
-from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -175,9 +174,7 @@ class AgentNode(BaseNodeExecutor):
                 break
         return message
 
-    def _build_llm_params(
-        self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "", raw_message: Any = ""
-    ) -> Dict[str, Any]:
+    def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "") -> Dict[str, Any]:
         """构建LLM调用参数
 
         Args:
@@ -197,17 +194,21 @@ class AgentNode(BaseNodeExecutor):
         # 不是当前智能体节点的 ID，直接使用会导致附件 source_node_id 错误。
         effective_node_id = node_id or self.variable_manager.get_variable("current_node_id", "")
         resolved_prompt = resolve_skill_params(skill.skill_prompt, skill.skill_params)
-        resolved_prompt = append_matching_skill_packages_to_prompt(
+        skill_packages = hydrate_skill_packages(getattr(skill, "skill_packages", []) or [])
+        resolved_prompt, matched_skill_packages = build_skill_package_prompt(
             base_prompt=resolved_prompt,
-            skill_packages=getattr(skill, "skill_packages", []) or [],
+            skill_packages=skill_packages,
             user_message=final_message,
             available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
         )
+        skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
         return {
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolved_prompt,
+            "matched_skill_packages": matched_skill_packages,
+            **skill_package_strategy,
             "temperature": skill.temperature,
-            "chat_history": build_node_chat_history(self.variable_manager, raw_message, final_message),
+            "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
             "enable_rag": skill.enable_rag,
@@ -228,9 +229,6 @@ class AgentNode(BaseNodeExecutor):
             "node_id": effective_node_id,
             "flow_id": self.variable_manager.get_variable("flow_id", ""),
             "trigger_type": self._resolve_trigger_type(flow_input),
-            # 透传会话定位字段，供 request_user_choice 登记会话级 pending（见 pending_hitl）
-            "session_id": flow_input.get("session_id", ""),
-            "bot_id": flow_input.get("bot_id", ""),
         }
 
     @staticmethod
@@ -356,7 +354,7 @@ class AgentNode(BaseNodeExecutor):
         final_message = self._build_final_message(message, node_prompt, uploaded_files, node_id)
 
         # 构建LLM参数
-        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id, raw_message=message)
+        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id)
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 

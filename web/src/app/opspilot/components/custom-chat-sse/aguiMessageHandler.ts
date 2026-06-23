@@ -17,6 +17,7 @@ import {
   ConfigDiffReportValue,
   RepairCommandsValue,
   ReportFileDownloadValue,
+  SkillViewValue,
   SubAgentProgressValue,
   UserChoiceRequestValue
 } from '@/app/opspilot/types/chat';
@@ -31,6 +32,7 @@ import {
   CustomChatMessage,
   RepairCommands,
   ReportFileDownload,
+  SkillViewItem,
   UserChoiceRequest
 } from '@/app/opspilot/types/global';
 import {
@@ -71,14 +73,14 @@ const normalizeConfigAnalysisIssues = (
   return [];
 };
 
-export const normalizeConfigAnalysisSection = (
+const normalizeConfigAnalysisSection = (
   section: ConfigAnalysisSeveritySectionValue
 ): ConfigAnalysisSeveritySectionValue => ({
   ...section,
   issues: normalizeConfigAnalysisIssues(section),
 });
 
-export const normalizeConfigAnalysisRecommendations = (
+const normalizeConfigAnalysisRecommendations = (
   recommendations: ConfigAnalysisRecommendationValue[] | undefined
 ): ConfigAnalysisRecommendation[] => {
   if (!Array.isArray(recommendations)) {
@@ -112,7 +114,7 @@ export const normalizeConfigAnalysisRecommendations = (
     .filter((recommendation): recommendation is ConfigAnalysisRecommendation => Boolean(recommendation));
 };
 
-export const isStructuredConfigAnalysisReport = (
+const isStructuredConfigAnalysisReport = (
   value: ConfigAnalysisReportValue
 ): value is StructuredConfigAnalysisReportValue => (
   Boolean(value.report_id) &&
@@ -141,6 +143,7 @@ export class AGUIMessageHandler {
   private reportFileDownloads: ReportFileDownload[] = [];
   private repairCommandsList: RepairCommands[] = [];
   private agentStepProgressList: AgentStepProgressData[] = [];
+  private skillViews: SkillViewItem[] = [];
 
   constructor(
     botMessage: CustomChatMessage,
@@ -204,6 +207,7 @@ export class AGUIMessageHandler {
             repairCommands: this.repairCommandsList.length > 0
               ? this.repairCommandsList
               : msgItem.repairCommands,
+            skillViews: this.skillViews.length > 0 ? this.skillViews : msgItem.skillViews,
             updateAt: new Date().toISOString()
           }
           : msgItem
@@ -519,6 +523,12 @@ export class AGUIMessageHandler {
     this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking, this.agentStepProgressList);
   }
 
+  handleSkillView(value: SkillViewValue) {
+    const items = Array.isArray(value.items) ? value.items : [];
+    this.skillViews = items.filter((item): item is SkillViewItem => Boolean(item && item.name));
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
   /**
    * 处理审批请求事件
    */
@@ -669,8 +679,6 @@ export class AGUIMessageHandler {
    */
   handleError(error: string) {
     this.stopThinking();
-    this.isStreaming = false;
-    this.finalizePendingToolCalls();
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(error, 'error');
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -682,8 +690,6 @@ export class AGUIMessageHandler {
    */
   handleRunError(message: string, code?: string) {
     this.stopThinking();
-    this.isStreaming = false;
-    this.finalizePendingToolCalls();
     this.flushCurrentTextBlock();
     const errorMessage = renderErrorMessage(message, 'run_error', code);
     this.contentBlocks.push({ type: 'text', content: errorMessage });
@@ -727,20 +733,6 @@ export class AGUIMessageHandler {
     } else {
       this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
     }
-  }
-
-  /**
-   * 标记所有仍处于 calling 状态的工具为已完成
-   * 用于 RUN_FINISHED / RUN_ERROR 等终止事件：执行已结束，
-   * 任何残留的 calling 状态（如 TOOL_CALL_RESULT 缺失或 toolCallId 不匹配）
-   * 都应停止 spinner，避免对话结束后工具仍显示"执行中"
-   */
-  private finalizePendingToolCalls() {
-    this.toolCallsRef.forEach(tool => {
-      if (tool.status === 'calling') {
-        tool.status = 'completed';
-      }
-    });
   }
 
   /**
@@ -807,8 +799,6 @@ export class AGUIMessageHandler {
       case 'RUN_FINISHED':
         // 流式回复结束，设置 isStreaming 为 false 并更新内容（收起工具列表）
         this.isStreaming = false;
-        // 兜底：把仍处于 calling 的工具标记为完成，避免对话结束后仍显示"执行中"
-        this.finalizePendingToolCalls();
         this.handleBrowserStepComplete();
         // 重新渲染内容以收起工具列表
         this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, false);
@@ -837,6 +827,8 @@ export class AGUIMessageHandler {
           this.handleAgentStepProgress(aguiData.value as AgentStepProgressValue);
         } else if (aguiData.name === 'sub_agent_progress' && aguiData.value) {
           this.handleSubAgentProgress(aguiData.value as SubAgentProgressValue);
+        } else if (aguiData.name === 'skill_view' && aguiData.value) {
+          this.handleSkillView(aguiData.value as SkillViewValue);
         }
         return false;
 
