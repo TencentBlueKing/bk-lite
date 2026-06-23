@@ -109,6 +109,38 @@ def test_runtime_application_service_can_test_single_capability():
     assert result.payload["capability_status"] == {"user_sync": "ready"}
 
 
+def test_runtime_application_service_logs_failed_capability_details(caplog):
+    class FailingAdapter:
+        @classmethod
+        def test_connection(cls, config, provider_key, capability_key, **kwargs):
+            return CapabilityExecutionResult.failed_result(
+                "Config field app_secret is missing",
+                code="provider.invalid_config",
+                field="app_secret",
+            )
+
+    manifest = SimpleNamespace(
+        key="feishu",
+        capabilities=[SimpleNamespace(key="login_auth", adapter_key="feishu.login_auth")],
+        get_capability=lambda capability_key: SimpleNamespace(key="login_auth", adapter_key="feishu.login_auth"),
+    )
+    instance = SimpleNamespace(provider_key="feishu", get_runtime_config=lambda: {})
+
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry({"feishu.login_auth": FailingAdapter})
+
+    with caplog.at_level("WARNING"):
+        result = service.test_connection(instance)
+
+    assert result.success is False
+    assert result.payload["capability_status"] == {"login_auth": "verification_failed"}
+    assert "Integration instance test connection failed for capability 'login_auth'" in caplog.text
+    assert "provider.invalid_config" in caplog.text
+    assert "app_secret" in caplog.text
+    assert "request_id=" in caplog.text
+
+
 def test_runtime_application_service_can_execute_list_departments():
     manifest = SimpleNamespace(
         key="demo",

@@ -127,9 +127,18 @@ class RuntimeApplicationService:
             capability_results[capability.key] = result.to_dict()
             capability_status[capability.key] = "ready" if result.success else "verification_failed"
             all_success = all_success and result.success
+            if not result.success:
+                logger.warning(
+                    f"Integration instance test connection failed for capability '{capability.key}' "
+                    f"of provider '{manifest.key}': request_id={result.request_id}, "
+                    f"summary='{result.summary}', errors={[error.model_dump() for error in result.errors]}"
+                )
 
         summary = f"Provider '{manifest.key}' connection test succeeded" if all_success else f"Provider '{manifest.key}' connection test failed"
-        logger.info(f"Integration instance test connection completed: provider={manifest.key}, success={all_success}")
+        logger.info(
+            f"Integration instance test connection completed: provider={manifest.key}, "
+            f"success={all_success}, capability_status={capability_status}"
+        )
         return CapabilityExecutionResult(
             success=all_success,
             summary=summary,

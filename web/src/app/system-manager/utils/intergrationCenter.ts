@@ -63,6 +63,7 @@ export function resolveIntegrationProviderIcon(providerKey: string) {
     oidc: 'OIDC',
     saml: 'SAML',
     github: 'github-fill',
+    wechat: 'wechat'
   };
   return providerIconMap[providerKey] || 'jicheng';
 }

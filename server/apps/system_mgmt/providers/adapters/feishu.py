@@ -63,6 +63,11 @@ def _request_tenant_access_token(config: dict, capability_key: str):
     app_id = (config or {}).get("app_id", "")
     app_secret = (config or {}).get("app_secret", "")
     if not app_id or not app_secret:
+        missing_field = "app_id" if not app_id else "app_secret"
+        logger.warning(
+            f"Feishu connection test cannot start for capability '{capability_key}': "
+            f"missing required field '{missing_field}', app_id={_mask_app_id(app_id)}"
+        )
         return CapabilityExecutionResult.failed_result(
             "Feishu app_id or app_secret is missing",
             code="provider.invalid_config",
@@ -85,7 +90,9 @@ def _request_tenant_access_token(config: dict, capability_key: str):
             retryable=True,
         )
     except requests.RequestException as error:
-        logger.error(f"Feishu connection test request failed for capability '{capability_key}': {error}")
+        logger.exception(
+            f"Feishu connection test request failed for capability '{capability_key}': {error}"
+        )
         return CapabilityExecutionResult.failed_result(
             "Feishu connection request failed",
             code="provider.request_failed",
@@ -96,7 +103,10 @@ def _request_tenant_access_token(config: dict, capability_key: str):
     try:
         data = response.json()
     except ValueError:
-        logger.error(f"Feishu connection test returned invalid JSON for capability '{capability_key}'")
+        logger.exception(
+            f"Feishu connection test returned invalid JSON for capability '{capability_key}', "
+            f"status={response.status_code}, request_id={request_id}"
+        )
         return CapabilityExecutionResult.failed_result(
             "Feishu connection returned invalid JSON",
             code="provider.invalid_response",
