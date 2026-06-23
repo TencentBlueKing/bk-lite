@@ -23,6 +23,7 @@ from apps.alerts.views import (
     receiver_source_data,
     request_test,
 )
+from apps.alerts.views.action import ActionCallbackView
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
@@ -49,6 +50,7 @@ urlpatterns = [
     path("api/test/", request_test),
     path("api/receiver_data/", receiver_data),
     path("api/source/<str:source_id>/webhook/", receiver_source_data),
+    path("api/action_callback/", ActionCallbackView.as_view()),
 ]
 
 urlpatterns += router.urls
