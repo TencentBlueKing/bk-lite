@@ -1,3 +1,4 @@
+import logging
 from datetime import datetime, timedelta
 from typing import List, Dict, Any, Optional, cast
 import re
@@ -137,7 +138,8 @@ class AggregationProcessor:
             # 被屏蔽事件不参与聚合建警（事件级·不建警）
             status=EventStatus.SHIELD,
         )
-        logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug("[AlertAggregation] 策略 %s: 时间范围内事件总数=%s", strategy.name, events.count())
 
         return events
 
@@ -271,11 +273,12 @@ class AggregationProcessor:
 
     def _match_heartbeat_events(self, strategy: AlarmStrategy, candidates):
         matched_events = StrategyMatcher.match_events_to_strategy(candidates, cast(List[List[Dict]], strategy.match_rules or []))
-        logger.debug(
-            "matched_events 数量: strategy_id=%s, count=%s",
-            strategy.id,
-            matched_events.count(),
-        )
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(
+                "matched_events 数量: strategy_id=%s, count=%s",
+                strategy.id,
+                matched_events.count(),
+            )
         return matched_events
 
     def _activate_if_needed(
