@@ -6,7 +6,6 @@
 from django.utils import timezone
 from django.db import transaction
 
-from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
 from apps.alerts.utils.operator_log import record_operator_log
@@ -214,9 +213,9 @@ class AlertOperator(object):
 
             notify_param = self.format_notify_data(assignee, alert)
             if notify_param:
-                from apps.alerts.tasks import sync_notify
+                from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
-                transaction.on_commit(lambda: sync_notify.delay(notify_param))
+                enqueue_notifications(notify_param)
             else:
                 logger.warning(
                     "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
@@ -382,9 +381,9 @@ class AlertOperator(object):
 
             notify_param = self.format_notify_data(new_assignee, alert)
             if notify_param:
-                from apps.alerts.tasks import sync_notify
+                from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
-                transaction.on_commit(lambda: sync_notify.delay(notify_param))
+                enqueue_notifications(notify_param)
             else:
                 logger.warning(
                     "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
@@ -560,27 +559,21 @@ class AlertOperator(object):
 
     def format_notify_data(self, assignee, alert):
         """
-        格式化通知数据
-        :return: 格式化后的通知数据
+        格式化通知数据。走统一通知出口,返回 sync_notify 期望的 list[dict];
+        无渠道或无接收人 → 返回 []。
         """
+        from apps.alerts.common.notify.dispatcher import build_channel_params
+
         channel, channel_id = get_default_notify_params()
         if not channel_id:
-            return {}
+            return []
         user_list = [i for i in assignee if i != self.user]
-        param_format = NotifyParamsFormat(username_list=user_list, alerts=[alert])
-        title = param_format.format_title()
-        content = param_format.format_content()
-        object_id = alert.alert_id
-        result = {
-            "username_list": user_list,
-            "channel_type": channel,
-            "channel_id": channel_id,
-            "title": title,
-            "content": content,
-            "object_id": object_id,
-            "notify_action_object": "alert",
-        }
-        return result
+        return build_channel_params(
+            user_list,
+            [{"channel_type": channel, "id": channel_id}],
+            [alert],
+            alert.alert_id,
+        )
 
     @staticmethod
     def operator_log(log_data: dict):

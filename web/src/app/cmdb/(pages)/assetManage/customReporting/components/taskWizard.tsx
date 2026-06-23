@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { Alert, Button, Collapse, Drawer, Form, Input, InputNumber, Popover, Radio, Select, Space, Switch, Typography, message } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import GroupTreeSelector from '@/components/group-tree-select';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
@@ -211,7 +212,14 @@ export default function TaskWizard({
       width={640}
       destroyOnClose
       extra={
-        <Space>
+        <Space size="middle" align="center">
+          <Typography.Text
+            type="secondary"
+            className="inline-flex items-center gap-[4px] max-w-[380px] text-[12px] leading-[18px]"
+          >
+            <InfoCircleOutlined className="text-[var(--ant-color-info,#1677ff)]" />
+            {t('CustomReporting.credentialHint')}
+          </Typography.Text>
           <Popover
             placement="bottomRight"
             content={
@@ -229,11 +237,17 @@ export default function TaskWizard({
           >
             <Typography.Link>{t('CustomReporting.viewGuide')}</Typography.Link>
           </Popover>
-          <Button onClick={handleClose}>{t('common.cancel')}</Button>
-          <Button type="primary" loading={submitting} onClick={handleSubmit}>
-            {t('common.confirm')}
-          </Button>
         </Space>
+      }
+      footer={
+        <div className="flex justify-end">
+          <Space>
+            <Button onClick={handleClose}>{t('common.cancel')}</Button>
+            <Button type="primary" loading={submitting} onClick={handleSubmit}>
+              {t('common.confirm')}
+            </Button>
+          </Space>
+        </div>
       }
     >
       <Form form={form} layout="vertical">
@@ -289,7 +303,14 @@ export default function TaskWizard({
                 loading={modelLoading}
                 placeholder={t('common.selectTip')}
                 options={modelOptions}
-                optionFilterProp="label"
+                filterOption={(input, option) => {
+                  const keyword = input.trim().toLowerCase();
+                  if (!keyword) return true;
+                  return (
+                    String(option?.label ?? '').toLowerCase().includes(keyword) ||
+                    String(option?.value ?? '').toLowerCase().includes(keyword)
+                  );
+                }}
               />
             </Form.Item>
             {selectedModelId ? (
@@ -412,12 +433,6 @@ export default function TaskWizard({
         >
           <Switch />
         </Form.Item>
-
-        <Alert
-          type="info"
-          showIcon
-          message={t('CustomReporting.credentialHint')}
-        />
       </Form>
     </Drawer>
   );
