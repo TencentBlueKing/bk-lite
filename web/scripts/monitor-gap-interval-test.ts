@@ -2,6 +2,10 @@ import assert from 'node:assert/strict';
 import {
   attachGapIntervals,
   buildGapDetectionParams,
+  deriveVisibleGapIntervalsFromChartData,
+  GAP_INTERVAL_AREA_STYLE,
+  expandGapIntervalsToChartPoints,
+  mergeGapIntervalsForDisplay,
 } from '../src/app/monitor/utils/gapIntervals';
 
 const params = buildGapDetectionParams(
@@ -64,5 +68,60 @@ assert.deepEqual(chartData, [
     gapIntervals: [{ start: 180, end: 420, duration: 300 }],
   },
 ]);
+
+assert.deepEqual(GAP_INTERVAL_AREA_STYLE, {
+  fill: 'rgba(245, 63, 63, 0.18)',
+  fillOpacity: 1,
+  strokeOpacity: 0,
+});
+
+assert.deepEqual(
+  expandGapIntervalsToChartPoints(
+    [
+      { time: 0, value1: 1 },
+      { time: 3600, value1: 2 },
+      { time: 7200, value1: 3 },
+    ],
+    [{ start: 3660, end: 3900, duration: 300 }]
+  ),
+  [{ start: 3600, end: 7200, duration: 3600 }]
+);
+
+assert.deepEqual(
+  deriveVisibleGapIntervalsFromChartData(
+    [
+      { time: 0, value1: 1, value2: 10 },
+      { time: 72, value1: Number.NaN, value2: 11 },
+      { time: 144, value2: 12 },
+      { time: 216, value1: 2, value2: 13 },
+    ],
+    ['value1', 'value2']
+  ),
+  [{ start: 0, end: 216, duration: 216 }]
+);
+
+assert.deepEqual(
+  deriveVisibleGapIntervalsFromChartData(
+    [
+      { time: 0 },
+      { time: 72, value1: 1 },
+      { time: 144, value1: Number.NaN },
+    ],
+    ['value1']
+  ),
+  []
+);
+
+assert.deepEqual(
+  mergeGapIntervalsForDisplay([
+    { start: 0, end: 216, duration: 216 },
+    { start: 180, end: 360, duration: 180 },
+    { start: 720, end: 792, duration: 72 },
+  ]),
+  [
+    { start: 0, end: 360, duration: 360 },
+    { start: 720, end: 792, duration: 72 },
+  ]
+);
 
 console.log('monitor gap interval logic ok');
