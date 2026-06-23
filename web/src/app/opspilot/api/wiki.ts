@@ -36,8 +36,10 @@ export const useWikiApi = () => {
 
   const fetchTemplates = (): Promise<PurposeSchemaTemplate[]> => get(`${BASE}/knowledge_base/templates/`);
 
-  // 知识库需绑定 LLM 模型用于"资料摘要"与"页面构建";复用模型供应商列表接口
-  const fetchLlmModels = (): Promise<LlmModel[]> => get('/opspilot/model_provider_mgmt/llm/');
+  // 知识库需绑定 LLM 模型用于"资料摘要"与"页面构建"。
+  // 注意:/llm/ 是「LLM 技能/Bot」列表,真正的「模型」在 /llm_model/(与技能配置页一致)
+  const fetchLlmModels = (): Promise<LlmModel[]> =>
+    get('/opspilot/model_provider_mgmt/llm_model/', { params: { enabled: 1 } });
 
   const generatePurposeSchema = (data: {
     template_key?: string;
