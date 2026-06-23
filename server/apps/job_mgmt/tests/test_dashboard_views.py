@@ -63,6 +63,7 @@ class TestDashboardTeamIsolation:
 
     def test_trend_only_shows_own_team_data(self, api_client, authenticated_user):
         """team=1 的用户看 trend，不应计入 team=2 的执行记录。"""
+        authenticated_user.permission = {"job": {"job_record-View"}}
         api_client.cookies["current_team"] = "1"
         _make(ExecutionStatus.SUCCESS, team=[1])   # 可见
         _make(ExecutionStatus.SUCCESS, team=[2])   # 不可见
@@ -74,6 +75,7 @@ class TestDashboardTeamIsolation:
 
     def test_rate_only_aggregates_own_team_data(self, api_client, authenticated_user):
         """team=1 的用户看 success_rate_compare，汇总应只含 team=1 的执行记录。"""
+        authenticated_user.permission = {"job": {"job_record-View"}}
         api_client.cookies["current_team"] = "1"
         _make(ExecutionStatus.SUCCESS, team=[1])
         _make(ExecutionStatus.FAILED, team=[1])
