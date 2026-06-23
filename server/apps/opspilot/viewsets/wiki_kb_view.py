@@ -34,11 +34,24 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
+        search = (request.GET.get("search") or "").strip()
+        if search:
+            queryset = queryset.filter(name__icontains=search)
         if not getattr(request.user, "is_superuser", False):
             group_ids = set(self._user_group_ids(request))
-            queryset = [kb for kb in queryset if set(kb.team or []) & group_ids]
-        serializer = self.get_serializer(queryset, many=True)
-        return JsonResponse({"result": True, "data": serializer.data})
+            items = [kb for kb in queryset if set(kb.team or []) & group_ids]
+        else:
+            items = list(queryset)
+        try:
+            page = max(int(request.GET.get("page", 1)), 1)
+            page_size = max(int(request.GET.get("page_size", 20)), 1)
+        except (TypeError, ValueError):
+            page, page_size = 1, 20
+        total = len(items)
+        start = (page - 1) * page_size
+        page_items = items[start : start + page_size]
+        serializer = self.get_serializer(page_items, many=True)
+        return JsonResponse({"result": True, "data": {"count": total, "items": serializer.data}})
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()

@@ -4,6 +4,15 @@ from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
+    team_name = serializers.SerializerMethodField()
+
+    def get_team_name(self, obj):
+        if not obj.team:
+            return []
+        from apps.system_mgmt.models import Group
+
+        return list(Group.objects.filter(id__in=obj.team).values_list("name", flat=True))
+
     class Meta:
         model = WikiKnowledgeBase
         fields = [
@@ -11,6 +20,7 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
             "name",
             "introduction",
             "team",
+            "team_name",
             "purpose_md",
             "schema_md",
             "llm_model",

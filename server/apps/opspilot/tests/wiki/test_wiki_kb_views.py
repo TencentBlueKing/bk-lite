@@ -18,7 +18,9 @@ class TestWikiKBViews:
         assert resp.status_code in (200, 201), resp.content
         lst = api_client.get(self.BASE)
         assert lst.status_code == 200
-        names = [x["name"] for x in self._data(lst)]
+        data = self._data(lst)
+        assert "count" in data and "items" in data  # 分页格式,与 EntityList 一致
+        names = [x["name"] for x in data["items"]]
         assert "kb1" in names
 
     def test_templates_endpoint(self, api_client):

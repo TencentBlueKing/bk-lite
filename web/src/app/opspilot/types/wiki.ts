@@ -5,6 +5,9 @@ export interface WikiKnowledgeBase {
   name: string;
   introduction?: string;
   team: (number | string)[];
+  team_name?: string[];
+  permissions?: string[];
+  is_pinned?: boolean;
   purpose_md?: string;
   schema_md?: string;
   llm_model?: number | null;
