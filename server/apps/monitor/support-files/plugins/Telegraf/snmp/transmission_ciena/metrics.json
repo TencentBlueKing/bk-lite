@@ -5,7 +5,7 @@
   "plugin_desc": "采 IF-MIB 64位 HC 接口流量（ifHCInOctets/ifHCOutOctets）+ 运行时长；Ciena SAOS 传输设备的温度/光模块光功率/激光偏置电流等健康指标因 MIB 为 per-row 索引表带行级过滤（skip_values），telegraf inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Ciena SAOS 传输/分组光设备（3000/5000/6500 系列，企业号 1271）及其他 IF-MIB 标准传输设备。",
   "status_query": "any({instance_type='transmission', collect_type='snmp_ciena'}) by (instance_id)",
   "name": "Transmission",
-  "icon": "mm-ciena_ciena",
+  "icon": "mm-transmission_传输设备",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='transmission'}) by (instance_id)",

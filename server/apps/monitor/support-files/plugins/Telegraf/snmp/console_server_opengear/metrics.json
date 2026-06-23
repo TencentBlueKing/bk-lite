@@ -5,7 +5,7 @@
   "plugin_desc": "Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。",
   "status_query": "any({instance_type='console_server', collect_type='snmp_opengear'}) by (instance_id)",
   "name": "ConsoleServer",
-  "icon": "mm-opengear_opengear",
+  "icon": "mm-console_server_控制台服务器",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='console_server'}) by (instance_id)",

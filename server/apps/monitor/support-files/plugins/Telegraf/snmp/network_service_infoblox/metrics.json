@@ -5,7 +5,7 @@
   "plugin_desc": "Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。",
   "status_query": "any({instance_type='network_service', collect_type='snmp_infoblox'}) by (instance_id)",
   "name": "NetworkService",
-  "icon": "mm-infoblox_infoblox",
+  "icon": "mm-network_service_网络服务",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='network_service'}) by (instance_id)",
