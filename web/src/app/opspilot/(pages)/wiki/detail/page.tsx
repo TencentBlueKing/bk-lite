@@ -57,7 +57,9 @@ const WikiDetailPage: React.FC = () => {
       showBackButton
       onBackButtonClick={() => router.push('/opspilot/wiki')}
     >
-      <Tabs defaultActiveKey="overview" items={items} />
+      {/* destroyOnHidden:切到某个 Tab 时重新挂载,使各 Tab 的 useEffect 重新拉取最新数据
+          (否则首个 Tab 挂载后常驻,再次进入"资料"等页签不会重新请求,导致看到过期/空列表) */}
+      <Tabs defaultActiveKey="overview" items={items} destroyOnHidden />
     </WithSideMenuLayout>
   );
 };
