@@ -1,10 +1,11 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Select, Space, Tag, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { UploadOutlined } from '@ant-design/icons';
+import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { Material, MaterialType } from '@/app/opspilot/types/wiki';
@@ -133,7 +134,14 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {t('wiki.addMaterial')}
         </Button>
       </div>
-      <Table<Material> rowKey="id" loading={loading} columns={columns} dataSource={data} />
+      <CustomTable<Material>
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={data}
+        pagination={false}
+        scroll={{ y: 'calc(100vh - 420px)' }}
+      />
 
       <Modal
         title={t('wiki.addMaterial')}

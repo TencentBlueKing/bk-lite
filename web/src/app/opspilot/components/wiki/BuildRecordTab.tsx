@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Table, Tag } from 'antd';
+import { Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { BuildRecord } from '@/app/opspilot/types/wiki';
@@ -37,7 +38,7 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   const columns: ColumnsType<BuildRecord> = [
     { title: 'ID', dataIndex: 'id', key: 'id', width: 80 },
-    { title: 'Trigger', dataIndex: 'trigger', key: 'trigger', width: 140 },
+    { title: t('wiki.trigger'), dataIndex: 'trigger', key: 'trigger', width: 140 },
     {
       title: t('wiki.status'),
       dataIndex: 'status',
@@ -45,17 +46,26 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       width: 110,
       render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{s}</Tag>,
     },
-    { title: 'Stage', dataIndex: 'stage', key: 'stage', width: 120 },
+    { title: t('wiki.stage'), dataIndex: 'stage', key: 'stage', width: 120 },
     {
-      title: 'Counts',
+      title: t('wiki.counts'),
       dataIndex: 'counts',
       key: 'counts',
       render: (c: Record<string, number>) => <span className="text-xs">{JSON.stringify(c || {})}</span>,
     },
-    { title: 'Time', dataIndex: 'created_at', key: 'created_at', width: 180 },
+    { title: t('wiki.time'), dataIndex: 'created_at', key: 'created_at', width: 180 },
   ];
 
-  return <Table<BuildRecord> rowKey="id" loading={loading} columns={columns} dataSource={data} />;
+  return (
+    <CustomTable<BuildRecord>
+      rowKey="id"
+      loading={loading}
+      columns={columns}
+      dataSource={data}
+      pagination={false}
+      scroll={{ y: 'calc(100vh - 420px)' }}
+    />
+  );
 };
 
 export default BuildRecordTab;

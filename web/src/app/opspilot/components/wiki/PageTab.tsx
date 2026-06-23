@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Drawer, List, Popconfirm, Space, Table, Tag, message } from 'antd';
+import { Button, Drawer, List, Popconfirm, Space, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { KnowledgePage, PageVersion } from '@/app/opspilot/types/wiki';
@@ -67,9 +68,9 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   const columns: ColumnsType<KnowledgePage> = [
     { title: t('wiki.name'), dataIndex: 'title', key: 'title' },
-    { title: 'Type', dataIndex: 'page_type', key: 'page_type', width: 120 },
+    { title: t('wiki.type'), dataIndex: 'page_type', key: 'page_type', width: 120 },
     {
-      title: 'Contribution',
+      title: t('wiki.contribution'),
       dataIndex: 'contribution',
       key: 'contribution',
       width: 120,
@@ -97,11 +98,18 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   return (
     <div>
-      <Table<KnowledgePage> rowKey="id" loading={loading} columns={columns} dataSource={data} />
+      <CustomTable<KnowledgePage>
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={data}
+        pagination={false}
+        scroll={{ y: 'calc(100vh - 420px)' }}
+      />
       <Drawer title={active?.title} open={drawer} width={640} onClose={() => setDrawer(false)}>
         <pre className="whitespace-pre-wrap text-sm mb-4">{active?.body}</pre>
         <List
-          header="Versions"
+          header={t('wiki.page')}
           size="small"
           dataSource={versions}
           renderItem={(v) => (
@@ -110,7 +118,7 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 v.is_current
                   ? [
                     <Tag color="green" key="cur">
-                      current
+                      {t('wiki.current')}
                     </Tag>,
                   ]
                   : [
@@ -118,7 +126,7 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                       {t('wiki.diff')}
                     </Button>,
                     <Button type="link" size="small" key="restore" onClick={() => handleRestore(v.id)}>
-                      restore
+                      {t('wiki.restore')}
                     </Button>,
                   ]
               }

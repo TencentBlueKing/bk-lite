@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Space, Table, Tag, message } from 'antd';
+import { Button, Space, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { CheckItem } from '@/app/opspilot/types/wiki';
@@ -59,7 +60,7 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const columns: ColumnsType<CheckItem> = [
-    { title: 'Type', dataIndex: 'check_type', key: 'check_type', width: 160 },
+    { title: t('wiki.type'), dataIndex: 'check_type', key: 'check_type', width: 160 },
     {
       title: t('wiki.status'),
       dataIndex: 'status',
@@ -68,7 +69,7 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{s}</Tag>,
     },
     {
-      title: 'Related',
+      title: t('wiki.related'),
       dataIndex: 'related',
       key: 'related',
       render: (r: Record<string, unknown>) => <span className="text-xs">{JSON.stringify(r || {})}</span>,
@@ -98,7 +99,14 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {t('wiki.scan')}
         </Button>
       </div>
-      <Table<CheckItem> rowKey="id" loading={loading} columns={columns} dataSource={data} />
+      <CustomTable<CheckItem>
+        rowKey="id"
+        loading={loading}
+        columns={columns}
+        dataSource={data}
+        pagination={false}
+        scroll={{ y: 'calc(100vh - 420px)' }}
+      />
     </div>
   );
 };

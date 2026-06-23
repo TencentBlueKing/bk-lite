@@ -63,7 +63,7 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         </Col>
         <Col span={4}>
           <Card>
-            <Statistic title="Relations" value={counts.relations || 0} />
+            <Statistic title={t('wiki.relations')} value={counts.relations || 0} />
           </Card>
         </Col>
       </Row>

@@ -1,9 +1,14 @@
 'use client';
 
-import React from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { Tabs } from 'antd';
-import { useSearchParams } from 'next/navigation';
+import { useRouter, useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
+import TopSection from '@/components/top-section';
+import WithSideMenuLayout from '@/components/sub-layout';
+import OnelineEllipsisIntro from '@/app/opspilot/components/oneline-ellipsis-intro';
+import { useWikiApi } from '@/app/opspilot/api/wiki';
+import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import BuildRecordTab from '@/app/opspilot/components/wiki/BuildRecordTab';
 import CheckTab from '@/app/opspilot/components/wiki/CheckTab';
 import GraphTab from '@/app/opspilot/components/wiki/GraphTab';
@@ -14,8 +19,21 @@ import QaTab from '@/app/opspilot/components/wiki/QaTab';
 
 const WikiDetailPage: React.FC = () => {
   const { t } = useTranslation();
+  const router = useRouter();
   const searchParams = useSearchParams();
   const kbId = Number(searchParams?.get('id'));
+  const { fetchKnowledgeBase } = useWikiApi();
+  const [kb, setKb] = useState<WikiKnowledgeBase | null>(null);
+
+  const loadKb = useCallback(() => {
+    if (kbId) fetchKnowledgeBase(kbId).then(setKb).catch(() => undefined);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbId]);
+
+  useEffect(() => {
+    loadKb();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbId]);
 
   if (!kbId) {
     return <div className="p-4 text-gray-500">{t('wiki.empty')}</div>;
@@ -32,9 +50,15 @@ const WikiDetailPage: React.FC = () => {
   ];
 
   return (
-    <div className="p-4">
+    <WithSideMenuLayout
+      topSection={<TopSection title={t('wiki.title')} content={t('wiki.description')} />}
+      intro={<OnelineEllipsisIntro name={kb?.name || ''} desc={kb?.introduction || ''} />}
+      showSideMenu={false}
+      showBackButton
+      onBackButtonClick={() => router.push('/opspilot/wiki')}
+    >
       <Tabs defaultActiveKey="overview" items={items} />
-    </div>
+    </WithSideMenuLayout>
   );
 };
 
