@@ -79,3 +79,36 @@ def test_list_returns_rows():
     rows = response.data["results"] if isinstance(response.data, dict) else response.data
     networks = [item["network"] for item in rows]
     assert "10.11.73.0/24" in networks
+
+
+@pytest.mark.django_db
+def test_partial_update_invalidates_cache(mocker):
+    from apps.system_mgmt.models import NetworkWhiteList
+
+    obj = NetworkWhiteList.objects.create(network="10.11.73.0/24")
+    inval = mocker.patch("apps.system_mgmt.viewset.network_white_list_viewset.invalidate_network_whitelist_cache")
+    view = NetworkWhiteListViewSet.as_view({"patch": "partial_update"})
+    request = factory.patch(f"/system_mgmt/network_white_list/{obj.id}/", {"remark": "updated"}, format="json")
+    force_authenticate(request, user=_user({"network_white_list-Edit"}))
+
+    response = view(request, pk=obj.id)
+
+    assert response.status_code == 200
+    inval.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_destroy_invalidates_cache_and_deletes(mocker):
+    from apps.system_mgmt.models import NetworkWhiteList
+
+    obj = NetworkWhiteList.objects.create(network="10.11.73.0/24")
+    inval = mocker.patch("apps.system_mgmt.viewset.network_white_list_viewset.invalidate_network_whitelist_cache")
+    view = NetworkWhiteListViewSet.as_view({"delete": "destroy"})
+    request = factory.delete(f"/system_mgmt/network_white_list/{obj.id}/")
+    force_authenticate(request, user=_user({"network_white_list-Delete"}))
+
+    response = view(request, pk=obj.id)
+
+    assert response.status_code == 204
+    inval.assert_called_once()
+    assert not NetworkWhiteList.objects.filter(id=obj.id).exists()

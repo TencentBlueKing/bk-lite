@@ -32,32 +32,24 @@ class NetworkWhiteListViewSet(viewsets.ModelViewSet):
     @HasPermission("network_white_list-Add", "system-manager")
     def create(self, request, *args, **kwargs):
         response = super().create(request, *args, **kwargs)
-        if 200 <= response.status_code < 300:
+        if response.status_code == 201:
             invalidate_network_whitelist_cache()
-            log_operation(request, "create", "system-manager", f"新增内网白名单: {request.data.get('network', '')}")
+            log_operation(request, "create", "system-manager", f"新增内网白名单: {response.data.get('network', '')}")
         return response
 
     @HasPermission("network_white_list-Edit", "system-manager")
     def update(self, request, *args, **kwargs):
         response = super().update(request, *args, **kwargs)
-        if 200 <= response.status_code < 300:
+        if response.status_code == 200:
             invalidate_network_whitelist_cache()
-            log_operation(request, "update", "system-manager", f"编辑内网白名单: {request.data.get('network', '')}")
-        return response
-
-    @HasPermission("network_white_list-Edit", "system-manager")
-    def partial_update(self, request, *args, **kwargs):
-        response = super().partial_update(request, *args, **kwargs)
-        if 200 <= response.status_code < 300:
-            invalidate_network_whitelist_cache()
-            log_operation(request, "update", "system-manager", f"编辑内网白名单: {request.data.get('network', '')}")
+            log_operation(request, "update", "system-manager", f"编辑内网白名单: {response.data.get('network', '')}")
         return response
 
     @HasPermission("network_white_list-Delete", "system-manager")
     def destroy(self, request, *args, **kwargs):
         instance_network = self.get_object().network
         response = super().destroy(request, *args, **kwargs)
-        if 200 <= response.status_code < 300:
+        if response.status_code == 204:
             invalidate_network_whitelist_cache()
             log_operation(request, "delete", "system-manager", f"删除内网白名单: {instance_network}")
         return response
