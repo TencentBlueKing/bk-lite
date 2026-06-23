@@ -291,7 +291,23 @@ def _create_monitor_policy_payload(data: dict, operator: str = "api", domain: st
     return policy, MonitorPolicySerializer(policy).data
 
 
+def _require_authenticated_actor(user_info: Optional[dict]):
+    """写接口身份闸：必须携带可解析的已认证身份才允许写库。
+
+    缺身份时不再回退默认 api/domain.com 账号继续建库——对齐读接口
+    _get_monitor_instance_permission 的身份校验（缺用户即拒），消除"写比读松"的鉴权旁路：
+    仅凭向 NATS subject 发消息、不带任何身份即可新建监控对象/告警策略的攻击面。
+    校验失败时返回与读接口一致的失败结构。
+    """
+    if not isinstance(user_info, dict) or not _normalize_permission_user(user_info.get("user")):
+        return {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    return None
+
+
 def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = None):
+    identity_error = _require_authenticated_actor(user_info)
+    if identity_error:
+        return identity_error
     try:
         operator, domain = _resolve_nats_actor(user_info)
         _, result_data = create_func(data, operator=operator, domain=domain)
@@ -391,8 +407,8 @@ def _get_monitor_instance_permission(monitor_obj_id: str, user_info: dict):
 def _normalize_permission_user(user):
     if hasattr(user, "username") and hasattr(user, "domain"):
         return user
-    if isinstance(user, str) and user:
-        return SimpleNamespace(username=user, domain="domain.com")
+    if isinstance(user, str) and user.strip():
+        return SimpleNamespace(username=user.strip(), domain="domain.com")
     return user
 
 
