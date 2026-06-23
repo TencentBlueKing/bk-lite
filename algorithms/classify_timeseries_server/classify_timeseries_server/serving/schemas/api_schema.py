@@ -1,8 +1,14 @@
 """Pydantic schemas for request/response validation."""
 
-from typing import Optional
-from pydantic import BaseModel, Field
+import os
+from typing import Annotated, Optional
+
 import pandas as pd
+from pydantic import BaseModel, Field
+
+# 可通过环境变量调整上界，保守默认值防止 DoS
+MAX_PREDICTION_STEPS: int = int(os.getenv("MAX_PREDICTION_STEPS", "1000"))
+MAX_INPUT_DATA_POINTS: int = int(os.getenv("MAX_INPUT_DATA_POINTS", "50000"))
 
 
 class TimeSeriesPoint(BaseModel):
@@ -20,20 +26,21 @@ class TimeSeriesPoint(BaseModel):
 
 class PredictionConfig(BaseModel):
     """预测配置."""
-    
+
     steps: int = Field(
         ...,
-        description="预测步数",
-        gt=0
+        description=f"预测步数（1 ~ {MAX_PREDICTION_STEPS}）",
+        gt=0,
+        le=MAX_PREDICTION_STEPS,
     )
 
 
 class PredictRequest(BaseModel):
     """预测请求."""
 
-    data: list[TimeSeriesPoint] = Field(
+    data: Annotated[list[TimeSeriesPoint], Field(max_length=MAX_INPUT_DATA_POINTS)] = Field(
         ...,
-        description="历史时间序列数据"
+        description=f"历史时间序列数据（最多 {MAX_INPUT_DATA_POINTS} 个数据点）",
     )
     config: PredictionConfig = Field(
         ...,

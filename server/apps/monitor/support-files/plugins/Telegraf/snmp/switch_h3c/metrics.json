@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_h3c",
+  "plugin": "Switch H3C SNMP",
+  "plugin_desc": "H3C / HPE Comware switch-specific SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). In addition to standard IF-MIB interface metrics, it collects H3C private OIDs for device health: per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both are reported per physical entity where most entities return 0 and the CPU/memory-bearing board carries the real value, so device-level CPU/memory are taken as the maximum across entities. Temperature is not collected because all entities report 0 for hh3cEntityExtTemperature on Comware; fan and power-supply state live in ENTITY-MIB with per-row entPhysicalClass filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).",
+  "status_query": "any({instance_type='switch', collect_type='snmp_h3c'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the H3C / HPE Comware device control plane (HH3C-ENTITY-EXT-MIB hh3cEntityExtCpuUsage), taken as the maximum across physical entities so the active CPU board's load is reflected rather than diluted by entities that report 0. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports overall memory utilization of the H3C / HPE Comware device (HH3C-ENTITY-EXT-MIB hh3cEntityExtMemUsage, a direct percent value), taken as the maximum across physical entities so the memory-bearing board's usage is reflected. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}

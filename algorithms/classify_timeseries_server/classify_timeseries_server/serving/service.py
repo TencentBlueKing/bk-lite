@@ -17,7 +17,7 @@ from .metrics import (
     prediction_duration,
 )
 from .models import load_model
-from .schemas import PredictRequest, PredictResponse
+from .schemas import MAX_INPUT_DATA_POINTS, MAX_PREDICTION_STEPS, PredictRequest, PredictResponse
 
 
 @bentoml.service(
@@ -219,7 +219,12 @@ class MLService:
         try:
             # 转换历史数据
             history = request.to_series()
-            steps = request.config.steps
+            # 服务层硬截断：即使 schema 校验被绕过也不会触发无界循环
+            steps = min(request.config.steps, MAX_PREDICTION_STEPS)
+            if len(request.data) > MAX_INPUT_DATA_POINTS:
+                raise ValueError(
+                    f"输入数据点数 {len(request.data)} 超过上限 {MAX_INPUT_DATA_POINTS}"
+                )
 
             logger.info(
                 f"📊 Input data range: {history.index[0]} to {history.index[-1]}"

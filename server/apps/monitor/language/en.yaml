@@ -1,4 +1,50 @@
 monitor_object_metric:
+  Wireless:
+    snmp_uptime: &id001
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets: &id002
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets: &id003
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic: &id004
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators obtain an overview of incoming traffic for overall monitoring and capacity planning.
+    device_total_outgoing_traffic: &id005
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators assess sending performance for traffic management and optimization.
+  Transmission:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  Access:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  ConsoleServer:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  NetworkService:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  VoiceGateway:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
@@ -3516,6 +3562,24 @@ monitor_object_metric:
       name: Runtime Heap Allocation
       desc: Current size of memory allocated and in use on the Go runtime heap.
 monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+  Access:
+    Base: Base
+    Traffic: Traffic
+  ConsoleServer:
+    Base: Base
+    Traffic: Traffic
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
   Dameng:
     Base: Base
     Session: Session
@@ -3873,6 +3937,27 @@ monitor_object_metric_group:
     写入稳定性: Write Stability
     运行时: Runtime
 monitor_object_plugin:
+  Wireless Cambium SNMP:
+    name: Wireless Cambium SNMP
+    desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/associated clients) use Cambium private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp, so they are N/A. Applicable to Cambium Networks wireless devices (cnPilot/ePMP/PMP, enterprise OID 17713) and other IF-MIB compliant wireless AP/bridges.
+  Wireless Proxim SNMP:
+    name: Wireless Proxim SNMP
+    desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/subscriber units) use Proxim ORiNOCO/Tsunami private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp; LibreNMS also has no Proxim processors/mempools/sensors discovery (only ORiNOCO-MIB for OS detection), so wireless health is N/A. Applicable to Proxim Wireless devices (ORiNOCO AP access points, Tsunami MP point-to-multipoint backhaul base stations/subscriber units, enterprise OID 841) and other IF-MIB compliant wireless AP/backhaul bridges.
+  Transmission Ciena SNMP:
+    name: Transmission Ciena SNMP
+    desc: Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets) plus uptime. Health metrics of Ciena SAOS transmission devices (temperature/optical module power/laser bias current) use per-row indexed MIB tables with row-level filtering (skip_values); telegraf inputs.snmp cannot do row-level filtering, so they are N/A. Applicable to Ciena SAOS transmission/packet-optical devices.
+  Access BDCOM SNMP:
+    name: Access BDCOM SNMP
+    desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
+  ConsoleServer Opengear SNMP:
+    name: ConsoleServer Opengear SNMP
+    desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
+  NetworkService Infoblox SNMP:
+    name: NetworkService Infoblox SNMP
+    desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
+  VoiceGateway AudioCodes SNMP:
+    name: VoiceGateway AudioCodes SNMP
+    desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
@@ -4523,6 +4608,12 @@ monitor_object_plugin:
     name: Kafka(Exporter)
     desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
+  Wireless: Wireless
+  Transmission: Transmission
+  Access: Access
+  ConsoleServer: ConsoleServer
+  NetworkService: NetworkService
+  VoiceGateway: VoiceGateway
   Dameng: Dameng Database
   Apache: Apache
   Haproxy: Haproxy

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import {
   attachGapIntervals,
   buildGapDetectionParams,
+  deriveVisibleGapIntervalsFromChartData,
   GAP_INTERVAL_AREA_STYLE,
   getChartDataWithGapBreaks,
   expandGapIntervalsToChartPoints,
@@ -98,6 +99,31 @@ assert.deepEqual(
     { start: 0, end: 360, duration: 360 },
     { start: 720, end: 792, duration: 72 },
   ]
+);
+
+assert.deepEqual(
+  deriveVisibleGapIntervalsFromChartData(
+    [
+      { time: 0, value1: 1, value2: 10 },
+      { time: 72, value1: Number.NaN, value2: 11 },
+      { time: 144, value2: 12 },
+      { time: 216, value1: 2, value2: 13 },
+    ],
+    ['value1', 'value2']
+  ),
+  [{ start: 0, end: 216, duration: 216 }]
+);
+
+assert.deepEqual(
+  deriveVisibleGapIntervalsFromChartData(
+    [
+      { time: 0 },
+      { time: 72, value1: 1 },
+      { time: 144, value1: Number.NaN },
+    ],
+    ['value1']
+  ),
+  []
 );
 
 assert.deepEqual(

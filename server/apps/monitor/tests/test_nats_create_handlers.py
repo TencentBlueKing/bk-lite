@@ -156,6 +156,66 @@ def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeyp
     }
 
 
+def test_execute_nats_create_rejects_missing_user_info(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_missing_user_info_test_module")
+
+    called = {"count": 0}
+
+    def fake_create(payload, operator="api", domain="domain.com"):
+        called["count"] += 1
+        return object(), {"id": "metric"}
+
+    result = module._execute_nats_create(fake_create, {"name": "cpu_usage"}, user_info=None)
+
+    assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    assert called["count"] == 0
+
+
+def test_execute_nats_create_rejects_user_info_without_user(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_no_user_test_module")
+
+    called = {"count": 0}
+
+    def fake_create(payload, operator="api", domain="domain.com"):
+        called["count"] += 1
+        return object(), {"id": "metric"}
+
+    # user_info 是 dict 但缺 user（或 user 为空/纯空白）→ 不再回退默认账号，直接拒
+    for bad_user_info in ({}, {"user": None}, {"user": ""}, {"user": "  "}, {"user": "\t"}, {"domain": "tenant-a.com"}):
+        result = module._execute_nats_create(fake_create, {"name": "cpu_usage"}, user_info=bad_user_info)
+        assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
+
+    assert called["count"] == 0
+
+
+def test_create_monitor_policy_rejects_anonymous_caller_without_side_effects(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_policy_anonymous_test_module")
+
+    view_calls = []
+
+    class ExplodingMonitorPolicySerializer:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("匿名调用不应触达序列化/写库")
+
+    class ExplodingViewSet:
+        def __getattr__(self, name):
+            def _boom(*args, **kwargs):
+                view_calls.append(name)
+                raise AssertionError("匿名调用不应触发任何写副作用")
+
+            return _boom
+
+    monkeypatch.setattr(module, "MonitorPolicySerializer", ExplodingMonitorPolicySerializer)
+    monkeypatch.setattr(module, "_get_monitor_policy_viewset", ExplodingViewSet)
+
+    result = module.create_monitor_policy(
+        {"name": "evil policy", "schedule": "*/5 * * * *", "organizations": [1]},
+    )
+
+    assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    assert view_calls == []
+
+
 def test_create_monitor_policy_maps_api_create_side_effects(monkeypatch):
     module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_policy_test_module")
 
@@ -545,3 +605,58 @@ def test_get_monitor_statistics_superuser_returns_full_counts(monkeypatch):
 
     for key in _ORG_SCOPED_KEYS + _CATALOG_KEYS:
         assert data[key] == 100, f"{key} 超管应为全量 100，实际 {data[key]}"
+
+
+# ============ 今日计数时区一致性（Issue #3607）============
+
+
+def test_get_monitor_statistics_today_start_is_tz_aware(monkeypatch):
+    """today_start 必须来自 timezone.now()（tz-aware），而非 datetime.now()（naive）。
+
+    验证方式：拦截 timezone.now 记录调用，同时拦截 MonitorAlert.objects.filter 捕获
+    created_at__gte 参数，断言它带有 tzinfo。revert 修复（改回 datetime.now()）后，
+    today_start 为 naive datetime，tzinfo 为 None，本断言将失败。
+    """
+    import sys
+    from datetime import datetime, timezone as _stdlib_tz
+
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_stats_tz_test_module")
+    _install_stats_models(monkeypatch, module)
+
+    # 注入一个固定的 tz-aware 时间，并记录 timezone.now 是否被调用
+    fixed_aware = datetime(2024, 6, 15, 16, 30, 0, tzinfo=_stdlib_tz.utc)
+    timezone_calls = []
+
+    def fake_timezone_now():
+        timezone_calls.append(True)
+        return fixed_aware
+
+    monkeypatch.setattr(module.timezone, "now", fake_timezone_now)
+
+    # 拦截 MonitorAlert（超管路径，全量 alert_qs）的 filter 来捕获 today_start
+    captured_filter_kwargs = {}
+
+    class _TodayCapturingQS(_StatsFakeQS):
+        def filter(self, **kwargs):
+            if "created_at__gte" in kwargs:
+                captured_filter_kwargs.update(kwargs)
+            return super().filter(**kwargs)
+
+    class _TodayCapturingModel:
+        objects = _TodayCapturingQS("full")
+
+    monkeypatch.setattr(module, "MonitorAlert", _TodayCapturingModel)
+
+    module.get_monitor_statistics(user_info={"is_superuser": True})
+
+    # 1. timezone.now() 必须被调用过（修复点：如果改回 datetime.now()，不会调用 timezone.now）
+    assert timezone_calls, "timezone.now() 未被调用——today_start 未使用 tz-aware 时间源"
+
+    # 2. 传入 filter 的 today_start 必须带时区信息
+    assert "created_at__gte" in captured_filter_kwargs, "alert_qs.filter(created_at__gte=...) 未被调用"
+    today_start = captured_filter_kwargs["created_at__gte"]
+    assert today_start.tzinfo is not None, (
+        f"today_start 是 naive datetime（tzinfo=None），"
+        f"Django USE_TZ=True 环境下与 tz-aware created_at 比较会产生偏差；"
+        f"应使用 timezone.now() 替代 datetime.now()"
+    )

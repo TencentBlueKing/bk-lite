@@ -23,6 +23,12 @@ import SwitchDashboard from './objects/switch';
 import FirewallDashboard from './objects/firewall';
 import LoadbalanceDashboard from './objects/loadbalance';
 import RouterDashboard from './objects/router';
+import WirelessDashboard from './objects/wireless';
+import TransmissionDashboard from './objects/transmission';
+import AccessDashboard from './objects/access';
+import NetworkServiceDashboard from './objects/network_service';
+import ConsoleServerDashboard from './objects/console_server';
+import VoiceGatewayDashboard from './objects/voice_gateway';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -212,6 +218,60 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: '路由器',
     inheritedPermissionPath: '/monitor/view',
     component: RouterDashboard
+  },
+  {
+    key: 'wireless',
+    aliases: ['无线设备'],
+    groupKey: 'network',
+    objectName: 'Wireless',
+    objectDisplayName: '无线设备',
+    inheritedPermissionPath: '/monitor/view',
+    component: WirelessDashboard
+  },
+  {
+    key: 'transmission',
+    aliases: ['传输设备'],
+    groupKey: 'network',
+    objectName: 'Transmission',
+    objectDisplayName: '传输设备',
+    inheritedPermissionPath: '/monitor/view',
+    component: TransmissionDashboard
+  },
+  {
+    key: 'access',
+    aliases: ['接入设备'],
+    groupKey: 'network',
+    objectName: 'Access',
+    objectDisplayName: '接入设备',
+    inheritedPermissionPath: '/monitor/view',
+    component: AccessDashboard
+  },
+  {
+    key: 'network_service',
+    aliases: ['网络服务'],
+    groupKey: 'network',
+    objectName: 'NetworkService',
+    objectDisplayName: '网络服务',
+    inheritedPermissionPath: '/monitor/view',
+    component: NetworkServiceDashboard
+  },
+  {
+    key: 'console_server',
+    aliases: ['控制台服务器'],
+    groupKey: 'network',
+    objectName: 'ConsoleServer',
+    objectDisplayName: '控制台服务器',
+    inheritedPermissionPath: '/monitor/view',
+    component: ConsoleServerDashboard
+  },
+  {
+    key: 'voice_gateway',
+    aliases: ['语音网关'],
+    groupKey: 'network',
+    objectName: 'VoiceGateway',
+    objectDisplayName: '语音网关',
+    inheritedPermissionPath: '/monitor/view',
+    component: VoiceGatewayDashboard
   },
   {
     key: 'k8s-cluster',

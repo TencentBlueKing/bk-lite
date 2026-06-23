@@ -78,10 +78,13 @@ class MLService:
         logger.info("=== Cleanup completed ===")
 
     @bentoml.api
-    async def predict(self, data: list[str], config: dict | None = None) -> LogClusterResponseV2:
+    async def predict(self, request: LogClusterRequest) -> LogClusterResponseV2:
         """
         日志聚类预测接口.
-        
+
+        通过 LogClusterRequest schema 接收请求，确保 BentoML 在反序列化时
+        触发 Pydantic 校验（max_length=10000 + 单条 10KB 大小限制）。
+
         P0优化点：
         1. 返回聚合数据，减少90%网络传输
         2. 标记未知日志（异常检测基础）
@@ -89,8 +92,7 @@ class MLService:
         4. 可选的详细模式
 
         Args:
-            data: 日志消息列表
-            config: 聚类配置参数（可选）
+            request: 日志聚类请求（含 data 列表和 config 配置）
 
         Returns:
             聚合的日志聚类响应
@@ -98,9 +100,8 @@ class MLService:
         Raises:
             ModelInferenceError: 模型推理失败
         """
-        # 构建请求对象
-        from .schemas import LogClusterConfig
-        req_config = LogClusterConfig(**(config or {}))
+        data = request.data
+        req_config = request.config
         
         start_time = time.time()
         logger.info(

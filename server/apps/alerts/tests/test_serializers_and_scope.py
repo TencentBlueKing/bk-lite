@@ -175,3 +175,26 @@ def test_alert_source_get_event_count_and_last_event_time():
 def test_alert_source_get_last_event_time_empty():
     source = AlertSource.objects.create(name="源2", source_id="s2", source_type="restful", secret="x")
     assert AlertSourceModelSerializer.get_last_event_time(source) == ""
+
+
+@pytest.mark.django_db
+def test_alert_source_serializer_team_secrets_write_only():
+    """team_secrets 必须为 write_only，GET 响应不得返回组织密钥。
+
+    验证点：revert write_only 后此测试失败（字段出现在 data 中）。
+    """
+    source = AlertSource.objects.create(
+        name="源3",
+        source_id="s3",
+        source_type="restful",
+        secret="base-secret",
+        team_secrets={1: "team-secret-abc"},
+    )
+    ser = AlertSourceModelSerializer(source)
+    data = ser.data
+    # team_secrets 不得出现在序列化输出中（write_only=True）
+    assert "team_secrets" not in data, (
+        "team_secrets 以明文出现在 GET 响应中，存在组织密钥泄露风险"
+    )
+    # secret 同理
+    assert "secret" not in data, "secret 以明文出现在 GET 响应中"

@@ -33,7 +33,72 @@ from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
 
 
+class AlertPermissionMixin:
+    """
+    共享的策略权限过滤逻辑。
+
+    将原先在 MonitorAlertViewSet 和 MonitorEventViewSet 中各自重复定义的
+    _get_all_accessible_policy_ids / _check_alert_permission 提取到此 Mixin，
+    同时将全量加载改为按权限数据结构预先缩小 DB 查询范围，避免 O(N) 全表扫描。
+    """
+
+    def _get_all_accessible_policy_ids(self, request):
+        """
+        返回当前用户有权限访问的所有策略 ID 列表。
+
+        优化点：根据权限规则中已知的 monitor_object_id 集合先在 DB 层过滤，
+        再在内存中做精细权限判断，避免全表加载所有策略。
+        """
+        current_team = get_current_team(request)
+        include_children = request.COOKIES.get("include_children", "0") == "1"
+
+        permissions_result = get_permissions_rules(
+            request.user,
+            current_team,
+            "monitor",
+            PermissionConstants.POLICY_MODULE,
+            include_children=include_children,
+        )
+
+        policy_permissions = permissions_result.get("data", {})
+        cur_team = permissions_result.get("team", [])
+
+        if not policy_permissions:
+            return []
+
+        # 从权限数据中提取已知的 monitor_object_id，用于 DB 层预过滤。
+        # policy_permissions 结构：{ object_type_id: {instance: [...], team: [...]}, "all": {...} }
+        # "all" 键表示管理员级别权限（对全部对象类型生效），此时不能缩小范围。
+        if "all" not in policy_permissions:
+            known_object_type_ids = [
+                int(k) for k in policy_permissions.keys() if k != "all" and str(k).isdigit()
+            ]
+            policy_qs = MonitorPolicy.objects.filter(
+                monitor_object_id__in=known_object_type_ids
+            )
+        else:
+            policy_qs = MonitorPolicy.objects.all()
+
+        policy_qs = policy_qs.select_related("monitor_object").prefetch_related("policyorganization_set")
+
+        accessible_policy_ids = []
+        for policy_obj in policy_qs:
+            monitor_object_id = str(policy_obj.monitor_object_id)
+            policy_id = policy_obj.id
+            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
+            if check_instance_permission(monitor_object_id, policy_id, teams, policy_permissions, cur_team):
+                accessible_policy_ids.append(policy_id)
+
+        return accessible_policy_ids
+
+    def _check_alert_permission(self, request, alert_obj):
+        """Check if the current user has permission to access the given alert."""
+        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
+        return alert_obj.policy_id in accessible_policy_ids
+
+
 class MonitorAlertViewSet(
+    AlertPermissionMixin,
     mixins.RetrieveModelMixin,
     mixins.UpdateModelMixin,
     mixins.ListModelMixin,
@@ -54,52 +119,6 @@ class MonitorAlertViewSet(
                 return qs.none()
             qs = qs.filter(policy_id__in=accessible_policy_ids)
         return qs
-
-    def _check_alert_permission(self, request, alert_obj):
-        """Check if the current user has permission to access the given alert."""
-        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
-        return alert_obj.policy_id in accessible_policy_ids
-
-    def _get_all_accessible_policy_ids(self, request):
-        """
-        获取当前用户所有有权限的策略ID
-        """
-        current_team = get_current_team(request)
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-
-        # 获取所有采集类型下policy模块的权限规则
-        permissions_result = get_permissions_rules(
-            request.user,
-            current_team,
-            "monitor",
-            PermissionConstants.POLICY_MODULE,
-            include_children=include_children,
-        )
-
-        policy_permissions = permissions_result.get("data", {})
-        cur_team = permissions_result.get("team", [])
-
-        if not policy_permissions:
-            return []
-
-        # 一次性获取所有策略及其关联组织，减少SQL查询
-        all_policies = MonitorPolicy.objects.select_related("monitor_object").prefetch_related("policyorganization_set").all()
-
-        accessible_policy_ids = []
-
-        # 遍历所有策略，在内存中进行权限检查（使用通用权限检查函数）
-        for policy_obj in all_policies:
-            monitor_object_id = str(policy_obj.monitor_object_id)
-            policy_id = policy_obj.id
-
-            # 获取策略关联的组织
-            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
-
-            # 使用通用权限检查函数
-            if check_instance_permission(monitor_object_id, policy_id, teams, policy_permissions, cur_team):
-                accessible_policy_ids.append(policy_id)
-
-        return accessible_policy_ids
 
     def list(self, request, *args, **kwargs):
         monitor_object_id = request.query_params.get("monitor_object_id", None)
@@ -292,40 +311,7 @@ class MonitorAlertViewSet(
         )
 
 
-class MonitorEventViewSet(viewsets.ViewSet):
-    def _get_all_accessible_policy_ids(self, request):
-        current_team = get_current_team(request)
-        include_children = request.COOKIES.get("include_children", "0") == "1"
-
-        permissions_result = get_permissions_rules(
-            request.user,
-            current_team,
-            "monitor",
-            PermissionConstants.POLICY_MODULE,
-            include_children=include_children,
-        )
-
-        policy_permissions = permissions_result.get("data", {})
-        cur_team = permissions_result.get("team", [])
-
-        if not policy_permissions:
-            return []
-
-        all_policies = MonitorPolicy.objects.select_related("monitor_object").prefetch_related("policyorganization_set").all()
-
-        accessible_policy_ids = []
-        for policy_obj in all_policies:
-            monitor_object_id = str(policy_obj.monitor_object_id)
-            policy_id = policy_obj.id
-            teams = {org.organization for org in policy_obj.policyorganization_set.all()}
-            if check_instance_permission(monitor_object_id, policy_id, teams, policy_permissions, cur_team):
-                accessible_policy_ids.append(policy_id)
-
-        return accessible_policy_ids
-
-    def _check_alert_permission(self, request, alert_obj):
-        accessible_policy_ids = self._get_all_accessible_policy_ids(request)
-        return alert_obj.policy_id in accessible_policy_ids
+class MonitorEventViewSet(AlertPermissionMixin, viewsets.ViewSet):
 
     @action(methods=["get"], detail=False, url_path="query/(?P<alert_id>[^/.]+)")
     def get_events(self, request, alert_id):

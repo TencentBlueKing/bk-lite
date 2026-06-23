@@ -14,7 +14,7 @@ from .metrics import (
     prediction_duration,
 )
 from .models import load_model
-from .schemas import PredictRequest, PredictResponse
+from .schemas import PredictRequest, PredictResponse, PREDICT_MAX_DATA_POINTS
 
 
 @bentoml.service(
@@ -123,6 +123,55 @@ class MLService:
             ErrorDetail,
             AnomalyPoint,
         )
+
+        # 输入上界检查：在展开列表之前拒绝超大请求，防止 OOM
+        if not data or len(data) == 0:
+            return PredictResponse(
+                success=False,
+                results=None,
+                metadata=ResponseMetadata(
+                    model_uri=self.config.mlflow_model_uri
+                    if hasattr(self.config, "mlflow_model_uri")
+                    else None,
+                    input_data_points=0,
+                    detected_anomalies=0,
+                    anomaly_rate=0.0,
+                    input_frequency=None,
+                    execution_time_ms=(time.time() - request_start) * 1000,
+                ),
+                error=ErrorDetail(
+                    code="E1000",
+                    message="请求数据不能为空",
+                    details={"error_type": "ValidationError"},
+                ),
+            )
+        if len(data) > PREDICT_MAX_DATA_POINTS:
+            logger.warning(
+                f"请求数据点数 {len(data)} 超过上限 {PREDICT_MAX_DATA_POINTS}，拒绝处理"
+            )
+            return PredictResponse(
+                success=False,
+                results=None,
+                metadata=ResponseMetadata(
+                    model_uri=self.config.mlflow_model_uri
+                    if hasattr(self.config, "mlflow_model_uri")
+                    else None,
+                    input_data_points=len(data),
+                    detected_anomalies=0,
+                    anomaly_rate=0.0,
+                    input_frequency=None,
+                    execution_time_ms=(time.time() - request_start) * 1000,
+                ),
+                error=ErrorDetail(
+                    code="E1002",
+                    message=f"数据点数 {len(data)} 超过单次请求上限 {PREDICT_MAX_DATA_POINTS}，请分批提交",
+                    details={
+                        "error_type": "InputTooLarge",
+                        "max_allowed": PREDICT_MAX_DATA_POINTS,
+                        "received": len(data),
+                    },
+                ),
+            )
 
         try:
             data_points = [TimeSeriesPoint(**point) for point in data]

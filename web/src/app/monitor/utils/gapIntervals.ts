@@ -169,6 +169,47 @@ export const deriveFinitePointGapIntervals = (data: ChartData[]): GapInterval[] 
   return mergeGapIntervalsForDisplay(gaps);
 };
 
+export const deriveVisibleGapIntervalsFromChartData = (
+  data: ChartData[],
+  valueKeys?: string[]
+): GapInterval[] => {
+  const sortedData = data
+    .map((item) => ({
+      item,
+      time: Number(item.time),
+    }))
+    .filter(({ time }) => Number.isFinite(time))
+    .sort((left, right) => left.time - right.time);
+  const keys = valueKeys?.length ? valueKeys : getChartValueKeys(data);
+  const gaps: GapInterval[] = [];
+
+  keys.forEach((key) => {
+    let previousPresentTime: number | null = null;
+    let hasMissingRun = false;
+
+    sortedData.forEach(({ item, time }) => {
+      if (isPresentChartValue(item[key])) {
+        if (previousPresentTime !== null && hasMissingRun && time > previousPresentTime) {
+          gaps.push({
+            start: previousPresentTime,
+            end: time,
+            duration: time - previousPresentTime,
+          });
+        }
+        previousPresentTime = time;
+        hasMissingRun = false;
+        return;
+      }
+
+      if (previousPresentTime !== null) {
+        hasMissingRun = true;
+      }
+    });
+  });
+
+  return mergeGapIntervalsForDisplay(gaps);
+};
+
 export const getChartDataWithGapBreaks = (
   data: ChartData[],
   gaps: GapInterval[] = []

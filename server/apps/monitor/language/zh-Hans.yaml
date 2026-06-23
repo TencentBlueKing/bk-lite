@@ -1,4 +1,50 @@
 monitor_object_metric:
+  Wireless:
+    snmp_uptime: &id001
+      name: 系统运行时间
+      desc: 该指标表示设备自上次启动以来的运行时间（来自 sysUpTime）。通过监测设备运行时间，网络管理员可以了解设备的稳定性与可靠性，识别潜在的重启或故障问题。
+    interface_ifHCInOctets: &id002
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets: &id003
+      name: 接口发送流量速率
+      desc: 该指标计算过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器，ifXTable），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
+    device_total_incoming_traffic: &id004
+      name: 设备接收总流量速率
+      desc: 此指标表示整个设备在过去5分钟内接收到的总字节流量的平均速率（按所有接口的 64 位 ifHCInOctets 汇总），单位为字节每秒。帮助管理员获取整个设备的接收流量情况，支持总体流量监控与容量规划。
+    device_total_outgoing_traffic: &id005
+      name: 设备发送总流量速率
+      desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率（按所有接口的 64 位 ifHCOutOctets 汇总），单位为字节每秒。帮助管理员评估整个系统的发送性能，进行更有效的流量管理与优化。
+  Transmission:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  Access:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  ConsoleServer:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  NetworkService:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  VoiceGateway:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: 集群可用总容量
@@ -3174,6 +3220,24 @@ monitor_object_metric:
       name: 运行时堆内存分配
       desc: Go 运行时当前已分配且正在使用的堆内存大小。
 monitor_object_metric_group:
+  Wireless:
+    Base: 基础
+    Traffic: 流量
+  Transmission:
+    Base: 基础
+    Traffic: 流量
+  Access:
+    Base: 基础
+    Traffic: 流量
+  ConsoleServer:
+    Base: 基础
+    Traffic: 流量
+  NetworkService:
+    Base: 基础
+    Traffic: 流量
+  VoiceGateway:
+    Base: 基础
+    Traffic: 流量
   Dameng:
     Base: 基础
     Session: 会话
@@ -3533,6 +3597,27 @@ monitor_object_metric_group:
     写入稳定性: 写入稳定性
     运行时: 运行时
 monitor_object_plugin:
+  Wireless Cambium SNMP:
+    name: Cambium (Telegraf)
+    desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/关联客户端数等健康指标因 Cambium 私有 MIB 采用 per-row 索引表（按射频单元/SSID/客户端逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤，故为 N/A，不伪造。适用品牌型号——Cambium Networks 无线设备（cnPilot/ePMP/PMP 系列，企业号 17713）及其他遵循 IF-MIB 标准的无线 AP/网桥。
+  Wireless Proxim SNMP:
+    name: Proxim (Telegraf)
+    desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/远端订户单元等健康指标因 Proxim ORiNOCO/Tsunami 私有 MIB 采用 per-row 索引表（按射频单元/订户单元逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤；LibreNMS 亦无 Proxim 的 processors/mempools/sensors 发现定义，仅有 ORiNOCO-MIB 用于 OS 识别，故无线健康为 N/A，不伪造。适用品牌型号——Proxim Wireless 无线设备（ORiNOCO AP 系列接入点、Tsunami MP 点对多点回传基站/订户单元，企业号 841）及其他遵循 IF-MIB 标准的无线 AP/回传网桥。
+  Transmission Ciena SNMP:
+    name: Ciena (Telegraf)
+    desc: 采 IF-MIB 64位 HC 接口流量（ifHCInOctets/ifHCOutOctets）+ 运行时长；Ciena SAOS 传输设备的温度/光模块光功率/激光偏置电流等健康指标因 MIB 为 per-row 索引表带行级过滤（skip_values），telegraf inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Ciena SAOS 传输/分组光设备（3000/5000/6500 系列，企业号 1271）及其他 IF-MIB 标准传输设备。
+  Access BDCOM SNMP:
+    name: BDCOM (Telegraf)
+    desc: BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。
+  ConsoleServer Opengear SNMP:
+    name: Opengear (Telegraf)
+    desc: Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。
+  NetworkService Infoblox SNMP:
+    name: Infoblox (Telegraf)
+    desc: Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。
+  VoiceGateway AudioCodes SNMP:
+    name: AudioCodes (Telegraf)
+    desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。
   DM-Exporter:
     name: 达梦数据库监控探针
     desc: 通过 DM-Exporter 下发达梦数据库监控探针，采集会话、锁、表空间、内存、慢查询等核心监控指标，帮助快速掌握数据库运行状态与性能变化。
@@ -3911,6 +3996,12 @@ monitor_object_plugin:
     name: Kafka（Exporter）
     desc: 通过Kafka Exporter采集器定期收集Kafka集群的主题统计、分区数量、消费者组状态等指标，帮助监控Kafka集群的健康和性能。
 monitor_object:
+  Wireless: 无线设备
+  Transmission: 传输设备
+  Access: 接入设备
+  ConsoleServer: 控制台服务器
+  NetworkService: 网络服务
+  VoiceGateway: 语音网关
   Dameng: 达梦数据库
   Apache: Apache
   Haproxy: HAProxy
