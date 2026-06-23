@@ -128,8 +128,17 @@ _TEMPLATES = {
 
 
 def list_templates():
-    """返回模板元数据(不含正文骨架)。"""
-    return [{"key": key, "name": tpl["name"], "description": tpl["description"]} for key, tpl in _TEMPLATES.items()]
+    """返回模板元数据 + 固定正文骨架(供前端选模板后直接填充,用户再编辑)。"""
+    return [
+        {
+            "key": key,
+            "name": tpl["name"],
+            "description": tpl["description"],
+            "purpose_md": tpl["purpose_md"],
+            "schema_md": tpl["schema_md"],
+        }
+        for key, tpl in _TEMPLATES.items()
+    ]
 
 
 def _get_template(template_key):

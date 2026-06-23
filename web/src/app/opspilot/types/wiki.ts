@@ -100,6 +100,8 @@ export interface PurposeSchemaTemplate {
   key: string;
   name: string;
   description?: string;
+  purpose_md?: string;
+  schema_md?: string;
 }
 
 export interface PurposeSchemaResult {

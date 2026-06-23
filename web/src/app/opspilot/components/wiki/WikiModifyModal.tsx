@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
-import { Button, Form, Input, Modal, Select } from 'antd';
+import { Form, Input, Modal, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useGroups from '@/app/opspilot/hooks/useGroups';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
@@ -14,19 +14,30 @@ interface WikiModifyModalProps {
   initialValues?: WikiKnowledgeBase | null;
 }
 
+const fillTemplate = (tpl: PurposeSchemaTemplate | undefined, intro: string) => ({
+  purpose_md: (tpl?.purpose_md || '').replace(/\{\{description\}\}/g, intro || ''),
+  schema_md: tpl?.schema_md || '',
+});
+
 const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, onConfirm, initialValues }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
   const { groups } = useGroups();
-  const { fetchTemplates, generatePurposeSchema } = useWikiApi();
+  const { fetchTemplates } = useWikiApi();
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
-  const [generating, setGenerating] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     fetchTemplates()
-      .then(setTemplates)
+      .then((tpls) => {
+        setTemplates(tpls);
+        // 新建:默认套用「通用知识库」固定内容;编辑:保留已有内容
+        if (!initialValues) {
+          const def = tpls.find((x) => x.key === 'general') || tpls[0];
+          form.setFieldsValue({ template_key: def?.key, ...fillTemplate(def, '') });
+        }
+      })
       .catch(() => undefined);
     if (initialValues) {
       form.setFieldsValue({
@@ -39,22 +50,14 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
       });
     } else {
       form.resetFields();
-      form.setFieldsValue({ template_key: 'general' });
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [visible, initialValues]);
 
-  const handleGenerate = async () => {
-    setGenerating(true);
-    try {
-      const r = await generatePurposeSchema({
-        template_key: form.getFieldValue('template_key'),
-        description: form.getFieldValue('introduction'),
-      });
-      form.setFieldsValue({ purpose_md: r.purpose_md, schema_md: r.schema_md });
-    } finally {
-      setGenerating(false);
-    }
+  // 选择模板 → 直接填入该模板固定的用途/结构(用户可再编辑)
+  const onTemplateChange = (key: string) => {
+    const tpl = templates.find((x) => x.key === key);
+    form.setFieldsValue(fillTemplate(tpl, form.getFieldValue('introduction') || ''));
   };
 
   const handleOk = async () => {
@@ -74,7 +77,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
       onOk={handleOk}
       confirmLoading={confirmLoading}
       onCancel={onCancel}
-      width={720}
+      width={560}
       destroyOnClose
     >
       <Form form={form} layout="vertical">
@@ -91,18 +94,13 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
           <Input.TextArea rows={2} />
         </Form.Item>
         <Form.Item label={t('wiki.template')} name="template_key">
-          <Select options={templates.map((tp) => ({ value: tp.key, label: tp.name }))} />
+          <Select onChange={onTemplateChange} options={templates.map((tp) => ({ value: tp.key, label: tp.name }))} />
         </Form.Item>
-        <div className="text-right mb-2">
-          <Button onClick={handleGenerate} loading={generating}>
-            {t('wiki.generateByAI')}
-          </Button>
-        </div>
         <Form.Item label={t('wiki.purpose')} name="purpose_md">
-          <Input.TextArea rows={4} />
+          <Input.TextArea rows={3} />
         </Form.Item>
         <Form.Item label={t('wiki.schema')} name="schema_md">
-          <Input.TextArea rows={5} />
+          <Input.TextArea rows={3} />
         </Form.Item>
       </Form>
     </Modal>
