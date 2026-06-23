@@ -104,7 +104,6 @@ const PageTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         columns={columns}
         dataSource={data}
         pagination={false}
-        scroll={{ y: 'calc(100vh - 420px)' }}
       />
       <Drawer title={active?.title} open={drawer} width={640} onClose={() => setDrawer(false)}>
         <pre className="whitespace-pre-wrap text-sm mb-4">{active?.body}</pre>

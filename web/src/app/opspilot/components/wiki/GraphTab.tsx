@@ -1,8 +1,9 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Button, Card, Col, Empty, List, Row, Spin, Statistic, Table, Tag } from 'antd';
+import { Button, Card, Col, Empty, List, Row, Spin, Statistic, Tag } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { GraphEdge, WikiGraph } from '@/app/opspilot/types/wiki';
@@ -59,11 +60,11 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const strongest = (graph.insights?.strongest_edges as GraphEdge[] | undefined) || [];
 
   const edgeColumns: ColumnsType<GraphEdge> = [
-    { title: 'From', key: 'from', render: (_: unknown, e) => titleOf(e.from) },
-    { title: 'To', key: 'to', render: (_: unknown, e) => titleOf(e.to) },
-    { title: 'Weight', dataIndex: 'weight', key: 'weight', width: 100 },
+    { title: t('wiki.from'), key: 'from', render: (_: unknown, e) => titleOf(e.from) },
+    { title: t('wiki.to'), key: 'to', render: (_: unknown, e) => titleOf(e.to) },
+    { title: t('wiki.weight'), dataIndex: 'weight', key: 'weight', width: 100 },
     {
-      title: 'Signals',
+      title: t('wiki.signals'),
       key: 'signals',
       render: (_: unknown, e) => (
         <>
@@ -90,17 +91,17 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="Edges" value={insights.edge_count || 0} />
+            <Statistic title={t('wiki.edges')} value={insights.edge_count || 0} />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="Communities" value={insights.community_count || 0} />
+            <Statistic title={t('wiki.community')} value={insights.community_count || 0} />
           </Card>
         </Col>
         <Col span={6}>
           <Card>
-            <Statistic title="Largest" value={insights.largest_community || 0} />
+            <Statistic title={t('wiki.largest')} value={insights.largest_community || 0} />
           </Card>
         </Col>
       </Row>
@@ -109,7 +110,7 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <GraphCanvas nodes={graph.nodes} edges={graph.edges} />
         </Card>
       )}
-      <Card title="Communities" className="mb-4" size="small">
+      <Card title={t('wiki.communities')} className="mb-4" size="small">
         <List
           size="small"
           dataSource={graph.communities || []}
@@ -123,8 +124,8 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           )}
         />
       </Card>
-      <Card title="Strongest relations" size="small">
-        <Table<GraphEdge>
+      <Card title={t('wiki.strongestRelations')} size="small">
+        <CustomTable<GraphEdge>
           rowKey={(e) => `${e.from}-${e.to}`}
           columns={edgeColumns}
           dataSource={strongest}

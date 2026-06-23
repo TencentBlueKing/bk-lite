@@ -63,7 +63,6 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       columns={columns}
       dataSource={data}
       pagination={false}
-      scroll={{ y: 'calc(100vh - 420px)' }}
     />
   );
 };
