@@ -93,7 +93,13 @@
 
 LLM / 语义检索 / 图片 OCR 均已**真实端到端验证**(上方);仅剩:
 
-1. **前端浏览器点击冒烟**:精确诊断如下——
+### 前端渲染冒烟 ✅(2026-06-22,经你授权临时清理 worktree 嵌套 node_modules)
+把 `src/app/*` 的嵌套 node_modules 临时移开(清除路由冲突)后,在 kb-remove 起 `next dev`:
+- **`/opspilot/wiki` 返回 HTTP 200**(46KB 合法应用 HTML:`<title>BlueKing Lite</title>` + opspilot 资源 + `_next/static`,**无 500 / 无错误页 / 无登录重定向**)。证明 wiki 前端页面**能被应用真实服务渲染**(不止编译)。
+- wiki UI 文案为客户端渲染('use client' + useTranslation),需浏览器执行 JS + 登录态才出数据;**完整"点击"交互**(填表/按钮)仍需浏览器自动化 + 登录,属主仓库环节。
+- 验证后已还原 node_modules(opspilot 等 8 模块完好);mlops/monitor 的 node_modules(**gitignored 构建产物、与 wiki 无关**)因 Windows 长路径无法 cp 还原,`pnpm install` 可重建,不影响 wiki/后端/测试/git。
+
+1. **前端浏览器点击冒烟**(剩余子项,仅"真实点击"):精确诊断如下——
    - 在 kb-remove/web 起 `next dev`(Next 16,externalDir 实验已开,**能容忍跨根 node_modules 软链**)→ **dev server 成功启动(Ready in 62.6s)**,`/opspilot/wiki` 路由**编译通过**(我的 wiki 代码无编译错误)。
    - 但**所有页面 500**,原因是 worktree 安装产物:`src/app/cmdb`(及其他模块)下的嵌套 `.pnpm` node_modules 被 App Router 误当成路由 → `Conflicting routes at /cmdb/node_modules/.pnpm/.../lucide-react/.../icons`。**这与 wiki 代码无关**(是 cmdb 的依赖),主仓库(依赖 hoist、无嵌套)不存在此问题。
    - 结论:**worktree 前端可启动、wiki 路由可编译,但页面渲染被无关模块的嵌套 node_modules 路由冲突 500**。真实点击冒烟需在主仓库(干净 hoist 安装)对 `/opspilot/wiki` 进行。代码已全程 eslint + 作用域 tsc 校验、且在 dev server 下编译通过。
