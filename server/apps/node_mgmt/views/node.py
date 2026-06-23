@@ -2,7 +2,7 @@ from typing import Any, cast
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
@@ -403,15 +403,25 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             for obj in items
         ]
 
-        summary_queryset = CollectorActionTaskNode.objects.filter(task_id=task_id, node_id__in=authorized_node_ids)
+        agg = CollectorActionTaskNode.objects.filter(
+            task_id=task_id, node_id__in=authorized_node_ids
+        ).aggregate(
+            total=Count("id"),
+            waiting=Count("id", filter=Q(status="waiting")),
+            running=Count("id", filter=Q(status="running")),
+            success=Count("id", filter=Q(status="success")),
+            error=Count("id", filter=Q(status="error")),
+            timeout=Count("id", filter=Q(result__overall_status="timeout")),
+            cancelled=Count("id", filter=Q(result__overall_status="cancelled")),
+        )
         summary = {
-            "total": summary_queryset.count(),
-            "waiting": summary_queryset.filter(status="waiting").count(),
-            "running": summary_queryset.filter(status="running").count(),
-            "success": summary_queryset.filter(status="success").count(),
-            "error": summary_queryset.filter(status="error").count(),
-            "timeout": summary_queryset.filter(result__overall_status="timeout").count(),
-            "cancelled": summary_queryset.filter(result__overall_status="cancelled").count(),
+            "total": agg["total"],
+            "waiting": agg["waiting"],
+            "running": agg["running"],
+            "success": agg["success"],
+            "error": agg["error"],
+            "timeout": agg["timeout"],
+            "cancelled": agg["cancelled"],
         }
 
         task_obj = CollectorActionTask.objects.filter(id=task_id).first()
