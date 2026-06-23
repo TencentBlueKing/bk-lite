@@ -4,6 +4,8 @@ from apps.alerts.models.action import ActionRule, ActionExecution
 from apps.alerts.action.matcher import event_matches
 from apps.alerts.action.payload import build_match_payload
 from apps.alerts.action.handlers.registry import get_handler
+from apps.alerts.constants.constants import LogAction, LogTargetType
+from apps.alerts.utils.operator_log import record_operator_log
 
 logger = logging.getLogger(__name__)
 
@@ -44,4 +46,15 @@ class ActionEngine:
         except IntegrityError:
             logger.info("[ActionEngine] 幂等跳过 %s", key)
             return
+        try:
+            record_operator_log(
+                action=LogAction.EXECUTE,
+                target_type=LogTargetType.ALERT,
+                operator="system",
+                operator_object="告警处理-动作",
+                target_id=alert.alert_id,
+                overview=f"规则[{rule.name}]触发动作",
+            )
+        except Exception:
+            logger.exception("[ActionEngine] 写审计日志失败，忽略继续 key=%s", key)
         get_handler(rule.action_type).execute(rule, alert, execution)
