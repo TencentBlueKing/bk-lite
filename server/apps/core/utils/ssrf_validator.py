@@ -108,7 +108,8 @@ class SSRFValidator:
                 except ValueError:
                     continue
             return networks
-        except Exception:
+        except Exception as e:
+            logger.warning("[SSRF] 白名单读取失败，回退严格模式: %s", e)
             return []
 
     @classmethod
