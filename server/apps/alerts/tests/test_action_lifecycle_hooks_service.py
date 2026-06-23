@@ -187,3 +187,53 @@ def test_close_alert_triggers_dispatch_async_closed(
 
     assert result["result"] is True
     mock_dispatch.assert_any_call("HOOK-A4", "closed")
+
+
+# ---------------------------------------------------------------------------
+# (e) Assign transition fires dispatch_async(alert_id, "assigned")
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_assign_alert_triggers_dispatch_async_assigned(
+    db, django_capture_on_commit_callbacks
+):
+    from apps.system_mgmt.models.user import User
+
+    User.objects.create(username="op1", domain="domain.com", group_list=[{"id": 1}])
+    _make_alert(alert_id="HOOK-A5", status=AlertStatus.UNASSIGNED, team=[1])
+    op = AlertOperator(user="system")
+
+    with patch(
+        "apps.alerts.action.engine.ActionEngine.dispatch_async"
+    ) as mock_dispatch:
+        with django_capture_on_commit_callbacks(execute=True):
+            result = op.operate("assign", "HOOK-A5", {"assignee": ["op1"]})
+
+    assert result["result"] is True
+    mock_dispatch.assert_any_call("HOOK-A5", "assigned")
+
+
+# ---------------------------------------------------------------------------
+# (f) Reassign transition fires dispatch_async(alert_id, "reassigned")
+# ---------------------------------------------------------------------------
+
+
+@pytest.mark.django_db(transaction=True)
+def test_reassign_alert_triggers_dispatch_async_reassigned(
+    db, django_capture_on_commit_callbacks
+):
+    from apps.system_mgmt.models.user import User
+
+    User.objects.create(username="op1", domain="domain.com", group_list=[{"id": 1}])
+    _make_alert(alert_id="HOOK-A6", status=AlertStatus.PROCESSING, operator=["op1"], team=[1])
+    op = AlertOperator(user="op1")
+
+    with patch(
+        "apps.alerts.action.engine.ActionEngine.dispatch_async"
+    ) as mock_dispatch:
+        with django_capture_on_commit_callbacks(execute=True):
+            result = op.operate("reassign", "HOOK-A6", {"assignee": ["op1"]})
+
+    assert result["result"] is True
+    mock_dispatch.assert_any_call("HOOK-A6", "reassigned")
