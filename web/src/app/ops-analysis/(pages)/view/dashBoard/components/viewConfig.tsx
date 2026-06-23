@@ -18,6 +18,7 @@ import {
   Form,
   Input,
   Radio,
+  Select,
   Switch,
   Tooltip,
   message,
@@ -45,6 +46,7 @@ import type {
   ParamItem,
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
 import ComponentSelector from './viewSelector';
 
@@ -66,6 +68,7 @@ interface FormValues {
   name: string;
   description?: string;
   chartType: string;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource: string | number;
   compare?: boolean;
   dataSourceParams?: ParamItem[];
@@ -102,6 +105,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   filterDefinitions = [],
   unifiedFilterValues = {},
   builtinNamespaceId,
+  showChartThemeMode = false,
 }) => {
   const { t } = useTranslation();
   const guardClose = useUnsavedConfirm();
@@ -400,6 +404,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       name: widgetItem?.name || '',
       description: widgetItem.description || '',
       chartType: valueConfig?.chartType || '',
+      chartThemeMode: showChartThemeMode
+        ? valueConfig?.chartThemeMode || 'default'
+        : undefined,
       dataSource: valueConfig?.dataSource || '',
       dataSourceParams: valueConfig?.dataSourceParams || [],
       params: {},
@@ -694,6 +701,11 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       }
 
       let result: WidgetConfig = { ...values } as WidgetConfig;
+      if (!showChartThemeMode) {
+        delete result.chartThemeMode;
+      } else if (result.chartThemeMode === 'default') {
+        delete result.chartThemeMode;
+      }
 
       if (chartType === 'table') {
         const displayColumnKeys = new Set(
@@ -834,6 +846,30 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
               ))}
             </Radio.Group>
           </Form.Item>
+          {showChartThemeMode && (
+            <Form.Item
+              label={t('dashboard.chartThemeMode')}
+              name="chartThemeMode"
+              initialValue="default"
+            >
+              <Select
+                options={[
+                  {
+                    label: t('dashboard.chartThemeModeDefault'),
+                    value: 'default',
+                  },
+                  {
+                    label: t('dashboard.chartThemeModeScreenDark'),
+                    value: 'screen-dark',
+                  },
+                  {
+                    label: t('dashboard.chartThemeModeScreenLight'),
+                    value: 'screen-light',
+                  },
+                ]}
+              />
+            </Form.Item>
+          )}
           <Form.Item label={t('dataSource.describe')} name="description">
             <Input.TextArea
               placeholder={t('common.inputMsg')}

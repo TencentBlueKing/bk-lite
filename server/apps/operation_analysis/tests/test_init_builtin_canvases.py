@@ -3,10 +3,97 @@
 对照 spec/prd/运营分析：内置画布从 YAML 导入并标记为内置只读对象。
 """
 
+from pathlib import Path
+
 import pytest
+import yaml
 from django.core.management import call_command
 
-from apps.operation_analysis.models.models import Dashboard, Directory
+from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+from apps.operation_analysis.models.models import Dashboard, Directory, Topology
+
+BUILTIN_CANVASES_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_canvases.yaml"
+
+
+def _load_builtin_resource_screen():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
+    return next(
+        topology
+        for topology in payload["topologies"]
+        if topology.get("view_sets", {}).get("presentation", {}).get("templateKey") == "basic-resource-screen"
+    )
+
+
+def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
+    topology = _load_builtin_resource_screen()
+    nodes = topology["view_sets"]["nodes"]
+    chart_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value"}]
+    node_by_id = {node["id"]: node for node in nodes}
+
+    assert node_by_id["screen-title"]["type"] == "text"
+    assert node_by_id["screen-title"]["presentationRole"] == "screen-title"
+    assert node_by_id["screen-clock"]["type"] == "text"
+    assert node_by_id["screen-clock"]["presentationRole"] == "screen-clock"
+    assert node_by_id["screen-title-frame"]["type"] == "basic-shape"
+    assert node_by_id["screen-title-left-line"]["type"] == "basic-shape"
+    assert node_by_id["screen-title-right-line"]["type"] == "basic-shape"
+    assert topology["view_sets"]["presentation"]["chrome"] == {
+        "title": "基础资源态势大屏",
+        "showTitle": True,
+        "showClock": True,
+    }
+    assert not any(node.get("name") == "活跃告警详情" for node in nodes)
+    assert all(node.get("valueConfig", {}).get("chartType") not in {"list", "presentation-list"} for node in chart_nodes)
+    assert all(
+        "presentationVariant" not in node.get("valueConfig", {}) and "presentationAdapter" not in node.get("valueConfig", {}) for node in chart_nodes
+    )
+
+    kpi_nodes = [node for node in nodes if node.get("presentationRole") == "kpi"]
+    kpi_x_positions = sorted(node["position"]["x"] for node in kpi_nodes)
+    assert len(kpi_x_positions) == 8
+    assert kpi_x_positions[0] >= 120
+    assert kpi_x_positions[-1] <= 1580
+    assert max(right - left for left, right in zip(kpi_x_positions, kpi_x_positions[1:])) <= 220
+
+    assert node_by_id["panel-alert-trend"]["styleConfig"]["height"] <= 200
+    assert node_by_id["panel-alert-summary"]["styleConfig"]["height"] <= 150
+    assert node_by_id["panel-monitor-overview"]["styleConfig"]["height"] <= 150
+
+    resource_positions = {
+        node_id: node_by_id[node_id]["position"]
+        for node_id in [
+            "resource-business",
+            "resource-network",
+            "resource-cmdb",
+            "resource-collector",
+            "resource-cloud",
+            "resource-center",
+            "resource-metric",
+            "resource-policy",
+            "resource-alert",
+            "resource-host",
+            "resource-storage",
+            "resource-database",
+        ]
+    }
+    assert resource_positions == {
+        "resource-business": {"x": 760, "y": 360},
+        "resource-network": {"x": 930, "y": 360},
+        "resource-cmdb": {"x": 690, "y": 500},
+        "resource-collector": {"x": 1110, "y": 500},
+        "resource-cloud": {"x": 610, "y": 620},
+        "resource-center": {"x": 900, "y": 560},
+        "resource-metric": {"x": 760, "y": 740},
+        "resource-policy": {"x": 1060, "y": 740},
+        "resource-alert": {"x": 1210, "y": 700},
+        "resource-host": {"x": 610, "y": 840},
+        "resource-storage": {"x": 900, "y": 840},
+        "resource-database": {"x": 1210, "y": 840},
+    }
+
+    trend_params = {item["name"]: item for item in node_by_id["panel-alert-trend"]["valueConfig"]["dataSourceParams"]}
+    assert trend_params["time"]["filterType"] == "fixed"
+    assert trend_params["time"]["value"] == 10080
 
 
 def _ensure_default_namespace():
@@ -51,6 +138,55 @@ def test_init_builtin_canvases_rerun_is_idempotent():
 
     # 内置目录唯一
     assert Directory.objects.filter(build_in_key="__builtin__").count() == 1
+
+
+@pytest.mark.django_db
+def test_init_builtin_canvases_creates_builtin_presentation_topology():
+    from apps.system_mgmt.models.user import Group
+
+    Group.objects.get_or_create(name="Default")
+    _ensure_default_namespace()
+    call_command("init_builtin_canvases")
+
+    topology = Topology.objects.get(name="基础资源态势大屏", is_build_in=True)
+
+    assert topology.view_sets["presentation"]["templateKey"] == "basic-resource-screen"
+    assert topology.view_sets["presentation"]["chrome"] == {
+        "title": "基础资源态势大屏",
+        "showTitle": True,
+        "showClock": True,
+    }
+    assert topology.view_sets["viewport"]["width"] == 1920
+    assert len(topology.view_sets["edges"]) >= 10
+    assert sum(1 for node in topology.view_sets["nodes"] if node.get("presentationRole") == "kpi") >= 8
+    assert sum(1 for node in topology.view_sets["nodes"] if node.get("presentationRole") == "side-panel") >= 3
+    assert sum(1 for node in topology.view_sets["nodes"] if node.get("presentationRole") == "resource-node") >= 10
+
+    node_by_id = {node["id"]: node for node in topology.view_sets["nodes"]}
+    assert node_by_id["screen-title"]["type"] == "text"
+    assert node_by_id["screen-title"]["presentationRole"] == "screen-title"
+    assert node_by_id["screen-title"]["name"] == "基础资源态势大屏"
+    assert node_by_id["screen-clock"]["type"] == "text"
+    assert node_by_id["screen-clock"]["presentationRole"] == "screen-clock"
+
+    chart_nodes = [node for node in topology.view_sets["nodes"] if node.get("type") in {"chart", "single-value"}]
+    allowed_chart_types = {"single", "topN", "line", "pie", "bar", "gauge", "barGauge", "stateTimeline", "text"}
+    assert all(node.get("valueConfig", {}).get("chartType") in allowed_chart_types for node in chart_nodes)
+    assert all(node.get("valueConfig", {}).get("chartType") != "list" for node in chart_nodes)
+    assert all(node.get("valueConfig", {}).get("chartType") != "presentation-list" for node in chart_nodes)
+    assert all(node.get("valueConfig", {}).get("chartThemeMode") == "screen-dark" for node in chart_nodes)
+    assert all("presentationVariant" not in node.get("valueConfig", {}) for node in chart_nodes)
+    assert all("presentationAdapter" not in node.get("valueConfig", {}) for node in chart_nodes)
+    assert not any(node.get("name") == "活跃告警详情" for node in topology.view_sets["nodes"])
+
+    datasource_names = [
+        node.get("valueConfig", {}).get("dataSource") for node in topology.view_sets["nodes"] if node.get("valueConfig", {}).get("dataSource")
+    ]
+    datasource_ids = set(datasource_names)
+    assert DataSourceAPIModel.objects.get(name="活跃告警 TOP N").id not in datasource_ids
+    assert DataSourceAPIModel.objects.get(name="模型/实例/分类总数统计").id in datasource_ids
+    assert DataSourceAPIModel.objects.get(name="监控中心总览统计").id in datasource_ids
+    assert DataSourceAPIModel.objects.get(name="告警统计概览").id in datasource_ids
 
 
 @pytest.mark.django_db

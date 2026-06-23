@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.utils.permission_utils import get_permission_rules
@@ -75,8 +76,12 @@ class ImportExportAuthorizationService:
         if not cls.has_permission(request, export_config["permission"]):
             raise PermissionDenied(f"缺少导出 {object_enum.value} 所需权限 {export_config['permission']}")
 
-        filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team)
-        return cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
+        group_ids = cls._get_export_group_ids(request, current_team)
+        filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team, group_ids)
+        filtered_ids = cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
+        if not filtered_ids:
+            raise PermissionDenied("无权导出所选对象或对象不存在")
+        return filtered_ids
 
     @classmethod
     def apply_precheck_permissions(
@@ -314,7 +319,18 @@ class ImportExportAuthorizationService:
             return object_ids
 
         allowed_instance_ids = cls._normalize_ids(permission_data.get("instance", []))
-        return [object_id for object_id in object_ids if object_id in allowed_instance_ids]
+        allowed_ids = set(allowed_instance_ids)
+        model = cls._get_org_scoped_model(object_type)
+        if model is not None:
+            builtin_ids = model.objects.filter(id__in=object_ids, is_build_in=True).values_list("id", flat=True)
+            allowed_ids.update(builtin_ids)
+
+        created_by = getattr(request.user, "username", None)
+        if created_by and model is not None:
+            creator_ids = model.objects.filter(id__in=object_ids, created_by=created_by).values_list("id", flat=True)
+            allowed_ids.update(creator_ids)
+
+        return [object_id for object_id in object_ids if object_id in allowed_ids]
 
     @classmethod
     def _get_permission_data(cls, request, permission_key: str, current_team: int | None) -> dict[str, Any]:
@@ -323,28 +339,53 @@ class ImportExportAuthorizationService:
         return get_permission_rules(request.user, current_team, cls.APP_NAME, permission_key, False) or {}
 
     @classmethod
-    def _filter_ids_by_org(cls, object_type: ObjectType, object_ids: list[int], current_team: int | None) -> list[int]:
-        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+    def _filter_ids_by_org(
+        cls,
+        object_type: ObjectType,
+        object_ids: list[int],
+        current_team: int | None,
+        group_ids: list[int] | None = None,
+    ) -> list[int]:
+        from apps.operation_analysis.models.datasource_models import NameSpace
 
-        model_map = {
-            ObjectType.DASHBOARD: Dashboard,
-            ObjectType.TOPOLOGY: Topology,
-            ObjectType.ARCHITECTURE: Architecture,
-            ObjectType.DATASOURCE: DataSourceAPIModel,
-        }
-
-        model = model_map.get(object_type)
+        model = cls._get_org_scoped_model(object_type)
         if model is not None:
             queryset = model.objects.filter(id__in=object_ids)
             if current_team is not None:
-                queryset = queryset.filter(groups__contains=current_team)
+                org_query = Q()
+                for group_id in group_ids or [current_team]:
+                    org_query |= Q(groups__contains=int(group_id))
+                queryset = queryset.filter(org_query)
             return list(queryset.values_list("id", flat=True))
 
         if object_type == ObjectType.NAMESPACE:
             return list(NameSpace.objects.filter(id__in=object_ids).values_list("id", flat=True))
 
         return []
+
+    @staticmethod
+    def _get_export_group_ids(request, current_team: int | None) -> list[int]:
+        if current_team is None:
+            return []
+        if request.COOKIES.get("include_children", "0") != "1":
+            return [current_team]
+
+        from apps.core.utils.viewset_utils import GenericViewSetFun
+
+        child_ids = GenericViewSetFun.extract_child_group_ids(getattr(request.user, "group_tree", []), current_team)
+        return child_ids or [current_team]
+
+    @staticmethod
+    def _get_org_scoped_model(object_type: ObjectType):
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+
+        return {
+            ObjectType.DASHBOARD: Dashboard,
+            ObjectType.TOPOLOGY: Topology,
+            ObjectType.ARCHITECTURE: Architecture,
+            ObjectType.DATASOURCE: DataSourceAPIModel,
+        }.get(object_type)
 
     @staticmethod
     def _normalize_ids(values: list[Any]) -> set[int]:

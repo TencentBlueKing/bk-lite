@@ -8,7 +8,7 @@ from rest_framework.exceptions import PermissionDenied
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.constants.import_export import ObjectType
-from apps.operation_analysis.models.models import Dashboard, Directory
+from apps.operation_analysis.models.models import Dashboard, Directory, Topology
 from apps.operation_analysis.services.import_export.authorization_service import ImportExportAuthorizationService
 from apps.operation_analysis.views.import_export_view import ImportExportViewSet
 from apps.operation_analysis.views.openapi_import_export_view import OpenImportExportViewSet
@@ -351,6 +351,112 @@ def test_backend_export_filters_to_instance_permissions_with_real_dashboards(aut
     assert payload["result"] is True
     assert "allowed-dashboard" in yaml_content
     assert "hidden-dashboard" not in yaml_content
+
+
+@pytest.mark.django_db
+def test_backend_export_rejects_when_all_requested_objects_are_filtered(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    hidden_dashboard = Dashboard.objects.create(
+        name="fully-hidden-dashboard",
+        groups=[1],
+        created_by="someoneelse",
+        view_sets=[],
+    )
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [],
+            "team": [],
+        },
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "dashboard", "object_ids": [hidden_dashboard.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+    assert payload["result"] is False
+
+
+@pytest.mark.django_db
+def test_backend_export_allows_creator_visible_topology_without_instance_rule(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    topology = Topology.objects.create(
+        name="creator-visible-topology",
+        groups=[1],
+        created_by=authenticated_user.username,
+        view_sets={"nodes": [{"id": "node-1"}], "edges": []},
+    )
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [],
+            "team": [],
+        },
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "topology", "object_ids": [topology.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+    data = _unwrap_payload(payload)
+    parsed = yaml.safe_load(data["yaml_content"])
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["result"] is True
+    assert parsed["meta"]["object_counts"]["topologies"] == 1
+    assert parsed["topologies"][0]["name"] == "creator-visible-topology"
+
+
+@pytest.mark.django_db
+def test_backend_export_allows_builtin_topology_visible_by_team(authenticated_user, monkeypatch):
+    authenticated_user.permission = {"ops-analysis": {"view-View"}}
+    topology = Topology.objects.create(
+        name="builtin-visible-topology",
+        groups=[1],
+        created_by="system",
+        is_build_in=True,
+        build_in_key="builtin-visible-topology",
+        view_sets={"nodes": [{"id": "node-1"}], "edges": []},
+    )
+
+    monkeypatch.setattr(
+        "apps.operation_analysis.services.import_export.authorization_service.get_permission_rules",
+        lambda user, current_team, app_name, permission_key, include_children=False: {
+            "instance": [],
+            "team": [],
+        },
+    )
+
+    request = _build_request(
+        "/operation_analysis/api/import_export/export",
+        authenticated_user,
+        data={"object_type": "topology", "object_ids": [topology.id]},
+    )
+
+    response = ImportExportViewSet.as_view({"post": "export_objects"})(request)
+    response.render()
+    payload = json.loads(response.rendered_content)
+    data = _unwrap_payload(payload)
+    parsed = yaml.safe_load(data["yaml_content"])
+
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["result"] is True
+    assert parsed["meta"]["object_counts"]["topologies"] == 1
+    assert parsed["topologies"][0]["name"] == "builtin-visible-topology"
 
 
 @pytest.mark.django_db

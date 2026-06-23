@@ -2,7 +2,7 @@ import { Graph, Edge, Node } from '@antv/x6';
 import { v4 as uuidv4 } from 'uuid';
 import { getEdgeStyleWithConfig, addEdgeTools, calculateOptimalPorts } from './topologyUtils';
 import type { EdgeData } from '@/app/ops-analysis/types/topology';
-import { COLORS } from '../constants/nodeDefaults';
+import { COLORS, SPACING } from '../constants/nodeDefaults';
 
 // 边创建配置接口
 interface EdgeCreationConfig {
@@ -32,7 +32,7 @@ export const registerStandardEdge = () => {
     attrs: {
       line: {
         stroke: COLORS.EDGE.DEFAULT,
-        strokeWidth: 1,
+        strokeWidth: SPACING.STROKE_WIDTH.THIN,
       },
     },
   });
@@ -53,7 +53,7 @@ export const createEdge = (graphInstance: Graph, config: EdgeCreationConfig): Ed
   // 默认样式配置
   const defaultStyleConfig = {
     lineColor: COLORS.EDGE.DEFAULT,
-    lineWidth: 1,
+    lineWidth: SPACING.STROKE_WIDTH.THIN,
     lineStyle: 'line' as const,
     enableAnimation: false,
   };
@@ -117,7 +117,12 @@ const createEdgeData = (edge: Edge, sourceNode: Node, targetNode: Node): EdgeDat
     lineType: edgeData.lineType || 'common_line',
     lineName: edgeData.lineName || '',
     arrowDirection: edgeData.arrowDirection || 'single', 
-    styleConfig: edgeData.styleConfig || { lineColor: COLORS.EDGE.DEFAULT },
+    styleConfig: edgeData.styleConfig || {
+      lineColor: COLORS.EDGE.DEFAULT,
+      lineWidth: SPACING.STROKE_WIDTH.THIN,
+      lineStyle: 'line',
+      enableAnimation: false,
+    },
     sourceNode: {
       id: sourceNode.id,
       name: getNodeName(sourceNode),

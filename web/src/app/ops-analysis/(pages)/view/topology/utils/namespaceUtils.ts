@@ -232,6 +232,9 @@ export const buildValueConfig = (
   if (values.filterBindings && Object.keys(values.filterBindings).length > 0) {
     valueConfig.filterBindings = values.filterBindings;
   }
+  if (values.chartThemeMode && values.chartThemeMode !== 'default') {
+    valueConfig.chartThemeMode = values.chartThemeMode;
+  }
   if (values.chartType === 'single') {
     valueConfig.compare = !!values.compare;
     valueConfig.selectedFields = values.selectedFields;

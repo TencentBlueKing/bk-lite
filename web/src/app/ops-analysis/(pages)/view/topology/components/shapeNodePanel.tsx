@@ -100,6 +100,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
       defaultValues.textColor = iconDefaults.textColor;
       defaultValues.iconPadding = 4;
       defaultValues.textDirection = 'bottom';
+      defaultValues.renderEffect = 'normal';
     }
 
     if (nodeType === 'text') {
@@ -121,6 +122,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
     (editingNodeData: any) => {
       const { styleConfig = {} } = editingNodeData;
 
+      const defaultRenderEffect = nodeType === 'basic-shape' ? 'glass' : 'normal';
       const formValues: any = {
         name: editingNodeData.name,
         logoType: editingNodeData.logoType,
@@ -140,7 +142,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
         backgroundColor: styleConfig.backgroundColor,
         borderColor: styleConfig.borderColor,
         borderWidth: styleConfig.borderWidth,
-        renderEffect: styleConfig.renderEffect || 'glass',
+        renderEffect: styleConfig.renderEffect || defaultRenderEffect,
         iconPadding: styleConfig.iconPadding,
         lineType: styleConfig.lineType,
         shapeType: styleConfig.shapeType,
@@ -156,7 +158,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
 
       form.setFieldsValue(formValues);
     },
-    [form]
+    [form, nodeType]
   );
 
   useEffect(() => {
@@ -389,6 +391,25 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
           </>
         )}
 
+        {['icon', 'basic-shape'].includes(nodeType) && (
+          <Form.Item
+            label={t('topology.nodeConfig.renderEffect')}
+            name="renderEffect"
+          >
+            <Radio.Group disabled={readonly}>
+              <Radio value="normal">
+                {t('topology.nodeConfig.renderEffectNormal')}
+              </Radio>
+              <Radio value="glass">
+                {t('topology.nodeConfig.renderEffectGlass')}
+              </Radio>
+              <Radio value="glow">
+                {t('topology.nodeConfig.renderEffectGlow')}
+              </Radio>
+            </Radio.Group>
+          </Form.Item>
+        )}
+
         {nodeType === 'icon' && (
           <>
             <Form.Item
@@ -470,20 +491,6 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
 
         {nodeType === 'basic-shape' && (
           <>
-            <Form.Item
-              label={t('topology.nodeConfig.renderEffect')}
-              name="renderEffect"
-            >
-              <Radio.Group disabled={readonly}>
-                <Radio value="normal">
-                  {t('topology.nodeConfig.renderEffectNormal')}
-                </Radio>
-                <Radio value="glass">
-                  {t('topology.nodeConfig.renderEffectGlass')}
-                </Radio>
-              </Radio.Group>
-            </Form.Item>
-
             <Form.Item
               label={t('topology.nodeConfig.backgroundColor')}
               name="backgroundColor"
