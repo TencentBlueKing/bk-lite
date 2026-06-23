@@ -173,3 +173,34 @@ export interface LevelFormItem {
   level_type: string;
   built_in?: boolean;
 }
+
+export interface ActionConfig {
+  script_id?: number;
+  target_binding: { source: 'node_mgmt'; match_by?: 'ip' | 'name'; host_field: string };
+  param_bindings: Array<{ name: string; from: 'field' | 'const'; value: string }>;
+  timeout?: number;
+}
+export interface ActionRuleListItem {
+  id: number;
+  name: string;
+  is_active: boolean;
+  team: number[];
+  trigger_events: string[];
+  match_rules: Array<Array<{ key: string; operator: string; value: string }>>;
+  action_type: 'job' | 'itsm' | 'webhook';
+  action_config: ActionConfig;
+  updated_at: string;
+}
+export interface ActionExecutionItem {
+  id: number;
+  rule_name: string | null;
+  alert_title: string | null;
+  trigger_event: string;
+  trigger_type: 'auto' | 'manual';
+  status: 'pending' | 'running' | 'success' | 'failed' | 'skipped' | 'config_error';
+  job_task_id: number | null;
+  job_detail_url: string | null;
+  result: Record<string, any>;
+  operator: string | null;
+  created_at: string;
+}
