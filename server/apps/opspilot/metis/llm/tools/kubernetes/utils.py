@@ -8,6 +8,7 @@ import threading
 import yaml
 from kubernetes import config
 
+from apps.core.utils.ssrf_validator import SSRFValidator
 from apps.core.logger import opspilot_logger as logger
 
 # 线程局部存储，用于传递当前操作的集群名
@@ -142,6 +143,26 @@ def _preprocess_kubeconfig(kubeconfig_data):
     )
 
 
+def validate_kubeconfig_api_servers(kubeconfig_data):
+    """Validate cluster.server addresses before any Kubernetes client connects."""
+    if not kubeconfig_data or not str(kubeconfig_data).strip():
+        return
+
+    try:
+        kube_cfg = yaml.safe_load(kubeconfig_data)
+    except yaml.YAMLError:
+        return
+
+    if not isinstance(kube_cfg, dict):
+        return
+
+    for cluster_entry in kube_cfg.get("clusters", []) or []:
+        cluster = cluster_entry.get("cluster", {}) if isinstance(cluster_entry, dict) else {}
+        server = cluster.get("server") if isinstance(cluster, dict) else None
+        if server:
+            SSRFValidator.validate(str(server).strip())
+
+
 def prepare_context(cfg):
     """
     准备Kubernetes客户端上下文
@@ -168,6 +189,7 @@ def prepare_context(cfg):
                 if kubeconfig_data:
                     if isinstance(kubeconfig_data, str):
                         kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
+                    validate_kubeconfig_api_servers(kubeconfig_data)
                     kubeconfig_data = _preprocess_kubeconfig(kubeconfig_data)
                     kubeconfig_io = io.StringIO(kubeconfig_data)
                     config.load_kube_config(config_file=kubeconfig_io)
@@ -181,6 +203,7 @@ def prepare_context(cfg):
             # 处理可能的转义换行符
             if isinstance(kubeconfig_data, str):
                 kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
+            validate_kubeconfig_api_servers(kubeconfig_data)
             # 预处理：将文件路径引用转换为 inline data
             kubeconfig_data = _preprocess_kubeconfig(kubeconfig_data)
             # 将配置内容写入 IO 对象
