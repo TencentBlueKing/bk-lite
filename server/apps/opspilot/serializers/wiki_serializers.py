@@ -46,6 +46,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "knowledge_base",
             "name",
             "material_type",
+            "file",
             "url",
             "text_content",
             "content_hash",
@@ -56,6 +57,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+        # file 必须可写,否则 multipart 上传的文件会被序列化器丢弃(create 后 file=None,解析必失败)
         read_only_fields = ["id", "content_hash", "ai_summary", "status", "error_message", "created_by", "created_at", "updated_at"]
 
 

@@ -5,6 +5,19 @@ import pytest
 from apps.opspilot.services.wiki import material_service
 
 
+def test_serializer_exposes_writable_file_field():
+    """回归(不依赖 MinIO):MaterialSerializer 必须含【可写】file 字段。
+
+    曾经 fields 漏了 file,导致 multipart 上传的文件被序列化器直接丢弃,create 后
+    file=None,前端"上传成功却解析失败"。纯字段断言即可拦住该回归。
+    """
+    from apps.opspilot.serializers.wiki_serializers import MaterialSerializer
+
+    fields = MaterialSerializer().fields
+    assert "file" in fields, "MaterialSerializer 缺少 file 字段 → 上传文件会被丢弃"
+    assert not fields["file"].read_only, "file 字段为只读 → 无法接收上传的文件"
+
+
 def _kb():
     from apps.opspilot.models import WikiKnowledgeBase
 
@@ -179,6 +192,12 @@ def test_material_file_upload_endpoint(api_client):
     assert resp.status_code == 201
     data = resp.json()["data"]
     assert data["material_type"] == "file" and data["id"]
+    # 回归:上传的文件必须真正落库/落对象存储。曾因 MaterialSerializer 漏了 file 字段,
+    # 导致 multipart 文件被静默丢弃(create 后 file=None,后续解析必失败)。
+    assert data.get("file"), "上传的文件未被保存,serializer 可能漏了可写的 file 字段"
+    from apps.opspilot.models import Material
+
+    assert Material.objects.get(id=data["id"]).file, "Material.file 为空,文件未持久化"
 
 
 @pytest.mark.integration
