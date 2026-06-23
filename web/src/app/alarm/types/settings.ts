@@ -193,6 +193,7 @@ export interface ActionRuleListItem {
 }
 export interface ActionExecutionItem {
   id: number;
+  rule: number | null;
   rule_name: string | null;
   alert_title: string | null;
   trigger_event: string;
