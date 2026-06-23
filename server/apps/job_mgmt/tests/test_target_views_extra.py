@@ -49,6 +49,8 @@ class TestQueryNodesNonSuperuser:
 
     def test_non_superuser_injects_permission_data(self, api_client, authenticated_user):
         authenticated_user.is_superuser = False
+        # 授予 target-View 权限以穿过 @HasPermission，专注验证非超管的 permission_data 注入分支
+        authenticated_user.permission = {"job": {"target-View"}}
         api_client.cookies["current_team"] = "5"
         with patch.object(target_views, "SystemMgmt") as MSys, patch.object(target_views, "NodeMgmt") as MNode, patch.object(
             target_views, "CloudRegion"

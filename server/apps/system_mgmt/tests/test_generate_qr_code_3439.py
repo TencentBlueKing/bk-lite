@@ -27,7 +27,10 @@ class TestGenerateQrCode3439:
         """
         import nats_client as nc
 
-        registry = nc.default_registry.registry
+        # 确保 nats_api handler 已注册到默认注册表
+        import apps.system_mgmt.nats_api  # noqa: F401
+
+        registry = nc.registry.default_registry.registry
 
         # 所有注册的 key 中不应存在 "generate_qr_code" 但不含 "_by_user_id" 的条目
         insecure_keys = [
@@ -45,7 +48,9 @@ class TestGenerateQrCode3439:
         """
         import nats_client as nc
 
-        registry = nc.default_registry.registry
+        import apps.system_mgmt.nats_api  # noqa: F401
+
+        registry = nc.registry.default_registry.registry
 
         secure_keys = [key for key in registry if "generate_qr_code_by_user_id" in key]
         assert len(secure_keys) >= 1, (
@@ -58,7 +63,7 @@ class TestGenerateQrCode3439:
 
         若 RPC 方法仍存在，调用方可能误用绕过鉴权。
         """
-        from apps.rpc.system_mgmt import SystemMgmtClient
+        from apps.rpc.system_mgmt import SystemMgmt as SystemMgmtClient
 
         assert not hasattr(SystemMgmtClient, "generate_qr_code"), (
             "SystemMgmtClient 仍暴露 generate_qr_code(username) 方法，"
@@ -69,7 +74,7 @@ class TestGenerateQrCode3439:
         """
         SystemMgmtClient 必须保留 generate_qr_code_by_user_id 方法（安全替代接口）。
         """
-        from apps.rpc.system_mgmt import SystemMgmtClient
+        from apps.rpc.system_mgmt import SystemMgmt as SystemMgmtClient
 
         assert hasattr(SystemMgmtClient, "generate_qr_code_by_user_id"), (
             "SystemMgmtClient 缺少 generate_qr_code_by_user_id 方法，安全替代接口异常缺失。"
