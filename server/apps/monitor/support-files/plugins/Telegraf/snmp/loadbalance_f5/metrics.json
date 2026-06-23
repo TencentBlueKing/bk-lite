@@ -18,10 +18,7 @@
     "device_memory_usage",
     "lb_current_connections",
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic",
-    "device_temperature_celsius",
-    "device_fan_state",
-    "device_psu_state"
+    "device_total_outgoing_traffic"
   ],
   "metrics": [
     {
@@ -263,45 +260,6 @@
         "instance_id"
       ],
       "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Loadbalance",
-      "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='loadbalance', __$labels__}) by (instance_id)",
-      "display_name": "Temperature",
-      "data_type": "Number",
-      "unit": "celsius",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the chassis temperature in degrees Celsius of the F5 BIG-IP appliance (F5-BIGIP-SYSTEM-MIB sysChassisTempTemperature, a dedicated per-sensor table), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal protection. Virtual editions (no physical chassis) report no value."
-    },
-    {
-      "metric_group": "Loadbalance",
-      "name": "device_fan_state",
-      "query": "max(device_fan_state{instance_type='loadbalance', __$labels__}) by (instance_id)",
-      "display_name": "Fan State",
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the fan state of the F5 BIG-IP appliance (F5-BIGIP-SYSTEM-MIB sysChassisFanStatus, raw bad(0)/good(1)/notpresent(2)), normalized via telegraf processors.enum so that 1 = healthy (good, or an empty slot) and 2 = fault (bad). Aggregated as the maximum across fans so any failed fan surfaces. Virtual editions report no value."
-    },
-    {
-      "metric_group": "Loadbalance",
-      "name": "device_psu_state",
-      "query": "max(device_psu_state{instance_type='loadbalance', __$labels__}) by (instance_id)",
-      "display_name": "PSU State",
-      "data_type": "Enum",
-      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the power-supply state of the F5 BIG-IP appliance (F5-BIGIP-SYSTEM-MIB sysChassisPowerSupplyStatus, raw bad(0)/good(1)/notpresent(2)), normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. Aggregated as the maximum across supplies so any failed PSU surfaces. Virtual editions report no value."
     },
     {
       "metric_group": "Traffic",

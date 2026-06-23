@@ -48,6 +48,7 @@ OBJECT_NAME = "Switch"
 
 SUPPORTED_SCALAR_UNITS = {
     "byteps", "bytes", "counts", "cps", "percent", "celsius", "s", "short", "none",
+    "volts",
 }
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 MEMORY_METRICS = ("device_memory_total", "device_memory_used", "device_memory_usage")

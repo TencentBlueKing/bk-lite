@@ -66,15 +66,9 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2636.3.1.13.1.11"
         name = "usage"
-    # ---- Juniper chassis temperature (JUNIPER-MIB jnxOperatingTemp, °C, same jnxOperatingTable) ----
-    # 待现网核验：jnxOperatingTemp 1.3.6.1.4.1.2636.3.1.13.1.7（Gauge32 °C；无热传感器的实体[RE/FPC/Fan/PSU 混在同表]该列报 0 哨兵，snmprec 实测 33/39/35 等热点实体有真值）。
-    # device_temperature_celsius 在 metrics.json 用 (x != 0) 过滤无传感器实体后 max() by instance_id 取最热点。
-    [[inputs.snmp.table]]
-        name = "device_temperature"
-        inherit_tags = ["source"]
-    [[inputs.snmp.table.field]]
-        oid = "1.3.6.1.4.1.2636.3.1.13.1.7"
-        name = "celsius"
+# ---- 机箱温度 jnxOperatingTemp → N/A：jnxOperatingTable 把 RE/FPC/Fan/PSU 实体混在同一列，----
+# ---- 无热传感器实体该列报 0 哨兵，要取「真实热点行」须按 jnxOperatingDescr 文本逐行区分(行级过滤)，----
+# ---- telegraf inputs.snmp 只能整列 walk、不能行级过滤 → 跳过(同风扇/电源教训)。----
 # ---- 风扇/电源 → N/A(架构限制)：jnxOperatingState/jnxFruState 把路由引擎/FPC/风扇盘/电源混在同一张 jnxOperatingTable，----
 # ---- 要取「风扇行/电源行」状态须按 jnxOperatingDescr 文本逐行区分(行级过滤)，telegraf inputs.snmp 只能整列 walk、不能行级过滤 → 跳过(同 paloalto entity-sensor/eltex 教训)。----
 # ---- BGP 邻居走 BGP4-MIB bgpPeerTable(per-peer walk,需聚合计数)→本轮 N/A,后续可补 BGP peer 数。----

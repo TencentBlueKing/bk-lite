@@ -17,8 +17,7 @@
     "device_cpu_usage",
     "device_memory_usage",
     "device_total_incoming_traffic",
-    "device_total_outgoing_traffic",
-    "device_temperature_celsius"
+    "device_total_outgoing_traffic"
   ],
   "metrics": [
     {
@@ -221,19 +220,6 @@
         "instance_id"
       ],
       "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
-    },
-    {
-      "metric_group": "Router",
-      "name": "device_temperature_celsius",
-      "query": "max(device_temperature_celsius{instance_type='router', __$labels__} != 0) by (instance_id)",
-      "display_name": "Temperature",
-      "data_type": "Number",
-      "unit": "celsius",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric reports the chassis temperature in degrees Celsius of the Juniper MX router (JUNIPER-MIB jnxOperatingTemp), aggregated as the maximum across operating entities after filtering the 0 'no thermal sensor' sentinel (the jnxOperatingTable mixes routing-engine/FPC/fan/PSU entities, many without a temperature reading). High temperatures can indicate cooling failure or airflow obstruction and risk thermal protection shutdown."
     },
     {
       "metric_group": "Traffic",

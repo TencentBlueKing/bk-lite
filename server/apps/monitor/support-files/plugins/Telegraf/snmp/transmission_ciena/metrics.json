@@ -17,38 +17,6 @@
     "device_total_incoming_traffic",
     "device_total_outgoing_traffic"
   ],
-  "display_fields": [
-    {
-      "name": "System Uptime",
-      "sort_order": 0,
-      "metrics": [
-        {
-          "plugin": "Transmission Ciena SNMP",
-          "metric": "snmp_uptime"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Incoming Traffic Rate",
-      "sort_order": 1,
-      "metrics": [
-        {
-          "plugin": "Transmission Ciena SNMP",
-          "metric": "device_total_incoming_traffic"
-        }
-      ]
-    },
-    {
-      "name": "Device Total Outgoing Traffic Rate",
-      "sort_order": 2,
-      "metrics": [
-        {
-          "plugin": "Transmission Ciena SNMP",
-          "metric": "device_total_outgoing_traffic"
-        }
-      ]
-    }
-  ],
   "metrics": [
     {
       "metric_group": "Base",
