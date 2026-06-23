@@ -77,6 +77,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
+  const onMessageReceivedRef = useRef(onMessageReceived);
+  useEffect(() => {
+    onMessageReceivedRef.current = onMessageReceived;
+  }, [onMessageReceived]);
 
   // Cache avatar elements to prevent re-fetching on every render
   const botAvatar = React.useMemo(
@@ -123,6 +128,24 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     aguiHandlerRef.current.getEventStream().subscribe((event: AGUIEvent) => {
       handleAGUIEvent(event);
     });
+  };
+
+  // 确保当前存在一条 bot 消息，若尚未创建则新建并通知外部。
+  // TEXT_MESSAGE_START 和 TOOL_CALL_START 均需此逻辑，提取以消除重复。
+  const ensureCurrentMessage = () => {
+    if (currentMessageIdRef.current) return;
+    const newAssistantMsg: Message = {
+      id: generateId(),
+      type: 'text',
+      content: '',
+      sender: 'bot',
+      timestamp: Date.now(),
+      metadata: { contentChunks: [] },
+    };
+    currentMessageIdRef.current = newAssistantMsg.id;
+    setMessages((prev) => [...prev, newAssistantMsg]);
+    sessionManagerRef.current?.addMessage(newAssistantMsg);
+    onMessageReceivedRef.current?.(newAssistantMsg);
   };
 
   // Handle AG-UI protocol events
@@ -249,26 +272,8 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         }
         
         // 如果还没有创建消息，现在创建
-        if (!currentMessageIdRef.current) {
-          const newAssistantMsg: Message = {
-            id: generateId(),
-            type: 'text',
-            content: '',
-            sender: 'bot',
-            timestamp: Date.now(),
-            metadata: {
-              contentChunks: []
-            },
-          };
-          
-          currentMessageIdRef.current = newAssistantMsg.id;
-          
-          setMessages((prev) => [...prev, newAssistantMsg]);
-          sessionManagerRef.current?.addMessage(newAssistantMsg);
-          onMessageReceived?.(newAssistantMsg);
-          
-        }
-        
+        ensureCurrentMessage();
+
         // 重置当前文本内容累加器
         streamingContentRef.current = '';
         setIsThinking(false);
@@ -383,28 +388,10 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           name: toolStartEvent.toolCallName || toolStartEvent.name || 'Unknown Tool',
           status: 'running' as const,
         };
-        
-        // 如果还没有创建消息，现在创建
-        if (!currentMessageIdRef.current) {
-          const newAssistantMsg: Message = {
-            id: generateId(),
-            type: 'text',
-            content: '',
-            sender: 'bot',
-            timestamp: Date.now(),
-            metadata: {
-              contentChunks: []
-            },
-          };
-          
-          currentMessageIdRef.current = newAssistantMsg.id;
-          
-          setMessages((prev) => [...prev, newAssistantMsg]);
-          sessionManagerRef.current?.addMessage(newAssistantMsg);
-          onMessageReceived?.(newAssistantMsg);
-          
-        }
-        
+
+        // 如果还没有创建消息，现在创建（与 TEXT_MESSAGE_START 共用同一逻辑）
+        ensureCurrentMessage();
+
         // Add tool call as a new separate chunk
         setMessages((prev) => {
           return prev.map(msg => {
@@ -677,8 +664,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       return [...prev, message];
     });
     sessionManagerRef.current?.addMessage(message);
-    onMessageReceived?.(message);
-  }, [onMessageReceived]);
+    // 通过 ref 调用，确保始终使用最新的 onMessageReceived prop
+    onMessageReceivedRef.current?.(message);
+  }, []);
 
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
