@@ -85,6 +85,16 @@
           ]
         },
         {
+          "id": "alert_enrichment",
+          "name": "Alert Enrichment",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
           "id": "global_config",
           "name": "Global Config",
           "operation": [
@@ -118,7 +128,8 @@
         "Alarms-View",
         "correlation_rules-View",
         "alert_assign-View",
-        "shield_strategy-View"
+        "shield_strategy-View",
+        "alert_enrichment-View"
       ]
     }
   ]

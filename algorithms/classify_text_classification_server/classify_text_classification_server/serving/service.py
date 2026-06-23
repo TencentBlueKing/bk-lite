@@ -296,7 +296,7 @@ class MLService:
             # 特征重要性（如果需要）
             feature_importance = None
             if config.return_feature_importance:
-                feature_importance = self._get_feature_importance_dummy(
+                feature_importance = self._get_feature_importance(
                     processed_text, config.max_features
                 )
 
@@ -352,36 +352,85 @@ class MLService:
 
         return top_k_results
 
-    def _get_feature_importance_dummy(
+    def _get_feature_importance(
         self, text: str, max_features: int
-    ) -> list[FeatureImportance]:
+    ) -> Optional[list[FeatureImportance]]:
         """
-        获取特征重要性（Dummy实现，返回文本中的词语）.
+        从模型中提取真实特征重要性.
 
-        注意：这是简化实现，实际应该从模型中提取真实的特征重要性。
-        在真实MLflow模型中，需要访问模型内部的预处理器和特征工程器。
+        尝试从 MLflow pyfunc 包装器中解包底层 XGBoostWrapper，
+        结合 TF-IDF 词汇表权重与 XGBoost feature_importances_ 计算每个词的真实归因得分。
+
+        若模型内部不可访问（如 DummyModel 或非 XGBoostWrapper 架构），
+        返回 None，明确告知调用方当前无法提供真实特征归因，
+        而不是返回与模型推断无关的位置伪造权重。
 
         Args:
-            text: 文本内容
+            text: 预处理后的文本内容（空格分词）
             max_features: 最多返回N个特征
 
         Returns:
-            特征重要性列表
+            按真实重要性降序排列的特征列表；模型不支持时返回 None
         """
-        # 简单分词（实际应该使用训练时的预处理器）
-        words = text.split()[:max_features]
+        try:
+            # 尝试从 MLflow pyfunc 包装器解包底层 XGBoostWrapper
+            python_model = getattr(self.model, "_model_impl", None)
+            if python_model is not None:
+                python_model = getattr(python_model, "python_model", None)
 
-        # 生成模拟的重要性得分
-        features = []
-        for i, word in enumerate(words):
-            importance = 1.0 / (i + 1)  # 简单递减
-            features.append(
-                FeatureImportance(
-                    feature=word, importance=importance, contribution="positive"
+            if python_model is None:
+                logger.debug("Model does not expose python_model; skipping feature importance")
+                return None
+
+            feature_engineer = getattr(python_model, "feature_engineer", None)
+            xgb_model = getattr(python_model, "model", None)
+
+            if feature_engineer is None or xgb_model is None:
+                logger.debug("XGBoostWrapper internals not found; skipping feature importance")
+                return None
+
+            tfidf_vectorizer = getattr(feature_engineer, "tfidf_vectorizer", None)
+            feature_importances = getattr(xgb_model, "feature_importances_", None)
+
+            if tfidf_vectorizer is None or feature_importances is None:
+                logger.debug("TF-IDF vectorizer or feature_importances_ not available")
+                return None
+
+            # 获取 TF-IDF 词汇表（词 → 特征矩阵列索引）
+            vocab = tfidf_vectorizer.vocabulary_
+
+            # 提取文本中出现的词语，查询其在特征矩阵中对应的重要性
+            words = text.split()
+            word_scores: dict[str, float] = {}
+            for word in words:
+                idx = vocab.get(word)
+                if idx is not None and idx < len(feature_importances):
+                    score = float(feature_importances[idx])
+                    # 同一词多次出现时取最大值
+                    if word not in word_scores or score > word_scores[word]:
+                        word_scores[word] = score
+
+            if not word_scores:
+                logger.debug("No vocabulary matches in input text; returning empty feature importance")
+                return []
+
+            # 按重要性降序排列，取 top-N
+            sorted_words = sorted(word_scores.items(), key=lambda x: x[1], reverse=True)
+            features = []
+            for word, score in sorted_words[:max_features]:
+                features.append(
+                    FeatureImportance(
+                        feature=word,
+                        importance=round(score, 6),
+                        contribution="positive" if score >= 0 else "negative",
+                    )
                 )
-            )
 
-        return features
+            return features
+
+        except Exception as e:
+            logger.warning(f"Failed to extract real feature importance: {e}; returning None")
+            return None
 
     def _compute_summary(
         self, results: list[ClassificationResult], processing_time_ms: float

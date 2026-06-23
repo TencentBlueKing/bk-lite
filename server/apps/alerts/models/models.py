@@ -48,6 +48,7 @@ class Event(models.Model):
     start_time = models.DateTimeField(db_index=True, help_text="事件开始时间")
     end_time = models.DateTimeField(null=True, blank=True, db_index=True, help_text="事件结束时间")
     labels = JSONField(default=dict, help_text="事件元数据")
+    enrichment = JSONField(default=dict, help_text="丰富数据，按来源命名空间分区")
     action = models.CharField(
         max_length=32,
         choices=EventAction.CHOICES,
@@ -146,6 +147,7 @@ class Alert(models.Model):
     title = models.CharField(max_length=200, help_text="标题")
     content = models.TextField(help_text="内容")
     labels = JSONField(default=dict, help_text="标签")
+    enrichment = JSONField(default=dict, help_text="丰富数据，按来源命名空间分区")
     first_event_time = models.DateTimeField(null=True, blank=True, help_text="首次事件时间")
     last_event_time = models.DateTimeField(null=True, blank=True, help_text="最近事件时间")
     item = models.CharField(max_length=128, null=True, blank=True, db_index=True, help_text="事件指标")

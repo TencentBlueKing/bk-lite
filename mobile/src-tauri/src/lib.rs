@@ -1,19 +1,19 @@
 mod api_proxy;
-mod permissions;
 
-use api_proxy::{api_proxy, simple_api_proxy, api_stream_proxy};
-use permissions::{check_microphone_permission, request_microphone_permission};
+use api_proxy::{api_proxy, simple_api_proxy, api_stream_proxy, cancel_stream, StreamRegistry};
+use std::collections::HashMap;
+use std::sync::Mutex;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
+    .manage(StreamRegistry(Mutex::new(HashMap::new())))
     .plugin(tauri_plugin_store::Builder::new().build())
     .invoke_handler(tauri::generate_handler![
       api_proxy,
       simple_api_proxy,
       api_stream_proxy,
-      check_microphone_permission,
-      request_microphone_permission
+      cancel_stream,
     ])
     .setup(|app| {
       if cfg!(debug_assertions) {

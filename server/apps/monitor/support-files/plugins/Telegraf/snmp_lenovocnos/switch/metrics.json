@@ -35,7 +35,7 @@
       "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
     },
     {
-      "metric_group": "Router",
+      "metric_group": "CPU",
       "name": "device_cpu_usage",
       "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "CPU Usage",
@@ -210,7 +210,7 @@
       "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
     },
     {
-      "metric_group": "Environment",
+      "metric_group": "Temperature",
       "name": "device_temperature_celsius",
       "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Temperature",
@@ -223,7 +223,7 @@
       "description": "Temperature sensors of the Lenovo CNOS switch in Celsius (lenovoEnvMibTempSensorTemperature, max)."
     },
     {
-      "metric_group": "Environment",
+      "metric_group": "Hardware Status",
       "name": "device_fan_state",
       "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "Fan State",
@@ -236,7 +236,7 @@
       "description": "Fan state of the Lenovo CNOS switch (lenovoEnvMibFanState; 1=normal, 2=abnormal)."
     },
     {
-      "metric_group": "Environment",
+      "metric_group": "Hardware Status",
       "name": "device_psu_state",
       "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
       "display_name": "PSU State",

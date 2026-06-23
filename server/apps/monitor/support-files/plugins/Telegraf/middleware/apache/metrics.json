@@ -9,7 +9,7 @@
   "default_metric": "any({instance_type='apache'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["apache_ReqPerSec", "apache_BusyWorkers", "apache_CPULoad"],
-  "display_fields": [{"name": "Request Processing Rate", "sort_order": 0, "metrics": [{"plugin": "Apache", "metric": "apache_ReqPerSec"}]}, {"name": "Busy Workers", "sort_order": 1, "metrics": [{"plugin": "Apache", "metric": "apache_BusyWorkers"}]}, {"name": "CPU Load", "sort_order": 2, "metrics": [{"plugin": "Apache", "metric": "apache_CPULoad"}]}],
+  "display_fields": [{"name": "请求处理速率", "sort_order": 0, "metrics": [{"plugin": "Apache", "metric": "apache_ReqPerSec"}]}, {"name": "忙碌工作进程数", "sort_order": 1, "metrics": [{"plugin": "Apache", "metric": "apache_BusyWorkers"}]}, {"name": "CPU负载", "sort_order": 2, "metrics": [{"plugin": "Apache", "metric": "apache_CPULoad"}]}, {"name": "数据传输速率", "sort_order": 3, "metrics": [{"plugin": "Apache", "metric": "apache_BytesPerSec"}]}],
   "metrics": [
     {
       "metric_group": "Base",

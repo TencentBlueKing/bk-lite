@@ -35,6 +35,9 @@ from .operator_log import OperatorLogModelFilter
 # 策略
 from .strategy import AlarmStrategyModelFilter
 
+# 告警丰富
+from .enrichment import EnrichmentRuleModelFilter
+
 __all__ = [
     # 告警源
     "AlertSourceModelFilter",
@@ -55,4 +58,6 @@ __all__ = [
     "OperatorLogModelFilter",
     # 策略
     "AlarmStrategyModelFilter",
+    # 告警丰富
+    "EnrichmentRuleModelFilter",
 ]

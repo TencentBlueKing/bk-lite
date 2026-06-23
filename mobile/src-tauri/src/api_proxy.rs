@@ -1,7 +1,60 @@
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use tauri::{command, AppHandle, Emitter};
+use std::sync::Mutex;
+use tauri::{command, AppHandle, Emitter, State};
 use futures_util::StreamExt;
+use tokio::sync::oneshot;
+
+/// 每个活跃 SSE 流的取消发送端，keyed by stream_id
+pub struct StreamRegistry(pub Mutex<HashMap<String, oneshot::Sender<()>>>);
+
+/// 校验请求 URL 的 host 是否在环境变量 TAURI_ALLOWED_HOSTS 所配置的白名单内。
+///
+/// 白名单格式：逗号分隔的 host[:port] 列表，例如
+///   `TAURI_ALLOWED_HOSTS=bklite.example.com,api.internal.example.com:8443`
+///
+/// 若环境变量未设置，则默认只允许 127.0.0.1 和 localhost（开发模式兜底），
+/// 并在 warn 日志中提示生产环境应显式配置。
+fn is_allowed_host(url: &str) -> bool {
+    let parsed = match url::Url::parse(url) {
+        Ok(u) => u,
+        Err(_) => return false,
+    };
+
+    let host = match parsed.host_str() {
+        Some(h) => h.to_lowercase(),
+        None => return false,
+    };
+    let port = parsed.port();
+
+    // 构造 host 标识：带端口时用 host:port，否则只用 host
+    let host_with_port = match port {
+        Some(p) => format!("{}:{}", host, p),
+        None => host.clone(),
+    };
+
+    let allowed_hosts_env = std::env::var("TAURI_ALLOWED_HOSTS").unwrap_or_default();
+
+    if allowed_hosts_env.trim().is_empty() {
+        // 未配置白名单时，仅放行本地开发地址
+        log::warn!(
+            "[Tauri-Proxy] TAURI_ALLOWED_HOSTS 未配置，生产环境请显式设置允许的后端域名。当前仅放行 127.0.0.1/::1/localhost。"
+        );
+        return host == "127.0.0.1" || host == "::1" || host == "localhost";
+    }
+
+    for entry in allowed_hosts_env.split(',') {
+        let entry = entry.trim().to_lowercase();
+        if entry.is_empty() {
+            continue;
+        }
+        if entry == host || entry == host_with_port {
+            return true;
+        }
+    }
+
+    false
+}
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiRequest {
@@ -43,9 +96,18 @@ pub struct ApiError {
 
 #[command]
 pub async fn api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError> {
+    // URL 白名单校验：防止注入脚本通过 IPC 发起任意域的 SSRF 请求
+    if !is_allowed_host(&request.url) {
+        log::warn!("[Tauri-API] 拒绝非白名单 URL: {}", request.url);
+        return Err(ApiError {
+            message: format!("URL host not in allowlist: {}", request.url),
+            status: Some(403),
+        });
+    }
+
     let start_time = std::time::Instant::now();
     let request_id = uuid::Uuid::new_v4().to_string()[..8].to_string();
-    
+
     log::info!("🚀 [Tauri-API-{}] START: {} {}", request_id, request.method, request.url);
 
     // 创建 HTTP 客户端
@@ -166,11 +228,21 @@ pub async fn simple_api_proxy(
 #[command]
 pub async fn api_stream_proxy(
     app: AppHandle,
+    registry: State<'_, StreamRegistry>,
     request: ApiRequest,
 ) -> Result<String, ApiError> {
+    // URL 白名单校验：与 api_proxy 保持一致
+    if !is_allowed_host(&request.url) {
+        log::warn!("[Tauri-Stream] 拒绝非白名单 URL: {}", request.url);
+        return Err(ApiError {
+            message: format!("URL host not in allowlist: {}", request.url),
+            status: Some(403),
+        });
+    }
+
     let stream_id = uuid::Uuid::new_v4().to_string();
     let request_id = stream_id[..8].to_string();
-    
+
     log::info!("🌊 [Tauri-Stream-{}] START: {} {}", request_id, request.method, request.url);
 
     // 创建 HTTP 客户端
@@ -207,9 +279,16 @@ pub async fn api_stream_proxy(
         req_builder = req_builder.body(body.clone());
     }
 
+    // 创建取消通道：JS 侧调用 cancel_stream 时，通过 tx 发送取消信号
+    let (cancel_tx, mut cancel_rx) = oneshot::channel::<()>();
+    {
+        let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
+        map.insert(stream_id.clone(), cancel_tx);
+    }
+
     let stream_id_clone = stream_id.clone();
     let app_clone = app.clone();
-    
+
     // 在后台任务中处理流式响应
     tauri::async_runtime::spawn(async move {
         match req_builder.send().await {
@@ -223,6 +302,9 @@ pub async fn api_stream_proxy(
                         stream_id: stream_id_clone.clone(),
                         error: error_msg,
                     });
+                    // 清理注册表后退出
+                    let reg = app_clone.state::<StreamRegistry>();
+                    reg.0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                     return;
                 }
 
@@ -233,8 +315,24 @@ pub async fn api_stream_proxy(
                 let mut buffer = String::new();
                 let mut chunk_count = 0;
                 let mut pending_data_prefix = false; // 标记是否有待处理的 data: 前缀
+                let mut cancelled = false;
 
-                while let Some(chunk_result) = stream.next().await {
+                loop {
+                    let chunk_result = tokio::select! {
+                        biased; // 优先检查取消信号，确保取消语义立即生效
+                        // 收到取消信号，立即终止读循环
+                        _ = &mut cancel_rx => {
+                            log::info!("🛑 [Tauri-Stream-{}] Cancelled by client", request_id);
+                            cancelled = true;
+                            break;
+                        }
+                        item = stream.next() => {
+                            match item {
+                                Some(r) => r,
+                                None => break, // 流自然结束
+                            }
+                        }
+                    };
                     match chunk_result {
                         Ok(chunk) => {
                             chunk_count += 1;
@@ -354,6 +452,7 @@ pub async fn api_stream_proxy(
                                         stream_id: stream_id_clone.clone(),
                                         error: format!("UTF-8 decode error: {}", e),
                                     });
+                                    app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                                     return;
                                 }
                             }
@@ -364,13 +463,14 @@ pub async fn api_stream_proxy(
                                 stream_id: stream_id_clone.clone(),
                                 error: format!("Stream read error: {}", e),
                             });
+                            app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                             return;
                         }
                     }
                 }
 
-                // 处理剩余的 buffer
-                if !buffer.trim().is_empty() {
+                // 处理剩余的 buffer（仅在非取消情况下）
+                if !cancelled && !buffer.trim().is_empty() {
                     let trimmed = buffer.trim();
                     // 确保数据行包含 data: 前缀
                     let formatted = if trimmed.starts_with("data:") {
@@ -380,22 +480,29 @@ pub async fn api_stream_proxy(
                     } else {
                         buffer.clone()
                     };
-                    
+
                     let _ = app_clone.emit("stream-chunk", StreamChunk {
                         stream_id: stream_id_clone.clone(),
                         data: format!("{}\n", formatted),
                     });
                 }
 
-                log::info!("✅ [Tauri-Stream-{}] COMPLETED: {} chunks received", request_id, chunk_count);
-                
-                // 发送流结束事件
-                let _ = app_clone.emit("stream-end", StreamEnd {
-                    stream_id: stream_id_clone,
-                });
+                // 从注册表中移除
+                app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
+
+                if cancelled {
+                    log::info!("🛑 [Tauri-Stream-{}] Task exiting after cancellation", request_id);
+                } else {
+                    log::info!("✅ [Tauri-Stream-{}] COMPLETED: {} chunks received", request_id, chunk_count);
+                    // 发送流结束事件（仅在非取消情况下）
+                    let _ = app_clone.emit("stream-end", StreamEnd {
+                        stream_id: stream_id_clone,
+                    });
+                }
             }
             Err(err) => {
                 log::error!("❌ [Tauri-Stream-{}] HTTP request failed: {}", request_id, err);
+                app_clone.state::<StreamRegistry>().0.lock().unwrap_or_else(|e| e.into_inner()).remove(&stream_id_clone);
                 let _ = app_clone.emit("stream-error", StreamError {
                     stream_id: stream_id_clone,
                     error: format!("HTTP request failed: {}", err),
@@ -405,4 +512,113 @@ pub async fn api_stream_proxy(
     });
 
     Ok(stream_id)
+}
+
+/// 取消一个正在进行的 SSE 流式请求
+/// JS 侧在 abortStream() 中调用此命令以通知 Rust 停止读取
+#[command]
+pub async fn cancel_stream(
+    registry: State<'_, StreamRegistry>,
+    stream_id: String,
+) -> Result<(), String> {
+    let mut map = registry.0.lock().unwrap_or_else(|e| e.into_inner());
+    if let Some(tx) = map.remove(&stream_id) {
+        let _ = tx.send(());
+        log::info!("🛑 [cancel_stream] Cancelled stream: {}", &stream_id[..8.min(stream_id.len())]);
+    } else {
+        log::warn!("⚠️ [cancel_stream] Stream not found (already ended?): {}", &stream_id[..8.min(stream_id.len())]);
+    }
+    Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::is_allowed_host;
+    use std::env;
+
+    /// 辅助：在测试中临时设置 / 清除环境变量（串行执行，避免并发干扰）
+    fn with_env<F: FnOnce()>(key: &str, val: Option<&str>, f: F) {
+        let old = env::var(key).ok();
+        match val {
+            Some(v) => env::set_var(key, v),
+            None => env::remove_var(key),
+        }
+        f();
+        match old {
+            Some(v) => env::set_var(key, v),
+            None => env::remove_var(key),
+        }
+    }
+
+    // --- 未配置白名单（默认只放行 localhost/127.0.0.1）---
+
+    #[test]
+    fn test_no_env_allows_localhost() {
+        with_env("TAURI_ALLOWED_HOSTS", None, || {
+            assert!(is_allowed_host("http://127.0.0.1:8011/api"));
+            assert!(is_allowed_host("http://localhost:3001/dev"));
+            assert!(is_allowed_host("http://[::1]:8011/api"));
+        });
+    }
+
+    #[test]
+    fn test_no_env_blocks_external() {
+        with_env("TAURI_ALLOWED_HOSTS", None, || {
+            // 关键测试：revert 白名单校验逻辑后此断言应失败
+            assert!(!is_allowed_host("http://169.254.169.254/latest/meta-data/"));
+            assert!(!is_allowed_host("https://evil.example.com/exfil"));
+            assert!(!is_allowed_host("http://internal-svc/secret"));
+        });
+    }
+
+    // --- 已配置白名单 ---
+
+    #[test]
+    fn test_env_allows_listed_host() {
+        with_env(
+            "TAURI_ALLOWED_HOSTS",
+            Some("bklite.example.com,api.internal.corp:8443"),
+            || {
+                assert!(is_allowed_host("https://bklite.example.com/api/v1/"));
+                assert!(is_allowed_host("https://api.internal.corp:8443/stream"));
+            },
+        );
+    }
+
+    #[test]
+    fn test_env_blocks_unlisted_host() {
+        with_env(
+            "TAURI_ALLOWED_HOSTS",
+            Some("bklite.example.com"),
+            || {
+                // SSRF 靶标：不在白名单内应被拒绝
+                assert!(!is_allowed_host("http://169.254.169.254/"));
+                assert!(!is_allowed_host("https://other-domain.example.com/"));
+            },
+        );
+    }
+
+    #[test]
+    fn test_env_host_port_distinction() {
+        // host:port 条目不应放行同 host 的其它端口
+        with_env(
+            "TAURI_ALLOWED_HOSTS",
+            Some("api.corp.com:8443"),
+            || {
+                assert!(is_allowed_host("https://api.corp.com:8443/ok"));
+                // 不同端口不在白名单
+                assert!(!is_allowed_host("https://api.corp.com:9999/bad"));
+                // 纯 host（无端口）不在白名单
+                assert!(!is_allowed_host("https://api.corp.com/bad"));
+            },
+        );
+    }
+
+    #[test]
+    fn test_invalid_url_rejected() {
+        with_env("TAURI_ALLOWED_HOSTS", Some("bklite.example.com"), || {
+            assert!(!is_allowed_host("not-a-url"));
+            assert!(!is_allowed_host(""));
+        });
+    }
 }
