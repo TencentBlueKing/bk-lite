@@ -178,6 +178,37 @@ def test_build_post_tool_directives_skips_expert_workflow_without_skill_capabili
     assert directives == []
 
 
+def test_analyze_deployment_configurations_stops_when_connection_fails(monkeypatch):
+    def _raise_connection_error(config):
+        raise Exception("目标地址被禁止: 禁止的网段 127.0.0.0/8")
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.tools.kubernetes.analysis.prepare_context",
+        _raise_connection_error,
+    )
+
+    parsed = json.loads(analyze_deployment_configurations.invoke({}))
+
+    assert parsed["success"] is False
+    assert parsed["error"] == "connection_failed"
+    assert "已停止配置分析" in parsed["message"]
+    assert "不要输出配置检查报告" in parsed["_next_step_hint"]
+
+
+def test_failed_config_analysis_does_not_emit_report_directive():
+    directives = build_post_tool_directives(
+        [
+            ToolMessage(
+                name="analyze_deployment_configurations",
+                tool_call_id="call-1",
+                content='{"success":false,"error":"connection_failed","message":"无法连接 Kubernetes 集群"}',
+            )
+        ]
+    )
+
+    assert directives == []
+
+
 def test_build_post_tool_directives_prevents_duplicate_summary_for_healthy_scan():
     directives = build_post_tool_directives(
         [
