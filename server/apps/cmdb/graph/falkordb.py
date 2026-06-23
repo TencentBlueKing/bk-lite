@@ -213,11 +213,12 @@ class FalkorDBClient:
         """将属性格式化为CQL中的字符串格式，正确处理字符串转义"""
         properties_str = "{"
         for key, value in properties.items():
+            validated_key = CQLValidator.validate_field(key)
             if isinstance(value, str):
                 escaped_value = FalkorDBClient.escape_cql_string(value)
-                properties_str += f"{key}:'{escaped_value}',"
+                properties_str += f"{validated_key}:'{escaped_value}',"
             else:
-                properties_str += f"{key}:{value},"
+                properties_str += f"{validated_key}:{value},"
         properties_str = properties_str[:-1]
         properties_str += "}"
         return properties_str
@@ -889,11 +890,12 @@ class FalkorDBClient:
         """格式化properties的set数据，正确处理字符串转义"""
         properties_str = ""
         for key, value in properties.items():
+            validated_key = CQLValidator.validate_field(key)
             if isinstance(value, str):
                 escaped_value = self.escape_cql_string(value)
-                properties_str += f"n.{key}='{escaped_value}',"
+                properties_str += f"n.{validated_key}='{escaped_value}',"
             else:
-                properties_str += f"n.{key}={value},"
+                properties_str += f"n.{validated_key}={value},"
         return properties_str if properties_str == "" else properties_str[:-1]
 
     def set_entity_properties(
