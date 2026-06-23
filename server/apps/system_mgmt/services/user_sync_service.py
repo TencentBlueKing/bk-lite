@@ -32,6 +32,32 @@ def get_user_sync_business_value(source, key: str, default=None):
     return business_config.get(key, default)
 
 
+def get_user_sync_root_department_input_mode(provider_key: str) -> str:
+    """Return the input_mode for root_department_id in the user_sync capability.
+
+    Defaults to department_select when the provider/manifest/field does not declare one.
+    """
+    runtime_service = RuntimeApplicationService()
+    try:
+        manifest = runtime_service.get_provider_manifest(provider_key)
+    except ValueError:
+        return "department_select"
+
+    capability = manifest.get_capability("user_sync")
+    if capability is None or not capability.business_template:
+        return "department_select"
+
+    business_template = manifest.business_templates.get(capability.business_template)
+    if business_template is None:
+        return "department_select"
+
+    for group in business_template.groups:
+        for field in group.fields:
+            if field.key == "root_department_id":
+                return field.input_mode or "department_select"
+    return "department_select"
+
+
 def normalize_root_department_selection(selected_value: str, payload: dict) -> str:
     selected_value = str(selected_value or "")
     if selected_value == ALL_DEPARTMENT_SELECTION_ID:

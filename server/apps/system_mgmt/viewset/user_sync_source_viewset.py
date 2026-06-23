@@ -15,6 +15,7 @@ from apps.system_mgmt.services.user_sync_service import (
     flatten_department_ids,
     preview_user_sync,
     sync_source_now,
+    get_user_sync_root_department_input_mode,
 )
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -84,6 +85,16 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             or integration_instance.capability_status.get("user_sync") != IntegrationInstanceStatusChoices.READY
         ):
             return JsonResponse({"result": False, "message": "Integration instance user_sync capability is not ready"}, status=400)
+
+        input_mode = get_user_sync_root_department_input_mode(integration_instance.provider_key)
+        if input_mode == "manual_input":
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "Current provider uses manual_input mode and does not support department tree options",
+                },
+                status=400,
+            )
 
         runtime_service = RuntimeApplicationService()
         result = runtime_service.execute(

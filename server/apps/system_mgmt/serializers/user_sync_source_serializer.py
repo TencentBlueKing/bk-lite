@@ -11,6 +11,9 @@ from apps.system_mgmt.models import (
     UserSyncSource,
 )
 from apps.system_mgmt.services import user_sync_service
+from apps.system_mgmt.services.user_sync_service import (
+    get_user_sync_root_department_input_mode,
+)
 
 
 class UserSyncRunSerializer(serializers.ModelSerializer):
@@ -85,7 +88,12 @@ class UserSyncSourceSerializer(UsernameSerializer):
         root_department_id = str(business_config.get("root_department_id") or "")
         if not root_department_id:
             raise serializers.ValidationError({"business_config": "Root department is required"})
-        if root_department_id:
+
+        input_mode = get_user_sync_root_department_input_mode(integration_instance.provider_key)
+        if input_mode == "manual_input":
+            business_config.pop("department_id_type", None)
+            business_config["root_department_id"] = root_department_id
+        else:
             runtime_service = RuntimeApplicationService()
             department_result = runtime_service.execute(
                 provider_key=integration_instance.provider_key,

@@ -15,6 +15,7 @@ import type {
 import {
   getDefaultDepartmentIdType,
   getWriteOnlyKeys,
+  isDepartmentSelectMode,
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
 import { type MappingRow, toMappingRows } from '@/app/system-manager/utils/userSyncPageUtils';
@@ -77,14 +78,21 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     if (previousInstanceIdRef.current === selectedInstanceId) return;
     previousInstanceIdRef.current = selectedInstanceId;
 
-    const nextBusinessConfig = {
+    const nextBusinessConfig: Record<string, unknown> = {
       ...(form.getFieldValue('business_config') || {}),
-      root_department_id: '__all__',
     };
-    const defaultDepartmentIdType = getDefaultDepartmentIdType(resolvedTemplate);
-    if (defaultDepartmentIdType) {
-      nextBusinessConfig.department_id_type = defaultDepartmentIdType;
+
+    if (isDepartmentSelectMode(resolvedTemplate)) {
+      nextBusinessConfig.root_department_id = '__all__';
+      const defaultDepartmentIdType = getDefaultDepartmentIdType(resolvedTemplate);
+      if (defaultDepartmentIdType) {
+        nextBusinessConfig.department_id_type = defaultDepartmentIdType;
+      }
+    } else {
+      delete nextBusinessConfig.root_department_id;
+      delete nextBusinessConfig.department_id_type;
     }
+
     form.setFieldValue('business_config', nextBusinessConfig);
   }, [form, open, resolvedTemplate, selectedInstanceId]);
 

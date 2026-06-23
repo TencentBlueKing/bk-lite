@@ -90,6 +90,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "label": "根部门 ID",
                                 "field_type": "string",
                                 "required": True,
+                                "input_mode": "department_select",
                             },
                             {
                                 "key": "department_id_type",

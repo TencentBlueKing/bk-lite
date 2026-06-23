@@ -17,6 +17,9 @@ import type {
 } from '@/app/system-manager/types/integration-center';
 import type { UserSyncDepartmentNode } from '@/app/system-manager/types/user-sync';
 import {
+  getRootDepartmentInputMode,
+} from '@/app/system-manager/utils/userSyncUtils';
+import {
   PLATFORM_FIELD_META,
   type MappingRow,
   updateMappingRowField,
@@ -103,6 +106,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   const [departmentLoading, setDepartmentLoading] = useState(false);
 
   const departmentTreeData = useMemo(() => toTreeSelectData(departmentNodes), [departmentNodes]);
+  const inputMode = useMemo(() => getRootDepartmentInputMode(resolvedTemplate), [resolvedTemplate]);
 
   useEffect(() => {
     currentRootDepartmentIdRef.current = currentRootDepartmentId;
@@ -122,6 +126,14 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
         setDepartmentLoadError('');
         form.setFieldValue(['business_config', 'root_department_id'], undefined);
         form.setFields([{ name: ['business_config', 'root_department_id'], errors: [] }]);
+        return;
+      }
+
+      if (inputMode !== 'department_select') {
+        setDepartmentNodes([]);
+        setDepartmentSelectionMissing(false);
+        setDepartmentLoadError('');
+        setDepartmentLoading(false);
         return;
       }
 
@@ -173,7 +185,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     return () => {
       active = false;
     };
-  }, [departmentIdType, form, selectedInstanceId, t]);
+  }, [departmentIdType, form, inputMode, selectedInstanceId, t]);
 
   const renderManifestField = (field: TemplateField) => {
     if (hideRootDepartmentField && (field.key === 'root_department_id' || field.key === 'department_id_type')) {
@@ -190,6 +202,22 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     const wrapperClassName = field.field_type === 'textarea' ? 'md:col-span-2' : '';
 
     if (field.key === 'root_department_id') {
+      if (inputMode === 'manual_input') {
+        return (
+          <div key={field.key} className={wrapperClassName}>
+            <Form.Item
+              name={namePath}
+              label={field.label}
+              required={field.required}
+              rules={rules}
+              tooltip={field.help_text || undefined}
+            >
+              <Input placeholder={placeholder} />
+            </Form.Item>
+          </div>
+        );
+      }
+
       return (
         <div key={field.key} className={wrapperClassName}>
           {departmentSelectionMissing ? (

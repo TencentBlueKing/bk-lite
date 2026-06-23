@@ -5,6 +5,7 @@ from pydantic import BaseModel, Field, model_validator
 
 MaskStrategy = Literal["full", "last4"]
 FieldType = Literal["string", "password", "number", "boolean", "select", "textarea"]
+InputMode = Literal["department_select", "manual_input"]
 
 
 class TemplateFieldManifest(BaseModel):
@@ -20,6 +21,7 @@ class TemplateFieldManifest(BaseModel):
     help_text: str = Field(default="", description="帮助文案")
     options: list[dict[str, Any]] = Field(default_factory=list, description="选择型字段可选项")
     reset_capabilities: list[str] = Field(default_factory=list, description="字段变更后需要回退的 capability 列表")
+    input_mode: InputMode | None = Field(default=None, description="范围字段输入模式")
 
     @model_validator(mode="after")
     def validate_secret_flags(self):

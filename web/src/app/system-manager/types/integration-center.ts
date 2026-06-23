@@ -13,6 +13,7 @@ export interface TemplateField {
   help_text: string;
   options: Array<{ value: unknown; label: string }>;
   reset_capabilities: string[];
+  input_mode?: 'department_select' | 'manual_input';
 }
 
 export interface TemplateGroup {

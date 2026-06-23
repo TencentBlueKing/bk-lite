@@ -52,6 +52,7 @@ def test_provider_manifest_public_dict_includes_connection_template():
             "help_text": "",
             "options": [],
             "reset_capabilities": [],
+            "input_mode": None,
         }
     ]
     assert public_dict["capabilities"][0]["connection_template"] == [
@@ -68,6 +69,7 @@ def test_provider_manifest_public_dict_includes_connection_template():
             "help_text": "",
             "options": [],
             "reset_capabilities": [],
+            "input_mode": None,
         }
     ]
 
@@ -187,3 +189,45 @@ def test_business_template_rejects_duplicate_field_keys_across_groups():
                 "capabilities": [],
             }
         )
+
+
+def test_template_field_manifest_supports_input_mode():
+    manifest = ProviderManifest.model_validate(
+        {
+            "key": "demo",
+            "name": "Demo",
+            "business_templates": {
+                "user_sync_form": {
+                    "title": "User Sync",
+                    "groups": [
+                        {
+                            "key": "pull",
+                            "title": "拉取配置",
+                            "fields": [
+                                {
+                                    "key": "root_department_id",
+                                    "label": "同步范围",
+                                    "required": True,
+                                    "input_mode": "manual_input",
+                                }
+                            ],
+                        }
+                    ],
+                    "available_external_fields": ["user_id"],
+                }
+            },
+            "capabilities": [
+                {
+                    "key": "user_sync",
+                    "name": "User Sync",
+                    "adapter_key": "demo.user_sync",
+                    "adapter_path": "apps.system_mgmt.providers.adapters.base.BaseUserSyncAdapter",
+                    "business_template": "user_sync_form",
+                }
+            ],
+        }
+    )
+
+    public_dict = manifest.to_public_dict()
+    root_field = public_dict["business_templates"]["user_sync_form"]["groups"][0]["fields"][0]
+    assert root_field["input_mode"] == "manual_input"

@@ -85,6 +85,28 @@ export function getDefaultDepartmentIdType(template: BusinessTemplate | null): s
   return typeof firstOption === 'string' ? firstOption : '';
 }
 
+export function getRootDepartmentInputMode(
+  template: BusinessTemplate | null,
+): 'department_select' | 'manual_input' {
+  if (!template) return 'department_select';
+  for (const group of template.groups) {
+    for (const field of group.fields) {
+      if (field.key === 'root_department_id') {
+        return field.input_mode === 'manual_input' ? 'manual_input' : 'department_select';
+      }
+    }
+  }
+  return 'department_select';
+}
+
+export function isDepartmentSelectMode(template: BusinessTemplate | null): boolean {
+  return getRootDepartmentInputMode(template) === 'department_select';
+}
+
+export function isManualInputMode(template: BusinessTemplate | null): boolean {
+  return getRootDepartmentInputMode(template) === 'manual_input';
+}
+
 function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSource> {
   return {
     name: source.name,
