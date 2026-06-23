@@ -104,6 +104,12 @@
           "url": "/system-manager/settings/error-logs",
           "icon": "wannengbiaodan",
           "name": "error_logs"
+        },
+        {
+          "title": "白名单",
+          "url": "/system-manager/settings/network-whitelist",
+          "icon": "key",
+          "name": "network_white_list"
         }
       ]
     }
@@ -212,6 +218,12 @@
           "url": "/system-manager/settings/error-logs",
           "icon": "wannengbiaodan",
           "name": "error_logs"
+        },
+        {
+          "title": "Network Whitelist",
+          "url": "/system-manager/settings/network-whitelist",
+          "icon": "key",
+          "name": "network_white_list"
         }
       ]
     }
