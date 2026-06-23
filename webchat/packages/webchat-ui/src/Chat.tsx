@@ -31,6 +31,12 @@ export interface ChatProps extends WebChatConfig {
   apiKey?: string;
 }
 
+// 图片大小上限（字节），默认 4MB，可通过 NEXT_PUBLIC_MAX_IMAGE_SIZE 环境变量覆盖
+const MAX_IMAGE_SIZE =
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_MAX_IMAGE_SIZE
+    ? parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE, 10)
+    : 0) || 4 * 1024 * 1024;
+
 const defaultBotAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzgxODVmZiIvPgogIDxjaXJjbGUgY3g9IjExIiBjeT0iMTIiIHI9IjIiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iMjEiIGN5PSIxMiIgcj0iMiIgZmlsbD0id2hpdGUiLz4KICA8cGF0aCBkPSJNIDEwIDIwIFEgMTYgMjQgMjIgMjAiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+Cjwvc3ZnPg==';
 const defaultUserAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzEwYjk4MSIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTIiIHI9IjUiIGZpbGw9IndoaXRlIi8+CiAgPHBhdGggZD0iTSA2IDI4IFEgNiAyMCAxNiAyMCBRIDI2IDIwIDI2IDI4IiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4=';
 
@@ -690,6 +696,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
+      if (file.size > MAX_IMAGE_SIZE) {
+        const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
+        onError?.(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
+        continue;
+      }
 
       const reader = new FileReader();
       const promise = new Promise<string>((resolve) => {
@@ -708,7 +719,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     // Reset input
     e.target.value = '';
-  }, []);
+  }, [onError]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
@@ -726,6 +737,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) {
+          if (file.size > MAX_IMAGE_SIZE) {
+            const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
+            onError?.(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
+            continue;
+          }
           imageFiles.push(file);
         }
       }
@@ -749,7 +765,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         setUploadedImages((prev) => [...prev, ...results]);
       });
     }
-  }, []);
+  }, [onError]);
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {
