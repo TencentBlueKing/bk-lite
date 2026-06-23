@@ -21,7 +21,7 @@
       "sort_order": 0,
       "metrics": [
         {
-          "plugin": "Wireless Cambium SNMP",
+          "plugin": "ConsoleServer Opengear SNMP",
           "metric": "snmp_uptime"
         }
       ]
@@ -31,7 +31,7 @@
       "sort_order": 1,
       "metrics": [
         {
-          "plugin": "Wireless Cambium SNMP",
+          "plugin": "ConsoleServer Opengear SNMP",
           "metric": "device_total_incoming_traffic"
         }
       ]
@@ -41,7 +41,7 @@
       "sort_order": 2,
       "metrics": [
         {
-          "plugin": "Wireless Cambium SNMP",
+          "plugin": "ConsoleServer Opengear SNMP",
           "metric": "device_total_outgoing_traffic"
         }
       ]
