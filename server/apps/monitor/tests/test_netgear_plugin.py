@@ -23,8 +23,8 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-NETGEAR_DIR = PLUGINS / "snmp_netgear" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
+NETGEAR_DIR = PLUGINS / "snmp" / "switch_netgear"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "netgear"

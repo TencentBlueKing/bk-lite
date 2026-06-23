@@ -28,7 +28,7 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-F5_DIR = PLUGINS / "snmp_f5" / "loadbalance"
+F5_DIR = PLUGINS / "snmp" / "loadbalance_f5"
 BASE_DIR = PLUGINS / "snmp" / "loadbalance"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 WEB_ROOT = SERVER_ROOT.parents[0] / "web"
@@ -101,9 +101,9 @@ def languages():
 # directory / cross-file identity — loadbalance object, NOT switch
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_plugin_lives_under_loadbalance_dir():
-    assert F5_DIR.parent.name == COLLECT_TYPE
-    assert F5_DIR.name == INSTANCE_TYPE
+def test_plugin_lives_under_loadbalance_dir(metrics):
+    assert metrics["collect_type"] == COLLECT_TYPE  # 身份来自 metrics.json(#3590 解耦)
+    assert F5_DIR.parent.name == "snmp"  # 扁平布局
 
 
 @pytest.mark.unit

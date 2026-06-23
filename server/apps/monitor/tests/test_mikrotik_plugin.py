@@ -22,8 +22,8 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-MIKROTIK_DIR = PLUGINS / "snmp_mikrotik" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
+MIKROTIK_DIR = PLUGINS / "snmp" / "switch_mikrotik"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "mikrotik"

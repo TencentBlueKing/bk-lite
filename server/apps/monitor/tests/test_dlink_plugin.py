@@ -24,8 +24,8 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-DLINK_DIR = PLUGINS / "snmp_dlink" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
+DLINK_DIR = PLUGINS / "snmp" / "switch_dlink"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "dlink"
