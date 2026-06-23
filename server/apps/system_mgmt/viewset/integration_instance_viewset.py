@@ -176,3 +176,31 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
 
         log_operation(request, "execute", "system-manager", f"测试集成实例连接: {obj.name}")
         return Response({"result": result.success, "data": result.to_dict()})
+
+    @action(methods=["GET"], detail=False)
+    @HasPermission("integration_center-View")
+    def available_instances(self, request, *args, **kwargs):
+        capability = request.query_params.get("capability")
+        if not capability:
+            return Response({"result": False, "message": "capability is required"}, status=400)
+
+        queryset = IntegrationInstance.objects.filter(
+            enabled=True,
+            status=IntegrationInstanceStatusChoices.READY,
+        ).exclude(provider_key=self.builtin_provider_key)
+
+        instances = []
+        for item in queryset.order_by("name", "id"):
+            if (
+                item.capability_enabled.get(capability) is True
+                and item.capability_status.get(capability) == IntegrationInstanceStatusChoices.READY
+            ):
+                manifest = get_provider_registry().get(item.provider_key)
+                provider_name = manifest.name if manifest else item.provider_key
+                instances.append({
+                    "id": item.id,
+                    "name": item.name,
+                    "provider_key": item.provider_key,
+                    "provider_name": provider_name,
+                })
+        return Response(instances)

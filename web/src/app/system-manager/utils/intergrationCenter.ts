@@ -135,23 +135,48 @@ export function resolveIntegrationPrimaryStatusColor(tone: IntegrationPrimarySta
   return 'default';
 }
 
+export function formatIntegrationInstanceDisplayName(
+  instance: {
+    name: string;
+    provider_key: string;
+    provider_name?: string;
+    provider?: { name: string } | null;
+  },
+  t: (key: string, fallback?: string) => string,
+): string {
+  const fallback = instance.provider_name || instance.provider?.name || instance.provider_key;
+  const providerDisplayName = t(
+    `system.integrationCenter.provider.${instance.provider_key}`,
+    fallback,
+  );
+  return `${instance.name}(${providerDisplayName})`;
+}
+
+export function getIntegrationCapabilityEnabled(
+  instance: Pick<IntegrationInstance, 'capability_enabled'>,
+  capabilityKey: string,
+): boolean {
+  return Boolean(instance.capability_enabled?.[capabilityKey]);
+}
+
+export function getIntegrationCapabilityTagColor(
+  instance: IntegrationInstance,
+  capabilityKey: string,
+): 'green' | 'default' {
+  const enabled = getIntegrationCapabilityEnabled(instance, capabilityKey);
+  const ready = instance.capability_status?.[capabilityKey] === 'ready';
+  return enabled && ready ? 'green' : 'default';
+}
+
 export function buildIntegrationInstanceCardItem(
   instance: IntegrationInstance,
-  t: (key: string, fallback?: string) => string,
 ) {
-  const primaryStatus = getIntegrationPrimaryStatusMeta(instance.status, instance.capability_status || {});
-
   return {
     id: instance.id,
     name: instance.name,
     icon: resolveIntegrationProviderIcon(instance.provider_key),
     description: instance.provider?.name || instance.provider_key,
-    tagList: [
-      {
-        name: t(`system.integrationCenter.primaryStatus.${primaryStatus.key}`),
-        color: resolveIntegrationPrimaryStatusColor(primaryStatus.tone),
-      },
-    ],
+    tagList: [],
     raw: instance,
   };
 }

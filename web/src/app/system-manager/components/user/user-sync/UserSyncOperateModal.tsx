@@ -18,6 +18,7 @@ import {
   isDepartmentSelectMode,
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 import { type MappingRow, toMappingRows } from '@/app/system-manager/utils/userSyncPageUtils';
 import UserSyncConfigFields from '@/app/system-manager/components/user/user-sync/UserSyncConfigFields';
 
@@ -152,9 +153,9 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     () =>
       availableInstances.map((inst) => ({
         value: inst.id,
-        label: `${inst.name}`,
+        label: formatIntegrationInstanceDisplayName(inst, t),
       })),
-    [availableInstances],
+    [availableInstances, t],
   );
 
   return (

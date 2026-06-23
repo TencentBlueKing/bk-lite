@@ -37,6 +37,7 @@ class Migration(migrations.Migration):
                     ),
                 ),
                 ("capability_status", models.JSONField(default=dict)),
+                ("capability_enabled", models.JSONField(default=dict)),
                 ("enabled", models.BooleanField(default=True)),
                 ("description", models.TextField(blank=True, default="")),
                 ("team", models.JSONField(default=list)),

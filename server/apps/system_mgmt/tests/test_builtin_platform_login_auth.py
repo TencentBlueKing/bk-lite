@@ -266,16 +266,16 @@ def test_builtin_login_auth_binding_cannot_be_deleted(api_client, authenticated_
 
 
 @pytest.mark.django_db
-def test_builtin_integration_instance_appears_in_login_auth_available_instances(api_client, authenticated_user):
+def test_builtin_integration_instance_excluded_from_available_instances(api_client, authenticated_user):
     authenticated_user.is_superuser = True
-    authenticated_user.permission = {"system-manager": {"login_auth-View"}}
+    authenticated_user.permission = {"system-manager": {"integration_center-View"}}
     authenticated_user.save(update_fields=["is_superuser"])
     create_builtin_platform_login_auth()
 
-    response = api_client.get("/api/v1/system_mgmt/login_auth_binding/available_instances/")
+    response = api_client.get("/api/v1/system_mgmt/integration_instance/available_instances/?capability=login_auth")
 
     assert response.status_code == 200
-    assert any(item["provider_key"] == "bk_lite_builtin" for item in response.data)
+    assert not any(item["provider_key"] == "bk_lite_builtin" for item in response.data)
 
 
 @pytest.mark.django_db

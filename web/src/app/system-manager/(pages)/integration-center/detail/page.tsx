@@ -4,7 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, Form, Input, InputNumber, Select, Spin, Switch, Tabs, message } from 'antd';
+import { Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, message } from 'antd';
 
 import PermissionWrapper from '@/components/permission';
 import TopSection from '@/components/top-section';
@@ -41,6 +41,7 @@ const IntegrationDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [testing, setTesting] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [isFormDirty, setIsFormDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<IntegrationDetailTab>('base');
   const numericId = id ? Number(id) : NaN;
 
@@ -119,6 +120,7 @@ const IntegrationDetailPage: React.FC = () => {
     }, {});
     console.log(instance);
     form.setFieldsValue({ config: configValues });
+    setIsFormDirty(false);
   }, [activeFields, form, instance]);
 
   const handleSave = async () => {
@@ -157,8 +159,46 @@ const IntegrationDetailPage: React.FC = () => {
     }
   };
 
+  const handleToggleCapability = async (enabled: boolean) => {
+    if (!id || Number.isNaN(numericId) || !instance || activeTab === 'base') {
+      return;
+    }
+
+    const nextCapabilityEnabled = {
+      ...instance.capability_enabled,
+      [activeTab]: enabled,
+    };
+
+    setSaving(true);
+    try {
+      await updateInstance(numericId, {
+        name: instance.name,
+        provider_key: instance.provider_key,
+        description: instance.description || '',
+        capability_enabled: nextCapabilityEnabled,
+      });
+      message.success(enabled ? t('system.integrationCenter.capabilityEnabled') : t('system.integrationCenter.capabilityDisabled'));
+      fetchDetailData();
+    } catch {
+      message.error(t('common.saveFailed'));
+    } finally {
+      setSaving(false);
+    }
+  };
+
   const handleTestConnection = async () => {
     if (!id || Number.isNaN(numericId)) {
+      return;
+    }
+
+    if (isFormDirty) {
+      Modal.confirm({
+        title: t('system.integrationCenter.unsavedConfigTitle', '配置未保存'),
+        content: t('system.integrationCenter.unsavedConfigContent', '当前配置有未保存的修改，请先保存后再测试。'),
+        okText: t('common.save', '保存'),
+        cancelText: t('common.cancel', '取消'),
+        onOk: handleSave,
+      });
       return;
     }
 
@@ -280,7 +320,7 @@ const IntegrationDetailPage: React.FC = () => {
 
         {activeTab === 'base' ? (
           <div className="px-6 py-6">
-            <Form form={form} layout="vertical">
+            <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
               {baseGroups ? (
                 baseGroups.map((group, idx) => (
                   <div
@@ -319,7 +359,7 @@ const IntegrationDetailPage: React.FC = () => {
           </div>
         ) : (
           <div className="px-6 py-6">
-            <Form form={form} layout="vertical">
+            <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
               <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
                 {t('system.integrationCenter.interfaceConfig', '接口配置')}
               </div>
@@ -336,21 +376,24 @@ const IntegrationDetailPage: React.FC = () => {
 
         <div className="flex flex-col gap-3 border-t border-[var(--color-border)] px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="text-[13px] text-[var(--color-text-3)]">
-            {started
-              ? t('system.integrationCenter.startedHint', '当前实例至少已有一个能力完成启动。')
-              : t('system.integrationCenter.notStartedHint', '当前实例尚未启动，完成基础连接保存与测试后会更新卡片状态。')}
+            {activeTab === 'base'
+              ? t('system.integrationCenter.baseConnectionHint', '完成基础连接保存与测试后，才能继续配置各能力。')
+              : started
+                ? t('system.integrationCenter.startedHint', '当前实例至少已有一个能力完成启动。')
+                : t('system.integrationCenter.notStartedHint', '当前实例尚未启动，完成基础连接保存与测试后会更新卡片状态。')}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-[14px] text-[var(--color-text-2)]">
-              {t('system.integrationCenter.capabilityStatus', '能力状态')}：
+              {t('system.integrationCenter.testStatus', '测试状态')}：
               <span className="ml-2 inline-flex items-center gap-2">
-                <span className={`h-2.5 w-2.5 rounded-full ${
-                  currentCapabilityStatus === 'ready'
-                    ? 'bg-emerald-500'
-                    : currentCapabilityStatus === 'verification_failed'
-                      ? 'bg-red-500'
-                      : 'bg-slate-400'
-                }`}
+                <span
+                  className={`h-2.5 w-2.5 rounded-full ${
+                    currentCapabilityStatus === 'ready'
+                      ? 'bg-emerald-500'
+                      : currentCapabilityStatus === 'verification_failed'
+                        ? 'bg-red-500'
+                        : 'bg-slate-400'
+                  }`}
                 />
                 <span className="text-[var(--color-text)]">
                   {activeTab === 'base'
@@ -359,6 +402,25 @@ const IntegrationDetailPage: React.FC = () => {
                 </span>
               </span>
             </div>
+
+            {activeTab !== 'base' && (
+              <div className="text-[14px] text-[var(--color-text-2)]">
+                {t('system.integrationCenter.platformStatus', '平台状态')}：
+                <span className="ml-2 inline-flex items-center gap-2">
+                  <span
+                    className={`h-2.5 w-2.5 rounded-full ${
+                      instance.capability_enabled?.[activeTab] ? 'bg-emerald-500' : 'bg-slate-400'
+                    }`}
+                  />
+                  <span className="text-[var(--color-text)]">
+                    {instance.capability_enabled?.[activeTab]
+                      ? t('system.integrationCenter.enabled', '已启用')
+                      : t('system.integrationCenter.disabled', '未启用')}
+                  </span>
+                </span>
+              </div>
+            )}
+
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button onClick={handleSave} loading={saving}>
                 {t('common.save', '保存')}
@@ -373,6 +435,18 @@ const IntegrationDetailPage: React.FC = () => {
                     : t('system.integrationCenter.testConnection', '测试连接')}
               </Button>
             </PermissionWrapper>
+            {activeTab !== 'base' && (
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button
+                  onClick={() => handleToggleCapability(!instance.capability_enabled?.[activeTab])}
+                  loading={saving}
+                >
+                  {instance.capability_enabled?.[activeTab]
+                    ? t('system.integrationCenter.disableCapability', '禁用能力')
+                    : t('system.integrationCenter.enableCapability', '启用能力')}
+                </Button>
+              </PermissionWrapper>
+            )}
           </div>
         </div>
       </section>

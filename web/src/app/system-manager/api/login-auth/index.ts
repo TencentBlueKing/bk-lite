@@ -24,6 +24,7 @@ export interface AvailableInstance {
   id: number;
   name: string;
   provider_key: string;
+  provider_name: string;
 }
 
 export interface LoginAuthBindingPayload {
@@ -64,7 +65,9 @@ export const useLoginAuthApi = () => {
   }
 
   async function getAvailableInstances(): Promise<AvailableInstance[]> {
-    return await get('/system_mgmt/login_auth_binding/available_instances/');
+    return await get('/system_mgmt/integration_instance/available_instances/', {
+      params: { capability: 'login_auth' },
+    });
   }
 
   return {

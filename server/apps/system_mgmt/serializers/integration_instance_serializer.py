@@ -9,6 +9,7 @@ from apps.system_mgmt.providers import get_provider_registry
 
 class IntegrationInstanceSerializer(UsernameSerializer):
     provider = serializers.SerializerMethodField()
+    display_name = serializers.SerializerMethodField()
     is_draft = serializers.BooleanField(write_only=True, required=False, default=False)
     config_scope = serializers.CharField(write_only=True, required=False, allow_blank=True, default="")
 
@@ -21,6 +22,11 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         if manifest is None:
             return {"key": obj.provider_key, "name": obj.provider_key}
         return {"key": manifest.key, "name": manifest.name}
+
+    def get_display_name(self, obj):
+        manifest = get_provider_registry().get(obj.provider_key)
+        provider_name = manifest.name if manifest else obj.provider_key
+        return f"{obj.name}({provider_name})"
 
     def validate(self, attrs):
         provider_key = attrs.get("provider_key") or getattr(self.instance, "provider_key", "")
@@ -53,6 +59,15 @@ class IntegrationInstanceSerializer(UsernameSerializer):
             if missing_required_fields:
                 raise serializers.ValidationError({"config": f"Missing required config fields: {', '.join(missing_required_fields)}"})
 
+        capability_enabled = attrs.get("capability_enabled")
+        if capability_enabled is not None:
+            allowed_capabilities = {capability.key for capability in manifest.capabilities}
+            invalid_keys = set(capability_enabled.keys()) - allowed_capabilities
+            if invalid_keys:
+                raise serializers.ValidationError(
+                    {"capability_enabled": f"Invalid capability keys: {', '.join(sorted(invalid_keys))}"}
+                )
+
         return attrs
 
     def create(self, validated_data):
@@ -64,6 +79,9 @@ class IntegrationInstanceSerializer(UsernameSerializer):
 
         config = self._encode_config(manifest, validated_data.get("config") or {}, {})
         validated_data["config"] = config
+        validated_data["capability_enabled"] = {
+            capability.key: True for capability in manifest.capabilities
+        }
         validated_data["capability_status"] = {
             capability.key: IntegrationInstanceStatusChoices.PENDING_VERIFICATION for capability in manifest.capabilities
         }

@@ -24,6 +24,7 @@ class IntegrationInstance(MaintainerInfo, TimeInfo, EncryptMixin):
         default=IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
     )
     capability_status = models.JSONField(default=dict)
+    capability_enabled = models.JSONField(default=dict)
     enabled = models.BooleanField(default=True)
     description = models.TextField(blank=True, default="")
     team = models.JSONField(default=list)

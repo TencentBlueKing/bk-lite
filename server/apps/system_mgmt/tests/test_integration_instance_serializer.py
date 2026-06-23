@@ -30,8 +30,9 @@ class FakeCapability:
 
 
 class FakeManifest:
-    def __init__(self, instance_template=None, capabilities=None):
+    def __init__(self, instance_template=None, capabilities=None, name=None):
         self.key = "feishu"
+        self.name = name or "feishu"
         self.instance_template = instance_template or []
         self.capabilities = capabilities or []
 
@@ -95,6 +96,11 @@ def test_integration_instance_serializer_allows_draft_create_without_required_co
         "login_auth": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
         "user_sync": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
         "im_notification": IntegrationInstanceStatusChoices.PENDING_VERIFICATION,
+    }
+    assert instance.capability_enabled == {
+        "login_auth": True,
+        "user_sync": True,
+        "im_notification": True,
     }
 
 
@@ -175,3 +181,59 @@ def test_integration_instance_serializer_scoped_update_only_resets_target_capabi
     updated = serializer.save()
     assert updated.capability_status["user_sync"] == IntegrationInstanceStatusChoices.PENDING_VERIFICATION
     assert updated.capability_status["login_auth"] == IntegrationInstanceStatusChoices.READY
+
+
+@pytest.mark.django_db
+def test_integration_instance_serializer_rejects_invalid_capability_enabled_keys(monkeypatch):
+    manifest = FakeManifest(
+        instance_template=[FakeField("app_id", required=True)],
+        capabilities=[
+            FakeCapability("login_auth"),
+            FakeCapability("user_sync"),
+        ],
+    )
+    patch_provider_registry(monkeypatch, manifest)
+
+    instance = IntegrationInstance.objects.create(
+        name="finance-feishu",
+        provider_key="feishu",
+        description="用于财务审批消息推送与单点登录",
+        config={"app_id": "cli_xxx"},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={
+            "login_auth": IntegrationInstanceStatusChoices.READY,
+            "user_sync": IntegrationInstanceStatusChoices.READY,
+        },
+        capability_enabled={"login_auth": True, "user_sync": True},
+    )
+
+    serializer = IntegrationInstanceSerializer(
+        instance=instance,
+        data={"capability_enabled": {"login_auth": True, "nonexistent": False}},
+        partial=True,
+    )
+
+    assert serializer.is_valid() is False
+    assert "capability_enabled" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_integration_instance_serializer_display_name(monkeypatch):
+    manifest = FakeManifest(
+        instance_template=[FakeField("app_id", required=True)],
+        capabilities=[FakeCapability("login_auth")],
+    )
+    patch_provider_registry(monkeypatch, manifest)
+
+    instance = IntegrationInstance.objects.create(
+        name="总部通讯录",
+        provider_key="feishu",
+        description="",
+        config={"app_id": "cli_xxx"},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        capability_enabled={"login_auth": True},
+    )
+
+    serializer = IntegrationInstanceSerializer(instance)
+    assert serializer.data["display_name"] == "总部通讯录(feishu)"

@@ -35,7 +35,9 @@ export const useImNotificationApi = () => {
   }
 
   async function getAvailableInstances(): Promise<AvailableInstance[]> {
-    return await get('/system_mgmt/im_notification_channel/available_instances/');
+    return await get('/system_mgmt/integration_instance/available_instances/', {
+      params: { capability: 'im_notification' },
+    });
   }
 
   async function syncMappings(id: number): Promise<{ run_id?: number }> {

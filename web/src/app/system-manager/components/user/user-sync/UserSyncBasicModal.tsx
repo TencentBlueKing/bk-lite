@@ -3,6 +3,7 @@ import { Button, Form, Input, Select } from 'antd';
 
 import OperateModal from '@/components/operate-modal';
 import type { AvailableInstance, UserSyncSource, UserSyncSourceBasicFormValues } from '@/app/system-manager/types/user-sync';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 
 interface UserSyncBasicModalProps {
   open: boolean;
@@ -37,7 +38,7 @@ const UserSyncBasicModal: React.FC<UserSyncBasicModalProps> = ({
 
   const instanceOptions = availableInstances.map((inst) => ({
     value: inst.id,
-    label: `${inst.name}`,
+    label: formatIntegrationInstanceDisplayName(inst, t),
   }));
 
   const handleSubmit = async () => {

@@ -4,7 +4,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
-from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices, LoginAuthBinding
+from apps.system_mgmt.models import LoginAuthBinding
 from apps.system_mgmt.serializers import LoginAuthBindingSerializer
 from apps.system_mgmt.services.login_auth_binding_service import build_login_auth_redirect
 from apps.system_mgmt.utils.operation_log_utils import log_operation
@@ -49,20 +49,6 @@ class LoginAuthBindingViewSet(MaintainerViewSet):
         if response.status_code == 204:
             log_operation(request, "delete", "system-manager", f"删除登录认证源: {binding_name}")
         return response
-
-    @action(methods=["GET"], detail=False)
-    @HasPermission("login_auth-View")
-    def available_instances(self, request, *args, **kwargs):
-        instances = []
-        for item in IntegrationInstance.objects.all().order_by("name", "id"):
-            if not item.enabled:
-                continue
-            if item.status != IntegrationInstanceStatusChoices.READY:
-                continue
-            if item.capability_status.get("login_auth") != IntegrationInstanceStatusChoices.READY:
-                continue
-            instances.append({"id": item.id, "name": item.name, "provider_key": item.provider_key})
-        return Response(instances)
 
     @action(methods=["POST"], detail=True)
     @HasPermission("login_auth-View")

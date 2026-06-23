@@ -4,7 +4,7 @@ from rest_framework.response import Response
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import MaintainerViewSet
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IntegrationInstance, IntegrationInstanceStatusChoices
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun
 from apps.system_mgmt.serializers.im_notification_channel_serializer import (
     IMNotificationChannelSerializer,
     IMNotificationSyncRunSerializer,
@@ -49,20 +49,6 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
         if response.status_code == 200:
             log_operation(request, "delete", "channel", f"删除IM应用通知: {channel_name}")
         return response
-
-    @action(methods=["GET"], detail=False)
-    @HasPermission("channel_list-View")
-    def available_instances(self, request, *args, **kwargs):
-        instances = []
-        for item in IntegrationInstance.objects.all().order_by("name", "id"):
-            if not item.enabled:
-                continue
-            if item.status != IntegrationInstanceStatusChoices.READY:
-                continue
-            if item.capability_status.get("im_notification") != IntegrationInstanceStatusChoices.READY:
-                continue
-            instances.append({"id": item.id, "name": item.name, "provider_key": item.provider_key})
-        return Response(instances)
 
     @action(methods=["POST"], detail=True)
     @HasPermission("channel_list-Edit")

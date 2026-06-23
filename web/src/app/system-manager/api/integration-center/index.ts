@@ -1,5 +1,6 @@
 import useApiClient from '@/utils/request';
 import type {
+  AvailableInstance,
   CreateIntegrationInstancePayload,
   IntegrationInstance,
   ProviderManifest,
@@ -48,6 +49,12 @@ export const useIntegrationCenterApi = () => {
     return await post(`/system_mgmt/integration_instance/${id}/test_connection/`, capability_key ? { capability_key } : {});
   }
 
+  async function getAvailableInstances(capability: string): Promise<AvailableInstance[]> {
+    return await get('/system_mgmt/integration_instance/available_instances/', {
+      params: { capability },
+    });
+  }
+
   return {
     getProviders,
     getInstances,
@@ -56,5 +63,6 @@ export const useIntegrationCenterApi = () => {
     updateInstance,
     deleteInstance,
     testConnection,
+    getAvailableInstances,
   };
 };

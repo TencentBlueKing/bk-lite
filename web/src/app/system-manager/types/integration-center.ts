@@ -56,16 +56,25 @@ export interface ProviderManifest {
 export interface IntegrationInstance {
   id: number;
   name: string;
+  display_name?: string;
   provider_key: string;
   provider: { key: string; name: string };
   description: string;
   enabled: boolean;
   status: InstanceStatus;
   capability_status: Record<string, InstanceStatus>;
+  capability_enabled: Record<string, boolean>;
   team: number[];
   config: Record<string, unknown>;
   created_at: string;
   updated_at: string;
+}
+
+export interface AvailableInstance {
+  id: number;
+  name: string;
+  provider_key: string;
+  provider_name: string;
 }
 
 export interface CreateIntegrationInstancePayload {
@@ -85,6 +94,7 @@ export interface UpdateIntegrationInstancePayload {
   config?: Record<string, unknown>;
   config_scope?: string;
   team?: number[];
+  capability_enabled?: Record<string, boolean>;
 }
 
 export interface CapabilityExecutionError {

@@ -29,6 +29,7 @@ import {
   type LoginAuthBinding,
 } from '@/app/system-manager/api/login-auth';
 import { useTranslation } from '@/utils/i18n';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 
 const LoginAuthPage: React.FC = () => {
   const { t } = useTranslation();
@@ -447,7 +448,10 @@ const LoginAuthPage: React.FC = () => {
               >
                 <Select
                   placeholder={t('system.user.loginAuthPage.integrationInstancePlaceholder')}
-                  options={availableInstances.map(i => ({ value: i.id, label: i.name }))}
+                  options={availableInstances.map((i) => ({
+                    value: i.id,
+                    label: formatIntegrationInstanceDisplayName(i, t),
+                  }))}
                 />
               </Form.Item>
             )}

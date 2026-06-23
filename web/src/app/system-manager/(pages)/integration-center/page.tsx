@@ -16,7 +16,7 @@ import { useTranslation } from '@/utils/i18n';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
-import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName } from '@/app/system-manager/utils/intergrationCenter';
+import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityTagColor } from '@/app/system-manager/utils/intergrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();
@@ -200,41 +200,37 @@ const IntegrationCenterPage: React.FC = () => {
   );
 
   const instanceCards = useMemo(
-    () => filteredInstances.map((instance) => buildIntegrationInstanceCardItem(instance, t)),
-    [filteredInstances, t],
+    () => filteredInstances.map((instance) => buildIntegrationInstanceCardItem(instance)),
+    [filteredInstances],
   );
 
-  const generateDescSlot = (data: any) => {
-    const keyMap = {
-      'user_sync': 'userSync',
-      'login_auth': 'loginAuth',
-      'im_notification': 'imNotification'
-    }
-    const capabilitiesStatus = data.raw.capability_status;
-    const keys = Object.keys(data.raw.capability_status);
-    const capabilitiesTag = keys.map((key: string) => {
-      const isReady = capabilitiesStatus[key] === 'ready';
+  const generateDescSlot = (data: { raw: IntegrationInstance }) => {
+    const provider = providers.find((p) => p.key === data.raw.provider_key);
+    const capabilityKeyMap: Record<string, string> = {
+      user_sync: 'userSync',
+      login_auth: 'loginAuth',
+      im_notification: 'imNotification',
+    };
+
+    const capabilitiesTag = (provider?.capabilities || []).map((capability) => {
+      const color = getIntegrationCapabilityTagColor(data.raw, capability.key);
       return (
         <Tag
-          key={key}
+          key={capability.key}
           bordered
-          color={isReady ? 'blue' : 'default'}
+          color={color}
           className={`mr-0 rounded-md font-mini ${
-            isReady
-              ? 'border-[#b7d3ff] bg-[#f3f8ff] text-[#2563eb]'
+            color === 'green'
+              ? 'border-[#b7eb8f] bg-[#f6ffed] text-[#389e0d]'
               : 'border-[#d9d9d9] bg-[#fafafa] text-[#8c8c8c]'
           }`}
         >
           <span className="flex items-center gap-1">
-            <span
-              className={`h-2 w-2 rounded-full ${
-                isReady ? 'bg-[#2563eb]' : 'bg-[#bfbfbf]'
-              }`}
-            />
-            <span>{t(`system.integrationCenter.capability.${keyMap[key]}`)}</span>
+            <span className={`h-2 w-2 rounded-full ${color === 'green' ? 'bg-[#389e0d]' : 'bg-[#bfbfbf]'}`} />
+            <span>{t(`system.integrationCenter.capability.${capabilityKeyMap[capability.key]}`)}</span>
           </span>
         </Tag>
-      )
+      );
     });
     return (
       <div className='flex flex-wrap justify-end gap-1'>

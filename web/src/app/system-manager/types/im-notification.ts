@@ -70,6 +70,7 @@ export interface AvailableInstance {
   id: number;
   name: string;
   provider_key: string;
+  provider_name: string;
 }
 
 export interface ActionResult<TData = Record<string, unknown>> {

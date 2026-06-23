@@ -52,20 +52,6 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
         return response
 
-    @action(methods=["GET"], detail=False)
-    @HasPermission("user_sync-View")
-    def available_instances(self, request, *args, **kwargs):
-        instances = []
-        for item in IntegrationInstance.objects.all().order_by("name", "id"):
-            if not item.enabled:
-                continue
-            if item.status != IntegrationInstanceStatusChoices.READY:
-                continue
-            if item.capability_status.get("user_sync") != IntegrationInstanceStatusChoices.READY:
-                continue
-            instances.append({"id": item.id, "name": item.name, "provider_key": item.provider_key})
-        return Response(instances)
-
     @action(methods=["GET"], detail=False, url_path="department_options")
     @HasPermission("user_sync-View")
     def department_options(self, request, *args, **kwargs):

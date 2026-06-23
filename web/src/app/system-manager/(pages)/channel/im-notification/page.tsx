@@ -56,6 +56,7 @@ import {
   parseReceiversInput,
 } from '@/app/system-manager/utils/imNotificationUtils';
 import { useTranslation } from '@/utils/i18n';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 
 interface PaginationState {
   current: number;
@@ -864,7 +865,10 @@ const ImNotificationPage: React.FC = () => {
                 >
                   <Select
                     placeholder={t('system.channel.imNotificationPage.integrationInstancePlaceholder')}
-                    options={availableInstances.map((instance) => ({ value: instance.id, label: instance.name }))}
+                    options={availableInstances.map((instance) => ({
+                      value: instance.id,
+                      label: formatIntegrationInstanceDisplayName(instance, t),
+                    }))}
                   />
                 </Form.Item>
                 <Form.Item

@@ -31,7 +31,9 @@ export const useUserSyncApi = () => {
   }
 
   async function getAvailableInstances(): Promise<AvailableInstance[]> {
-    return await get('/system_mgmt/user_sync_source/available_instances/');
+    return await get('/system_mgmt/integration_instance/available_instances/', {
+      params: { capability: 'user_sync' },
+    });
   }
 
   async function getDepartmentOptions(params: {
