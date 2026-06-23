@@ -52,6 +52,7 @@ INSTANCE_ASSOCIATION = "instance_association"
 
 # 拓扑主题：模型 -> 可用主题。network 主题表示「网络拓扑」视图
 TOPO_THEME_NETWORK = "network"
+TOPO_THEME_IPAM = "ipam"
 # 网络设备判定：存在 interface --belong--> <model> 的模型关联即视为网络设备
 NETWORK_INTERFACE_MODEL = "interface"
 NETWORK_INTERFACE_BELONG_ASST = "belong"
