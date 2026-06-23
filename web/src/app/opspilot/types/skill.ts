@@ -108,6 +108,7 @@ export interface SkillDetail extends Skill {
   enable_km_route?: boolean;
   km_llm_model?: number;
   desc?: string;
+  skill_packages?: SkillPackage[];
 }
 
 export interface RagConfig {
@@ -192,6 +193,7 @@ export interface SkillDetailPayload {
   tool_ids?: number[];
   prompt_template?: string;
   rag_config?: RagConfig;
+  skill_packages?: Partial<SkillPackage>[];
   [key: string]: unknown;
 }
 
@@ -235,4 +237,30 @@ export interface CreateSkillPayload {
   introduction: string;
   team: string[];
   skill_type: number;
+}
+
+export interface SkillPackage {
+  id: number;
+  package_id: string;
+  name: string;
+  version: string;
+  description?: string;
+  category?: string;
+  source_type?: string;
+  source_url?: string;
+  storage_path?: string;
+  manifest?: Record<string, unknown>;
+  skill_markdown?: string;
+  required_tools?: string[];
+  triggers?: string[];
+  team?: string[];
+  is_enabled?: boolean;
+  permissions?: string[];
+  created_at?: string;
+  updated_at?: string;
+}
+
+export interface SkillPackageListResponse {
+  items: SkillPackage[];
+  count: number;
 }

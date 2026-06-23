@@ -18,14 +18,18 @@ from typing import Any, Dict, List, Optional
 from langchain_core.messages import BaseMessage, SystemMessage
 
 
-def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[SystemMessage]:
+def build_post_tool_directives(
+    result_messages: List[BaseMessage],
+    enable_config_analysis_report: bool = True,
+    enable_repair_diff_report: bool = True,
+) -> List[SystemMessage]:
     directives: List[SystemMessage] = []
 
     for message in result_messages:
         message_name = getattr(message, "name", "")
         message_content = getattr(message, "content", "")
 
-        if message_name == "analyze_deployment_configurations":
+        if enable_config_analysis_report and message_name == "analyze_deployment_configurations":
             try:
                 parsed = json.loads(message_content) if isinstance(message_content, str) else message_content
             except Exception:
@@ -35,19 +39,18 @@ def build_post_tool_directives(result_messages: List[BaseMessage]) -> List[Syste
                 directives.append(
                     SystemMessage(
                         content=(
-                            "【配置检查输出规则】不要同时输出“问题摘要”和“配置问题报告”两个重复板块。"
-                            "如果已经输出按严重级别或问题类别展开的详细问题报告，就不要再单独重复一段摘要。"
-                            "优先保留详细问题报告，并把总数、集群名、影响范围合并到报告标题或开头一句。"
-                            "本轮先输出一次完整配置检查结果。"
-                            "如果检查结果存在问题项，输出完整配置检查报告后，必须主动调用 request_user_choice，"
-                            "让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
+                            "【配置检查输出规则】结构化配置检查报告已经通过 AG-UI 的 config_analysis_report 事件展示给用户。"
+                            "不要再用 Markdown、标题、列表或表格重复输出“配置检查报告”“问题分组”“修复建议”等完整报告内容。"
+                            "最终文本最多只允许一句简短说明，例如“配置检查报告已展示，请查看上方卡片”。"
+                            "如果检查结果存在问题项，必须主动调用 request_user_choice，"
+                            "通过 AG-UI 交互卡片让用户选择修复展示方式（按问题类别聚合 / 按工作负载聚合 / 全部一次性展示）。"
                             "不要主动调用 generate_repair_report，必须等待用户完成选择后再生成修复对比。"
-                            "如果检查结果没有问题，则直接结束，不要追加修复交互。"
+                            "如果检查结果没有问题，则直接用一句话结束，不要追加修复交互。"
                         )
                     )
                 )
 
-        if message_name == "generate_repair_report" and ("修复命令" in message_content or "```" in message_content):
+        if enable_repair_diff_report and message_name == "generate_repair_report" and ("修复命令" in message_content or "```" in message_content):
             directives.append(
                 SystemMessage(
                     content=(
@@ -114,6 +117,30 @@ def build_config_analysis_report_markdown(parsed: Dict[str, Any]) -> str:
             lines.append(f"- {issue}（{count} 个工作负载{workload_preview}）")
 
     return "\n\n".join(lines)
+
+
+def downgrade_config_analysis_next_step_hint(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    """Remove expert repair workflow hints when no skill package enables them."""
+    if not isinstance(parsed, dict):
+        return parsed
+    hint = parsed.get("_next_step_hint")
+    if not isinstance(hint, str) or "修复展示方式" not in hint:
+        return parsed
+
+    result = dict(parsed)
+    problematic = result.get("problematic")
+    if isinstance(problematic, int) and problematic > 0:
+        result["_next_step_hint"] = (
+            f"分析完成，共 {problematic} 个工作负载存在问题。"
+            "本轮输出基础检查结果和关键风险摘要即可。"
+            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
+        )
+    else:
+        result["_next_step_hint"] = (
+            "分析完成。请输出基础检查结果即可。"
+            "不要调用 request_user_choice，也不要调用 generate_repair_report。"
+        )
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -370,6 +397,14 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
         "report_id": str(uuid.uuid4())[:8],
         "title": f"配置检查报告 - {cluster_name}",
         "cluster_name": cluster_name,
+        "a2ui": build_a2ui_report_contract(
+            component="config-analysis-report",
+            event_name="config_analysis_report",
+            actions=[
+                {"key": "expand_issue", "label": "展开问题"},
+                {"key": "request_repair_mode", "label": "选择修复展示方式"},
+            ],
+        ),
         "scope": _build_config_analysis_scope(parsed),
         "scan_range": _build_config_analysis_scan_range(parsed),
         "summary": {
@@ -381,6 +416,94 @@ def build_config_analysis_report_payload(parsed: Dict[str, Any]) -> Dict[str, An
         "recommendations": recommendations,
         "markdown": markdown,
         "fallback_markdown": markdown,
+    }
+
+
+def build_a2ui_report_contract(component: str, event_name: str, actions: Optional[List[Dict[str, str]]] = None) -> Dict[str, Any]:
+    return {
+        "version": "1.0",
+        "component": component,
+        "event_name": event_name,
+        "render_mode": "card",
+        "actions": actions or [],
+    }
+
+
+def build_config_diff_report_payload(title: str, cluster_name: str, items: List[Dict[str, Any]]) -> Dict[str, Any]:
+    normalized_items = []
+    for item in items:
+        normalized_items.append(
+            {
+                "workload_name": item.get("workload_name", "") if isinstance(item, dict) else getattr(item, "workload_name", ""),
+                "workload_type": item.get("workload_type", "") if isinstance(item, dict) else getattr(item, "workload_type", ""),
+                "namespace": item.get("namespace", "") if isinstance(item, dict) else getattr(item, "namespace", ""),
+                "severity": item.get("severity", "info") if isinstance(item, dict) else getattr(item, "severity", "info"),
+                "summary": item.get("summary", "") if isinstance(item, dict) else getattr(item, "summary", ""),
+                "before_yaml": item.get("before_yaml", "") if isinstance(item, dict) else getattr(item, "before_yaml", ""),
+                "after_yaml": item.get("after_yaml", "") if isinstance(item, dict) else getattr(item, "after_yaml", ""),
+            }
+        )
+
+    return {
+        "report_id": str(uuid.uuid4())[:8],
+        "title": title,
+        "cluster_name": cluster_name,
+        "a2ui": build_a2ui_report_contract(
+            component="config-diff-report",
+            event_name="config_diff_report",
+            actions=[
+                {"key": "open_diff", "label": "查看差异"},
+                {"key": "copy_after_yaml", "label": "复制修复配置"},
+            ],
+        ),
+        "items": normalized_items,
+    }
+
+
+def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
+    issues_detail = parsed.get("issues_detail") if isinstance(parsed, dict) else None
+    issues = [item for item in issues_detail if isinstance(item, dict)] if isinstance(issues_detail, list) else []
+    problematic = parsed.get("problematic") if isinstance(parsed, dict) else None
+    problematic_count = problematic if isinstance(problematic, int) else 0
+
+    issue_types = {str(item.get("issue", "")).strip() for item in issues if str(item.get("issue", "")).strip()}
+    workloads = {
+        str(workload).strip()
+        for item in issues
+        for workload in (item.get("workloads") or [])
+        if str(workload).strip()
+    }
+    high_impact_count = sum(
+        int(item.get("count", 0))
+        for item in issues
+        if item.get("severity") in {"critical", "high"} and isinstance(item.get("count", 0), int)
+    )
+
+    options: List[str] = []
+    if len(issue_types) >= 2 and problematic_count >= 8:
+        if high_impact_count >= 10 or len(issue_types) >= 3:
+            options.append("按问题类别聚合（推荐：多类问题覆盖面广）")
+        else:
+            options.append("按问题类别聚合")
+
+    if len(workloads) >= 2:
+        if problematic_count <= 10:
+            options.append("按工作负载聚合（推荐：目标数量较少）")
+        else:
+            options.append("按工作负载聚合")
+
+    if problematic_count <= 10 or len(issues) <= 2:
+        options.append("全部一次性展示" if problematic_count > 1 else "直接展示单个修复对比（推荐）")
+
+    if not options:
+        options.append("按问题类别聚合（推荐：先处理共性问题）")
+        options.append("按工作负载聚合")
+
+    deduped_options = list(dict.fromkeys(options))[:4]
+    return {
+        "question": "请选择修复展示方式",
+        "question_type": "single_select",
+        "options": deduped_options,
     }
 
 
