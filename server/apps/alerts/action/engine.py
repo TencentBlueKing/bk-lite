@@ -24,6 +24,15 @@ class ActionEngine:
                 continue
             self._dispatch(rule, alert, event_name)
 
+    @staticmethod
+    def dispatch_async(alert_id: str, event_name: str):
+        """入队异步任务；任何入队异常都吞掉，绝不阻塞告警主流程。"""
+        try:
+            from apps.alerts.tasks.action_tasks import process_alert_actions
+            process_alert_actions.delay(alert_id, event_name)
+        except Exception:
+            logger.exception("[ActionEngine] 入队失败 alert=%s event=%s", alert_id, event_name)
+
     def _dispatch(self, rule, alert, event_name):
         key = f"{rule.id}:{alert.alert_id}:{event_name}"
         try:
