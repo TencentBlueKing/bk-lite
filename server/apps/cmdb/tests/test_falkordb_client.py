@@ -4,10 +4,11 @@
 """
 
 import json
+import threading
 
 import pytest
 
-from apps.cmdb.graph.falkordb import FalkorDBClient
+from apps.cmdb.graph.falkordb import FalkorDBClient, FalkorDBConnectionPool
 from apps.core.exceptions.base_app_exception import BaseAppException
 
 
@@ -669,3 +670,94 @@ def test_batch_save_entity_create_only():
     # 返回 (add_results, update_results)
     add_results = result[0]
     assert add_results[0]["success"] is True
+
+
+# --------------------------------------------------------------------------
+# FalkorDBConnectionPool 线程安全（issue #3661）
+# --------------------------------------------------------------------------
+
+
+def test_connection_pool_singleton_under_concurrency(monkeypatch):
+    """多线程并发构造 FalkorDBConnectionPool 只产生一个实例（__new__ 双检锁）。
+
+    revert 双检锁后此测试有概率出现多个不同实例，即验证了修复点。
+    """
+    # 重置单例状态，使本测试独立于其他测试
+    original_instance = FalkorDBConnectionPool._instance
+    FalkorDBConnectionPool._instance = None
+
+    instances = []
+    barrier = threading.Barrier(20)
+
+    def create_instance():
+        barrier.wait()  # 所有线程同时冲入 __new__
+        instances.append(FalkorDBConnectionPool())
+
+    threads = [threading.Thread(target=create_instance) for _ in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # 恢复原始状态
+    FalkorDBConnectionPool._instance = original_instance
+
+    unique_instances = set(id(i) for i in instances)
+    assert len(unique_instances) == 1, (
+        f"预期单例，但并发创建出 {len(unique_instances)} 个不同实例（连接泄漏）"
+    )
+
+
+def test_connection_pool_initialize_called_once_under_concurrency(monkeypatch):
+    """多线程并发调用 get_connection 时，FalkorDB 连接只被创建一次（无连接泄漏）。
+
+    通过 mock falkordb.FalkorDB 构造函数统计实际连接创建次数——
+    revert _initialize 双检锁后此测试将断言 connection_count > 1，即验证了修复点。
+    """
+    import time
+    from apps.cmdb.graph import falkordb as falkordb_module
+
+    pool = FalkorDBConnectionPool()
+    # 重置初始化状态
+    original_initialized = pool._initialized
+    original_client = pool._client
+    original_graph = pool._graph
+    pool._initialized = False
+    pool._client = None
+    pool._graph = None
+
+    connection_count = [0]
+    count_lock = threading.Lock()
+
+    class FakeFalkorDB:
+        def __init__(self, host, port, password):
+            time.sleep(0.01)  # 拉长窗口，使无锁版本必然出现多次并发创建
+            with count_lock:
+                connection_count[0] += 1
+
+        def select_graph(self, name):
+            return object()
+
+    # mock falkordb.FalkorDB，让真实的 _initialize 双检锁发挥作用
+    monkeypatch.setattr(falkordb_module.falkordb, "FalkorDB", FakeFalkorDB)
+
+    barrier = threading.Barrier(20)
+
+    def call_get_connection():
+        barrier.wait()
+        pool.get_connection()
+
+    threads = [threading.Thread(target=call_get_connection) for _ in range(20)]
+    for t in threads:
+        t.start()
+    for t in threads:
+        t.join()
+
+    # 恢复状态
+    pool._initialized = original_initialized
+    pool._client = original_client
+    pool._graph = original_graph
+
+    assert connection_count[0] == 1, (
+        f"FalkorDB 连接应只被创建 1 次，实际创建了 {connection_count[0]} 次（出现连接泄漏）"
+    )
