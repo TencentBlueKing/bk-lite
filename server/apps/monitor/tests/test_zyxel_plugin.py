@@ -21,8 +21,8 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-ZYXEL_DIR = PLUGINS / "snmp_zyxel" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
+ZYXEL_DIR = PLUGINS / "snmp" / "switch_zyxel"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "zyxel"

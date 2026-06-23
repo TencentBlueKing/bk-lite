@@ -1,4 +1,6 @@
 {
+  "collector": "Telegraf",
+  "collect_type": "snmp_proxim",
   "plugin": "Wireless Proxim SNMP",
   "plugin_desc": "无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/远端订户单元等健康指标因 Proxim ORiNOCO/Tsunami 私有 MIB 采用 per-row 索引表（按射频单元/订户单元逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤；LibreNMS 亦无 Proxim 的 processors/mempools/sensors 发现定义，仅有 ORiNOCO-MIB 用于 OS 识别，故无线健康为 N/A，不伪造。适用品牌型号——Proxim Wireless 无线设备（ORiNOCO AP 系列接入点、Tsunami MP 点对多点回传基站/订户单元，企业号 841）及其他遵循 IF-MIB 标准的无线 AP/回传网桥。",
   "status_query": "any({instance_type='wireless', collect_type='snmp_proxim'}) by (instance_id)",
