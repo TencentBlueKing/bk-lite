@@ -71,6 +71,8 @@ def test_build_netflow_guide_lists_v5_and_v9_listener_ports(monkeypatch, db):
     )
 
     assert doc["endpoint"] == "udp://10.0.0.1:2056"
+    assert doc["endpoint_protocol"] == "netflow_v9"
+    assert doc["has_multiple_listener_endpoints"] is True
     assert doc["listener_endpoints"] == [
         {
             "protocol": "netflow_v5",
@@ -87,6 +89,34 @@ def test_build_netflow_guide_lists_v5_and_v9_listener_ports(monkeypatch, db):
     ]
     assert any("NetFlow v5" in item and "2055" in item for item in doc["instructions"])
     assert any("NetFlow v9" in item and "2056" in item for item in doc["instructions"])
+
+
+def test_build_sflow_guide_marks_single_listener_endpoint(monkeypatch, db):
+    switch_object = MonitorObject.objects.create(name="Switch", display_name="Switch")
+
+    monkeypatch.setattr(
+        FlowAccessGuideService,
+        "_get_listener_host",
+        lambda cloud_region_id: "10.0.0.1",
+    )
+
+    doc = FlowAccessGuideService.build_document(
+        protocol="sflow",
+        cloud_region_id=1,
+        monitor_object=switch_object,
+    )
+
+    assert doc["endpoint"] == "udp://10.0.0.1:6343"
+    assert doc["endpoint_protocol"] == "sflow"
+    assert doc["has_multiple_listener_endpoints"] is False
+    assert doc["listener_endpoints"] == [
+        {
+            "protocol": "sflow",
+            "protocol_name": "sFlow",
+            "endpoint": "udp://10.0.0.1:6343",
+            "port": 6343,
+        }
+    ]
 
 
 def test_build_flow_guide_does_not_lock_monitor_object(monkeypatch, db):
