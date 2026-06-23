@@ -75,6 +75,18 @@
             "icon": "shiyongwendang",
             "url": "/alarm/settings/operationLog",
             "name": "operation_log"
+        },
+        {
+          "title": "告警处理",
+          "url": "/alarm/settings/actionRules",
+          "name": "action_rules",
+          "icon": "guize1"
+        },
+        {
+          "title": "执行记录",
+          "url": "/alarm/settings/actionRecords",
+          "name": "action_records",
+          "icon": "guize1"
         }
       ]
     }
@@ -155,6 +167,18 @@
             "icon": "shiyongwendang",
             "url": "/alarm/settings/operationLog",
             "name": "operation_log"
+        },
+        {
+          "title": "Alert Actions",
+          "url": "/alarm/settings/actionRules",
+          "name": "action_rules",
+          "icon": "guize1"
+        },
+        {
+          "title": "Action Records",
+          "url": "/alarm/settings/actionRecords",
+          "name": "action_records",
+          "icon": "guize1"
         }
       ]
     }

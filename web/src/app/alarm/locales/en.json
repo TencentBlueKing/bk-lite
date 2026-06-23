@@ -620,6 +620,23 @@
                 "delete": "Delete",
                 "execute": "Execute"
             }
-        }
+        },
+        "actionRuleTitle": "Alert Action Rules",
+        "actionRuleName": "Rule Name",
+        "actionTriggerEvent": "Trigger Events",
+        "actionMatchSummary": "Match Conditions",
+        "actionType": "Action Type",
+        "actionLastExec": "Last Execution",
+        "actionSelectJob": "Select Job",
+        "actionFieldBinding": "Field Binding",
+        "actionTriggerTip": "Unchecked lifecycle events will not trigger this rule; mobile is exempt for now",
+        "actionRecordsTitle": "Execution Records",
+        "actionManualTrigger": "Run Action",
+        "actionRerun": "Rerun",
+        "actionTab": "Actions",
+        "actionTargetHostField": "Target Host Field",
+        "actionParamFrom": "From",
+        "actionParamField": "Alert Field",
+        "actionParamConst": "Constant"
     }
 }
