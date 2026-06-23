@@ -3940,6 +3940,9 @@ monitor_object_plugin:
   Wireless Cambium SNMP:
     name: Wireless Cambium SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/associated clients) use Cambium private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp, so they are N/A. Applicable to Cambium Networks wireless devices (cnPilot/ePMP/PMP, enterprise OID 17713) and other IF-MIB compliant wireless AP/bridges.
+  Wireless Proxim SNMP:
+    name: Wireless Proxim SNMP
+    desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/subscriber units) use Proxim ORiNOCO/Tsunami private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp; LibreNMS also has no Proxim processors/mempools/sensors discovery (only ORiNOCO-MIB for OS detection), so wireless health is N/A. Applicable to Proxim Wireless devices (ORiNOCO AP access points, Tsunami MP point-to-multipoint backhaul base stations/subscriber units, enterprise OID 841) and other IF-MIB compliant wireless AP/backhaul bridges.
   Transmission Ciena SNMP:
     name: Transmission Ciena SNMP
     desc: Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets) plus uptime. Health metrics of Ciena SAOS transmission devices (temperature/optical module power/laser bias current) use per-row indexed MIB tables with row-level filtering (skip_values); telegraf inputs.snmp cannot do row-level filtering, so they are N/A. Applicable to Ciena SAOS transmission/packet-optical devices.

@@ -53,7 +53,8 @@ export const useWirelessConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Wireless Cambium SNMP': 'snmp_cambium'
+      'Wireless Cambium SNMP': 'snmp_cambium',
+      'Wireless Proxim SNMP': 'snmp_proxim'
     }
   };
 };
