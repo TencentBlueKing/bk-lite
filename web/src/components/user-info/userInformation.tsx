@@ -220,7 +220,6 @@ const UserInformation: React.FC<UserInformationProps> = ({ visible, onClose }) =
     setEmailModalVisible(false);
     emailForm.resetFields();
     setCountdown(0);
-    setHashedCode('');
     setVerifyCodeAttempts(0);
   }
 
