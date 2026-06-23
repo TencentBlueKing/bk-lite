@@ -35,6 +35,15 @@ from config.drf.pagination import CustomPageNumberPagination
 from apps.core.utils.team_utils import get_current_team
 
 
+def _to_positive_int(val, default: int, min_val: int = 1, max_val: int = 10000) -> int:
+    """将查询参数安全转换为正整数，非法值返回 default。"""
+    try:
+        v = int(val)
+    except (TypeError, ValueError):
+        return default
+    return max(min_val, min(v, max_val))
+
+
 def get_accessible_log_policy_ids(request, collect_type_id=None):
     cache_key = "_log_accessible_policy_ids_cache"
     cached_policy_ids = getattr(request, cache_key, None)
@@ -278,8 +287,8 @@ class PolicyViewSet(viewsets.ModelViewSet):
         queryset = queryset.distinct().select_related("collect_type").prefetch_related("policyorganization_set")
 
         # 获取分页参数
-        page = int(request.GET.get("page", 1))
-        page_size = int(request.GET.get("page_size", 10))
+        page = _to_positive_int(request.GET.get("page"), 1)
+        page_size = _to_positive_int(request.GET.get("page_size"), 10, max_val=500)
 
         # 计算分页的起始位置
         start = (page - 1) * page_size
@@ -614,8 +623,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         queryset = queryset.filter(policy_id__in=policy_ids).distinct()
 
         # 获取分页参数
-        page = int(request.GET.get("page", 1))
-        page_size = int(request.GET.get("page_size", 10))
+        page = _to_positive_int(request.GET.get("page"), 1)
+        page_size = _to_positive_int(request.GET.get("page_size"), 10, max_val=500)
 
         # 计算分页
         start = (page - 1) * page_size
@@ -649,8 +658,8 @@ class AlertViewSet(viewsets.ModelViewSet):
         queryset = queryset.filter(policy_id__in=policy_ids).distinct()
 
         # 获取分页参数
-        page = int(request.GET.get("page", 1))
-        page_size = int(request.GET.get("page_size", 10))
+        page = _to_positive_int(request.GET.get("page"), 1)
+        page_size = _to_positive_int(request.GET.get("page_size"), 10, max_val=500)
 
         # 计算分页
         start = (page - 1) * page_size
@@ -759,7 +768,7 @@ class AlertViewSet(viewsets.ModelViewSet):
                         "total": 0,
                         "status": request.query_params.get("status", AlertConstants.STATUS_NEW),
                         "time_range": {"start": None, "end": None},
-                        "step_minutes": int(request.query_params.get("step", 60)),
+                        "step_minutes": _to_positive_int(request.query_params.get("step"), 60, min_val=1, max_val=1440),
                         "time_series": [],
                     }
                 )
@@ -770,7 +779,7 @@ class AlertViewSet(viewsets.ModelViewSet):
 
         # 获取参数
         status = request.query_params.get("status", AlertConstants.STATUS_NEW)
-        step_minutes = int(request.query_params.get("step", 60))
+        step_minutes = _to_positive_int(request.query_params.get("step"), 60, min_val=1, max_val=1440)
 
         # 按状态过滤
         queryset = queryset.filter(status=status)
