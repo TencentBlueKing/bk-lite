@@ -81,3 +81,16 @@ def test_nats_failure_sets_failed(mock_target, mock_job):
     JobActionHandler().execute(_rule(), _alert(), execution)
     assert execution.status == "failed"
     assert "boom" in str(execution.result)
+
+
+def test_registry_returns_job_handler():
+    from apps.alerts.action.handlers.registry import get_handler
+    from apps.alerts.action.handlers.job import JobActionHandler
+    assert isinstance(get_handler("job"), JobActionHandler)
+
+
+def test_registry_unknown_type_raises():
+    from apps.alerts.action.handlers.registry import get_handler
+    import pytest
+    with pytest.raises(KeyError):
+        get_handler("itsm")
