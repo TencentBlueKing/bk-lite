@@ -1,4 +1,5 @@
 """NetworkWhiteListSerializer.validate_network 纯函数校验（无 DB）。"""
+
 import pytest
 from rest_framework import serializers
 

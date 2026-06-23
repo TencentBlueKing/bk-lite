@@ -2,6 +2,7 @@
 
 复用仓库既有 system_mgmt viewset 测试范式：APIRequestFactory + force_authenticate(SimpleNamespace)。
 """
+
 import types
 
 import pytest
