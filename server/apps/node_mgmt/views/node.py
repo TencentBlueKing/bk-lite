@@ -486,10 +486,13 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
 
     @action(detail=False, methods=["post"], url_path="node_config_asso")
     def get_node_config_asso(self, request):
+        cloud_region_id = request.data.get("cloud_region_id")
+        if not cloud_region_id:
+            return WebUtils.response_error(error_message="cloud_region_id is required")
         nodes = (
             get_authorized_node_queryset(request)
             .prefetch_related("collectorconfiguration_set")
-            .filter(cloud_region_id=request.data["cloud_region_id"])
+            .filter(cloud_region_id=cloud_region_id)
         )
         if request.data.get("ids"):
             nodes = nodes.filter(id__in=request.data["ids"])
