@@ -8,14 +8,17 @@ ActionRuleViewSet: ActionRule 的 CRUD REST 视图集。
 import logging
 
 from django.db import transaction
-from rest_framework import status
+from rest_framework import status, viewsets
+from rest_framework.decorators import action
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.alerts.action.handlers.registry import get_handler
 from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.models.action import ActionExecution, ActionRule
-from apps.alerts.serializers.action import ActionRuleSerializer
+from apps.alerts.models.models import Alert
+from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRuleSerializer
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.core.decorators.api_permission import HasPermission
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
@@ -173,3 +176,51 @@ class ActionRuleViewSet(ModelViewSet):
         record_operator_log(**log_data)
         instance.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)
+
+
+class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
+    """告警执行记录只读视图集，支持手动触发。"""
+
+    queryset = ActionExecution.objects.all().order_by("-created_at")
+    serializer_class = ActionExecutionSerializer
+
+    def get_queryset(self):
+        qs = super().get_queryset()
+        alert_id = self.request.query_params.get("alert_id")
+        rule_id = self.request.query_params.get("rule_id")
+        status_val = self.request.query_params.get("status")
+        if alert_id:
+            qs = qs.filter(alert__alert_id=alert_id)
+        if rule_id:
+            qs = qs.filter(rule_id=rule_id)
+        if status_val:
+            qs = qs.filter(status=status_val)
+        return qs
+
+    @HasPermission("action_exec-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("action_exec-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @action(detail=False, methods=["post"])
+    @HasPermission("action_exec-Manual")
+    def manual_trigger(self, request):
+        alert = Alert.objects.filter(alert_id=request.data.get("alert_id")).first()
+        rule = ActionRule.objects.filter(id=request.data.get("rule_id")).first()
+        if not alert or not rule:
+            return Response({"result": False, "message": "alert/rule 不存在"}, status=400)
+        execution = ActionExecution.objects.create(
+            rule=rule,
+            alert=alert,
+            trigger_event="manual",
+            trigger_type="manual",
+            idempotency_key=None,
+            status="pending",
+            action_type=rule.action_type,
+            operator=getattr(request.user, "username", None),
+        )
+        get_handler(rule.action_type).execute(rule, alert, execution)
+        return Response({"result": True, "data": {"execution_id": execution.id}})

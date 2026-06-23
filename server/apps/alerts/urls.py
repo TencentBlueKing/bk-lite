@@ -23,7 +23,7 @@ from apps.alerts.views import (
     receiver_source_data,
     request_test,
 )
-from apps.alerts.views.action import ActionCallbackView, ActionRuleViewSet
+from apps.alerts.views.action import ActionCallbackView, ActionExecutionViewSet, ActionRuleViewSet
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
@@ -46,6 +46,7 @@ router.register(
 router.register(r"api/log", SystemLogModelViewSet, basename="log")
 router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="alerts_k8s_open_api")
 router.register(r"api/action_rule", ActionRuleViewSet, basename="action_rule")
+router.register(r"api/action_execution", ActionExecutionViewSet, basename="action_execution")
 
 urlpatterns = [
     path("api/test/", request_test),
