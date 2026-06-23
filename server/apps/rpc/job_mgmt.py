@@ -43,3 +43,9 @@ class JobMgmt:
             if str(it.get("id")) == str(script_id):
                 return it
         return None
+
+    def list_scripts(self, params):
+        """脚本列表（供告警动作选择作业）。"""
+        data = {"module": "script"}
+        data.update(params or {})
+        return self.client.run("get_job_mgmt_module_data", data)

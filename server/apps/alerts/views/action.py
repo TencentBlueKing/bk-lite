@@ -22,6 +22,7 @@ from apps.alerts.serializers.action import ActionExecutionSerializer, ActionRule
 from apps.alerts.utils.operator_log import record_operator_log
 from apps.core.decorators.api_permission import HasPermission
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
+from apps.rpc.job_mgmt import JobMgmt
 from config.drf.viewsets import ModelViewSet
 
 logger = logging.getLogger(__name__)
@@ -224,3 +225,20 @@ class ActionExecutionViewSet(viewsets.ReadOnlyModelViewSet):
         )
         get_handler(rule.action_type).execute(rule, alert, execution)
         return Response({"result": True, "data": {"execution_id": execution.id}})
+
+
+class ActionJobScriptListView(APIView):
+    """代理 job_mgmt 脚本列表，供告警动作规则编辑器使用。"""
+
+    def get(self, request):
+        params = {k: v for k, v in request.query_params.items()}
+        data = JobMgmt().list_scripts(params)
+        return Response(data)
+
+
+class ActionJobScriptDetailView(APIView):
+    """代理 job_mgmt 单个脚本详情（含 params），供告警动作字段绑定表使用。"""
+
+    def get(self, request, script_id):
+        data = JobMgmt().get_script(script_id)
+        return Response(data)
