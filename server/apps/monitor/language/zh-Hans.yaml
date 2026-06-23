@@ -3600,6 +3600,9 @@ monitor_object_plugin:
   Wireless Cambium SNMP:
     name: Cambium (Telegraf)
     desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/关联客户端数等健康指标因 Cambium 私有 MIB 采用 per-row 索引表（按射频单元/SSID/客户端逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤，故为 N/A，不伪造。适用品牌型号——Cambium Networks 无线设备（cnPilot/ePMP/PMP 系列，企业号 17713）及其他遵循 IF-MIB 标准的无线 AP/网桥。
+  Wireless Proxim SNMP:
+    name: Proxim (Telegraf)
+    desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/远端订户单元等健康指标因 Proxim ORiNOCO/Tsunami 私有 MIB 采用 per-row 索引表（按射频单元/订户单元逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤，故无线健康为 N/A，不伪造。适用品牌型号——Proxim Wireless 无线设备（ORiNOCO AP 系列接入点、Tsunami MP 点对多点回传基站/订户单元，企业号 841）及其他遵循 IF-MIB 标准的无线 AP/回传网桥。
   Transmission Ciena SNMP:
     name: Ciena (Telegraf)
     desc: 采 IF-MIB 64位 HC 接口流量（ifHCInOctets/ifHCOutOctets）+ 运行时长；Ciena SAOS 传输设备的温度/光模块光功率/激光偏置电流等健康指标因 MIB 为 per-row 索引表带行级过滤（skip_values），telegraf inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Ciena SAOS 传输/分组光设备（3000/5000/6500 系列，企业号 1271）及其他 IF-MIB 标准传输设备。
