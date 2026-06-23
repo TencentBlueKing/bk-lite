@@ -7,12 +7,17 @@ ActionRuleViewSet: ActionRule 的 CRUD REST 视图集。
 
 import logging
 
+from django.db import transaction
+from rest_framework import status
 from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 
+from apps.alerts.constants.constants import LogAction, LogTargetType
 from apps.alerts.models.action import ActionExecution, ActionRule
 from apps.alerts.serializers.action import ActionRuleSerializer
+from apps.alerts.utils.operator_log import record_operator_log
+from apps.core.decorators.api_permission import HasPermission
 from apps.job_mgmt.utils.callback_signer import verify_callback_signature
 from config.drf.viewsets import ModelViewSet
 
@@ -106,3 +111,65 @@ class ActionRuleViewSet(ModelViewSet):
         if is_active is not None:
             qs = qs.filter(is_active=(is_active in ("true", "1", "True")))
         return qs
+
+    @HasPermission("action_rule-View")
+    def list(self, request, *args, **kwargs):
+        return super().list(request, *args, **kwargs)
+
+    @HasPermission("action_rule-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super().retrieve(request, *args, **kwargs)
+
+    @HasPermission("action_rule-Add")
+    @transaction.atomic
+    def create(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        self.perform_create(serializer)
+        headers = self.get_success_headers(serializer.data)
+        log_data = {
+            "action": LogAction.ADD,
+            "target_type": LogTargetType.SYSTEM,
+            "operator": request.user.username,
+            "operator_object": "告警处理动作规则-创建",
+            "target_id": serializer.data["id"],
+            "overview": f"创建告警处理动作规则[{serializer.data['name']}]",
+        }
+        record_operator_log(**log_data)
+        return Response(serializer.data, status=status.HTTP_201_CREATED, headers=headers)
+
+    @HasPermission("action_rule-Edit")
+    @transaction.atomic
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        log_data = {
+            "action": LogAction.MODIFY,
+            "target_type": LogTargetType.SYSTEM,
+            "operator": request.user.username,
+            "operator_object": "告警处理动作规则-修改",
+            "target_id": instance.id,
+            "overview": f"修改告警处理动作规则[{instance.name}]",
+        }
+        record_operator_log(**log_data)
+        return super().update(request, *args, **kwargs)
+
+    @HasPermission("action_rule-Edit")
+    @transaction.atomic
+    def partial_update(self, request, *args, **kwargs):
+        return super().partial_update(request, *args, **kwargs)
+
+    @HasPermission("action_rule-Delete")
+    @transaction.atomic
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        log_data = {
+            "action": LogAction.DELETE,
+            "target_type": LogTargetType.SYSTEM,
+            "operator": request.user.username,
+            "operator_object": "告警处理动作规则-删除",
+            "target_id": instance.id,
+            "overview": f"删除告警处理动作规则[{instance.name}]",
+        }
+        record_operator_log(**log_data)
+        instance.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
