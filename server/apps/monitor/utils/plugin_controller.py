@@ -33,6 +33,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "collect_type",
     "community",
     "config_id",
+    "credential_encoding",
     "database",
     "dbname",
     "endpoint",
