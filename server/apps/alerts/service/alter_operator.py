@@ -211,6 +211,10 @@ class AlertOperator(object):
                 self._create_reminder_record(alert, assignment_id)
                 self._create_escalation_task(alert, assignment_id)
 
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "assigned"))
+
             notify_param = self.format_notify_data(assignee, alert)
             if notify_param:
                 from apps.alerts.common.notify.dispatcher import enqueue_notifications
@@ -289,6 +293,10 @@ class AlertOperator(object):
             alert.operate = AlertOperate.ACKNOWLEDGE
             alert.updated_at = timezone.now()
             alert.save()
+
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "acknowledged"))
 
             logger.info(
                 "[AlertOperator] 告警认领成功: alert_id=%s, user=%s, 状态变更: %s -> %s",
@@ -373,6 +381,10 @@ class AlertOperator(object):
             alert.operator = new_assignee
             alert.updated_at = timezone.now()
             alert.save()
+
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "reassigned"))
 
             logger.info(
                 "[AlertOperator] 告警转派成功: alert_id=%s, old_assignee=%s, new_assignee=%s, 状态变更: %s -> %s",
@@ -461,6 +473,10 @@ class AlertOperator(object):
             alert.updated_at = timezone.now()
             alert.save()
 
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "closed"))
+
             logger.info(
                 "[AlertOperator] 告警关闭成功: alert_id=%s, user=%s, reason=%s, 状态变更: %s -> %s",
                 alert_id, self.user, close_reason, AlertStatus.PROCESSING, AlertStatus.CLOSED,
@@ -530,6 +546,10 @@ class AlertOperator(object):
             alert.status = AlertStatus.RESOLVED
             alert.updated_at = timezone.now()
             alert.save()
+
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "resolved"))
 
             logger.info(
                 "[AlertOperator] 告警处理成功: alert_id=%s, user=%s, note=%s, 状态变更: %s -> %s",
