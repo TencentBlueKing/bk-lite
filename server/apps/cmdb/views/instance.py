@@ -990,6 +990,13 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
         """返回模型可用的拓扑主题（如 ["network"]），前端据此决定渲染哪些主题 tab。"""
         return WebUtils.response_success({"themes": get_topo_themes(model_id)})
 
+    @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_id>.+?)")
+    def ipam_view(self, request, inst_id: str):
+        """子网 IP 视图数据：容量/利用率/状态计数/落库 IP 列表。"""
+        from apps.cmdb.services.ipam_view import build_ipam_view
+        subnet = InstanceManage.query_entity_by_id(int(inst_id))
+        return WebUtils.response_success(build_ipam_view(subnet))
+
     @action(
         detail=False,
         methods=["get"],
