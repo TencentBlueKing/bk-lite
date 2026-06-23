@@ -70,7 +70,7 @@ export interface TopologyNodeData {
   id?: string;
   type: string;
   name: string;
-  presentationRole?: 'kpi' | 'side-panel' | 'metric-callout' | 'resource-node' | 'decorative-frame' | 'legend' | 'screen-title' | 'screen-clock';
+  presentationRole?: 'decorative-frame' | 'screen-title' | 'screen-clock';
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;

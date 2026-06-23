@@ -36,7 +36,7 @@ def test_normalize_topology_keeps_presentation():
         "filters": [],
         "viewport": {"width": 1920, "height": 1080, "letterboxColor": "#000000"},
         "presentation": {
-            "templateKey": "basic-resource-screen",
+            "templateKey": "custom-screen",
             "templateVersion": 1,
             "theme": "tech-blue",
             "background": {"type": "preset", "key": "circuit-blue"},
@@ -93,7 +93,7 @@ def test_rewrite_topology_refs_keeps_presentation():
         "filters": [],
         "viewport": {"width": 1600, "height": 900, "letterboxColor": "#050b18"},
         "presentation": {
-            "templateKey": "basic-resource-screen",
+            "templateKey": "custom-screen",
             "templateVersion": 1,
             "theme": "tech-blue",
             "viewportPreset": "1600x900",

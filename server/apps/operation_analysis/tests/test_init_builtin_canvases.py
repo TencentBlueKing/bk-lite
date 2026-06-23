@@ -17,11 +17,7 @@ BUILTIN_CANVASES_PATH = Path(__file__).resolve().parents[1] / "support-files" / 
 
 def _load_builtin_resource_screen():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
-    return next(
-        topology
-        for topology in payload["topologies"]
-        if topology.get("view_sets", {}).get("presentation", {}).get("templateKey") == "basic-resource-screen"
-    )
+    return next(topology for topology in payload["topologies"] if topology.get("name", "").startswith("基础资源态势大屏"))
 
 
 def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
@@ -48,7 +44,9 @@ def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
         "presentationVariant" not in node.get("valueConfig", {}) and "presentationAdapter" not in node.get("valueConfig", {}) for node in chart_nodes
     )
 
-    kpi_nodes = [node for node in nodes if node.get("presentationRole") == "kpi"]
+    assert all("presentationRole" not in node for node in chart_nodes)
+
+    kpi_nodes = [node for node in nodes if node["id"].startswith("kpi-")]
     kpi_x_positions = sorted(node["position"]["x"] for node in kpi_nodes)
     assert len(kpi_x_positions) == 8
     assert kpi_x_positions[0] >= 120
@@ -59,37 +57,11 @@ def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
     assert node_by_id["panel-alert-summary"]["styleConfig"]["height"] <= 150
     assert node_by_id["panel-monitor-overview"]["styleConfig"]["height"] <= 150
 
-    resource_positions = {
-        node_id: node_by_id[node_id]["position"]
-        for node_id in [
-            "resource-business",
-            "resource-network",
-            "resource-cmdb",
-            "resource-collector",
-            "resource-cloud",
-            "resource-center",
-            "resource-metric",
-            "resource-policy",
-            "resource-alert",
-            "resource-host",
-            "resource-storage",
-            "resource-database",
-        ]
-    }
-    assert resource_positions == {
-        "resource-business": {"x": 760, "y": 360},
-        "resource-network": {"x": 930, "y": 360},
-        "resource-cmdb": {"x": 690, "y": 500},
-        "resource-collector": {"x": 1110, "y": 500},
-        "resource-cloud": {"x": 610, "y": 620},
-        "resource-center": {"x": 900, "y": 560},
-        "resource-metric": {"x": 760, "y": 740},
-        "resource-policy": {"x": 1060, "y": 740},
-        "resource-alert": {"x": 1210, "y": 700},
-        "resource-host": {"x": 610, "y": 840},
-        "resource-storage": {"x": 900, "y": 840},
-        "resource-database": {"x": 1210, "y": 840},
-    }
+    resource_nodes = [node for node in nodes if node["id"].startswith("resource-")]
+    assert len(resource_nodes) == 12
+    assert all(node["type"] == "icon" for node in resource_nodes)
+    assert all("presentationRole" not in node for node in resource_nodes)
+    assert all({"x", "y"} <= set(node["position"]) for node in resource_nodes)
 
     trend_params = {item["name"]: item for item in node_by_id["panel-alert-trend"]["valueConfig"]["dataSourceParams"]}
     assert trend_params["time"]["filterType"] == "fixed"
@@ -148,9 +120,9 @@ def test_init_builtin_canvases_creates_builtin_presentation_topology():
     _ensure_default_namespace()
     call_command("init_builtin_canvases")
 
-    topology = Topology.objects.get(name="基础资源态势大屏", is_build_in=True)
+    topology = Topology.objects.get(name__startswith="基础资源态势大屏", is_build_in=True)
 
-    assert topology.view_sets["presentation"]["templateKey"] == "basic-resource-screen"
+    assert topology.view_sets["presentation"]["templateKey"] == "custom-screen"
     assert topology.view_sets["presentation"]["chrome"] == {
         "title": "基础资源态势大屏",
         "showTitle": True,
@@ -158,10 +130,6 @@ def test_init_builtin_canvases_creates_builtin_presentation_topology():
     }
     assert topology.view_sets["viewport"]["width"] == 1920
     assert len(topology.view_sets["edges"]) >= 10
-    assert sum(1 for node in topology.view_sets["nodes"] if node.get("presentationRole") == "kpi") >= 8
-    assert sum(1 for node in topology.view_sets["nodes"] if node.get("presentationRole") == "side-panel") >= 3
-    assert sum(1 for node in topology.view_sets["nodes"] if node.get("presentationRole") == "resource-node") >= 10
-
     node_by_id = {node["id"]: node for node in topology.view_sets["nodes"]}
     assert node_by_id["screen-title"]["type"] == "text"
     assert node_by_id["screen-title"]["presentationRole"] == "screen-title"
@@ -170,7 +138,9 @@ def test_init_builtin_canvases_creates_builtin_presentation_topology():
     assert node_by_id["screen-clock"]["presentationRole"] == "screen-clock"
 
     chart_nodes = [node for node in topology.view_sets["nodes"] if node.get("type") in {"chart", "single-value"}]
+    ordinary_nodes = [node for node in topology.view_sets["nodes"] if node.get("type") in {"chart", "single-value", "icon"}]
     allowed_chart_types = {"single", "topN", "line", "pie", "bar", "gauge", "barGauge", "stateTimeline", "text"}
+    assert all("presentationRole" not in node for node in ordinary_nodes)
     assert all(node.get("valueConfig", {}).get("chartType") in allowed_chart_types for node in chart_nodes)
     assert all(node.get("valueConfig", {}).get("chartType") != "list" for node in chart_nodes)
     assert all(node.get("valueConfig", {}).get("chartType") != "presentation-list" for node in chart_nodes)

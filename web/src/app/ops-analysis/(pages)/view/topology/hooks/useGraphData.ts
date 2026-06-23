@@ -33,6 +33,17 @@ const DEFAULT_TABLE_QUERY_PARAMS = {
 const isTableLikeChartType = (chartType?: string) =>
   chartType === 'table' || chartType === 'eventTable';
 
+const CHROME_PRESENTATION_ROLES = new Set([
+  'decorative-frame',
+  'screen-title',
+  'screen-clock',
+]);
+
+const isChromePresentationRole = (
+  role: unknown
+): role is NonNullable<TopologyNodeData['presentationRole']> =>
+  typeof role === 'string' && CHROME_PRESENTATION_ROLES.has(role);
+
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
     'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'renderEffect', 'nameColor', 'nameFontSize', 'thresholdColors'],
@@ -86,12 +97,14 @@ export const useGraphData = (
       const nodeData = node.getData();
       const position = node.getPosition();
       const zIndex = node.getZIndex();
+      const presentationRole = isChromePresentationRole(nodeData.presentationRole)
+        ? nodeData.presentationRole
+        : undefined;
 
       const serializedNode: TopologyNodeData = {
         id: nodeData.id,
         type: nodeData.type,
         name: nodeData.name,
-        presentationRole: nodeData.presentationRole,
         unit: nodeData.unit,
         conversionFactor: nodeData.conversionFactor,
         decimalPlaces: nodeData.decimalPlaces,
@@ -104,6 +117,10 @@ export const useGraphData = (
         valueConfig: nodeData.valueConfig,
         styleConfig: serializeNodeConfig(nodeData, nodeData.type),
       };
+
+      if (presentationRole) {
+        serializedNode.presentationRole = presentationRole;
+      }
 
       return serializedNode;
     });

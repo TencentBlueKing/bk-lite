@@ -1735,7 +1735,6 @@ topologies:
         thresholdColors:
         - color: '#38BDF8'
           value: '0'
-      presentationRole: kpi
     - id: kpi-monitor-instance-total
       name: 监控实例
       type: single-value
@@ -1760,7 +1759,6 @@ topologies:
         thresholdColors:
         - color: '#38BDF8'
           value: '0'
-      presentationRole: kpi
     - id: kpi-active-instance-total
       name: 活跃实例
       type: single-value
@@ -1785,7 +1783,6 @@ topologies:
         thresholdColors:
         - color: '#22C55E'
           value: '0'
-      presentationRole: kpi
     - id: kpi-alert-current
       name: 当前告警
       type: single-value
@@ -1812,7 +1809,6 @@ topologies:
           value: '1'
         - color: '#38BDF8'
           value: '0'
-      presentationRole: kpi
     - id: kpi-alert-total
       name: 告警总数
       type: single-value
@@ -1837,7 +1833,6 @@ topologies:
         thresholdColors:
         - color: '#F59E0B'
           value: '0'
-      presentationRole: kpi
     - id: kpi-model-total
       name: 模型总数
       type: single-value
@@ -1862,7 +1857,6 @@ topologies:
         thresholdColors:
         - color: '#7DD3FC'
           value: '0'
-      presentationRole: kpi
     - id: kpi-classification-total
       name: 分类总数
       type: single-value
@@ -1887,7 +1881,6 @@ topologies:
         thresholdColors:
         - color: '#A78BFA'
           value: '0'
-      presentationRole: kpi
     - id: kpi-alert-events
       name: 告警事件
       type: single-value
@@ -1914,7 +1907,6 @@ topologies:
           value: '1'
         - color: '#38BDF8'
           value: '0'
-      presentationRole: kpi
     - id: panel-model-top
       name: CMDB模型实例 TOP5
       type: chart
@@ -1943,7 +1935,6 @@ topologies:
           value: ''
           alias_name: 模型分类ID
           filterType: params
-      presentationRole: side-panel
     - id: panel-os-distribution
       name: 主机操作系统分布
       type: chart
@@ -1970,7 +1961,6 @@ topologies:
           value: os_type
           alias_name: 分组字段
           filterType: fixed
-      presentationRole: side-panel
     - id: panel-alert-trend
       name: 最近一周告警趋势
       type: chart
@@ -1997,7 +1987,6 @@ topologies:
           value: 10080
           alias_name: time
           filterType: fixed
-      presentationRole: side-panel
     - id: panel-alert-summary
       name: 待响应告警
       type: chart
@@ -2020,7 +2009,6 @@ topologies:
           value: '1'
         - color: '#38BDF8'
           value: '0'
-      presentationRole: side-panel
     - id: panel-monitor-overview
       name: 监控指标总数
       type: chart
@@ -2038,7 +2026,6 @@ topologies:
         chartThemeMode: screen-dark
         selectedFields:
         - metric_total
-      presentationRole: side-panel
     - id: panel-collect-health
       name: 采集健康概览
       type: chart
@@ -2061,7 +2048,6 @@ topologies:
           value: '1'
         - color: '#38BDF8'
           value: '0'
-      presentationRole: side-panel
     - id: resource-center
       name: 资源中心
       type: icon
@@ -2081,7 +2067,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.44)
-      presentationRole: resource-node
     - id: resource-cmdb
       name: CMDB
       type: icon
@@ -2101,7 +2086,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.44)
-      presentationRole: resource-node
     - id: resource-collector
       name: 采集配置
       type: icon
@@ -2121,7 +2105,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.44)
-      presentationRole: resource-node
     - id: resource-metric
       name: 指标
       type: icon
@@ -2141,7 +2124,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.44)
-      presentationRole: resource-node
     - id: resource-policy
       name: 策略
       type: icon
@@ -2161,7 +2143,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.44)
-      presentationRole: resource-node
     - id: resource-alert
       name: 告警
       type: icon
@@ -2181,7 +2162,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(127, 29, 29, 0.62)
-      presentationRole: resource-node
     - id: resource-cloud
       name: 云平台
       type: icon
@@ -2201,7 +2181,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.36)
-      presentationRole: resource-node
     - id: resource-business
       name: 业务系统
       type: icon
@@ -2221,7 +2200,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.36)
-      presentationRole: resource-node
     - id: resource-host
       name: 主机
       type: icon
@@ -2241,7 +2219,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.36)
-      presentationRole: resource-node
     - id: resource-network
       name: 网络
       type: icon
@@ -2261,7 +2238,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.36)
-      presentationRole: resource-node
     - id: resource-storage
       name: 存储
       type: icon
@@ -2281,7 +2257,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(14, 116, 144, 0.36)
-      presentationRole: resource-node
     - id: resource-database
       name: 数据库
       type: icon
@@ -2301,7 +2276,6 @@ topologies:
         iconPadding: 12
         textDirection: bottom
         backgroundColor: rgba(127, 29, 29, 0.38)
-      presentationRole: resource-node
     - id: screen-title-frame
       name: ''
       type: basic-shape
@@ -2595,7 +2569,7 @@ topologies:
       background:
         key: circuit-blue
         type: preset
-      templateKey: basic-resource-screen
+      templateKey: custom-screen
       viewportPreset: 1920x1080
       templateVersion: 1
   refs:

@@ -39,7 +39,6 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     description,
     dataSource,
     onTableQueryChange,
-    presentationRole,
   } = nodeData;
 
   const chartTheme = getOpsChartThemeByMode(valueConfig?.chartThemeMode);
@@ -66,40 +65,16 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     (isLoading || (!rawData && !hasError)) && !isTableLikeChart;
   const shouldShowError = hasError && !isLoading;
   const normalizedDescription = description?.trim();
-  const usesScreenChartTheme =
-    valueConfig?.chartThemeMode === 'screen-dark' ||
-    valueConfig?.chartThemeMode === 'screen-light';
-  const isPresentationPanel =
-    usesScreenChartTheme &&
-    (
-      presentationRole === 'side-panel' ||
-      presentationRole === 'kpi' ||
-      presentationRole === 'metric-callout'
-    );
 
   return (
     <div
-      className={
-        isPresentationPanel
-          ? `ops-topology-screen-panel ${
-              presentationRole === 'metric-callout' ? 'ops-topology-screen-callout' : ''
-            }`
-          : undefined
-      }
       style={{
-        '--ops-screen-panel-corner': chartTheme.panelCornerAccentColor,
         width: `${width}px`,
         height: `${height}px`,
-        border: isPresentationPanel
-          ? '1px solid var(--ops-screen-panel-border, rgba(45, 212, 255, 0.34))'
-          : `1px solid ${chartTheme.panelBorderColor}`,
-        borderRadius: isPresentationPanel ? '6px' : '18px',
-        backgroundColor: isPresentationPanel
-          ? 'var(--ops-screen-panel-bg, rgba(8, 22, 45, 0.76))'
-          : chartTheme.panelBg,
-        boxShadow: isPresentationPanel
-          ? 'inset 0 1px 0 rgba(148, 230, 255, 0.18), 0 0 22px rgba(14, 165, 233, 0.16)'
-          : 'none',
+        border: `1px solid ${chartTheme.panelBorderColor}`,
+        borderRadius: '18px',
+        backgroundColor: chartTheme.panelBg,
+        boxShadow: 'none',
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
@@ -110,21 +85,15 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
         <div
           style={{
             padding: '14px 14px 10px',
-            backgroundColor: isPresentationPanel
-              ? 'var(--ops-screen-panel-header-bg, rgba(7, 18, 38, 0.7))'
-              : chartTheme.panelBg,
-            borderBottom: isPresentationPanel
-              ? '1px solid var(--ops-screen-panel-divider, rgba(45, 212, 255, 0.18))'
-              : `1px solid ${chartTheme.panelBorderColor}`,
+            backgroundColor: chartTheme.panelBg,
+            borderBottom: `1px solid ${chartTheme.panelBorderColor}`,
           }}
         >
           <div
             style={{
               fontSize: '14px',
               fontWeight: '600',
-              color: isPresentationPanel
-                ? 'var(--ops-screen-text, #DDF8FF)'
-                : chartTheme.panelTitleColor,
+              color: chartTheme.panelTitleColor,
               marginBottom: normalizedDescription ? '4px' : 0,
               lineHeight: '20px',
             }}
@@ -135,9 +104,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             <div
               style={{
                 fontSize: '12px',
-                color: isPresentationPanel
-                  ? 'var(--ops-screen-muted-text, rgba(142, 219, 255, 0.72))'
-                  : chartTheme.panelDescriptionColor,
+                color: chartTheme.panelDescriptionColor,
                 lineHeight: '16px',
                 opacity: 0.8,
               }}
@@ -153,9 +120,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
           minHeight: 0,
           position: 'relative',
           padding: '12px',
-          backgroundColor: isPresentationPanel
-            ? 'var(--ops-screen-panel-body-bg, rgba(7, 18, 38, 0.48))'
-            : chartTheme.panelBg,
+          backgroundColor: chartTheme.panelBg,
         }}
       >
         {shouldShowLoading ? (
