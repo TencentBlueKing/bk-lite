@@ -1,8 +1,10 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, message } from 'antd';
+import { Button, Form, Input, Modal, Popconfirm, Select, Space, Table, Tag, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import type { UploadFile } from 'antd/es/upload/interface';
+import { UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { Material, MaterialType } from '@/app/opspilot/types/wiki';
@@ -18,13 +20,15 @@ const STATUS_COLOR: Record<string, string> = {
 
 const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
-  const { fetchMaterials, createMaterial, deleteMaterial, ingestMaterial, buildMaterial } = useWikiApi();
+  const { fetchMaterials, createMaterial, createMaterialFile, deleteMaterial, ingestMaterial, buildMaterial } =
+    useWikiApi();
   const [form] = Form.useForm();
   const [data, setData] = useState<Material[]>([]);
   const [loading, setLoading] = useState(false);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState<MaterialType>('text');
+  const [fileList, setFileList] = useState<UploadFile[]>([]);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -44,6 +48,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const openCreate = () => {
     form.resetFields();
     setType('text');
+    setFileList([]);
     form.setFieldsValue({ material_type: 'text' });
     setOpen(true);
   };
@@ -52,7 +57,16 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     const values = await form.validateFields();
     setSaving(true);
     try {
-      await createMaterial({ ...values, knowledge_base: kbId });
+      if (values.material_type === 'file') {
+        const f = fileList[0]?.originFileObj as File | undefined;
+        if (!f) {
+          message.error(t('wiki.materialFile'));
+          return;
+        }
+        await createMaterialFile(kbId, values.name, f);
+      } else {
+        await createMaterial({ ...values, knowledge_base: kbId });
+      }
       message.success(t('wiki.saveSuccess'));
       setOpen(false);
       load();
@@ -139,6 +153,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               options={[
                 { value: 'text', label: t('wiki.materialText') },
                 { value: 'web', label: t('wiki.materialWeb') },
+                { value: 'file', label: t('wiki.materialFile') },
               ]}
             />
           </Form.Item>
@@ -150,6 +165,19 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {type === 'web' && (
             <Form.Item label="URL" name="url" rules={[{ required: true }]}>
               <Input placeholder="https://..." />
+            </Form.Item>
+          )}
+          {type === 'file' && (
+            <Form.Item label={t('wiki.materialFile')}>
+              <Upload
+                maxCount={1}
+                fileList={fileList}
+                beforeUpload={() => false}
+                onChange={({ fileList: fl }) => setFileList(fl.slice(-1))}
+                accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.png,.jpg,.jpeg"
+              >
+                <Button icon={<UploadOutlined />}>{t('wiki.materialFile')}</Button>
+              </Upload>
             </Form.Item>
           )}
         </Form>

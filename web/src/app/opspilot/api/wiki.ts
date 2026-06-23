@@ -72,6 +72,15 @@ export const useWikiApi = () => {
 
   const createMaterial = (data: Partial<Material>): Promise<Material> => post(`${BASE}/material/`, data);
 
+  const createMaterialFile = (kbId: number, name: string, file: File): Promise<Material> => {
+    const fd = new FormData();
+    fd.append('knowledge_base', String(kbId));
+    fd.append('name', name);
+    fd.append('material_type', 'file');
+    fd.append('file', file);
+    return post(`${BASE}/material/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  };
+
   const deleteMaterial = (id: number): Promise<{ pending_review: number }> => del(`${BASE}/material/${id}/`);
 
   const ingestMaterial = (id: number): Promise<Material> => post(`${BASE}/material/${id}/ingest/`, {});
@@ -138,6 +147,7 @@ export const useWikiApi = () => {
     fetchMaterials,
     fetchMaterial,
     createMaterial,
+    createMaterialFile,
     deleteMaterial,
     ingestMaterial,
     buildMaterial,

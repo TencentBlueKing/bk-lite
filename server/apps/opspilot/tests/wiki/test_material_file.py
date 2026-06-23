@@ -161,6 +161,28 @@ def test_extract_web_text_fetch_failure_returns_empty(monkeypatch):
 
 @pytest.mark.integration
 @pytest.mark.django_db
+def test_material_file_upload_endpoint(api_client):
+    """前后联动:前端 multipart 文档上传 → POST /material/ → 文件落 MinIO → 资料创建。"""
+    from django.core.files.uploadedfile import SimpleUploadedFile
+
+    kb = _kb()
+    resp = api_client.post(
+        "/api/v1/opspilot/wiki_mgmt/material/",
+        {
+            "knowledge_base": kb.id,
+            "name": "guide.md",
+            "material_type": "file",
+            "file": SimpleUploadedFile("guide.md", b"# \xe6\x8c\x87\xe5\x8d\x97\nbody"),
+        },
+        format="multipart",
+    )
+    assert resp.status_code == 201
+    data = resp.json()["data"]
+    assert data["material_type"] == "file" and data["id"]
+
+
+@pytest.mark.integration
+@pytest.mark.django_db
 def test_ingest_xlsx_via_real_minio():
     """真实 MinIO 往返:上传 xlsx 到对象存储,再读回解析,验证 _read_file 端到端。"""
     from django.core.files.uploadedfile import SimpleUploadedFile
