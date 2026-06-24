@@ -66,15 +66,15 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 
 ## 🧪 测试覆盖率
 
-![coverage](https://img.shields.io/badge/coverage-71.7%25-yellowgreen)
+![coverage](https://img.shields.io/badge/coverage-74.6%25-green)
 ![tests](https://img.shields.io/badge/tests-passing-brightgreen)
-![modules≥75%](https://img.shields.io/badge/modules%20%E2%89%A575%25-12%2F14-blue)
+![modules≥75%](https://img.shields.io/badge/modules%20%E2%89%A575%25-13%2F14-blue)
 ![fake tests](https://img.shields.io/badge/fake%20tests-0-brightgreen)
 ![infra](https://img.shields.io/badge/tested%20on-real%20PG%2FRedis%2FMinIO%2FFalkorDB%2FNATS-informational)
 
 > 后端（`server/`，Django）单元/集成测试**行覆盖率（production-only，排除测试与迁移文件）**，单进程统计于真实 PostgreSQL/Redis/MinIO/FalkorDB/VictoriaLogs 基础设施 + 真实迁移；全部真实行为测试，零造假。最近更新：2026-06-23。
 
-**总体行覆盖率：`71.7%`**（已覆盖 74,135 / 103,356 语句）
+**总体行覆盖率：`74.6%`**（已覆盖 77,478 / 103,816 语句）
 
 | 模块 | 覆盖率 | 模块 | 覆盖率 |
 |------|-------:|------|-------:|
@@ -84,7 +84,7 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 | console_mgmt | 89.7% | mlops | 76.3% |
 | alerts | 83.2% | system_mgmt | 75.4% |
 | monitor | 75.4% | node_mgmt | 75.0% |
-| cmdb | 71.5% | opspilot | 58.1% |
+| cmdb | 79.4% | opspilot | 62.8% |
 
 > `opspilot` 为 AI 编排核心，近半代码是 LLM 链 / RAG 向量检索 / 浏览器自动化 / Agent 外部集成胶水，在不写假测试前提下的真实可测天花板约 60%。
 
