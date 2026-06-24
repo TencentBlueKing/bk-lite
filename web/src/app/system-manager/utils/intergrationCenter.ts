@@ -164,9 +164,20 @@ export function getIntegrationCapabilityTagColor(
   return enabled && ready ? 'green' : 'default';
 }
 
+export interface IntegrationInstanceCardItem {
+  id: number;
+  name: string;
+  icon: string;
+  description: string;
+  tagList: unknown[];
+  raw: IntegrationInstance;
+  provider?: ProviderManifest;
+}
+
 export function buildIntegrationInstanceCardItem(
   instance: IntegrationInstance,
-) {
+  provider?: ProviderManifest,
+): IntegrationInstanceCardItem {
   return {
     id: instance.id,
     name: instance.name,
@@ -174,6 +185,7 @@ export function buildIntegrationInstanceCardItem(
     description: instance.provider?.name || instance.provider_key,
     tagList: [],
     raw: instance,
+    provider,
   };
 }
 

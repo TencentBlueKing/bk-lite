@@ -865,6 +865,7 @@
     },
     "integrationCenter": {
       "pageTitle": "Integration Center",
+      "back": "Back",
       "pageDesc": "Manage external integrations such as WeCom, DingTalk, directory services, and code platforms in one place. Cards show the primary startup status and link to the detail page for configuration.",
       "addInstanceButton": "Add Integration",
       "createInstanceTitle": "Add Integration Instance",

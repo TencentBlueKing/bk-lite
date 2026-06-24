@@ -2,7 +2,6 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { ArrowLeftOutlined } from '@ant-design/icons';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, message } from 'antd';
 
@@ -296,7 +295,6 @@ const IntegrationDetailPage: React.FC = () => {
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center gap-3">
-        <Button icon={<ArrowLeftOutlined />} type='text' onClick={() => router.push('/system-manager/integration-center')} />
         <div className="min-w-0 flex-1">
           <TopSection
             title={instance.name}
@@ -387,13 +385,12 @@ const IntegrationDetailPage: React.FC = () => {
               {t('system.integrationCenter.testStatus')}：
               <span className="ml-2 inline-flex items-center gap-2">
                 <span
-                  className={`h-2.5 w-2.5 rounded-full ${
-                    currentCapabilityStatus === 'ready'
-                      ? 'bg-emerald-500'
-                      : currentCapabilityStatus === 'verification_failed'
-                        ? 'bg-red-500'
-                        : 'bg-slate-400'
-                  }`}
+                  className={`h-2.5 w-2.5 rounded-full ${currentCapabilityStatus === 'ready'
+                    ? 'bg-emerald-500'
+                    : currentCapabilityStatus === 'verification_failed'
+                      ? 'bg-red-500'
+                      : 'bg-slate-400'
+                    }`}
                 />
                 <span className="text-[var(--color-text)]">
                   {activeTab === 'base'
@@ -408,9 +405,8 @@ const IntegrationDetailPage: React.FC = () => {
                 {t('system.integrationCenter.platformStatus')}：
                 <span className="ml-2 inline-flex items-center gap-2">
                   <span
-                    className={`h-2.5 w-2.5 rounded-full ${
-                      instance.capability_enabled?.[activeTab] ? 'bg-emerald-500' : 'bg-slate-400'
-                    }`}
+                    className={`h-2.5 w-2.5 rounded-full ${instance.capability_enabled?.[activeTab] ? 'bg-emerald-500' : 'bg-slate-400'
+                      }`}
                   />
                   <span className="text-[var(--color-text)]">
                     {instance.capability_enabled?.[activeTab]
@@ -420,7 +416,7 @@ const IntegrationDetailPage: React.FC = () => {
                 </span>
               </div>
             )}
-
+            <Button onClick={() => router.push('/system-manager/integration-center')}>{t(`system.integrationCenter.back`)}</Button>
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button onClick={handleSave} loading={saving}>
                 {t('common.save')}

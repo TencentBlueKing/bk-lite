@@ -16,7 +16,7 @@ import { useTranslation } from '@/utils/i18n';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
-import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityTagColor } from '@/app/system-manager/utils/intergrationCenter';
+import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/intergrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();
@@ -200,19 +200,21 @@ const IntegrationCenterPage: React.FC = () => {
   );
 
   const instanceCards = useMemo(
-    () => filteredInstances.map((instance) => buildIntegrationInstanceCardItem(instance)),
-    [filteredInstances],
+    () => filteredInstances.map((instance) => {
+      const provider = providers.find((p) => p.key === instance.provider_key);
+      return buildIntegrationInstanceCardItem(instance, provider);
+    }),
+    [filteredInstances, providers],
   );
 
-  const generateDescSlot = (data: { raw: IntegrationInstance }) => {
-    const provider = providers.find((p) => p.key === data.raw.provider_key);
+  const generateDescSlot = (data: IntegrationInstanceCardItem) => {
     const capabilityKeyMap: Record<string, string> = {
       user_sync: 'userSync',
       login_auth: 'loginAuth',
       im_notification: 'imNotification',
     };
 
-    const capabilitiesTag = (provider?.capabilities || []).map((capability) => {
+    const capabilitiesTag = (data.provider?.capabilities || []).map((capability) => {
       const color = getIntegrationCapabilityTagColor(data.raw, capability.key);
       return (
         <Tag
@@ -266,10 +268,10 @@ const IntegrationCenterPage: React.FC = () => {
 
       <EntityList
         data={instanceCards}
-        loading={loadingInstances}
+        loading={loadingInstances || loadingProviders}
         onSearch={setInstanceSearch}
-        onCardClick={(item: { raw: IntegrationInstance }) => handleInstanceClick(item.raw)}
-        menuActions={(item: { raw: IntegrationInstance }) => getMenuActions(item.raw)}
+        onCardClick={(item: IntegrationInstanceCardItem) => handleInstanceClick(item.raw)}
+        menuActions={(item: IntegrationInstanceCardItem) => getMenuActions(item.raw)}
         operateSection={operateSection}
         descSlot={generateDescSlot}
       />

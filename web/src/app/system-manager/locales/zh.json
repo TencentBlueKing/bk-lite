@@ -865,6 +865,7 @@
     },
     "integrationCenter": {
       "pageTitle": "集成中心",
+      "back": "返回",
       "pageDesc": "统一管理企业微信、钉钉、目录服务和代码平台等外部接入。卡片展示各集成功能的启动状态，点击进入详情进行管理。",
       "addInstanceButton": "添加集成",
       "createInstanceTitle": "添加集成实例",
