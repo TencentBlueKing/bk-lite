@@ -533,6 +533,76 @@ def test_get_active_shields(event_levels, restful_source):
 
 
 # --------------------------------------------------------------------------
+# resolve_recovery_external_id — Prefetch 过滤优化（issue #3701）
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_resolve_recovery_external_id_prefetch_filters_non_created_events(event_levels, restful_source):
+    """回归：候选告警的 prefetch 必须只加载 CREATED 事件（DB 侧过滤），
+    Python 层不应再看到其他 action 的事件。修复前用 alert.events.all() 会
+    返回所有事件；修复后用 Prefetch(to_attr='_created_events') 仅含 CREATED。
+    若把修复代码 revert（恢复为 events.all()），alert._created_events 不存在，
+    遍历将抛 AttributeError，测试必然失败。"""
+    from apps.alerts.constants.constants import AlertStatus, EventAction
+    from apps.alerts.models.models import Alert
+
+    adapter = RestFulAdapter(alert_source=restful_source)
+
+    # 建两条事件：一条 CREATED（目标），一条 RECOVERY（噪声，旧逻辑会混入 events.all()）
+    created_evt = Event.objects.create(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-CREATED",
+        action=EventAction.CREATED, item="mem", resource_name="host2",
+        external_id="ext-3701",
+    )
+    noise_evt = Event.objects.create(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-RECOVERY-NOISE",
+        action=EventAction.RECOVERY, item="mem", resource_name="host2",
+        external_id="",
+    )
+
+    alert = Alert.objects.create(
+        alert_id="A-3701", level="0", title="t", content="c",
+        fingerprint="fp-3701", status=AlertStatus.PENDING,
+    )
+    alert.events.add(created_evt, noise_evt)
+
+    recovery = Event(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-REC", action=EventAction.RECOVERY,
+        item="mem", resource_name="host2",
+    )
+
+    result = adapter.resolve_recovery_external_id(recovery)
+
+    # 只应解析到唯一 CREATED 事件的 external_id
+    assert result == "ext-3701"
+
+    # 核心断言：candidate_alerts 必须带 _created_events 属性（Prefetch to_attr），
+    # 且只含 CREATED 事件（不含噪声的 RECOVERY 事件）
+    from apps.alerts.constants.constants import EventAction as EA
+    from apps.alerts.models.models import Alert as AlertModel
+    from django.db.models import Prefetch
+
+    prefetch_qs = Event.objects.filter(
+        action=EA.CREATED,
+        source=restful_source,
+        item="mem",
+        resource_name="host2",
+    ).only("external_id", "item", "resource_name", "source_id", "action")
+
+    qs = AlertModel.objects.filter(pk=alert.pk).prefetch_related(
+        Prefetch("events", queryset=prefetch_qs, to_attr="_created_events")
+    )
+    fetched = qs.first()
+    assert hasattr(fetched, "_created_events"), "_created_events 属性不存在，Prefetch(to_attr=) 未生效"
+    assert len(fetched._created_events) == 1, "DB 侧过滤应只保留 1 条 CREATED 事件"
+    assert fetched._created_events[0].external_id == "ext-3701"
+
+
+# --------------------------------------------------------------------------
 # authenticate / team secret 解析
 # --------------------------------------------------------------------------
 
