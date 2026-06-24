@@ -82,6 +82,9 @@ def _parse_pages(content):
 def build_from_material(material, llm_model_id=None, operator="", trigger="material"):
     """从一份资料构建知识页面。返回 BuildRecord。"""
     kb = material.knowledge_base
+    # 资料进入「构建中」,前端轮询即可看到状态
+    material.status = "building"
+    material.save(update_fields=["status", "updated_at"])
     build = BuildRecord.objects.create(
         knowledge_base=kb,
         trigger=trigger,
@@ -128,6 +131,8 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
         build.status = "success"
         build.progress = 100
         build.save(update_fields=["counts", "affected_pages", "stage", "status", "progress", "updated_at"])
+        material.status = "built"
+        material.save(update_fields=["status", "updated_at"])
         return build
     except Exception as exc:
         logger.exception("wiki 构建失败 material=%s", material.id)
@@ -135,4 +140,7 @@ def build_from_material(material, llm_model_id=None, operator="", trigger="mater
         build.status = "failed"
         build.errors = [str(exc)]
         build.save(update_fields=["stage", "status", "errors", "updated_at"])
+        # 构建失败:解析结果仍有效,资料回退到「已解析」,失败详情见构建记录
+        material.status = "done"
+        material.save(update_fields=["status", "updated_at"])
         raise

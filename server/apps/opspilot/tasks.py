@@ -780,6 +780,19 @@ def cleanup_expired_workflow_attachments_task():
 
 
 @shared_task
+def wiki_ingest_material_task(material_id, llm_model_id=None):
+    """资料解析(异步):抽取文本 + 生成 AI 摘要。文件/网页解析较重(loader/OCR/LLM),不阻塞前台请求。"""
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.material_service import ingest_material
+
+    material = Material.objects.filter(id=material_id).first()
+    if not material:
+        logger.error("wiki 解析任务: 资料不存在 id=%s", material_id)
+        return None
+    return ingest_material(material, llm_model_id=llm_model_id).id
+
+
+@shared_task
 def wiki_build_material_task(material_id, llm_model_id=None, operator=""):
     """从资料构建知识页面(异步)。"""
     from apps.opspilot.models import Material

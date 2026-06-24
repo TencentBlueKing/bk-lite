@@ -4,20 +4,24 @@ import React, { useCallback, useEffect, useState } from 'react';
 import { Button, Form, Input, Modal, Popconfirm, Select, Space, Tag, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
-import { UploadOutlined } from '@ant-design/icons';
+import { LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { Material, MaterialType } from '@/app/opspilot/types/wiki';
 
-const STATUS_COLOR: Record<string, string> = {
-  done: 'green',
-  pending: 'default',
-  building: 'blue',
-  failed: 'red',
-  updated: 'gold',
-  invalid: 'red',
+// 资料状态机:pending(待解析) → parsing(解析中) → done(已解析) → building(构建中) → built(已构建);失败 failed
+const STATUS_META: Record<string, { color: string; key: string }> = {
+  pending: { color: 'default', key: 'wiki.statusPending' },
+  parsing: { color: 'processing', key: 'wiki.statusParsing' },
+  done: { color: 'green', key: 'wiki.statusDone' },
+  building: { color: 'processing', key: 'wiki.statusBuilding' },
+  built: { color: 'green', key: 'wiki.statusBuilt' },
+  failed: { color: 'red', key: 'wiki.statusFailed' },
+  updated: { color: 'gold', key: 'wiki.statusUpdated' },
+  invalid: { color: 'red', key: 'wiki.statusInvalid' },
 };
+const IN_PROGRESS = ['parsing', 'building'];
 
 const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
@@ -45,6 +49,14 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
+
+  // 解析/构建为 Celery 异步:有资料处于「解析中/构建中」时每 3s 轮询刷新状态,全部完成后自动停止
+  useEffect(() => {
+    if (!data.some((m) => IN_PROGRESS.includes(m.status || ''))) return;
+    const timer = setInterval(() => load(), 3000);
+    return () => clearInterval(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data]);
 
   const openCreate = () => {
     form.resetFields();
@@ -83,7 +95,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const handleBuild = async (id: number) => {
-    await buildMaterial(id);
+    await buildMaterial(id, true); // async=true:走 Celery,资料置「构建中」,由轮询反映结果
     message.success(t('wiki.saveSuccess'));
     load();
   };
@@ -102,28 +114,45 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       dataIndex: 'status',
       key: 'status',
       width: 120,
-      render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{s}</Tag>,
+      render: (s: string) => {
+        const meta = STATUS_META[s];
+        return (
+          <Tag color={meta?.color || 'default'} icon={IN_PROGRESS.includes(s) ? <LoadingOutlined spin /> : undefined}>
+            {meta ? t(meta.key) : s}
+          </Tag>
+        );
+      },
     },
     { title: 'AI', dataIndex: 'ai_summary', key: 'ai_summary', ellipsis: true },
     {
       title: '',
       key: 'action',
       width: 220,
-      render: (_: unknown, record) => (
-        <Space>
-          <Button type="link" size="small" onClick={() => handleIngest(record.id)}>
-            {t('wiki.ingest')}
-          </Button>
-          <Button type="link" size="small" onClick={() => handleBuild(record.id)}>
-            {t('wiki.build')}
-          </Button>
-          <Popconfirm title={t('wiki.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
-            <Button type="link" size="small" danger>
-              {t('common.delete')}
+      render: (_: unknown, record) => {
+        const busy = IN_PROGRESS.includes(record.status || '');
+        const canBuild = ['done', 'built'].includes(record.status || '');
+        return (
+          <Space>
+            <Button type="link" size="small" disabled={busy} onClick={() => handleIngest(record.id)}>
+              {t('wiki.ingest')}
             </Button>
-          </Popconfirm>
-        </Space>
-      ),
+            <Button
+              type="link"
+              size="small"
+              disabled={busy || !canBuild}
+              title={!canBuild ? t('wiki.buildNeedParse') : undefined}
+              onClick={() => handleBuild(record.id)}
+            >
+              {t('wiki.build')}
+            </Button>
+            <Popconfirm title={t('wiki.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+              <Button type="link" size="small" danger disabled={busy}>
+                {t('common.delete')}
+              </Button>
+            </Popconfirm>
+          </Space>
+        );
+      },
     },
   ];
 

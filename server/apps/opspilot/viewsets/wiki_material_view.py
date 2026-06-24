@@ -32,15 +32,29 @@ class WikiMaterialViewSet(AuthViewSet):
         instance = self.get_object()
         return JsonResponse({"result": True, "data": self.get_serializer(instance).data})
 
+    @staticmethod
+    def _enqueue_ingest(material, llm_model_id):
+        """资料置「解析中」并投递异步解析任务(loader/OCR/LLM 较重,不阻塞前台)。"""
+        from apps.opspilot.tasks import wiki_ingest_material_task
+
+        material.status = "parsing"
+        material.save(update_fields=["status", "updated_at"])
+        wiki_ingest_material_task.delay(material.id, llm_model_id)
+
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
         material = serializer.instance
-        # 文本/文件资料创建后同步摄取(解析 + AI 摘要),前端上传即得结果,无需再手动点"解析";
-        # 网页资料需外网抓取、耗时不可控,仍走手动 ingest。(规模化后文件解析可改 Celery 异步)
-        if material.material_type in ("text", "file"):
-            ingest_material(material, llm_model_id=material.knowledge_base.llm_model_id)
+        llm_model_id = material.knowledge_base.llm_model_id
+        # 文本解析瞬时(无 loader/OCR/外网),同步摄取即得摘要;
+        # 文件解析较重(loader/OCR/LLM),转 Celery 异步,资料先置「解析中」,前端轮询出结果;
+        # 网页解析需外网抓取、耗时不可控,仍走手动 ingest。
+        if material.material_type == "text":
+            ingest_material(material, llm_model_id=llm_model_id)
+            serializer = self.get_serializer(material)
+        elif material.material_type == "file":
+            self._enqueue_ingest(material, llm_model_id)
             serializer = self.get_serializer(material)
         log_operation(request, "create", "opspilot", f"新增资料: {material.name}")
         return JsonResponse({"result": True, "data": serializer.data}, status=201)
@@ -54,21 +68,23 @@ class WikiMaterialViewSet(AuthViewSet):
 
     @action(methods=["POST"], detail=True)
     def ingest(self, request, pk=None):
-        """手动触发资料摄取(解析 + AI 摘要)。"""
+        """手动触发资料解析(异步:抽取文本 + AI 摘要)。资料置「解析中」,前端轮询出结果。"""
         material = self.get_object()
-        ingest_material(material, llm_model_id=material.knowledge_base.llm_model_id)
+        self._enqueue_ingest(material, material.knowledge_base.llm_model_id)
         return JsonResponse({"result": True, "data": self.get_serializer(material).data})
 
     @action(methods=["POST"], detail=True)
     def build(self, request, pk=None):
-        """从该资料构建知识页面(Schema 驱动生成)。async=true 时走 Celery 异步,否则同步返回构建记录。"""
+        """从该资料构建知识页面(Schema 驱动)。async=true 走 Celery 异步(前端默认),资料置「构建中」、前端轮询出结果;否则同步返回构建记录(供测试/脚本)。"""
         material = self.get_object()
         operator = getattr(request.user, "username", "")
         if request.data.get("async"):
             from apps.opspilot.tasks import wiki_build_material_task
 
+            material.status = "building"
+            material.save(update_fields=["status", "updated_at"])
             wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
-            return JsonResponse({"result": True, "data": {"async": True}})
+            return JsonResponse({"result": True, "data": self.get_serializer(material).data})
         record = build_from_material(
             material,
             llm_model_id=material.knowledge_base.llm_model_id,

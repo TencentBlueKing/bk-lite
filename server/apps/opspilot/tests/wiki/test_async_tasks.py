@@ -37,6 +37,39 @@ def test_build_task_missing_material_returns_none():
 
 
 @pytest.mark.django_db
+def test_ingest_task_parses_and_sets_status_done():
+    """异步解析任务:抽取 + 摘要后,资料状态机置「已解析」done。"""
+    from apps.opspilot.models import Material  # noqa: F401
+    from apps.opspilot.tasks import wiki_ingest_material_task
+
+    kb = _kb()
+    mat = _material(kb)  # text 资料,正文 "facts"
+    mid = wiki_ingest_material_task.apply(args=[mat.id]).get()
+    assert mid == mat.id
+    mat.refresh_from_db()
+    assert mat.status == "done" and mat.ai_summary  # 无模型回退为截断正文
+
+
+@pytest.mark.django_db
+def test_ingest_task_missing_material_returns_none():
+    from apps.opspilot.tasks import wiki_ingest_material_task
+
+    assert wiki_ingest_material_task.apply(args=[999999]).get() is None
+
+
+@pytest.mark.django_db
+def test_build_success_sets_material_status_built():
+    """状态机:构建成功 → 资料状态置「已构建」built。"""
+    from apps.opspilot.tasks import wiki_build_material_task
+
+    kb = _kb()
+    mat = _material(kb)
+    wiki_build_material_task.apply(args=[mat.id]).get()
+    mat.refresh_from_db()
+    assert mat.status == "built"
+
+
+@pytest.mark.django_db
 def test_rebuild_task_creates_record():
     from apps.opspilot.models import BuildRecord
     from apps.opspilot.tasks import wiki_rebuild_kb_task
