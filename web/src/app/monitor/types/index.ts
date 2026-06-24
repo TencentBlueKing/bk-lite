@@ -133,6 +133,7 @@ export interface ChartData {
   value1?: number;
   value2?: number;
   gapIntervals?: GapInterval[];
+  seriesMetrics?: Record<string, Record<string, string>>;
   details?: Record<
     string,
     Array<{ name: string; label: string; value: string }>

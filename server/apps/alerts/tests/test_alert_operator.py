@@ -3,6 +3,8 @@
 对照 spec/prd/告警中心·告警：未分派→待响应→处理中→关闭，含转派/认领与权限校验。
 """
 
+from unittest import mock
+
 import pytest
 
 from apps.alerts.constants.constants import AlertStatus
@@ -250,7 +252,24 @@ def test_assign_with_assignment_id_creates_reminder(sys_user):
 def test_format_notify_data_no_channel_returns_empty():
     alert = _make_alert(status=AlertStatus.PENDING)
     op = AlertOperator(user="u1")
-    assert op.format_notify_data(["op1"], alert) == {}
+    # 收口后统一返回 list(sync_notify 期望 list[dict]);无渠道 → 空列表
+    assert op.format_notify_data(["op1"], alert) == []
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+def test_format_notify_data_returns_list_of_params(_mock_chan, _mt, _mc):
+    """收口后:配了默认渠道时返回 list[dict](修掉原先返回单 dict 致 sync_notify 崩的 bug)。"""
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-NOTIFY")
+    op = AlertOperator(user="u1")
+    result = op.format_notify_data(["op1", "u1"], alert)  # u1 是操作者自己,应被排除
+    assert isinstance(result, list) and len(result) == 1
+    assert result[0]["channel_type"] == "email"
+    assert result[0]["channel_id"] == 5
+    assert result[0]["username_list"] == ["op1"]
+    assert result[0]["object_id"] == alert.alert_id
 
 
 @pytest.mark.django_db

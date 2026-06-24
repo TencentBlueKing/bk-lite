@@ -39,10 +39,9 @@ import {
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
 import {
-  deriveVisibleGapIntervalsFromChartData,
-  expandGapIntervalsToChartPoints,
   GAP_INTERVAL_AREA_STYLE,
-  mergeGapIntervalsForDisplay
+  getChartDataWithGapBreaks,
+  getRenderedGapIntervals
 } from '@/app/monitor/utils/gapIntervals';
 
 interface LineChartProps {
@@ -226,23 +225,14 @@ const LineChart: React.FC<LineChartProps> = memo(
       [chartAreaKeys, resolvedSeriesStyles, unit]
     );
 
-    const backendGapIntervals = useMemo(
-      () => expandGapIntervalsToChartPoints(data, data[0]?.gapIntervals || []),
+    const renderedGapIntervals = useMemo(
+      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || []),
       [data]
     );
 
-    const visibleGapIntervals = useMemo(
-      () => deriveVisibleGapIntervalsFromChartData(data, chartAreaKeys),
-      [data, chartAreaKeys]
-    );
-
-    const renderedGapIntervals = useMemo(
-      () =>
-        mergeGapIntervalsForDisplay([
-          ...backendGapIntervals,
-          ...visibleGapIntervals,
-        ]),
-      [backendGapIntervals, visibleGapIntervals]
+    const chartDataWithGapBreaks = useMemo(
+      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || []),
+      [data]
     );
 
     const yAxisTickCount = useMemo(() => {
@@ -675,7 +665,7 @@ const LineChart: React.FC<LineChartProps> = memo(
           <>
             <ResponsiveContainer className={chartLineStyle.chart}>
               <AreaChart
-                data={data}
+                data={chartDataWithGapBreaks}
                 syncId={syncId}
                 margin={{
                   top: 10,
@@ -748,7 +738,6 @@ const LineChart: React.FC<LineChartProps> = memo(
                     fillOpacity={resolvedSeriesStyles[index]?.fillOpacity ?? 0}
                     fill={resolvedSeriesStyles[index]?.color || colors[index]}
                     strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? 2.5}
-                    connectNulls
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color || colors[index] }}
                     isAnimationActive={false}

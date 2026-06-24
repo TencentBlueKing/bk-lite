@@ -339,12 +339,22 @@ export const renderChart = (
   const result: ChartData[] = [];
   const target = config[0]?.dimensions || [];
   const seriesKeyToValueKey = new Map<string, string>();
-  const getSeriesKey = (metric: Record<string, string>) =>
-    JSON.stringify(
-      Object.entries(metric || {}).sort(([left], [right]) =>
-        left.localeCompare(right)
-      )
+  const getSeriesKey = (metric: Record<string, string>) => {
+    const identityKeys = Array.from(
+      new Set([
+        ...(config[0]?.instance_id_keys || []),
+        ...target.map((item) => item.name),
+      ])
     );
+    const identityEntries = identityKeys
+      .filter((key) => Object.prototype.hasOwnProperty.call(metric || {}, key))
+      .map((key) => [key, metric[key]]);
+
+    return JSON.stringify(
+      (identityEntries.length ? identityEntries : Object.entries(metric || {}))
+        .sort(([left], [right]) => left.localeCompare(right))
+    );
+  };
   const getValueKey = (metric: Record<string, string>) => {
     const seriesKey = getSeriesKey(metric);
     const existingKey = seriesKeyToValueKey.get(seriesKey);
@@ -359,6 +369,10 @@ export const renderChart = (
   data.forEach((item) => {
     const valueKey = getValueKey(item.metric);
     item.values.forEach(([timestamp, value]) => {
+      const numericValue = parseFloat(value);
+      if (!Number.isFinite(numericValue)) {
+        return;
+      }
       const existing = result.find((entry) => entry.time === timestamp);
       const detailValue = Object.entries(item.metric)
         .map(([key, dimenValue]) => ({
@@ -384,7 +398,11 @@ export const renderChart = (
         });
       }
       if (existing) {
-        existing[valueKey] = parseFloat(value);
+        existing[valueKey] = numericValue;
+        existing.seriesMetrics = {
+          ...(existing.seriesMetrics || {}),
+          [valueKey]: item.metric
+        };
         if (!existing.details) {
           existing.details = {};
         }
@@ -399,13 +417,16 @@ export const renderChart = (
         result.push({
           time: timestamp,
           title: config[0]?.title || '--',
-          [valueKey]: parseFloat(value),
+          [valueKey]: numericValue,
+          seriesMetrics: {
+            [valueKey]: item.metric
+          },
           details
         });
       }
     });
   });
-  return result;
+  return result.sort((left, right) => left.time - right.time);
 };
 
 export const findTreeParentKey = (
@@ -575,17 +596,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /hirschmann|belden|\brs[234]0\b|greyhound/i, label: 'Hirschmann', icon: 'mm-hirschmann_hirschmann' },
   { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' },
   { match: /adtran|netvanta|adtran.?aos/i, label: 'Adtran', icon: 'mm-adtran_adtran' },
-  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' },
-  { match: /\bdcn\b|digital.?china/i, label: 'DCN', icon: 'mm-dcn_dcn' },
-  { match: /\bfs\b|fs\.com/i, label: 'FS', icon: 'mm-fs_fs' },
-  { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
-  { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
-  { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
-  { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
-  { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
-  { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
-  { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
-  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
+  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

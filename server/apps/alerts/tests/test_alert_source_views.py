@@ -334,12 +334,33 @@ def test_snmp_trap_nodes(superuser, monkeypatch):
 
 @pytest.mark.django_db
 def test_k8s_install_command(superuser):
-    _make_source("k8s", source_type="webhook", config={"url": "/recv"})
-    data = {"server_url": "https://host:8000", "cluster_name": "prod"}
+    # K8s 接入强制走组织密钥路径：source 需配 team_secrets，请求需带合法 team_secret。
+    _make_source(
+        "k8s", source_type="webhook", config={"url": "/recv"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    data = {"server_url": "https://host:8000", "cluster_name": "prod", "team_secret": "team-sec-1"}
     request = _request("post", "/alert_source/k8s_install_command/", superuser, data=data)
     response = AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
     payload = _render(response)
-    assert response.status_code in (status.HTTP_200_OK, status.HTTP_404_NOT_FOUND)
+    assert response.status_code == status.HTTP_200_OK
+    assert payload["data"]["command"]
+    assert payload["data"]["token"]
+
+
+@pytest.mark.django_db
+def test_k8s_install_command_requires_team_secret(superuser):
+    """K8s 接入强制要求 team_secret(组织密钥),缺失应被拒。"""
+    from apps.core.exceptions.base_app_exception import BaseAppException
+
+    _make_source(
+        "k8s", source_type="webhook", config={"url": "/recv"},
+        team_secrets={"1": "team-sec-1"},
+    )
+    data = {"server_url": "https://host:8000", "cluster_name": "prod"}  # 故意不传 team_secret
+    request = _request("post", "/alert_source/k8s_install_command/", superuser, data=data)
+    with pytest.raises(BaseAppException):
+        AlertSourceModelViewSet.as_view({"post": "k8s_install_command"})(request)
 
 
 @pytest.mark.django_db

@@ -15,6 +15,14 @@ class SystemMgmtUtils:
         return result["data"]
 
     @staticmethod
+    def search_opspilot_nats_channels(teams=None, bot_id=None, include_children=False):
+        """查询 OpsPilot 托管的 NATS 触发通道（config.source == "opspilot"）。"""
+        result = SystemMgmt().search_opspilot_nats_channels(
+            teams=teams, bot_id=bot_id, include_children=include_children
+        )
+        return result["data"]
+
+    @staticmethod
     def send_msg_with_channel(channel_id, title, content, receivers):
         result = SystemMgmt().send_msg_with_channel(channel_id, title, content, receivers)
         return result
