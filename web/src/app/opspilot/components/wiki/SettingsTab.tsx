@@ -1,35 +1,29 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Divider, Form, Input, InputNumber, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
-import {
-  AimOutlined,
-  BulbOutlined,
-  GlobalOutlined,
-  InfoCircleOutlined,
-  SafetyCertificateOutlined,
-  WarningOutlined,
-} from '@ant-design/icons';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Button, Divider, Form, Input, Popconfirm, Select, Space, Spin, Tag, message } from 'antd';
+import { AimOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
+import { useIntl } from 'react-intl';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { LlmModel } from '@/app/opspilot/types/skill';
+import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 
-type SectionKey = 'basic' | 'purpose' | 'generation' | 'websync' | 'risk' | 'danger';
+type SectionKey = 'basic' | 'purpose' | 'danger';
 
 const HELP_KEY: Record<SectionKey, string> = {
   basic: 'wiki.helpBasicDesc',
   purpose: 'wiki.helpPurposeDesc',
-  generation: 'wiki.helpGenerationDesc',
-  websync: 'wiki.helpWebSyncDesc',
-  risk: 'wiki.helpRiskDesc',
   danger: 'wiki.helpDangerDesc',
 };
 
-// 设置工作区(spec 4.6):左侧导航 | 中部表单 | 右侧预览/说明,三栏铺满宽度且左栏竖线撑满面板高度
+// 设置工作区(spec 4.6):左侧导航 | 中部表单 | 右侧预览/说明
+// 生成语言默认跟随登录用户语言;网页同步已迁到「新增资料(网页)」按站点单独配置
 const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
+  const intl = useIntl();
   const router = useRouter();
   const [form] = Form.useForm();
   const { fetchKnowledgeBase, updateKnowledgeBase, fetchLlmModels, rebuildKnowledgeBase, deleteKnowledgeBase } =
@@ -40,6 +34,8 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<SectionKey>('basic');
   const [kbStatus, setKbStatus] = useState<string>('active');
+  // 保存原始 KB:PUT 为全量更新,被移除的设置字段需回填原值,避免被重置
+  const kbRef = useRef<WikiKnowledgeBase | null>(null);
 
   const nameW = Form.useWatch('name', form);
   const modelW = Form.useWatch('llm_model', form);
@@ -49,9 +45,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const sections: { key: SectionKey; label: string; icon: React.ReactNode; danger?: boolean }[] = [
     { key: 'basic', label: t('wiki.settingsBasic'), icon: <InfoCircleOutlined /> },
     { key: 'purpose', label: t('wiki.settingsPurposeSchema'), icon: <AimOutlined /> },
-    { key: 'generation', label: t('wiki.settingsGeneration'), icon: <BulbOutlined /> },
-    { key: 'websync', label: t('wiki.settingsWebSync'), icon: <GlobalOutlined /> },
-    { key: 'risk', label: t('wiki.settingsRisk'), icon: <SafetyCertificateOutlined /> },
     { key: 'danger', label: t('wiki.dangerZone'), icon: <WarningOutlined />, danger: true },
   ];
   const activeSection = sections.find((s) => s.key === active)!;
@@ -60,11 +53,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     setLoading(true);
     try {
       const [kb, models] = await Promise.all([fetchKnowledgeBase(kbId), fetchLlmModels().catch(() => [])]);
+      kbRef.current = kb;
       setLlmModels(models || []);
       setKbStatus(kb.status || 'active');
-      const ws = (kb.web_sync_policy || {}) as Record<string, unknown>;
-      const rr = (kb.risk_rules || {}) as Record<string, unknown>;
-      const gr = (kb.generation_rules || {}) as Record<string, unknown>;
       form.setFieldsValue({
         name: kb.name,
         introduction: kb.introduction,
@@ -72,12 +63,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         team: kb.team,
         purpose_md: kb.purpose_md,
         schema_md: kb.schema_md,
-        generation_language: kb.generation_language || 'zh',
-        generation_rules_notes: (gr.notes as string) || '',
-        web_sync_enabled: !!ws.enabled,
-        web_sync_interval_hours: (ws.interval_hours as number) ?? 24,
-        risk_auto_apply: rr.auto_apply !== false,
-        risk_require_review: !!rr.require_review,
       });
     } finally {
       setLoading(false);
@@ -94,6 +79,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     const v = await form.validateFields();
     setSaving(true);
     try {
+      // 生成语言默认跟随登录用户的界面语言(不再手选)
+      const userLang = (intl.locale || '').toLowerCase().includes('en') ? 'en' : 'zh';
+      const prev = kbRef.current;
       await updateKnowledgeBase(kbId, {
         name: v.name,
         introduction: v.introduction,
@@ -101,10 +89,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         team: v.team,
         purpose_md: v.purpose_md,
         schema_md: v.schema_md,
-        generation_language: v.generation_language,
-        generation_rules: { notes: v.generation_rules_notes || '' },
-        web_sync_policy: { enabled: !!v.web_sync_enabled, interval_hours: v.web_sync_interval_hours ?? 24 },
-        risk_rules: { auto_apply: !!v.risk_auto_apply, require_review: !!v.risk_require_review },
+        generation_language: userLang,
+        // 以下字段已从设置页移除,PUT 全量更新时回填原值避免被清空
+        generation_rules: prev?.generation_rules ?? {},
+        web_sync_policy: prev?.web_sync_policy ?? {},
+        risk_rules: prev?.risk_rules ?? {},
       });
       message.success(t('wiki.saveSuccess'));
     } finally {
@@ -206,64 +195,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 </Form.Item>
               </div>
             </div>
-
-            {/* 生成设置 */}
-            <div style={show('generation')}>
-              {head(<BulbOutlined />, t('wiki.settingsGeneration'))}
-              <Form.Item label={t('wiki.generationLanguage')} name="generation_language" className="max-w-xs">
-                <Select
-                  options={[
-                    { value: 'zh', label: '中文' },
-                    { value: 'en', label: 'English' },
-                  ]}
-                />
-              </Form.Item>
-              <Form.Item
-                label={t('wiki.generationRules')}
-                name="generation_rules_notes"
-                tooltip={t('wiki.generationRulesTip')}
-                className="max-w-3xl"
-              >
-                <Input.TextArea rows={5} placeholder={t('wiki.generationRulesPlaceholder')} />
-              </Form.Item>
-            </div>
-
-            {/* 网页同步 */}
-            <div style={show('websync')}>
-              {head(<GlobalOutlined />, t('wiki.settingsWebSync'))}
-              <Form.Item
-                label={t('wiki.webSyncEnabled')}
-                name="web_sync_enabled"
-                valuePropName="checked"
-                tooltip={t('wiki.webSyncTip')}
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item label={t('wiki.webSyncInterval')} name="web_sync_interval_hours">
-                <InputNumber min={1} max={720} addonAfter={t('wiki.hours')} />
-              </Form.Item>
-            </div>
-
-            {/* 风险与审核 */}
-            <div style={show('risk')}>
-              {head(<SafetyCertificateOutlined />, t('wiki.settingsRisk'))}
-              <Form.Item
-                label={t('wiki.riskAutoApply')}
-                name="risk_auto_apply"
-                valuePropName="checked"
-                tooltip={t('wiki.riskAutoApplyTip')}
-              >
-                <Switch />
-              </Form.Item>
-              <Form.Item
-                label={t('wiki.riskRequireReview')}
-                name="risk_require_review"
-                valuePropName="checked"
-                tooltip={t('wiki.riskRequireReviewTip')}
-              >
-                <Switch />
-              </Form.Item>
-            </div>
           </Form>
 
           {active !== 'danger' && (
@@ -282,16 +213,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 <span className="text-[var(--color-text-3)] text-sm">{t('wiki.rebuildAllTip')}</span>
                 <Popconfirm title={t('wiki.rebuildAllConfirm')} onConfirm={() => runDanger(() => rebuildKnowledgeBase(kbId))}>
                   <Button loading={busy}>{t('wiki.rebuildAll')}</Button>
-                </Popconfirm>
-              </div>
-              <Divider className="my-1" />
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--color-text-3)] text-sm">{t('wiki.archiveTip')}</span>
-                <Popconfirm
-                  title={t('wiki.archiveConfirm')}
-                  onConfirm={() => runDanger(() => updateKnowledgeBase(kbId, { status: 'archived' }), () => setKbStatus('archived'))}
-                >
-                  <Button loading={busy}>{t('wiki.archive')}</Button>
                 </Popconfirm>
               </div>
               <Divider className="my-1" />
