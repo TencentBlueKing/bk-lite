@@ -4469,6 +4469,9 @@ monitor_object_plugin:
   Switch Netonix SNMP:
     name: Netonix (Telegraf)
     desc: Netonix WISP switch-specific SNMP collection (NETONIX-SWITCH-MIB, IANA PEN 46242). Beyond standard IF-MIB interface metrics, it collects the Netonix private OID for chassis temperature (a dedicated temperature table, °C). NETONIX-SWITCH-MIB does not provide CPU/memory OIDs; fan is reported as speed (RPM) rather than a state enum and PoE is per-port status, neither of which is a device-level health state, so this plugin collects temperature only (other dimensions N/A). Supported brands/models — Netonix WISP Switch series PoE switches (enterprise 46242).
+  Switch Nokia SNMP:
+    name: Nokia (Telegraf)
+    desc: Nokia (formerly Alcatel-Lucent Enterprise) OmniSwitch switch-specific SNMP collection (ALCATEL-IND1-HEALTH-MIB / ALCATEL-IND1-CHASSIS-MIB, IANA PEN 6486). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Nokia private OIDs for device health — CPU and memory utilisation (healthModuleTable, both reported directly as percentages), chassis temperature (chasChassisTemp, °C), and fan and power-supply state (chasEntPhysOperStatus) normalised via telegraf processors.enum to 1=normal / 2=abnormal. Supported brands/models — Nokia/ALE OmniSwitch 6/9 series campus and data-center switches (enterprise 6486).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.

@@ -375,6 +375,18 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_nokia",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_omniswitch",
       "capabilities": [
         "uptime",
