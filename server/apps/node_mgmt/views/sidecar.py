@@ -623,9 +623,9 @@ cleanup() {{
 trap cleanup EXIT
 
 mkdir -p "$INSTALL_DIR"
-curl -sSL "{installer_url}" -o "$INSTALLER_PATH"
+curl -sSLk "{installer_url}" -o "$INSTALLER_PATH"
 chmod +x "$INSTALLER_PATH"
-        exec "$INSTALLER_PATH" --url "{config_url}" --install-dir "$INSTALL_DIR"
+        exec "$INSTALLER_PATH" --url "{config_url}" --install-dir "$INSTALL_DIR" --skip-tls
 '''
 
         return HttpResponse(script.encode("utf-8"), content_type="text/plain; charset=utf-8")
