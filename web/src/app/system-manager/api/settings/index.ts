@@ -23,8 +23,17 @@ export interface UserApiSecretCreateResponse {
   api_secret: string;
 }
 
+export interface NetworkWhiteListItem {
+  id: number;
+  network: string;
+  remark: string;
+  enabled: boolean;
+  created_at: string;
+  created_by?: string;
+}
+
 export const useSettingsApi = () => {
-  const { get, post, del } = useApiClient();
+  const { get, post, del, patch } = useApiClient();
 
   const getPortalSettings = useCallback(async (): Promise<{
     portal_name?: string;
@@ -75,6 +84,28 @@ export const useSettingsApi = () => {
     return post('/base/user_api_secret/');
   }, [post]);
 
+  const fetchNetworkWhiteList = useCallback(async (): Promise<NetworkWhiteListItem[]> => {
+    return get('/system_mgmt/network_white_list/');
+  }, [get]);
+
+  const createNetworkWhiteList = useCallback(
+    async (data: { network: string; remark?: string; enabled?: boolean }): Promise<NetworkWhiteListItem> => {
+      return post('/system_mgmt/network_white_list/', data);
+    },
+    [post]
+  );
+
+  const updateNetworkWhiteList = useCallback(
+    async (id: number, data: { network?: string; remark?: string; enabled?: boolean }): Promise<NetworkWhiteListItem> => {
+      return patch(`/system_mgmt/network_white_list/${id}/`, data);
+    },
+    [patch]
+  );
+
+  const deleteNetworkWhiteList = useCallback(async (id: number): Promise<void> => {
+    await del(`/system_mgmt/network_white_list/${id}/`);
+  }, [del]);
+
   return {
     getPortalSettings,
     updatePortalSettings,
@@ -82,5 +113,9 @@ export const useSettingsApi = () => {
     fetchTeams,
     deleteUserApiSecret,
     createUserApiSecret,
+    fetchNetworkWhiteList,
+    createNetworkWhiteList,
+    updateNetworkWhiteList,
+    deleteNetworkWhiteList,
   };
 };

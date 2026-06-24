@@ -335,7 +335,8 @@
       "tabs": {
         "key": "密钥",
         "portal": "门户",
-        "license": "许可"
+        "license": "许可",
+        "networkWhitelist": "白名单"
       },
       "secret": {
         "title": "API密钥",
@@ -513,6 +514,20 @@
           "mongo": "Mongo",
           "size": "存储容量"
         }
+      },
+      "networkWhitelist": {
+        "title": "内网白名单",
+        "content": "添加可信内网网段（CIDR），命中的地址将被允许访问；云元数据地址不会被放行。",
+        "network": "网段(CIDR)",
+        "remark": "备注",
+        "enabled": "启用",
+        "createdAt": "创建时间",
+        "add": "新增白名单",
+        "edit": "编辑白名单",
+        "deleteConfirm": "确定删除该白名单网段吗？",
+        "networkPlaceholder": "如 10.11.73.0/24 或 10.11.73.15",
+        "networkRequired": "请输入合法的 CIDR 或 IP",
+        "metadataHint": "云元数据地址（169.254.169.254 等）不会被放行"
       },
       "portal": {
         "title": "门户设置",
