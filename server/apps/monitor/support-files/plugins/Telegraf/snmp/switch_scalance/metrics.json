@@ -1,0 +1,82 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_scalance",
+  "plugin": "Switch Scalance SNMP",
+  "plugin_desc": "Siemens SCALANCE X 工业以太网交换机专用 SNMP 采集模板（Siemens AUTOMATION-SMI，企业号 4329）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 SCALANCE 私有 OID 的设备健康指标：机箱温度（℃）与双路电源线状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。SCALANCE X 基于网管桥 ASIC，多为无风扇导热式被动散热设计，私有 MIB 未以标量形式暴露 CPU 与内存负载，故 CPU、内存与风扇为 N/A。适用品牌型号——西门子 SCALANCE X 系列工业网管交换机（X200/X300/X400/XB/XC/XR 系列，企业号 4329）。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_scalance'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "设备温度",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "Chassis temperature of the SCALANCE industrial switch in degrees Celsius (Siemens AUTOMATION-SMI chassis temperature)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_psu_state",
+      "display_name": "电源状态",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "Power-supply line state of the SCALANCE industrial switch, normalised to 1=normal / 2=abnormal."
+    }
+  ]
+}

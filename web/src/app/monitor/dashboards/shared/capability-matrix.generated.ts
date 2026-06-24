@@ -314,6 +314,17 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_microsens",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_mikrotik",
       "capabilities": [
         "uptime",
@@ -423,6 +434,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
         "memory",
         "temperature",
         "fan",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_scalance",
+      "capabilities": [
+        "uptime",
+        "temperature",
         "psu",
         "traffic"
       ]
