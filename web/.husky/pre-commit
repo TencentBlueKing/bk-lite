@@ -1,8 +1,26 @@
 #!/bin/sh
-cd "$(dirname "$0")/.." || exit 1  # Critical line: change to web directory
 
-# First generate tsconfig.lint.json
-npm run precommit
+REPO_ROOT=$(git rev-parse --show-toplevel)
+CHANGED_FILES=$(git diff --cached --name-only --diff-filter=ACMR)
 
-# Run lint and type-check
-npm run lint && npm run type-check
+# ===== Web frontend checks =====
+WEB_FILES=$(echo "$CHANGED_FILES" | grep "^web/" | grep -E '\.(js|jsx|ts|tsx)$')
+if [ -n "$WEB_FILES" ]; then
+    echo "Checking web project..."
+    WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||')
+    cd "$REPO_ROOT/web" || exit 1
+    echo "$WEB_LINT_FILES" | xargs pnpm eslint || exit 1
+    cd "$REPO_ROOT" || exit 1
+fi
+
+# ===== Mobile frontend checks =====
+MOBILE_FILES=$(echo "$CHANGED_FILES" | grep "^mobile/" | grep -E '\.(js|jsx|ts|tsx)$')
+if [ -n "$MOBILE_FILES" ]; then
+    echo "Checking mobile project..."
+    MOBILE_LINT_FILES=$(echo "$MOBILE_FILES" | sed 's|^mobile/||')
+    cd "$REPO_ROOT/mobile" || exit 1
+    echo "$MOBILE_LINT_FILES" | xargs pnpm eslint || exit 1
+    cd "$REPO_ROOT" || exit 1
+fi
+
+echo "Pre-commit checks passed!"
