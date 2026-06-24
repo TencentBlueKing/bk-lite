@@ -17,6 +17,7 @@ import { useSkillApi } from '@/app/opspilot/api/skill';
 import type { SkillPackage } from '@/app/opspilot/types/skill';
 import VariableList from '@/app/opspilot/components/tool/variableList';
 import UrlInputWithButton from '@/app/opspilot/components/tool/urlInputWithButton';
+import SkillPackageDetailDrawer from '@/app/opspilot/components/tool/SkillPackageDetailDrawer';
 import Icon from '@/components/icon';
 
 const ToolListPage: React.FC = () => {
@@ -41,6 +42,7 @@ const ToolListPage: React.FC = () => {
   const [skillAssetsLoading, setSkillAssetsLoading] = useState<boolean>(false);
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
   const [hoveredSkillAssetKey, setHoveredSkillAssetKey] = useState<string | null>(null);
+  const [selectedSkillAssetForDetail, setSelectedSkillAssetForDetail] = useState<SkillPackage | null>(null);
   const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
   const [skillPackageFileList, setSkillPackageFileList] = useState<UploadFile[]>([]);
 
@@ -541,7 +543,16 @@ const ToolListPage: React.FC = () => {
             return (
               <div
                 key={skillAssetKey}
-                className="p-4 rounded-xl relative shadow-md flex h-[168px] flex-col border border-[var(--color-border)] bg-[var(--color-bg)] transition-all hover:border-[var(--color-primary)] hover:shadow-lg"
+                className="p-4 rounded-xl relative shadow-md flex h-[168px] cursor-pointer flex-col border border-[var(--color-border)] bg-[var(--color-bg)] transition-all hover:border-[var(--color-primary)] hover:shadow-lg"
+                role="button"
+                tabIndex={0}
+                onClick={() => setSelectedSkillAssetForDetail(asset)}
+                onKeyDown={(event) => {
+                  if (event.key === 'Enter' || event.key === ' ') {
+                    event.preventDefault();
+                    setSelectedSkillAssetForDetail(asset);
+                  }
+                }}
                 onMouseEnter={() => setHoveredSkillAssetKey(skillAssetKey)}
                 onMouseLeave={() => setHoveredSkillAssetKey((current) => (current === skillAssetKey ? null : current))}
               >
@@ -564,6 +575,9 @@ const ToolListPage: React.FC = () => {
                         onClick={(event) => {
                           event.stopPropagation();
                           handleDeleteSkillAsset(asset);
+                        }}
+                        onKeyDown={(event) => {
+                          event.stopPropagation();
                         }}
                       />
                     </Tooltip>
@@ -705,6 +719,11 @@ const ToolListPage: React.FC = () => {
           </Upload.Dragger>
         </div>
       </Modal>
+      <SkillPackageDetailDrawer
+        asset={selectedSkillAssetForDetail}
+        open={!!selectedSkillAssetForDetail}
+        onClose={() => setSelectedSkillAssetForDetail(null)}
+      />
       <Drawer
         title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.name}` : t('common.viewDetails')}
         placement="right"
