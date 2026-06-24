@@ -126,7 +126,16 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         );
       },
     },
-    { title: 'AI', dataIndex: 'ai_summary', key: 'ai_summary', ellipsis: true },
+    {
+      // AI 解读列只做单行预览:自定义 render 绕过 CustomTable 的 EllipsisWithTooltip,
+      // 并 showTitle:false 关闭原生提示——超长内容不再 hover 弹出全文撑出滚动条,完整内容见「详情」抽屉
+      title: t('wiki.aiSummary'),
+      dataIndex: 'ai_summary',
+      key: 'ai_summary',
+      width: 320,
+      ellipsis: { showTitle: false },
+      render: (s: string) => <span className="text-[var(--color-text-3)]">{s || '--'}</span>,
+    },
     {
       title: '',
       key: 'action',
