@@ -122,6 +122,12 @@ export const useWikiApi = () => {
   const fetchBuildRecords = (kbId: number, params?: Record<string, unknown>): Promise<BuildRecord[]> =>
     get(`${BASE}/build_record/`, { params: { ...params, knowledge_base: kbId } });
 
+  const fetchBuildRecord = (id: number): Promise<BuildRecord> => get(`${BASE}/build_record/${id}/`);
+
+  const retryBuild = (id: number): Promise<{ async: boolean }> => post(`${BASE}/build_record/${id}/retry/`, {});
+
+  const cancelBuild = (id: number): Promise<BuildRecord> => post(`${BASE}/build_record/${id}/cancel/`, {});
+
   // ---- 检查项 ----
   const fetchCheckItems = (
     kbId: number,
@@ -168,6 +174,9 @@ export const useWikiApi = () => {
     restorePageVersion,
     fetchPageDiff,
     fetchBuildRecords,
+    fetchBuildRecord,
+    retryBuild,
+    cancelBuild,
     fetchCheckItems,
     acceptCheck,
     rejectCheck,

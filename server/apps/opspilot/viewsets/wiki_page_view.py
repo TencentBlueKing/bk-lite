@@ -101,12 +101,12 @@ class WikiPageViewSet(AuthViewSet):
 
 
 class WikiBuildRecordViewSet(AuthViewSet):
-    """构建记录浏览(只读)。"""
+    """构建记录:浏览 + 重试/继续/取消(spec 4.4)。"""
 
     queryset = BuildRecord.objects.all().order_by("-id")
     serializer_class = BuildRecordSerializer
     ordering = ("-id",)
-    http_method_names = ["get", "head", "options"]
+    http_method_names = ["get", "head", "options", "post"]
 
     def list(self, request, *args, **kwargs):
         queryset = self.get_queryset()
@@ -117,3 +117,31 @@ class WikiBuildRecordViewSet(AuthViewSet):
 
     def retrieve(self, request, *args, **kwargs):
         return JsonResponse({"result": True, "data": self.get_serializer(self.get_object()).data})
+
+    @action(methods=["POST"], detail=True)
+    def retry(self, request, pk=None):
+        """重试/继续:对原资料重新发起构建(异步),资料置「构建中」,前端轮询出结果。"""
+        record = self.get_object()
+        material_id = (record.inputs or {}).get("material_id")
+        from apps.opspilot.models import Material
+
+        material = Material.objects.filter(id=material_id).first() if material_id else None
+        if not material:
+            return JsonResponse({"result": False, "message": "原资料不存在,无法重试"}, status=400)
+        from apps.opspilot.tasks import wiki_build_material_task
+
+        material.status = "building"
+        material.save(update_fields=["status", "updated_at"])
+        operator = getattr(request.user, "username", "")
+        wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
+        return JsonResponse({"result": True, "data": {"async": True}})
+
+    @action(methods=["POST"], detail=True)
+    def cancel(self, request, pk=None):
+        """取消:运行中的构建记录置 cancelled(运行中的 Celery 任务尽力而为,记录先落终态)。"""
+        record = self.get_object()
+        if record.status == "running":
+            record.status = "cancelled"
+            record.stage = "cancelled"
+            record.save(update_fields=["status", "stage", "updated_at"])
+        return JsonResponse({"result": True, "data": self.get_serializer(record).data})
