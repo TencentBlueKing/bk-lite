@@ -3767,6 +3767,9 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS（Telegraf）
     desc: 联想 CNOS（Cloud Network OS）交换机专用 SNMP 采集模板（LENOVO-ENV-MIB，企业号 19046）。除标准 IF-MIB 接口指标外，额外采集设备健康指标：温度传感器（lenovoEnvMibTempSensorTemperature，取最高）、风扇状态（lenovoEnvMibFanState）与电源状态（lenovoEnvMibPowerSupplyState，归一为 1=正常/2=异常），以及在平台暴露时通过 HOST-RESOURCES hrProcessorLoad 采集 CPU 使用率。内存无可用私有 OID，故为 N/A。适用品牌型号——运行 CNOS 的联想 ThinkSystem/RackSwitch 交换机（NE 系列，如 NE1032/NE2572/NE10032，企业号 19046）。
+  Switch Westermo SNMP:
+    name: Westermo（Telegraf）
+    desc: Westermo 工业以太网交换机专用 SNMP 采集模板（WESTERMO-SW6-MIB，企业号 16177）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Westermo WeOS 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Westermo 工业交换机为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——Westermo WeOS 工业网管交换机（Lynx/Falcon/RedFox/Viper 系列，企业号 16177）。
   Switch Hirschmann SNMP:
     name: Hirschmann（Telegraf）
     desc: Hirschmann 工业交换机专用 SNMP 采集模板（HMPRIV-MGMT-SNMP-MIB，企业号 248）。除标准 IF-MIB 接口指标外，额外采集 Hirschmann 私有 OID 的设备健康指标：CPU 使用率（hmCpuUtilization，直接以百分比上报）、主内存（hmMemoryAllocated 已用 + hmMemoryFree 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（hmTemperature，℃）与电源状态（hmPSState，经 telegraf processors.enum 归一为 1=正常/2=异常）。未暴露独立风扇状态 OID，故风扇为 N/A。适用品牌型号——Hirschmann（Belden）工业网管交换机（RS20/RS30/RS40、MACH/MICE/GREYHOUND/EAGLE 系列，企业号 248）。
@@ -3896,6 +3899,9 @@ monitor_object_plugin:
     name: Kerio Control（Telegraf）
     desc: 面向 GFI Kerio Control UTM 防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 Kerio Control 私有 MIB（KERIO-CONTROL-SNMP-MIB，IANA 企业号 17028）的当前活动连接数。Kerio Control 为软件型 UTM 设备，其 MIB 未以无需行级过滤的标量形式暴露 CPU/内存与温度/风扇/电源传感器，故均为 N/A。
       适用品牌型号——GFI Kerio Control UTM 防火墙/VPN 网关（企业号 17028）。
+  Firewall Clavister SNMP:
+    name: Clavister（Telegraf）
+    desc: Clavister 下一代防火墙专用 SNMP 采集模板（CLAVISTER-MIB，企业号 5089）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 Clavister 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动连接数）。Clavister NGFW 多为软件/虚拟化部署，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Clavister NetWall / cOS Core 下一代防火墙（瑞典，企业号 5089）。
   Firewall WatchGuard SNMP:
     name: WatchGuard（Telegraf）
     desc: 面向 WatchGuard（Fireware）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 WATCHGUARD-SYSTEM-STATISTICS-MIB 私有 OID 的设备健康（CPU 使用率）与防火墙特有状态（当前活动连接数）。内存与温度/风扇/电源不采集——Fireware 无标准 SNMP 内存利用率标量或传感器表，telegraf inputs.snmp 无法在不做行级过滤的情况下读取。

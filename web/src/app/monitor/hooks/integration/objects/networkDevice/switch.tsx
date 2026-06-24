@@ -141,6 +141,7 @@ export const useSwitchConfig = () => {
       'Switch FiberHome SNMP': 'snmp_fiberhome',
       'Switch H3C SNMP': 'snmp_h3c',
       'Switch Hirschmann SNMP': 'snmp_hirschmann',
+      'Switch Westermo SNMP': 'snmp_westermo',
       'Switch 3Com SNMP': 'snmp_3com',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'

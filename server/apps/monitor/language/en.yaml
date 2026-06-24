@@ -4255,6 +4255,9 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS (Telegraf)
     desc: Lenovo CNOS (Cloud Network OS) switch SNMP collection (LENOVO-ENV-MIB, IANA PEN 19046). Beyond standard IF-MIB interface metrics, it collects device health including temperature sensors (lenovoEnvMibTempSensorTemperature, max), fan state (lenovoEnvMibFanState) and power-supply state (lenovoEnvMibPowerSupplyState), normalised to 1=normal / 2=abnormal, plus CPU utilisation via HOST-RESOURCES hrProcessorLoad where the platform exposes it. Memory is not exposed via a usable private OID, so it is N/A. Supported brands/models — Lenovo ThinkSystem / RackSwitch switches running CNOS (NE-series, e.g. NE1032 / NE2572 / NE10032; enterprise 19046).
+  Switch Westermo SNMP:
+    name: Westermo (Telegraf)
+    desc: Westermo industrial Ethernet switch SNMP collection (WESTERMO-SW6-MIB, IANA PEN 16177). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Westermo WeOS private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). Westermo industrial switches use fanless passive cooling, so fan is N/A. Supported brands/models — Westermo WeOS industrial managed switches (Lynx / Falcon / RedFox / Viper series; enterprise 16177).
   Switch Hirschmann SNMP:
     name: Hirschmann (Telegraf)
     desc: Hirschmann industrial switch SNMP collection (HMPRIV-MGMT-SNMP-MIB, IANA PEN 248). Beyond standard IF-MIB interface metrics, it collects Hirschmann private OIDs for device health including CPU utilisation (hmCpuUtilization, reported directly as a percentage), main memory (hmMemoryAllocated used + hmMemoryFree in KB, usage derived as used/(used+free)), chassis temperature (hmTemperature in degrees Celsius) and power-supply state (hmPSState, normalised by telegraf processors.enum to 1=normal / 2=abnormal). No dedicated fan-state OID is exposed, so fan is N/A. Supported brands/models — Hirschmann (Belden) industrial managed switches (RS20 / RS30 / RS40, MACH / MICE / GREYHOUND / EAGLE series; enterprise 248).
@@ -4454,6 +4457,9 @@ monitor_object_plugin:
       temperature/fan/power sensors are not exposed in a row-filter-free scalar form by
       the Kerio Control MIB (software UTM appliance), so those are N/A. Supported
       brands/models — GFI Kerio Control UTM firewall / VPN gateway (enterprise 17028).
+  Firewall Clavister SNMP:
+    name: Clavister (Telegraf)
+    desc: Clavister next-generation firewall SNMP collection (CLAVISTER-MIB, IANA PEN 5089). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Clavister private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active connections). Clavister NGFWs are commonly deployed as software / virtual appliances and the private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — Clavister NetWall / cOS Core next-generation firewalls (Sweden; enterprise 5089).
   Firewall WatchGuard SNMP:
     name: WatchGuard (Telegraf)
     desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
