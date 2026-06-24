@@ -306,10 +306,32 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_maipu",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_mellanox",
       "capabilities": [
         "uptime",
         "cpu",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_microsens",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "temperature",
+        "psu",
         "traffic"
       ]
     },
@@ -428,6 +450,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
       ]
     },
     {
+      "collectType": "snmp_scalance",
+      "capabilities": [
+        "uptime",
+        "temperature",
+        "psu",
+        "traffic"
+      ]
+    },
+    {
       "collectType": "snmp_snr",
       "capabilities": [
         "uptime",
@@ -506,6 +537,15 @@ export const CAPABILITY_MATRIX: CapabilityMatrix = {
     },
     {
       "collectType": "snmp_adtran",
+      "capabilities": [
+        "uptime",
+        "cpu",
+        "memory",
+        "traffic"
+      ]
+    },
+    {
+      "collectType": "snmp_avaya",
       "capabilities": [
         "uptime",
         "cpu",
