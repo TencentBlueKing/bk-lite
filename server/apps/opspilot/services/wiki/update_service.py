@@ -1,7 +1,7 @@
-"""资料更新的安全合并(P1):资料变更后,受影响页面按贡献类型安全更新。
+"""资料更新的安全合并(P1):资料变更后,受影响页面统一进人工审核(不自动覆盖)。
 
-- 纯 AI 页面(contribution=ai):直接生成新当前版本(change_type=material_update)。
-- 含人工编辑(human/mixed):不覆盖当前有效版本,生成候选版本 + 检查事项(交人工审核)。
+按"全部人工审批"策略:任何页面(含纯 AI 页面)的资料更新都不自动生效,统一生成候选版本
+(change_type=candidate, is_current=False)+ 检查事项,交「检查与审核」人工确认后才成为当前版本。
 
 调用前提:material 已完成"重新摄取"(text_content/ai_summary/版本已更新)。
 页面正文的"提议内容"由 generator(page, material) 产出(默认走 LLM,可注入以便测试)。
@@ -13,7 +13,7 @@ from django.db import transaction
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence, PageVersion
+from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence
 from apps.opspilot.services.wiki.check_service import create_candidate, ensure_check
 
 logger = logging.getLogger("opspilot")
@@ -27,32 +27,15 @@ def affected_pages(material):
 
 @transaction.atomic
 def apply_material_update(page, new_body, build_record=None, operator=""):
-    """对单个页面应用资料更新结果,返回 (action, obj)。
+    """对单个页面应用资料更新结果:一律生成候选版本 + 检查事项,交人工审核,返回 (action, obj)。
 
-    纯 AI 页面直接成为新当前版本;含人工编辑的页面生成候选版本待审。
+    按"全部人工审批"策略,资料更新不再对任何页面(含纯 AI 页面)自动覆盖当前有效版本,
+    统一走候选 + 检查,人工接受后才生效。action 恒为 "pending_review"。
     """
-    if page.contribution == "ai":
-        last = page.page_versions.order_by("-no").first()
-        next_no = (last.no + 1) if last else 1
-        page.page_versions.filter(is_current=True).update(is_current=False)
-        version = PageVersion.objects.create(
-            page=page,
-            no=next_no,
-            body=new_body,
-            change_type="material_update",
-            is_current=True,
-            build_record=build_record,
-            created_by=operator or "",
-        )
-        page.current_version = version
-        page.update_method = "material_update"
-        page.save(update_fields=["current_version", "update_method", "updated_at"])
-        return "updated", version
-    # human / mixed:不污染当前版本,走候选 + 检查
     check = create_candidate(
         page,
         body=new_body,
-        reason="资料更新,页面含人工编辑,需人工确认",
+        reason="资料更新,需人工确认后生效",
         check_type="material_update",
         build_record=build_record,
         created_by=operator,

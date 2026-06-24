@@ -24,18 +24,21 @@ def _page(kb, title, contribution, body="old"):
 
 
 @pytest.mark.django_db
-def test_ai_page_updated_directly():
+def test_ai_page_also_goes_to_review():
+    """全部人工审批:纯 AI 页面的资料更新也不再自动生效,改为生成候选 + 检查项。"""
+    from apps.opspilot.models import CheckItem
     from apps.opspilot.services.wiki.update_service import apply_material_update
 
     kb = _kb()
-    page = _page(kb, "A", "ai")
-    action, version = apply_material_update(page, "new body", operator="sys")
+    page = _page(kb, "A", "ai", body="ai-old")
+    action, check = apply_material_update(page, "new body", operator="sys")
 
-    assert action == "updated"
+    assert action == "pending_review"
     page.refresh_from_db()
-    assert page.current_version.body == "new body"
-    assert page.current_version.change_type == "material_update"
-    assert page.page_versions.filter(is_current=True).count() == 1
+    assert page.current_version.body == "ai-old"  # 不自动覆盖,当前有效版本不变
+    assert check.status == "open"
+    assert check.candidate_version.body == "new body"
+    assert CheckItem.objects.filter(knowledge_base=kb, check_type="material_update").count() == 1
 
 
 @pytest.mark.django_db
@@ -56,24 +59,25 @@ def test_human_page_goes_to_review_without_polluting_current():
 
 
 @pytest.mark.django_db
-def test_propose_update_mixes_direct_and_review():
+def test_propose_update_all_go_to_review():
+    """全部人工审批:受影响页面(含纯 AI)统一进审核,当前有效版本都不被覆盖。"""
     from apps.opspilot.models import PageEvidence
     from apps.opspilot.services.wiki.update_service import propose_update
 
     kb = _kb()
     mat = _material(kb)
-    ai_page = _page(kb, "AI", "ai")
+    ai_page = _page(kb, "AI", "ai", body="ai-kept")
     human_page = _page(kb, "H", "mixed", body="kept")
     PageEvidence.objects.create(page=ai_page, material=mat)
     PageEvidence.objects.create(page=human_page, material=mat)
 
     build = propose_update(mat, generator=lambda p, m: f"NEW {p.title}")
 
-    assert build.counts == {"new": 0, "updated": 1, "unchanged": 0, "pending_review": 1}
+    assert build.counts == {"new": 0, "updated": 0, "unchanged": 0, "pending_review": 2}
     ai_page.refresh_from_db()
     human_page.refresh_from_db()
-    assert ai_page.current_version.body == "NEW AI"
-    assert human_page.current_version.body == "kept"  # 含人工编辑,不直接覆盖
+    assert ai_page.current_version.body == "ai-kept"  # 一律进审核,当前版本不变
+    assert human_page.current_version.body == "kept"
 
 
 @pytest.mark.django_db
