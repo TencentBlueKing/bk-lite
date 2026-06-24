@@ -3,7 +3,7 @@
 import React, { useEffect, useState } from 'react';
 import { Form, Input, Modal, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import useGroups from '@/app/opspilot/hooks/useGroups';
+import GroupTreeSelect from '@/components/group-tree-select';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { PurposeSchemaTemplate, WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { LlmModel } from '@/app/opspilot/types/skill';
@@ -23,7 +23,6 @@ const fillTemplate = (tpl: PurposeSchemaTemplate | undefined, intro: string) => 
 const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, onConfirm, initialValues }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const { groups } = useGroups();
   const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels } = useWikiApi();
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
@@ -99,10 +98,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
           <Input />
         </Form.Item>
         <Form.Item label={t('common.organization')} name="team" rules={[{ required: true }]}>
-          <Select
-            mode="multiple"
-            options={(groups || []).map((g: { id: string | number; name: string }) => ({ value: g.id, label: g.name }))}
-          />
+          <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
         </Form.Item>
         <Form.Item
           label={t('wiki.llmModel')}
