@@ -1,0 +1,54 @@
+{
+  "object": "Router",
+  "plugin": "Router Versa SNMP",
+  "templates": [
+    {
+      "name": "Versa路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Versa SD-WAN 路由器的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在转发面过载、隧道协商风暴或异常流量，避免管理响应变慢或业务转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Versa路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Versa SD-WAN 路由器的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或会话表膨胀，避免设备稳定性下降。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

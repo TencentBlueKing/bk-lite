@@ -1,0 +1,76 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_clavister"
+        config_type = "clavister"
+        brand = "clavister"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Clavister NGFW CPU load (CLAVISTER-MIB, 私有企业号 5089, 直接 %, scalar) ----
+    # 待现网核验：整机 CPU 负载标量 1.3.6.1.4.1.5089.1.2.1.1.0（设备直接以 0-100% 上报）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5089.1.2.1.1.0"
+        name = "usage"
+    # ---- Clavister NGFW memory usage (CLAVISTER-MIB, scalar %) ----
+    # 待现网核验：整机内存使用率标量 1.3.6.1.4.1.5089.1.2.1.2.0（设备直接以 0-100% 上报）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5089.1.2.1.2.0"
+        name = "usage"
+    # ---- Clavister NGFW current connections (CLAVISTER-MIB, scalar) ----
+    # 待现网核验：当前活动连接数标量 1.3.6.1.4.1.5089.1.2.1.4.0。
+    # 度量名取 firewall_current_connections（measurement=firewall + field=current_connections），对齐防火墙盘连接 or-chain。
+    [[inputs.snmp.table]]
+        name = "firewall"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.5089.1.2.1.4.0"
+        name = "current_connections"
+# ---- 温度/风扇/电源：Clavister NGFW（多为软件/虚拟化部署）私有 MIB 未以无需行过滤的标量形式暴露环境传感器 → 温度/风扇/电源 N/A 不采。仅 CPU/内存/当前连接/接口干净可采。----

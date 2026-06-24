@@ -1,0 +1,108 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_bintec",
+  "plugin": "Router Bintec SNMP",
+  "plugin_desc": "Bintec 中小企业路由器/VPN 网关专用 SNMP 采集模板（BINTEC-MIB，企业号 272）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Bintec 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Bintec 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Bintec 路由器/VPN 网关（bintec-elmeg RS/RXL/be.IP 系列，企业号 272；与 Teldat 同源 MIB）。",
+  "status_query": "any({instance_type='router', collect_type='snmp_bintec'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilisation of the Bintec router (BINTEC-MIB, reported directly as a percentage)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_total",
+      "display_name": "内存总量",
+      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Total memory of the Bintec router in bytes (BINTEC-MIB total memory)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲",
+      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free memory of the Bintec router in bytes (BINTEC-MIB free memory)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "(sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) - sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) / sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the Bintec router, derived as (total-free)/total."
+    }
+  ]
+}

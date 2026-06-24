@@ -1,0 +1,134 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_enterasys",
+  "plugin": "Switch Enterasys SNMP",
+  "plugin_desc": "Enterasys（现 Extreme Networks 旗下）企业级交换机专用 SNMP 采集模板（ENTERASYS-MIB，企业号 5624）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Enterasys 私有 OID 的设备健康指标：CPU 使用率（etsysResourceCpuLoad，直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（etsysChassisPowerSupplyState，经 telegraf processors.enum 归一为 1=正常/2=异常）。适用品牌型号——Enterasys SecureStack / S-Series / Matrix 企业网管交换机（企业号 5624，legacy 设备现并入 Extreme）。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_enterasys'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilisation of the Enterasys switch (ENTERASYS-MIB etsysResourceCpuLoad, reported directly as a percentage)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_used",
+      "display_name": "内存已用",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Used memory of the Enterasys switch in bytes (ENTERASYS-MIB etsysResourceStorageUsed, KB*1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲",
+      "query": "sum(device_memory_free{instance_type='switch', __$labels__} * 1024) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free memory of the Enterasys switch in bytes (ENTERASYS-MIB etsysResourceStorageAvailable, KB*1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the Enterasys switch, derived as used/(used+free)."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "设备温度",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "Chassis temperature of the Enterasys switch in degrees Celsius (ENTERASYS-MIB chassis temperature sensor)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_psu_state",
+      "display_name": "电源状态",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "Power-supply state of the Enterasys switch (ENTERASYS-MIB etsysChassisPowerSupplyState), normalised to 1=normal / 2=abnormal."
+    }
+  ]
+}
