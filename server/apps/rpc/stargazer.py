@@ -38,7 +38,10 @@ class Stargazer(object):
         return return_data
 
     def dispatch_ip_discovery(self, subnet_ids: list, scan_method: str = "icmp", ports=None) -> None:
-        """fire-and-forget：向 Stargazer 下发 IP 探测任务，结果由 Stargazer 异步回推。
+        """fire-and-forget：向 Stargazer 按子网逐一下发 IP 探测任务，结果由 Stargazer 异步回推。
+
+        每个子网独立下发一条消息（而非合并），payload 携带 subnet_id，
+        Stargazer 回调时原样回传，使 receive_ip_discovery_result 能路由到正确的子网台账。
 
         Stargazer 收到消息后执行扫描，完成后将结果 publish 到 payload["callback_subject"]
         （即 "receive_ip_discovery_result"），由本端 NATS listener 接收并调用
@@ -47,15 +50,23 @@ class Stargazer(object):
         此处使用 publish（单向，不等待回复），而非 request（需 Stargazer 立即响应），
         因为 IP 扫描是异步长任务。
 
-        TODO(2.7): 确认 Stargazer ip_scan handler 已注册，subject 格式为
-        "<stargazer_namespace>.ip_scan"；若 namespace 因接入点不同而变化，
+        TODO(2.7): 若 namespace 因接入点不同而变化，
         需从 access_point["id"] 推导 instance_id（参考 CollectModels.access_point 结构）。
-        参考文件：agents/stargazer（暂无 ip_scan handler 实现）。
+        当前固定使用 self.instance_id（默认 "stargazer"）。
+        subject 格式："{namespace}.ip_scan"，与 agents/stargazer/service/nats_server.py
+        中 @register_handler("ip_scan") 注册的 subject 对应。
         """
         from apps.cmdb.services.ipam_discovery import build_scan_payload
         import nats_client as nc_module
 
-        payload = build_scan_payload(subnet_ids=subnet_ids, scan_method=scan_method, ports=ports)
         namespace = self.instance_id  # e.g. "stargazer"
-        # TODO(2.7): 确认 Stargazer 侧 ip_scan handler 名称（当前假设为 ip_scan）
-        asyncio.run(nc_module.publish(namespace, "ip_scan", **payload))
+        subject = f"{namespace}.ip_scan"
+
+        async def _dispatch_all():
+            for subnet_id in subnet_ids:
+                payload = build_scan_payload(subnet_id=subnet_id, scan_method=scan_method, ports=ports)
+                # TODO(2.7): 确认 nats_client.publish 的调用约定；
+                # 当前假设 nc_module.publish(subject, data) 签名与 nats_utils.nats_publish 一致。
+                await nc_module.publish(subject, payload)
+
+        asyncio.run(_dispatch_all())

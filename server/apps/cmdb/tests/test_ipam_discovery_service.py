@@ -1,4 +1,4 @@
-"""选子网发现：范围推导 + 下发 payload 组装 + 回调回写。规格 §13.1/§13.2/§13.4。"""
+"""选子网发现：范围推导 + 下发 payload 组装（单子网）+ 回调回写。规格 §13.1/§13.2/§13.4。"""
 import pytest
 from unittest.mock import patch
 from apps.cmdb.services.ipam_discovery import build_scan_payload
@@ -12,18 +12,27 @@ SUBNETS = {
 
 
 class TestBuildScanPayload:
-    def test_payload按子网推导目标并排除网关(self):
-        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=list(SUBNETS.values())):
-            payload = build_scan_payload(subnet_ids=[1, 2], scan_method="icmp", ports=None)
+    def test_payload单子网推导目标并排除网关(self):
+        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[1]]):
+            payload = build_scan_payload(subnet_id=1, scan_method="icmp", ports=None)
         assert payload["model_id"] == "ip"
         assert payload["scan_method"] == "icmp"
-        assert len(payload["targets"]) == 253 + 2
+        assert payload["subnet_id"] == 1
+        assert len(payload["targets"]) == 253  # /24 去掉网络/广播/网关
         assert "10.0.1.1" not in payload["targets"]
         assert "10.0.1.0" not in payload["targets"]
+        assert payload["callback_subject"] == "receive_ip_discovery_result"
+
+    def test_subnet_id存在于payload中(self):
+        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
+            payload = build_scan_payload(subnet_id=2, scan_method="icmp", ports=None)
+        assert "subnet_id" in payload
+        assert payload["subnet_id"] == 2
+        assert len(payload["targets"]) == 2  # /30 有2个主机地址
 
     def test_tcp默认端口(self):
         with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
-            payload = build_scan_payload(subnet_ids=[2], scan_method="tcp", ports=None)
+            payload = build_scan_payload(subnet_id=2, scan_method="tcp", ports=None)
         assert payload["ports"] == [22, 80, 443, 3389]
 
 

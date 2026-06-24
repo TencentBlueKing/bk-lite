@@ -28,12 +28,19 @@ def _load_subnets_by_ids(subnet_ids: list) -> list:
     return rows or []
 
 
-def build_scan_payload(subnet_ids: list, scan_method: str = "icmp", ports=None) -> dict:
+def build_scan_payload(subnet_id, scan_method: str = "icmp", ports=None) -> dict:
+    """为单个子网构造扫描 payload。
+
+    每个子网独立下发，payload 携带 subnet_id，Stargazer 回调时原样回传，
+    以便 receive_ip_discovery_result 能路由到正确的子网台账。
+    """
+    rows = _load_subnets_by_ids([subnet_id])
     targets = []
-    for sn in _load_subnets_by_ids(subnet_ids):
+    for sn in rows:
         targets.extend(_derive_targets(sn.get("subnet_address"), sn.get("subnet_mask"), sn.get("gateway")))
     return {
         "model_id": "ip",
+        "subnet_id": subnet_id,
         "scan_method": (scan_method or "icmp").lower(),
         "ports": list(ports) if ports else DEFAULT_PORTS,
         "targets": targets,
