@@ -33,19 +33,25 @@ class JobMgmt:
         return self.client.run("job_script_execute", data)
 
     def get_script(self, script_id):
-        """读取单个脚本模板（content/params/script_type/timeout）。"""
-        result = self.client.run(
-            "get_job_mgmt_module_data",
-            {"module": "script", "id": script_id},
-        ) or {}
-        items = result.get("items") or result.get("data") or []
-        for it in items:
-            if str(it.get("id")) == str(script_id):
-                return it
-        return None
+        """读取单个脚本模板完整详情（content/params/script_type/timeout）。
 
-    def list_scripts(self, params):
-        """脚本列表（供告警动作选择作业）。"""
-        data = {"module": "script"}
-        data.update(params or {})
-        return self.client.run("get_job_mgmt_module_data", data)
+        走 job_mgmt 的 job_script_detail 接口（get_job_mgmt_module_data 只返回 {id,name}，拿不到 content/params）。
+        """
+        resp = self.client.run("job_script_detail", {"id": script_id}) or {}
+        if not resp.get("result"):
+            return None
+        return resp.get("data")
+
+    def list_scripts(self, group_id, page=1, page_size=1000):
+        """脚本列表（供告警动作选择作业）。按团队(group_id)过滤，返回 {count, items:[{id,name}]}。
+
+        get_job_mgmt_module_data 需要 module/child_module/page/page_size/group_id 五个独立参数，必须按关键字传（参见 get_module_data）。
+        """
+        return self.client.run(
+            "get_job_mgmt_module_data",
+            module="script",
+            child_module=None,
+            page=page,
+            page_size=page_size,
+            group_id=group_id,
+        )

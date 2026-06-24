@@ -29,6 +29,17 @@ def test_job_script_list_proxy(mock_job, superuser_client):
 
 @pytest.mark.django_db
 @patch("apps.alerts.views.action.JobMgmt")
+def test_job_script_list_passes_current_team_as_group_id(mock_job, superuser_client):
+    """脚本列表按登陆者当前组织(current_team)过滤 —— 以 group_id 关键字下传。"""
+    mock_job.return_value.list_scripts.return_value = {"count": 0, "items": []}
+    superuser_client.cookies["current_team"] = "7"
+    resp = superuser_client.get("/api/v1/alerts/api/action_job/scripts/")
+    assert resp.status_code == 200
+    mock_job.return_value.list_scripts.assert_called_once_with(group_id=7)
+
+
+@pytest.mark.django_db
+@patch("apps.alerts.views.action.JobMgmt")
 def test_job_script_params_proxy(mock_job, superuser_client):
     mock_job.return_value.get_script.return_value = {"id": 42, "name": "重启nginx",
         "params": [{"name": "service", "default": ""}]}
