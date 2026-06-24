@@ -1,6 +1,7 @@
 # -- coding: utf-8 --
 """IP 发现采集 server 端：选子网范围推导、NATS 下发 payload、回调回写。规格 §13。"""
 import ipaddress
+from datetime import datetime
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 
@@ -152,6 +153,7 @@ def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", org
         "auto_collect": True,
         "mac": mac,
         "organization": organization or [],
+        "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     if existing_id:
         InstanceManage.instance_update(
@@ -186,6 +188,11 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
     - IP 冲突（同地址多记录）不在此处裁决，交由 P1 周期对账任务处理。
     - 最后回写子网利用率统计（与 P1 reconcile 共享同一 _writeback_subnet_utilization）。
     """
+    # DEFECT A fix: load subnet to extract organization so instance_create gets a
+    # real org value (ip model has is_required=True for organization).
+    subnet_rows = _load_subnets_by_ids([subnet_id])
+    organization = subnet_rows[0].get("organization", []) if subnet_rows else []
+
     existing = _load_subnet_ips(subnet_id)
     existing_by_addr = {i.get("ip_addr"): i for i in existing}
     alive_addrs = {a["ip"] for a in alive}
@@ -201,6 +208,7 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
             subnet_id=subnet_id,
             ip_addr=a["ip"],
             mac=a.get("mac", ""),
+            organization=organization,
         )
         if prev:
             updated += 1

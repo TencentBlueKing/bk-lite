@@ -1,6 +1,6 @@
 """选子网发现：范围推导 + 下发 payload 组装（单子网）+ 回调回写。规格 §13.1/§13.2/§13.4。"""
 import pytest
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 from apps.cmdb.services.ipam_discovery import build_scan_payload
 
 pytestmark = pytest.mark.unit
@@ -76,3 +76,63 @@ class TestApplyDiscoveryResult:
         assert ups == []          # 探到同地址但记录非自动创建 -> 不覆盖
         assert offs == []         # 也不会被置离线（offline 仅作用于 auto_collect is True）
         assert result["created"] == 0 and result["updated"] == 0
+
+
+# ---------------------------------------------------------------------------
+# DEFECT A — apply_discovery_result must forward organization from subnet
+# ---------------------------------------------------------------------------
+
+class TestApplyDiscoveryResultOrganization:
+    """DEFECT A: organization from subnet must be passed through to _upsert_alive_ip."""
+
+    def test_organization_forwarded_to_upsert(self, monkeypatch):
+        """apply_discovery_result should load the subnet, extract organization, and
+        pass it to every _upsert_alive_ip call (so instance_create never gets []
+        when the subnet defines a real org)."""
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(
+            ipam_discovery, "_load_subnets_by_ids",
+            lambda ids: [{"_id": 1, "organization": [7], "subnet_address": "10.0.1.0", "subnet_mask": "24"}],
+        )
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [])
+        captured = []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: captured.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        ipam_discovery.apply_discovery_result(1, [{"ip": "10.0.1.10", "mac": ""}])
+
+        assert len(captured) == 1
+        assert captured[0]["organization"] == [7]
+
+
+# ---------------------------------------------------------------------------
+# DEFECT B — _upsert_alive_ip must write collect_time
+# ---------------------------------------------------------------------------
+
+class TestUpsertAliveIpCollectTime:
+    """DEFECT B: _upsert_alive_ip payload must include collect_time."""
+
+    def test_collect_time_in_payload(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+        from apps.cmdb.services.instance import InstanceManage
+
+        captured_payloads = []
+
+        def fake_instance_create(model_id, payload, operator, **kw):
+            captured_payloads.append(payload)
+            return {"_id": 999}
+
+        monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(fake_instance_create))
+
+        ipam_discovery._upsert_alive_ip(
+            existing_id=None,
+            subnet_id=1,
+            ip_addr="10.0.1.5",
+            mac="",
+            organization=[1],
+        )
+
+        assert len(captured_payloads) == 1
+        assert "collect_time" in captured_payloads[0]
+        assert captured_payloads[0]["collect_time"]  # non-empty

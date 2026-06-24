@@ -1,5 +1,6 @@
 # -- coding: utf-8 --
 """IPAM 与 CMDB 自动对账。规格 §5。"""
+from datetime import datetime
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.utils.ipam_cidr import parse_subnet, ip_in_subnet
@@ -11,13 +12,22 @@ from apps.core.logger import cmdb_logger as logger
 # ---------------------------------------------------------------------------
 
 def match_subnet_for_ip(ip: str, subnets: list):
-    """返回唯一包含该 IP 的子网（子网两两不重叠，故至多一个）。无则 None。"""
+    """返回唯一包含该 IP 的子网（子网两两不重叠，故至多一个）。无则 None。
+
+    DEFECT D fix: malformed (non-empty but syntactically invalid) subnet records
+    no longer abort the whole reconcile — they are silently skipped so that the
+    remaining valid subnets are still checked.
+    """
+    from apps.core.exceptions.base_app_exception import BaseAppException
     for sn in subnets:
         addr, mask = sn.get("subnet_address"), sn.get("subnet_mask")
         if not addr or mask in (None, ""):
             continue
-        if ip_in_subnet(ip, parse_subnet(addr, mask)):
-            return sn
+        try:
+            if ip_in_subnet(ip, parse_subnet(addr, mask)):
+                return sn
+        except (BaseAppException, ValueError):
+            continue
     return None
 
 
@@ -74,6 +84,7 @@ def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_statu
         "ip_status": [ip_status],
         "auto_collect": auto_collect,
         "organization": organization or [],
+        "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
     if existing_id:
         InstanceManage.instance_update(
@@ -172,6 +183,9 @@ def run_reconciliation() -> dict:
 
     for (subnet_id, ip_addr), info in occupants.items():
         prev = existing_map.get((subnet_id, ip_addr))
+        # DEFECT C fix: always record the subnet as affected so utilization is
+        # recomputed even when the only matched IP is a manual-protected record.
+        affected_subnets.add(int(subnet_id))
         # 手工保护：只有对账自己创建的记录(auto_collect is True)才可写；
         # 其余(False/None/缺失，含手工经通用表单创建的)一律视为非自动记录，跳过不覆盖。
         if prev and prev.get("auto_collect") is not True:
@@ -189,7 +203,6 @@ def run_reconciliation() -> dict:
             occupants=info["ips"],
             organization=info["subnet"].get("organization"),
         )
-        affected_subnets.add(int(subnet_id))
         if prev:
             updated += 1
         else:

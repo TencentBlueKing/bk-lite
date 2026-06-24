@@ -65,8 +65,9 @@ class Stargazer(object):
         async def _dispatch_all():
             for subnet_id in subnet_ids:
                 payload = build_scan_payload(subnet_id=subnet_id, scan_method=scan_method, ports=ports)
-                # TODO(2.7): 确认 nats_client.publish 的调用约定；
-                # 当前假设 nc_module.publish(subject, data) 签名与 nats_utils.nats_publish 一致。
-                await nc_module.publish(subject, payload)
+                # publish_raw(subject, dict) sends a flat JSON to the exact subject
+                # without the namespace+method_name RPC wrapping used by publish().
+                # Resolved: use publish_raw (not publish) for fire-and-forget raw payloads.
+                await nc_module.publish_raw(subject, payload)
 
         asyncio.run(_dispatch_all())

@@ -101,6 +101,99 @@ class TestRunReconciliation:
         assert touched == []
 
 
+# ---------------------------------------------------------------------------
+# DEFECT B (reconcile side) — _upsert_ip_instance must write collect_time
+# ---------------------------------------------------------------------------
+
+class TestUpsertIpInstanceCollectTime:
+    """DEFECT B: _upsert_ip_instance payload must include collect_time."""
+
+    def test_collect_time_in_payload(self, monkeypatch):
+        from apps.cmdb.services import ipam_reconcile
+        from apps.cmdb.services.instance import InstanceManage
+
+        captured_payloads = []
+
+        def fake_instance_create(model_id, payload, operator, **kw):
+            captured_payloads.append(payload)
+            return {"_id": 888}
+
+        monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(fake_instance_create))
+        monkeypatch.setattr(ipam_reconcile, "_ensure_associations", lambda *a, **k: None)
+
+        ipam_reconcile._upsert_ip_instance(
+            existing_id=None,
+            subnet_id=1,
+            ip_addr="10.0.1.5",
+            ip_status="online",
+            auto_collect=True,
+            occupants=[],
+            organization=[1],
+        )
+
+        assert len(captured_payloads) == 1
+        assert "collect_time" in captured_payloads[0]
+        assert captured_payloads[0]["collect_time"]  # non-empty
+
+
+# ---------------------------------------------------------------------------
+# DEFECT C — run_reconciliation must add subnet to affected_subnets even for
+# manual-skipped IPs so utilization is always recomputed
+# ---------------------------------------------------------------------------
+
+class TestReconciliationManualSkipSubnetWriteback:
+    """DEFECT C: when a matched IP is manual-protected, the subnet must still
+    appear in the _writeback_subnet_utilization call."""
+
+    def test_manual_skip_subnet_still_written_back(self, monkeypatch):
+        from apps.cmdb.services import ipam_reconcile
+
+        monkeypatch.setattr(ipam_reconcile, "_load_sources",
+                            lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_subnets",
+                            lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
+                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        # existing IP is manual (auto_collect=False)
+        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips",
+                            lambda: [{"_id": 800, "ip_addr": "10.0.1.10", "subnet_id": "1", "auto_collect": False}])
+
+        touched = []
+        monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: touched.append(kw))
+
+        writeback_args = []
+        monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization",
+                            lambda subnet_ids: writeback_args.append(set(subnet_ids)))
+
+        result = ipam_reconcile.run_reconciliation()
+
+        # manual-skip counter correct
+        assert result["skipped_manual"] == 1
+        # _upsert_ip_instance must NOT be called
+        assert touched == []
+        # subnet 1 MUST appear in writeback (currently failing — the bug)
+        assert len(writeback_args) == 1
+        assert 1 in writeback_args[0]
+
+
+# ---------------------------------------------------------------------------
+# DEFECT D — match_subnet_for_ip must not raise on malformed subnet records
+# ---------------------------------------------------------------------------
+
+class TestMatchSubnetMalformedRecord:
+    """DEFECT D: a bad subnet_address/mask should be skipped; matching continues."""
+
+    def test_bad_subnet_skipped_good_subnet_returned(self):
+        subnets = [
+            {"subnet_address": "not-an-ip", "subnet_mask": "24"},
+            {"_id": 2, "subnet_address": "10.0.1.0", "subnet_mask": "24"},
+        ]
+        from apps.cmdb.services.ipam_reconcile import match_subnet_for_ip
+        result = match_subnet_for_ip("10.0.1.5", subnets)
+        assert result is not None
+        assert result["_id"] == 2
+
+
 class TestEnsureAssociations:
     def test_使用已注册的关联与正确方向(self, monkeypatch):
         """组成边方向必须是 subnet--group-->ip（已注册 subnet_group_ip）；
