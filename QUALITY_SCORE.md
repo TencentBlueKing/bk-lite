@@ -23,6 +23,8 @@
 
 ## 3. 代码质量红线(硬性)
 
+> 后端高频陷阱(鉴权/查询/事务/输入/序列化)的「正确姿势」见 [docs/backend-coding-guide.md](docs/backend-coding-guide.md)。
+
 - [ ] TypeScript:接口用 `interface`,**禁用 `any`**,不可信输入用 `unknown`
 - [ ] Python:black + isort + flake8 全过,行宽 ≤150
 - [ ] **无空 `except`**

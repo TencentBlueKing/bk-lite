@@ -8,6 +8,7 @@
 | 我要… | 去 |
 |-------|----|
 | 完整命令 / 工作流 / Runbook | [docs/operations.md](docs/operations.md) |
+| 后端编码规范 / 高频陷阱 | [docs/backend-coding-guide.md](docs/backend-coding-guide.md) |
 | 系统结构 / 模块边界 | [ARCHITECTURE.md](ARCHITECTURE.md) |
 | 「为什么这样设计」 / 工程信条 | [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md) |
 | 历史设计决策 / 学习项 | [docs/design-docs/learnings.md](docs/design-docs/learnings.md) |
