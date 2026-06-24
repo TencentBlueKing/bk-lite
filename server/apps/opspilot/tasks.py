@@ -833,17 +833,32 @@ def wiki_rebuild_kb_task(kb_id, llm_model_id=None, operator=""):
 
 @shared_task
 def wiki_refresh_web_materials_task():
-    """网页资料定时刷新:重新抓取所有 web 资料并重新摄取,内容变化的触发安全更新。
+    """网页资料定时刷新:按各站点自己的同步策略(Material.sync_policy)重新抓取并摄取,内容变化触发安全更新。
 
-    供 Celery beat 周期调度。返回 {checked, updated} 统计。
+    同步策略已从知识库级别迁到「资料」级别(按站点单独配置)。本任务只处理 sync_policy.enabled 为真、
+    且距上次刷新已超过 interval_hours 的 web 资料(未配置 interval_hours 则每次调度都刷新)。
+    供 Celery beat 周期调度。返回 {checked, updated, skipped} 统计。
     """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
     from apps.opspilot.models import Material
     from apps.opspilot.services.wiki.material_service import ingest_material
     from apps.opspilot.services.wiki.update_service import propose_update
 
+    now = timezone.now()
     web_materials = Material.objects.filter(material_type="web")
-    checked = updated = 0
+    checked = updated = skipped = 0
     for material in web_materials:
+        policy = material.sync_policy or {}
+        if not policy.get("enabled"):
+            skipped += 1
+            continue
+        interval = policy.get("interval_hours")
+        if interval and material.updated_at and material.updated_at > now - timedelta(hours=int(interval)):
+            skipped += 1
+            continue
         checked += 1
         prev_hash = material.content_hash
         material = ingest_material(material, llm_model_id=material.knowledge_base.llm_model_id)
@@ -853,5 +868,5 @@ def wiki_refresh_web_materials_task():
                 propose_update(material, llm_model_id=material.knowledge_base.llm_model_id, operator="web_refresh")
             except Exception:
                 logger.exception("wiki 网页刷新触发更新失败 material=%s", material.id)
-    logger.info("wiki 网页资料刷新完成: checked=%s updated=%s", checked, updated)
-    return {"checked": checked, "updated": updated}
+    logger.info("wiki 网页资料刷新完成: checked=%s updated=%s skipped=%s", checked, updated, skipped)
+    return {"checked": checked, "updated": updated, "skipped": skipped}

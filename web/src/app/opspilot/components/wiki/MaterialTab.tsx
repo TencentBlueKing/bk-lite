@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Descriptions, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Upload, message } from 'antd';
+import { Button, Descriptions, Drawer, Form, Input, InputNumber, List, Modal, Popconfirm, Select, Space, Switch, Tag, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { LoadingOutlined, UploadOutlined } from '@ant-design/icons';
@@ -79,7 +79,13 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         }
         await createMaterialFile(kbId, values.name, f);
       } else {
-        await createMaterial({ ...values, knowledge_base: kbId });
+        // 网页资料:按站点单独配置同步策略(替代原知识库级别的统一规则)
+        const { sync_enabled, sync_interval_hours, ...rest } = values;
+        const payload: Partial<Material> = { ...rest, knowledge_base: kbId };
+        if (values.material_type === 'web') {
+          payload.sync_policy = { enabled: !!sync_enabled, interval_hours: sync_interval_hours ?? 24 };
+        }
+        await createMaterial(payload);
       }
       message.success(t('wiki.saveSuccess'));
       setOpen(false);
@@ -216,9 +222,24 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             </Form.Item>
           )}
           {type === 'web' && (
-            <Form.Item label="URL" name="url" rules={[{ required: true }]}>
-              <Input placeholder="https://..." />
-            </Form.Item>
+            <>
+              <Form.Item label="URL" name="url" rules={[{ required: true }]}>
+                <Input placeholder="https://..." />
+              </Form.Item>
+              {/* 网页同步按站点单独配置 */}
+              <Form.Item
+                label={t('wiki.webSyncEnabled')}
+                name="sync_enabled"
+                valuePropName="checked"
+                initialValue={true}
+                tooltip={t('wiki.webSyncTip')}
+              >
+                <Switch />
+              </Form.Item>
+              <Form.Item label={t('wiki.webSyncInterval')} name="sync_interval_hours" initialValue={24}>
+                <InputNumber min={1} max={720} addonAfter={t('wiki.hours')} />
+              </Form.Item>
+            </>
           )}
           {type === 'file' && (
             <Form.Item label={t('wiki.materialFile')} required>
@@ -256,6 +277,13 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           <>
             <Descriptions column={1} bordered size="small" className="mb-4">
               <Descriptions.Item label={t('wiki.materialType')}>{detail.material.material_type}</Descriptions.Item>
+              {detail.material.material_type === 'web' && (
+                <Descriptions.Item label={t('wiki.webSyncEnabled')}>
+                  {detail.material.sync_policy?.enabled
+                    ? `${t('wiki.webSyncInterval')} ${detail.material.sync_policy?.interval_hours ?? 24} ${t('wiki.hours')}`
+                    : '--'}
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label={t('wiki.original')}>
                 {detail.file_url ? (
                   <a href={detail.file_url} target="_blank" rel="noreferrer">

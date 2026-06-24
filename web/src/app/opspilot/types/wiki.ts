@@ -32,6 +32,7 @@ export interface Material {
   material_type: MaterialType;
   url?: string;
   text_content?: string;
+  sync_policy?: { enabled?: boolean; interval_hours?: number };
   content_hash?: string;
   ai_summary?: string;
   status?: string;

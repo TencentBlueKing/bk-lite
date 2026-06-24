@@ -43,6 +43,8 @@ class Material(MaintainerInfo, TimeInfo):
         blank=True,
     )
     url = models.URLField(blank=True, default="")
+    # 网页资料的定时刷新策略(按站点单独配置):{"enabled": bool, "interval_hours": int}
+    sync_policy = models.JSONField(default=dict)
     text_content = models.TextField(blank=True, default="")
     content_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     ai_summary = models.TextField(blank=True, default="")

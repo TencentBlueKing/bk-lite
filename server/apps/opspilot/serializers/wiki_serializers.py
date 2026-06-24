@@ -48,6 +48,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "material_type",
             "file",
             "url",
+            "sync_policy",
             "text_content",
             "content_hash",
             "ai_summary",
