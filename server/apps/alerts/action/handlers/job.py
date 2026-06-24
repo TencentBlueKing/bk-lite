@@ -22,7 +22,11 @@ class JobActionHandler(ActionHandler):
 
             payload = build_match_payload(alert)
             binding = cfg.get("target_binding", {})
-            host_value = resolve_field(payload, binding.get("host_field", "labels.ip"))
+            # 目标主机字段默认从告警 labels 里取：前端只写裸字段名(默认 ip_addr)，
+            # 这里补上 labels. 前缀；若已写成带点的完整路径(如 enrichment.x)则按原样解析。
+            host_field = (binding.get("host_field") or "ip_addr").strip()
+            lookup_key = host_field if "." in host_field else f"labels.{host_field}"
+            host_value = resolve_field(payload, lookup_key)
             target = resolve_node_target(host_value, rule.team)
 
             params = resolve_params(payload, cfg.get("param_bindings", []), script.get("params", []))

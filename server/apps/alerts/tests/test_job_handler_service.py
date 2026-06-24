@@ -31,6 +31,25 @@ SCRIPT = {"id": 42, "name": "重启nginx", "script_type": "shell", "content": "e
 
 @patch("apps.alerts.action.handlers.job.JobMgmt")
 @patch("apps.alerts.action.handlers.job.resolve_node_target")
+def test_bare_host_field_resolved_under_labels(mock_target, mock_job):
+    """目标主机字段写裸字段名(ip_addr) → 后端默认从 labels.ip_addr 取值。"""
+    mock_target.return_value = {"node_id": "n1", "name": "h", "ip": "10.0.0.9",
+                                "os": "linux", "cloud_region_id": 1}
+    mock_job.return_value.get_script.return_value = SCRIPT
+    mock_job.return_value.job_script_execute.return_value = {"result": True, "data": {"task_id": 1}}
+    rule = _rule()
+    rule.action_config["target_binding"]["host_field"] = "ip_addr"
+    alert = _alert()
+    alert.labels = {"ip_addr": "10.0.0.9"}
+
+    JobActionHandler().execute(rule, alert, MagicMock())
+
+    # resolve_node_target 第一个位置参 = 解析出的主机值
+    assert mock_target.call_args[0][0] == "10.0.0.9"
+
+
+@patch("apps.alerts.action.handlers.job.JobMgmt")
+@patch("apps.alerts.action.handlers.job.resolve_node_target")
 def test_execute_success_builds_node_mgmt_payload(mock_target, mock_job):
     mock_target.return_value = {"node_id": "n1", "name": "h", "ip": "10.0.0.5",
                                 "os": "linux", "cloud_region_id": 1}

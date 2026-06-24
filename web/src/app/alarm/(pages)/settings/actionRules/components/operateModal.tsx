@@ -132,7 +132,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
             : DEFAULT_MATCH_RULES,
         action_type: currentRow.action_type || 'job',
         script_id: config.script_id,
-        host_field: config.target_binding?.host_field || 'labels.ip',
+        host_field: config.target_binding?.host_field || 'ip_addr',
         param_bindings: config.param_bindings || [],
       });
 
@@ -147,7 +147,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       form.setFieldsValue({
         is_active: true,
         action_type: 'job',
-        host_field: 'labels.ip',
+        host_field: 'ip_addr',
         param_bindings: [],
         match_rules: DEFAULT_MATCH_RULES,
         trigger_events: [],
@@ -172,7 +172,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setSubmitLoading(true);
     try {
       const scriptId = values.script_id as number | undefined;
-      const hostField = (values.host_field as string) || 'labels.ip';
+      const hostField = (values.host_field as string) || 'ip_addr';
       const paramBindings = (values.param_bindings as ActionConfig['param_bindings']) || [];
 
       const actionConfig: ActionConfig = {
@@ -271,14 +271,6 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <GroupTreeSelect multiple placeholder={t('common.selectTip')} />
         </Form.Item>
 
-        <Form.Item
-          name="is_active"
-          label={t('settings.assignStartStop')}
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-
         {/* ② 触发时机 */}
         <SectionTitle title={t('settings.actionTriggerEvent')} />
 
@@ -329,6 +321,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <MatchRule levelType="alert" />
         </Form.Item>
 
+        <Form.Item
+          name="is_active"
+          label={t('settings.assignStartStop')}
+          valuePropName="checked"
+        >
+          <Switch />
+        </Form.Item>
+
         {/* ④ 动作配置 */}
         <SectionTitle title={t('settings.actionType')} />
 
@@ -353,6 +353,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </Form.Item>
 
         <Form.Item
+          name="host_field"
+          label={t('settings.actionTargetHostField')}
+          rules={[{ required: true, message: t('common.inputTip') }]}
+        >
+          <Input placeholder="ip_addr" />
+        </Form.Item>
+
+        <Form.Item
           name="script_id"
           label={t('settings.actionSelectJob')}
           rules={[{ required: true, message: t('common.selectTip') }]}
@@ -367,24 +375,19 @@ const OperateModal: React.FC<OperateModalProps> = ({
             onChange={handleScriptChange}
           />
         </Form.Item>
-
-        <Form.Item
-          name="host_field"
-          label={t('settings.actionTargetHostField')}
-          rules={[{ required: true, message: t('common.inputTip') }]}
-        >
-          <Input placeholder="labels.ip" />
-        </Form.Item>
-
-        <Form.Item
-          name="param_bindings"
-          label={t('settings.actionFieldBinding')}
-          style={{ marginBottom: 0 }}
-        >
-          <FieldBindingTable scriptParams={scriptParams} />
-        </Form.Item>
         {scriptDetailLoading && (
           <div className="text-sm text-gray-400 mt-1 ml-4">{t('common.loading') || 'Loading...'}</div>
+        )}
+
+        {/* 仅当所选作业有脚本参数时才展示字段绑定 */}
+        {scriptParams.length > 0 && (
+          <Form.Item
+            name="param_bindings"
+            label={t('settings.actionFieldBinding')}
+            style={{ marginBottom: 0 }}
+          >
+            <FieldBindingTable scriptParams={scriptParams} />
+          </Form.Item>
         )}
       </Form>
     </Drawer>
