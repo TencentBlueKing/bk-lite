@@ -27,6 +27,8 @@ const CHECK_TYPE_KEY: Record<string, string> = {
   cannot_merge: 'wiki.checkCannotMerge',
   schema_violation: 'wiki.checkSchemaViolation',
   missing: 'wiki.checkMissing',
+  material_update: 'wiki.checkMaterialUpdate',
+  source_invalid: 'wiki.checkSourceInvalid',
 };
 
 const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {

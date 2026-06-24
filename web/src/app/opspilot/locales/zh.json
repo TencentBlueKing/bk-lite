@@ -95,6 +95,8 @@
     "checkCannotMerge": "无法安全合并",
     "checkSchemaViolation": "不符合 Schema",
     "checkMissing": "重要知识缺失",
+    "checkMaterialUpdate": "资料更新待确认",
+    "checkSourceInvalid": "来源已失效",
     "page": "知识页面",
     "buildRecord": "构建记录",
     "check": "检查审核",

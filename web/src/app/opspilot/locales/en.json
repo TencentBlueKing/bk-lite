@@ -95,6 +95,8 @@
     "checkCannotMerge": "Unsafe Merge",
     "checkSchemaViolation": "Schema Violation",
     "checkMissing": "Missing Knowledge",
+    "checkMaterialUpdate": "Material Update",
+    "checkSourceInvalid": "Source Invalid",
     "page": "Pages",
     "buildRecord": "Build Records",
     "check": "Checks",
