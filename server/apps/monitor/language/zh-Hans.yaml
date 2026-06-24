@@ -687,10 +687,10 @@ monitor_object_metric:
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -705,7 +705,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -944,10 +944,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -962,7 +962,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2179,10 +2179,10 @@ monitor_object_metric:
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -2197,7 +2197,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2315,10 +2315,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -2333,7 +2333,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -3922,7 +3922,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Switch Flow sFlow:
     name: 交换机流量分析（sFlow）
-    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   WebLogic-JMX:
     name: WebLogic（JMX）
     desc: 通过WebLogic-JMX采集器定期收集WebLogic关键指标，包括线程池、连接池、内存、EJB、Servlet、JMS 性能及 Web 服务响应时间等。
@@ -3962,7 +3962,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Loadbalance Flow sFlow:
     name: 负载均衡流量分析（sFlow）
-    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -4027,7 +4027,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Firewall Flow sFlow:
     name: 防火墙流量分析（sFlow）
-    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   SNMP Trap:
     desc: SNMP Trap监控插件用于接收和处理网络设备主动推送的报警或状态通知（Trap消息），以实现实时监控和故障告警。
     name: SNMP Trap
@@ -4063,7 +4063,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Router Flow sFlow:
     name: 路由器流量分析（sFlow）
-    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: 该 ActiveMQ 插件基于 JMX 采集，可获取消息队列、连接池、消息吞吐量等关键性能指标，实时监控消息处理效率与资源使用情况，助力优化系统性能，保障服务稳定。
