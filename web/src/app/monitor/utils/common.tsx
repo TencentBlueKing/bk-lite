@@ -596,7 +596,17 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /hirschmann|belden|\brs[234]0\b|greyhound/i, label: 'Hirschmann', icon: 'mm-hirschmann_hirschmann' },
   { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' },
   { match: /adtran|netvanta|adtran.?aos/i, label: 'Adtran', icon: 'mm-adtran_adtran' },
-  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' }
+  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' },
+  { match: /\bdcn\b|digital.?china/i, label: 'DCN', icon: 'mm-dcn_dcn' },
+  { match: /\bfs\b|fs\.com/i, label: 'FS', icon: 'mm-fs_fs' },
+  { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
+  { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
+  { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
+  { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
+  { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
+  { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
+  { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
+  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

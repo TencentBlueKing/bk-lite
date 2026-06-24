@@ -3954,6 +3954,9 @@ monitor_object_plugin:
   Loadbalance FortiADC SNMP:
     name: FortiADC（Telegraf）
     desc: Fortinet FortiADC 应用交付控制器/负载均衡器专用 SNMP 采集模板（FORTINET-FORTIADC-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiADC 私有 OID 的设备健康与负载指标：系统 CPU 使用率（fadcSysCpuUsage）、内存使用率（fadcSysMemUsage，均直接以百分比上报），以及当前并发客户端连接数（fadcConcurrentClientConnections）。FortiADC MIB 未暴露温度/风扇/电源，故为 N/A。适用品牌型号——Fortinet FortiADC 硬件与虚拟设备（FortiADC D/E/F 系列，企业号 12356）。
+  Loadbalance Kemp LoadMaster SNMP:
+    name: Kemp LoadMaster（Telegraf）
+    desc: Kemp LoadMaster 应用交付控制器/负载均衡器专用 SNMP 采集模板（B-100-MIB / ONE4NET，企业号 12196）。除标准 IF-MIB 接口指标外，额外采集 Kemp 私有 OID 的设备健康与负载指标：整机 CPU 使用率（cpuTotal）、系统内存使用率（memUsedPercent，均直接以百分比上报），以及 LoadMaster 当前活动连接总数（connectionTotal）。LoadMaster MIB 未以无需行过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Kemp LoadMaster ADC（硬件 LM-X、虚拟 VLM 及云版本，企业号 12196）。
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon（Telegraf）
     desc: Radware Alteon 应用交换机/负载均衡器专用 SNMP 采集模板（ALTEON-CHEETAH-SWITCH-MIB，企业号 1872）。除标准 IF-MIB 接口指标外，额外采集 Alteon 私有 OID 的设备健康指标：管理处理器 CPU 使用率（mpCpuStatsUtil1Second，直接以百分比上报）与主内存（mpMemStatsTotal/mpMemStatsFree，字节，用量按 (总量-空闲)/总量 推导）。CHEETAH MIB 未暴露标量连接/会话数与温度/风扇/电源，故为 N/A。适用品牌型号——运行 AlteonOS 的 Radware Alteon ADC/应用交换机（Alteon 4408/5208/6420/8420/9800 及 VA 虚拟设备，企业号 1872）。
