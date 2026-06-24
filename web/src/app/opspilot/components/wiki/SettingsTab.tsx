@@ -27,7 +27,7 @@ const HELP_KEY: Record<SectionKey, string> = {
   danger: 'wiki.helpDangerDesc',
 };
 
-// 设置工作区(spec 4.6):左侧导航 | 中部表单 | 右侧预览/说明,三栏铺满宽度
+// 设置工作区(spec 4.6):左侧导航 | 中部表单 | 右侧预览/说明,三栏铺满宽度且左栏竖线撑满面板高度
 const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -43,6 +43,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   const nameW = Form.useWatch('name', form);
   const modelW = Form.useWatch('llm_model', form);
+  const introW = Form.useWatch('introduction', form);
   const modelName = llmModels.find((m) => m.id === modelW)?.name;
 
   const sections: { key: SectionKey; label: string; icon: React.ReactNode; danger?: boolean }[] = [
@@ -123,20 +124,27 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const show = (key: SectionKey) => ({ display: active === key ? 'block' : 'none' });
-  const title = (text: string) => <div className="text-[15px] font-medium mb-4">{text}</div>;
+  // 分区标题:图标 + 标题 + 下边框分隔(扁平分层,符合 DESIGN「Flat By Default」)
+  const head = (icon: React.ReactNode, text: string) => (
+    <div className="flex items-center gap-2 pb-3 mb-5 border-b border-[var(--color-border)]">
+      <span className="flex items-center text-[var(--color-text-2)]">{icon}</span>
+      <span className="text-[15px] font-semibold text-[var(--color-text-1)]">{text}</span>
+    </div>
+  );
 
   return (
     <Spin spinning={loading}>
-      <div className="grid grid-cols-[160px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_400px] gap-6">
-        {/* 左侧导航 */}
-        <div className="border-r border-[var(--color-border)] pr-2">
+      <div className="grid grid-cols-[160px_minmax(0,1fr)] xl:grid-cols-[188px_minmax(0,1fr)_400px] gap-6 min-h-[calc(100vh-280px)]">
+        {/* 左侧导航(竖线撑满面板高度) */}
+        <nav className="border-r border-[var(--color-border)] pr-3">
           {sections.map((s) => {
             const on = active === s.key;
             return (
-              <div
+              <button
                 key={s.key}
+                type="button"
                 onClick={() => setActive(s.key)}
-                className={`flex items-center gap-2 px-3 py-2 mb-1 rounded-md cursor-pointer text-sm transition-colors ${
+                className={`w-full flex items-center gap-2.5 px-3 py-2 mb-1 rounded-md text-sm text-left transition-colors ${
                   on
                     ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)] font-medium'
                     : s.danger
@@ -144,19 +152,19 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                       : 'text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)]'
                 }`}
               >
-                {s.icon}
+                <span className="flex items-center">{s.icon}</span>
                 {s.label}
-              </div>
+              </button>
             );
           })}
-        </div>
+        </nav>
 
         {/* 中部表单 */}
         <div className="min-w-0">
           <Form form={form} layout="vertical">
             {/* 基本信息 */}
             <div style={show('basic')}>
-              {title(t('wiki.settingsBasic'))}
+              {head(<InfoCircleOutlined />, t('wiki.settingsBasic'))}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
                 <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
                   <Input />
@@ -188,7 +196,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
             {/* 用途与结构 */}
             <div style={show('purpose')}>
-              {title(t('wiki.settingsPurposeSchema'))}
+              {head(<AimOutlined />, t('wiki.settingsPurposeSchema'))}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
                 <Form.Item label={t('wiki.purpose')} name="purpose_md">
                   <Input.TextArea rows={12} />
@@ -201,7 +209,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
             {/* 生成设置 */}
             <div style={show('generation')}>
-              {title(t('wiki.settingsGeneration'))}
+              {head(<BulbOutlined />, t('wiki.settingsGeneration'))}
               <Form.Item label={t('wiki.generationLanguage')} name="generation_language" className="max-w-xs">
                 <Select
                   options={[
@@ -222,7 +230,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
             {/* 网页同步 */}
             <div style={show('websync')}>
-              {title(t('wiki.settingsWebSync'))}
+              {head(<GlobalOutlined />, t('wiki.settingsWebSync'))}
               <Form.Item
                 label={t('wiki.webSyncEnabled')}
                 name="web_sync_enabled"
@@ -238,7 +246,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
             {/* 风险与审核 */}
             <div style={show('risk')}>
-              {title(t('wiki.settingsRisk'))}
+              {head(<SafetyCertificateOutlined />, t('wiki.settingsRisk'))}
               <Form.Item
                 label={t('wiki.riskAutoApply')}
                 name="risk_auto_apply"
@@ -259,14 +267,16 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           </Form>
 
           {active !== 'danger' && (
-            <Button type="primary" loading={saving} onClick={handleSave}>
-              {t('common.save')}
-            </Button>
+            <div className="pt-5 mt-6 border-t border-[var(--color-border)]">
+              <Button type="primary" loading={saving} onClick={handleSave}>
+                {t('common.save')}
+              </Button>
+            </div>
           )}
 
           {/* 危险操作 */}
           <div style={show('danger')} className="max-w-2xl">
-            {title(t('wiki.dangerZone'))}
+            {head(<WarningOutlined />, t('wiki.dangerZone'))}
             <Space direction="vertical" className="w-full" size="middle">
               <div className="flex items-center justify-between">
                 <span className="text-[var(--color-text-3)] text-sm">{t('wiki.rebuildAllTip')}</span>
@@ -313,6 +323,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                     {kbStatus === 'archived' ? t('wiki.statusArchived') : t('wiki.statusActive')}
                   </Tag>
                 </div>
+                {introW ? (
+                  <div className="mt-3 text-[13px] leading-6 text-[var(--color-text-3)] line-clamp-3">{introW}</div>
+                ) : null}
                 <Divider className="my-3" />
                 <div className="flex justify-between text-sm">
                   <span className="text-[var(--color-text-3)]">{t('wiki.llmModel')}</span>
@@ -322,7 +335,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             )}
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
               <div className="flex items-center gap-2 text-sm font-medium mb-2 text-[var(--color-text-1)]">
-                {activeSection.icon}
+                <span className="flex items-center text-[var(--color-text-2)]">{activeSection.icon}</span>
                 {t('wiki.settingsHelpTitle')}
               </div>
               <p className="text-[13px] leading-6 text-[var(--color-text-3)] m-0">{t(HELP_KEY[active])}</p>
