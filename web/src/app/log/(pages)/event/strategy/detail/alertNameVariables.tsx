@@ -82,6 +82,7 @@ const AlertNameVariables: React.FC<AlertNameVariablesProps> = ({
         </span>
       </div>
       <CustomTable
+        autoScrollX={false}
         columns={columns}
         dataSource={variables}
         pagination={false}

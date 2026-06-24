@@ -22,6 +22,7 @@ interface CustomTableProps<T>
   };
   onSelectFields?: (fields: string[]) => void;
   rowDraggable?: boolean;
+  autoScrollX?: boolean;
   onRowDragStart?: (index: number) => void;
   onRowDragEnd?: (
     targetTableData: TableProps<T>['dataSource'],
@@ -51,6 +52,7 @@ const CustomTable = <T extends object>({
   onRowDragStart,
   onRowDragEnd,
   rowSelection,
+  autoScrollX = true,
   ...TableProps
 }: CustomTableProps<T>) => {
   const { t } = useTranslation();
@@ -336,6 +338,10 @@ const CustomTable = <T extends object>({
       cell: ResizableTitle,
     },
   };
+  const mergedScroll = {
+    ...(autoScrollX ? { x: getScrollX() } : {}),
+    ...(tableHeight ? { ...scroll, y: tableHeight } : scroll),
+  };
 
   return (
     <div
@@ -348,7 +354,7 @@ const CustomTable = <T extends object>({
       <Table
         size={size}
         bordered={bordered}
-        scroll={{ x: getScrollX(), ...(tableHeight ? { ...scroll, y: tableHeight } : scroll) }}
+        scroll={Object.keys(mergedScroll).length ? mergedScroll : undefined}
         loading={loading}
         pagination={false}
         rowClassName={(record, index) =>
