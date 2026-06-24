@@ -156,7 +156,7 @@ scan_policy_task
 scan_policy_task
   -> MonitorPolicyScan.run()
     -> AlertDetector.detect_threshold_alerts()
-      -> MetricQueryService.query_aggregation_metrics(policy.period)
+      -> MetricQueryService.query_aggregation_metrics(policy.period, trigger_count=policy.trigger_count)
       -> convert_metric_values(...)
       -> calculate_alerts(..., n=policy.trigger_count)
     -> AlertDetector.count_events()
@@ -184,15 +184,19 @@ if len(values) < n:
 - 若只返回单点，需要扩展查询范围为 `period * trigger_count` 或等价时间窗口。
 - 扩展查询范围时，单个汇聚点仍使用原 `period` 语义，不能把 N 个周期合成一个大周期。
 
-推荐规则：
+实现规则：
 
 ```text
-查询时间范围 = period * trigger_count
+查询结束时间 = 本轮 scan_time，也就是 policy.last_run_time
+查询开始时间 = scan_time - period * trigger_count
+查询时间范围 = [查询开始时间, 查询结束时间]
 汇聚步长/汇聚周期 = period
-取最近 trigger_count 个汇聚结果点
+触发判断输入 = 最近 trigger_count 个汇聚结果点
 ```
 
-这样 `trigger_count=2` 时，系统可以拿到最近两个汇聚周期各自的计算结果，再判断两个点是否连续满足阈值。
+`schedule` 只决定策略任务多久运行一次，不参与本次连续点查询范围计算。
+
+这样在 `period=5min`、`schedule=5min`、`trigger_count=2`、`scan_time=10:10` 时，查询范围为 `10:00 ~ 10:10`，汇聚粒度为 5 分钟，系统可以拿到最近两个 5 分钟汇聚周期各自的结果，再判断两个点是否连续满足阈值。
 
 ## 活跃告警行为
 
