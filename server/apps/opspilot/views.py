@@ -894,9 +894,15 @@ def submit_choice(request):
         .first()
     )
     if not task_result:
-        return JsonResponse(
-            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
-            status=404,
+        if node_id != "skill_test":
+            return JsonResponse(
+                {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+                status=404,
+            )
+        logger.warning(
+            "Local skill test choice submitted without workflow task result: execution_id=%s, choice_id=%s",
+            execution_id,
+            choice_id,
         )
 
     from apps.opspilot.utils.user_choice import submit_user_choice

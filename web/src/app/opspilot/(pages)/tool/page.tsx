@@ -1,6 +1,6 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Input, Empty, Upload, Space } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Input, Empty, Upload, Space, Skeleton } from 'antd';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
@@ -38,6 +38,7 @@ const ToolListPage: React.FC = () => {
   const [enableAuth, setEnableAuth] = useState<boolean>(false);
   const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('builtin');
   const [skillAssets, setSkillAssets] = useState<SkillPackage[]>([]);
+  const [skillAssetsLoading, setSkillAssetsLoading] = useState<boolean>(false);
   const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
   const [hoveredSkillAssetKey, setHoveredSkillAssetKey] = useState<string | null>(null);
   const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
@@ -240,12 +241,15 @@ const ToolListPage: React.FC = () => {
   }, []);
 
   const fetchSkillPackageData = async () => {
+    setSkillAssetsLoading(true);
     try {
       const data = await fetchSkillPackages({ is_enabled: 1 });
       setSkillAssets(data.items || []);
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
       message.error('技能包加载失败');
+    } finally {
+      setSkillAssetsLoading(false);
     }
   };
 
@@ -422,18 +426,20 @@ const ToolListPage: React.FC = () => {
     setSelectedToolForDetail(tool);
   };
 
-  const filteredSkillAssets = skillAssets.filter((asset) => {
-    const keyword = skillSearchKeyword.trim().toLowerCase();
-    const matchesKeyword = !keyword || [
-      asset.name,
-      asset.package_id,
-      asset.category || '',
-      asset.description || '',
-      (asset.required_tools || []).join(' '),
-      (asset.triggers || []).join(' '),
-    ].some((value) => value.toLowerCase().includes(keyword));
-    return matchesKeyword;
-  });
+  const filteredSkillAssets = skillAssets
+    .filter((asset) => {
+      const keyword = skillSearchKeyword.trim().toLowerCase();
+      const matchesKeyword = !keyword || [
+        asset.name,
+        asset.package_id,
+        asset.category || '',
+        asset.description || '',
+        (asset.required_tools || []).join(' '),
+        (asset.triggers || []).join(' '),
+      ].some((value) => value.toLowerCase().includes(keyword));
+      return matchesKeyword;
+    })
+    .sort((left, right) => Number(right.source_type === 'builtin') - Number(left.source_type === 'builtin'));
 
   const handleImportSkillOk = async () => {
     const file = (skillPackageFileList[0]?.originFileObj || skillPackageFileList[0]) as File | undefined;
@@ -499,13 +505,38 @@ const ToolListPage: React.FC = () => {
     </div>
   );
 
+  const renderSkillAssetSkeleton = () => (
+    <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
+      {Array.from({ length: 6 }).map((_, index) => (
+        <div
+          key={index}
+          className="flex h-[168px] flex-col rounded-xl border border-[var(--color-border)] bg-[var(--color-bg)] p-4 shadow-md"
+        >
+          <div className="flex items-center gap-3">
+            <Skeleton.Avatar active size={48} shape="square" />
+            <div className="min-w-0 flex-1">
+              <Skeleton.Input active size="small" className="!w-40" />
+              <div className="mt-2">
+                <Skeleton.Input active size="small" className="!w-24" />
+              </div>
+            </div>
+          </div>
+          <div className="mt-4">
+            <Skeleton active title={false} paragraph={{ rows: 3, width: ['100%', '92%', '70%'] }} />
+          </div>
+        </div>
+      ))}
+    </div>
+  );
+
   const renderSkillAssetView = () => (
     <div className="w-full" aria-label="技能资产">
       {renderSkillAssetToolbar()}
-      {filteredSkillAssets.length ? (
+      {skillAssetsLoading ? renderSkillAssetSkeleton() : filteredSkillAssets.length ? (
         <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
           {filteredSkillAssets.map((asset) => {
             const skillAssetKey = `${asset.package_id}:${asset.version}`;
+            const canDeleteSkillAsset = asset.source_type !== 'builtin';
 
             return (
               <div
@@ -522,7 +553,7 @@ const ToolListPage: React.FC = () => {
                     <h3 className="truncate text-sm font-semibold text-[var(--color-text-1)]">{asset.name}</h3>
                     <div className="mt-1 truncate text-xs text-[var(--color-text-3)]">{asset.category}</div>
                   </div>
-                  {hoveredSkillAssetKey === skillAssetKey && (
+                  {canDeleteSkillAsset && hoveredSkillAssetKey === skillAssetKey && (
                     <Tooltip title="删除">
                       <Button
                         type="text"
