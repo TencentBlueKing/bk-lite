@@ -8,11 +8,9 @@ import datetime
 import pytest
 from django.utils import timezone
 
-from apps.alerts import nats as nats_pkg
-from apps.alerts.nats import nats as N
-from apps.alerts.constants.constants import AlertStatus
+from apps.alerts.constants.constants import AlertStatus, LevelType
 from apps.alerts.models.models import Alert, Level
-
+from apps.alerts.nats import nats as N
 
 # --------------------------------------------------------------------------
 # 纯辅助函数
@@ -172,6 +170,156 @@ def test_get_alert_statistics_permission_error():
 
 
 @pytest.mark.django_db
+def test_get_alert_today_status_summary_counts_created_closed_and_processing(user_info):
+    now = timezone.now()
+    old_alert = Alert.objects.create(
+        alert_id="OLD",
+        level="0",
+        title="old",
+        content="c",
+        fingerprint="old-fp",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    today_closed = Alert.objects.create(
+        alert_id="TODAY-CLOSED",
+        level="0",
+        title="closed",
+        content="c",
+        fingerprint="closed-fp",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+    today_processing = Alert.objects.create(
+        alert_id="TODAY-PROCESSING",
+        level="0",
+        title="processing",
+        content="c",
+        fingerprint="processing-fp",
+        team=[1],
+        status=AlertStatus.PROCESSING,
+    )
+    other_team = Alert.objects.create(
+        alert_id="OTHER",
+        level="0",
+        title="other",
+        content="c",
+        fingerprint="other-fp",
+        team=[2],
+        status=AlertStatus.PROCESSING,
+    )
+    Alert.objects.filter(pk=old_alert.pk).update(
+        created_at=now - datetime.timedelta(days=2),
+        updated_at=now - datetime.timedelta(days=2),
+    )
+    Alert.objects.filter(pk=today_closed.pk).update(created_at=now, updated_at=now)
+    Alert.objects.filter(pk=today_processing.pk).update(created_at=now, updated_at=now)
+    Alert.objects.filter(pk=other_team.pk).update(created_at=now, updated_at=now)
+
+    result = N.get_alert_today_status_summary(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == {
+        "today_created_count": 2,
+        "today_closed_count": 1,
+        "processing_count": 1,
+    }
+
+
+@pytest.mark.django_db
+def test_get_alert_status_distribution_returns_active_status_labels(user_info):
+    Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp1",
+        team=[1],
+        status=AlertStatus.UNASSIGNED,
+    )
+    Alert.objects.create(
+        alert_id="A2",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp2",
+        team=[1],
+        status=AlertStatus.PENDING,
+    )
+    Alert.objects.create(
+        alert_id="A3",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp3",
+        team=[1],
+        status=AlertStatus.PROCESSING,
+    )
+    Alert.objects.create(
+        alert_id="A4",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp4",
+        team=[1],
+        status=AlertStatus.CLOSED,
+    )
+
+    result = N.get_alert_status_distribution(user_info=user_info)
+
+    assert result["result"] is True
+    assert result["data"] == [
+        {"name": "未分派", "value": 1},
+        {"name": "待响应", "value": 1},
+        {"name": "处理中", "value": 1},
+    ]
+
+
+@pytest.mark.django_db
+def test_get_alert_level_trend_returns_multiseries_by_level(user_info):
+    Level.objects.create(
+        level_id=0,
+        level_name="fatal",
+        level_display_name="致命",
+        level_type=LevelType.ALERT,
+    )
+    Level.objects.create(
+        level_id=1,
+        level_name="warning",
+        level_display_name="预警",
+        level_type=LevelType.ALERT,
+    )
+    now = timezone.now()
+    fatal_alert = Alert.objects.create(
+        alert_id="A1",
+        level="0",
+        title="t",
+        content="c",
+        fingerprint="fp1",
+        team=[1],
+    )
+    warning_alert = Alert.objects.create(
+        alert_id="A2",
+        level="1",
+        title="t",
+        content="c",
+        fingerprint="fp2",
+        team=[1],
+    )
+    Alert.objects.filter(pk=fatal_alert.pk).update(created_at=now)
+    Alert.objects.filter(pk=warning_alert.pk).update(created_at=now)
+    start = (now - datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+    end = (now + datetime.timedelta(days=1)).strftime("%Y-%m-%d %H:%M:%S")
+
+    result = N.get_alert_level_trend(user_info=user_info, time=[start, end], group_by="day")
+
+    assert result["result"] is True
+    assert set(result["data"]) == {"致命", "预警"}
+    assert sum(point[1] for point in result["data"]["致命"]) == 1
+    assert sum(point[1] for point in result["data"]["预警"]) == 1
+
+
+@pytest.mark.django_db
 def test_get_alert_level_distribution(user_info):
     Level.objects.create(level_id=0, level_name="Critical", level_display_name="严重", level_type="alert")
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
@@ -253,7 +401,7 @@ def test_get_alert_source_event_top(user_info):
     alert.events.add(event)
     result = N.get_alert_source_event_top(user_info=user_info, limit=5)
     assert result["result"] is True
-    assert result["data"][0][0] == "Zabbix"
+    assert result["data"][0] == {"source_name": "Zabbix", "count": 1}
 
 
 @pytest.mark.django_db
@@ -352,8 +500,12 @@ def test_receive_alert_events_success():
     for lid in (0, 1, 2, 3):
         Level.objects.create(level_id=lid, level_name=f"L{lid}", level_display_name=f"等级{lid}", level_type=LevelType.EVENT)
     AlertSource.objects.create(
-        name="nats源", source_id="nats", source_type="nats", secret="x",
-        is_active=True, is_effective=True,
+        name="nats源",
+        source_id="nats",
+        source_type="nats",
+        secret="x",
+        is_active=True,
+        is_effective=True,
         config={"event_fields_mapping": {"title": "title", "level": "level", "item": "item", "start_time": "start_time"}},
     )
     events = [{"title": "事件A", "level": "0", "item": "cpu", "start_time": "1700000000"}]

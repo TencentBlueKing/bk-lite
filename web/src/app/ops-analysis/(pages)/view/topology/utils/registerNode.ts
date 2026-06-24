@@ -2,6 +2,12 @@ import ChartNode from '../components/chartNode';
 import { Graph, Node } from '@antv/x6';
 import { register } from '@antv/x6-react-shape';
 import { NODE_DEFAULTS, PORT_DEFAULTS } from '../constants/nodeDefaults';
+import {
+  buildTechFramePath,
+  getNodeGlowAttrs,
+  resolveConfiguredNodeSize,
+  toRgbaColor,
+} from './nodeRenderEffects';
 import { createPortConfig } from './topologyUtils';
 import { iconList } from '@/app/cmdb/utils/common';
 import type {
@@ -19,63 +25,6 @@ const NODE_TYPE_MAP = {
 } as const;
 
 const DEFAULT_ICON_PATH = '/assets/icons/cc-default_默认.svg';
-const DEFAULT_GLOW_COLOR = 'rgba(56, 189, 248, 0.52)';
-
-const toRgbaColor = (
-  color: string | undefined,
-  alpha: number,
-  fallback = DEFAULT_GLOW_COLOR,
-): string => {
-  if (!color) return fallback;
-
-  const normalized = color.trim();
-  if (
-    !normalized ||
-    normalized === 'transparent' ||
-    normalized === 'none' ||
-    normalized === 'rgba(0,0,0,0)'
-  ) {
-    return fallback;
-  }
-
-  const rgbMatch = normalized.match(/^rgba?\(([^)]+)\)$/i);
-  if (rgbMatch) {
-    const [r, g, b] = rgbMatch[1]
-      .split(',')
-      .slice(0, 3)
-      .map((part) => Number(part.trim()));
-    if ([r, g, b].every((value) => Number.isFinite(value))) {
-      return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-    }
-  }
-
-  const hexMatch = normalized.match(/^#([0-9a-f]{3}|[0-9a-f]{6})$/i);
-  if (hexMatch) {
-    const hex = hexMatch[1].length === 3
-      ? hexMatch[1].split('').map((char) => `${char}${char}`).join('')
-      : hexMatch[1];
-    const r = parseInt(hex.slice(0, 2), 16);
-    const g = parseInt(hex.slice(2, 4), 16);
-    const b = parseInt(hex.slice(4, 6), 16);
-    return `rgba(${r}, ${g}, ${b}, ${alpha})`;
-  }
-
-  return fallback;
-};
-
-const getNodeGlowAttrs = (
-  borderColor: string | undefined,
-  strokeWidth = 1,
-): Record<string, any> => {
-  const outerGlow = toRgbaColor(borderColor, 0.52);
-  const softGlow = toRgbaColor(borderColor, 0.28);
-
-  return {
-    stroke: borderColor || DEFAULT_GLOW_COLOR,
-    strokeWidth: Math.max(Number(strokeWidth) || 0, 1),
-    filter: `drop-shadow(0 0 10px ${outerGlow}) drop-shadow(0 0 22px ${softGlow})`,
-  };
-};
 
 const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): Record<string, any> => {
   const { BASIC_SHAPE_NODE } = NODE_DEFAULTS;
@@ -84,6 +33,11 @@ const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): R
   const borderWidth = nodeConfig.styleConfig?.borderWidth;
   const lineType = nodeConfig.styleConfig?.lineType;
   const renderEffect = nodeConfig.styleConfig?.renderEffect;
+  const frameVariant = nodeConfig.styleConfig?.frameVariant;
+  const width = nodeConfig.styleConfig?.width || BASIC_SHAPE_NODE.width;
+  const height = nodeConfig.styleConfig?.height || BASIC_SHAPE_NODE.height;
+  const effectiveBorderColor = borderColor || BASIC_SHAPE_NODE.borderColor;
+  const effectiveBorderWidth = Math.max(Number(borderWidth) || 1, 1);
 
   const isTransparent = !backgroundColor ||
     backgroundColor === 'transparent' ||
@@ -94,24 +48,52 @@ const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): R
   const baseAttrs: any = {
     body: {
       fill: isTransparent ? BASIC_SHAPE_NODE.backgroundColor : backgroundColor,
-      stroke: borderColor || BASIC_SHAPE_NODE.borderColor,
+      stroke: effectiveBorderColor,
       strokeWidth: borderWidth || 0,
       rx: 16,
       ry: 16,
       opacity: 1
-    }
+    },
+    frame: { display: 'none' },
+    innerFrame: { display: 'none' },
   };
 
   if (renderEffect === 'glow') {
     Object.assign(
       baseAttrs.body,
-      getNodeGlowAttrs(borderColor || BASIC_SHAPE_NODE.borderColor, borderWidth || 1),
+      getNodeGlowAttrs(effectiveBorderColor, effectiveBorderWidth),
     );
   } else if (['glass', undefined].includes(renderEffect)) {
     baseAttrs.body.filter = 'drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.25))';
-    baseAttrs.body.stroke = toRgbaColor(borderColor || BASIC_SHAPE_NODE.borderColor, 0.8);
+    baseAttrs.body.stroke = toRgbaColor(effectiveBorderColor, 0.8);
   } else {
     baseAttrs.body.filter = '';
+  }
+
+  if (frameVariant === 'tech') {
+    baseAttrs.body.stroke = 'transparent';
+    baseAttrs.body.strokeWidth = 0;
+    baseAttrs.body.rx = 10;
+    baseAttrs.body.ry = 10;
+    baseAttrs.frame = {
+      display: 'block',
+      d: buildTechFramePath(width, height, { cornerSize: 24 }),
+      fill: 'none',
+      stroke: effectiveBorderColor,
+      strokeWidth: effectiveBorderWidth,
+      filter: renderEffect === 'glow'
+        ? getNodeGlowAttrs(effectiveBorderColor, effectiveBorderWidth).filter
+        : baseAttrs.body.filter,
+      pointerEvents: 'none',
+    };
+    baseAttrs.innerFrame = {
+      display: 'block',
+      d: buildTechFramePath(width, height, { inset: 9, cornerSize: 18 }),
+      fill: 'none',
+      stroke: toRgbaColor(effectiveBorderColor, 0.34),
+      strokeWidth: Math.max(effectiveBorderWidth - 1, 1),
+      pointerEvents: 'none',
+    };
   }
 
   if (lineType === 'dashed') {
@@ -316,7 +298,9 @@ const registerBasicShapeNode = () => {
     width: BASIC_SHAPE_NODE.width,
     height: BASIC_SHAPE_NODE.height,
     markup: [
-      { tagName: 'rect', selector: 'body' }
+      { tagName: 'rect', selector: 'body' },
+      { tagName: 'path', selector: 'frame' },
+      { tagName: 'path', selector: 'innerFrame' },
     ],
     attrs: {
       body: {
@@ -326,7 +310,9 @@ const registerBasicShapeNode = () => {
         rx: BASIC_SHAPE_NODE.borderRadius,
         ry: BASIC_SHAPE_NODE.borderRadius,
         opacity: 1
-      }
+      },
+      frame: { display: 'none' },
+      innerFrame: { display: 'none' },
     }
   }, true);
 };
@@ -471,9 +457,18 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
   const hasDataSource = !!(valueConfig.dataSource && (valueConfig.selectedFields?.length ?? 0) > 0);
   const hasName = !!(nodeConfig.name && nodeConfig.name.trim());
   const initialText = hasDataSource ? 'loading' : '--';
+  const { width, height } = resolveConfiguredNodeSize(
+    nodeConfig.styleConfig,
+    {
+      width: NODE_DEFAULTS.SINGLE_VALUE_NODE.width,
+      height: NODE_DEFAULTS.SINGLE_VALUE_NODE.height,
+    },
+  );
 
   return {
     ...baseNodeData,
+    width,
+    height,
     data: {
       ...baseNodeData.data,
       valueConfig: valueConfig,
@@ -501,7 +496,7 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
         display: hasName ? 'block' : 'none'
       }
     },
-    ports: createPortConfig()
+    ports: createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height })
   };
 };
 
@@ -674,6 +669,13 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
 
 const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
   const hasName = !!(nodeConfig.name && nodeConfig.name.trim());
+  const { width, height } = resolveConfiguredNodeSize(
+    nodeConfig.styleConfig,
+    {
+      width: NODE_DEFAULTS.SINGLE_VALUE_NODE.width,
+      height: NODE_DEFAULTS.SINGLE_VALUE_NODE.height,
+    },
+  );
 
   const nodeData = node.getData();
   const isLoading = nodeData?.isLoading;
@@ -715,6 +717,12 @@ const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeDat
   }
 
   node.setAttrs(attrs);
+
+  const { width: currentWidth, height: currentHeight } = node.getSize();
+  if (currentWidth !== width || currentHeight !== height) {
+    node.resize(width, height);
+    node.prop('ports', createPortConfig(PORT_DEFAULTS.FILL_COLOR, { width, height }));
+  }
 };
 
 const updateTextNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {

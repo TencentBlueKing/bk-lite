@@ -98,6 +98,7 @@ export interface TopologyNodeData {
     borderWidth?: number;
     renderEffect?: 'normal' | 'glass' | 'glow';
     iconPadding?: number;
+    frameVariant?: 'plain' | 'tech';
     lineType?: 'solid' | 'dashed' | 'dotted';
     shapeType?: 'rectangle' | 'circle';
     textColor?: string;
@@ -368,6 +369,7 @@ export interface NodeConfigFormValues {
   fontWeight?: string;
   iconPadding?: number;
   renderEffect?: 'normal' | 'glass' | 'glow';
+  frameVariant?: 'plain' | 'tech';
   lineType?: 'solid' | 'dashed' | 'dotted';
   shapeType?: 'rectangle' | 'circle';
   nameColor?: string;

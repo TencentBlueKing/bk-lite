@@ -47,7 +47,7 @@ const isChromePresentationRole = (
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
     'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'renderEffect', 'nameColor', 'nameFontSize', 'thresholdColors'],
-    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect'],
+    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect', 'frameVariant'],
     icon: ['width', 'height', 'backgroundColor', 'borderColor', 'renderEffect', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
     text: ['width', 'height', 'fontSize', 'fontWeight', 'textColor', 'backgroundColor', 'borderColor'],
     chart: ['width', 'height'],

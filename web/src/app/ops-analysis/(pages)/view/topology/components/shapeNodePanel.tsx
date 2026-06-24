@@ -92,6 +92,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
       defaultValues.lineType = basicShapeDefaults.lineType;
       defaultValues.shapeType = basicShapeDefaults.shapeType;
       defaultValues.renderEffect = 'glass';
+      defaultValues.frameVariant = 'plain';
     }
 
     if (nodeType === 'icon') {
@@ -143,6 +144,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
         borderColor: styleConfig.borderColor,
         borderWidth: styleConfig.borderWidth,
         renderEffect: styleConfig.renderEffect || defaultRenderEffect,
+        frameVariant: styleConfig.frameVariant || 'plain',
         iconPadding: styleConfig.iconPadding,
         lineType: styleConfig.lineType,
         shapeType: styleConfig.shapeType,
@@ -518,6 +520,20 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
                 placeholder={t('common.inputMsg')}
                 style={{ width: '120px' }}
               />
+            </Form.Item>
+
+            <Form.Item
+              label={t('topology.nodeConfig.frameVariant')}
+              name="frameVariant"
+            >
+              <Radio.Group disabled={readonly}>
+                <Radio value="plain">
+                  {t('topology.nodeConfig.frameVariantPlain')}
+                </Radio>
+                <Radio value="tech">
+                  {t('topology.nodeConfig.frameVariantTech')}
+                </Radio>
+              </Radio.Group>
             </Form.Item>
 
             <Form.Item label={t('topology.lineType')} name="lineType">

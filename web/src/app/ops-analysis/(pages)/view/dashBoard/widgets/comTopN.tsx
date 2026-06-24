@@ -45,6 +45,7 @@ const unwrapTopNData = (data: any): any[] => {
 export const resolveTopNHeaderLabel = (
   fieldKey?: string,
   fieldSchema?: ResponseFieldDefinition[],
+  options?: { preferTitleOnly?: boolean },
 ) => {
   const key = String(fieldKey || '').trim();
   if (!key) return '';
@@ -52,7 +53,9 @@ export const resolveTopNHeaderLabel = (
   const field = (fieldSchema || []).find((item) => item.key === key);
   const title = String(field?.title || '').trim();
 
-  return title ? `${key}（${title}）` : key;
+  if (!title) return options?.preferTitleOnly ? '' : key;
+
+  return options?.preferTitleOnly ? title : `${key}（${title}）`;
 };
 
 const TopN: React.FC<TopNProps> = ({
@@ -74,10 +77,12 @@ const TopN: React.FC<TopNProps> = ({
   const labelHeader = resolveTopNHeaderLabel(
     labelField,
     dataSource?.field_schema,
+    { preferTitleOnly: usesScreenChartTheme },
   );
   const valueHeader = resolveTopNHeaderLabel(
     valueField,
     dataSource?.field_schema,
+    { preferTitleOnly: usesScreenChartTheme },
   );
 
   const transformData = (data: any): TopNItem[] => {
