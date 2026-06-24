@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Divider, Form, Input, InputNumber, Popconfirm, Select, Space, Spin, Switch, message } from 'antd';
+import { Button, Divider, Form, Input, InputNumber, Popconfirm, Select, Space, Spin, Switch, Tag, message } from 'antd';
 import {
   AimOutlined,
   BulbOutlined,
@@ -18,7 +18,16 @@ import { LlmModel } from '@/app/opspilot/types/skill';
 
 type SectionKey = 'basic' | 'purpose' | 'generation' | 'websync' | 'risk' | 'danger';
 
-// 设置工作区(spec 4.6),左侧导航 + 右侧内容布局
+const HELP_KEY: Record<SectionKey, string> = {
+  basic: 'wiki.helpBasicDesc',
+  purpose: 'wiki.helpPurposeDesc',
+  generation: 'wiki.helpGenerationDesc',
+  websync: 'wiki.helpWebSyncDesc',
+  risk: 'wiki.helpRiskDesc',
+  danger: 'wiki.helpDangerDesc',
+};
+
+// 设置工作区(spec 4.6):左侧导航 | 中部表单 | 右侧预览/说明,三栏铺满宽度
 const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const router = useRouter();
@@ -30,6 +39,11 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<SectionKey>('basic');
+  const [kbStatus, setKbStatus] = useState<string>('active');
+
+  const nameW = Form.useWatch('name', form);
+  const modelW = Form.useWatch('llm_model', form);
+  const modelName = llmModels.find((m) => m.id === modelW)?.name;
 
   const sections: { key: SectionKey; label: string; icon: React.ReactNode; danger?: boolean }[] = [
     { key: 'basic', label: t('wiki.settingsBasic'), icon: <InfoCircleOutlined /> },
@@ -39,12 +53,14 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     { key: 'risk', label: t('wiki.settingsRisk'), icon: <SafetyCertificateOutlined /> },
     { key: 'danger', label: t('wiki.dangerZone'), icon: <WarningOutlined />, danger: true },
   ];
+  const activeSection = sections.find((s) => s.key === active)!;
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
       const [kb, models] = await Promise.all([fetchKnowledgeBase(kbId), fetchLlmModels().catch(() => [])]);
       setLlmModels(models || []);
+      setKbStatus(kb.status || 'active');
       const ws = (kb.web_sync_policy || {}) as Record<string, unknown>;
       const rr = (kb.risk_rules || {}) as Record<string, unknown>;
       const gr = (kb.generation_rules || {}) as Record<string, unknown>;
@@ -111,9 +127,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   return (
     <Spin spinning={loading}>
-      <div className="flex gap-6">
+      <div className="grid grid-cols-[160px_minmax(0,1fr)] xl:grid-cols-[180px_minmax(0,1fr)_400px] gap-6">
         {/* 左侧导航 */}
-        <div className="w-44 flex-shrink-0 border-r border-[var(--color-border)] pr-2">
+        <div className="border-r border-[var(--color-border)] pr-2">
           {sections.map((s) => {
             const on = active === s.key;
             return (
@@ -135,13 +151,13 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           })}
         </div>
 
-        {/* 右侧内容 */}
-        <div className="flex-1 min-w-0">
-          <Form form={form} layout="vertical" className="max-w-4xl">
+        {/* 中部表单 */}
+        <div className="min-w-0">
+          <Form form={form} layout="vertical">
             {/* 基本信息 */}
             <div style={show('basic')}>
               {title(t('wiki.settingsBasic'))}
-              <div className="grid grid-cols-2 gap-x-6">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
                 <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
                   <Input />
                 </Form.Item>
@@ -156,10 +172,15 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                     options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
                   />
                 </Form.Item>
-                <Form.Item className="col-span-2" label={t('wiki.introduction')} name="introduction">
-                  <Input.TextArea rows={2} />
+                <Form.Item className="md:col-span-2" label={t('wiki.introduction')} name="introduction">
+                  <Input.TextArea rows={3} />
                 </Form.Item>
-                <Form.Item className="col-span-2" label={t('common.organization')} name="team" rules={[{ required: true }]}>
+                <Form.Item
+                  className="md:col-span-2"
+                  label={t('common.organization')}
+                  name="team"
+                  rules={[{ required: true }]}
+                >
                   <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
                 </Form.Item>
               </div>
@@ -168,12 +189,14 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             {/* 用途与结构 */}
             <div style={show('purpose')}>
               {title(t('wiki.settingsPurposeSchema'))}
-              <Form.Item label={t('wiki.purpose')} name="purpose_md">
-                <Input.TextArea rows={6} />
-              </Form.Item>
-              <Form.Item label={t('wiki.schema')} name="schema_md">
-                <Input.TextArea rows={6} />
-              </Form.Item>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
+                <Form.Item label={t('wiki.purpose')} name="purpose_md">
+                  <Input.TextArea rows={12} />
+                </Form.Item>
+                <Form.Item label={t('wiki.schema')} name="schema_md">
+                  <Input.TextArea rows={12} />
+                </Form.Item>
+              </div>
             </div>
 
             {/* 生成设置 */}
@@ -187,15 +210,25 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                   ]}
                 />
               </Form.Item>
-              <Form.Item label={t('wiki.generationRules')} name="generation_rules_notes" tooltip={t('wiki.generationRulesTip')}>
-                <Input.TextArea rows={4} placeholder={t('wiki.generationRulesPlaceholder')} />
+              <Form.Item
+                label={t('wiki.generationRules')}
+                name="generation_rules_notes"
+                tooltip={t('wiki.generationRulesTip')}
+                className="max-w-3xl"
+              >
+                <Input.TextArea rows={5} placeholder={t('wiki.generationRulesPlaceholder')} />
               </Form.Item>
             </div>
 
             {/* 网页同步 */}
             <div style={show('websync')}>
               {title(t('wiki.settingsWebSync'))}
-              <Form.Item label={t('wiki.webSyncEnabled')} name="web_sync_enabled" valuePropName="checked" tooltip={t('wiki.webSyncTip')}>
+              <Form.Item
+                label={t('wiki.webSyncEnabled')}
+                name="web_sync_enabled"
+                valuePropName="checked"
+                tooltip={t('wiki.webSyncTip')}
+              >
                 <Switch />
               </Form.Item>
               <Form.Item label={t('wiki.webSyncInterval')} name="web_sync_interval_hours">
@@ -206,10 +239,20 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             {/* 风险与审核 */}
             <div style={show('risk')}>
               {title(t('wiki.settingsRisk'))}
-              <Form.Item label={t('wiki.riskAutoApply')} name="risk_auto_apply" valuePropName="checked" tooltip={t('wiki.riskAutoApplyTip')}>
+              <Form.Item
+                label={t('wiki.riskAutoApply')}
+                name="risk_auto_apply"
+                valuePropName="checked"
+                tooltip={t('wiki.riskAutoApplyTip')}
+              >
                 <Switch />
               </Form.Item>
-              <Form.Item label={t('wiki.riskRequireReview')} name="risk_require_review" valuePropName="checked" tooltip={t('wiki.riskRequireReviewTip')}>
+              <Form.Item
+                label={t('wiki.riskRequireReview')}
+                name="risk_require_review"
+                valuePropName="checked"
+                tooltip={t('wiki.riskRequireReviewTip')}
+              >
                 <Switch />
               </Form.Item>
             </div>
@@ -234,7 +277,10 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               <Divider className="my-1" />
               <div className="flex items-center justify-between">
                 <span className="text-[var(--color-text-3)] text-sm">{t('wiki.archiveTip')}</span>
-                <Popconfirm title={t('wiki.archiveConfirm')} onConfirm={() => runDanger(() => updateKnowledgeBase(kbId, { status: 'archived' }))}>
+                <Popconfirm
+                  title={t('wiki.archiveConfirm')}
+                  onConfirm={() => runDanger(() => updateKnowledgeBase(kbId, { status: 'archived' }), () => setKbStatus('archived'))}
+                >
                   <Button loading={busy}>{t('wiki.archive')}</Button>
                 </Popconfirm>
               </div>
@@ -254,6 +300,38 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             </Space>
           </div>
         </div>
+
+        {/* 右侧:预览 + 说明(xl 起显示,填满右侧) */}
+        <aside className="hidden xl:block">
+          <div className="sticky top-2 space-y-4">
+            {active === 'basic' && (
+              <div className="rounded-lg border border-[var(--color-border)] p-4">
+                <div className="text-xs text-[var(--color-text-3)] mb-3">{t('wiki.settingsPreviewTitle')}</div>
+                <div className="text-base font-medium text-[var(--color-text-1)] truncate">{nameW || '—'}</div>
+                <div className="mt-1.5">
+                  <Tag color={kbStatus === 'archived' ? 'default' : 'green'} className="!mr-0">
+                    {kbStatus === 'archived' ? t('wiki.statusArchived') : t('wiki.statusActive')}
+                  </Tag>
+                </div>
+                <Divider className="my-3" />
+                <div className="flex justify-between text-sm">
+                  <span className="text-[var(--color-text-3)]">{t('wiki.llmModel')}</span>
+                  <span className="text-[var(--color-text-1)] truncate ml-3 text-right">{modelName || '—'}</span>
+                </div>
+              </div>
+            )}
+            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
+              <div className="flex items-center gap-2 text-sm font-medium mb-2 text-[var(--color-text-1)]">
+                {activeSection.icon}
+                {t('wiki.settingsHelpTitle')}
+              </div>
+              <p className="text-[13px] leading-6 text-[var(--color-text-3)] m-0">{t(HELP_KEY[active])}</p>
+              {active === 'purpose' && (
+                <p className="text-[13px] leading-6 text-[var(--color-text-3)] mt-2 mb-0">{t('wiki.helpPurposeTip')}</p>
+              )}
+            </div>
+          </div>
+        </aside>
       </div>
     </Spin>
   );

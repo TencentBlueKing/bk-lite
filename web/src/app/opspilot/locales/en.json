@@ -128,6 +128,17 @@
     "ask": "Ask",
     "answer": "Answer",
     "citations": "Citations",
+    "settingsHelpTitle": "About",
+    "settingsPreviewTitle": "Preview",
+    "statusActive": "Active",
+    "statusArchived": "Archived",
+    "helpBasicDesc": "The KB's name, reasoning model and owning organization. The model summarizes materials and builds knowledge pages.",
+    "helpPurposeDesc": "Purpose describes target readers and scenarios; Schema defines knowledge types and the page skeleton, guiding how AI organizes knowledge.",
+    "helpPurposeTip": "Write the purpose first, then agree on the schema; changing the schema affects later builds.",
+    "helpGenerationDesc": "Controls the language and extra rules for AI page generation; rules are injected into every generation as a prompt.",
+    "helpWebSyncDesc": "Schedule refresh for web materials to keep snapshots current; too short an interval may trigger rate limiting on the target site.",
+    "helpRiskDesc": "Constrains auto-apply and human review for risky changes; with review on, AI update suggestions must be confirmed in Check & Review.",
+    "helpDangerDesc": "The actions below are irreversible or wide-reaching. Proceed with caution.",
     "empty": "No knowledge bases yet"
   },
   "studio": {

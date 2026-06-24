@@ -128,6 +128,17 @@
     "ask": "提问",
     "answer": "回答",
     "citations": "引用",
+    "settingsHelpTitle": "说明",
+    "settingsPreviewTitle": "预览",
+    "statusActive": "启用中",
+    "statusArchived": "已归档",
+    "helpBasicDesc": "知识库的名称、推理模型与归属组织。推理模型用于生成资料摘要与构建知识页面。",
+    "helpPurposeDesc": "用途说明知识库的目标读者与使用场景;结构定义知识类型与页面骨架,指导 AI 如何组织知识。",
+    "helpPurposeTip": "建议先写用途、再约定结构;调整结构会影响后续构建。",
+    "helpGenerationDesc": "控制 AI 生成知识页面的语言与额外规则,规则会作为提示注入到每次生成。",
+    "helpWebSyncDesc": "为网页类资料配置定时刷新以保持快照最新;间隔过短可能触发目标站点限流。",
+    "helpRiskDesc": "约束高风险变更的自动应用与人工审核策略;开启人工审核后,AI 的更新建议需在「检查审核」中确认。",
+    "helpDangerDesc": "以下操作不可逆或影响范围较大,请谨慎执行。",
     "empty": "暂无知识库"
   },
   "studio": {
