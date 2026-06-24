@@ -211,6 +211,46 @@ def test_get_alert_trend_data_requires_time(user_info):
 
 
 @pytest.mark.django_db
+def test_get_alert_trend_data_minute_span_over_limit_rejected(user_info):
+    """minute 粒度时间跨度超过 7 天上限时，应返回 result=False（拒绝生成超大时间序列）。
+    若移除 get_alert_trend_data 中的跨度校验代码，本测试将失败。
+    """
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01 00:00:00", "2026-01-09 00:00:00"],  # 8 天，超过 minute 粒度 7 天上限
+        group_by="minute",
+    )
+    assert result["result"] is False, "超出 minute 粒度上限的请求必须被拒绝，防止 OOM"
+    assert "minute" in result["message"]
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_minute_span_within_limit_ok(user_info):
+    """minute 粒度时间跨度在 7 天以内，应正常返回数据。"""
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01 00:00:00", "2026-01-06 00:00:00"],  # 5 天，在上限内
+        group_by="minute",
+    )
+    assert result["result"] is True
+    assert "告警数" in result["data"]
+
+
+@pytest.mark.django_db
+def test_get_alert_trend_data_hour_span_over_limit_rejected(user_info):
+    """hour 粒度时间跨度超过 90 天上限时，应返回 result=False。
+    若移除跨度校验代码，本测试将失败。
+    """
+    result = N.get_alert_trend_data(
+        user_info=user_info,
+        time=["2026-01-01 00:00:00", "2026-04-15 00:00:00"],  # ~104 天，超过 hour 粒度 90 天上限
+        group_by="hour",
+    )
+    assert result["result"] is False, "超出 hour 粒度上限的请求必须被拒绝，防止 OOM"
+    assert "hour" in result["message"]
+
+
+@pytest.mark.django_db
 def test_get_alert_trend_data_returns_series(user_info):
     Alert.objects.create(alert_id="A1", level="0", title="t", content="c", fingerprint="fp", team=[1])
     result = N.get_alert_trend_data(

@@ -7,6 +7,7 @@
 """
 
 import datetime
+import os
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
@@ -24,6 +25,22 @@ from apps.core.logger import alert_logger as logger
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
+
+# 各粒度允许的最大时间跨度（秒）；可通过环境变量调整（保守默认值）
+_MAX_SPAN_SECONDS = {
+    "minute": int(os.getenv("ALERT_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),   # 7 天 → 10,080 点
+    "hour":   int(os.getenv("ALERT_TREND_MAX_SPAN_HOUR",   str(90 * 24 * 3600))),  # 90 天 → 2,160 点
+    "day":    int(os.getenv("ALERT_TREND_MAX_SPAN_DAY",    str(730 * 24 * 3600))), # 2 年 → 730 点
+    "week":   int(os.getenv("ALERT_TREND_MAX_SPAN_WEEK",   str(730 * 24 * 3600))), # 2 年 → ~104 点
+    "month":  int(os.getenv("ALERT_TREND_MAX_SPAN_MONTH",  str(730 * 24 * 3600))), # 2 年 → 24 点
+}
+_MAX_SPAN_LABEL = {
+    "minute": "7 天",
+    "hour":   "90 天",
+    "day":    "2 年",
+    "week":   "2 年",
+    "month":  "2 年",
+}
 
 
 def _get_alert_level_display_map():
@@ -225,6 +242,21 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
 
     group_by = kwargs.pop("group_by", "day")
     trunc_func, _ = group_dy_date_format(group_by)
+
+    # 时间跨度上界校验，防止大跨度 minute/hour 请求撑爆 Worker 内存
+    span_seconds = (aware_end - aware_start).total_seconds()
+    max_span = _MAX_SPAN_SECONDS.get(group_by, _MAX_SPAN_SECONDS["day"])
+    if span_seconds > max_span:
+        label = _MAX_SPAN_LABEL.get(group_by, "2 年")
+        logger.warning(
+            "[AlertNatsRPC] get_alert_trend_data 时间跨度 %.0f 秒超过 %s 粒度上限 %d 秒，已拒绝",
+            span_seconds, group_by, max_span,
+        )
+        return {
+            "result": False,
+            "data": [],
+            "message": f"时间跨度超过 {group_by} 粒度的最大限制（{label}），请缩短查询范围或改用更粗粒度。",
+        }
 
     # 构建告警过滤条件
     alert_filter = Q()
