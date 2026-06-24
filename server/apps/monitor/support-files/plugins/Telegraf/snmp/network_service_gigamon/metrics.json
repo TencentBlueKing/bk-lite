@@ -30,7 +30,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "This metric indicates the uptime of the device since the last restart (sysUpTime). By monitoring the uptime, network administrators can understand the stability and reliability of the Infoblox NIOS appliance and identify potential reboot or failure issues."
+      "description": "This metric indicates the uptime of the device since the last restart (sysUpTime). By monitoring the uptime, network administrators can understand the stability and reliability of the Gigamon appliance and identify potential reboot or failure issues."
     },
     {
       "metric_group": "NetworkService",
