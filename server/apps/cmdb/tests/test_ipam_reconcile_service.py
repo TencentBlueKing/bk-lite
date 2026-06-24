@@ -84,8 +84,9 @@ class TestRunReconciliation:
 
 
 class TestEnsureAssociations:
-    def test_使用已注册的关联类型(self, monkeypatch):
-        """ip--组成-->subnet 用 group；ip--->CI 用 connect（均为已注册类型，避免静默失败）。"""
+    def test_使用已注册的关联与正确方向(self, monkeypatch):
+        """组成边方向必须是 subnet--group-->ip（已注册 subnet_group_ip）；
+        ip--connect-->CI。方向错或类型未注册都会被图层拒绝并静默失败。"""
         from apps.cmdb.services import ipam_reconcile
         from apps.cmdb.services.instance import InstanceManage
         captured = []
@@ -94,9 +95,12 @@ class TestEnsureAssociations:
             staticmethod(lambda data, operator, *a, **k: captured.append(data)),
         )
         ipam_reconcile._ensure_associations(ip_id=900, subnet_id=1, occupants=["host:55"])
-        by_dst = {d["dst_model_id"]: d["asst_id"] for d in captured}
-        assert by_dst["subnet"] == "group"
-        assert by_dst["host"] == "connect"
-        # model_asst_id 与 asst_id 一致
-        assert all(d["model_asst_id"] == f'{d["src_model_id"]}_{d["asst_id"]}_{d["dst_model_id"]}'
-                   for d in captured)
+        # 组成边：subnet -> ip
+        group = [d for d in captured if d["asst_id"] == "group"][0]
+        assert group["src_model_id"] == "subnet" and group["dst_model_id"] == "ip"
+        assert group["src_inst_id"] == 1 and group["dst_inst_id"] == 900
+        assert group["model_asst_id"] == "subnet_group_ip"
+        # 关联边：ip -> CI
+        conn = [d for d in captured if d["asst_id"] == "connect"][0]
+        assert conn["src_model_id"] == "ip" and conn["dst_model_id"] == "host"
+        assert conn["model_asst_id"] == "ip_connect_host"

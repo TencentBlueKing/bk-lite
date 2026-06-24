@@ -3,6 +3,7 @@
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
 from apps.cmdb.utils.ipam_cidr import parse_subnet, ip_in_subnet
+from apps.core.logger import cmdb_logger as logger
 
 
 # ---------------------------------------------------------------------------
@@ -68,7 +69,8 @@ def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_statu
     payload = {
         "ip_addr": ip_addr,
         "inst_name": ip_addr,
-        "subnet_id": subnet_id,
+        # 以字符串存储 subnet_id：视图/利用率回写均以 str= 查询该属性，存 int 会查不到
+        "subnet_id": str(subnet_id),
         "ip_status": [ip_status],
         "auto_collect": auto_collect,
         "organization": organization or [],
@@ -87,15 +89,16 @@ def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_statu
 
 
 def _ensure_associations(ip_id, subnet_id, occupants):
-    """为 ip 实例创建关联：ip --组成(group)--> subnet，ip --关联(connect)--> CI。
-    group/connect 均为已注册的内置关联类型（use 未注册会被静默拒绝）。
-    已存在的关联（instance_association_repetition）静默跳过。
+    """为 ip 实例创建关联：subnet --组成(group)--> ip，ip --关联(connect)--> CI。
+    方向必须与已注册模型关联一致：组成关联是 subnet→ip（model_asst_id=subnet_group_ip），
+    方向写反会被图层判为「association not found」。group/connect 均为已注册内置类型。
+    仅「重复关联」属于幂等可忽略；其它异常记录告警，避免静默丢失。
     """
     from apps.cmdb.services.instance import InstanceManage
     from apps.core.exceptions.base_app_exception import BaseAppException
 
     # (src_model, src_id, dst_model, dst_id, asst_id)
-    pairs = [("ip", ip_id, "subnet", subnet_id, "group")]
+    pairs = [("subnet", subnet_id, "ip", ip_id, "group")]
     for occ in occupants:
         model_id, cid = occ.split(":", 1)
         pairs.append(("ip", ip_id, model_id, int(cid), "connect"))
@@ -111,9 +114,10 @@ def _ensure_associations(ip_id, subnet_id, occupants):
         }
         try:
             InstanceManage.instance_association_create(data, "system")
-        except BaseAppException:
-            # 重复关联或约束冲突：幂等跳过
-            pass
+        except BaseAppException as e:
+            message = getattr(e, "message", "") or str(e)
+            if "repetition" not in message:
+                logger.warning("[IPAM] 创建关联 %s 失败: %s", data["model_asst_id"], message)
 
 
 def _writeback_subnet_utilization(subnet_ids):
