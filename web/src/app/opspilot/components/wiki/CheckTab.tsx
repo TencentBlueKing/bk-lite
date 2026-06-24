@@ -14,6 +14,21 @@ const STATUS_COLOR: Record<string, string> = {
   dismissed: 'default',
 };
 
+// 检查类型本地化(spec 4.5)
+const CHECK_TYPE_KEY: Record<string, string> = {
+  conflict: 'wiki.checkConflict',
+  duplicate: 'wiki.checkDuplicate',
+  stale: 'wiki.checkStale',
+  orphan: 'wiki.checkOrphan',
+  broken_relation: 'wiki.checkBrokenRelation',
+  no_source: 'wiki.checkNoSource',
+  all_sources_invalid: 'wiki.checkAllSourcesInvalid',
+  low_confidence: 'wiki.checkLowConfidence',
+  cannot_merge: 'wiki.checkCannotMerge',
+  schema_violation: 'wiki.checkSchemaViolation',
+  missing: 'wiki.checkMissing',
+};
+
 const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const { fetchCheckItems, acceptCheck, rejectCheck, scan } = useWikiApi();
@@ -60,7 +75,13 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const columns: ColumnsType<CheckItem> = [
-    { title: t('wiki.type'), dataIndex: 'check_type', key: 'check_type', width: 160 },
+    {
+      title: t('wiki.type'),
+      dataIndex: 'check_type',
+      key: 'check_type',
+      width: 160,
+      render: (ct: string) => (CHECK_TYPE_KEY[ct] ? t(CHECK_TYPE_KEY[ct]) : ct),
+    },
     {
       title: t('wiki.status'),
       dataIndex: 'status',

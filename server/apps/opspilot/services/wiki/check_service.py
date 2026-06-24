@@ -67,21 +67,58 @@ def reject_candidate(check, operator=""):
 
 
 def scan_health(knowledge_base):
-    """系统检查扫描(MVP 子集):孤立页面(无关系且无证据)、缺有效来源。
+    """系统检查扫描(spec 4.5):孤立、缺有效来源、来源全部失效、过期、疑似重复、冲突、失效关系、低置信度。
 
     幂等:同类型同页面已存在 open 检查则不重复创建。返回新建的 CheckItem 列表。
+    (冲突/低置信为规则启发式;「不符合 Schema」「重要知识缺失」需 schema→类型映射,不在规则扫描内,
+    由构建期 cannot_merge 等覆盖无法安全合并类。)
     """
+    from collections import defaultdict
+
+    from apps.opspilot.models import PageRelation
+
     created = []
-    pages = KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active")
+    kb = knowledge_base
+    pages = list(KnowledgePage.objects.filter(knowledge_base=kb, status="active"))
+    by_title = defaultdict(list)
+
     for page in pages:
         has_relation = page.relations_out.exists() or page.relations_in.exists()
-        has_evidence = PageEvidence.objects.filter(page=page).exists()
+        evidences = list(PageEvidence.objects.filter(page=page).select_related("material"))
+        has_evidence = bool(evidences)
+        by_title[(page.title or "").strip().lower()].append(page)
+
         # 孤立:既无关系也无证据
         if not has_relation and not has_evidence:
-            created += ensure_check(knowledge_base, "orphan", page)
+            created += ensure_check(kb, "orphan", page)
         # 纯 AI 页面无证据 → 缺来源
         elif page.contribution == "ai" and not has_evidence:
-            created += ensure_check(knowledge_base, "no_source", page)
+            created += ensure_check(kb, "no_source", page)
+
+        # 来源全部失效:有证据但所有证据资料均失效/解析失败
+        if has_evidence and all(e.material.status in ("failed", "invalid") for e in evidences):
+            created += ensure_check(kb, "all_sources_invalid", page)
+        # 过期:证据资料处于「已更新待重建」
+        if any(e.material.status == "updated" for e in evidences):
+            created += ensure_check(kb, "stale", page)
+        # 低置信:AI 页面正文过短
+        cur = page.current_version
+        if page.contribution == "ai" and cur and len((cur.body or "").strip()) < 30:
+            created += ensure_check(kb, "low_confidence", page)
+
+    # 同标题成组:同类型 → 疑似重复;不同类型 → 冲突
+    for title, group in by_title.items():
+        if not title or len(group) < 2:
+            continue
+        check_type = "conflict" if len({p.page_type for p in group}) > 1 else "duplicate"
+        for page in group:
+            created += ensure_check(kb, check_type, page)
+
+    # 失效关系:关系指向非 active 页面
+    broken = PageRelation.objects.filter(from_page__knowledge_base=kb).exclude(to_page__status="active").select_related("from_page")
+    for rel in broken:
+        created += ensure_check(kb, "broken_relation", rel.from_page)
+
     return created
 
 
