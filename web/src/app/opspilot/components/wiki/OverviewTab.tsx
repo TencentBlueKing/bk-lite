@@ -5,6 +5,7 @@ import { Card, Col, Descriptions, Empty, Row, Spin, Statistic } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiOverview } from '@/app/opspilot/types/wiki';
+import QaTab from './QaTab';
 
 const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
@@ -27,19 +28,14 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId]);
 
-  if (!data) {
-    return (
-      <Spin spinning={loading}>
-        <Empty />
-      </Spin>
-    );
-  }
-
-  const counts = data.counts || {};
-  const contribution = data.contribution || {};
+  const counts = data?.counts || {};
+  const contribution = data?.contribution || {};
 
   return (
     <Spin spinning={loading}>
+      {!data && <Empty />}
+      {data && (
+        <>
       <Row gutter={16} className="mb-4">
         <Col span={4}>
           <Card>
@@ -74,6 +70,12 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           </Descriptions.Item>
         ))}
       </Descriptions>
+        </>
+      )}
+      {/* 问答试用:按 spec 4.1 归属「概览」工作区 */}
+      <Card title={t('wiki.qa')} className="mt-4" size="small">
+        <QaTab kbId={kbId} />
+      </Card>
     </Spin>
   );
 };

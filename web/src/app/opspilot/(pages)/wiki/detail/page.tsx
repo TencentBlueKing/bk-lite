@@ -11,11 +11,10 @@ import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import BuildRecordTab from '@/app/opspilot/components/wiki/BuildRecordTab';
 import CheckTab from '@/app/opspilot/components/wiki/CheckTab';
-import GraphTab from '@/app/opspilot/components/wiki/GraphTab';
+import KnowledgeTab from '@/app/opspilot/components/wiki/KnowledgeTab';
 import MaterialTab from '@/app/opspilot/components/wiki/MaterialTab';
 import OverviewTab from '@/app/opspilot/components/wiki/OverviewTab';
-import PageTab from '@/app/opspilot/components/wiki/PageTab';
-import QaTab from '@/app/opspilot/components/wiki/QaTab';
+import SettingsTab from '@/app/opspilot/components/wiki/SettingsTab';
 
 const WikiDetailPage: React.FC = () => {
   const { t } = useTranslation();
@@ -39,14 +38,15 @@ const WikiDetailPage: React.FC = () => {
     return <div className="p-4 text-gray-500">{t('wiki.empty')}</div>;
   }
 
+  // 6 个一级工作区,对齐 spec 4 信息架构:概览 / 资料 / 知识 / 构建记录 / 检查与审核 / 设置
+  // (知识 = 知识页面 + 关系图 二级;问答试用 归入概览)
   const items = [
     { key: 'overview', label: t('wiki.overview'), children: <OverviewTab kbId={kbId} /> },
     { key: 'material', label: t('wiki.material'), children: <MaterialTab kbId={kbId} /> },
-    { key: 'page', label: t('wiki.page'), children: <PageTab kbId={kbId} /> },
+    { key: 'knowledge', label: t('wiki.knowledge'), children: <KnowledgeTab kbId={kbId} /> },
     { key: 'build', label: t('wiki.buildRecord'), children: <BuildRecordTab kbId={kbId} /> },
     { key: 'check', label: t('wiki.check'), children: <CheckTab kbId={kbId} /> },
-    { key: 'graph', label: t('wiki.graph'), children: <GraphTab kbId={kbId} /> },
-    { key: 'qa', label: t('wiki.qa'), children: <QaTab kbId={kbId} /> },
+    { key: 'settings', label: t('wiki.settings'), children: <SettingsTab kbId={kbId} /> },
   ];
 
   return (
