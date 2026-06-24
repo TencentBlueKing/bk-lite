@@ -68,6 +68,7 @@ export const useRouterConfig = () => {
       'Router Cradlepoint SNMP': 'snmp_cradlepoint',
       'Router Teltonika SNMP': 'snmp_teltonika',
       'Router Digi SNMP': 'snmp_digi',
+      'Router Versa SNMP': 'snmp_versa',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

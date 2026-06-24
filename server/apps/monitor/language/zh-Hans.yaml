@@ -3783,6 +3783,12 @@ monitor_object_plugin:
   Switch PLANET SNMP:
     name: PLANET（Telegraf）
     desc: PLANET Technology 管理型以太网交换机专用 SNMP 采集模板（PLANET-MIB，企业号 10456）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 PLANET 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。PLANET 紧凑机型多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——PLANET Technology 管理型交换机（GS-/SGS-/WGS- 系列，企业号 10456）。
+  Switch Cumulus SNMP:
+    name: Cumulus（Telegraf）
+    desc: NVIDIA Cumulus Linux 开放网络交换机专用 SNMP 采集模板（基于标准 NET-SNMP，含 HOST-RESOURCES-MIB / UCD-SNMP-MIB / LM-SENSORS-MIB）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Cumulus Linux 健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值）、主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）与机箱温度（LM-SENSORS 温度传感器，℃）。Cumulus Linux 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP 未以无需行级过滤的标量形式暴露独立风扇与电源状态 OID，故风扇与电源为 N/A。适用品牌型号——NVIDIA / Cumulus Linux 白盒交换机（Cumulus Linux NOS，基于标准 NET-SNMP）。
+  Router Versa SNMP:
+    name: Versa（Telegraf）
+    desc: Versa Networks SD-WAN 路由器（FlexVNF / VOS）专用 SNMP 采集模板（VERSA-MIB，企业号 42359）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Versa 私有 OID 的设备健康指标：CPU 使用率与内存使用率（均为设备直接上报的百分比）。Versa SD-WAN 以软件型/虚拟化网络功能（VNF）运行于通用计算或白盒 CPE 之上，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Versa Networks SD-WAN（FlexVNF / Versa Operating System，企业号 42359）。
   Switch Enterasys SNMP:
     name: Enterasys（Telegraf）
     desc: Enterasys（现 Extreme Networks 旗下）企业级交换机专用 SNMP 采集模板（ENTERASYS-MIB，企业号 5624）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Enterasys 私有 OID 的设备健康指标：CPU 使用率（etsysResourceCpuLoad，直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（etsysChassisPowerSupplyState，经 telegraf processors.enum 归一为 1=正常/2=异常）。适用品牌型号——Enterasys SecureStack / S-Series / Matrix 企业网管交换机（企业号 5624，legacy 设备现并入 Extreme）。
