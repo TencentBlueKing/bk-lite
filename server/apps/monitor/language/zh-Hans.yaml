@@ -160,6 +160,12 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 网络服务设备的整机 CPU 使用率（设备直接上报的百分比）。持续偏高表示节点的流量转发与过滤处理已接近处理能力上限。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 网络服务设备的系统内存使用率（设备直接上报的百分比）。持续偏高可能表示设备上的映射/流表存在内存压力。
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3364,6 +3370,7 @@ monitor_object_metric_group:
   NetworkService:
     Base: 基础
     Traffic: 流量
+    NetworkService: 网络服务
   VoiceGateway:
     Base: 基础
     Traffic: 流量
@@ -3456,6 +3463,10 @@ monitor_object_metric_group:
     StubStatus: Stub状态
     Performance: 性能
   Router:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Packet Loss: 数据包丢失
     Traffic: 流量
     Packet Error: 数据包错误
@@ -3750,6 +3761,9 @@ monitor_object_plugin:
   NetworkService Infoblox SNMP:
     name: Infoblox (Telegraf)
     desc: Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。
+  NetworkService Gigamon SNMP:
+    name: Gigamon（Telegraf）
+    desc: Gigamon GigaVUE 流量可视化/分流器（packet broker）专用 SNMP 采集模板（GIGAMON-SNMP-MIB，企业号 26866）。在标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与运行时长（sysUpTime）之外，额外采集 Gigamon 私有标量 OID 的机箱健康指标：整机 CPU 使用率与内存使用率，均为设备直接上报的百分比。温度/风扇/电源传感器仅以带行级过滤的 per-row 组件表暴露，inputs.snmp 无法规范化，故为 N/A。适用品牌型号——Gigamon GigaVUE HC / TA / G 系列可视化节点与分流器（企业号 26866）。
   VoiceGateway AudioCodes SNMP:
     name: AudioCodes (Telegraf)
     desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。
@@ -3892,6 +3906,39 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS（Telegraf）
     desc: 联想 CNOS（Cloud Network OS）交换机专用 SNMP 采集模板（LENOVO-ENV-MIB，企业号 19046）。除标准 IF-MIB 接口指标外，额外采集设备健康指标：温度传感器（lenovoEnvMibTempSensorTemperature，取最高）、风扇状态（lenovoEnvMibFanState）与电源状态（lenovoEnvMibPowerSupplyState，归一为 1=正常/2=异常），以及在平台暴露时通过 HOST-RESOURCES hrProcessorLoad 采集 CPU 使用率。内存无可用私有 OID，故为 N/A。适用品牌型号——运行 CNOS 的联想 ThinkSystem/RackSwitch 交换机（NE 系列，如 NE1032/NE2572/NE10032，企业号 19046）。
+  Switch Westermo SNMP:
+    name: Westermo（Telegraf）
+    desc: Westermo 工业以太网交换机专用 SNMP 采集模板（WESTERMO-SW6-MIB，企业号 16177）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Westermo WeOS 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Westermo 工业交换机为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——Westermo WeOS 工业网管交换机（Lynx/Falcon/RedFox/Viper 系列，企业号 16177）。
+  Switch RuggedCOM SNMP:
+    name: RuggedCOM（Telegraf）
+    desc: RuggedCOM（西门子）工业以太网交换机专用 SNMP 采集模板（RUGGEDCOM-SYS-MIB，企业号 15004）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 RuggedCOM ROS 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与冗余电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。RuggedCOM 工业交换机为无风扇导热式被动散热设计，故风扇为 N/A。适用品牌型号——西门子 RuggedCOM ROS 工业网管交换机（RS/RSG/RST 系列，企业号 15004）。
+  Switch Moxa SNMP:
+    name: Moxa（Telegraf）
+    desc: Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS/IKS/ICS/SDS 系列，企业号 8691）。
+  Switch GarretCom SNMP:
+    name: GarretCom（Telegraf）
+    desc: GarretCom（Belden 旗下）工业以太网交换机专用 SNMP 采集模板（MAGNUM-MIB，企业号 14778）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 GarretCom Magnum 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。GarretCom 工业交换机为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——GarretCom Magnum 工业网管交换机（6K/10K/DX 系列，企业号 14778）。
+  Switch PLANET SNMP:
+    name: PLANET（Telegraf）
+    desc: PLANET Technology 管理型以太网交换机专用 SNMP 采集模板（PLANET-MIB，企业号 10456）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 PLANET 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。PLANET 紧凑机型多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——PLANET Technology 管理型交换机（GS-/SGS-/WGS- 系列，企业号 10456）。
+  Switch Edgecore SNMP:
+    name: Edgecore（Telegraf）
+    desc: Edgecore Networks（Accton）开放/白盒管理型以太网交换机专用 SNMP 采集模板（ECS 系列私有 MIB，企业号 259）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Edgecore 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Edgecore 紧凑接入机型多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——Edgecore Networks 管理型交换机（ECS2000/ECS4000 系列，基于 Accton 平台，企业号 259）。
+  Switch Pluribus SNMP:
+    name: Pluribus（Telegraf）
+    desc: Pluribus Networks Netvisor ONE 白盒/开放网络交换机专用 SNMP 采集模板（Netvisor ONE 为 Linux 基 NOS，SNMP 子代理经 AgentX 暴露标准 NET-SNMP，含 HOST-RESOURCES-MIB / UCD-SNMP-MIB / LM-SENSORS-MIB，企业号 47269）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Netvisor ONE 健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值）、主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）与机箱温度（LM-SENSORS 温度传感器，℃）。Netvisor ONE 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP 未以无需行级过滤的标量形式暴露独立风扇与电源状态 OID，故风扇与电源为 N/A。适用品牌型号——Pluribus Networks 白盒交换机（Netvisor ONE NOS / Adaptive Cloud Fabric，企业号 47269）。
+  Router Yamaha SNMP:
+    name: Yamaha（Telegraf）
+    desc: Yamaha RTX 系列企业路由器专用 SNMP 采集模板（YAMAHA-RT-MIB，企业号 1182）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Yamaha 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）与机箱温度（℃）。Yamaha RTX 为紧凑型固定配置路由器，采用无风扇或单一固定供电设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立风扇/电源传感器，故风扇与电源为 N/A。适用品牌型号——Yamaha RTX 系列路由器（RTX830/RTX1210/RTX1300 等，企业号 1182）。
+  Switch Cumulus SNMP:
+    name: Cumulus（Telegraf）
+    desc: NVIDIA Cumulus Linux 开放网络交换机专用 SNMP 采集模板（基于标准 NET-SNMP，含 HOST-RESOURCES-MIB / UCD-SNMP-MIB / LM-SENSORS-MIB）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Cumulus Linux 健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad 多核均值）、主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）与机箱温度（LM-SENSORS 温度传感器，℃）。Cumulus Linux 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP 未以无需行级过滤的标量形式暴露独立风扇与电源状态 OID，故风扇与电源为 N/A。适用品牌型号——NVIDIA / Cumulus Linux 白盒交换机（Cumulus Linux NOS，基于标准 NET-SNMP）。
+  Router Versa SNMP:
+    name: Versa（Telegraf）
+    desc: Versa Networks SD-WAN 路由器（FlexVNF / VOS）专用 SNMP 采集模板（VERSA-MIB，企业号 42359）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Versa 私有 OID 的设备健康指标：CPU 使用率与内存使用率（均为设备直接上报的百分比）。Versa SD-WAN 以软件型/虚拟化网络功能（VNF）运行于通用计算或白盒 CPE 之上，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Versa Networks SD-WAN（FlexVNF / Versa Operating System，企业号 42359）。
+  Switch Enterasys SNMP:
+    name: Enterasys（Telegraf）
+    desc: Enterasys（现 Extreme Networks 旗下）企业级交换机专用 SNMP 采集模板（ENTERASYS-MIB，企业号 5624）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Enterasys 私有 OID 的设备健康指标：CPU 使用率（etsysResourceCpuLoad，直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（etsysChassisPowerSupplyState，经 telegraf processors.enum 归一为 1=正常/2=异常）。适用品牌型号——Enterasys SecureStack / S-Series / Matrix 企业网管交换机（企业号 5624，legacy 设备现并入 Extreme）。
   Switch Hirschmann SNMP:
     name: Hirschmann（Telegraf）
     desc: Hirschmann 工业交换机专用 SNMP 采集模板（HMPRIV-MGMT-SNMP-MIB，企业号 248）。除标准 IF-MIB 接口指标外，额外采集 Hirschmann 私有 OID 的设备健康指标：CPU 使用率（hmCpuUtilization，直接以百分比上报）、主内存（hmMemoryAllocated 已用 + hmMemoryFree 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（hmTemperature，℃）与电源状态（hmPSState，经 telegraf processors.enum 归一为 1=正常/2=异常）。未暴露独立风扇状态 OID，故风扇为 N/A。适用品牌型号——Hirschmann（Belden）工业网管交换机（RS20/RS30/RS40、MACH/MICE/GREYHOUND/EAGLE 系列，企业号 248）。
@@ -3954,6 +4001,9 @@ monitor_object_plugin:
   Loadbalance FortiADC SNMP:
     name: FortiADC（Telegraf）
     desc: Fortinet FortiADC 应用交付控制器/负载均衡器专用 SNMP 采集模板（FORTINET-FORTIADC-MIB，企业号 12356）。除标准 IF-MIB 接口指标外，额外采集 FortiADC 私有 OID 的设备健康与负载指标：系统 CPU 使用率（fadcSysCpuUsage）、内存使用率（fadcSysMemUsage，均直接以百分比上报），以及当前并发客户端连接数（fadcConcurrentClientConnections）。FortiADC MIB 未暴露温度/风扇/电源，故为 N/A。适用品牌型号——Fortinet FortiADC 硬件与虚拟设备（FortiADC D/E/F 系列，企业号 12356）。
+  Loadbalance Kemp LoadMaster SNMP:
+    name: Kemp LoadMaster（Telegraf）
+    desc: Kemp LoadMaster 应用交付控制器/负载均衡器专用 SNMP 采集模板（B-100-MIB / ONE4NET，企业号 12196）。除标准 IF-MIB 接口指标外，额外采集 Kemp 私有 OID 的设备健康与负载指标：整机 CPU 使用率（cpuTotal）、系统内存使用率（memUsedPercent，均直接以百分比上报），以及 LoadMaster 当前活动连接总数（connectionTotal）。LoadMaster MIB 未以无需行过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Kemp LoadMaster ADC（硬件 LM-X、虚拟 VLM 及云版本，企业号 12196）。
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon（Telegraf）
     desc: Radware Alteon 应用交换机/负载均衡器专用 SNMP 采集模板（ALTEON-CHEETAH-SWITCH-MIB，企业号 1872）。除标准 IF-MIB 接口指标外，额外采集 Alteon 私有 OID 的设备健康指标：管理处理器 CPU 使用率（mpCpuStatsUtil1Second，直接以百分比上报）与主内存（mpMemStatsTotal/mpMemStatsFree，字节，用量按 (总量-空闲)/总量 推导）。CHEETAH MIB 未暴露标量连接/会话数与温度/风扇/电源，故为 N/A。适用品牌型号——运行 AlteonOS 的 Radware Alteon ADC/应用交换机（Alteon 4408/5208/6420/8420/9800 及 VA 虚拟设备，企业号 1872）。
@@ -4010,6 +4060,23 @@ monitor_object_plugin:
     name: SonicWall（Telegraf）
     desc: 面向 SonicWall（SonicOS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 SONICWALL-FIREWALL-IP-STATISTICS-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为设备直接上报的百分比）与防火墙特有状态（当前/最大连接缓存条目数、NAT 转换条目数）。
       适用品牌型号——SonicWall TZ/NSa 系列防火墙（SonicOS）。
+  Firewall Sangfor SNMP:
+    name: 深信服 NGAF（Telegraf）
+    desc: 面向深信服（Sangfor）NGAF 下一代防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集深信服私有 MIB（IANA 企业号 35047）的设备健康（整机 CPU 与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前并发会话数）。深信服 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。
+      适用品牌型号——深信服 NGAF 下一代应用防火墙（企业号 35047）。
+  Firewall Kerio Control SNMP:
+    name: Kerio Control（Telegraf）
+    desc: 面向 GFI Kerio Control UTM 防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 Kerio Control 私有 MIB（KERIO-CONTROL-SNMP-MIB，IANA 企业号 17028）的当前活动连接数。Kerio Control 为软件型 UTM 设备，其 MIB 未以无需行级过滤的标量形式暴露 CPU/内存与温度/风扇/电源传感器，故均为 N/A。
+      适用品牌型号——GFI Kerio Control UTM 防火墙/VPN 网关（企业号 17028）。
+  Firewall Clavister SNMP:
+    name: Clavister（Telegraf）
+    desc: Clavister 下一代防火墙专用 SNMP 采集模板（CLAVISTER-MIB，企业号 5089）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 Clavister 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动连接数）。Clavister NGFW 多为软件/虚拟化部署，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Clavister NetWall / cOS Core 下一代防火墙（瑞典，企业号 5089）。
+  Firewall Zorp SNMP:
+    name: Zorp（Telegraf）
+    desc: Zorp（Balasys 旗下）应用层代理防火墙专用 SNMP 采集模板（ZORP-MIB / BALASYS-MIB，企业号 18928）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 Zorp 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动会话数）。Zorp 为运行于通用 Linux 主机的软件型应用代理防火墙，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Balasys Zorp Gateway / Proxedo 应用层代理防火墙（匈牙利，企业号 18928）。
+  Firewall genua SNMP:
+    name: genua（Telegraf）
+    desc: genua（德国 genua GmbH）高安全应用层防火墙专用 SNMP 采集模板（GENUA-MIB，企业号 3717）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 genua 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动连接数，对应 pf 状态表条目）。genua 为运行于强固化 OpenBSD/Linux 基座的软件型高安全防火墙，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——genua genugate / genuscreen 高安全应用层防火墙（德国，企业号 3717）。
   Firewall WatchGuard SNMP:
     name: WatchGuard（Telegraf）
     desc: 面向 WatchGuard（Fireware）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 WATCHGUARD-SYSTEM-STATISTICS-MIB 私有 OID 的设备健康（CPU 使用率）与防火墙特有状态（当前活动连接数）。内存与温度/风扇/电源不采集——Fireware 无标准 SNMP 内存利用率标量或传感器表，telegraf inputs.snmp 无法在不做行级过滤的情况下读取。
@@ -4049,6 +4116,27 @@ monitor_object_plugin:
   Router Adtran SNMP:
     name: Adtran（Telegraf）
     desc: Adtran AOS 路由器专用 SNMP 采集模板（ADTRAN-AOS MIB，企业号 664）。除标准 IF-MIB 接口指标外，额外采集 Adtran 私有 OID 的设备健康指标：CPU 使用率（adGenAOSCurrentCpuUtil，直接以百分比上报）与内存（adGenAOSMemPool 总量 + adGenAOSHeapFree 空闲，字节，用量按 （总量-空闲）/总量 推导）。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——Adtran AOS 路由器/网关（NetVanta 系列及其他 adtran-aos 平台，企业号 664）。
+  Router Cradlepoint SNMP:
+    name: Cradlepoint（Telegraf）
+    desc: Cradlepoint 蜂窝（4G/5G）路由器专用 SNMP 采集模板（Cradlepoint 私有企业 MIB，企业号 20992）。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 Cradlepoint 私有标量 OID 的设备健康指标：整机 CPU 使用率、内存使用率（均为直接上报的百分比）与机内温度（℃）。此类紧凑型蜂窝路由器未以无需行级过滤的标量形式暴露风扇/电源传感器，故为 N/A。适用品牌型号——Cradlepoint NetCloud / COR / E 系列及 IBR 系列 4G/5G 企业路由器（企业号 20992）。
+  Router Teltonika SNMP:
+    name: Teltonika（Telegraf）
+    desc: Teltonika 工业蜂窝路由器专用 SNMP 采集模板（RutOS 基于 Linux + net-snmp，HOST-RESOURCES / UCD-SNMP-MIB，企业号 48690）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 RutOS 经标准 net-snmp 暴露的设备健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad，每核 0-100%，取整机均值）、物理内存（总量 + 空闲，KB，已用由 总量 − 空闲 推导，用量按 100×（总量−空闲）/总量 推导）。Teltonika RUT 系列蜂窝路由器为无风扇紧凑型工业设计且未以标量形式暴露温度/电源传感器，故温度/风扇/电源为 N/A。适用品牌型号——Teltonika RUT/TRB/RUTX 工业 4G/5G 蜂窝路由器（RutOS，企业号 48690）。
+  Router Teldat SNMP:
+    name: Teldat（Telegraf）
+    desc: Teldat 企业级路由器/SD-WAN CPE 专用 SNMP 采集模板（TELDAT-MIB，企业号 2007）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Teldat 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Teldat 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Teldat 路由器/SD-WAN CPE（Atlas/Regesta/iMxx 系列，企业号 2007；与 bintec-elmeg 同源 MIB）。
+  Router Viprinet SNMP:
+    name: Viprinet（Telegraf）
+    desc: Viprinet 多 WAN 绑定/SD-WAN 路由器专用 SNMP 采集模板（VIPRINET-MIB，企业号 35424）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Viprinet 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Viprinet 紧凑型多 WAN 路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Viprinet 多 WAN 绑定路由器（Multichannel VPN Router 系列，企业号 35424）。
+  Router OneAccess SNMP:
+    name: OneAccess（Telegraf）
+    desc: OneAccess 企业级 CPE/SD-WAN 路由器专用 SNMP 采集模板（ONEACCESS-SYS-MIB，企业号 13191）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 OneAccess 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。OneAccess 紧凑型企业 CPE 多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——OneAccess 企业路由器/SD-WAN CPE（ONE 系列，企业号 13191；现归 Ekinops）。
+  Router Bintec SNMP:
+    name: Bintec（Telegraf）
+    desc: Bintec 中小企业路由器/VPN 网关专用 SNMP 采集模板（BINTEC-MIB，企业号 272）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Bintec 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Bintec 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Bintec 路由器/VPN 网关（bintec-elmeg RS/RXL/be.IP 系列，企业号 272；与 Teldat 同源 MIB）。
+  Router Digi SNMP:
+    name: Digi（Telegraf）
+    desc: Digi International 工业蜂窝/IoT 路由器专用 SNMP 采集模板（DIGI-MIB，企业号 332）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Digi 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）与机箱温度（℃）。Digi TransPort/IX/Connect 系列为无风扇紧凑型工业设计且未以标量形式暴露电源传感器，故风扇/电源为 N/A。适用品牌型号——Digi International TransPort WR/IX/Connect EZ 工业蜂窝/IoT 路由器（企业号 332）。
   Router LANCOM SNMP:
     name: LANCOM（Telegraf）
     desc: LANCOM LCOS 路由器/VPN 网关专用 SNMP 采集模板（LCOS-MIB，企业号 2356）。除标准 IF-MIB 接口指标外，额外采集 LANCOM 私有硬件温度传感器（lcsStatusHardwareInfoTemperatureDegrees，℃）。LCOS os_discovery 未暴露 CPU/内存利用率或风扇/电源状态 OID，故为 N/A。适用品牌型号——LANCOM LCOS 路由器与 VPN 网关（1xxx / ic- / ISG 系列及其他 LCOS 平台，企业号 2356）。
