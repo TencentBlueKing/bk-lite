@@ -3990,6 +3990,12 @@ monitor_object_plugin:
   Router Teldat SNMP:
     name: Teldat（Telegraf）
     desc: Teldat 企业级路由器/SD-WAN CPE 专用 SNMP 采集模板（TELDAT-MIB，企业号 2007）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Teldat 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Teldat 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Teldat 路由器/SD-WAN CPE（Atlas/Regesta/iMxx 系列，企业号 2007；与 bintec-elmeg 同源 MIB）。
+  Router Viprinet SNMP:
+    name: Viprinet（Telegraf）
+    desc: Viprinet 多 WAN 绑定/SD-WAN 路由器专用 SNMP 采集模板（VIPRINET-MIB，企业号 35424）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Viprinet 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Viprinet 紧凑型多 WAN 路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Viprinet 多 WAN 绑定路由器（Multichannel VPN Router 系列，企业号 35424）。
+  Router OneAccess SNMP:
+    name: OneAccess（Telegraf）
+    desc: OneAccess 企业级 CPE/SD-WAN 路由器专用 SNMP 采集模板（ONEACCESS-SYS-MIB，企业号 13191）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 OneAccess 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。OneAccess 紧凑型企业 CPE 多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——OneAccess 企业路由器/SD-WAN CPE（ONE 系列，企业号 13191；现归 Ekinops）。
   Router Bintec SNMP:
     name: Bintec（Telegraf）
     desc: Bintec 中小企业路由器/VPN 网关专用 SNMP 采集模板（BINTEC-MIB，企业号 272）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Bintec 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Bintec 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Bintec 路由器/VPN 网关（bintec-elmeg RS/RXL/be.IP 系列，企业号 272；与 Teldat 同源 MIB）。
