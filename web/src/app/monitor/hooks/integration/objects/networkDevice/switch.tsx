@@ -137,8 +137,11 @@ export const useSwitchConfig = () => {
       'Switch Allied Telesis SNMP': 'snmp_alliedtelesis',
       'Switch Dell OS10 SNMP': 'snmp_dellos10',
       'Switch Lenovo CNOS SNMP': 'snmp_lenovocnos',
+      'Switch FortiSwitch SNMP': 'snmp_fortiswitch',
       'Switch FiberHome SNMP': 'snmp_fiberhome',
       'Switch H3C SNMP': 'snmp_h3c',
+      'Switch Hirschmann SNMP': 'snmp_hirschmann',
+      'Switch 3Com SNMP': 'snmp_3com',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
     }

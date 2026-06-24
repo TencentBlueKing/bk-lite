@@ -47,6 +47,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
     frequence,
     setFrequence,
     metricsRefreshSignal,
+    currentInstanceInterval,
     monitorObjectId,
     monitorObjectName,
     instanceId,
@@ -243,6 +244,7 @@ export default function SimpleDashboard({ config }: { config: SimpleDashboardCon
                   externalTimeDefaultValue={timeDefaultValue}
                   externalFrequence={frequence}
                   externalRefreshSignal={metricsRefreshSignal}
+                  collectionInterval={currentInstanceInterval}
                   hideTimeSelector
                   onExternalXRangeChange={onXRangeChange}
                 />

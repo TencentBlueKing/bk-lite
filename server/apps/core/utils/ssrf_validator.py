@@ -96,26 +96,58 @@ class SSRFValidator:
     ]
 
     @classmethod
+    def _get_allowed_networks(cls) -> list:
+        """读取白名单 CIDR 并解析为 ip_network 列表（延迟导入 + fail-closed）。"""
+        try:
+            from apps.system_mgmt.utils.network_whitelist_cache import get_network_whitelist_cidrs
+
+            networks = []
+            for cidr in get_network_whitelist_cidrs():
+                try:
+                    networks.append(ipaddress.ip_network(cidr, strict=False))
+                except ValueError:
+                    continue
+            return networks
+        except Exception as e:
+            logger.warning("[SSRF] 白名单读取失败，回退严格模式: %s", e)
+            return []
+
+    @classmethod
     def _is_blocked_ip(cls, ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> tuple[bool, str]:
         """
-        检查 IP 是否在禁止范围内
+        检查 IP 是否在禁止范围内。
+
+        判定顺序：① 云元数据硬挡（白名单不可覆盖） → ② 白名单放行 → ③ 私网黑名单。
 
         Returns:
             (是否禁止, 原因)
         """
         ip_str = str(ip)
 
-        # 云元数据地址
+        # ① 云元数据永远硬挡（白名单不可覆盖）
         if ip_str in cls.CLOUD_METADATA_HOSTS:
             return True, f"云元数据地址 {ip_str}"
+        for network in cls.CLOUD_METADATA_NETWORKS:
+            try:
+                if ip in network:
+                    return True, f"云元数据地址 {ip_str}"
+            except TypeError:
+                continue
 
-        # 检查网段
+        # ② 白名单放行（私网黑名单之前）
+        for network in cls._get_allowed_networks():
+            try:
+                if ip in network:
+                    return False, ""
+            except TypeError:
+                continue
+
+        # ③ 私网 / 特殊地址黑名单
         for network in cls.BLOCKED_NETWORKS:
             try:
                 if ip in network:
                     return True, f"禁止的网段 {network}"
             except TypeError:
-                # IPv4/IPv6 类型不匹配，跳过
                 continue
 
         return False, ""

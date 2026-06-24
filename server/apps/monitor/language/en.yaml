@@ -1,4 +1,50 @@
 monitor_object_metric:
+  Wireless:
+    snmp_uptime: &id001
+      name: System Uptime
+      desc: This metric indicates the uptime of the device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots or failures.
+    interface_ifHCInOctets: &id002
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed ports, keeping the rate accurate.
+    interface_ifHCOutOctets: &id003
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed ports, keeping the rate accurate.
+    device_total_incoming_traffic: &id004
+      name: Device Total Incoming Traffic Rate
+      desc: This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCInOctets counter. It helps administrators obtain an overview of incoming traffic for overall monitoring and capacity planning.
+    device_total_outgoing_traffic: &id005
+      name: Device Total Outgoing Traffic Rate
+      desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators assess sending performance for traffic management and optimization.
+  Transmission:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  Access:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  ConsoleServer:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  NetworkService:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
+  VoiceGateway:
+    snmp_uptime: *id001
+    interface_ifHCInOctets: *id002
+    interface_ifHCOutOctets: *id003
+    device_total_incoming_traffic: *id004
+    device_total_outgoing_traffic: *id005
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
@@ -565,16 +611,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -847,16 +893,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -2286,16 +2332,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -2422,16 +2468,16 @@ monitor_object_metric:
       desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Inbound device traffic rate normalized from Flow records, used to analyze traffic entering the device.
+      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Outbound device traffic rate normalized from Flow records, used to analyze traffic leaving the device.
+      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Inbound packet rate normalized from Flow records, used to observe packet pressure entering the device.
+      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Outbound packet rate normalized from Flow records, used to observe packet pressure leaving the device.
+      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
       desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
@@ -3516,6 +3562,24 @@ monitor_object_metric:
       name: Runtime Heap Allocation
       desc: Current size of memory allocated and in use on the Go runtime heap.
 monitor_object_metric_group:
+  Wireless:
+    Base: Base
+    Traffic: Traffic
+  Transmission:
+    Base: Base
+    Traffic: Traffic
+  Access:
+    Base: Base
+    Traffic: Traffic
+  ConsoleServer:
+    Base: Base
+    Traffic: Traffic
+  NetworkService:
+    Base: Base
+    Traffic: Traffic
+  VoiceGateway:
+    Base: Base
+    Traffic: Traffic
   Dameng:
     Base: Base
     Session: Session
@@ -3873,6 +3937,24 @@ monitor_object_metric_group:
     写入稳定性: Write Stability
     运行时: Runtime
 monitor_object_plugin:
+  Wireless Cambium SNMP:
+    name: Wireless Cambium SNMP
+    desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/associated clients) use Cambium private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp, so they are N/A. Applicable to Cambium Networks wireless devices (cnPilot/ePMP/PMP, enterprise OID 17713) and other IF-MIB compliant wireless AP/bridges.
+  Transmission Ciena SNMP:
+    name: Transmission Ciena SNMP
+    desc: Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets) plus uptime. Health metrics of Ciena SAOS transmission devices (temperature/optical module power/laser bias current) use per-row indexed MIB tables with row-level filtering (skip_values); telegraf inputs.snmp cannot do row-level filtering, so they are N/A. Applicable to Ciena SAOS transmission/packet-optical devices.
+  Access BDCOM SNMP:
+    name: Access BDCOM SNMP
+    desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
+  ConsoleServer Opengear SNMP:
+    name: ConsoleServer Opengear SNMP
+    desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
+  NetworkService Infoblox SNMP:
+    name: NetworkService Infoblox SNMP
+    desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
+  VoiceGateway AudioCodes SNMP:
+    name: VoiceGateway AudioCodes SNMP
+    desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
@@ -3974,7 +4056,7 @@ monitor_object_plugin:
       Supported brands/models — Brocade ICX/FCX/NetIron, Ruckus ICX (formerly Brocade ICX, running FastIron), and Foundry/IronWare switches — all share FOUNDRY-SN-AGENT-MIB (enterprise 1991); Ruckus ICX users can select this template directly.
   Switch Alcatel-Lucent SNMP:
     name: Alcatel-Lucent (Telegraf)
-    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for
+    desc: Alcatel-Lucent (Nokia) TiMOS-specific SNMP collection template for Supported brands/models — Nokia/Alcatel-Lucent 7750 SR, 7450 ESS, 7950 XRS and Nokia SR Linux data-center switches (SR-OS / TiMOS / SR Linux, all exposing the TIMETRA MIB; enterprise 6527); excludes Alcatel OmniSwitch (enterprise 6486).
       switches. In addition to standard IF-MIB interface metrics, it collects
       TIMETRA-CHASSIS-MIB private OIDs for device health including CPU utilization,
       system memory pool (used/free bytes), hardware temperature sensors, fan and
@@ -4160,6 +4242,15 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS (Telegraf)
     desc: Lenovo CNOS (Cloud Network OS) switch SNMP collection (LENOVO-ENV-MIB, IANA PEN 19046). Beyond standard IF-MIB interface metrics, it collects device health including temperature sensors (lenovoEnvMibTempSensorTemperature, max), fan state (lenovoEnvMibFanState) and power-supply state (lenovoEnvMibPowerSupplyState), normalised to 1=normal / 2=abnormal, plus CPU utilisation via HOST-RESOURCES hrProcessorLoad where the platform exposes it. Memory is not exposed via a usable private OID, so it is N/A. Supported brands/models — Lenovo ThinkSystem / RackSwitch switches running CNOS (NE-series, e.g. NE1032 / NE2572 / NE10032; enterprise 19046).
+  Switch Hirschmann SNMP:
+    name: Hirschmann (Telegraf)
+    desc: Hirschmann industrial switch SNMP collection (HMPRIV-MGMT-SNMP-MIB, IANA PEN 248). Beyond standard IF-MIB interface metrics, it collects Hirschmann private OIDs for device health including CPU utilisation (hmCpuUtilization, reported directly as a percentage), main memory (hmMemoryAllocated used + hmMemoryFree in KB, usage derived as used/(used+free)), chassis temperature (hmTemperature in degrees Celsius) and power-supply state (hmPSState, normalised by telegraf processors.enum to 1=normal / 2=abnormal). No dedicated fan-state OID is exposed, so fan is N/A. Supported brands/models — Hirschmann (Belden) industrial managed switches (RS20 / RS30 / RS40, MACH / MICE / GREYHOUND / EAGLE series; enterprise 248).
+  Switch 3Com SNMP:
+    name: 3Com (Telegraf)
+    desc: 3Com switch SNMP collection (A3COM-HUAWEI-LswDEVM-MIB, IANA PEN 43). Beyond standard IF-MIB interface metrics, it collects 3Com private OIDs for device health including CPU utilisation (hwCpuCostRatePer1Min, 1-minute busy ratio in percent, averaged across the board table) and memory (hwMemoryUsedSize used + hwMemorySize total in bytes, usage derived as used/total). This MIB (enterprise 43.45) differs from the already-supported H3C (enterprise 25506 HH3C-ENTITY-EXT), hence a separate plugin. No dedicated temperature/fan/power OIDs are exposed, so those are N/A. Supported brands/models — 3Com managed switches (Switch 4200 / 4500 / 5500 and other A3COM-HUAWEI platforms; enterprise 43).
+  Switch FortiSwitch SNMP:
+    name: FortiSwitch (Telegraf)
+    desc: Fortinet FortiSwitch SNMP collection (FORTINET-FORTISWITCH-MIB, IANA PEN 12356). Beyond standard IF-MIB interface metrics, it collects FortiSwitch private OIDs for device health including CPU utilisation (fsSysCpuUsage, reported directly as a percentage) and memory (fsSysMemUsage used + fsSysMemCapacity total in KB, usage derived as used/total). Temperature/fan/power are exposed only via the type-mixed ENTITY-SENSOR table, which the SNMP input cannot row-filter, so those are N/A. Supported brands/models — Fortinet FortiSwitch managed switches (FortiSwitch 100 / 200 / 400 / 500 / 1000 series; enterprise 12356).
   Switch FiberHome SNMP:
     name: FiberHome (Telegraf)
     desc: FiberHome switch-specific SNMP collection template (WRI-CPU/MEMORY/TEMPERATURE/POWER
@@ -4175,6 +4266,15 @@ monitor_object_plugin:
   Switch H3C SNMP:
     name: H3C (Telegraf)
     desc: H3C / HPE Comware switch-specific SNMP collection (HH3C-ENTITY-EXT-MIB, IANA PEN 25506). In addition to standard IF-MIB interface metrics, it collects H3C private OIDs for device health including per-entity CPU utilization (hh3cEntityExtCpuUsage) and memory utilization (hh3cEntityExtMemUsage). Both are reported per physical entity where most entities return 0 and the CPU/memory-bearing board carries the real value, so device-level CPU/memory are taken as the maximum across entities. Temperature is not collected because all entities report 0 for hh3cEntityExtTemperature on Comware; fan and power-supply state live in ENTITY-MIB with per-row entPhysicalClass filtering that telegraf inputs.snmp cannot do, so those are N/A. Supported brands/models — H3C S-series Comware switches (S5100/S5500/S5800, etc.).
+  Switch DCN SNMP:
+    name: DCN (Telegraf)
+    desc: Digital China (DCN) switch-specific SNMP collection (DCN-MIB, IANA PEN 6339). Beyond standard IF-MIB interface metrics, it collects DCN private OIDs for device health including CPU utilisation (switchCpuUsage, direct percentage) and system memory (switchMemorySize total / switchMemoryBusy used, in bytes, usage derived as used/total). The DCN-MIB switchInfo system table exposes only CPU and memory scalars and no temperature/fan/power sensors, so those dimensions are N/A. Supported brands/models — Digital China DCN DCS/DCRS/CS series campus switches (enterprise 6339).
+  Switch FS SNMP:
+    name: FS.com (Telegraf)
+    desc: FS.com switch-specific SNMP collection (FS-PROCESS/MEMORY/SYSTEM-MIB, IANA PEN 52642). Beyond standard IF-MIB interface metrics, it collects the full set of FS private OIDs for device health including CPU utilisation (fsNodeCPUTotal5min), system memory (capacity/used, in KB), chassis temperature (fsSystemMultipleTemperatureCurrent), fan state (fsSystemFanStatus) and power-supply state (fsSystemElectricalInformationStatus). Fan/PSU raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault; memory utilisation is computed from used/total. Supported brands/models — FS.com S-series data-center/campus switches (e.g. S5810/S5800/N8560 series; enterprise 52642).
+  Switch Netonix SNMP:
+    name: Netonix (Telegraf)
+    desc: Netonix WISP switch-specific SNMP collection (NETONIX-SWITCH-MIB, IANA PEN 46242). Beyond standard IF-MIB interface metrics, it collects the Netonix private OID for chassis temperature (a dedicated temperature table, °C). NETONIX-SWITCH-MIB does not provide CPU/memory OIDs; fan is reported as speed (RPM) rather than a state enum and PoE is per-port status, neither of which is a device-level health state, so this plugin collects temperature only (other dimensions N/A). Supported brands/models — Netonix WISP Switch series PoE switches (enterprise 46242).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
@@ -4276,7 +4376,13 @@ monitor_object_plugin:
     desc: Hillstone Networks (StoneOS) firewall SNMP collection (HILLSTONE-SYSTEM/TEMPERATURE/POWER-MIB, IANA PEN 28557). In addition to standard IF-MIB interface metrics, it collects Hillstone private OIDs for device health including CPU utilization (sysCPU), system memory (sysMemTotal/sysMemUsed in KB, utilization computed as used/total), chassis temperature (dedicated per-sensor table) and power-supply state. Power codes (fine/absent/warning/fail/unsupport) are normalized to 1=healthy / 2=fault. Fan and session-count OIDs have no confirmed numeric form, so those are N/A. Supported brands/models — Hillstone Networks SG-6000 / E-series / A-series next-gen firewalls (StoneOS; enterprise 28557).
   Firewall Sophos XG SNMP:
     name: Sophos XG (Telegraf)
-    desc: Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health including CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067).
+    desc: Sophos XG / SFOS firewall SNMP collection (SFOS-FIREWALL-MIB, IANA PEN 21067). In addition to standard IF-MIB interface metrics, it collects Sophos private OIDs for device health including CPU utilization (cpuPercentUsage) and main-memory utilization (memoryPercentUsage), both reported directly as percentages. Sophos exposes live (authenticated) users and disk usage rather than a standard session/connection table, so session count and temperature/fan/power are N/A. Supported brands/models — Sophos XG / XGS Firewall and SFOS-based appliances (Sophos Firewall OS; enterprise 21067), plus Cyberoam UTM appliances (CYBEROAM-MIB, same enterprise 21067 with identical health OIDs — Sophos acquired Cyberoam and SFOS forked its MIB).
+  Firewall Forcepoint SNMP:
+    name: Forcepoint (Telegraf)
+    desc: Forcepoint NGFW (formerly Stonesoft / McAfee NGFW) SNMP collection (STONESOFT-FIREWALL-MIB, IANA PEN 1369). Beyond standard IF-MIB interface metrics, it collects Forcepoint private OIDs for device health including per-core CPU utilisation (fwCpuTotal, averaged) and memory (fwMemBytesTotal/fwMemBytesUsed in bytes, usage derived as used/total). The Stonesoft MIB does not expose a scalar session count or temperature/fan/power, so those are N/A. Supported brands/models — Forcepoint NGFW / Stonesoft / McAfee NGFW appliances and virtual engines (enterprise 1369).
+  Firewall ScreenOS SNMP:
+    name: Juniper ScreenOS (Telegraf)
+    desc: Juniper ScreenOS (NetScreen) firewall SNMP collection (NETSCREEN-RESOURCE-MIB, IANA PEN 3224). Beyond standard IF-MIB interface metrics, it collects ScreenOS private OIDs for device health including CPU utilisation over the last 5 minutes (nsResCpuLast5Min) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Juniper NetScreen / SSG firewalls running ScreenOS (enterprise 3224).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
@@ -4382,6 +4488,12 @@ monitor_object_plugin:
       memory (total/free, used and derived usage). Memory usage is derived as
       (total - free) / total.
       Supported brands/models — Vyatta / VyOS software routers.
+  Router Adtran SNMP:
+    name: Adtran (Telegraf)
+    desc: Adtran AOS router SNMP collection (ADTRAN-AOS MIB, IANA PEN 664). Beyond standard IF-MIB interface metrics, it collects Adtran private OIDs for device health including CPU utilisation (adGenAOSCurrentCpuUtil, reported directly as a percentage) and memory (adGenAOSMemPool total + adGenAOSHeapFree free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not exposed, so those are N/A. Supported brands/models — Adtran AOS routers/gateways (NetVanta series and other adtran-aos platforms; enterprise 664).
+  Router LANCOM SNMP:
+    name: LANCOM (Telegraf)
+    desc: LANCOM LCOS router/VPN-gateway SNMP collection (LCOS-MIB, IANA PEN 2356). Beyond standard IF-MIB interface metrics, it collects the LANCOM private hardware temperature sensor (lcsStatusHardwareInfoTemperatureDegrees, degrees Celsius). LCOS os_discovery does not expose CPU/memory utilisation or fan/power-supply state OIDs, so those are N/A. Supported brands/models — LANCOM LCOS routers and VPN gateways (1xxx / ic- / ISG series and other LCOS platforms; enterprise 2356).
   Router NEC SNMP:
     name: NEC (Telegraf)
     desc: NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health including 1-minute CPU utilization, memory utilization and chassis temperature, all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000 / IX3000 and other UNIVERGE IX platforms; enterprise 119).
@@ -4493,6 +4605,12 @@ monitor_object_plugin:
     name: Kafka(Exporter)
     desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
+  Wireless: Wireless
+  Transmission: Transmission
+  Access: Access
+  ConsoleServer: ConsoleServer
+  NetworkService: NetworkService
+  VoiceGateway: VoiceGateway
   Dameng: Dameng Database
   Apache: Apache
   Haproxy: Haproxy

@@ -35,6 +35,7 @@ from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.execution_interrupt import request_interrupt
+from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
@@ -664,8 +665,6 @@ async def execute_chat_flow(request, bot_id, node_id):
         # 则把本条对话框消息当作答案直接投递回该节点（在原流续跑），不新建执行——
         # 否则消息会从工作流入口重跑，回复跑回第一个智能体而非正在等待的那个。
         if not is_test and session_id and message:
-            from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
-
             delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
             if delivered:
                 logger.info(

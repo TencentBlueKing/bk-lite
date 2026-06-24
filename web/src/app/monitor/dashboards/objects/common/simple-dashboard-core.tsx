@@ -56,6 +56,7 @@ interface InstanceOption {
   value: string;
   instanceIdValues: string[];
   searchTokens: string[];
+  interval?: number;
 }
 
 export interface SummaryFieldConfig {
@@ -379,7 +380,8 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
             label,
             value,
             instanceIdValues: Array.isArray(item.instance_id_values) && item.instance_id_values.length ? item.instance_id_values : [value],
-            searchTokens: buildInstanceSearchTokens(item, label)
+            searchTokens: buildInstanceSearchTokens(item, label),
+            interval: Number(item.interval) || undefined
           });
         });
         setInstanceOptions(Array.from(uniqueOptions.values()));
@@ -421,12 +423,14 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
         value: selectedValue,
         label: normalizedInstanceName,
         instanceIdValues: idValues.length ? idValues : [selectedValue],
-        searchTokens: [normalizedInstanceName]
+        searchTokens: [normalizedInstanceName],
+        interval: currentInstanceOption?.interval
       });
     }
     return options;
-  }, [hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
+  }, [currentInstanceOption?.interval, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
   const instanceSelectValue = currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
+  const currentInstanceInterval = currentInstanceOption?.interval;
 
   // Metrics that StatCards directly depend on — loaded first so KPI cards fill in quickly.
   const summaryMetricNames = useMemo(
@@ -436,10 +440,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
   const loadSingleMetric = useCallback(
     (metric: SimpleMetricConfig, tv: TimeValuesProps) =>
-      getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, tv, undefined, false))
+      getInstanceQuery(buildSearchParams(metric.query, metric.unit, idValues, instanceIdKeys, tv, undefined, false, currentInstanceInterval))
         .then((result) => [metric.name, toMetricSeries(metric, result, instanceId, resolvedInstanceName, idValues, instanceIdKeys)] as const)
         .catch(() => [metric.name, { ...metric, viewData: [], loadState: 'error' as const }] as const),
-    [getInstanceQuery, idValues, instanceId, instanceIdKeys, resolvedInstanceName]
+    [currentInstanceInterval, getInstanceQuery, idValues, instanceId, instanceIdKeys, resolvedInstanceName]
   );
 
   const loadMetrics = useCallback(async (silent = false) => {
@@ -465,7 +469,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
           (metric) => loadSingleMetric(metric, frozenTimeValues)
         );
         const collectionStatusPromise: Promise<MetricSeries> = getInstanceQuery(
-          buildSearchParams(config.collectionStatusQuery, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false)
+          buildSearchParams(config.collectionStatusQuery, 'counts', idValues, instanceIdKeys, frozenTimeValues, undefined, false, currentInstanceInterval)
         )
           .then((result) =>
             toMetricSeries(
@@ -543,7 +547,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     } catch {
       if (loadSequence.isCurrent(loadSeq) && !silent) setLoading(false);
     }
-  }, [config, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSequence, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues]);
+  }, [config, currentInstanceInterval, displayMode, getInstanceQuery, idValues, idValuesKey, instanceId, instanceIdKeys, loadSequence, loadSingleMetric, resolvedInstanceName, summaryMetricNames, timeValues]);
 
   useEffect(() => {
     if (displayMode === 'dashboard') {
@@ -836,6 +840,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     instanceSelectValue,
     instanceLoading,
     instanceSelectOptions,
+    currentInstanceInterval,
     currentInstanceLabel: currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName,
     isDashboardMode,
     summaryCards,

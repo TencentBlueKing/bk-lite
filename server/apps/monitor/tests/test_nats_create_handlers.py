@@ -156,6 +156,66 @@ def test_execute_nats_create_uses_domain_from_user_info_for_string_users(monkeyp
     }
 
 
+def test_execute_nats_create_rejects_missing_user_info(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_missing_user_info_test_module")
+
+    called = {"count": 0}
+
+    def fake_create(payload, operator="api", domain="domain.com"):
+        called["count"] += 1
+        return object(), {"id": "metric"}
+
+    result = module._execute_nats_create(fake_create, {"name": "cpu_usage"}, user_info=None)
+
+    assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    assert called["count"] == 0
+
+
+def test_execute_nats_create_rejects_user_info_without_user(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_no_user_test_module")
+
+    called = {"count": 0}
+
+    def fake_create(payload, operator="api", domain="domain.com"):
+        called["count"] += 1
+        return object(), {"id": "metric"}
+
+    # user_info 是 dict 但缺 user（或 user 为空/纯空白）→ 不再回退默认账号，直接拒
+    for bad_user_info in ({}, {"user": None}, {"user": ""}, {"user": "  "}, {"user": "\t"}, {"domain": "tenant-a.com"}):
+        result = module._execute_nats_create(fake_create, {"name": "cpu_usage"}, user_info=bad_user_info)
+        assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
+
+    assert called["count"] == 0
+
+
+def test_create_monitor_policy_rejects_anonymous_caller_without_side_effects(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_policy_anonymous_test_module")
+
+    view_calls = []
+
+    class ExplodingMonitorPolicySerializer:
+        def __init__(self, *args, **kwargs):
+            raise AssertionError("匿名调用不应触达序列化/写库")
+
+    class ExplodingViewSet:
+        def __getattr__(self, name):
+            def _boom(*args, **kwargs):
+                view_calls.append(name)
+                raise AssertionError("匿名调用不应触发任何写副作用")
+
+            return _boom
+
+    monkeypatch.setattr(module, "MonitorPolicySerializer", ExplodingMonitorPolicySerializer)
+    monkeypatch.setattr(module, "_get_monitor_policy_viewset", ExplodingViewSet)
+
+    result = module.create_monitor_policy(
+        {"name": "evil policy", "schedule": "*/5 * * * *", "organizations": [1]},
+    )
+
+    assert result == {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    assert view_calls == []
+
+
 def test_create_monitor_policy_maps_api_create_side_effects(monkeypatch):
     module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_monitor_policy_test_module")
 

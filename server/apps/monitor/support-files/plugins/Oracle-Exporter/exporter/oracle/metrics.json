@@ -9,7 +9,58 @@
   "default_metric": "any({instance_type='oracle'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["oracledb_up_gauge", "oracledb_wait_time_user_io_gauge", "oracledb_tablespace_used_percent_gauge"],
-  "display_fields": [{"name": "OracleDb Status", "sort_order": 0, "metrics": [{"plugin": "Oracle-Exporter", "metric": "oracledb_up_gauge"}]}, {"name": "OracleDb User I/O Wait Time", "sort_order": 1, "metrics": [{"plugin": "Oracle-Exporter", "metric": "oracledb_wait_time_user_io_gauge"}]}, {"name": "OracleDb Tablespace Usage Percentage", "sort_order": 2, "metrics": [{"plugin": "Oracle-Exporter", "metric": "oracledb_tablespace_used_percent_gauge"}]}],
+  "display_fields": [
+    {
+      "name": "表空间使用率",
+      "sort_order": 0,
+      "metrics": [
+        {
+          "plugin": "Oracle-Exporter",
+          "metric": "oracledb_tablespace_used_percent_gauge"
+        }
+      ]
+    },
+    {
+      "name": "会话数",
+      "sort_order": 1,
+      "metrics": [
+        {
+          "plugin": "Oracle-Exporter",
+          "metric": "oracledb_sessions_value_gauge"
+        }
+      ]
+    },
+    {
+      "name": "执行速率",
+      "sort_order": 2,
+      "metrics": [
+        {
+          "plugin": "Oracle-Exporter",
+          "metric": "oracledb_activity_execute_count_gauge_rate"
+        }
+      ]
+    },
+    {
+      "name": "用户I/O等待时间",
+      "sort_order": 3,
+      "metrics": [
+        {
+          "plugin": "Oracle-Exporter",
+          "metric": "oracledb_wait_time_user_io_gauge"
+        }
+      ]
+    },
+    {
+      "name": "资源使用率",
+      "sort_order": 4,
+      "metrics": [
+        {
+          "plugin": "Oracle-Exporter",
+          "metric": "oracledb_resource_utilization_rate"
+        }
+      ]
+    }
+  ],
   "metrics": [
   {
     "metric_group": "Base",

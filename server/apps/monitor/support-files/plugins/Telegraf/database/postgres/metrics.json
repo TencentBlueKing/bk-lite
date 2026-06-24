@@ -9,7 +9,7 @@
   "default_metric": "any({instance_type='postgres'}) by (instance_id)",
   "instance_id_keys": ["instance_id"],
   "supplementary_indicators": ["postgresql_numbackends", "postgresql_blks_read_rate", "postgresql_temp_files_rate"],
-  "display_fields": [{"name": "Active DB Connections", "sort_order": 0, "metrics": [{"plugin": "Postgres", "metric": "postgresql_numbackends"}]}, {"name": "Disk Block Read Rate", "sort_order": 1, "metrics": [{"plugin": "Postgres", "metric": "postgresql_blks_read_rate"}]}, {"name": "Temporary Files Creation Rate", "sort_order": 2, "metrics": [{"plugin": "Postgres", "metric": "postgresql_temp_files_rate"}]}],
+  "display_fields": [{"name":"活跃连接数","sort_order":0,"metrics":[{"plugin":"Postgres","metric":"postgresql_numbackends"}]}, {"name":"事务提交速率","sort_order":1,"metrics":[{"plugin":"Postgres","metric":"postgresql_xact_commit_rate"}]}, {"name":"缓冲区命中速率","sort_order":2,"metrics":[{"plugin":"Postgres","metric":"postgresql_blks_hit_rate"}]}, {"name":"死锁速率","sort_order":3,"metrics":[{"plugin":"Postgres","metric":"postgresql_deadlocks_rate"}]}],
   "metrics": [
     {
       "metric_group": "Connection",

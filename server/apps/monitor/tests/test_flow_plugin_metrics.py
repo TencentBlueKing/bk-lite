@@ -59,6 +59,30 @@ HIGH_CARDINALITY_METRICS = {
     "device_flow_top_dst_packets_rate",
     "device_flow_top_conversation_bytes_rate",
 }
+NETFLOW_PORTABLE_METRICS = {
+    "device_flow_bytes_rate": "netflow_in_bytes",
+    "device_flow_packets_rate": "netflow_in_packets",
+    "device_flow_in_bytes_rate": "netflow_in_bytes",
+    "device_flow_out_bytes_rate": "netflow_in_bytes",
+    "device_flow_in_packets_rate": "netflow_in_packets",
+    "device_flow_out_packets_rate": "netflow_in_packets",
+    "device_flow_avg_packet_size": ("netflow_in_bytes", "netflow_in_packets"),
+    "device_flow_protocol_bytes_rate": "netflow_in_bytes",
+    "device_flow_protocol_packets_rate": "netflow_in_packets",
+    "device_flow_dst_port_bytes_rate": "netflow_in_bytes",
+    "device_flow_dst_port_packets_rate": "netflow_in_packets",
+    "device_flow_src_port_bytes_rate": "netflow_in_bytes",
+    "device_flow_top_src_bytes_rate": "netflow_in_bytes",
+    "device_flow_top_dst_bytes_rate": "netflow_in_bytes",
+    "device_flow_top_src_packets_rate": "netflow_in_packets",
+    "device_flow_top_dst_packets_rate": "netflow_in_packets",
+    "device_flow_top_conversation_bytes_rate": "netflow_in_bytes",
+}
+NETFLOW_INTERFACE_METRICS = {
+    "device_flow_interface_bytes_rate": "netflow_in_bytes",
+    "device_flow_interface_packets_rate": "netflow_in_packets",
+    "device_flow_top_interfaces_by_bytes": "netflow_in_bytes",
+}
 
 
 def _flow_metric_files():
@@ -87,7 +111,7 @@ def test_flow_traffic_metric_queries_use_effective_sampling_rate():
 
 def test_flow_traffic_queries_use_telegraf_metric_names():
     expected_metric_names = {
-        "netflow": ("netflow_in_bytes", "netflow_out_bytes"),
+        "netflow": ("netflow_in_bytes",),
         "sflow": ("sflow_bytes",),
     }
     metric_files = _flow_metric_files()
@@ -106,6 +130,61 @@ def test_flow_traffic_queries_use_telegraf_metric_names():
                 unsupported_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}")
 
     assert unsupported_queries == []
+
+
+def test_netflow_queries_do_not_depend_on_nonportable_out_fields():
+    unsupported_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "netflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            query = metric.get("query", "")
+            if "netflow_out_bytes" in query or "netflow_out_packets" in query:
+                unsupported_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}")
+
+    assert unsupported_queries == []
+
+
+def test_netflow_interface_metrics_derive_direction_from_interface_tags():
+    invalid_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "netflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            expected_measurement = NETFLOW_INTERFACE_METRICS.get(metric["name"])
+            if expected_measurement is None:
+                continue
+
+            query = metric["query"]
+            if query.count(expected_measurement) < 2:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing-common-counter")
+            if f"{expected_measurement}{{" not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing-base-selector")
+            if '"interface", "$1", "in_snmp"' not in query or '"direction", "in", "instance_id"' not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing-ingress-interface")
+            if '"interface", "$1", "out_snmp"' not in query or '"direction", "out", "instance_id"' not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing-egress-interface")
+
+    assert invalid_queries == []
+
+
+def test_netflow_common_dimension_metrics_use_portable_counters():
+    invalid_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "netflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            expected_measurements = NETFLOW_PORTABLE_METRICS.get(metric["name"])
+            if expected_measurements is None:
+                continue
+            if isinstance(expected_measurements, str):
+                expected_measurements = (expected_measurements,)
+
+            query = metric["query"]
+            missing_measurements = [name for name in expected_measurements if name not in query]
+            if missing_measurements:
+                invalid_queries.append(
+                    f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{','.join(missing_measurements)}"
+                )
+
+    assert invalid_queries == []
 
 
 def test_flow_metric_files_use_unified_metric_set_and_default_indicators():

@@ -11,6 +11,7 @@ import {
 } from '../common/dashboard-components';
 import { TrendChartPanel } from '../../shared/widgets';
 import { getBrandLabel } from '@/app/monitor/utils/common';
+import { resolveCapability, isMetricVisible } from '../../shared/capability-matrix';
 import { SWITCH_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
@@ -36,21 +37,41 @@ const CHART_TITLES = [
 export default function SwitchDashboardPage() {
   const dashboard = useSimpleDashboardData(SWITCH_DASHBOARD_CONFIG);
 
-  // 品牌自适应：只有当实例真正采集到健康指标（CPU/内存/温度有数据）时，才渲染健康面板。
-  // 通用交换机（仅 IF-MIB）这些指标无数据 → 不渲染，避免出现空面板。
+  // 品牌按 instance_id 识别（collect_type 如 snmp_cisco 写在 instance_id 模板里）。
+  const idText =
+    (dashboard.idValues?.length ? dashboard.idValues.join('_') : '') ||
+    String(dashboard.instanceId ?? '');
+  const resolved = resolveCapability('switch', idText);
+
+  // 健康区段开关：品牌命中时按能力矩阵判定（确定性，区分"不支持"与"暂时没数据"）；
+  // 未命中品牌时退回原有"数据存在性"判定，保证不退化已可用实例。
   const hasHealthData = (dashboard.summaryCards || []).some(
     (c) =>
       HEALTH_METRICS.includes(c.card?.metric) &&
       Array.isArray(c.trendData) &&
       c.trendData.length > 0
   );
+  const hasHealthCapability = resolved.matched
+    ? (['cpu', 'memory', 'temperature'] as const).some((cap) => resolved.capabilities.has(cap))
+    : hasHealthData;
 
   // 健康场景：运行时长 + CPU/内存/温度 + 入向 = 5 张 + 采集状态卡 = 6（kpiCols=6 正好一行）
   // 通用场景：运行时长 + 入向 + 出向 = 3 张 + 采集状态卡 = 4
-  const kpiTitles = hasHealthData
+  const kpiTitles = hasHealthCapability
     ? ['运行时长', ...HEALTH_KPI, '入向总流量']
     : UNIVERSAL_KPI;
-  const summaryCards = useFilteredSummaryCards(dashboard.summaryCards, kpiTitles);
+  const filteredCards = useFilteredSummaryCards(dashboard.summaryCards, kpiTitles);
+  // 品牌命中时按"矩阵×数据"门控卡片（不支持→剔除；支持但无数据→保留显示 --）；未命中不动。
+  const summaryCards = resolved.matched
+    ? filteredCards.filter((c) =>
+      isMetricVisible(
+        resolved,
+        'switch',
+        c.card?.metric,
+        Array.isArray(c.trendData) && c.trendData.length > 0
+      )
+    )
+    : filteredCards;
   const charts = useFilteredChartPanels(dashboard.chartPanels, CHART_TITLES);
 
   const cpuMemChart = charts.find((c) => c?.chart.title === 'CPU 与内存使用率趋势');
@@ -60,7 +81,7 @@ export default function SwitchDashboardPage() {
   const psuChart = charts.find((c) => c?.chart.title === '电源状态');
 
   const renderTrend = (chart: (typeof charts)[number], className: string) =>
-    chart ? (
+    chart && isMetricVisible(resolved, 'switch', chart.chart.metric, true) ? (
       <TrendChartPanel
         key={chart.chart.title}
         title={chart.chart.title}
@@ -78,13 +99,8 @@ export default function SwitchDashboardPage() {
       />
     ) : null;
 
-  // 共享 Switch 盘按当前实例品牌在头部标识（如 Cisco），便于辨认自适应切到的是哪个品牌的盘。
-  // 品牌按 instance_id 识别（而非显示名）：品牌采集模板会把 collect_type（如 snmp_cisco）写进
-  // instance_id 模板，因此 instance_id 是与品牌强绑定的可靠信号，不受用户自定义/ sysName 实例名影响。
-  const brandLabel = getBrandLabel(
-    (dashboard.idValues?.length ? dashboard.idValues.join('_') : '') ||
-      String(dashboard.instanceId ?? '')
-  );
+  // 头部品牌标签：识别到品牌显示品牌名，否则降级「通用 SNMP」。
+  const brandLabel = getBrandLabel(idText) ?? '通用 SNMP';
 
   return (
     <DashboardShell
@@ -96,7 +112,7 @@ export default function SwitchDashboardPage() {
           <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          {hasHealthData ? (
+          {hasHealthCapability ? (
             <>
               {/* Row 1: CPU&内存 span6 + 收发流量 span6 */}
               <div className={styles.sectionLabel}>性能趋势</div>

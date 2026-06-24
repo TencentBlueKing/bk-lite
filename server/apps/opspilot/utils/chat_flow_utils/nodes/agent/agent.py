@@ -13,6 +13,7 @@ from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NA
 from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
+from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -173,7 +174,9 @@ class AgentNode(BaseNodeExecutor):
                 break
         return message
 
-    def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "") -> Dict[str, Any]:
+    def _build_llm_params(
+        self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "", raw_message: Any = ""
+    ) -> Dict[str, Any]:
         """构建LLM调用参数
 
         Args:
@@ -192,7 +195,7 @@ class AgentNode(BaseNodeExecutor):
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolve_skill_params(skill.skill_prompt, skill.skill_params),
             "temperature": skill.temperature,
-            "chat_history": [{"event": "user", "message": final_message}],
+            "chat_history": build_node_chat_history(self.variable_manager, raw_message, final_message),
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
             "show_think": skill.show_think,
@@ -336,7 +339,7 @@ class AgentNode(BaseNodeExecutor):
         final_message = self._build_final_message(message, node_prompt, uploaded_files, node_id)
 
         # 构建LLM参数
-        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id)
+        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id, raw_message=message)
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 

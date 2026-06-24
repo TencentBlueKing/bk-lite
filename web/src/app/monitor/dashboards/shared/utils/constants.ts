@@ -1,7 +1,5 @@
 import { ListItem } from '@/types';
 
-export const MAX_POINTS = 100;
-export const DEFAULT_STEP = 360;
 export const COLLECTION_STATUS_SEGMENT_COUNT = 18;
 
 export const COLLECTION_STATUS_LEGEND = [

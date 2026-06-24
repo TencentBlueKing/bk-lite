@@ -25,6 +25,12 @@ import { useRouterConfig } from './objects/networkDevice/router';
 import { useLoadbalanceConfig } from './objects/networkDevice/loadbalance';
 import { useSwitchConfig } from './objects/networkDevice/switch';
 import { useFirewallConfig } from './objects/networkDevice/firewall';
+import { useWirelessConfig } from './objects/networkDevice/wireless';
+import { useTransmissionConfig } from './objects/networkDevice/transmission';
+import { useAccessConfig } from './objects/networkDevice/access';
+import { useNetworkServiceConfig } from './objects/networkDevice/networkService';
+import { useConsoleServerConfig } from './objects/networkDevice/consoleServer';
+import { useVoiceGatewayConfig } from './objects/networkDevice/voiceGateway';
 import { useVCenterConfig } from './objects/vmWare/vCenter';
 import { useDataStorageConfig } from './objects/vmWare/dataStorage';
 import { useEsxiConfig } from './objects/vmWare/esxi';
@@ -91,6 +97,12 @@ export const useMonitorConfig = () => {
   const loadbalanceConfig = useLoadbalanceConfig();
   const switchConfig = useSwitchConfig();
   const firewallConfig = useFirewallConfig();
+  const wirelessConfig = useWirelessConfig();
+  const transmissionConfig = useTransmissionConfig();
+  const accessConfig = useAccessConfig();
+  const networkServiceConfig = useNetworkServiceConfig();
+  const consoleServerConfig = useConsoleServerConfig();
+  const voiceGatewayConfig = useVoiceGatewayConfig();
   const dataStorageConfig = useDataStorageConfig();
   const vCenterConfig = useVCenterConfig();
   const esxiConfig = useEsxiConfig();
@@ -147,6 +159,12 @@ export const useMonitorConfig = () => {
       Loadbalance: loadbalanceConfig,
       Switch: switchConfig,
       Firewall: firewallConfig,
+      Wireless: wirelessConfig,
+      Transmission: transmissionConfig,
+      Access: accessConfig,
+      NetworkService: networkServiceConfig,
+      ConsoleServer: consoleServerConfig,
+      VoiceGateway: voiceGatewayConfig,
       vCenter: vCenterConfig,
       Docker: dockerConfig,
       Storage: storageConfig,

@@ -8,23 +8,49 @@ TELEGRAF_COLLECTOR_DEFINITION = (
 )
 
 
+def _netflow_converter_tags(add_config):
+    match = re.search(
+        r"namepass = \[\"netflow\"\].*?\[processors\.converter\.fields\]\s+tag = \[(?P<tags>[^\]]+)\]",
+        add_config,
+        flags=re.S,
+    )
+    assert match is not None
+    return re.findall(r'"([^"]+)"', match.group("tags"))
+
+
 def test_telegraf_default_config_includes_passive_flow_udp_listeners():
     collectors = json.loads(TELEGRAF_COLLECTOR_DEFINITION.read_text())
 
     for collector in collectors:
         add_config = collector["default_config"]["add_config"]
 
-        assert "[[inputs.netflow]]" in add_config
-        assert 'service_address = "udp://:2055"' in add_config
+        assert add_config.count("[[inputs.netflow]]") == 2
+        assert (
+            'protocol = "netflow v5"\n'
+            '    service_address = "udp://:2055"'
+        ) in add_config
+        assert (
+            'protocol = "netflow v9"\n'
+            '    service_address = "udp://:2056"'
+        ) in add_config
         assert 'read_buffer_size = "64MiB"' in add_config
-        assert 'tags = { collect_type = "netflow" }' in add_config
+        assert 'tags = { collect_type = "netflow", netflow_version = "v5" }' in add_config
+        assert 'tags = { collect_type = "netflow", netflow_version = "v9" }' in add_config
         assert "[[inputs.sflow]]" in add_config
         assert 'service_address = "udp://:6343"' in add_config
         assert 'tags = { collect_type = "sflow" }' in add_config
         assert "[[processors.converter]]" in add_config
         assert "namepass = [\"netflow\"]" in add_config
         assert "order = 1" in add_config
-        assert 'tag = ["protocol", "src", "src_port", "dst", "dst_port"]' in add_config
+        assert _netflow_converter_tags(add_config) == [
+            "protocol",
+            "src",
+            "src_port",
+            "dst",
+            "dst_port",
+            "in_snmp",
+            "out_snmp",
+        ]
         assert "[[processors.starlark]]" in add_config
         starlark_block = add_config.split("[[processors.starlark]]", 1)[1]
         assert "order = 2" in starlark_block

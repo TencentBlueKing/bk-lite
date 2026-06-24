@@ -1,8 +1,12 @@
 """Pydantic schemas for request/response validation."""
 
+import os
 from typing import Optional
 from pydantic import BaseModel, Field
 import pandas as pd
+
+# 单次预测请求允许的最大数据点数，可通过环境变量覆盖
+PREDICT_MAX_DATA_POINTS = int(os.getenv("PREDICT_MAX_DATA_POINTS", "10000"))
 
 
 class TimeSeriesPoint(BaseModel):
@@ -25,7 +29,12 @@ class DetectionConfig(BaseModel):
 class PredictRequest(BaseModel):
     """异常检测请求."""
 
-    data: list[TimeSeriesPoint] = Field(..., description="待检测的时间序列数据")
+    data: list[TimeSeriesPoint] = Field(
+        ...,
+        description="待检测的时间序列数据",
+        min_length=1,
+        max_length=PREDICT_MAX_DATA_POINTS,
+    )
     config: Optional[DetectionConfig] = Field(None, description="检测配置（可选）")
 
     def to_series(self) -> pd.Series:
