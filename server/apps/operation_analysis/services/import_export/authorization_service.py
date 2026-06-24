@@ -104,8 +104,10 @@ class ImportExportAuthorizationService:
             overwrite_allowed = cls.has_permission(request, permission_config["overwrite"])
             view_allowed = cls.has_permission(request, cls.EXPORT_PERMISSION_MAP[object_type]["permission"])
 
+            existing_map = cls.get_existing_objects_batch(object_type, items)
+
             for item in items:
-                existing = cls.get_existing_object(object_type, item)
+                existing = existing_map.get(cls._item_lookup_key(object_type, item))
                 if not existing:
                     if not create_allowed:
                         permission_errors.append(
@@ -193,8 +195,10 @@ class ImportExportAuthorizationService:
         for object_type, items in cls.iter_import_items(doc):
             permission_config = cls.IMPORT_ACTION_PERMISSION_MAP[object_type]
 
+            existing_map = cls.get_existing_objects_batch(object_type, items)
+
             for item in items:
-                existing = cls.get_existing_object(object_type, item)
+                existing = existing_map.get(cls._item_lookup_key(object_type, item))
                 conflict = conflict_map.get(item.key)
                 action = conflict_decisions.get(item.key, ConflictAction.RENAME.value)
 
@@ -271,6 +275,41 @@ class ImportExportAuthorizationService:
         if object_type == ObjectType.NAMESPACE:
             return NameSpace.objects.filter(name=item.name).first()
         return None
+
+    @classmethod
+    def get_existing_objects_batch(cls, object_type: ObjectType, items) -> dict:
+        """批量查询一组 items 对应的已存在对象，返回 {lookup_key: object} 字典，消除 N+1 查询。"""
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+
+        if not items:
+            return {}
+
+        if object_type == ObjectType.DATASOURCE:
+            # DataSourceAPIModel 以 (name, rest_api) 为唯一键
+            lookup_pairs = [(item.name, item.rest_api) for item in items]
+            names = [p[0] for p in lookup_pairs]
+            qs = DataSourceAPIModel.objects.filter(name__in=names)
+            return {(obj.name, obj.rest_api): obj for obj in qs if (obj.name, obj.rest_api) in set(lookup_pairs)}
+
+        name_set = [item.name for item in items]
+        model_map = {
+            ObjectType.DASHBOARD: Dashboard,
+            ObjectType.TOPOLOGY: Topology,
+            ObjectType.ARCHITECTURE: Architecture,
+            ObjectType.NAMESPACE: NameSpace,
+        }
+        model = model_map.get(object_type)
+        if model is None:
+            return {}
+        return {obj.name: obj for obj in model.objects.filter(name__in=name_set)}
+
+    @staticmethod
+    def _item_lookup_key(object_type: ObjectType, item):
+        """返回用于 get_existing_objects_batch 结果字典的查找键。"""
+        if object_type == ObjectType.DATASOURCE:
+            return (item.name, item.rest_api)
+        return item.name
 
     @classmethod
     def can_access_existing_object(cls, request, object_type: ObjectType, existing, current_team: int | None) -> bool:
