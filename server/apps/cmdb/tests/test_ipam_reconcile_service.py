@@ -82,6 +82,24 @@ class TestRunReconciliation:
         assert result["skipped_manual"] == 1
         assert touched == []
 
+    def test_auto_collect缺失的记录也按手工保护(self, monkeypatch):
+        """非自动创建的记录（auto_collect 缺失/None，如手工经通用表单建的）也不能被对账覆盖。
+        仅 auto_collect is True 才是对账自己的记录、可写。"""
+        from apps.cmdb.services import ipam_reconcile
+        monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
+                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        # 已有记录没有 auto_collect 字段（None）
+        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips",
+                            lambda: [{"_id": 801, "ip_addr": "10.0.1.10", "subnet_id": "1"}])
+        touched = []
+        monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: touched.append(kw))
+        monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda subnet_ids: None)
+        result = ipam_reconcile.run_reconciliation()
+        assert result["skipped_manual"] == 1
+        assert touched == []
+
 
 class TestEnsureAssociations:
     def test_使用已注册的关联与正确方向(self, monkeypatch):

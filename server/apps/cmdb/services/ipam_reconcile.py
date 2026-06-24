@@ -172,8 +172,9 @@ def run_reconciliation() -> dict:
 
     for (subnet_id, ip_addr), info in occupants.items():
         prev = existing_map.get((subnet_id, ip_addr))
-        # 手工保护：auto_collect=False 的记录只读，跳过
-        if prev and prev.get("auto_collect") is False:
+        # 手工保护：只有对账自己创建的记录(auto_collect is True)才可写；
+        # 其余(False/None/缺失，含手工经通用表单创建的)一律视为非自动记录，跳过不覆盖。
+        if prev and prev.get("auto_collect") is not True:
             skipped_manual += 1
             continue
         status = decide_ip_status(info["ips"])

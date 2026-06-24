@@ -57,3 +57,22 @@ class TestApplyDiscoveryResult:
         assert offs == [12]
         assert result["offline"] == 1
         assert 13 not in offs
+
+    def test_auto_collect缺失的已有记录不被覆盖(self, monkeypatch):
+        """非自动创建的记录（auto_collect 缺失/None）在探到同地址时也不能被覆盖。
+        仅 auto_collect is True 的记录才归发现采集所有、可写。"""
+        from apps.cmdb.services import ipam_discovery
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [
+            {"_id": 21, "ip_addr": "10.0.1.50", "subnet_id": "1"},  # 无 auto_collect 字段
+        ])
+        ups, offs = [], []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1, alive=[{"ip": "10.0.1.50", "mac": ""}],
+        )
+        assert ups == []          # 探到同地址但记录非自动创建 -> 不覆盖
+        assert offs == []         # 也不会被置离线（offline 仅作用于 auto_collect is True）
+        assert result["created"] == 0 and result["updated"] == 0

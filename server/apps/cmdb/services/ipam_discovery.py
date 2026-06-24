@@ -193,8 +193,8 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
     created = updated = offline = 0
     for a in alive:
         prev = existing_by_addr.get(a["ip"])
-        if prev and prev.get("auto_collect") is False:
-            # 手工录入不被自动发现覆盖
+        if prev and prev.get("auto_collect") is not True:
+            # 手工录入不被自动发现覆盖（仅 auto_collect is True 的记录归发现采集所有、可写）
             continue
         _upsert_alive_ip(
             existing_id=(prev or {}).get("_id"),
