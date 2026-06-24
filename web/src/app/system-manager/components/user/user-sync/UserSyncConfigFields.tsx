@@ -94,7 +94,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
 }) => {
   const form = Form.useFormInstance();
   const { getDepartmentOptions } = useUserSyncApi();
-  const externalFieldPlaceholder = t('system.user.userSyncPage.externalFieldPlaceholder', '默认留空，按需填写外部字段名');
+  const externalFieldPlaceholder = t('system.user.userSyncPage.externalFieldPlaceholder');
   const watchedDepartmentIdType = Form.useWatch(['business_config', 'department_id_type'], form);
   const watchedRootDepartmentId = Form.useWatch(['business_config', 'root_department_id'], form);
   const departmentIdType = typeof watchedDepartmentIdType === 'string' ? watchedDepartmentIdType : '';
@@ -197,7 +197,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
       ? [{ required: true, whitespace: field.field_type === 'string' || field.field_type === 'textarea' }]
       : undefined;
     const placeholder = field.write_only
-      ? t('system.integrationCenter.keepSecretPlaceholder', '如无需变更可留空')
+      ? t('system.integrationCenter.keepSecretPlaceholder')
       : field.placeholder || undefined;
     const wrapperClassName = field.field_type === 'textarea' ? 'md:col-span-2' : '';
 

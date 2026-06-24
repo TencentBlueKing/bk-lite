@@ -62,19 +62,19 @@ export function getDisplayStatusText(
   status: string,
   t: (key: string, fallback?: string) => string,
 ): string {
-  return t(`system.channel.imNotificationPage.displayStatus.${status}`, status);
+  return t(`system.channel.imNotificationPage.displayStatus.${status}`);
 }
 
 export function getSyncRunStatusText(
   status: string,
   t: (key: string, fallback?: string) => string,
 ): string {
-  return t(`system.channel.imNotificationPage.syncRunStatus.${status}`, status);
+  return t(`system.channel.imNotificationPage.syncRunStatus.${status}`);
 }
 
 export function getSyncTriggerModeText(
   triggerMode: string,
   t: (key: string, fallback?: string) => string,
 ): string {
-  return t(`system.channel.imNotificationPage.triggerMode.${triggerMode}`, triggerMode);
+  return t(`system.channel.imNotificationPage.triggerMode.${triggerMode}`);
 }

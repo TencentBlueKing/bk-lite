@@ -160,7 +160,7 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
 
   return (
     <OperateModal
-      title={t('system.user.userSyncPage.addSource', '添加用户源')}
+      title={t('system.user.userSyncPage.addSource')}
       open={open}
       onCancel={onClose}
       width={800}

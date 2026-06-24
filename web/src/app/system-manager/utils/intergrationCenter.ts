@@ -23,10 +23,10 @@ export function getIntegrationDetailSectionDescription(
   t: (key: string, fallback?: string) => string,
 ) {
   if (activeTab === 'base') {
-    return t('system.integrationCenter.baseConnectionDesc', '基础连接通过测试后，其他能力才能继续保存与测试。');
+    return t('system.integrationCenter.baseConnectionDesc');
   }
 
-  return t('system.integrationCenter.capabilityDesc', '请先完成基础连接配置并测试，再继续维护对应能力。');
+  return t('system.integrationCenter.capabilityDesc');
 }
 
 export function canEnterCreateInfoStep(provider: Pick<ProviderManifest, 'key'> | null) {
@@ -144,11 +144,7 @@ export function formatIntegrationInstanceDisplayName(
   },
   t: (key: string, fallback?: string) => string,
 ): string {
-  const fallback = instance.provider_name || instance.provider?.name || instance.provider_key;
-  const providerDisplayName = t(
-    `system.integrationCenter.provider.${instance.provider_key}`,
-    fallback,
-  );
+  const providerDisplayName = t(`system.integrationCenter.provider.${instance.provider_key}`);
   return `${instance.name}(${providerDisplayName})`;
 }
 
@@ -186,9 +182,9 @@ export function getIntegrationCapabilityLabel(
   t?: (key: string, fallback?: string) => string,
 ) {
   const capabilityLabelMap: Record<string, string> = {
-    user_sync: t ? t('system.integrationCenter.capability.userSync', '身份同步') : '身份同步',
-    login_auth: t ? t('system.integrationCenter.capability.loginAuth', '登录认证') : '登录认证',
-    im_notification: t ? t('system.integrationCenter.capability.imNotification', '通知渠道') : '通知渠道',
+    user_sync: t ? t('system.integrationCenter.capability.userSync') : 'user_sync',
+    login_auth: t ? t('system.integrationCenter.capability.loginAuth') : 'login_auth',
+    im_notification: t ? t('system.integrationCenter.capability.imNotification') : 'im_notification',
   };
 
   return capabilityLabelMap[key] || key;

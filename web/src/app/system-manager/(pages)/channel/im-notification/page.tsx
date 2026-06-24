@@ -4,6 +4,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
+import { useIntl } from 'react-intl';
 import {
   Alert,
   Button,
@@ -88,6 +89,7 @@ function getResolvedImTemplate(
 
 function buildLatestSyncSummary(
   record: IMNotificationChannel,
+  formatMessage: (key: string, values?: Record<string, string | number>) => string,
   t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string,
 ): string {
   const total = record.latest_sync_total_external_user_count;
@@ -97,29 +99,25 @@ function buildLatestSyncSummary(
 
   if (typeof total === 'number' && typeof matched === 'number') {
     if (unmatched > 0 && conflict > 0) {
-      return t(
+      return formatMessage(
         'system.channel.imNotificationPage.latestSyncMatchedUnmatchedConflictSummary',
-        'Matched {matched} of {total} external users, {unmatched} unmatched, {conflict} conflicts',
         { matched, total, unmatched, conflict },
       );
     }
     if (unmatched > 0) {
-      return t(
+      return formatMessage(
         'system.channel.imNotificationPage.latestSyncMatchedUnmatchedSummary',
-        'Matched {matched} of {total} external users, {unmatched} unmatched',
         { matched, total, unmatched },
       );
     }
     if (conflict > 0) {
-      return t(
+      return formatMessage(
         'system.channel.imNotificationPage.latestSyncMatchedConflictSummary',
-        'Matched {matched} of {total} external users, {conflict} conflicts',
         { matched, total, conflict },
       );
     }
-    return t(
+    return formatMessage(
       'system.channel.imNotificationPage.latestSyncMatchedSummary',
-      'Matched {matched} of {total} external users',
       { matched, total },
     );
   }
@@ -163,6 +161,7 @@ function renderSyncPeriod(
 
 const ImNotificationPage: React.FC = () => {
   const { t } = useTranslation();
+  const intl = useIntl();
   const { convertToLocalizedTime } = useLocalizedTime();
   const router = useRouter();
   const {
@@ -221,6 +220,9 @@ const ImNotificationPage: React.FC = () => {
     pageSize: 10,
   });
 
+  const formatMessage = (key: string, values?: Record<string, string | number>) =>
+    intl.formatMessage({ id: key }, values);
+
   const resolvedTemplate = useMemo(
     () => getResolvedImTemplate(watchedIntegrationInstance, availableInstances, providers),
     [availableInstances, providers, watchedIntegrationInstance],
@@ -230,7 +232,7 @@ const ImNotificationPage: React.FC = () => {
     () =>
       (resolvedTemplate?.matchable_fields || []).map((field) => ({
         value: field,
-        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`, field),
+        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`),
       })),
     [resolvedTemplate, t],
   );
@@ -239,7 +241,7 @@ const ImNotificationPage: React.FC = () => {
     () =>
       (resolvedTemplate?.receivable_fields || []).map((field) => ({
         value: field,
-        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`, field),
+        label: t(`system.channel.imNotificationPage.externalFieldOption.${field}`),
       })),
     [resolvedTemplate, t],
   );
@@ -671,7 +673,7 @@ const ImNotificationPage: React.FC = () => {
 
         const latestSyncTime = record.latest_sync_finished_at || record.latest_sync_started_at;
         const latestSyncStatus = getSyncRunStatusText(record.latest_sync_status, t);
-        const latestSyncSummary = buildLatestSyncSummary(record, t);
+        const latestSyncSummary = buildLatestSyncSummary(record, formatMessage, t);
 
         return (
           <div className="leading-6">
@@ -681,9 +683,8 @@ const ImNotificationPage: React.FC = () => {
                 : t('system.channel.imNotificationPage.latestSyncEmpty')}
             </div>
             <div className="text-xs text-[var(--color-text-3)]">
-              {t(
+              {formatMessage(
                 'system.channel.imNotificationPage.latestSyncPrefix',
-                '{status} · {summary}',
                 { status: latestSyncStatus, summary: latestSyncSummary },
               )}
             </div>

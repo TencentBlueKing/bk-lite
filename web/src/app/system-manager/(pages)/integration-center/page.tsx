@@ -108,7 +108,7 @@ const IntegrationCenterPage: React.FC = () => {
         is_draft: true,
       });
 
-      message.success(t('system.integrationCenter.createSuccess', '集成实例创建成功'));
+      message.success(t('system.integrationCenter.createSuccess'));
 
       if (continueConfigure) {
         router.push(`/system-manager/integration-center/detail?id=${instance.id}`);
@@ -122,7 +122,7 @@ const IntegrationCenterPage: React.FC = () => {
         return;
       }
 
-      message.error(t('system.integrationCenter.createFailed', '集成实例创建失败'));
+      message.error(t('system.integrationCenter.createFailed'));
     } finally {
       setCreating(false);
     }
@@ -147,11 +147,11 @@ const IntegrationCenterPage: React.FC = () => {
         description: values.description || '',
         provider_key: provider.key,
       });
-      message.success(t('common.saveSuccess', '保存成功'));
+      message.success(t('common.saveSuccess'));
       setEditingInstance(null);
       await fetchInstances();
     } catch {
-      message.error(t('common.saveFailed', '保存失败'));
+      message.error(t('common.saveFailed'));
     } finally {
       setUpdating(false);
     }
@@ -159,17 +159,17 @@ const IntegrationCenterPage: React.FC = () => {
 
   const handleDeleteInstance = (instance: IntegrationInstance) => {
     Modal.confirm({
-      title: t('common.delConfirm', '确认删除'),
-      content: t('common.delConfirmCxt', '删除后将无法恢复，请谨慎操作'),
-      okText: t('common.confirm', '确定'),
-      cancelText: t('common.cancel', '取消'),
+      title: t('common.delConfirm'),
+      content: t('common.delConfirmCxt'),
+      okText: t('common.confirm'),
+      cancelText: t('common.cancel'),
       onOk: async () => {
         try {
           await deleteInstance(instance.id);
-          message.success(t('common.delSuccess', '删除成功'));
+          message.success(t('common.delSuccess'));
           await fetchInstances();
         } catch {
-          message.error(t('common.delFailed', '删除失败'));
+          message.error(t('common.delFailed'));
         }
       },
     });
@@ -180,14 +180,14 @@ const IntegrationCenterPage: React.FC = () => {
       <Menu.Item key="edit" onClick={() => setEditingInstance(instance)}>
         <PermissionWrapper requiredPermissions={['Edit']}>
           <Button type="text" className="w-full">
-            {t('common.edit', '编辑')}
+            {t('common.edit')}
           </Button>
         </PermissionWrapper>
       </Menu.Item>
       <Menu.Item key="delete" onClick={() => handleDeleteInstance(instance)}>
         <PermissionWrapper requiredPermissions={['Delete']}>
           <Button type="text" className="w-full">
-            {t('common.delete', '删除')}
+            {t('common.delete')}
           </Button>
         </PermissionWrapper>
       </Menu.Item>
@@ -244,7 +244,7 @@ const IntegrationCenterPage: React.FC = () => {
     <div className="ml-2 flex flex-wrap items-center gap-2">
       <PermissionWrapper requiredPermissions={['Add']}>
         <Button type="primary" onClick={() => setCreateModalOpen(true)}>
-          {t('system.integrationCenter.addInstanceButton', t('system.integrationCenter.addInstance'))}
+          {t('system.integrationCenter.addInstanceButton')}
         </Button>
       </PermissionWrapper>
       <Button
@@ -252,7 +252,7 @@ const IntegrationCenterPage: React.FC = () => {
         icon={<ReloadOutlined />}
         onClick={handleRefresh}
         loading={refreshing}
-        aria-label={t('common.refresh', '刷新')}
+        aria-label={t('common.refresh')}
       />
     </div>
   );
@@ -260,7 +260,7 @@ const IntegrationCenterPage: React.FC = () => {
   return (
     <div className="w-full space-y-4">
       <TopSection
-        title={t('system.integrationCenter.pageTitle', t('system.integrationCenter.title'))}
+        title={t('system.integrationCenter.pageTitle')}
         content={t('system.integrationCenter.pageDesc')}
       />
 

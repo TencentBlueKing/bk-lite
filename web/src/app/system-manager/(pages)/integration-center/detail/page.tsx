@@ -193,10 +193,10 @@ const IntegrationDetailPage: React.FC = () => {
 
     if (isFormDirty) {
       Modal.confirm({
-        title: t('system.integrationCenter.unsavedConfigTitle', '配置未保存'),
-        content: t('system.integrationCenter.unsavedConfigContent', '当前配置有未保存的修改，请先保存后再测试。'),
-        okText: t('common.save', '保存'),
-        cancelText: t('common.cancel', '取消'),
+        title: t('system.integrationCenter.unsavedConfigTitle'),
+        content: t('system.integrationCenter.unsavedConfigContent'),
+        okText: t('common.save'),
+        cancelText: t('common.cancel'),
         onOk: handleSave,
       });
       return;
@@ -226,7 +226,7 @@ const IntegrationDetailPage: React.FC = () => {
       ? [{ required: !field.write_only, whitespace: field.field_type === 'string' || field.field_type === 'textarea' }]
       : undefined;
     const placeholder = field.write_only
-      ? t('system.integrationCenter.keepSecretPlaceholder', '如无需变更可留空')
+      ? t('system.integrationCenter.keepSecretPlaceholder')
       : field.placeholder || undefined;
 
     switch (field.field_type) {
@@ -290,7 +290,7 @@ const IntegrationDetailPage: React.FC = () => {
   const started = isIntegrationInstanceStarted(instance.capability_status);
   const availableTabs = getAvailableIntegrationTabs(instance);
   const currentCapabilityStatus = activeTab === 'base' ? instance.status : instance.capability_status?.[activeTab];
-  const providerLabel = `${t('system.integrationCenter.providerTypeLabel', t('system.integrationCenter.provider', '集成类型'))}：${instance.provider?.name ?? instance.provider_key}`;
+  const providerLabel = `${t('system.integrationCenter.providerTypeLabel')}：${instance.provider?.name ?? instance.provider_key}`;
   const topSectionContent = instance.description ? `${providerLabel}，${instance.description}` : providerLabel;
 
   return (
@@ -313,7 +313,7 @@ const IntegrationDetailPage: React.FC = () => {
             onChange={(key) => setActiveTab(key as IntegrationDetailTab)}
             items={availableTabs.map((tabKey) => ({
               key: tabKey,
-              label: tabKey === 'base' ? t('system.integrationCenter.baseConnection', '基础连接') : getIntegrationCapabilityLabel(tabKey, t),
+              label: tabKey === 'base' ? t('system.integrationCenter.baseConnection') : getIntegrationCapabilityLabel(tabKey, t),
             }))}
           />
         </div>
@@ -339,7 +339,7 @@ const IntegrationDetailPage: React.FC = () => {
                   {credentialFields.length > 0 ? (
                     <div className="border-b border-[var(--color-border)] pb-5">
                       <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
-                        {t('system.integrationCenter.applicationCredential', '应用凭证')}
+                        {t('system.integrationCenter.applicationCredential')}
                       </div>
                       {credentialFields.map((field) => renderTemplateField(field))}
                     </div>
@@ -348,7 +348,7 @@ const IntegrationDetailPage: React.FC = () => {
                   {publicInterfaceFields.length > 0 ? (
                     <div className={credentialFields.length > 0 ? 'pt-5' : ''}>
                       <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
-                        {t('system.integrationCenter.requestConfig', '公共接口')}
+                        {t('system.integrationCenter.requestConfig')}
                       </div>
                       {publicInterfaceFields.map((field) => renderTemplateField(field))}
                     </div>
@@ -361,13 +361,13 @@ const IntegrationDetailPage: React.FC = () => {
           <div className="px-6 py-6">
             <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
               <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
-                {t('system.integrationCenter.interfaceConfig', '接口配置')}
+                {t('system.integrationCenter.interfaceConfig')}
               </div>
               {activeFields.length > 0 ? (
                 activeFields.map((field) => renderTemplateField(field))
               ) : (
                 <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-6 text-[14px] text-[var(--color-text-3)]">
-                  {t('system.integrationCenter.noInterfaceConfig', '当前能力暂无额外接口配置。')}
+                  {t('system.integrationCenter.noInterfaceConfig')}
                 </div>
               )}
             </Form>
@@ -377,14 +377,14 @@ const IntegrationDetailPage: React.FC = () => {
         <div className="flex flex-col gap-3 border-t border-[var(--color-border)] px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
           <div className="text-[13px] text-[var(--color-text-3)]">
             {activeTab === 'base'
-              ? t('system.integrationCenter.baseConnectionHint', '完成基础连接保存与测试后，才能继续配置各能力。')
+              ? t('system.integrationCenter.baseConnectionHint')
               : started
-                ? t('system.integrationCenter.startedHint', '当前实例至少已有一个能力完成启动。')
-                : t('system.integrationCenter.notStartedHint', '当前实例尚未启动，完成基础连接保存与测试后会更新卡片状态。')}
+                ? t('system.integrationCenter.startedHint')
+                : t('system.integrationCenter.notStartedHint')}
           </div>
           <div className="flex flex-wrap items-center gap-3">
             <div className="text-[14px] text-[var(--color-text-2)]">
-              {t('system.integrationCenter.testStatus', '测试状态')}：
+              {t('system.integrationCenter.testStatus')}：
               <span className="ml-2 inline-flex items-center gap-2">
                 <span
                   className={`h-2.5 w-2.5 rounded-full ${
@@ -405,7 +405,7 @@ const IntegrationDetailPage: React.FC = () => {
 
             {activeTab !== 'base' && (
               <div className="text-[14px] text-[var(--color-text-2)]">
-                {t('system.integrationCenter.platformStatus', '平台状态')}：
+                {t('system.integrationCenter.platformStatus')}：
                 <span className="ml-2 inline-flex items-center gap-2">
                   <span
                     className={`h-2.5 w-2.5 rounded-full ${
@@ -414,8 +414,8 @@ const IntegrationDetailPage: React.FC = () => {
                   />
                   <span className="text-[var(--color-text)]">
                     {instance.capability_enabled?.[activeTab]
-                      ? t('system.integrationCenter.enabled', '已启用')
-                      : t('system.integrationCenter.disabled', '未启用')}
+                      ? t('system.integrationCenter.enabled')
+                      : t('system.integrationCenter.disabled')}
                   </span>
                 </span>
               </div>
@@ -423,16 +423,16 @@ const IntegrationDetailPage: React.FC = () => {
 
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button onClick={handleSave} loading={saving}>
-                {t('common.save', '保存')}
+                {t('common.save')}
               </Button>
             </PermissionWrapper>
             <PermissionWrapper requiredPermissions={['Edit']}>
               <Button onClick={handleTestConnection} loading={testing}>
                 {testing
-                  ? t('system.integrationCenter.testing', '测试中')
+                  ? t('system.integrationCenter.testing')
                   : activeTab === 'base'
-                    ? t('system.integrationCenter.testAllConnections', '测试全部连接')
-                    : t('system.integrationCenter.testConnection', '测试连接')}
+                    ? t('system.integrationCenter.testAllConnections')
+                    : t('system.integrationCenter.testConnection')}
               </Button>
             </PermissionWrapper>
             {activeTab !== 'base' && (
@@ -442,8 +442,8 @@ const IntegrationDetailPage: React.FC = () => {
                   loading={saving}
                 >
                   {instance.capability_enabled?.[activeTab]
-                    ? t('system.integrationCenter.disableCapability', '禁用能力')
-                    : t('system.integrationCenter.enableCapability', '启用能力')}
+                    ? t('system.integrationCenter.disableCapability')
+                    : t('system.integrationCenter.enableCapability')}
                 </Button>
               </PermissionWrapper>
             )}

@@ -154,7 +154,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
 
   return (
     <OperateModal
-      title={mode === 'edit' ? t('common.edit', '编辑') : t('system.integrationCenter.createInstanceTitle', '添加集成实例')}
+      title={mode === 'edit' ? t('common.edit') : t('system.integrationCenter.createInstanceTitle')}
       open={open}
       onCancel={onClose}
       width={mode === 'edit' ? 760 : step === 'provider' ? 1080 : 760}
@@ -166,7 +166,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
           <Input.Search
             allowClear
             value={providerSearch}
-            placeholder={t('system.integrationCenter.searchProviders', '搜索已注册的集成应用')}
+            placeholder={t('system.integrationCenter.searchProviders')}
             onChange={(event) => setProviderSearch(event.target.value)}
             onSearch={setProviderSearch}
           />
@@ -175,11 +175,6 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
             loading={providersLoading}
             search={false}
             onCardClick={(item: { raw: ProviderManifest }) => onSelectProvider(item.raw)}
-          // descSlot={(item: { raw: ProviderManifest }) => (
-          //   item.raw.key === selectedProvider?.key ? (
-          //     <Tag color="green">{t('common.selected', '已选择')}</Tag>
-          //   ) : null
-          // )}
           />
         </div>
       ) : (
@@ -203,18 +198,18 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
           <Form form={form} layout="vertical">
             <Form.Item
               name="name"
-              label={t('system.integrationCenter.instanceName', '实例名称')}
+              label={t('system.integrationCenter.instanceName')}
               rules={[{ required: true, whitespace: true }]}
             >
-              <Input placeholder={t('system.integrationCenter.instanceNamePlaceholder', '请输入实例名称')} />
+              <Input placeholder={t('system.integrationCenter.instanceNamePlaceholder')} />
             </Form.Item>
             <Form.Item
               name="description"
-              label={t('system.integrationCenter.usageDescription', '用途说明')}
+              label={t('system.integrationCenter.usageDescription')}
             >
               <Input.TextArea
                 rows={4}
-                placeholder={t('system.integrationCenter.usageDescriptionPlaceholder', '请输入用途说明')}
+                placeholder={t('system.integrationCenter.usageDescriptionPlaceholder')}
               />
             </Form.Item>
           </Form>
