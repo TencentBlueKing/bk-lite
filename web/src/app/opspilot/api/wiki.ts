@@ -5,6 +5,7 @@ import {
   CheckItem,
   KnowledgePage,
   Material,
+  MaterialInfo,
   PageVersion,
   PurposeSchemaResult,
   PurposeSchemaTemplate,
@@ -75,6 +76,8 @@ export const useWikiApi = () => {
     get(`${BASE}/material/`, { params: { ...params, knowledge_base: kbId } });
 
   const fetchMaterial = (id: number): Promise<Material> => get(`${BASE}/material/${id}/`);
+
+  const fetchMaterialInfo = (id: number): Promise<MaterialInfo> => get(`${BASE}/material/${id}/info/`);
 
   const createMaterial = (data: Partial<Material>): Promise<Material> => post(`${BASE}/material/`, data);
 
@@ -159,6 +162,7 @@ export const useWikiApi = () => {
     rebuildKnowledgeBase,
     fetchMaterials,
     fetchMaterial,
+    fetchMaterialInfo,
     createMaterial,
     createMaterialFile,
     deleteMaterial,

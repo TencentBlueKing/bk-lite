@@ -102,3 +102,39 @@ class WikiMaterialViewSet(AuthViewSet):
             operator=getattr(request.user, "username", ""),
         )
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
+
+    @action(methods=["GET"], detail=True)
+    def info(self, request, pk=None):
+        """资料详情(spec 4.2):原文/文件链接、AI 解读、版本、贡献的知识页面。"""
+        material = self.get_object()
+        from apps.opspilot.models import KnowledgePage, MaterialVersion, PageEvidence
+
+        versions = [
+            {
+                "id": v.id,
+                "content_hash": v.content_hash,
+                "content_locator": v.content_locator,
+                "created_at": v.created_at.isoformat() if v.created_at else None,
+            }
+            for v in MaterialVersion.objects.filter(material=material).order_by("-id")
+        ]
+        page_ids = list(PageEvidence.objects.filter(material=material).values_list("page_id", flat=True).distinct())
+        pages = [{"id": p.id, "title": p.title, "page_type": p.page_type, "status": p.status} for p in KnowledgePage.objects.filter(id__in=page_ids)]
+        try:
+            file_url = material.file.url if material.file else ""
+        except Exception:
+            file_url = ""
+        original = material.text_content if material.material_type == "text" else (material.url or "")
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "material": self.get_serializer(material).data,
+                    "original": original,
+                    "file_url": file_url,
+                    "ai_summary": material.ai_summary,
+                    "versions": versions,
+                    "contributed_pages": pages,
+                },
+            }
+        )

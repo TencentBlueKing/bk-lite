@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Form, Input, Modal, Popconfirm, Select, Space, Tag, Upload, message } from 'antd';
+import { Button, Descriptions, Drawer, Form, Input, List, Modal, Popconfirm, Select, Space, Tag, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { Material, MaterialType } from '@/app/opspilot/types/wiki';
+import { Material, MaterialInfo, MaterialType } from '@/app/opspilot/types/wiki';
 
 // 资料状态机:pending(待解析) → parsing(解析中) → done(已解析) → building(构建中) → built(已构建);失败 failed
 const STATUS_META: Record<string, { color: string; key: string }> = {
@@ -25,7 +25,7 @@ const IN_PROGRESS = ['parsing', 'building'];
 
 const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
-  const { fetchMaterials, createMaterial, createMaterialFile, deleteMaterial, ingestMaterial, buildMaterial } =
+  const { fetchMaterials, fetchMaterialInfo, createMaterial, createMaterialFile, deleteMaterial, ingestMaterial, buildMaterial } =
     useWikiApi();
   const [form] = Form.useForm();
   const [data, setData] = useState<Material[]>([]);
@@ -34,6 +34,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState<MaterialType>('text');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [detail, setDetail] = useState<MaterialInfo | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -94,6 +95,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     load();
   };
 
+  const openDetail = async (id: number) => setDetail(await fetchMaterialInfo(id));
+
   const handleBuild = async (id: number) => {
     await buildMaterial(id, true); // async=true:走 Celery,资料置「构建中」,由轮询反映结果
     message.success(t('wiki.saveSuccess'));
@@ -127,14 +130,17 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     {
       title: '',
       key: 'action',
-      width: 220,
+      width: 280,
       render: (_: unknown, record) => {
         const busy = IN_PROGRESS.includes(record.status || '');
         const canBuild = ['done', 'built'].includes(record.status || '');
         return (
           <Space>
+            <Button type="link" size="small" onClick={() => openDetail(record.id)}>
+              {t('wiki.detail')}
+            </Button>
             <Button type="link" size="small" disabled={busy} onClick={() => handleIngest(record.id)}>
-              {t('wiki.ingest')}
+              {record.material_type === 'web' ? t('wiki.refreshSnapshot') : t('wiki.ingest')}
             </Button>
             <Button
               type="link"
@@ -229,6 +235,57 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           )}
         </Form>
       </Modal>
+
+      {/* 资料详情(spec 4.2):原文/文件、AI 解读、版本、贡献的知识页面 */}
+      <Drawer
+        title={`${t('wiki.detail')}: ${detail?.material?.name ?? ''}`}
+        open={!!detail}
+        width={600}
+        onClose={() => setDetail(null)}
+      >
+        {detail && (
+          <>
+            <Descriptions column={1} bordered size="small" className="mb-4">
+              <Descriptions.Item label={t('wiki.materialType')}>{detail.material.material_type}</Descriptions.Item>
+              <Descriptions.Item label={t('wiki.original')}>
+                {detail.file_url ? (
+                  <a href={detail.file_url} target="_blank" rel="noreferrer">
+                    {t('wiki.openFile')}
+                  </a>
+                ) : (
+                  <span className="break-all">{detail.original || '--'}</span>
+                )}
+              </Descriptions.Item>
+              <Descriptions.Item label={t('wiki.aiSummary')}>
+                <span className="whitespace-pre-wrap text-xs">{detail.ai_summary || '--'}</span>
+              </Descriptions.Item>
+            </Descriptions>
+            <div className="mb-2 font-medium">{t('wiki.versions')}</div>
+            <List
+              size="small"
+              className="mb-4"
+              dataSource={detail.versions}
+              renderItem={(v) => (
+                <List.Item>
+                  <span>#{v.id}</span>
+                  <span className="text-xs text-gray-400">{v.created_at}</span>
+                </List.Item>
+              )}
+            />
+            <div className="mb-2 font-medium">{t('wiki.contributedPages')}</div>
+            <List
+              size="small"
+              dataSource={detail.contributed_pages}
+              renderItem={(p) => (
+                <List.Item>
+                  <span className="truncate mr-2">{p.title}</span>
+                  <Tag>{p.page_type}</Tag>
+                </List.Item>
+              )}
+            />
+          </>
+        )}
+      </Drawer>
     </div>
   );
 };

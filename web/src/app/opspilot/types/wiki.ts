@@ -41,6 +41,15 @@ export interface Material {
   updated_at?: string;
 }
 
+export interface MaterialInfo {
+  material: Material;
+  original: string;
+  file_url: string;
+  ai_summary?: string;
+  versions: Array<{ id: number; content_hash?: string; content_locator?: string; created_at?: string }>;
+  contributed_pages: Array<{ id: number; title: string; page_type: string; status: string }>;
+}
+
 export interface KnowledgePage {
   id: number;
   knowledge_base: number;
