@@ -54,3 +54,13 @@ class TestScanner:
              patch.object(scanner, "_read_mac", side_effect=lambda ip: "00:0C:29:3A:7B:88"):
             out = _run(scanner.list_all_resources())
         assert out["result"]["ip"][0]["mac"] == "00:0C:29:3A:7B:88"
+
+
+def test_plugin_yml_loads_and_points_to_scanner():
+    import os, yaml
+    path = os.path.join(os.path.dirname(__file__), "..", "plugins", "inputs", "ip_discovery", "plugin.yml")
+    cfg = yaml.safe_load(open(os.path.abspath(path), encoding="utf-8"))
+    assert cfg["metadata"]["model_id"] == "ip"
+    proto = cfg["executors"]["protocol"]
+    assert proto["collector"]["class"] == "IPDiscoveryScanner"
+    assert proto["collector"]["module"].endswith("ip_discovery_scanner")
