@@ -100,6 +100,28 @@ class TestRunReconciliation:
         assert result["skipped_manual"] == 1
         assert touched == []
 
+    def test_自动发现IP本轮无CI命中则置离线(self, monkeypatch):
+        """auto_collect=True 但本轮无任何 CI 命中的 IP → 置 offline（台账跟随 CI 变更，§2.4）。
+        手工记录(auto_collect 非 True)即使无命中也不动。"""
+        from apps.cmdb.services import ipam_reconcile
+        monkeypatch.setattr(ipam_reconcile, "_load_sources", lambda: [{"model_id": "host", "ip_attr_id": "ip_addr"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_subnets", lambda: [{"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24"}])
+        monkeypatch.setattr(ipam_reconcile, "_load_ci_with_ip",
+                            lambda m, a: [{"_id": 55, "model_id": "host", "ip_addr": "10.0.1.10", "inst_name": "h1"}])
+        # .10 自动且本轮命中(保持)、.99 自动但本轮无命中(→离线)、.30 手工无命中(不动)
+        monkeypatch.setattr(ipam_reconcile, "_load_existing_ips", lambda: [
+            {"_id": 901, "ip_addr": "10.0.1.10", "subnet_id": "1", "auto_collect": True},
+            {"_id": 902, "ip_addr": "10.0.1.99", "subnet_id": "1", "auto_collect": True},
+            {"_id": 903, "ip_addr": "10.0.1.30", "subnet_id": "1", "auto_collect": False},
+        ])
+        monkeypatch.setattr(ipam_reconcile, "_upsert_ip_instance", lambda **kw: {"_id": 900, **kw})
+        offs = []
+        monkeypatch.setattr(ipam_reconcile, "_mark_offline", lambda ip_id: offs.append(ip_id))
+        monkeypatch.setattr(ipam_reconcile, "_writeback_subnet_utilization", lambda s: None)
+        result = ipam_reconcile.run_reconciliation()
+        assert offs == [902]
+        assert result["offline"] == 1
+
 
 # ---------------------------------------------------------------------------
 # DEFECT B (reconcile side) — _upsert_ip_instance must write collect_time

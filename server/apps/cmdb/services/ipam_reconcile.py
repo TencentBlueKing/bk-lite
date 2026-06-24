@@ -131,6 +131,15 @@ def _ensure_associations(ip_id, subnet_id, occupants):
                 logger.warning("[IPAM] 创建关联 %s 失败: %s", data["model_asst_id"], message)
 
 
+def _mark_offline(ip_id):
+    """把 ip 实例现网状态置为 offline（auto_collect 记录本轮无 CI 命中时）。"""
+    from apps.cmdb.services.instance import InstanceManage
+    InstanceManage.instance_update(
+        [], [], ip_id, {"ip_status": ["offline"]}, "system",
+        skip_permission_check=True, record_change=False,
+    )
+
+
 def _writeback_subnet_utilization(subnet_ids):
     from apps.cmdb.services.instance import InstanceManage
     from apps.cmdb.utils.ipam_cidr import parse_subnet, subnet_capacity
@@ -208,10 +217,24 @@ def run_reconciliation() -> dict:
         else:
             created += 1
 
+    # 台账跟随 CI 变更（§2.4）：auto_collect=True 但本轮无任何 CI 命中的 IP 置离线。
+    # 手工记录(auto_collect 非 True)一律不动。
+    occupied_keys = set(occupants.keys())
+    offline = 0
+    for ip in existing:
+        if ip.get("auto_collect") is not True:
+            continue
+        key = (str(ip.get("subnet_id")), ip.get("ip_addr"))
+        if key in occupied_keys:
+            continue
+        _mark_offline(ip["_id"])
+        offline += 1
+
     _writeback_subnet_utilization(affected_subnets)
     return {
         "created": created,
         "updated": updated,
         "skipped_manual": skipped_manual,
         "conflicts": conflicts,
+        "offline": offline,
     }
