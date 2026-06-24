@@ -2,6 +2,8 @@
 # @File: get_nats_source_data.py
 # @Time: 2025/7/22 18:24
 # @Author: windyzhao
+from rest_framework.exceptions import ValidationError
+
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.nats.nats_client import DefaultNastClient
 from apps.core.utils.team_utils import get_current_team
@@ -39,7 +41,11 @@ class GetNatsData:
         :return:
         """
         username = self.request.user.username
-        team = int(get_current_team(self.request))
+        team_str = get_current_team(self.request)
+        try:
+            team = int(team_str)
+        except (TypeError, ValueError):
+            raise ValidationError("current_team cookie 缺失或格式错误，请重新登录或刷新页面")
         include_children = self.request.COOKIES.get("include_children", "0") == "1"
         permission = getattr(self.request.user, "permission", {})
         if isinstance(permission, dict):
