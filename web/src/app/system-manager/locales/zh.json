@@ -728,12 +728,16 @@
         "displayStatusColumn": "同步状态",
         "latestSync": "最近同步",
         "latestSyncEmpty": "暂无记录",
+        "latestSyncSuccessSummary": "已同步 {matched_count} 个用户",
+        "latestSyncPartialSummary": "已匹配 {matched_count}/{total} 个用户，未匹配 {unmatched} 个",
+        "latestSyncFailedSummary": "同步失败",
+        "latestSyncRunningSummary": "同步中",
         "deleteConfirm": "确认删除该IM应用通知渠道？",
-        "syncMappings": "同步映射",
+        "syncMappings": "手动同步",
         "syncMappingsStarted": "同步已启动",
         "syncMappingsFailed": "映射同步失败",
         "viewMappings": "查看映射",
-        "viewRecords": "查看记录",
+        "viewRecords": "同步记录",
         "mappingsTitle": "正式映射",
         "recordsTitle": "同步记录",
         "enabledColumn": "已启用",
@@ -750,6 +754,7 @@
         "manifestNotFound": "未找到该集成实例对应的 IM 通知模板配置。",
         "matchFieldUnavailableHint": "当前集成实例未声明可用的外部匹配字段。",
         "receiveFieldUnavailableHint": "当前集成实例未声明可用的发送字段。",
+        "receiveFieldHint": "用于将消息发送到指定用户的凭证，若无其它需求，保持默认即可。",
         "displayStatus": {
           "pending_sync": "待同步",
           "syncing": "同步中",
@@ -761,7 +766,8 @@
           "running": "运行中",
           "success": "成功",
           "partial": "部分成功",
-          "failed": "失败"
+          "failed": "失败",
+          "never_synced": "待同步"
         },
         "triggerMode": {
           "manual": "手动",
@@ -797,7 +803,16 @@
           "conflictCount": "冲突数",
           "summary": "摘要"
         },
-        "search": "按名称搜索"
+        "search": "按名称搜索",
+        "sendTitle": "发送消息",
+        "sendChannel": "IM 同步项",
+        "sendChannelPlaceholder": "请选择 IM 同步项",
+        "sendReceivers": "接收人",
+        "sendReceiversPlaceholder": "请选择接收人",
+        "sendMessageTitle": "标题",
+        "sendMessageContent": "内容",
+        "sendSuccess": "发送成功",
+        "sendFailed": "发送失败"
       }
     },
     "modules": {

@@ -2,7 +2,7 @@ export type PlatformMatchField = 'username' | 'email' | 'phone';
 export type ChannelStatus = 'pending_sync' | 'ready' | 'needs_resync' | 'disabled';
 export type DisplayStatus = ChannelStatus | 'syncing';
 export type SyncTriggerMode = 'manual' | 'schedule';
-export type SyncRunStatus = 'running' | 'success' | 'failed' | 'partial';
+export type SyncRunStatus = 'running' | 'success' | 'failed' | 'partial' | 'never_synced';
 
 export interface ScheduleConfig {
   enabled: boolean;
@@ -21,6 +21,8 @@ export interface IMNotificationChannel {
   external_match_field: string;
   external_receive_field: string;
   display_status: DisplayStatus;
+  display_sync_status: SyncRunStatus;
+  display_sync_summary: string;
   latest_sync_status: SyncRunStatus | '';
   latest_sync_started_at: string | null;
   latest_sync_finished_at: string | null;
@@ -84,6 +86,8 @@ export type IMNotificationChannelPayload = Omit<
   | 'id'
   | 'integration_instance_name'
   | 'display_status'
+  | 'display_sync_status'
+  | 'display_sync_summary'
   | 'latest_sync_status'
   | 'latest_sync_started_at'
   | 'latest_sync_finished_at'

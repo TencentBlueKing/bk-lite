@@ -1,9 +1,9 @@
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 import pytest
 from django.utils import timezone
 
-from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IntegrationInstance
+from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
 from apps.system_mgmt.serializers.im_notification_channel_serializer import IMNotificationChannelSerializer
 
 
@@ -139,7 +139,7 @@ def test_sync_mappings_enqueues_run_and_returns_run_id(api_client, authenticated
 
 
 @pytest.mark.django_db
-def test_channel_serializer_returns_display_status_from_channel_and_latest_run(channel):
+def test_channel_serializer_returns_display_status_and_display_sync_status(channel):
     IMNotificationSyncRun.objects.create(
         channel=channel,
         status="running",
@@ -151,8 +151,31 @@ def test_channel_serializer_returns_display_status_from_channel_and_latest_run(c
     data = IMNotificationChannelSerializer(channel).data
 
     assert data["display_status"] == "syncing"
+    assert data["display_sync_status"] == "running"
+    assert data["display_sync_summary"] == "syncing"
     assert data["latest_sync_status"] == "running"
     assert data["status"] == "pending_sync"
+
+
+@pytest.mark.django_db
+def test_channel_serializer_returns_never_synced_when_no_run(channel):
+    data = IMNotificationChannelSerializer(channel).data
+    assert data["display_sync_status"] == "never_synced"
+    assert data["display_sync_summary"] == ""
+
+
+@pytest.mark.django_db
+def test_channel_serializer_returns_partial_when_latest_run_partial(channel):
+    IMNotificationSyncRun.objects.create(
+        channel=channel,
+        status="partial",
+        summary="Matched 5 of 10 external users",
+        started_at=timezone.now(),
+        locked_config_snapshot={},
+    )
+    data = IMNotificationChannelSerializer(channel).data
+    assert data["display_sync_status"] == "partial"
+    assert data["display_sync_summary"] == "Matched 5 of 10 external users"
 
 
 @pytest.mark.django_db
@@ -193,3 +216,145 @@ def test_destroy_channel_deletes_periodic_task(api_client, authenticated_user, c
 
     assert response.status_code == 200
     mock_delete.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_list_filters_channels_by_team(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-View"}}
+
+    IMNotificationChannel.objects.create(
+        name="visible-channel",
+        integration_instance=ready_im_instance,
+        enabled=True,
+        status="pending_sync",
+        platform_match_field="email",
+        external_match_field="email",
+        external_receive_field="user_id",
+        team=[1],
+    )
+    IMNotificationChannel.objects.create(
+        name="hidden-channel",
+        integration_instance=ready_im_instance,
+        enabled=True,
+        status="pending_sync",
+        platform_match_field="email",
+        external_match_field="email",
+        external_receive_field="user_id",
+        team=[2],
+    )
+
+    response = api_client.get("/api/v1/system_mgmt/im_notification_channel/", {"page": 1, "page_size": 10})
+
+    assert response.status_code == 200
+    names = {item["name"] for item in response.data["items"]}
+    assert "visible-channel" in names
+    assert "hidden-channel" not in names
+
+
+@pytest.mark.django_db
+def test_retrieve_rejects_channel_outside_user_team(api_client, authenticated_user, channel):
+    authenticated_user.group_list = [{"id": 999, "name": "Other Team"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-View"}}
+
+    response = api_client.get(f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/")
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_create_rejects_team_outside_user_scope(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Add"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/",
+        {
+            "name": "scoped-channel",
+            "integration_instance": ready_im_instance.id,
+            "enabled": True,
+            "platform_match_field": "email",
+            "external_match_field": "email",
+            "external_receive_field": "user_id",
+            "team": [99],
+        },
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+def test_update_rejects_team_outside_user_scope(api_client, authenticated_user, channel, ready_im_instance):
+    authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+    authenticated_user.save(update_fields=["group_list"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.put(
+        f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/",
+        {
+            "name": channel.name,
+            "integration_instance": ready_im_instance.id,
+            "enabled": True,
+            "platform_match_field": "email",
+            "external_match_field": "email",
+            "external_receive_field": "user_id",
+            "team": [99],
+        },
+    )
+
+    assert response.status_code == 403
+
+
+@pytest.mark.django_db
+@patch("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService")
+def test_send_action_dispatches_to_provider(mock_runtime_class, api_client, authenticated_user, channel, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    channel.status = "ready"
+    channel.save(update_fields=["status"])
+
+    user = User.objects.create(
+        username="receiver",
+        display_name="Receiver",
+        email="receiver@example.com",
+        domain="domain.com",
+    )
+    IMNotificationUserMapping.objects.create(
+        channel=channel,
+        user=user,
+        external_identity_key="user_id",
+        external_identity_value="u123",
+        external_receive_key="user_id",
+        external_snapshot={"user_id": "u123"},
+    )
+
+    mock_runtime = mock_runtime_class.return_value
+    mock_runtime.execute.return_value = MagicMock(success=True, summary="sent", to_dict=lambda: {"ok": True})
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/send/",
+        {"channel_id": channel.id, "user_ids": [user.id], "title": "Hello", "content": "World"},
+    )
+
+    assert response.status_code == 200
+    assert response.json()["result"] is True
+
+
+@pytest.mark.django_db
+def test_send_action_rejects_channel_not_ready(api_client, authenticated_user, channel):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/send/",
+        {"channel_id": channel.id, "user_ids": [], "title": "Hello", "content": "World"},
+    )
+
+    assert response.status_code == 400
+    assert "requires a successful sync" in response.json()["message"]

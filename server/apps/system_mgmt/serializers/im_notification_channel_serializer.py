@@ -26,6 +26,8 @@ class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
 class IMNotificationChannelSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
+    display_sync_status = serializers.SerializerMethodField()
+    display_sync_summary = serializers.SerializerMethodField()
     latest_sync_status = serializers.SerializerMethodField()
     latest_sync_started_at = serializers.SerializerMethodField()
     latest_sync_finished_at = serializers.SerializerMethodField()
@@ -47,6 +49,18 @@ class IMNotificationChannelSerializer(UsernameSerializer):
         if latest_run and latest_run.status == im_notification_service.SYNC_RUN_STATUS_RUNNING:
             return "syncing"
         return obj.status
+
+    def get_display_sync_status(self, obj):
+        latest_run = self._get_latest_run(obj)
+        if latest_run and latest_run.status == im_notification_service.SYNC_RUN_STATUS_RUNNING:
+            return "running"
+        if latest_run:
+            return latest_run.status
+        return "never_synced"
+
+    def get_display_sync_summary(self, obj):
+        latest_run = self._get_latest_run(obj)
+        return latest_run.summary if latest_run else ""
 
     def get_latest_sync_status(self, obj):
         latest_run = self._get_latest_run(obj)

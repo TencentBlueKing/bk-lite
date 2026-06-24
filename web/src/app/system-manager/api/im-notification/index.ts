@@ -59,6 +59,15 @@ export const useImNotificationApi = () => {
     return await post(`/system_mgmt/im_notification_channel/${id}/test_send/`, payload);
   }
 
+  async function sendNotification(payload: {
+    channel_id: number;
+    user_ids: number[];
+    title: string;
+    content: string;
+  }): Promise<Record<string, unknown> | undefined> {
+    return await post('/system_mgmt/im_notification_channel/send/', payload);
+  }
+
   return {
     getChannels,
     createChannel,
@@ -69,5 +78,6 @@ export const useImNotificationApi = () => {
     getMappings,
     getRecords,
     testSend,
+    sendNotification,
   };
 };

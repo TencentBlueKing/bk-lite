@@ -46,6 +46,7 @@ export function getSyncRunStatusColor(status: string): string {
     success: 'success',
     partial: 'warning',
     failed: 'error',
+    never_synced: 'default',
   };
   return map[status] ?? 'default';
 }
@@ -69,7 +70,7 @@ export function getSyncRunStatusText(
   status: string,
   t: (key: string, fallback?: string) => string,
 ): string {
-  return t(`system.channel.imNotificationPage.syncRunStatus.${status}`);
+  return t(`system.channel.imNotificationPage.syncRunStatus.${status || 'never_synced'}`);
 }
 
 export function getSyncTriggerModeText(
@@ -77,4 +78,42 @@ export function getSyncTriggerModeText(
   t: (key: string, fallback?: string) => string,
 ): string {
   return t(`system.channel.imNotificationPage.triggerMode.${triggerMode}`);
+}
+
+export function getLatestSyncSummary(
+  record: {
+    display_sync_status: string;
+    latest_sync_matched_count: number | null;
+    latest_sync_total_external_user_count: number | null;
+    latest_sync_unmatched_count: number | null;
+    latest_sync_summary: string;
+  },
+  t: (key: string, fallback?: string, values?: Record<string, string | number>) => string,
+): string {
+  const status = record.display_sync_status;
+  const matched = record.latest_sync_matched_count ?? 0;
+  const total = record.latest_sync_total_external_user_count ?? 0;
+  const unmatched = record.latest_sync_unmatched_count ?? 0;
+
+  if (status === 'success') {
+    return t(
+      'system.channel.imNotificationPage.latestSyncSuccessSummary',
+      'Synced {matched_count} users',
+      { matched_count: matched },
+    );
+  }
+  if (status === 'partial') {
+    return t(
+      'system.channel.imNotificationPage.latestSyncPartialSummary',
+      'Matched {matched_count}/{total} users, {unmatched} unmatched',
+      { matched_count: matched, total, unmatched },
+    );
+  }
+  if (status === 'failed') {
+    return record.latest_sync_summary || t('system.channel.imNotificationPage.latestSyncFailedSummary', 'Sync failed');
+  }
+  if (status === 'running') {
+    return t('system.channel.imNotificationPage.latestSyncRunningSummary', 'Syncing');
+  }
+  return '';
 }

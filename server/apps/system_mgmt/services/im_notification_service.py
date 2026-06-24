@@ -91,7 +91,7 @@ def execute_im_notification_sync_run(run_id: int):
     unmatched_count = len(unmatched_issues)
     conflict_count = len(conflict_issues)
     status = SYNC_RUN_STATUS_SUCCESS if unmatched_count == 0 and conflict_count == 0 else SYNC_RUN_STATUS_PARTIAL
-    summary = f"Matched {matched_count} of {len(external_users)} external users"
+    summary = ""
     now = timezone.now()
 
     with transaction.atomic():
@@ -154,6 +154,40 @@ def send_im_notification(channel_id: int, title: str, content: str, receivers):
 
     if not receive_ids:
         return {"result": False, "message": "No matched IM recipients found"}
+
+    runtime_service = RuntimeApplicationService()
+    result = runtime_service.execute(
+        provider_key=channel.integration_instance.provider_key,
+        capability_key="im_notification",
+        operation="send_message",
+        config=channel.integration_instance.get_runtime_config(),
+        title=title,
+        content=content,
+        receive_id_type=channel.external_receive_field,
+        receive_ids=receive_ids,
+    )
+    return {"result": result.success, "message": result.summary, "data": result.to_dict()}
+
+
+def send_im_notification_to_users(channel_id: int, user_ids: list[int], title: str, content: str):
+    channel = IMNotificationChannel.objects.select_related("integration_instance").filter(id=channel_id, enabled=True).first()
+    if not channel:
+        return {"result": False, "message": "IM notification channel not found"}
+    if channel.status != CHANNEL_STATUS_READY:
+        return {"result": False, "message": "IM notification channel requires a successful sync before sending"}
+
+    if not user_ids:
+        return {"result": False, "message": "No recipients selected"}
+
+    mappings = IMNotificationUserMapping.objects.filter(channel=channel, user_id__in=user_ids)
+    receive_ids = []
+    for mapping in mappings:
+        receive_id = str((mapping.external_snapshot or {}).get(mapping.external_receive_key) or "").strip()
+        if receive_id:
+            receive_ids.append(receive_id)
+
+    if not receive_ids:
+        return {"result": False, "message": "No matched IM recipients found for selected users"}
 
     runtime_service = RuntimeApplicationService()
     result = runtime_service.execute(

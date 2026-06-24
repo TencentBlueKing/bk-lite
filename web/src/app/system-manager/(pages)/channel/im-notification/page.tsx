@@ -4,7 +4,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
-import { useIntl } from 'react-intl';
 import {
   Alert,
   Button,
@@ -23,6 +22,7 @@ import type { ColumnItem } from '@/types';
 import {
   ArrowLeftOutlined,
   PlusOutlined,
+  ReloadOutlined,
 } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from '@/components/permission';
@@ -46,15 +46,12 @@ import type {
 } from '@/app/system-manager/types/im-notification';
 import {
   buildSchedulePayload,
-  getDisplayStatusColor,
-  getDisplayStatusText,
+  getLatestSyncSummary,
   getSyncRunStatusColor,
   getSyncRunStatusText,
   getSyncTriggerModeText,
-  isChannelSendReady,
   isChannelSyncRunning,
   parseScheduleConfig,
-  parseReceiversInput,
 } from '@/app/system-manager/utils/imNotificationUtils';
 import { useTranslation } from '@/utils/i18n';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
@@ -85,44 +82,6 @@ function getResolvedImTemplate(
   const capability = provider.capabilities.find((item) => item.key === 'im_notification');
   if (!capability?.business_template) return null;
   return provider.business_templates?.[capability.business_template] ?? null;
-}
-
-function buildLatestSyncSummary(
-  record: IMNotificationChannel,
-  formatMessage: (key: string, values?: Record<string, string | number>) => string,
-  t: (key: string, defaultMessage?: string, values?: Record<string, string | number>) => string,
-): string {
-  const total = record.latest_sync_total_external_user_count;
-  const matched = record.latest_sync_matched_count;
-  const unmatched = record.latest_sync_unmatched_count ?? 0;
-  const conflict = record.latest_sync_conflict_count ?? 0;
-
-  if (typeof total === 'number' && typeof matched === 'number') {
-    if (unmatched > 0 && conflict > 0) {
-      return formatMessage(
-        'system.channel.imNotificationPage.latestSyncMatchedUnmatchedConflictSummary',
-        { matched, total, unmatched, conflict },
-      );
-    }
-    if (unmatched > 0) {
-      return formatMessage(
-        'system.channel.imNotificationPage.latestSyncMatchedUnmatchedSummary',
-        { matched, total, unmatched },
-      );
-    }
-    if (conflict > 0) {
-      return formatMessage(
-        'system.channel.imNotificationPage.latestSyncMatchedConflictSummary',
-        { matched, total, conflict },
-      );
-    }
-    return formatMessage(
-      'system.channel.imNotificationPage.latestSyncMatchedSummary',
-      { matched, total },
-    );
-  }
-
-  return record.latest_sync_summary || getSyncRunStatusText(record.latest_sync_status, t);
 }
 
 function renderSyncPeriod(
@@ -161,7 +120,6 @@ function renderSyncPeriod(
 
 const ImNotificationPage: React.FC = () => {
   const { t } = useTranslation();
-  const intl = useIntl();
   const { convertToLocalizedTime } = useLocalizedTime();
   const router = useRouter();
   const {
@@ -173,12 +131,13 @@ const ImNotificationPage: React.FC = () => {
     syncMappings,
     getMappings,
     getRecords,
-    testSend,
+    sendNotification,
   } = useImNotificationApi();
   const { getProviders } = useIntegrationCenterApi();
 
   const [channels, setChannels] = useState<IMNotificationChannel[]>([]);
   const [loading, setLoading] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
   const [searchText, setSearchText] = useState('');
 
   const [form] = Form.useForm<IMNotificationChannelFormValues>();
@@ -189,27 +148,19 @@ const ImNotificationPage: React.FC = () => {
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
   const [providers, setProviders] = useState<ProviderManifest[]>([]);
 
-  const [mappingsOpen, setMappingsOpen] = useState(false);
-  const [mappingsChannel, setMappingsChannel] = useState<IMNotificationChannel | null>(null);
-  const [mappings, setMappings] = useState<IMNotificationUserMapping[]>([]);
-  const [mappingsLoading, setMappingsLoading] = useState(false);
+  const [sendForm] = Form.useForm();
+  const [sendOpen, setSendOpen] = useState(false);
+  const [sendLoading, setSendLoading] = useState(false);
+  const [sendChannelId, setSendChannelId] = useState<number | undefined>();
+  const [sendMappings, setSendMappings] = useState<IMNotificationUserMapping[]>([]);
+  const [sendMappingsLoading, setSendMappingsLoading] = useState(false);
 
   const [recordsOpen, setRecordsOpen] = useState(false);
   const [recordsChannel, setRecordsChannel] = useState<IMNotificationChannel | null>(null);
   const [records, setRecords] = useState<IMNotificationSyncRun[]>([]);
   const [recordsLoading, setRecordsLoading] = useState(false);
 
-  const [testForm] = Form.useForm();
-  const [testOpen, setTestOpen] = useState(false);
-  const [testLoading, setTestLoading] = useState(false);
-  const [testChannel, setTestChannel] = useState<IMNotificationChannel | null>(null);
-
   const [pagination, setPagination] = useState<PaginationState>({
-    current: 1,
-    total: 0,
-    pageSize: 10,
-  });
-  const [mapPagination, setMapPagination] = useState<PaginationState>({
     current: 1,
     total: 0,
     pageSize: 10,
@@ -219,9 +170,6 @@ const ImNotificationPage: React.FC = () => {
     total: 0,
     pageSize: 10,
   });
-
-  const formatMessage = (key: string, values?: Record<string, string | number>) =>
-    intl.formatMessage({ id: key }, values);
 
   const resolvedTemplate = useMemo(
     () => getResolvedImTemplate(watchedIntegrationInstance, availableInstances, providers),
@@ -273,6 +221,15 @@ const ImNotificationPage: React.FC = () => {
       message.error(t('common.fetchFailed'));
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleRefresh = async () => {
+    setRefreshing(true);
+    try {
+      await fetchChannels(pagination.current, pagination.pageSize);
+    } finally {
+      setRefreshing(false);
     }
   };
 
@@ -438,35 +395,6 @@ const ImNotificationPage: React.FC = () => {
     }
   };
 
-  const fetchMappings = async (channelId: number, current = 1, pageSize = mapPagination.pageSize) => {
-    setMappingsLoading(true);
-    try {
-      const { count, items } = await getMappings(channelId, {
-        page: current,
-        page_size: pageSize,
-      });
-      setMappings(items ?? []);
-      setMapPagination((prev) => ({
-        ...prev,
-        current,
-        pageSize,
-        total: count,
-      }));
-    } catch {
-      message.error(t('common.fetchFailed'));
-      setMappings([]);
-    } finally {
-      setMappingsLoading(false);
-    }
-  };
-
-  const handleViewMappings = async (record: IMNotificationChannel) => {
-    setMappingsChannel(record);
-    setMappingsOpen(true);
-    setMappings([]);
-    await fetchMappings(record.id, 1, mapPagination.pageSize);
-  };
-
   const fetchRecords = async (channelId: number, current = 1, pageSize = recordsPagination.pageSize) => {
     setRecordsLoading(true);
     try {
@@ -496,36 +424,48 @@ const ImNotificationPage: React.FC = () => {
     await fetchRecords(record.id, 1, recordsPagination.pageSize);
   };
 
-  const handleTestSend = (record: IMNotificationChannel) => {
-    if (!isChannelSendReady(record.display_status)) return;
-    setTestChannel(record);
-    testForm.resetFields();
-    testForm.setFieldsValue({
-      title: 'Test Message',
-      content: 'This is a test message.',
-    });
-    setTestOpen(true);
+  const handleSendOpen = () => {
+    sendForm.resetFields();
+    setSendChannelId(undefined);
+    setSendMappings([]);
+    setSendOpen(true);
   };
 
-  const handleTestSendOk = async () => {
-    if (!testChannel) return;
+  const handleSendChannelChange = async (channelId: number) => {
+    setSendChannelId(channelId);
+    sendForm.setFieldsValue({ user_ids: [] });
+    setSendMappings([]);
+    if (!channelId) return;
+
+    setSendMappingsLoading(true);
     try {
-      const values = await testForm.validateFields();
-      setTestLoading(true);
-      const receivers = parseReceiversInput(values.receivers ?? '');
-      await testSend(testChannel.id, {
+      const { items } = await getMappings(channelId, { page: 1, page_size: 1000 });
+      setSendMappings(items ?? []);
+    } catch {
+      message.error(t('common.fetchFailed'));
+      setSendMappings([]);
+    } finally {
+      setSendMappingsLoading(false);
+    }
+  };
+
+  const handleSendOk = async () => {
+    try {
+      const values = await sendForm.validateFields();
+      setSendLoading(true);
+      await sendNotification({
+        channel_id: values.channel_id,
+        user_ids: values.user_ids ?? [],
         title: values.title,
         content: values.content,
-        receivers,
       });
-      message.success(t('system.channel.imNotificationPage.testSendSuccess'));
-      setTestOpen(false);
-      await fetchChannels(pagination.current, pagination.pageSize);
+      message.success(t('system.channel.imNotificationPage.sendSuccess'));
+      setSendOpen(false);
     } catch (error) {
       if (error && typeof error === 'object' && 'errorFields' in error) return;
-      message.error(error instanceof Error ? error.message : t('system.channel.imNotificationPage.testSendFailed'));
+      message.error(error instanceof Error ? error.message : t('system.channel.imNotificationPage.sendFailed'));
     } finally {
-      setTestLoading(false);
+      setSendLoading(false);
     }
   };
 
@@ -538,37 +478,25 @@ const ImNotificationPage: React.FC = () => {
     return convertToLocalizedTime(value, 'YYYY-MM-DD HH:mm:ss');
   };
 
-  const mappingColumns: ColumnItem[] = [
-    {
-      key: 'username',
-      title: t('system.channel.imNotificationPage.mappingColumns.username'),
-      dataIndex: 'username',
-    },
-    {
-      key: 'external_display_name',
-      title: t('system.channel.imNotificationPage.mappingColumns.externalDisplayName'),
-      dataIndex: 'external_display_name',
-    },
-    {
-      key: 'external_identity',
-      title: t('system.channel.imNotificationPage.mappingColumns.externalIdentity'),
-      dataIndex: 'external_identity_value',
-      render: (_, record: IMNotificationUserMapping) => (
-        <span>{`${record.external_identity_key}: ${record.external_identity_value}`}</span>
-      ),
-    },
-    {
-      key: 'external_receive_key',
-      title: t('system.channel.imNotificationPage.mappingColumns.externalReceiveKey'),
-      dataIndex: 'external_receive_key',
-    },
-    {
-      key: 'synced_at',
-      title: t('system.channel.imNotificationPage.mappingColumns.syncedAt'),
-      dataIndex: 'synced_at',
-      render: (_, record: IMNotificationUserMapping) => <p>{renderTime(record.synced_at)}</p>,
-    },
-  ];
+  const sendChannelOptions = useMemo(
+    () =>
+      channels
+        .filter((channel) => channel.status === 'ready')
+        .map((channel) => ({
+          value: channel.id,
+          label: `${channel.name} (${channel.integration_instance_name})`,
+        })),
+    [channels],
+  );
+
+  const sendReceiverOptions = useMemo(
+    () =>
+      sendMappings.map((mapping) => ({
+        value: mapping.user,
+        label: `${mapping.username} — ${mapping.external_identity_key}: ${mapping.external_identity_value}`,
+      })),
+    [sendMappings],
+  );
 
   const recordColumns: ColumnItem[] = [
     {
@@ -645,52 +573,45 @@ const ImNotificationPage: React.FC = () => {
       dataIndex: 'integration_instance_name',
     },
     {
-      key: 'display_status',
-      title: t('system.channel.imNotificationPage.displayStatusColumn'),
-      dataIndex: 'display_status',
-      render: (status: string) => (
-        <Tag color={getDisplayStatusColor(status)}>
-          {getDisplayStatusText(status, t)}
-        </Tag>
-      ),
-      width: 110,
+      key: 'latest_sync',
+      title: t('system.channel.imNotificationPage.latestSync'),
+      dataIndex: 'display_sync_status',
+      render: (_, record: IMNotificationChannel) => {
+        const status = record.display_sync_status;
+        if (status === 'never_synced' || !status) {
+          return (
+            <div className="leading-6">
+              <span className="text-base font-semibold text-[var(--color-text-3)]">
+                {t('system.channel.imNotificationPage.latestSyncEmpty')}
+              </span>
+            </div>
+          );
+        }
+
+        const latestSyncTime = record.latest_sync_finished_at || record.latest_sync_started_at;
+        const summary = getLatestSyncSummary(record, t);
+
+        return (
+          <div className="leading-6">
+            <div className="text-base font-semibold text-[var(--color-text-1)]">
+              {latestSyncTime ? renderTime(latestSyncTime) : '--'}
+            </div>
+            <div className="flex items-center gap-2 text-xs text-[var(--color-text-3)]">
+              {getSyncRunStatusText(status, t)}
+              {summary ? (
+                <span>{summary}</span>
+              ) : null}
+            </div>
+          </div>
+        );
+      },
+      width: 260,
     },
     {
       key: 'sync_period',
       title: t('system.channel.imNotificationPage.syncPeriod'),
       dataIndex: 'schedule_config',
       render: (_, record: IMNotificationChannel) => renderSyncPeriod(record, t),
-      width: 220,
-    },
-    {
-      key: 'latest_sync',
-      title: t('system.channel.imNotificationPage.latestSync'),
-      dataIndex: 'latest_sync_status',
-      render: (_, record: IMNotificationChannel) => {
-        if (!record.latest_sync_status) {
-          return <span>{t('system.channel.imNotificationPage.latestSyncEmpty')}</span>;
-        }
-
-        const latestSyncTime = record.latest_sync_finished_at || record.latest_sync_started_at;
-        const latestSyncStatus = getSyncRunStatusText(record.latest_sync_status, t);
-        const latestSyncSummary = buildLatestSyncSummary(record, formatMessage, t);
-
-        return (
-          <div className="leading-6">
-            <div className="text-base font-semibold text-[var(--color-text-1)]">
-              {latestSyncTime
-                ? renderTime(latestSyncTime)
-                : t('system.channel.imNotificationPage.latestSyncEmpty')}
-            </div>
-            <div className="text-xs text-[var(--color-text-3)]">
-              {formatMessage(
-                'system.channel.imNotificationPage.latestSyncPrefix',
-                { status: latestSyncStatus, summary: latestSyncSummary },
-              )}
-            </div>
-          </div>
-        );
-      },
       width: 220,
     },
     {
@@ -711,7 +632,7 @@ const ImNotificationPage: React.FC = () => {
       key: 'actions',
       dataIndex: 'actions',
       fixed: 'right',
-      width: 300,
+      width: 150,
       render: (_, record: IMNotificationChannel) => (
         <Space wrap>
           <PermissionWrapper requiredPermissions={['Edit']}>
@@ -736,27 +657,10 @@ const ImNotificationPage: React.FC = () => {
           <Button
             type="link"
             size="small"
-            onClick={() => handleViewMappings(record)}
-          >
-            {t('system.channel.imNotificationPage.viewMappings')}
-          </Button>
-          <Button
-            type="link"
-            size="small"
             onClick={() => handleViewRecords(record)}
           >
             {t('system.channel.imNotificationPage.viewRecords')}
           </Button>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
-              onClick={() => handleTestSend(record)}
-              disabled={!isChannelSendReady(record.display_status)}
-            >
-              {t('system.channel.imNotificationPage.testSend')}
-            </Button>
-          </PermissionWrapper>
           <PermissionWrapper requiredPermissions={['Delete']}>
             <Popconfirm
               title={t('system.channel.imNotificationPage.deleteConfirm')}
@@ -796,7 +700,7 @@ const ImNotificationPage: React.FC = () => {
                 onClick={handleBack}
               />
             </div>
-            <div>
+            <div className="flex items-center gap-2">
               <Input.Search
                 placeholder={t('system.channel.imNotificationPage.search')}
                 allowClear
@@ -809,11 +713,21 @@ const ImNotificationPage: React.FC = () => {
                   type="primary"
                   icon={<PlusOutlined />}
                   onClick={() => openModal(null)}
-                  className="ml-2"
                 >
                   {t('common.add')}
                 </Button>
               </PermissionWrapper>
+              <PermissionWrapper requiredPermissions={['Edit']}>
+                <Button onClick={handleSendOpen}>
+                  {t('system.channel.imNotificationPage.sendTitle')}
+                </Button>
+              </PermissionWrapper>
+              <Button
+                type="text"
+                icon={<ReloadOutlined />}
+                onClick={handleRefresh}
+                loading={refreshing}
+              />
             </div>
           </div>
 
@@ -945,6 +859,9 @@ const ImNotificationPage: React.FC = () => {
                         placeholder={t('system.channel.imNotificationPage.externalReceiveFieldPlaceholder')}
                       />
                     </Form.Item>
+                    <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
+                      {t('system.channel.imNotificationPage.receiveFieldHint')}
+                    </div>
                     {showReceiveFieldHint ? (
                       <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
                         {t('system.channel.imNotificationPage.receiveFieldUnavailableHint')}
@@ -1001,34 +918,6 @@ const ImNotificationPage: React.FC = () => {
           </OperateModal>
 
           <Drawer
-            title={`${mappingsChannel?.name ?? ''} — ${t('system.channel.imNotificationPage.mappingsTitle')}`}
-            open={mappingsOpen}
-            onClose={() => setMappingsOpen(false)}
-            width={880}
-          >
-            {!mappingsLoading && mappings.length === 0 ? (
-              <div className="mb-4 text-[13px] text-[var(--color-text-3)]">
-                {t('system.channel.imNotificationPage.noFormalMappings')}
-              </div>
-            ) : null}
-            <CustomTable
-              rowKey="id"
-              scroll={{ y: 'calc(100vh - 205px)' }}
-              loading={mappingsLoading}
-              dataSource={mappings}
-              columns={mappingColumns}
-              pagination={{
-                ...mapPagination,
-                onChange: (current: number, pageSize: number) => {
-                  if (!mappingsChannel) return;
-                  const nextPage = pageSize !== mapPagination.pageSize ? 1 : current;
-                  fetchMappings(mappingsChannel.id, nextPage, pageSize);
-                },
-              }}
-            />
-          </Drawer>
-
-          <Drawer
             title={`${recordsChannel?.name ?? ''} — ${t('system.channel.imNotificationPage.recordsTitle')}`}
             open={recordsOpen}
             onClose={() => setRecordsOpen(false)}
@@ -1057,36 +946,51 @@ const ImNotificationPage: React.FC = () => {
           </Drawer>
 
           <OperateModal
-            title={t('system.channel.imNotificationPage.testSendTitle')}
-            open={testOpen}
-            onOk={handleTestSendOk}
-            onCancel={() => !testLoading && setTestOpen(false)}
-            confirmLoading={testLoading}
+            title={t('system.channel.imNotificationPage.sendTitle')}
+            open={sendOpen}
+            onOk={handleSendOk}
+            onCancel={() => !sendLoading && setSendOpen(false)}
+            confirmLoading={sendLoading}
             width={520}
           >
-            <Form form={testForm} layout="vertical">
+            <Form form={sendForm} layout="vertical">
+              <Form.Item
+                name="channel_id"
+                label={t('system.channel.imNotificationPage.sendChannel')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  placeholder={t('system.channel.imNotificationPage.sendChannelPlaceholder')}
+                  options={sendChannelOptions}
+                  onChange={handleSendChannelChange}
+                />
+              </Form.Item>
+              <Form.Item
+                name="user_ids"
+                label={t('system.channel.imNotificationPage.sendReceivers')}
+                rules={[{ required: true }]}
+              >
+                <Select
+                  mode="multiple"
+                  placeholder={t('system.channel.imNotificationPage.sendReceiversPlaceholder')}
+                  options={sendReceiverOptions}
+                  loading={sendMappingsLoading}
+                  disabled={!sendChannelId}
+                />
+              </Form.Item>
               <Form.Item
                 name="title"
-                label={t('system.channel.imNotificationPage.testSendTitleField')}
+                label={t('system.channel.imNotificationPage.sendMessageTitle')}
                 rules={[{ required: true }]}
               >
                 <Input />
               </Form.Item>
               <Form.Item
                 name="content"
-                label={t('system.channel.imNotificationPage.testSendContent')}
+                label={t('system.channel.imNotificationPage.sendMessageContent')}
                 rules={[{ required: true }]}
               >
-                <Input.TextArea rows={3} />
-              </Form.Item>
-              <Form.Item
-                name="receivers"
-                label={t('system.channel.imNotificationPage.testSendReceivers')}
-              >
-                <Input.TextArea
-                  rows={3}
-                  placeholder={t('system.channel.imNotificationPage.testSendReceiversPlaceholder')}
-                />
+                <Input.TextArea rows={4} />
               </Form.Item>
             </Form>
           </OperateModal>
