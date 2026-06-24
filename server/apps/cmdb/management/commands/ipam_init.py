@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-"""幂等初始化 IPAM 模型增量：子网新字段、ip 描述、ip--use-->host/network 关联、对账登记表种子。"""
+"""幂等初始化 IPAM 模型增量：子网新字段、ip 描述、ip--connect-->host/network 关联、对账登记表种子。"""
 from django.core.management import BaseCommand
 from apps.cmdb.services.model import ModelManage
 from apps.core.logger import cmdb_logger as logger
@@ -108,8 +108,8 @@ def _seed_sources():
 def run_ipam_init():
     _ensure_attrs("subnet", SUBNET_NEW_ATTRS)
     _ensure_attrs("ip", IP_NEW_ATTRS)
-    _ensure_association("ip", "host", "use")
-    _ensure_association("ip", "network", "use")
+    _ensure_association("ip", "host", "connect")
+    _ensure_association("ip", "network", "connect")
     _seed_sources()
 
 

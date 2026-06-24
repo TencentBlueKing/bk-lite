@@ -87,7 +87,8 @@ def _upsert_ip_instance(existing_id=None, subnet_id=None, ip_addr=None, ip_statu
 
 
 def _ensure_associations(ip_id, subnet_id, occupants):
-    """为 ip 实例创建关联：ip --组成(group)--> subnet，ip --使用(use)--> CI。
+    """为 ip 实例创建关联：ip --组成(group)--> subnet，ip --关联(connect)--> CI。
+    group/connect 均为已注册的内置关联类型（use 未注册会被静默拒绝）。
     已存在的关联（instance_association_repetition）静默跳过。
     """
     from apps.cmdb.services.instance import InstanceManage
@@ -97,7 +98,7 @@ def _ensure_associations(ip_id, subnet_id, occupants):
     pairs = [("ip", ip_id, "subnet", subnet_id, "group")]
     for occ in occupants:
         model_id, cid = occ.split(":", 1)
-        pairs.append(("ip", ip_id, model_id, int(cid), "use"))
+        pairs.append(("ip", ip_id, model_id, int(cid), "connect"))
 
     for src_model, src_id, dst_model, dst_id, asst_id in pairs:
         data = {

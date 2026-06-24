@@ -3,7 +3,7 @@
 Increments (mirrors ipam_init.py):
   attr-subnet: gateway(str), vlan_id(int), usage_type(enum), owner(user)
   attr-ip:     description(str)
-  asso-ip:     ip-->use-->host (n:n), ip-->use-->network (n:n)
+  asso-ip:     ip-->connect-->host (n:n), ip-->connect-->network (n:n)
 
 Safe to run multiple times — each entry is checked by attr_id / (src,asst,dst)
 before appending.
@@ -112,8 +112,8 @@ IP_NEW_ATTRS = [
 # (asso-subnet has 9 cols but only 4 used; we write only the 4 data cols)
 # ---------------------------------------------------------------------------
 IP_NEW_ASSOS = [
-    ("ip", "host", "use", "n:n"),
-    ("ip", "network", "use", "n:n"),
+    ("ip", "host", "connect", "n:n"),
+    ("ip", "network", "connect", "n:n"),
 ]
 
 ASSO_IP_HEADERS = (

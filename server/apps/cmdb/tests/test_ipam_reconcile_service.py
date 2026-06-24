@@ -81,3 +81,22 @@ class TestRunReconciliation:
         result = ipam_reconcile.run_reconciliation()
         assert result["skipped_manual"] == 1
         assert touched == []
+
+
+class TestEnsureAssociations:
+    def test_使用已注册的关联类型(self, monkeypatch):
+        """ip--组成-->subnet 用 group；ip--->CI 用 connect（均为已注册类型，避免静默失败）。"""
+        from apps.cmdb.services import ipam_reconcile
+        from apps.cmdb.services.instance import InstanceManage
+        captured = []
+        monkeypatch.setattr(
+            InstanceManage, "instance_association_create",
+            staticmethod(lambda data, operator, *a, **k: captured.append(data)),
+        )
+        ipam_reconcile._ensure_associations(ip_id=900, subnet_id=1, occupants=["host:55"])
+        by_dst = {d["dst_model_id"]: d["asst_id"] for d in captured}
+        assert by_dst["subnet"] == "group"
+        assert by_dst["host"] == "connect"
+        # model_asst_id 与 asst_id 一致
+        assert all(d["model_asst_id"] == f'{d["src_model_id"]}_{d["asst_id"]}_{d["dst_model_id"]}'
+                   for d in captured)

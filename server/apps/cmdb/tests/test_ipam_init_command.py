@@ -33,3 +33,15 @@ def test_ipam_init_is_idempotent_on_existing_attrs():
          patch("apps.cmdb.management.commands.ipam_init._ensure_association"):
         run_ipam_init()
     mk_attr.assert_not_called()
+
+
+def test_ipam_init_uses_registered_connect_assoc_type():
+    """IP↔CI 关联用已注册的 connect 类型（use 未注册会静默失败）。"""
+    from apps.cmdb.management.commands import ipam_init
+    calls = []
+    with patch.object(ipam_init, "_ensure_attrs"), \
+         patch.object(ipam_init, "_ensure_association", side_effect=lambda *a: calls.append(a)), \
+         patch.object(ipam_init, "_seed_sources"):
+        ipam_init.run_ipam_init()
+    assert ("ip", "host", "connect") in calls
+    assert ("ip", "network", "connect") in calls
