@@ -208,3 +208,15 @@ if db_engine == "dameng":
     from apps.core.db_patches.dameng import apply_early_patches
 
     apply_early_patches()
+
+# ============================================================
+# KingbaseES（人大金仓）MySQL 兼容模式补丁 - 必须在 migrate / introspection 前应用
+# ============================================================
+# 客户的 Kingbase 跑在 MySQL 兼容模式，但通过 DB_ENGINE=postgresql 连接（Kingbase 只走 PG
+# 线协议）。MySQL 模式下 `||` 被当作逻辑 OR，导致 Django postgresql 后端的 introspection
+# （migrate 阻断）和 pattern_ops（运行期 LIKE）出错。
+# 设置 PG_COMPAT=kingbase 启用补丁（把 `||` 改写为 concat），正常 PostgreSQL 部署不受影响。
+if db_engine == "postgresql" and os.getenv("PG_COMPAT", "").lower() == "kingbase":
+    from apps.core.db_patches.kingbase import apply_early_patches as apply_kingbase_patches
+
+    apply_kingbase_patches()

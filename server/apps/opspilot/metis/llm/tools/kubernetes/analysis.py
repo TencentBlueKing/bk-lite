@@ -470,8 +470,9 @@ def build_config_analysis_next_step_hint(problematic_count: int, target_name: st
         )
     hint_parts.append(
         "本轮先输出一次完整检查结果。"
-        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式："
-        "按问题类别聚合、按工作负载聚合、或全部一次性展示。"
+        "输出完整检查报告后，调用 request_user_choice 让用户选择修复展示方式。"
+        "选项需要结合本次问题类别数量、受影响工作负载数量和风险集中度动态生成，"
+        "不要机械固定为同一组三个选项。"
         "等用户选择后，再调用 generate_repair_report。"
     )
     return "".join(hint_parts)
@@ -534,13 +535,13 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
         configurable = config.get("configurable", {})
         configurable["instance_name"] = instance_name
         config["configurable"] = configurable
-    prepare_context(config)
 
     # 硬上限保护
     limit = max(1, min(int(limit or 50), 50))
     offset = max(0, int(offset or 0))
 
     try:
+        prepare_context(config)
         apps_v1 = client.AppsV1Api()
         core_v1 = client.CoreV1Api()
 
@@ -786,6 +787,19 @@ def analyze_deployment_configurations(namespace=None, instance_name=None, name=N
 
     except ApiException as e:
         return json.dumps({"error": f"分析Deployment配置失败: {str(e)}"})
+    except Exception as e:
+        logger.warning("[k8s-analysis] Deployment 配置分析前连接 Kubernetes 失败: %s", e)
+        return json.dumps({
+            "success": False,
+            "error": "connection_failed",
+            "message": f"无法连接 Kubernetes 集群，已停止配置分析: {str(e)}",
+            "suggestion": "请先修复 kubeconfig、网络或 API Server 地址后再重新执行配置检查。",
+            "_next_step_hint": (
+                "Kubernetes 连接失败，必须停止后续配置分析和报告生成。"
+                "请向用户说明连接失败原因，并提示先修复 kubeconfig 或网络配置。"
+                "不要输出配置检查报告，不要调用 request_user_choice，也不要调用 generate_repair_report。"
+            ),
+        }, ensure_ascii=False)
 
 
 @tool()

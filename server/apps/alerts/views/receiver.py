@@ -48,6 +48,7 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
             return JsonResponse({"status": "error", "message": "Invalid source type for endpoint."}, status=400)
 
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
+        # 仅构造一次适配器：__init__ 会查询 Level / SystemSetting，重复构造是浪费。
         adapter = adapter_class(alert_source=event_source, secret=secret)
 
         events = adapter.normalize_payload(data)
@@ -61,7 +62,7 @@ def _receive_events(request, path_source_id=None, expected_source_type=None):
         if not secret:
             return JsonResponse({"status": "error", "message": "Missing secret."}, status=400)
 
-        adapter = adapter_class(alert_source=event_source, secret=secret, events=events)
+        adapter.events = events
 
         if not adapter.authenticate():
             return JsonResponse({"status": "error", "message": "Invalid secret."}, status=403)

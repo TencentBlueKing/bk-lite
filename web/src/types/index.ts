@@ -112,11 +112,13 @@ export interface EntityListProps<T> {
   filter?: boolean;
   filterLoading?: boolean;
   search?: boolean;
+  toolbarPrefix?: React.ReactNode;
   operateSection?: React.ReactNode;
   infoText?: string;
   nameField?: string;
   iconRender?: (icon: string) => React.ReactNode;
   descSlot?: (item: T) => React.ReactNode;
+  showBuiltinTag?: boolean;
   menuActions?: (item: T) => React.ReactNode;
   singleAction?: (item: T) => { text: string; onClick: (item: T) => void };
   openModal?: (item?: T) => void;

@@ -213,7 +213,7 @@ def test_kubernetes_instance(instance: Dict[str, Any]) -> bool:
     from kubernetes import client
     from kubernetes import config as kube_config
 
-    from apps.opspilot.metis.llm.tools.kubernetes.utils import _preprocess_kubeconfig
+    from apps.opspilot.metis.llm.tools.kubernetes.utils import _preprocess_kubeconfig, validate_kubeconfig_api_servers
 
     normalized = normalize_kubernetes_instance(instance)
     kubeconfig_data = normalized.get("kubeconfig_data", "")
@@ -221,6 +221,7 @@ def test_kubernetes_instance(instance: Dict[str, Any]) -> bool:
     if kubeconfig_data:
         if isinstance(kubeconfig_data, str):
             kubeconfig_data = kubeconfig_data.replace("\\n", "\n")
+        validate_kubeconfig_api_servers(kubeconfig_data)
         kubeconfig_data = _preprocess_kubeconfig(kubeconfig_data)
         kubeconfig_io = io.StringIO(kubeconfig_data)
         kube_config.load_kube_config(config_file=kubeconfig_io)

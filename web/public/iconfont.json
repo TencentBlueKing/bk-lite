@@ -6,6 +6,34 @@
   "description": "opspolit",
   "glyphs": [
     {
+      "icon_id": "8791360",
+      "name": "技能培训",
+      "font_class": "jinengpeixun",
+      "unicode": "e727",
+      "unicode_decimal": 59175
+    },
+    {
+      "icon_id": "26761166",
+      "name": "飞书",
+      "font_class": "feishu",
+      "unicode": "e724",
+      "unicode_decimal": 59172
+    },
+    {
+      "icon_id": "8940910",
+      "name": "敏感信息",
+      "font_class": "minganxinxi",
+      "unicode": "e723",
+      "unicode_decimal": 59171
+    },
+    {
+      "icon_id": "17524036",
+      "name": "cpu",
+      "font_class": "cpu",
+      "unicode": "e721",
+      "unicode_decimal": 59169
+    },
+    {
       "icon_id": "42368684",
       "name": "BI门户-3",
       "font_class": "BImenhu-3",
