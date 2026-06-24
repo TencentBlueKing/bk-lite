@@ -174,7 +174,7 @@ class TestTerminateTaskNatsAPI:
     def test_pending_execution_is_cancelled_directly(self):
         execution = _make_execution(ExecutionStatus.PENDING)
 
-        result = job_task_terminate({"task_id": execution.id})
+        result = job_task_terminate({"task_id": execution.id, "caller_team": [1]})
 
         assert result["result"] is True
         assert result["data"]["status"] == ExecutionStatus.CANCELLED
@@ -186,7 +186,7 @@ class TestTerminateTaskNatsAPI:
         execution = _make_execution(ExecutionStatus.RUNNING)
 
         with patch("apps.job_mgmt.nats_api.finalize_cancelling_execution") as mock_task:
-            result = job_task_terminate({"task_id": execution.id})
+            result = job_task_terminate({"task_id": execution.id, "caller_team": [1]})
 
         assert result["result"] is True
         assert result["data"]["status"] == ExecutionStatus.CANCELLING
@@ -197,6 +197,39 @@ class TestTerminateTaskNatsAPI:
         _, kwargs = mock_task.apply_async.call_args
         assert kwargs["args"] == [execution.id]
         assert kwargs["countdown"] > execution.timeout
+
+    def test_missing_caller_team_rejected(self):
+        """不传 caller_team 时拒绝取消，防止枚举 task_id 跨租户操作"""
+        execution = _make_execution(ExecutionStatus.PENDING)
+
+        result = job_task_terminate({"task_id": execution.id})
+
+        assert result["result"] is False
+        assert "caller_team" in result["message"]
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.PENDING  # 状态未变
+
+    def test_wrong_team_cannot_cancel(self):
+        """调用方 team 与执行记录 team 无交集时，返回无权操作"""
+        execution = _make_execution(ExecutionStatus.PENDING, team=[1])
+
+        result = job_task_terminate({"task_id": execution.id, "caller_team": [999]})
+
+        assert result["result"] is False
+        assert "无权取消" in result["message"]
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.PENDING  # 状态未变
+
+    def test_overlapping_team_can_cancel(self):
+        """调用方 team 与执行记录 team 有交集时，正常取消"""
+        execution = _make_execution(ExecutionStatus.PENDING, team=[1, 2])
+
+        result = job_task_terminate({"task_id": execution.id, "caller_team": [2, 3]})
+
+        assert result["result"] is True
+        assert result["data"]["status"] == ExecutionStatus.CANCELLED
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLED
 
 
 @pytest.mark.django_db
