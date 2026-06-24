@@ -1,0 +1,336 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_kemp",
+  "plugin": "Loadbalance Kemp LoadMaster SNMP",
+  "plugin_desc": "Kemp LoadMaster ADC / load balancer SNMP collection (B-100-MIB / ONE4NET, IANA PEN 12196). In addition to standard IF-MIB interface metrics, it collects Kemp private OIDs for device health and load: overall CPU utilization (cpuTotal, reported directly as a percentage) and system memory utilization (memUsedPercent, reported directly as a percentage), plus the current total number of active connections tracked by the LoadMaster (connectionTotal). Temperature/fan/power sensor OIDs are not exposed in a row-filter-free form by the LoadMaster MIB, so those are N/A. Supported brands/models — Kemp LoadMaster ADC (hardware LM-X / Virtual LoadMaster VLM / cloud; enterprise 12196).",
+  "status_query": "any({instance_type='loadbalance', collect_type='snmp_kemp'}) by (instance_id)",
+  "name": "Loadbalance",
+  "icon": "mm-loadbalance_负载均衡",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='loadbalance'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='loadbalance', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the Kemp LoadMaster (B-100-MIB cpuTotal), reported directly as a percentage. Sustained high CPU means the ADC is near its processing capacity."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "System memory utilization of the Kemp LoadMaster (B-100-MIB memUsedPercent), reported directly as a percentage."
+    },
+    {
+      "metric_group": "Loadbalance",
+      "name": "lb_current_connections",
+      "query": "sum(lb_current_connections{instance_type='loadbalance', __$labels__}) by (instance_id)",
+      "display_name": "Current Connections",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Current total number of active connections tracked by the Kemp LoadMaster (B-100-MIB connectionTotal). A rapidly rising count can indicate a traffic flood or connection-table pressure."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifAdminStatus",
+      "query": "interface_ifAdminStatus{instance_type='loadbalance', __$labels__}",
+      "display_name": "Interface Admin Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the administrative status of the network interface."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type='loadbalance', __$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reflects the actual operational status of the network interface."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "interface_ifSpeed",
+      "query": "interface_ifSpeed{instance_type='loadbalance', __$labels__}",
+      "display_name": "Interface Bandwidth",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the maximum data transmission speed supported by the network interface."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Incoming Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Incoming Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifInUcastPkts",
+      "query": "rate(interface_ifInUcastPkts{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Incoming Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifOutUcastPkts",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Outgoing Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifInOctets",
+      "query": "rate(interface_ifInOctets{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifOutOctets",
+      "query": "rate(interface_ifOutOctets{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='loadbalance', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifInOctets{instance_type='loadbalance', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifOutOctets{instance_type='loadbalance', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    }
+  ]
+}
