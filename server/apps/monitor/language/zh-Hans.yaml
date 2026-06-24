@@ -1,4 +1,125 @@
 monitor_object_metric:
+  IBMMQ:
+    ibmmq_qmgr_status_gauge:
+      name: 队列管理器状态
+      desc: 队列管理器运行状态。0 表示探针无法连接（已停止/不可用），1 启动中，2 运行中，3 静默中，4 备用。
+    ibmmq_qmgr_channel_initiator_status_gauge:
+      name: 通道初始化器状态
+      desc: 队列管理器通道初始化器（channel initiator）的运行状态。
+    ibmmq_qmgr_command_server_status_gauge:
+      name: 命令服务器状态
+      desc: 队列管理器命令服务器（command server）的运行状态。
+    ibmmq_qmgr_uptime_gauge:
+      name: 已运行时长
+      desc: 队列管理器已持续运行的时长（秒）。
+    ibmmq_qmgr_connection_count_gauge:
+      name: 连接数
+      desc: 当前连接到队列管理器的活动连接数量。
+    ibmmq_qmgr_active_listeners_gauge:
+      name: 活动监听器数量
+      desc: 队列管理器上处于活动状态的监听器数量。
+    ibmmq_qmgr_concurrent_connections_high_water_mark_gauge:
+      name: 并发连接数高水位
+      desc: 队列管理器并发连接数的峰值（高水位标记）。
+    ibmmq_qmgr_expired_message_count_gauge:
+      name: 过期消息计数
+      desc: 采集周期内队列管理器上过期的消息数量。
+    ibmmq_qmgr_commit_count_gauge:
+      name: 提交计数
+      desc: 采集周期内队列管理器上的提交（commit）操作次数。
+    ibmmq_qmgr_rollback_count_gauge:
+      name: 回滚计数
+      desc: 采集周期内队列管理器上的回滚（rollback）操作次数。
+    ibmmq_qmgr_exporter_collection_time_gauge:
+      name: 采集耗时
+      desc: 探针上一次采集周期所花费的时间（毫秒）。
+    ibmmq_qmgr_cpu_load_one_minute_average_percentage_gauge:
+      name: CPU 一分钟平均负载
+      desc: 队列管理器所在主机最近一分钟的 CPU 平均负载百分比。
+    ibmmq_qmgr_cpu_load_five_minute_average_percentage_gauge:
+      name: CPU 五分钟平均负载
+      desc: 队列管理器所在主机最近五分钟的 CPU 平均负载百分比。
+    ibmmq_qmgr_user_cpu_time_percentage_gauge:
+      name: 用户态 CPU 时间
+      desc: 队列管理器所在主机用户态 CPU 时间百分比。
+    ibmmq_qmgr_system_cpu_time_percentage_gauge:
+      name: 系统态 CPU 时间
+      desc: 队列管理器所在主机系统（内核）态 CPU 时间百分比。
+    ibmmq_qmgr_ram_free_percentage_gauge:
+      name: 空闲内存百分比
+      desc: 队列管理器所在主机的空闲内存百分比。
+    ibmmq_qmgr_ram_total_bytes_gauge:
+      name: 总内存
+      desc: 队列管理器所在主机的总内存（字节）。
+    ibmmq_qmgr_queue_manager_file_system_free_space_percentage_gauge:
+      name: 队列管理器文件系统空闲空间
+      desc: 队列管理器文件系统的空闲空间百分比。
+    ibmmq_qmgr_queue_manager_file_system_in_use_bytes_gauge:
+      name: 队列管理器文件系统已用空间
+      desc: 队列管理器文件系统已使用的空间（字节）。
+    ibmmq_qmgr_log_in_use_bytes_gauge:
+      name: 日志已用空间
+      desc: 当前正在使用的恢复日志空间（字节）。
+    ibmmq_qmgr_log_max_bytes_gauge:
+      name: 日志最大容量
+      desc: 恢复日志的最大容量（字节）。
+    ibmmq_qmgr_log_current_primary_space_in_use_percentage_gauge:
+      name: 主日志空间使用率
+      desc: 当前主日志空间的使用百分比。
+    ibmmq_qmgr_log_workload_primary_space_utilization_percentage_gauge:
+      name: 主日志工作负载利用率
+      desc: 主日志空间的工作负载利用率百分比。
+    ibmmq_qmgr_log_write_latency_seconds_gauge:
+      name: 日志写入延迟
+      desc: 日志写入的平均延迟（秒）。
+    ibmmq_qmgr_log_file_system_in_use_bytes_gauge:
+      name: 日志文件系统已用空间
+      desc: 日志文件系统已使用的空间（字节）。
+    ibmmq_qmgr_log_file_system_max_bytes_gauge:
+      name: 日志文件系统最大空间
+      desc: 日志文件系统的最大容量（字节）。
+    ibmmq_queue_depth_gauge:
+      name: 队列深度
+      desc: 队列当前的消息数量。
+    ibmmq_queue_attribute_max_depth_gauge:
+      name: 队列最大深度
+      desc: 队列允许容纳的最大消息数量。
+    ibmmq_queue_oldest_message_age_gauge:
+      name: 最早消息时长
+      desc: 队列中最早一条消息的滞留时长（秒）。
+    ibmmq_queue_uncommitted_messages_gauge:
+      name: 未提交消息数
+      desc: 队列中尚未提交的消息数量。
+    ibmmq_queue_input_handles_gauge:
+      name: 输入句柄数
+      desc: 队列当前打开的输入句柄数量。
+    ibmmq_queue_output_handles_gauge:
+      name: 输出句柄数
+      desc: 队列当前打开的输出句柄数量。
+    ibmmq_queue_qtime_short_gauge:
+      name: 短期排队时间
+      desc: 消息在队列中停留时间的短周期平均值（秒）。
+    ibmmq_queue_qtime_long_gauge:
+      name: 长期排队时间
+      desc: 消息在队列中停留时间的长周期平均值（秒）。
+    ibmmq_topic_publisher_count_gauge:
+      name: 发布者数量
+      desc: 主题上活动的发布者数量。
+    ibmmq_topic_subscriber_count_gauge:
+      name: 订阅者数量
+      desc: 主题上活动的订阅者数量。
+    ibmmq_topic_messages_received_gauge:
+      name: 接收消息数
+      desc: 采集周期内主题接收到的消息数量。
+    ibmmq_topic_time_since_msg_received_gauge:
+      name: 距上次接收消息时间
+      desc: 距主题上一次接收到消息的时间（秒）。
+    ibmmq_subscription_messsages_received_gauge:
+      name: 订阅接收消息数
+      desc: 采集周期内订阅接收到的消息数量。
+    ibmmq_subscription_time_since_message_published_gauge:
+      name: 距上次发布消息时间
+      desc: 距订阅上一次发布消息的时间（秒）。
   Wireless:
     snmp_uptime: &id001
       name: 系统运行时间
@@ -3220,6 +3341,14 @@ monitor_object_metric:
       name: 运行时堆内存分配
       desc: Go 运行时当前已分配且正在使用的堆内存大小。
 monitor_object_metric_group:
+  IBMMQ:
+    Base: 基础信息
+    Status: 状态
+    Resource: 资源
+    Log: 日志
+    Queue: 队列
+    Topic: 主题
+    Subscription: 订阅
   Wireless:
     Base: 基础
     Traffic: 流量
@@ -3597,6 +3726,12 @@ monitor_object_metric_group:
     写入稳定性: 写入稳定性
     运行时: 运行时
 monitor_object_plugin:
+  IBM-MQ-Exporter:
+    name: IBM MQ（Exporter）
+    desc: 通过 IBM MQ Exporter 采集器以 MQI 客户端方式连接队列管理器，定期采集队列管理器、队列、主题与订阅的状态、积压及资源使用等指标，帮助监控消息队列的可用性与性能。需在节点预装 IBM MQ redistributable client（/opt/mqm）。
+  IBMMQ:
+    name: IBM MQ（Exporter）
+    desc: 通过 IBM MQ Exporter 采集器以 MQI 客户端方式连接队列管理器，定期采集队列管理器、队列、主题与订阅的状态、积压及资源使用等指标，帮助监控消息队列的可用性与性能。需在节点预装 IBM MQ redistributable client（/opt/mqm）。
   Wireless Cambium SNMP:
     name: Cambium (Telegraf)
     desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/关联客户端数等健康指标因 Cambium 私有 MIB 采用 per-row 索引表（按射频单元/SSID/客户端逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤，故为 N/A，不伪造。适用品牌型号——Cambium Networks 无线设备（cnPilot/ePMP/PMP 系列，企业号 17713）及其他遵循 IF-MIB 标准的无线 AP/网桥。
@@ -3996,6 +4131,7 @@ monitor_object_plugin:
     name: Kafka（Exporter）
     desc: 通过Kafka Exporter采集器定期收集Kafka集群的主题统计、分区数量、消费者组状态等指标，帮助监控Kafka集群的健康和性能。
 monitor_object:
+  IBMMQ: IBM MQ
   Wireless: 无线设备
   Transmission: 传输设备
   Access: 接入设备
