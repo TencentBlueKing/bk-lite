@@ -4426,6 +4426,24 @@ monitor_object_plugin:
       utilization, both reported directly as percentages) and firewall-specific state
       (current and maximum connection-cache entries and NAT translation count).
       Supported brands/models — SonicWall TZ/NSa-series firewalls (SonicOS).
+  Firewall Sangfor SNMP:
+    name: Sangfor NGAF (Telegraf)
+    desc: Sangfor-specific SNMP collection template for Sangfor NGAF next-generation
+      firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic
+      counters, it collects Sangfor private MIB OIDs (IANA PEN 35047) for device health
+      (overall CPU and memory utilization, both reported directly as percentages) and
+      firewall load (current concurrent sessions). Temperature/fan/power sensor OIDs are
+      not exposed in a row-filter-free scalar form by the Sangfor MIB, so those are N/A.
+      Supported brands/models — Sangfor NGAF next-generation application firewall (enterprise 35047).
+  Firewall Kerio Control SNMP:
+    name: Kerio Control (Telegraf)
+    desc: Kerio Control-specific SNMP collection template for GFI Kerio Control UTM
+      firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic
+      counters, it collects the Kerio Control private MIB OID (KERIO-CONTROL-SNMP-MIB,
+      IANA PEN 17028) for the current number of active connections. CPU/memory and
+      temperature/fan/power sensors are not exposed in a row-filter-free scalar form by
+      the Kerio Control MIB (software UTM appliance), so those are N/A. Supported
+      brands/models — GFI Kerio Control UTM firewall / VPN gateway (enterprise 17028).
   Firewall WatchGuard SNMP:
     name: WatchGuard (Telegraf)
     desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition

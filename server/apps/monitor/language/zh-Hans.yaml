@@ -3878,6 +3878,14 @@ monitor_object_plugin:
     name: SonicWall（Telegraf）
     desc: 面向 SonicWall（SonicOS）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 SONICWALL-FIREWALL-IP-STATISTICS-MIB 私有 OID 的设备健康（CPU 与内存使用率，均为设备直接上报的百分比）与防火墙特有状态（当前/最大连接缓存条目数、NAT 转换条目数）。
       适用品牌型号——SonicWall TZ/NSa 系列防火墙（SonicOS）。
+  Firewall Sangfor SNMP:
+    name: 深信服 NGAF（Telegraf）
+    desc: 面向深信服（Sangfor）NGAF 下一代防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集深信服私有 MIB（IANA 企业号 35047）的设备健康（整机 CPU 与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前并发会话数）。深信服 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。
+      适用品牌型号——深信服 NGAF 下一代应用防火墙（企业号 35047）。
+  Firewall Kerio Control SNMP:
+    name: Kerio Control（Telegraf）
+    desc: 面向 GFI Kerio Control UTM 防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 Kerio Control 私有 MIB（KERIO-CONTROL-SNMP-MIB，IANA 企业号 17028）的当前活动连接数。Kerio Control 为软件型 UTM 设备，其 MIB 未以无需行级过滤的标量形式暴露 CPU/内存与温度/风扇/电源传感器，故均为 N/A。
+      适用品牌型号——GFI Kerio Control UTM 防火墙/VPN 网关（企业号 17028）。
   Firewall WatchGuard SNMP:
     name: WatchGuard（Telegraf）
     desc: 面向 WatchGuard（Fireware）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 WATCHGUARD-SYSTEM-STATISTICS-MIB 私有 OID 的设备健康（CPU 使用率）与防火墙特有状态（当前活动连接数）。内存与温度/风扇/电源不采集——Fireware 无标准 SNMP 内存利用率标量或传感器表，telegraf inputs.snmp 无法在不做行级过滤的情况下读取。
