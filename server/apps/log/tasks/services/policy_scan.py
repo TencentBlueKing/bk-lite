@@ -914,7 +914,7 @@ class LogPolicyScan:
             f"时间：{event_obj.event_time}",
             f"告警内容：{event_obj.content}",
             f"策略名称：{self.policy.name}",
-            f'查看告警详情：<a href=f"{url}">点击查看详情</a>',
+            f'查看告警详情：<a href="{url}">点击查看详情</a>',
         ]
 
         content = "\n".join(content_parts)

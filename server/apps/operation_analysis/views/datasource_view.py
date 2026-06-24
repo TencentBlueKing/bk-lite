@@ -310,6 +310,11 @@ class NameSpaceModelViewSet(ModelViewSet):
         log_ops_analysis_success(request, response, "update", f"编辑命名空间: {name}")
         return response
 
+    @HasPermission("namespace-Edit")
+    def partial_update(self, request, *args, **kwargs):
+        kwargs["partial"] = True
+        return self.update(request, *args, **kwargs)
+
     @HasPermission("namespace-Delete")
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()

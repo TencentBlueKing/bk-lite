@@ -3,7 +3,7 @@ from apps.opspilot.viewsets.channel_view import ChannelViewSet  # noqa
 from apps.opspilot.viewsets.chat_application_view import ChatApplicationViewSet  # noqa
 from apps.opspilot.viewsets.embed_view import EmbedProviderViewSet  # noqa
 from apps.opspilot.viewsets.history_view import HistoryViewSet  # noqa
-from apps.opspilot.viewsets.llm_view import LLMModelViewSet, LLMViewSet, SkillRequestLogViewSet, SkillToolsViewSet  # noqa
+from apps.opspilot.viewsets.llm_view import LLMModelViewSet, LLMViewSet, SkillPackageViewSet, SkillRequestLogViewSet, SkillToolsViewSet  # noqa
 from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet, MemoryViewSet  # noqa
 from apps.opspilot.viewsets.model_vendor_view import ModelVendorViewSet  # noqa
 from apps.opspilot.viewsets.ocr_view import OCRProviderViewSet  # noqa

@@ -60,6 +60,7 @@ export interface UserChoiceRequest {
   execution_id: string;
   node_id: string;
   choice_id: string;
+  a2ui?: A2UIReportContract;
   title: string;
   description?: string;
   options: UserChoiceOption[];
@@ -85,6 +86,14 @@ export interface AgentStepProgressData {
   total_elapsed_seconds?: number;
 }
 
+export interface SkillViewItem {
+  id: string;
+  name: string;
+  package_id?: string;
+  description?: string;
+  missing_tools?: string[];
+}
+
 export interface CustomChatMessage {
   id: string;
   role: 'user' | 'bot';
@@ -108,6 +117,7 @@ export interface CustomChatMessage {
   reportFileDownloads?: ReportFileDownload[];
   repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
+  skillViews?: SkillViewItem[];
 }
 
 export interface ConfigDiffItem {
@@ -120,10 +130,26 @@ export interface ConfigDiffItem {
   after_yaml: string;
 }
 
+export interface A2UIAction {
+  key: string;
+  label: string;
+  [key: string]: unknown;
+}
+
+export interface A2UIReportContract {
+  version: string;
+  component: 'config-analysis-report' | 'config-diff-report' | string;
+  event_name: string;
+  render_mode: 'card' | string;
+  actions: A2UIAction[];
+  [key: string]: unknown;
+}
+
 export interface ConfigDiffReport {
   report_id: string;
   title: string;
   cluster_name: string;
+  a2ui?: A2UIReportContract;
   items: ConfigDiffItem[];
   received_at: number;
 }
@@ -180,6 +206,7 @@ export interface ConfigAnalysisReport {
   report_id: string;
   title: string;
   cluster_name: string;
+  a2ui?: A2UIReportContract;
   scope?: ConfigAnalysisReportScope;
   scan_range?: ConfigAnalysisReportScanRange;
   summary: ConfigAnalysisReportSummary;

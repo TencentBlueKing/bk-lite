@@ -2,10 +2,12 @@ import {ReactNode} from 'react';
 import {ButtonProps} from 'antd';
 import {
   AgentStepProgressData,
+  A2UIReportContract,
   BrowserStepAction,
   BrowserStepProgressData,
   BrowserTaskReceivedData,
-  CustomChatMessage
+  CustomChatMessage,
+  SkillViewItem,
 } from '@/app/opspilot/types/global';
 
 export type { BrowserStepAction, BrowserStepProgressData };
@@ -13,6 +15,9 @@ export type { BrowserTaskReceivedData };
 export type BrowserStepProgressValue = BrowserStepProgressData;
 export type BrowserTaskReceivedValue = BrowserTaskReceivedData;
 export type AgentStepProgressValue = AgentStepProgressData;
+export interface SkillViewValue {
+  items: SkillViewItem[];
+}
 export interface SubAgentProgressValue {
   agent_name: string;
   status: 'started' | 'completed' | 'error' | 'parallel_started' | 'parallel_completed';
@@ -33,6 +38,7 @@ export interface UserChoiceRequestValue {
   execution_id: string;
   node_id: string;
   choice_id: string;
+  a2ui?: A2UIReportContract;
   title: string;
   description?: string;
   options: Array<{
@@ -55,6 +61,7 @@ export interface ConfigDiffReportValue {
   report_id: string;
   title: string;
   cluster_name: string;
+  a2ui?: A2UIReportContract;
   items: Array<{
     workload_name: string;
     workload_type: string;
@@ -118,6 +125,7 @@ export interface StructuredConfigAnalysisReportValue {
   report_id: string;
   title: string;
   cluster_name: string;
+  a2ui?: A2UIReportContract;
   scope?: ConfigAnalysisReportScopeValue;
   scan_range?: ConfigAnalysisReportScanRangeValue;
   summary: ConfigAnalysisReportSummaryValue;
@@ -132,6 +140,7 @@ export interface MarkdownConfigAnalysisReportValue {
   report_id?: string;
   title?: string;
   cluster_name?: string;
+  a2ui?: A2UIReportContract;
   scope?: ConfigAnalysisReportScopeValue;
   scan_range?: ConfigAnalysisReportScanRangeValue;
   summary?: ConfigAnalysisReportSummaryValue;
@@ -225,7 +234,7 @@ export interface AGUIMessage {
   message?: string;
   code?: string;
   name?: string;
-  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | ConfigAnalysisReportValue | Record<string, unknown>;
+  value?: BrowserStepProgressValue | BrowserTaskReceivedValue | ApprovalRequestValue | UserChoiceRequestValue | AgentStepProgressValue | SubAgentProgressValue | SkillViewValue | ConfigAnalysisReportValue | Record<string, unknown>;
 }
 
 export interface GuideParseResult {

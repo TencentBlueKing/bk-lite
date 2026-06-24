@@ -5,7 +5,6 @@ import {Input, message as antMessage, Select} from 'antd';
 import {ClockCircleOutlined} from '@ant-design/icons';
 import {useTranslation} from '@/utils/i18n';
 import {UserChoiceOption, UserChoiceRequest} from '@/app/opspilot/types/global';
-import {postUserChoice} from './submitUserChoice';
 
 interface UserChoiceCardProps {
   request: UserChoiceRequest;
@@ -15,13 +14,12 @@ interface UserChoiceCardProps {
 
 const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit }) => {
   const { t } = useTranslation();
+  const a2uiComponent = request.a2ui?.component || 'user-choice';
+  const a2uiVersion = request.a2ui?.version || 'legacy';
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [textInput, setTextInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
-  // timeout_seconds<=0（或缺失）表示"无时限/无限等待"：不显示倒计时，也不会被判为超时。
-  const noTimeout = !request.timeout_seconds || request.timeout_seconds <= 0;
   const [remainingSeconds, setRemainingSeconds] = useState(() => {
-    if (noTimeout) return 0;
     const elapsed = (Date.now() - request.received_at) / 1000;
     return Math.max(0, Math.floor(request.timeout_seconds - elapsed));
   });
@@ -35,7 +33,6 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   }, [request.multiple, request.display_hint, request.options.length]);
 
   useEffect(() => {
-    if (noTimeout) return;
     if (request.status !== 'pending') return;
     const timer = setInterval(() => {
       const elapsed = (Date.now() - request.received_at) / 1000;
@@ -44,7 +41,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
       if (remaining <= 0) clearInterval(timer);
     }, 1000);
     return () => clearInterval(timer);
-  }, [request.received_at, request.timeout_seconds, request.status, noTimeout]);
+  }, [request.received_at, request.timeout_seconds, request.status]);
 
   const handleSubmit = useCallback(async (keys: string[]) => {
     if (keys.length < request.min_select) {
@@ -53,12 +50,20 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     }
     setSubmitting(true);
     try {
-      await postUserChoice(token, {
-        execution_id: request.execution_id,
-        node_id: request.node_id,
-        choice_id: request.choice_id,
-        selected: keys,
+      const response = await fetch('/api/proxy/opspilot/bot_mgmt/submit_choice/', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${token}`,
+        },
+        body: JSON.stringify({
+          execution_id: request.execution_id,
+          node_id: request.node_id,
+          choice_id: request.choice_id,
+          selected: keys,
+        }),
       });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       onSubmit(request.choice_id, 'submitted', keys);
     } catch {
       antMessage.error(t('chat.choiceSubmitFailed'));
@@ -95,7 +100,7 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
     handleSubmit([textInput.trim()]);
   }, [handleSubmit, textInput]);
 
-  const isTimedOut = !noTimeout && remainingSeconds <= 0 && request.status === 'pending';
+  const isTimedOut = remainingSeconds <= 0 && request.status === 'pending';
   const isPending = request.status === 'pending' && !isTimedOut;
   const isCompleted = request.status === 'submitted' || request.status === 'timeout' || isTimedOut;
 
@@ -272,14 +277,19 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   );
 
   return (
-    <div style={{
-      margin: '8px 0',
-      padding: '14px 16px',
-      borderRadius: '12px',
-      border: '1px solid var(--color-border-1)',
-      background: 'var(--color-bg-1)',
-      maxWidth: '380px',
-    }}>
+    <div
+      data-a2ui-component={a2uiComponent}
+      data-a2ui-version={a2uiVersion}
+      data-a2ui-event={request.a2ui?.event_name || 'user_choice_request'}
+      style={{
+        margin: '8px 0',
+        padding: '14px 16px',
+        borderRadius: '12px',
+        border: '1px solid var(--color-border-1)',
+        background: 'var(--color-bg-1)',
+        maxWidth: '380px',
+      }}
+    >
       {/* Title */}
       <div style={{
         fontSize: '13px',
@@ -317,8 +327,8 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
         </>
       )}
 
-      {/* Timer：仅在有时限时显示倒计时；无时限(无限等待)不展示 */}
-      {isPending && !noTimeout && (
+      {/* Timer */}
+      {isPending && (
         <div style={{
           display: 'flex',
           alignItems: 'center',

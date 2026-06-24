@@ -335,3 +335,61 @@ def test_get_source_data_rejects_unassociated_namespace(authenticated_user, monk
     assert response.status_code == status.HTTP_400_BAD_REQUEST
     assert payload["result"] is False
     assert payload["message"] == "数据源未关联所选命名空间"
+
+
+# --- Tests for issue #3394: NameSpaceModelViewSet.partial_update permission enforcement ---
+
+def _build_patch_request(user, data=None):
+    factory = APIRequestFactory()
+    request = factory.patch(
+        "/operation_analysis/api/namespace/1/",
+        data=data or {},
+        format="json",
+    )
+    force_authenticate(request, user=user)
+    return request
+
+
+def test_namespace_partial_update_blocked_without_permission(authenticated_user):
+    """PATCH /namespace/{id}/ must return 403 when user lacks namespace-Edit permission.
+
+    Regression test for issue #3394: before the fix, partial_update had no @HasPermission
+    decorator and any authenticated user could PATCH a namespace.
+    If this fix is reverted, the HasPermission wrapper disappears and the method goes
+    straight to the DRF default, which does NOT return 403 — so this test would fail.
+    """
+    authenticated_user.is_superuser = False
+    # User has no namespace-Edit permission
+    authenticated_user.permission = {"ops-analysis": set()}
+
+    request = _build_patch_request(authenticated_user, data={"domain": "attacker.example.com:4222"})
+
+    view = datasource_view.NameSpaceModelViewSet.as_view({"patch": "partial_update"})
+    response = view(request, pk="1")
+
+    assert response.status_code == 403, (
+        "PATCH /namespace/{id}/ must be blocked for users without namespace-Edit permission"
+    )
+
+
+def test_namespace_partial_update_allowed_with_permission(authenticated_user, monkeypatch):
+    """PATCH /namespace/{id}/ must proceed past permission check when user has namespace-Edit."""
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"ops-analysis": {"namespace-Edit"}}
+
+    # Monkeypatch update to avoid hitting DB so we can verify the permission gate passes
+    update_called = []
+
+    def fake_update(self, request, *args, **kwargs):
+        update_called.append(True)
+        from rest_framework.response import Response
+        return Response({"id": 1, "name": "test"})
+
+    monkeypatch.setattr(datasource_view.NameSpaceModelViewSet, "update", fake_update)
+
+    request = _build_patch_request(authenticated_user, data={"domain": "new.example.com:4222"})
+    view = datasource_view.NameSpaceModelViewSet.as_view({"patch": "partial_update"})
+    response = view(request, pk="1")
+
+    assert update_called, "update() must be called when user has namespace-Edit permission"
+    assert response.status_code != 403, "User with namespace-Edit permission must not be blocked"

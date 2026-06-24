@@ -30,9 +30,9 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-DATACOM_DIR = PLUGINS / "snmp_datacom" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
-MIKROTIK_DIR = PLUGINS / "snmp_mikrotik" / "switch"
+DATACOM_DIR = PLUGINS / "snmp" / "switch_datacom"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
+MIKROTIK_DIR = PLUGINS / "snmp" / "switch_mikrotik"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 WEB_ROOT = SERVER_ROOT.parents[0] / "web"
 
@@ -99,9 +99,9 @@ def languages():
 # directory / cross-file identity (collect_type / config_type / instance_type)
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_plugin_lives_under_correct_dir():
-    assert DATACOM_DIR.parent.name == COLLECT_TYPE
-    assert DATACOM_DIR.name == INSTANCE_TYPE
+def test_plugin_lives_under_correct_dir(metrics):
+    assert metrics["collect_type"] == COLLECT_TYPE  # 身份来自 metrics.json,不依赖目录(#3590 解耦)
+    assert DATACOM_DIR.parent.name == "snmp"  # 扁平布局:厂商目录直接在 snmp/ 下
 
 
 @pytest.mark.unit

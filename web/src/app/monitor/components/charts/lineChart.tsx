@@ -38,7 +38,11 @@ import {
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
-import { normalizeGapIntervals } from '@/app/monitor/utils/gapIntervals';
+import {
+  GAP_INTERVAL_AREA_STYLE,
+  getChartDataWithGapBreaks,
+  getRenderedGapIntervals
+} from '@/app/monitor/utils/gapIntervals';
 
 interface LineChartProps {
   data: ChartData[];
@@ -221,8 +225,13 @@ const LineChart: React.FC<LineChartProps> = memo(
       [chartAreaKeys, resolvedSeriesStyles, unit]
     );
 
-    const gapIntervals = useMemo(
-      () => normalizeGapIntervals(data[0]?.gapIntervals || []),
+    const renderedGapIntervals = useMemo(
+      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || []),
+      [data]
+    );
+
+    const chartDataWithGapBreaks = useMemo(
+      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || []),
       [data]
     );
 
@@ -656,7 +665,7 @@ const LineChart: React.FC<LineChartProps> = memo(
           <>
             <ResponsiveContainer className={chartLineStyle.chart}>
               <AreaChart
-                data={data}
+                data={chartDataWithGapBreaks}
                 syncId={syncId}
                 margin={{
                   top: 10,
@@ -690,14 +699,13 @@ const LineChart: React.FC<LineChartProps> = memo(
                   width={leftAxisWidth}
                 />
                 <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="rgba(107, 127, 152, 0.28)" />
-                {gapIntervals.map((gap) => (
+                {renderedGapIntervals.map((gap) => (
                   <ReferenceArea
                     key={`gap-${gap.start}-${gap.end}`}
                     x1={gap.start}
                     x2={gap.end}
                     yAxisId="left"
-                    fill="rgba(245, 63, 63, 0.12)"
-                    strokeOpacity={0}
+                    {...GAP_INTERVAL_AREA_STYLE}
                     ifOverflow="extendDomain"
                   />
                 ))}
@@ -730,7 +738,6 @@ const LineChart: React.FC<LineChartProps> = memo(
                     fillOpacity={resolvedSeriesStyles[index]?.fillOpacity ?? 0}
                     fill={resolvedSeriesStyles[index]?.color || colors[index]}
                     strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? 2.5}
-                    connectNulls
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color || colors[index] }}
                     isAnimationActive={false}

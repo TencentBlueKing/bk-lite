@@ -19,9 +19,16 @@ const severityConfig = {
 
 const DiffReportCard: React.FC<DiffReportCardProps> = ({ report }) => {
   const [selectedItem, setSelectedItem] = useState<ConfigDiffItem | null>(null);
+  const a2uiComponent = report.a2ui?.component || 'config-diff-report';
+  const a2uiVersion = report.a2ui?.version || 'legacy';
 
   return (
-    <div className="mt-3 w-full max-w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm">
+    <div
+      className="mt-3 w-full max-w-full overflow-hidden rounded-lg border border-gray-200 bg-white shadow-sm"
+      data-a2ui-component={a2uiComponent}
+      data-a2ui-version={a2uiVersion}
+      data-a2ui-event={report.a2ui?.event_name || 'config_diff_report'}
+    >
       {/* Header */}
       <div className="px-4 py-3 bg-gradient-to-r from-blue-50 to-white border-b border-gray-200 flex items-center gap-2">
         <FileTextOutlined className="text-blue-500 text-base" />

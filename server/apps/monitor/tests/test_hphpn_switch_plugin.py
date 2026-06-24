@@ -23,9 +23,9 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-HPHPN_DIR = PLUGINS / "snmp_hphpn" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
-MIKROTIK_DIR = PLUGINS / "snmp_mikrotik" / "switch"
+HPHPN_DIR = PLUGINS / "snmp" / "switch_hphpn"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
+MIKROTIK_DIR = PLUGINS / "snmp" / "switch_mikrotik"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "hphpn"
@@ -91,9 +91,9 @@ def languages():
 # directory / cross-file identity (collect_type / config_type / instance_type)
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_plugin_lives_under_correct_dir():
-    assert HPHPN_DIR.parent.name == COLLECT_TYPE
-    assert HPHPN_DIR.name == INSTANCE_TYPE
+def test_plugin_lives_under_correct_dir(metrics):
+    assert metrics["collect_type"] == COLLECT_TYPE  # 身份来自 metrics.json,不依赖目录(#3590 解耦)
+    assert HPHPN_DIR.parent.name == "snmp"  # 扁平布局:厂商目录直接在 snmp/ 下
 
 
 @pytest.mark.unit

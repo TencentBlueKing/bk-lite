@@ -27,7 +27,7 @@ import yaml
 
 # repo root = .../server/apps/monitor/tests/<this file> -> up 4 to <repo>/server, up 5 to <repo>
 _MONITOR = Path(__file__).resolve().parents[1]  # apps/monitor
-_PLUGINS_GLOB = str(_MONITOR / "support-files" / "plugins" / "Telegraf" / "snmp_*" / "*" / "metrics.json")
+_PLUGINS_GLOB = str(_MONITOR / "support-files" / "plugins" / "Telegraf" / "snmp" / "*" / "metrics.json")
 _LANG = _MONITOR / "language"
 
 _AGG_RE = re.compile(r"\b(?:max|min|avg|sum|count)\s*\(")

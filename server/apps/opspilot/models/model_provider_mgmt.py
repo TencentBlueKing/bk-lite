@@ -250,6 +250,7 @@ class LLMSkill(MaintainerInfo):
     show_think = models.BooleanField(default=True)
     tools = models.JSONField(default=list)
     skill_params = models.JSONField(default=list, verbose_name="技能参数")
+    skill_packages = models.JSONField(default=list, verbose_name="技能包")
 
     temperature = models.FloatField(default=0.7, verbose_name="温度")
     skill_type = models.IntegerField(
@@ -278,6 +279,27 @@ class LLMSkill(MaintainerInfo):
         verbose_name = "LLM技能管理"
         verbose_name_plural = verbose_name
         db_table = "model_provider_mgmt_llmskill"
+
+
+class SkillPackage(MaintainerInfo, TimeInfo):
+    package_id = models.CharField(max_length=128, verbose_name="技能包ID", db_index=True)
+    name = models.CharField(max_length=255, verbose_name="名称")
+    version = models.CharField(max_length=64, default="0.1.0", verbose_name="版本")
+    description = models.TextField(blank=True, default="", verbose_name="描述")
+    category = models.CharField(max_length=128, blank=True, default="", verbose_name="分类")
+    source_type = models.CharField(max_length=32, default="zip", verbose_name="来源类型")
+    source_url = models.TextField(blank=True, default="", verbose_name="来源地址")
+    storage_path = models.TextField(blank=True, default="", verbose_name="存储路径")
+    manifest = models.JSONField(default=dict, verbose_name="技能包清单")
+    skill_markdown = models.TextField(blank=True, default="", verbose_name="技能说明")
+    required_tools = models.JSONField(default=list, verbose_name="依赖工具")
+    triggers = models.JSONField(default=list, verbose_name="触发词")
+    team = models.JSONField(default=list, verbose_name="分组")
+    is_enabled = models.BooleanField(default=True, verbose_name="是否启用")
+
+    class Meta:
+        db_table = "model_provider_mgmt_skillpackage"
+        unique_together = ("package_id", "version", "domain")
 
 
 class SkillTools(MaintainerInfo, TimeInfo):
