@@ -265,23 +265,20 @@ export const IBMMQ_DASHBOARD_CONFIG: SimpleDashboardConfig = {
         { label: '日志已用', metric: 'ibmmq_qmgr_log_in_use_bytes_gauge', unit: 'bytes' },
         { label: '写入延迟', metric: 'ibmmq_qmgr_log_write_latency_seconds_gauge', unit: 's' }
       ]
-    },
-    {
-      title: '消息积压',
-      metric: 'ibmmq_queue_depth_gauge',
-      unit: 'counts',
-      color: '#8a5cff',
-      icon: 'backlog',
-      compare: true,
-      compareFavorableDirection: 'down',
-      guide: [{ label: '消息积压', detail: '队列当前消息数。持续上升说明生产快于消费，需扩消费端或排查阻塞。' }],
-      footer: [
-        { label: '未提交', metric: 'ibmmq_queue_uncommitted_messages_gauge', unit: 'counts' },
-        { label: '最早消息', metric: 'ibmmq_queue_oldest_message_age_gauge', unit: 's' }
-      ]
     }
+    // 「消息积压」已改为下方 charts 的「消息积压趋势」折线图(带时间轴),不再作为 KPI 卡。
   ],
   charts: [
+    {
+      title: '消息积压趋势',
+      subtitle: '队列深度与未提交',
+      metric: 'ibmmq_queue_depth_gauge',
+      guide: [{ label: '消息积压', detail: '队列深度与未提交消息随时间的变化。持续上升说明生产快于消费,需扩消费端或排查阻塞。' }],
+      series: [
+        { metric: 'ibmmq_queue_depth_gauge', label: '队列深度', color: '#8a5cff', unit: 'counts' },
+        { metric: 'ibmmq_queue_uncommitted_messages_gauge', label: '未提交', color: '#faad14', unit: 'counts' }
+      ]
+    },
     {
       title: '资源压力趋势',
       subtitle: 'CPU 负载与内存',

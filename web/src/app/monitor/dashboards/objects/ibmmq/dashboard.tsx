@@ -16,8 +16,9 @@ import { RingChartPanel, TrendChartPanel } from '../../shared/widgets';
 import { IBMMQ_DASHBOARD_CONFIG } from './config';
 import styles from './index.module.scss';
 
-const SUMMARY_TITLES = ['运行时长', '队列管理器状态', '连接数', '内存使用率', '主日志空间', '消息积压'];
-const CHART_TITLES = ['资源压力趋势', '连接趋势', '日志空间趋势', '队列排队趋势'];
+const SUMMARY_TITLES = ['运行时长', '队列管理器状态', '连接数', '内存使用率', '主日志空间'];
+// 「消息积压」改为带时间轴的折线图,与内存分布环、资源压力趋势合并到同一行(等分三栏)。
+const CHART_TITLES = ['消息积压趋势', '资源压力趋势', '连接趋势', '日志空间趋势', '队列排队趋势'];
 const RING_TITLES = ['主机内存分布'];
 const DETAIL_TITLES = ['主题与订阅详情'];
 
@@ -30,7 +31,7 @@ export default function IBMMQDashboardPage() {
 
   const [memoryRing] = rings;
   const [topicDetail] = details;
-  const [resourceChart, connChart, logChart, queueChart] = charts;
+  const [backlogChart, resourceChart, connChart, logChart, queueChart] = charts;
 
   const renderChart = (chart: typeof charts[number], spanClass: string) =>
     chart ? (
@@ -60,9 +61,10 @@ export default function IBMMQDashboardPage() {
           <div className={styles.sectionLabel}>健康概览</div>
           <KpiSection dashboard={dashboard} summaryCards={summaryCards} kpiCols={6} styles={styles} />
 
-          {/* R1: 内存分布环 span4 + 资源压力趋势 span8 = 12 */}
+          {/* R1: 消息积压趋势 span4 + 内存分布环 span4 + 资源压力趋势 span4 = 12 */}
           <div className={styles.sectionLabel}>内存与资源</div>
           <FlexiblePanelSection styles={styles}>
+            {renderChart(backlogChart, styles.span4)}
             {memoryRing ? (
               <RingChartPanel
                 key={memoryRing.panel.title}
@@ -77,7 +79,7 @@ export default function IBMMQDashboardPage() {
                 styles={styles}
               />
             ) : null}
-            {renderChart(resourceChart, styles.span8)}
+            {renderChart(resourceChart, styles.span4)}
           </FlexiblePanelSection>
 
           {/* R2: 连接趋势 span6 + 日志空间趋势 span6 = 12 */}
