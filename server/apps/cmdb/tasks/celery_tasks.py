@@ -360,3 +360,13 @@ def collect_node_mgmt_hosts():
         raise
     logger.info("[NodeMgmtSync] 采集节点管理主机信息结束")
 
+
+@shared_task
+def reconcile_ipam_task() -> dict:
+    """IPAM 与 CMDB 自动对账周期任务。规格 §5.5。"""
+    from apps.cmdb.services.ipam_reconcile import run_reconciliation
+    logger.info("[IPAM] 开始对账...")
+    result = run_reconciliation()
+    logger.info(f"[IPAM] 对账完成: {result}")
+    return result
+

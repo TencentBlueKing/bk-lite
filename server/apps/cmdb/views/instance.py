@@ -1126,3 +1126,9 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
                 continue
             _data.append({"proxy_id": proxy_id, "proxy_name": proxy_name})
         return WebUtils.response_success(_data)
+
+    @action(detail=False, methods=["post"], url_path="ipam_reconcile")
+    def ipam_reconcile(self, request):
+        """立即对账（手动触发）。"""
+        from apps.cmdb.services.ipam_reconcile import run_reconciliation
+        return WebUtils.response_success(run_reconciliation())
