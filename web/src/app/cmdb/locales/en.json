@@ -905,5 +905,8 @@
             "failed": "Failed"
         },
         "noTaskSelected": "Select a task to view details"
+    },
+    "IPAM": {
+        "conflictFilter": "Conflict IPs"
     }
 }

@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { KeepAlive, useActivate } from 'react-activation';
 import {
   Button,
@@ -13,6 +13,7 @@ import {
   Tree,
   Input,
   Empty,
+  Tag,
 } from 'antd';
 import type { MenuProps } from 'antd';
 import { DownOutlined, UnorderedListOutlined } from '@ant-design/icons';
@@ -705,6 +706,27 @@ const AssetDataContent = () => {
 
   const storeQueryList = useAssetDataStore((state) => state.query_list);
 
+  const IP_CONFLICT_FILTER: FilterItem = { field: 'ip_status', type: 'list_any[]', value: ['conflict'] };
+
+  const isConflictFilterActive = useMemo(
+    () => storeQueryList.some(
+      (f) =>
+        f.field === 'ip_status' &&
+        f.type === 'list_any[]' &&
+        Array.isArray(f.value) &&
+        (f.value as string[]).includes('conflict')
+    ),
+    [storeQueryList]
+  );
+
+  const handleConflictFilterToggle = () => {
+    if (isConflictFilterActive) {
+      handleSearch({ field: 'ip_status', type: '' });
+    } else {
+      handleSearch(IP_CONFLICT_FILTER);
+    }
+  };
+
   useEffect(() => {
     // 如果查询条件为空，则设置为 null，否则设置为查询条件
     const newQueryList = storeQueryList.length === 0 ? null
@@ -1000,6 +1022,15 @@ const AssetDataContent = () => {
                   onChange={handleFilterBarChange}
                   onFilterChange={handleFilterBarChange}
                 />
+                {modelId === 'ip' && (
+                  <Tag
+                    color={isConflictFilterActive ? 'error' : 'default'}
+                    style={{ cursor: 'pointer', userSelect: 'none' }}
+                    onClick={handleConflictFilterToggle}
+                  >
+                    {t('IPAM.conflictFilter')}
+                  </Tag>
+                )}
                 <RefreshIconButton
                   loading={loading}
                   onClick={() => fetchData()}
