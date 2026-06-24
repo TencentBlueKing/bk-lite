@@ -18,8 +18,13 @@ sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 from langchain_core.messages import SystemMessage, ToolMessage
 
 from apps.opspilot.metis.llm.chain.node import (
+    ToolsNodes,
+    build_a2ui_report_contract,
     build_config_analysis_report_payload,
+    build_config_diff_report_payload,
     build_post_tool_directives,
+    build_repair_mode_choice_args,
+    downgrade_config_analysis_next_step_hint,
     should_emit_config_analysis_report,
 )
 from apps.opspilot.metis.llm.tools.kubernetes.analysis import (
@@ -128,8 +133,9 @@ def test_build_post_tool_directives_prevents_duplicate_config_summary_and_report
 
     assert any(isinstance(message, SystemMessage) for message in directives)
     assert any(
-        "不要同时输出“问题摘要”和“配置问题报告”两个重复板块" in message.content
-        and "优先保留详细问题报告" in message.content
+        "结构化配置检查报告已经通过 AG-UI" in message.content
+        and "不要再用 Markdown" in message.content
+        and "最终文本最多只允许一句简短说明" in message.content
         for message in directives
         if isinstance(message, SystemMessage)
     )
@@ -147,12 +153,60 @@ def test_build_post_tool_directives_requests_repair_mode_choice_after_problem_re
     )
 
     assert any(
-        "输出完整配置检查报告后" in message.content
+        "通过 AG-UI 交互卡片让用户选择修复展示方式" in message.content
         and "必须主动调用 request_user_choice" in message.content
         and "不要主动调用 generate_repair_report" in message.content
+        and "输出完整配置检查报告后" not in message.content
         for message in directives
         if isinstance(message, SystemMessage)
     )
+
+
+def test_build_post_tool_directives_skips_expert_workflow_without_skill_capability():
+    directives = build_post_tool_directives(
+        [
+            ToolMessage(
+                name="analyze_deployment_configurations",
+                tool_call_id="call-1",
+                content='{"cluster_name":"Kubernetes - 1","problematic":32,"issues_detail":[{"severity":"high","issue":"未配置存活探针","count":10,"workloads":["nginx-test (default)"]}]}',
+            )
+        ],
+        enable_config_analysis_report=False,
+        enable_repair_diff_report=False,
+    )
+
+    assert directives == []
+
+
+def test_analyze_deployment_configurations_stops_when_connection_fails(monkeypatch):
+    def _raise_connection_error(config):
+        raise Exception("目标地址被禁止: 禁止的网段 127.0.0.0/8")
+
+    monkeypatch.setattr(
+        "apps.opspilot.metis.llm.tools.kubernetes.analysis.prepare_context",
+        _raise_connection_error,
+    )
+
+    parsed = json.loads(analyze_deployment_configurations.invoke({}))
+
+    assert parsed["success"] is False
+    assert parsed["error"] == "connection_failed"
+    assert "已停止配置分析" in parsed["message"]
+    assert "不要输出配置检查报告" in parsed["_next_step_hint"]
+
+
+def test_failed_config_analysis_does_not_emit_report_directive():
+    directives = build_post_tool_directives(
+        [
+            ToolMessage(
+                name="analyze_deployment_configurations",
+                tool_call_id="call-1",
+                content='{"success":false,"error":"connection_failed","message":"无法连接 Kubernetes 集群"}',
+            )
+        ]
+    )
+
+    assert directives == []
 
 
 def test_build_post_tool_directives_prevents_duplicate_summary_for_healthy_scan():
@@ -168,8 +222,8 @@ def test_build_post_tool_directives_prevents_duplicate_summary_for_healthy_scan(
 
     assert any(isinstance(message, SystemMessage) for message in directives)
     assert any(
-        "不要同时输出“问题摘要”和“配置问题报告”两个重复板块" in message.content
-        and "如果检查结果没有问题，则直接结束" in message.content
+        "结构化配置检查报告已经通过 AG-UI" in message.content
+        and "如果检查结果没有问题，则直接用一句话结束" in message.content
         for message in directives
         if isinstance(message, SystemMessage)
     )
@@ -181,6 +235,75 @@ def test_build_config_analysis_next_step_hint_requests_repair_mode_choice():
     assert "request_user_choice" in hint
     assert "修复展示方式" in hint
     assert "generate_repair_report" in hint
+
+
+def test_downgrade_config_analysis_next_step_hint_removes_repair_workflow():
+    parsed = {
+        "problematic": 32,
+        "_next_step_hint": build_config_analysis_next_step_hint(problematic_count=32, target_name=None),
+    }
+
+    downgraded = downgrade_config_analysis_next_step_hint(parsed)
+
+    assert "修复展示方式" not in downgraded["_next_step_hint"]
+    assert "generate_repair_report" in parsed["_next_step_hint"]
+    assert "不要调用 request_user_choice" in downgraded["_next_step_hint"]
+    assert "不要调用 generate_repair_report" in downgraded["_next_step_hint"]
+
+
+def test_basic_k8s_analysis_filters_loop_prone_followup_tools():
+    node = ToolsNodes()
+    node._skill_package_capabilities = set()
+
+    filtered, blocked = node._filter_basic_k8s_analysis_loop_calls(
+        [
+            {"name": "analyze_deployment_configurations"},
+            {"name": "kubernetes_troubleshooting_guide"},
+            {"name": "request_user_choice"},
+        ],
+        {"deployments": [{"name": "nginx-test"}]},
+    )
+
+    assert blocked is True
+    assert filtered == []
+
+
+def test_expert_k8s_analysis_keeps_repair_followup_tools():
+    node = ToolsNodes()
+    node._skill_package_capabilities = {"config_analysis_report", "repair_diff_report"}
+
+    tool_calls = [
+        {"name": "analyze_deployment_configurations"},
+        {"name": "request_user_choice"},
+    ]
+    filtered, blocked = node._filter_basic_k8s_analysis_loop_calls(
+        tool_calls,
+        {"deployments": [{"name": "nginx-test"}]},
+    )
+
+    assert blocked is False
+    assert filtered == tool_calls
+
+
+def test_expert_k8s_analysis_sanitizes_duplicate_markdown_report_text():
+    node = ToolsNodes()
+    node._skill_package_capabilities = {"config_analysis_report", "repair_diff_report"}
+    response = node._sanitize_duplicate_config_analysis_text(
+        response=SimpleNamespace(
+            content=(
+                "## 配置检查报告\n\n"
+                "### High Severity\n\n"
+                "### Medium Severity\n\n"
+                "## 修复建议\n"
+            ),
+            tool_calls=[{"name": "request_user_choice", "args": {}, "id": "choice-1"}],
+            id="msg-1",
+        ),
+        analysis_cache={"deployments": [{"name": "nginx-test"}]},
+    )
+
+    assert response.content == "配置检查报告已通过上方结构化卡片展示，请查看卡片中的统计、风险分组和建议。"
+    assert response.tool_calls[0]["name"] == "request_user_choice"
 
 
 def test_build_config_analysis_report_payload_structures_k8s_report():
@@ -209,6 +332,16 @@ def test_build_config_analysis_report_payload_structures_k8s_report():
 
     assert payload["title"] == "配置检查报告 - Kubernetes - 1"
     assert payload["cluster_name"] == "Kubernetes - 1"
+    assert payload["a2ui"] == {
+        "version": "1.0",
+        "component": "config-analysis-report",
+        "event_name": "config_analysis_report",
+        "render_mode": "card",
+        "actions": [
+            {"key": "expand_issue", "label": "展开问题"},
+            {"key": "request_repair_mode", "label": "选择修复展示方式"},
+        ],
+    }
     assert payload["summary"] == {"total": 9, "problematic": 2, "healthy": 7}
     assert [section["severity"] for section in payload["severity_sections"]] == ["critical", "high"]
     assert payload["severity_sections"][0]["issues"][0]["issue"] == "容器以 root 运行"
@@ -235,6 +368,114 @@ def test_build_config_analysis_report_payload_structures_k8s_report():
     ]
     assert payload["fallback_markdown"] == payload["markdown"]
     assert payload["fallback_markdown"].startswith("# 配置检查报告 - Kubernetes - 1")
+
+
+def test_build_config_diff_report_payload_declares_a2ui_component_contract():
+    payload = build_config_diff_report_payload(
+        title="配置修复对比",
+        cluster_name="Kubernetes - 1",
+        items=[
+            {
+                "workload_name": "api",
+                "workload_type": "Deployment",
+                "namespace": "default",
+                "severity": "high",
+                "summary": "未配置存活探针",
+                "before_yaml": "containers: []",
+                "after_yaml": "livenessProbe: {}",
+            }
+        ],
+    )
+
+    assert payload["title"] == "配置修复对比"
+    assert payload["cluster_name"] == "Kubernetes - 1"
+    assert payload["items"][0]["workload_name"] == "api"
+    assert payload["a2ui"] == {
+        "version": "1.0",
+        "component": "config-diff-report",
+        "event_name": "config_diff_report",
+        "render_mode": "card",
+        "actions": [
+            {"key": "open_diff", "label": "查看差异"},
+            {"key": "copy_after_yaml", "label": "复制修复配置"},
+        ],
+    }
+
+
+def test_build_user_choice_a2ui_contract_uses_same_component_protocol():
+    contract = build_a2ui_report_contract(
+        component="user-choice",
+        event_name="user_choice_request",
+        actions=[{"key": "submit_choice", "label": "提交选择"}],
+    )
+
+    assert contract == {
+        "version": "1.0",
+        "component": "user-choice",
+        "event_name": "user_choice_request",
+        "render_mode": "card",
+        "actions": [{"key": "submit_choice", "label": "提交选择"}],
+    }
+
+
+def test_build_repair_mode_choice_args_omits_low_value_grouping_for_single_issue():
+    choice_args = build_repair_mode_choice_args(
+        {
+            "problematic": 1,
+            "issues_detail": [
+                {
+                    "severity": "high",
+                    "issue": "未配置存活探针",
+                    "count": 1,
+                    "workloads": ["api (default)"],
+                }
+            ],
+        }
+    )
+
+    assert choice_args["question"] == "请选择修复展示方式"
+    assert choice_args["question_type"] == "single_select"
+    assert choice_args["options"] == ["直接展示单个修复对比（推荐）"]
+
+
+def test_build_repair_mode_choice_args_recommends_category_for_broad_multi_issue_scan():
+    choice_args = build_repair_mode_choice_args(
+        {
+            "problematic": 40,
+            "issues_detail": [
+                {
+                    "severity": "high",
+                    "issue": "未配置存活探针",
+                    "count": 35,
+                    "workloads": ["api (default)", "worker (prod)", "scheduler (prod)"],
+                },
+                {
+                    "severity": "medium",
+                    "issue": "未配置资源限制",
+                    "count": 31,
+                    "workloads": ["api (default)", "worker (prod)"],
+                },
+                {
+                    "severity": "low",
+                    "issue": "使用 latest 镜像",
+                    "count": 24,
+                    "workloads": ["api (default)"],
+                },
+            ],
+        }
+    )
+
+    assert choice_args["options"][0] == "按问题类别聚合（推荐：多类问题覆盖面广）"
+    assert "按工作负载聚合" in choice_args["options"]
+    assert "全部一次性展示" not in choice_args["options"]
+
+
+def test_normalize_repair_group_by_accepts_recommended_choice_label():
+    node = ToolsNodes()
+
+    assert node._normalize_repair_group_by("按问题类别聚合（推荐：多类问题覆盖面广）") == "category"
+    assert node._normalize_repair_group_by("按工作负载聚合（推荐：目标数量较少）") == "target"
+    assert node._normalize_repair_group_by("直接展示单个修复对比（推荐）") == "all"
 
 
 def test_should_emit_config_analysis_report_for_summary_only_result():

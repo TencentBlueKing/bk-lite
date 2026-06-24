@@ -6,6 +6,7 @@ AGUI协议聊天流式处理模块
 
 import json
 import re
+import threading
 import time
 
 from asgiref.sync import sync_to_async
@@ -18,6 +19,7 @@ from apps.opspilot.utils.agent_factory import create_agent_instance, create_sse_
 from apps.opspilot.utils.stream_common import is_interrupt_requested_async
 from apps.opspilot.utils.stream_common import process_think_content as _process_think_content
 from apps.opspilot.utils.stream_common import split_think_content as _split_think_content
+
 
 # 工具结果后的桥接型自述内容匹配模式，供提取与剥离两处复用（避免重复编译）。
 _META_PREAMBLE_PATTERN = re.compile(
@@ -423,7 +425,9 @@ def _prepare_agui_chat_kwargs(params):
     return chat_kwargs
 
 
-async def _generate_agui_stream(params, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log):
+async def _generate_agui_stream(
+    params, skill_name, skill_type, show_think, final_stats, kwargs, current_ip, user_message, skill_id, history_log
+):
     try:
         logger.info(f"[AGUI Chat] 开始异步流处理 - skill_name: {skill_name}, skill_type: {skill_type}, show_think: {show_think}")
         # F044: 把取模型 / 格式化参数 / 创建 Agent 实例（构造 request/graph）的同步前置工作
@@ -435,6 +439,16 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
         state = _init_agui_stream_state()
         enable_thinking_split = _supports_thinking_events(request)
         execution_id = request.typed_extra_config().execution_id or request.thread_id
+        matched_skill_packages = params.get("matched_skill_packages") or []
+        if matched_skill_packages:
+            skill_view_event = {
+                "type": "CUSTOM",
+                "name": "skill_view",
+                "value": {"items": matched_skill_packages},
+                "timestamp": int(time.time() * 1000),
+            }
+            accumulated_content.append(skill_view_event)
+            yield _build_sse_line(skill_view_event)
 
         async for sse_line in graph.agui_stream(request):
             if execution_id and await is_interrupt_requested_async(execution_id):
@@ -459,13 +473,12 @@ async def _generate_agui_stream(params, skill_name, skill_type, show_think, fina
                 yield output_line
 
         final_stats["content"] = accumulated_content
-        # 流已结束，同步落库（经 sync_to_async，与本生成器内其它 DB 调用一致）。此前用 daemon
-        # 线程，进程退出/部署/缩容时 in-flight 写入被强杀 → 对话审计/技能日志丢失（与 sse_chat
-        # 场景19 同类问题，AGUI 路径此前漏修）。await 确保写入在生成器结束前完成。
         if final_stats["content"]:
-            await sync_to_async(_log_and_update_tokens_agui, thread_sensitive=True)(
-                final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log
-            )
+
+            def log_in_background():
+                _log_and_update_tokens_agui(final_stats, skill_name, skill_id, current_ip, kwargs, user_message, show_think, history_log)
+
+            threading.Thread(target=log_in_background, daemon=True).start()
 
     except Exception as e:
         logger.error(f"[AGUI Chat] async stream error: {e}", exc_info=True)

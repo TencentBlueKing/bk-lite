@@ -1,5 +1,5 @@
 # -- coding: utf-8 --
-from django.db import connection, transaction
+from django.db import connection
 from django.db.models import Count
 from django.http import Http404
 from rest_framework.response import Response
@@ -14,6 +14,7 @@ from apps.alerts.service.related_alerts import RelatedAlertsService
 from apps.alerts.service.alter_operator import AlertOperator
 from apps.alerts.utils.permission_scope import get_authorized_group_ids
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.logger import alert_logger as logger
 from apps.core.utils.web_utils import WebUtils
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.system_mgmt.models.user import User
@@ -163,14 +164,13 @@ class AlertModelViewSet(AuthViewSet):
         )
         return Response(result)
 
-    # @HasPermission("Alarms-Edit")
+    @HasPermission("Alarms-Edit")
     @action(
         methods=["post"],
         detail=False,
         url_path="operator/(?P<operator_action>[^/.]+)",
         url_name="operator",
     )
-    @transaction.atomic
     def operator(self, request, operator_action, *args, **kwargs):
         """
         Custom operator method to handle alert operations.
@@ -192,7 +192,12 @@ class AlertModelViewSet(AuthViewSet):
                 result_list[alert_id] = result
                 status_list.append(False)
                 continue
-            result = operator.operate(action=operator_action, alert_id=alert_id, data=request.data)
+            # 每条告警独立处理：单条意外异常不应回滚/中断整批（operate 自身已管理事务）。
+            try:
+                result = operator.operate(action=operator_action, alert_id=alert_id, data=request.data)
+            except Exception as exc:  # noqa
+                logger.exception("[AlertOperator] 批量操作单条失败: alert_id=%s", alert_id)
+                result = {"result": False, "message": str(exc), "data": {}}
             result_list[alert_id] = result
             status_list.append(result["result"])
 

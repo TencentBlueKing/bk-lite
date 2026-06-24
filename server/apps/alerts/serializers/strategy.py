@@ -14,9 +14,12 @@ from apps.alerts.utils.permission_scope import get_authorized_group_ids, normali
 from apps.alerts.utils.util import parse_aggregation_window_size
 
 # 允许的聚合维度白名单（防止 SQL 注入）
+# 注意：维度名必须与 DuckDB 内存表加载的列一致（见 engine/connection.py load_events_to_memory），
+# 加载的是 source_id（不是 source）。此前白名单含 "source" 会让 group_by=["source"] 通过校验，
+# 但聚合 SQL 引用不存在的列而报错、该策略每轮聚合失败，故改为 source_id。
 ALLOWED_DIMENSIONS = frozenset({
     "event_id", "service", "location", "resource_name", "item",
-    "external_id", "source", "level", "title", "description",
+    "external_id", "source_id", "level", "title", "description",
     "resource_id", "resource_type",
 })
 

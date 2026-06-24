@@ -9,7 +9,6 @@ from django.db import transaction, connection
 from datetime import timedelta
 from typing import Dict, Any, Optional, Tuple
 
-from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models import Alert, AlertReminderTask, AlertAssignment, Level
 from apps.alerts.constants import SessionStatus, AlertStatus
 from apps.core.logger import alert_logger as logger
@@ -426,25 +425,11 @@ class ReminderService:
                 )
                 return False
 
-            param_format = NotifyParamsFormat(
-                username_list=username_list, alerts=[alert]
-            )
-            title = param_format.format_title()
-            content = param_format.format_content()
+            from apps.alerts.common.notify.dispatcher import build_channel_params
 
-            channel_params = []
-            for channel in channel_list:
-                channel_params.append(
-                    {
-                        "username_list": username_list,
-                        "channel_type": channel["channel_type"],
-                        "channel_id": channel["id"],
-                        "title": title,
-                        "content": content,
-                        "object_id": alert.alert_id,
-                        "notify_action_object": "alert",
-                    }
-                )
+            channel_params = build_channel_params(
+                username_list, channel_list, [alert], alert.alert_id
+            )
             # 移动导入到函数内部避免循环导入
             from apps.alerts.tasks import sync_notify
 
