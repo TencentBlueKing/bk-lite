@@ -25,3 +25,26 @@ class TestBuildScanPayload:
         with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
             payload = build_scan_payload(subnet_ids=[2], scan_method="tcp", ports=None)
         assert payload["ports"] == [22, 80, 443, 3389]
+
+
+class TestApplyDiscoveryResult:
+    def test_在线入账_未探到的自动发现置离线_手工不动(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [
+            {"_id": 11, "ip_addr": "10.0.1.10", "auto_collect": True, "subnet_id": "1"},
+            {"_id": 12, "ip_addr": "10.0.1.20", "auto_collect": True, "subnet_id": "1"},
+            {"_id": 13, "ip_addr": "10.0.1.30", "auto_collect": False, "subnet_id": "1"},
+        ])
+        ups, offs = [], []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1,
+            alive=[{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}, {"ip": "10.0.1.40", "mac": ""}],
+        )
+        assert {u["ip_addr"] for u in ups} == {"10.0.1.10", "10.0.1.40"}
+        assert offs == [12]
+        assert result["offline"] == 1
+        assert 13 not in offs
