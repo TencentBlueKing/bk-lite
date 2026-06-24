@@ -106,34 +106,35 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         old_enable = policy.enable if policy else None
         old_baseline_state = self.get_baseline_state(policy)
 
-        response = super().update(request, *args, **kwargs)
-        updated_policy = MonitorPolicy.objects.filter(id=policy_id).first()
+        with transaction.atomic():
+            response = super().update(request, *args, **kwargs)
+            updated_policy = MonitorPolicy.objects.filter(id=policy_id).first()
 
-        schedule = request.data.get("schedule")
-        if schedule:
-            self.update_or_create_task(policy_id, schedule)
-        organizations = request.data.get("organizations", [])
-        if organizations:
-            self.update_policy_organizations(policy_id, organizations)
-        if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
-            self.update_policy_baselines(
-                policy_id,
-                updated_policy.enable_alerts,
-                operator=request.user.username,
-                reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
+            schedule = request.data.get("schedule")
+            if schedule:
+                self.update_or_create_task(policy_id, schedule)
+            organizations = request.data.get("organizations", [])
+            if organizations:
+                self.update_policy_organizations(policy_id, organizations)
+            if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
+                self.update_policy_baselines(
+                    policy_id,
+                    updated_policy.enable_alerts,
+                    operator=request.user.username,
+                    reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
+                )
+
+            self.close_active_threshold_alerts_for_policy_config_change(
+                policy,
+                old_baseline_state,
+                updated_policy,
+                request.user.username,
             )
 
-        self.close_active_threshold_alerts_for_policy_config_change(
-            policy,
-            old_baseline_state,
-            updated_policy,
-            request.user.username,
-        )
-
-        # 处理 enable 字段变更
-        if "enable" in request.data and policy and updated_policy:
-            new_enable = updated_policy.enable
-            self.handle_policy_enable_change(policy_id, old_enable, new_enable)
+            # 处理 enable 字段变更
+            if "enable" in request.data and policy and updated_policy:
+                new_enable = updated_policy.enable
+                self.handle_policy_enable_change(policy_id, old_enable, new_enable)
 
         return response
 
@@ -146,34 +147,35 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         old_enable = policy.enable if policy else None
         old_baseline_state = self.get_baseline_state(policy)
 
-        response = super().partial_update(request, *args, **kwargs)
-        updated_policy = MonitorPolicy.objects.filter(id=policy_id).first()
+        with transaction.atomic():
+            response = super().partial_update(request, *args, **kwargs)
+            updated_policy = MonitorPolicy.objects.filter(id=policy_id).first()
 
-        schedule = request.data.get("schedule")
-        if schedule:
-            self.update_or_create_task(policy_id, schedule)
-        organizations = request.data.get("organizations", [])
-        if organizations:
-            self.update_policy_organizations(policy_id, organizations)
-        if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
-            self.update_policy_baselines(
-                policy_id,
-                updated_policy.enable_alerts,
-                operator=request.user.username,
-                reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
+            schedule = request.data.get("schedule")
+            if schedule:
+                self.update_or_create_task(policy_id, schedule)
+            organizations = request.data.get("organizations", [])
+            if organizations:
+                self.update_policy_organizations(policy_id, organizations)
+            if self.should_update_policy_baselines(policy, old_baseline_state, updated_policy):
+                self.update_policy_baselines(
+                    policy_id,
+                    updated_policy.enable_alerts,
+                    operator=request.user.username,
+                    reset_active_no_data_alerts=self.baseline_state_changed(old_baseline_state, updated_policy),
+                )
+
+            self.close_active_threshold_alerts_for_policy_config_change(
+                policy,
+                old_baseline_state,
+                updated_policy,
+                request.user.username,
             )
 
-        self.close_active_threshold_alerts_for_policy_config_change(
-            policy,
-            old_baseline_state,
-            updated_policy,
-            request.user.username,
-        )
-
-        # 处理 enable 字段变更
-        if "enable" in request.data and policy and updated_policy:
-            new_enable = updated_policy.enable
-            self.handle_policy_enable_change(policy_id, old_enable, new_enable)
+            # 处理 enable 字段变更
+            if "enable" in request.data and policy and updated_policy:
+                new_enable = updated_policy.enable
+                self.handle_policy_enable_change(policy_id, old_enable, new_enable)
 
         return response
 

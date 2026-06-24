@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Optional
 
 from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework import serializers
 
 import nats_client
@@ -1136,7 +1137,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
     alert_recovered = alert_qs.filter(status="recovered").count()
     alert_closed = alert_qs.filter(status="closed").count()
 
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     alert_today = alert_qs.filter(created_at__gte=today_start).count()
 
     event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorEvent.objects.all()

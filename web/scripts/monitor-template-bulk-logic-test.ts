@@ -4,7 +4,11 @@ import {
   buildBulkApplyPayload,
   buildPolicyPreview,
   clearTemplateSelection,
+  getAssetCollectionTemplateLabels,
+  getAssetOrganizationText,
+  getPrimaryNoticeType,
   groupPolicyTemplates,
+  normalizeBulkConfig,
   selectTemplateGroup,
   toggleTemplateSelection,
 } from '../src/app/monitor/(pages)/event/template/templateBulkUtils';
@@ -78,6 +82,7 @@ const config = {
   period: { type: 'min', value: 10 },
   notice: true,
   notice_type_ids: [1, 2],
+  notice_type: 'email',
   notice_users: ['alice'],
 };
 
@@ -101,5 +106,73 @@ assert.equal(payload.monitor_object, 3);
 assert.deepEqual(payload.asset_ids, ["('host-a',)", "('host-b',)"]);
 assert.deepEqual(payload.templates.map((item) => item.collect_type), [11, 11]);
 assert.deepEqual(payload.config.notice_type_ids, [1, 2]);
+assert.equal(payload.config.notice_type, 'email');
+assert.equal('no_data_level' in payload.config, false);
+assert.equal('no_data_alert_name' in payload.config, false);
+
+const noDataDisabledConfig = normalizeBulkConfig({
+  ...config,
+  no_data_enabled: false,
+  enable_alerts: ['threshold', 'no_data'],
+  no_data_level: 'warning',
+  no_data_alert_name: '无数据告警',
+});
+assert.deepEqual(noDataDisabledConfig.enable_alerts, ['threshold']);
+assert.equal('no_data_level' in noDataDisabledConfig, false);
+assert.equal('no_data_alert_name' in noDataDisabledConfig, false);
+
+const noDataEnabledConfig = normalizeBulkConfig({
+  ...config,
+  no_data_enabled: true,
+  no_data_period: { type: 'min', value: 5 },
+  no_data_level: 'warning',
+  no_data_alert_name: '无数据告警',
+});
+assert.deepEqual(noDataEnabledConfig.enable_alerts, ['threshold', 'no_data']);
+assert.deepEqual(noDataEnabledConfig.no_data_period, { type: 'min', value: 5 });
+assert.deepEqual(noDataEnabledConfig.no_data_recovery_period, { type: 'min', value: 5 });
+assert.equal(noDataEnabledConfig.no_data_level, 'warning');
+assert.equal(noDataEnabledConfig.no_data_alert_name, '无数据告警');
+
+const noDataPayload = buildBulkApplyPayload({
+  monitorObjectId: 3,
+  templates: selectedTemplates,
+  assets,
+  config: noDataEnabledConfig,
+});
+assert.equal(noDataPayload.config.no_data_level, 'warning');
+assert.equal(noDataPayload.config.no_data_alert_name, '无数据告警');
+assert.equal(
+  getPrimaryNoticeType([2, 1], [
+    { id: 1, channel_type: 'email' },
+    { id: 2, channel_type: 'nats' },
+  ]),
+  'nats'
+);
+assert.equal(getPrimaryNoticeType([], [{ id: 1, channel_type: 'email' }]), '');
+
+assert.equal(
+  getAssetOrganizationText(
+    { organization: [7, 8] },
+    [
+      {
+        value: 7,
+        label: '生产环境',
+        children: [{ value: 8, label: '核心业务' }],
+      },
+    ]
+  ),
+  '生产环境,核心业务'
+);
+assert.deepEqual(
+  getAssetCollectionTemplateLabels({
+    plugins: [
+      { id: 11, display_name: 'Host Remote' },
+      { id: 12, name: 'Telegraf' },
+      { id: 13 },
+    ],
+  }),
+  ['Host Remote', 'Telegraf', '13']
+);
 
 console.log('monitor-template-bulk logic validation passed');

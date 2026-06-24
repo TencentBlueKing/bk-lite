@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import type { Graph } from '@antv/x6';
 import { HUB_COLOR } from './constants';
 import { relationshipIdFromEdgeId } from './topoEditingUtils';
+import { NETWORK_TOPO_VISUAL } from './visualStyles';
 
 export interface PendingLink {
   sourceId: string;
@@ -52,9 +53,13 @@ export const useTopoEditing = ({
     if (!graph) return;
     graph.getNodes().forEach((n) => {
       const active = n.id === linkingSourceId;
-      n.attr('body/strokeDasharray', active ? '6' : null);
-      n.attr('body/stroke', active ? HUB_COLOR : null);
-      n.attr('body/strokeWidth', active ? 2 : null);
+      const baseBody = n.getData()?.isCenter
+        ? NETWORK_TOPO_VISUAL.node.activeBody
+        : NETWORK_TOPO_VISUAL.node.defaultBody;
+      n.attr('body/strokeDasharray', active ? '6 4' : null);
+      n.attr('body/stroke', active ? HUB_COLOR : baseBody.stroke);
+      n.attr('body/strokeWidth', active ? 2 : baseBody.strokeWidth);
+      n.attr('body/filter', active ? NETWORK_TOPO_VISUAL.node.activeBody.filter : baseBody.filter);
     });
   }, [graph, linkingSourceId, revision]);
 

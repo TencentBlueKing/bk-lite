@@ -31,6 +31,12 @@ export interface ChatProps extends WebChatConfig {
   apiKey?: string;
 }
 
+// 图片大小上限（字节），默认 4MB，可通过 NEXT_PUBLIC_MAX_IMAGE_SIZE 环境变量覆盖
+const MAX_IMAGE_SIZE =
+  (typeof process !== 'undefined' && process.env?.NEXT_PUBLIC_MAX_IMAGE_SIZE
+    ? parseInt(process.env.NEXT_PUBLIC_MAX_IMAGE_SIZE, 10)
+    : 0) || 4 * 1024 * 1024;
+
 const defaultBotAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzgxODVmZiIvPgogIDxjaXJjbGUgY3g9IjExIiBjeT0iMTIiIHI9IjIiIGZpbGw9IndoaXRlIi8+CiAgPGNpcmNsZSBjeD0iMjEiIGN5PSIxMiIgcj0iMiIgZmlsbD0id2hpdGUiLz4KICA8cGF0aCBkPSJNIDEwIDIwIFEgMTYgMjQgMjIgMjAiIHN0cm9rZT0id2hpdGUiIHN0cm9rZS13aWR0aD0iMiIgc3Ryb2tlLWxpbmVjYXA9InJvdW5kIiBmaWxsPSJub25lIi8+Cjwvc3ZnPg==';
 const defaultUserAvatar = 'data:image/svg+xml;base64,PHN2ZyB3aWR0aD0iMzIiIGhlaWdodD0iMzIiIHZpZXdCb3g9IjAgMCAzMiAzMiIgZmlsbD0ibm9uZSIgeG1sbnM9Imh0dHA6Ly93d3cudzMub3JnLzIwMDAvc3ZnIj4KICA8Y2lyY2xlIGN4PSIxNiIgY3k9IjE2IiByPSIxNiIgZmlsbD0iIzEwYjk4MSIvPgogIDxjaXJjbGUgY3g9IjE2IiBjeT0iMTIiIHI9IjUiIGZpbGw9IndoaXRlIi8+CiAgPHBhdGggZD0iTSA2IDI4IFEgNiAyMCAxNiAyMCBRIDI2IDIwIDI2IDI4IiBmaWxsPSJ3aGl0ZSIvPgo8L3N2Zz4=';
 
@@ -77,6 +83,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const streamingContentRef = useRef<string>('');
   const currentMessageIdRef = useRef<string | null>(null);
+  // 保持 onMessageReceived 最新引用，避免 useEffect 空 deps 闭包固化旧 prop
+  const onMessageReceivedRef = useRef(onMessageReceived);
+  useEffect(() => {
+    onMessageReceivedRef.current = onMessageReceived;
+  }, [onMessageReceived]);
 
   // Cache avatar elements to prevent re-fetching on every render
   const botAvatar = React.useMemo(
@@ -100,29 +111,54 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     // Initialize StateMachine
     stateMachineRef.current = new StateMachine('idle');
-    stateMachineRef.current.on((event) => {
+    const unsubscribeState = stateMachineRef.current.on((event) => {
       onStateChange?.(event.to);
     });
 
     // Initialize SSEHandler - 不再需要，我们用 fetch 直接处理
     // Initialize AGUIHandler (默认启用)
     aguiHandlerRef.current = new AGUIHandler(agui || { enabled: true, debug: true });
-    setupAGUIEventHandlers();
+    const aguiSubscription = setupAGUIEventHandlers();
 
     // Load previous session
     const session = sessionManagerRef.current.initSession();
     if (session && session.messages.length > 0) {
       setMessages(session.messages);
     }
+
+    return () => {
+      aguiSubscription?.unsubscribe();
+      aguiHandlerRef.current?.destroy();
+      unsubscribeState();
+      stateMachineRef.current?.destroy();
+    };
   }, []);
 
   // Setup AG-UI event handlers
   const setupAGUIEventHandlers = () => {
     if (!aguiHandlerRef.current) return;
 
-    aguiHandlerRef.current.getEventStream().subscribe((event: AGUIEvent) => {
+    return aguiHandlerRef.current.getEventStream().subscribe((event: AGUIEvent) => {
       handleAGUIEvent(event);
     });
+  };
+
+  // 确保当前存在一条 bot 消息，若尚未创建则新建并通知外部。
+  // TEXT_MESSAGE_START 和 TOOL_CALL_START 均需此逻辑，提取以消除重复。
+  const ensureCurrentMessage = () => {
+    if (currentMessageIdRef.current) return;
+    const newAssistantMsg: Message = {
+      id: generateId(),
+      type: 'text',
+      content: '',
+      sender: 'bot',
+      timestamp: Date.now(),
+      metadata: { contentChunks: [] },
+    };
+    currentMessageIdRef.current = newAssistantMsg.id;
+    setMessages((prev) => [...prev, newAssistantMsg]);
+    sessionManagerRef.current?.addMessage(newAssistantMsg);
+    onMessageReceivedRef.current?.(newAssistantMsg);
   };
 
   // Handle AG-UI protocol events
@@ -249,26 +285,8 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         }
         
         // 如果还没有创建消息，现在创建
-        if (!currentMessageIdRef.current) {
-          const newAssistantMsg: Message = {
-            id: generateId(),
-            type: 'text',
-            content: '',
-            sender: 'bot',
-            timestamp: Date.now(),
-            metadata: {
-              contentChunks: []
-            },
-          };
-          
-          currentMessageIdRef.current = newAssistantMsg.id;
-          
-          setMessages((prev) => [...prev, newAssistantMsg]);
-          sessionManagerRef.current?.addMessage(newAssistantMsg);
-          onMessageReceived?.(newAssistantMsg);
-          
-        }
-        
+        ensureCurrentMessage();
+
         // 重置当前文本内容累加器
         streamingContentRef.current = '';
         setIsThinking(false);
@@ -383,28 +401,10 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
           name: toolStartEvent.toolCallName || toolStartEvent.name || 'Unknown Tool',
           status: 'running' as const,
         };
-        
-        // 如果还没有创建消息，现在创建
-        if (!currentMessageIdRef.current) {
-          const newAssistantMsg: Message = {
-            id: generateId(),
-            type: 'text',
-            content: '',
-            sender: 'bot',
-            timestamp: Date.now(),
-            metadata: {
-              contentChunks: []
-            },
-          };
-          
-          currentMessageIdRef.current = newAssistantMsg.id;
-          
-          setMessages((prev) => [...prev, newAssistantMsg]);
-          sessionManagerRef.current?.addMessage(newAssistantMsg);
-          onMessageReceived?.(newAssistantMsg);
-          
-        }
-        
+
+        // 如果还没有创建消息，现在创建（与 TEXT_MESSAGE_START 共用同一逻辑）
+        ensureCurrentMessage();
+
         // Add tool call as a new separate chunk
         setMessages((prev) => {
           return prev.map(msg => {
@@ -677,8 +677,9 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       return [...prev, message];
     });
     sessionManagerRef.current?.addMessage(message);
-    onMessageReceived?.(message);
-  }, [onMessageReceived]);
+    // 通过 ref 调用，确保始终使用最新的 onMessageReceived prop
+    onMessageReceivedRef.current?.(message);
+  }, []);
 
   // Handle image upload
   const handleImageUpload = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
@@ -690,6 +691,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     for (let i = 0; i < files.length; i++) {
       const file = files[i];
       if (!file.type.startsWith('image/')) continue;
+      if (file.size > MAX_IMAGE_SIZE) {
+        const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
+        onError?.(new Error(`图片"${file.name}"超过 ${limitMB}MB 大小限制，已跳过。`));
+        continue;
+      }
 
       const reader = new FileReader();
       const promise = new Promise<string>((resolve) => {
@@ -708,7 +714,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
 
     // Reset input
     e.target.value = '';
-  }, []);
+  }, [onError]);
 
   // Remove uploaded image
   const handleRemoveImage = useCallback((index: number) => {
@@ -726,6 +732,11 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
       if (item.type.startsWith('image/')) {
         const file = item.getAsFile();
         if (file) {
+          if (file.size > MAX_IMAGE_SIZE) {
+            const limitMB = MAX_IMAGE_SIZE / (1024 * 1024);
+            onError?.(new Error(`粘贴的图片超过 ${limitMB}MB 大小限制，已跳过。`));
+            continue;
+          }
           imageFiles.push(file);
         }
       }
@@ -749,7 +760,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
         setUploadedImages((prev) => [...prev, ...results]);
       });
     }
-  }, []);
+  }, [onError]);
 
   // Send message
   const handleSendMessage = useCallback(async (value: string) => {

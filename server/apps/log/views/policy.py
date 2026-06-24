@@ -1,6 +1,8 @@
 import json
 from datetime import datetime, timedelta, timezone
 
+from django.db.models import Count
+
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
 from rest_framework import viewsets
 from rest_framework.decorators import action
@@ -797,7 +799,12 @@ class AlertViewSet(viewsets.ModelViewSet):
         )
 
     def _get_step_based_stats(self, queryset, step_minutes):
-        """基于step动态分割时间区间进行统计，按告警级别分组"""
+        """基于step动态分割时间区间进行统计，按告警级别分组
+
+        使用 DB 侧 GROUP BY 聚合替代全量物化，消除无上界内存消耗：
+        先在 DB 侧按 (created_at, level) 聚合计数，得到远小于原始行数的摘要行，
+        再在 Python 侧完成 bucket 归组。
+        """
         time_range_data = queryset.aggregate(min_time=models.Min("created_at"), max_time=models.Max("created_at"))
 
         min_time = time_range_data["min_time"]
@@ -823,17 +830,23 @@ class AlertViewSet(viewsets.ModelViewSet):
             if current_time > max_time:
                 break
 
-        interval_results = []
-        alert_list = list(queryset.values_list("created_at", "level").order_by("created_at"))
+        # DB 侧聚合：按 (created_at, level) 分组计数
+        # 结果行数 = N_distinct_timestamps × N_levels（远小于原始告警行数）
+        aggregated = list(
+            queryset.values("created_at", "level")
+            .annotate(cnt=Count("id"))
+            .order_by("created_at")
+        )
 
-        alert_idx = 0
+        interval_results = []
+        agg_idx = 0
         for interval in time_intervals:
             level_data = {}
-            while alert_idx < len(alert_list) and alert_list[alert_idx][0] < interval["end"]:
-                if alert_list[alert_idx][0] >= interval["start"]:
-                    level = alert_list[alert_idx][1]
-                    level_data[level] = level_data.get(level, 0) + 1
-                alert_idx += 1
+            while agg_idx < len(aggregated) and aggregated[agg_idx]["created_at"] < interval["end"]:
+                if aggregated[agg_idx]["created_at"] >= interval["start"]:
+                    level = aggregated[agg_idx]["level"]
+                    level_data[level] = level_data.get(level, 0) + aggregated[agg_idx]["cnt"]
+                agg_idx += 1
 
             total_count = sum(level_data.values())
             interval_results.append(

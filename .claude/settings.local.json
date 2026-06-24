@@ -4,5 +4,8 @@
       "Bash(grep:*)",
       "Bash(ls:*)"
     ]
+  },
+  "worktree": {
+    "baseRef": "head"
   }
 }

@@ -3,7 +3,7 @@ from rest_framework.fields import empty
 
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
-from apps.opspilot.models import LLMModel, LLMSkill, SkillRequestLog, SkillTools, UserPin
+from apps.opspilot.models import LLMModel, LLMSkill, SkillPackage, SkillRequestLog, SkillTools, UserPin
 from apps.opspilot.serializers.model_vendor_serializer import CustomProviderSerializer
 
 
@@ -85,6 +85,7 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
             "show_think",
             "tools",
             "skill_params",
+            "skill_packages",
             "temperature",
             "skill_type",
             "enable_rag_strict_mode",
@@ -137,6 +138,48 @@ class LLMSerializer(TeamSerializer, AuthSerializer):
                 item["value"] = "******"
             result.append(item)
         return result
+
+
+class SkillPackageSerializer(AuthSerializer):
+    permission_key = "tools"
+
+    class Meta:
+        model = SkillPackage
+        fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "package_id",
+            "name",
+            "version",
+            "description",
+            "category",
+            "source_type",
+            "source_url",
+            "storage_path",
+            "manifest",
+            "skill_markdown",
+            "required_tools",
+            "triggers",
+            "team",
+            "is_enabled",
+            "permissions",
+        ]
+        read_only_fields = [
+            "id",
+            "created_at",
+            "updated_at",
+            "created_by",
+            "updated_by",
+            "domain",
+            "updated_by_domain",
+            "storage_path",
+            "manifest",
+        ]
 
 
 class SkillRequestLogSerializer(serializers.ModelSerializer):

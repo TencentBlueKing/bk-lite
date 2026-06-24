@@ -159,6 +159,16 @@
           "operation": [
             "View"
           ]
+        },
+        {
+          "id": "network_white_list",
+          "name": "Network Whitelist",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
         }
       ]
     }
