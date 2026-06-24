@@ -5,7 +5,6 @@ from rest_framework.response import Response
 from rest_framework.viewsets import ViewSet
 
 from apps.operation_analysis.common.audit_log import log_ops_analysis_import_results
-from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
     ImportPrecheckRequestSerializer,
@@ -68,7 +67,7 @@ class ImportExportViewSet(ViewSet):
         if not result["valid"]:
             return Response(result, status=status.HTTP_200_OK)
 
-        doc = self._parse_yaml_to_document(yaml_content)
+        doc = result["_doc"]
         result = ImportExportAuthorizationService.apply_precheck_permissions(
             request,
             doc,
@@ -107,7 +106,7 @@ class ImportExportViewSet(ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        doc = self._parse_yaml_to_document(yaml_content)
+        doc = precheck_result["_doc"]
         precheck_result = ImportExportAuthorizationService.apply_precheck_permissions(
             request,
             doc,
@@ -184,8 +183,4 @@ class ImportExportViewSet(ViewSet):
                 pass
         return None
 
-    def _parse_yaml_to_document(self, yaml_content: str) -> YAMLDocument:
-        import yaml as pyyaml
 
-        data = pyyaml.safe_load(yaml_content)
-        return YAMLDocument(**data)

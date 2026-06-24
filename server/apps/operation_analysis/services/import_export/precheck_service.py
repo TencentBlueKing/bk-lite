@@ -459,4 +459,5 @@ class PrecheckService:
             "conflicts": conflicts,
             "warnings": warnings,
             "errors": errors,
+            "_doc": doc,  # 供 submit 阶段直接使用，避免第二次 YAML 解析
         }
