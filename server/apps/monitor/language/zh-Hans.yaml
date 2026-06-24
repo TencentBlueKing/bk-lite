@@ -3780,6 +3780,9 @@ monitor_object_plugin:
   Switch GarretCom SNMP:
     name: GarretCom（Telegraf）
     desc: GarretCom（Belden 旗下）工业以太网交换机专用 SNMP 采集模板（MAGNUM-MIB，企业号 14778）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 GarretCom Magnum 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。GarretCom 工业交换机为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——GarretCom Magnum 工业网管交换机（6K/10K/DX 系列，企业号 14778）。
+  Switch PLANET SNMP:
+    name: PLANET（Telegraf）
+    desc: PLANET Technology 管理型以太网交换机专用 SNMP 采集模板（PLANET-MIB，企业号 10456）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 PLANET 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。PLANET 紧凑机型多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——PLANET Technology 管理型交换机（GS-/SGS-/WGS- 系列，企业号 10456）。
   Switch Enterasys SNMP:
     name: Enterasys（Telegraf）
     desc: Enterasys（现 Extreme Networks 旗下）企业级交换机专用 SNMP 采集模板（ENTERASYS-MIB，企业号 5624）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Enterasys 私有 OID 的设备健康指标：CPU 使用率（etsysResourceCpuLoad，直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（etsysChassisPowerSupplyState，经 telegraf processors.enum 归一为 1=正常/2=异常）。适用品牌型号——Enterasys SecureStack / S-Series / Matrix 企业网管交换机（企业号 5624，legacy 设备现并入 Extreme）。
@@ -3918,6 +3921,9 @@ monitor_object_plugin:
   Firewall Zorp SNMP:
     name: Zorp（Telegraf）
     desc: Zorp（Balasys 旗下）应用层代理防火墙专用 SNMP 采集模板（ZORP-MIB / BALASYS-MIB，企业号 18928）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 Zorp 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动会话数）。Zorp 为运行于通用 Linux 主机的软件型应用代理防火墙，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Balasys Zorp Gateway / Proxedo 应用层代理防火墙（匈牙利，企业号 18928）。
+  Firewall genua SNMP:
+    name: genua（Telegraf）
+    desc: genua（德国 genua GmbH）高安全应用层防火墙专用 SNMP 采集模板（GENUA-MIB，企业号 3717）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 genua 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动连接数，对应 pf 状态表条目）。genua 为运行于强固化 OpenBSD/Linux 基座的软件型高安全防火墙，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——genua genugate / genuscreen 高安全应用层防火墙（德国，企业号 3717）。
   Firewall WatchGuard SNMP:
     name: WatchGuard（Telegraf）
     desc: 面向 WatchGuard（Fireware）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 WATCHGUARD-SYSTEM-STATISTICS-MIB 私有 OID 的设备健康（CPU 使用率）与防火墙特有状态（当前活动连接数）。内存与温度/风扇/电源不采集——Fireware 无标准 SNMP 内存利用率标量或传感器表，telegraf inputs.snmp 无法在不做行级过滤的情况下读取。

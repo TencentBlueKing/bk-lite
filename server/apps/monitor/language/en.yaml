@@ -4268,6 +4268,9 @@ monitor_object_plugin:
   Switch GarretCom SNMP:
     name: GarretCom (Telegraf)
     desc: GarretCom (Belden) industrial Ethernet switch SNMP collection (MAGNUM-MIB, IANA PEN 14778). Beyond standard IF-MIB 64-bit HC interface traffic, it collects GarretCom Magnum private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). GarretCom industrial switches use fanless passive cooling, so fan is N/A. Supported brands/models — GarretCom Magnum industrial managed switches (6K / 10K / DX series; enterprise 14778).
+  Switch PLANET SNMP:
+    name: PLANET (Telegraf)
+    desc: PLANET Technology managed Ethernet switch SNMP collection (PLANET-MIB, IANA PEN 10456). Beyond standard IF-MIB 64-bit HC interface traffic, it collects PLANET private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in bytes, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). PLANET compact models mostly use fanless passive cooling, so fan is N/A. Supported brands/models — PLANET Technology managed switches (GS- / SGS- / WGS- series; enterprise 10456).
   Switch Enterasys SNMP:
     name: Enterasys (Telegraf)
     desc: Enterasys (now Extreme Networks) enterprise switch SNMP collection (ENTERASYS-MIB, IANA PEN 5624). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Enterasys private OIDs for device health including CPU utilisation (etsysResourceCpuLoad, reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (etsysChassisPowerSupplyState, normalised by telegraf processors.enum to 1=normal / 2=abnormal). Supported brands/models — Enterasys SecureStack / S-Series / Matrix enterprise managed switches (enterprise 5624; legacy devices now part of Extreme).
@@ -4476,6 +4479,9 @@ monitor_object_plugin:
   Firewall Zorp SNMP:
     name: Zorp (Telegraf)
     desc: Zorp (Balasys) application-layer proxy firewall SNMP collection (ZORP-MIB / BALASYS-MIB, IANA PEN 18928). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Zorp private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active sessions). Zorp is a software proxy firewall running on a general-purpose Linux host and its private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — Balasys Zorp Gateway / Proxedo application-layer proxy firewalls (Hungary; enterprise 18928).
+  Firewall genua SNMP:
+    name: genua (Telegraf)
+    desc: genua (genua GmbH, Germany) high-security application-layer firewall SNMP collection (GENUA-MIB, IANA PEN 3717). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects genua private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active connections, corresponding to pf state-table entries). genua is a software high-security firewall running on a hardened OpenBSD/Linux base and its private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — genua genugate / genuscreen high-security application-layer firewalls (Germany; enterprise 3717).
   Firewall WatchGuard SNMP:
     name: WatchGuard (Telegraf)
     desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
