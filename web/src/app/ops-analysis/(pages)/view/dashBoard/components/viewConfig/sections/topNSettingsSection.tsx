@@ -68,7 +68,7 @@ export const TopNSettingsSection: React.FC<TopNSettingsSectionProps> = ({
           <Select
             placeholder={t('topology.nodeConfig.selectValueField')}
             options={topNValueFieldOptions}
-            disabled={!selectedDataSource || topNValueFieldOptions.length === 0}
+            disabled={!selectedDataSource}
             showSearch
             optionFilterProp="value"
           />

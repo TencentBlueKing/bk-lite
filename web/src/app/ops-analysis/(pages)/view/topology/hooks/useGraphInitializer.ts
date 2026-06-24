@@ -5,7 +5,7 @@ import { Graph } from '@antv/x6';
 import { MiniMap } from '@antv/x6-plugin-minimap';
 import { Selection } from '@antv/x6-plugin-selection';
 import { Transform } from '@antv/x6-plugin-transform';
-import { COLORS } from '../constants/nodeDefaults';
+import { COLORS, SPACING } from '../constants/nodeDefaults';
 import { registerEdges } from '../utils/registerEdge';
 import { registerNodes, updateNodeAttributes } from '../utils/registerNode';
 import {
@@ -319,6 +319,9 @@ export const useGraphInitializer = ({
           lineName: edgeData.lineName || '',
           styleConfig: edgeData.styleConfig || {
             lineColor: COLORS.EDGE.DEFAULT,
+            lineWidth: SPACING.STROKE_WIDTH.THIN,
+            lineStyle: 'line',
+            enableAnimation: false,
           },
           sourceNode: {
             id: sourceNode.id,
@@ -548,7 +551,7 @@ export const useGraphInitializer = ({
             shape: 'edge',
             ...getEdgeStyleWithConfig('single', {
               lineColor: COLORS.EDGE.DEFAULT,
-              lineWidth: 1,
+              lineWidth: SPACING.STROKE_WIDTH.THIN,
               lineStyle: 'line',
               enableAnimation: false,
             }),

@@ -14,6 +14,7 @@ interface TopologyCanvasShellProps {
   isEditMode: boolean;
   loading: boolean;
   minimapVisible: boolean;
+  presentationMode?: boolean;
   normalizedViewport: TopologyViewportConfig | null;
   letterboxLayout?: {
     renderedWidth: number;
@@ -35,6 +36,7 @@ const TopologyCanvasShell = ({
   isEditMode,
   loading,
   minimapVisible,
+  presentationMode = false,
   normalizedViewport,
   letterboxLayout,
   panelStyle,
@@ -42,6 +44,9 @@ const TopologyCanvasShell = ({
   t,
   setMinimapVisible,
 }: TopologyCanvasShellProps) => {
+  const shouldShowMinimap =
+    minimapVisible && !presentationMode && !(isFullscreen && normalizedViewport);
+
   const viewportGuideOverlay =
     isEditMode && normalizedViewport && !isLetterboxFullscreen ? (
       <div
@@ -84,7 +89,7 @@ const TopologyCanvasShell = ({
 
       <div
         className={styles.minimapContainer}
-        style={{ display: minimapVisible ? 'block' : 'none' }}
+        style={{ display: shouldShowMinimap ? 'block' : 'none' }}
       >
         <div className={styles.minimapHeader}>
           <button
@@ -97,7 +102,7 @@ const TopologyCanvasShell = ({
         </div>
         <div ref={minimapContainerRef} className={styles.minimapContent} />
       </div>
-      {!minimapVisible && (
+      {!isFullscreen && !presentationMode && !minimapVisible && (
         <button
           onClick={() => setMinimapVisible(true)}
           className={styles.minimapShowBtn}

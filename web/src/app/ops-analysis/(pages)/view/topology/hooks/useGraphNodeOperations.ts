@@ -335,6 +335,7 @@ export const useGraphNodeOperations = ({
         'height',
         'lineType',
         'shapeType',
+        'frameVariant',
         'nameColor',
         'nameFontSize',
         'thresholdColors',

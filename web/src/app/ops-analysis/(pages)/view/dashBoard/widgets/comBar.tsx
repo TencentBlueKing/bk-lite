@@ -5,7 +5,8 @@ import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForCha
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { useTranslation } from '@/utils/i18n';
 import {
-  getOpsChartTheme,
+  getOpsChartColorsByMode,
+  getOpsChartThemeByMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '../components/chartLegend';
@@ -27,8 +28,13 @@ const BarChart: React.FC<BarChartProps> = ({
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const chartTheme = getOpsChartTheme(themeName);
-  const chartColors = randomColorForLegend(themeName);
+  const usesScreenChartTheme =
+    config?.chartThemeMode === 'screen-dark' ||
+    config?.chartThemeMode === 'screen-light';
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const chartColors = usesScreenChartTheme
+    ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
+    : randomColorForLegend(themeName);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -166,7 +172,11 @@ const BarChart: React.FC<BarChartProps> = ({
       barMaxWidth: 40,
       ...(config?.stack ? { stack: 'total' } : {}),
       itemStyle: {
-        borderRadius: [2, 2, 0, 0],
+        borderRadius: usesScreenChartTheme ? [4, 4, 0, 0] : [2, 2, 0, 0],
+        shadowBlur: usesScreenChartTheme ? chartTheme.barShadowBlur : 0,
+        shadowColor: usesScreenChartTheme
+          ? chartTheme.barShadowColor
+          : 'transparent',
       },
       emphasis: {
         focus: 'series',
@@ -180,7 +190,11 @@ const BarChart: React.FC<BarChartProps> = ({
         data: chartData && chartData.values ? chartData.values : [],
         barMaxWidth: 40,
         itemStyle: {
-          borderRadius: [2, 2, 0, 0],
+          borderRadius: usesScreenChartTheme ? [4, 4, 0, 0] : [2, 2, 0, 0],
+          shadowBlur: usesScreenChartTheme ? chartTheme.barShadowBlur : 0,
+          shadowColor: usesScreenChartTheme
+            ? chartTheme.barShadowColor
+            : 'transparent',
         },
         emphasis: {
           focus: 'series',
@@ -249,6 +263,7 @@ const BarChart: React.FC<BarChartProps> = ({
           data={legendData}
           colors={chartColors}
           layout="vertical"
+          textColor={chartTheme.axisLabelColor}
           onSelectionChange={handleLegendChange}
         />
       )}
