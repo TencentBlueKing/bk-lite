@@ -163,4 +163,6 @@ export interface WikiOverview {
   checks_by_type: Record<string, number>;
   health: Record<string, unknown>;
   recent_builds: Array<Record<string, unknown>>;
+  recent_pages?: Array<Record<string, unknown>>;
+  agents?: Array<{ id: number; name: string }>;
 }

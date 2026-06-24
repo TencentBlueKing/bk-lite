@@ -6,12 +6,22 @@
 
 from django.db.models import Count
 
-from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageRelation
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageEvidence, PageRelation
 from apps.opspilot.services.wiki.graph_service import build_graph
 
 
 def _group_count(queryset, field):
     return {row[field]: row["c"] for row in queryset.values(field).annotate(c=Count("id"))}
+
+
+def _agents_using(kb):
+    """使用该知识库的智能体(LLMSkill.wiki_knowledge_bases);字段缺失时优雅返回空。"""
+    try:
+        from apps.opspilot.models import LLMSkill
+
+        return [{"id": s.id, "name": s.name} for s in LLMSkill.objects.filter(wiki_knowledge_bases=kb).order_by("id")[:20]]
+    except Exception:
+        return []
 
 
 def get_overview(knowledge_base):
@@ -37,6 +47,29 @@ def get_overview(knowledge_base):
         for b in BuildRecord.objects.filter(knowledge_base=kb).order_by("-id")[:5]
     ]
 
+    # 有效来源覆盖率:有「有效资料」证据支撑的知识页面占比(资料未解析失败/未失效)
+    total_pages = pages.count()
+    invalid_material_ids = list(materials.filter(status__in=["failed", "invalid"]).values_list("id", flat=True))
+    pages_with_valid_source = (
+        PageEvidence.objects.filter(page__knowledge_base=kb, page__status="active")
+        .exclude(material_id__in=invalid_material_ids)
+        .values("page_id")
+        .distinct()
+        .count()
+    )
+    source_coverage = round(pages_with_valid_source / total_pages * 100) if total_pages else 0
+
+    recent_pages = [
+        {
+            "id": p.id,
+            "title": p.title,
+            "page_type": p.page_type,
+            "contribution": p.contribution,
+            "updated_at": p.updated_at.isoformat() if p.updated_at else None,
+        }
+        for p in pages.order_by("-updated_at")[:5]
+    ]
+
     return {
         "knowledge_base": {"id": kb.id, "name": kb.name, "status": kb.status},
         "counts": {
@@ -54,6 +87,9 @@ def get_overview(knowledge_base):
             "clusters": insights["cluster_count"],
             "isolated": len(insights["isolated"]),
             "hubs": insights["hubs"],
+            "source_coverage": source_coverage,
         },
         "recent_builds": recent_builds,
+        "recent_pages": recent_pages,
+        "agents": _agents_using(kb),
     }
