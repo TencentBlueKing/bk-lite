@@ -19,6 +19,7 @@ import {
   isIntegrationInstanceStarted,
   resolveIntegrationProviderIcon,
   getAvailableIntegrationTabs,
+  getIntegrationProviderDisplayName,
   type IntegrationDetailTab
 } from '@/app/system-manager/utils/intergrationCenter';
 
@@ -117,7 +118,6 @@ const IntegrationDetailPage: React.FC = () => {
       }
       return acc;
     }, {});
-    console.log(instance);
     form.setFieldsValue({ config: configValues });
     setIsFormDirty(false);
   }, [activeFields, form, instance]);
@@ -289,7 +289,7 @@ const IntegrationDetailPage: React.FC = () => {
   const started = isIntegrationInstanceStarted(instance.capability_status);
   const availableTabs = getAvailableIntegrationTabs(instance);
   const currentCapabilityStatus = activeTab === 'base' ? instance.status : instance.capability_status?.[activeTab];
-  const providerLabel = `${t('system.integrationCenter.providerTypeLabel')}：${instance.provider?.name ?? instance.provider_key}`;
+  const providerLabel = `${t('system.integrationCenter.providerTypeLabel')}：${getIntegrationProviderDisplayName(instance.provider_key, t)}`;
   const topSectionContent = instance.description ? `${providerLabel}，${instance.description}` : providerLabel;
 
   return (

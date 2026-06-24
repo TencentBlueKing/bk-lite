@@ -10,7 +10,8 @@ import {
   resolveIntegrationProviderIcon,
   getIntegrationCapabilityLabel,
   canEnterCreateInfoStep,
-  getCreateModalFooterMode
+  getCreateModalFooterMode,
+  getIntegrationProviderDisplayName
 } from '@/app/system-manager/utils/intergrationCenter';
 
 interface IntegrationCreateFormValues {
@@ -85,7 +86,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
   const providerCards = useMemo(
     () => filteredProviders.map((provider) => ({
       id: provider.key,
-      name: provider.name,
+      name: getIntegrationProviderDisplayName(provider.key, t),
       icon: resolveIntegrationProviderIcon(provider.key),
       description: provider.description || '',
       tagList: provider.capabilities.map((capability) => ({
@@ -94,7 +95,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
       })),
       raw: provider,
     })),
-    [filteredProviders],
+    [filteredProviders, t],
   );
 
   const footerMode = getCreateModalFooterMode({
@@ -186,7 +187,7 @@ const CreateIntegrationInstanceModal: React.FC<CreateIntegrationInstanceModalPro
                   <Icon type={resolveIntegrationProviderIcon(selectedProvider.key)} className="text-2xl" />
                 </div>
                 <div className="min-w-0 flex-1">
-                  <div className="text-base font-semibold text-[var(--color-text)]">{selectedProvider.name}</div>
+                  <div className="text-base font-semibold text-[var(--color-text)]">{getIntegrationProviderDisplayName(selectedProvider.key, t)}</div>
                   <div className="mt-1 text-sm text-[var(--color-text-3)]">
                     {selectedProvider.description || '--'}
                   </div>

@@ -174,15 +174,25 @@ export interface IntegrationInstanceCardItem {
   provider?: ProviderManifest;
 }
 
+export function getIntegrationProviderDisplayName(
+  providerKey: string,
+  t: (key: string, fallback?: string) => string,
+): string {
+  return t(`system.integrationCenter.provider.${providerKey}`, providerKey);
+}
+
 export function buildIntegrationInstanceCardItem(
   instance: IntegrationInstance,
   provider?: ProviderManifest,
+  t?: (key: string, fallback?: string) => string,
 ): IntegrationInstanceCardItem {
   return {
     id: instance.id,
     name: instance.name,
     icon: resolveIntegrationProviderIcon(instance.provider_key),
-    description: instance.provider?.name || instance.provider_key,
+    description: t
+      ? getIntegrationProviderDisplayName(instance.provider_key, t)
+      : instance.provider?.name || instance.provider_key,
     tagList: [],
     raw: instance,
     provider,
@@ -227,8 +237,6 @@ export function getIntegrationTestStatusText(
     'pending_verification': t('system.integrationCenter.primaryStatus.pending'),
     'default': t('system.integrationCenter.testStatusPending')
   };
-
-  console.log(status);
   if(status) return test_map[status];
   return test_map['default'];
 }

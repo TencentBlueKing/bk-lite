@@ -897,7 +897,7 @@
       "provider": {
         "label": "Integration Type",
         "feishu": "Feishu",
-        "wechat": "Wechat",
+        "wechat": "WeChat",
         "ldap": "LDAP",
         "oidc": "OIDC",
         "saml": "SAML",
