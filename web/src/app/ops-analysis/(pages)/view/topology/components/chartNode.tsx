@@ -65,28 +65,51 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     (isLoading || (!rawData && !hasError)) && !isTableLikeChart;
   const shouldShowError = hasError && !isLoading;
   const normalizedDescription = description?.trim();
+  const panelChromeBg = chartTheme.panelChromeBg || chartTheme.panelBg;
+  const panelChromeHeaderBg =
+    chartTheme.panelChromeHeaderBg || chartTheme.panelBg;
+  const panelChromeBorderColor =
+    chartTheme.panelChromeBorderColor || chartTheme.panelBorderColor;
+  const panelChromeShadow = chartTheme.panelChromeShadow || 'none';
 
   return (
     <div
+      className="ops-topology-chart-node"
       style={{
         width: `${width}px`,
         height: `${height}px`,
-        border: `1px solid ${chartTheme.panelBorderColor}`,
-        borderRadius: '18px',
-        backgroundColor: chartTheme.panelBg,
-        boxShadow: 'none',
+        border: `1px solid ${panelChromeBorderColor}`,
+        borderRadius: '13px',
+        background: panelChromeBg,
+        boxShadow: panelChromeShadow,
+        backdropFilter: chartTheme.panelChromeBackdropFilter,
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
         position: 'relative',
       } as React.CSSProperties}
     >
+      {chartTheme.panelChromeBg && (
+        <div
+          style={{
+            position: 'absolute',
+            top: 0,
+            left: 18,
+            right: 18,
+            height: 1,
+            background:
+              'linear-gradient(90deg, transparent, rgba(122, 226, 255, 0.46), transparent)',
+            pointerEvents: 'none',
+            zIndex: 1,
+          }}
+        />
+      )}
       {componentName && (
         <div
           style={{
             padding: '14px 14px 10px',
-            backgroundColor: chartTheme.panelBg,
-            borderBottom: `1px solid ${chartTheme.panelBorderColor}`,
+            background: panelChromeHeaderBg,
+            borderBottom: `1px solid ${panelChromeBorderColor}`,
           }}
         >
           <div
@@ -120,7 +143,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
           minHeight: 0,
           position: 'relative',
           padding: '12px',
-          backgroundColor: chartTheme.panelBg,
+          background: panelChromeBg,
         }}
       >
         {shouldShowLoading ? (
