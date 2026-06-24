@@ -1,6 +1,6 @@
 {
   "plugin": "Loadbalance Flow sFlow",
-  "plugin_desc": "sFlow flow analysis template for loadbalance devices. It maps exporter traffic to monitored assets, normalizes sampling rate, and provides overview, interface, protocol, port, endpoint, and conversation metrics.",
+  "plugin_desc": "sFlow flow analysis template for loadbalance devices. It maps exporter traffic to monitored assets, uses Telegraf-estimated sFlow traffic values directly, and provides overview, interface, protocol, port, endpoint, and conversation metrics.",
   "status_query": "any({instance_type='loadbalance', collect_type='sflow'}) by (instance_id)",
   "name": "Loadbalance",
   "icon": "mm-loadbalance_负载均衡",
@@ -24,7 +24,7 @@
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_bytes_rate",
-      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)",
       "display_name": "Device Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -32,12 +32,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Total normalized Flow traffic rate for the device."
+      "description": "Total sFlow-estimated traffic rate for the device."
     },
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_packets_rate",
-      "query": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "query": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)",
       "display_name": "Device Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
@@ -45,12 +45,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Total normalized Flow packet rate for the device."
+      "description": "Total sFlow-estimated packet rate for the device."
     },
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_in_bytes_rate",
-      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id)",
       "display_name": "Device Inbound Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -58,12 +58,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized inbound Flow traffic rate for the device."
+      "description": "Inbound sFlow-estimated traffic rate for the device."
     },
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_out_bytes_rate",
-      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id)",
       "display_name": "Device Outbound Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -71,12 +71,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized outbound Flow traffic rate for the device."
+      "description": "Outbound sFlow-estimated traffic rate for the device."
     },
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_in_packets_rate",
-      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id)",
       "display_name": "Device Inbound Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
@@ -84,12 +84,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized inbound Flow packet rate for the device."
+      "description": "Inbound sFlow-estimated packet rate for the device."
     },
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_out_packets_rate",
-      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id)",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id)",
       "display_name": "Device Outbound Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
@@ -97,12 +97,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized outbound Flow packet rate for the device."
+      "description": "Outbound sFlow-estimated packet rate for the device."
     },
     {
       "metric_group": "Traffic Overview",
       "name": "device_flow_avg_packet_size",
-      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id) / sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "query": "avg(sflow_frame_length{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id)",
       "display_name": "Device Flow Average Packet Size",
       "data_type": "Number",
       "unit": "bytes",
@@ -110,12 +110,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Average packet size calculated from normalized Flow bytes and packets."
+      "description": "Average sampled frame length reported by sFlow."
     },
     {
       "metric_group": "Sampling",
       "name": "device_flow_effective_sampling_rate",
-      "query": "avg(label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
+      "query": "avg(sflow_sampling_rate{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id) or avg(label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id)",
       "display_name": "Device Flow Effective Sampling Rate",
       "data_type": "Number",
       "unit": "none",
@@ -123,12 +123,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Effective sampling rate used for Flow traffic normalization."
+      "description": "Sampling rate reported by sFlow, falling back to the effective sampling-rate label when needed."
     },
     {
       "metric_group": "Interface Traffic",
       "name": "device_flow_interface_bytes_rate",
-      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
+      "query": "sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
       "display_name": "Interface Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -145,12 +145,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow traffic rate grouped by interface and direction."
+      "description": "sFlow-estimated traffic rate grouped by interface and direction."
     },
     {
       "metric_group": "Interface Traffic",
       "name": "device_flow_interface_packets_rate",
-      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
+      "query": "sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction) + sum(label_replace(label_replace(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface, direction)",
       "display_name": "Interface Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
@@ -167,12 +167,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow packet rate grouped by interface and direction."
+      "description": "sFlow-estimated packet rate grouped by interface and direction."
     },
     {
       "metric_group": "Interface Traffic",
       "name": "device_flow_top_interfaces_by_bytes",
-      "query": "topk(10, sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface) + sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\"), \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface))",
+      "query": "topk(10, sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"input_ifindex\", \"(.*)\"), \"direction\", \"in\", \"instance_id\", \"(.*)\")) by (instance_id, interface) + sum(label_replace(label_replace(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"interface\", \"$1\", \"output_ifindex\", \"(.*)\"), \"direction\", \"out\", \"instance_id\", \"(.*)\")) by (instance_id, interface))",
       "display_name": "Top Interfaces by Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -185,48 +185,48 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Top interfaces by normalized Flow traffic rate."
+      "description": "Top interfaces by sFlow-estimated traffic rate."
     },
     {
       "metric_group": "Protocol",
       "name": "device_flow_protocol_bytes_rate",
-      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol)",
+      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, header_protocol)",
       "display_name": "Protocol Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "protocol",
-          "description": "protocol"
+          "name": "header_protocol",
+          "description": "header_protocol"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow traffic rate grouped by protocol."
+      "description": "sFlow-estimated traffic rate grouped by header protocol."
     },
     {
       "metric_group": "Protocol",
       "name": "device_flow_protocol_packets_rate",
-      "query": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, protocol)",
+      "query": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, header_protocol)",
       "display_name": "Protocol Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
       "dimensions": [
         {
-          "name": "protocol",
-          "description": "protocol"
+          "name": "header_protocol",
+          "description": "header_protocol"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow packet rate grouped by protocol."
+      "description": "sFlow-estimated packet rate grouped by header protocol."
     },
     {
       "metric_group": "Application Port",
       "name": "device_flow_dst_port_bytes_rate",
-      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst_port)",
+      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, dst_port)",
       "display_name": "Destination Port Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -239,12 +239,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow traffic rate grouped by destination port."
+      "description": "sFlow-estimated traffic rate grouped by destination port."
     },
     {
       "metric_group": "Application Port",
       "name": "device_flow_dst_port_packets_rate",
-      "query": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst_port)",
+      "query": "sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, dst_port)",
       "display_name": "Destination Port Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
@@ -257,12 +257,12 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow packet rate grouped by destination port."
+      "description": "sFlow-estimated packet rate grouped by destination port."
     },
     {
       "metric_group": "Application Port",
       "name": "device_flow_src_port_bytes_rate",
-      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src_port)",
+      "query": "sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, src_port)",
       "display_name": "Source Port Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
@@ -275,99 +275,99 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Normalized Flow traffic rate grouped by source port."
+      "description": "sFlow-estimated traffic rate grouped by source port."
     },
     {
       "metric_group": "Endpoint",
       "name": "device_flow_top_src_bytes_rate",
-      "query": "topk(10, sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src))",
+      "query": "topk(10, sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, src_ip))",
       "display_name": "Top Source Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "src",
-          "description": "src"
+          "name": "src_ip",
+          "description": "src_ip"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Top source addresses by normalized Flow traffic rate."
+      "description": "Top source addresses by sFlow-estimated traffic rate."
     },
     {
       "metric_group": "Endpoint",
       "name": "device_flow_top_dst_bytes_rate",
-      "query": "topk(10, sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst))",
+      "query": "topk(10, sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, dst_ip))",
       "display_name": "Top Destination Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "dst",
-          "description": "dst"
+          "name": "dst_ip",
+          "description": "dst_ip"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Top destination addresses by normalized Flow traffic rate."
+      "description": "Top destination addresses by sFlow-estimated traffic rate."
     },
     {
       "metric_group": "Endpoint",
       "name": "device_flow_top_src_packets_rate",
-      "query": "topk(10, sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src))",
+      "query": "topk(10, sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, src_ip))",
       "display_name": "Top Source Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
       "dimensions": [
         {
-          "name": "src",
-          "description": "src"
+          "name": "src_ip",
+          "description": "src_ip"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Top source addresses by normalized Flow packet rate."
+      "description": "Top source addresses by sFlow-estimated packet rate."
     },
     {
       "metric_group": "Endpoint",
       "name": "device_flow_top_dst_packets_rate",
-      "query": "topk(10, sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, dst))",
+      "query": "topk(10, sum(sflow_packets{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, dst_ip))",
       "display_name": "Top Destination Flow Packet Rate",
       "data_type": "Number",
       "unit": "pps",
       "dimensions": [
         {
-          "name": "dst",
-          "description": "dst"
+          "name": "dst_ip",
+          "description": "dst_ip"
         }
       ],
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Top destination addresses by normalized Flow packet rate."
+      "description": "Top destination addresses by sFlow-estimated packet rate."
     },
     {
       "metric_group": "Conversation",
       "name": "device_flow_top_conversation_bytes_rate",
-      "query": "topk(10, sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__} * label_value(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}, \"effective_sampling_rate\")) by (instance_id, src, dst, protocol, dst_port))",
+      "query": "topk(10, sum(sflow_bytes{instance_type='loadbalance', collect_type='sflow', __$labels__}) by (instance_id, src_ip, dst_ip, header_protocol, dst_port))",
       "display_name": "Top Conversation Flow Traffic Rate",
       "data_type": "Number",
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "src",
-          "description": "src"
+          "name": "src_ip",
+          "description": "src_ip"
         },
         {
-          "name": "dst",
-          "description": "dst"
+          "name": "dst_ip",
+          "description": "dst_ip"
         },
         {
-          "name": "protocol",
-          "description": "protocol"
+          "name": "header_protocol",
+          "description": "header_protocol"
         },
         {
           "name": "dst_port",
@@ -377,7 +377,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Top conversations by normalized Flow traffic rate."
+      "description": "Top conversations by sFlow-estimated traffic rate."
     }
   ]
 }
