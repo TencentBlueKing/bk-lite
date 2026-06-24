@@ -44,17 +44,58 @@ const IP_TASK_INITIAL_VALUES = {
 };
 
 /**
+ * Derive a prefix length (0-32) from a subnet mask value that may be:
+ *   - a numeric prefix length already (e.g. 24)
+ *   - a dotted-decimal mask string (e.g. "255.255.255.0")
+ * Returns NaN when the value cannot be parsed.
+ */
+function maskToPrefixlen(mask: string | number | undefined | null): number {
+  if (mask === undefined || mask === null || mask === '') return NaN;
+  const n = Number(mask);
+  // Already a plain prefix length
+  if (!Number.isNaN(n) && n >= 0 && n <= 32) return n;
+  // Dotted-decimal form
+  const str = String(mask).trim();
+  if (str.includes('.')) {
+    const parts = str.split('.').map(Number);
+    if (parts.length !== 4 || parts.some(Number.isNaN)) return NaN;
+    const bits = parts.reduce((acc, octet) => {
+      let o = octet;
+      let cnt = 0;
+      while (o & 0x80) { cnt++; o = (o << 1) & 0xff; }
+      return acc + cnt;
+    }, 0);
+    return bits;
+  }
+  return NaN;
+}
+
+/**
  * Compute total host-address count from a list of subnet instances.
- * Each instance is expected to have a `prefixlen` field (CIDR prefix length).
- * Falls back to counting 256 addresses per subnet if prefixlen is unavailable.
+ * Prefers `subnet_size` (the model's capacity field), then derives the count
+ * from `subnet_mask` (supports dotted-decimal and prefix-length forms).
+ * The raw instance may be nested under an `origin` key when coming from
+ * the subnetOptions list. Falls back to 256 (/24) when no field is found.
  */
 function computeTotalAddressCount(subnets: any[]): number {
   return subnets.reduce((total, s) => {
-    const prefixlen = Number(s.prefixlen ?? s.prefix_len ?? s._prefixlen);
+    // Unwrap origin if the option object wraps the raw instance
+    const raw = s.origin ?? s;
+
+    // Prefer explicit subnet_size capacity field
+    const size = Number(raw.subnet_size ?? s.subnet_size);
+    if (!Number.isNaN(size) && size > 0) {
+      return total + size;
+    }
+
+    // Derive from subnet_mask (dotted-decimal or prefix-length)
+    const mask = raw.subnet_mask ?? s.subnet_mask;
+    const prefixlen = maskToPrefixlen(mask);
     if (!Number.isNaN(prefixlen) && prefixlen >= 0 && prefixlen <= 32) {
       return total + Math.pow(2, 32 - prefixlen);
     }
-    // Unknown prefix length — conservatively count as /24 (256)
+
+    // Unknown — conservatively count as /24 (256)
     return total + 256;
   }, 0);
 }
@@ -75,7 +116,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
 
   // Subnet multi-select state
   const [subnetOptions, setSubnetOptions] = useState<
-    { label: string; value: number; prefixlen?: number }[]
+    { label: string; value: number; prefixlen?: number; origin?: any }[]
   >([]);
   const [subnetLoading, setSubnetLoading] = useState(false);
   const [selectedSubnetIds, setSelectedSubnetIds] = useState<number[]>([]);

@@ -55,10 +55,15 @@ const KIND_COLOR: Record<CellKind, string> = {
 function ipToCellKind(ip: IpInstance): CellKind {
   const statuses = ip.ip_status ?? [];
   const allocStatuses = ip.ip_allocated_status ?? [];
+  const ipType = ip.ip_type
+    ? Array.isArray(ip.ip_type)
+      ? (ip.ip_type as string[])
+      : [String(ip.ip_type)]
+    : [];
 
   if (statuses.includes('conflict')) return 'conflict';
   if (allocStatuses.includes('reserved')) return 'reserved';
-  if (allocStatuses.includes('gateway')) return 'gateway';
+  if (ipType.includes('gateway')) return 'gateway';
 
   const isOnline = statuses.includes('online');
   const isOffline = statuses.includes('offline');
@@ -576,8 +581,8 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
     setError(null);
     setDrill(null);
     getIpamView(instId)
-      .then((res: { data: IpamViewData }) => {
-        if (!cancelled) setData(res?.data ?? null);
+      .then((res: IpamViewData) => {
+        if (!cancelled) setData(res ?? null);
       })
       .catch((err: Error) => {
         if (!cancelled) setError(err?.message ?? 'Failed to load IPAM data');
