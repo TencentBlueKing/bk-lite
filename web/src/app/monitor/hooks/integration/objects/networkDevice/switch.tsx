@@ -126,6 +126,7 @@ export const useSwitchConfig = () => {
       'Switch Datacom SNMP': 'snmp_datacom',
       'Switch Eltex SNMP': 'snmp_eltex',
       'Switch SNR SNMP': 'snmp_snr',
+      'Switch Nokia SNMP': 'snmp_nokia',
       'Switch Parks SNMP': 'snmp_parks',
       'Switch Ubiquiti SNMP': 'snmp_ubiquiti',
       'Switch Ruijie SNMP': 'snmp_ruijie',
