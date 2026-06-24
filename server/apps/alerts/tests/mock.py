@@ -10,6 +10,11 @@ import uuid
 import json
 
 
+# 用于告警处理(动作引擎)测试：mock 主机的 IP。
+# 改成你「节点管理」里已纳管主机的 IP，告警动作的目标主机解析才能命中。
+MOCK_HOST_IP = "127.0.0.1"
+
+
 def generate_mock_events(num_events=100):
     # 基础数据模板
     base_event = {
@@ -79,7 +84,7 @@ def generate_mock_events(num_events=100):
         event["level"] = level
         event["start_time"] = str(start_time)
         event["end_time"] = str(end_time)
-        event["labels"] = {"instance": f"host-{server_num}", "region": region}
+        event["labels"] = {"instance": f"host-{server_num}", "region": region, "ip": MOCK_HOST_IP, "ip_addr": MOCK_HOST_IP}
         event["annotations"] = {"alertname": "HighCPUUsage", "summary": f"High CPU usage detected on {server_type}-{server_num}", "severity": level}
         event["external_id"] = str(uuid.uuid4())
         event["status"] = random.choice(statuses)
