@@ -271,10 +271,12 @@ class CollectInputMethod(object):
 
     AUTO = 0
     MANUAL = 1
+    SUBNET = 2  # 选子网：IP 发现任务专属录入方式（§13）
 
     CHOICE = (
         (AUTO, "自动"),
         (MANUAL, "手动"),
+        (SUBNET, "选子网"),
     )
 
 

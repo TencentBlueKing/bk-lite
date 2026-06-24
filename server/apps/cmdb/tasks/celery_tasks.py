@@ -65,7 +65,14 @@ def sync_collect_task(instance_id):
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
     try:
-        if CollectDispatchService.should_dispatch(instance):
+        # §13: 选子网 IP 发现任务路由 —— fire-and-forget 下发，直接返回，不走常规 ProtocolCollect 路径。
+        # TODO(2.7): sync_collect_task 对 IP 发现任务的 exec_status 目前仍会走到下面的 SUCCESS/ERROR 更新
+        # 逻辑，但 format_data 为空（result={}）。后续可在此分支直接 mark RUNNING 并提前 return，
+        # 等待 NATS 回调（receive_ip_discovery_result）完成后再由回调侧写 SUCCESS。
+        from apps.cmdb.services.ipam_discovery import maybe_dispatch_ip_discovery
+        if maybe_dispatch_ip_discovery(instance):
+            result, format_data = {}, {}
+        elif CollectDispatchService.should_dispatch(instance):
             result, format_data = CollectDispatchService.execute_task(instance)
         else:
             if instance.is_job:
