@@ -160,6 +160,12 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the network-service appliance, reported directly as a percentage. Sustained high CPU means the node is near its processing capacity for traffic forwarding and filtering.
+    device_memory_usage:
+      name: Memory Usage
+      desc: System memory utilization of the network-service appliance, reported directly as a percentage. Sustained high memory may indicate map/flow-table pressure on the device.
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3706,6 +3712,7 @@ monitor_object_metric_group:
   NetworkService:
     Base: Base
     Traffic: Traffic
+    NetworkService: NetworkService
   VoiceGateway:
     Base: Base
     Traffic: Traffic
@@ -3798,6 +3805,10 @@ monitor_object_metric_group:
     StubStatus: Stub Status
     Performance: Performance
   Router:
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
     Packet Loss: Packet Loss
     Traffic: Traffic
     Packet Error: Packet Error
@@ -4090,6 +4101,9 @@ monitor_object_plugin:
   NetworkService Infoblox SNMP:
     name: NetworkService Infoblox SNMP
     desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
+  NetworkService Gigamon SNMP:
+    name: Gigamon (Telegraf)
+    desc: Gigamon GigaVUE network-visibility / packet-broker SNMP collection (GIGAMON-SNMP-MIB, IANA PEN 26866). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects Gigamon private scalar OIDs for chassis health — overall CPU utilization and memory utilization, both reported directly as percentages. Temperature/fan/power sensors are exposed only as per-row component tables with row-level filtering that the SNMP input cannot normalize, so those are N/A. Supported brands/models — Gigamon GigaVUE HC / TA / G-series visibility nodes and packet brokers (enterprise 26866).
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
@@ -4380,6 +4394,21 @@ monitor_object_plugin:
   Switch Lenovo CNOS SNMP:
     name: Lenovo CNOS (Telegraf)
     desc: Lenovo CNOS (Cloud Network OS) switch SNMP collection (LENOVO-ENV-MIB, IANA PEN 19046). Beyond standard IF-MIB interface metrics, it collects device health including temperature sensors (lenovoEnvMibTempSensorTemperature, max), fan state (lenovoEnvMibFanState) and power-supply state (lenovoEnvMibPowerSupplyState), normalised to 1=normal / 2=abnormal, plus CPU utilisation via HOST-RESOURCES hrProcessorLoad where the platform exposes it. Memory is not exposed via a usable private OID, so it is N/A. Supported brands/models — Lenovo ThinkSystem / RackSwitch switches running CNOS (NE-series, e.g. NE1032 / NE2572 / NE10032; enterprise 19046).
+  Switch Westermo SNMP:
+    name: Westermo (Telegraf)
+    desc: Westermo industrial Ethernet switch SNMP collection (WESTERMO-SW6-MIB, IANA PEN 16177). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Westermo WeOS private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). Westermo industrial switches use fanless passive cooling, so fan is N/A. Supported brands/models — Westermo WeOS industrial managed switches (Lynx / Falcon / RedFox / Viper series; enterprise 16177).
+  Switch Moxa SNMP:
+    name: Moxa (Telegraf)
+    desc: Moxa industrial Ethernet switch SNMP collection (MOXA-MIB, IANA PEN 8691). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Moxa private OIDs for device health including chassis temperature (in degrees Celsius) and dual power-input state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). Moxa industrial switches are commonly fanless passively cooled and the private MIB does not expose CPU/memory load in a row-filter-free scalar form, so CPU/memory/fan are N/A. Supported brands/models — Moxa industrial managed switches (EDS / IKS / ICS / SDS series; enterprise 8691).
+  Switch GarretCom SNMP:
+    name: GarretCom (Telegraf)
+    desc: GarretCom (Belden) industrial Ethernet switch SNMP collection (MAGNUM-MIB, IANA PEN 14778). Beyond standard IF-MIB 64-bit HC interface traffic, it collects GarretCom Magnum private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). GarretCom industrial switches use fanless passive cooling, so fan is N/A. Supported brands/models — GarretCom Magnum industrial managed switches (6K / 10K / DX series; enterprise 14778).
+  Switch PLANET SNMP:
+    name: PLANET (Telegraf)
+    desc: PLANET Technology managed Ethernet switch SNMP collection (PLANET-MIB, IANA PEN 10456). Beyond standard IF-MIB 64-bit HC interface traffic, it collects PLANET private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in bytes, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). PLANET compact models mostly use fanless passive cooling, so fan is N/A. Supported brands/models — PLANET Technology managed switches (GS- / SGS- / WGS- series; enterprise 10456).
+  Switch Enterasys SNMP:
+    name: Enterasys (Telegraf)
+    desc: Enterasys (now Extreme Networks) enterprise switch SNMP collection (ENTERASYS-MIB, IANA PEN 5624). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Enterasys private OIDs for device health including CPU utilisation (etsysResourceCpuLoad, reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (etsysChassisPowerSupplyState, normalised by telegraf processors.enum to 1=normal / 2=abnormal). Supported brands/models — Enterasys SecureStack / S-Series / Matrix enterprise managed switches (enterprise 5624; legacy devices now part of Extreme).
   Switch Hirschmann SNMP:
     name: Hirschmann (Telegraf)
     desc: Hirschmann industrial switch SNMP collection (HMPRIV-MGMT-SNMP-MIB, IANA PEN 248). Beyond standard IF-MIB interface metrics, it collects Hirschmann private OIDs for device health including CPU utilisation (hmCpuUtilization, reported directly as a percentage), main memory (hmMemoryAllocated used + hmMemoryFree in KB, usage derived as used/(used+free)), chassis temperature (hmTemperature in degrees Celsius) and power-supply state (hmPSState, normalised by telegraf processors.enum to 1=normal / 2=abnormal). No dedicated fan-state OID is exposed, so fan is N/A. Supported brands/models — Hirschmann (Belden) industrial managed switches (RS20 / RS30 / RS40, MACH / MICE / GREYHOUND / EAGLE series; enterprise 248).
@@ -4561,6 +4590,33 @@ monitor_object_plugin:
       utilization, both reported directly as percentages) and firewall-specific state
       (current and maximum connection-cache entries and NAT translation count).
       Supported brands/models — SonicWall TZ/NSa-series firewalls (SonicOS).
+  Firewall Sangfor SNMP:
+    name: Sangfor NGAF (Telegraf)
+    desc: Sangfor-specific SNMP collection template for Sangfor NGAF next-generation
+      firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic
+      counters, it collects Sangfor private MIB OIDs (IANA PEN 35047) for device health
+      (overall CPU and memory utilization, both reported directly as percentages) and
+      firewall load (current concurrent sessions). Temperature/fan/power sensor OIDs are
+      not exposed in a row-filter-free scalar form by the Sangfor MIB, so those are N/A.
+      Supported brands/models — Sangfor NGAF next-generation application firewall (enterprise 35047).
+  Firewall Kerio Control SNMP:
+    name: Kerio Control (Telegraf)
+    desc: Kerio Control-specific SNMP collection template for GFI Kerio Control UTM
+      firewalls. In addition to standard IF-MIB interface metrics and 64-bit HC traffic
+      counters, it collects the Kerio Control private MIB OID (KERIO-CONTROL-SNMP-MIB,
+      IANA PEN 17028) for the current number of active connections. CPU/memory and
+      temperature/fan/power sensors are not exposed in a row-filter-free scalar form by
+      the Kerio Control MIB (software UTM appliance), so those are N/A. Supported
+      brands/models — GFI Kerio Control UTM firewall / VPN gateway (enterprise 17028).
+  Firewall Clavister SNMP:
+    name: Clavister (Telegraf)
+    desc: Clavister next-generation firewall SNMP collection (CLAVISTER-MIB, IANA PEN 5089). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Clavister private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active connections). Clavister NGFWs are commonly deployed as software / virtual appliances and the private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — Clavister NetWall / cOS Core next-generation firewalls (Sweden; enterprise 5089).
+  Firewall Zorp SNMP:
+    name: Zorp (Telegraf)
+    desc: Zorp (Balasys) application-layer proxy firewall SNMP collection (ZORP-MIB / BALASYS-MIB, IANA PEN 18928). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Zorp private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active sessions). Zorp is a software proxy firewall running on a general-purpose Linux host and its private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — Balasys Zorp Gateway / Proxedo application-layer proxy firewalls (Hungary; enterprise 18928).
+  Firewall genua SNMP:
+    name: genua (Telegraf)
+    desc: genua (genua GmbH, Germany) high-security application-layer firewall SNMP collection (GENUA-MIB, IANA PEN 3717). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects genua private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active connections, corresponding to pf state-table entries). genua is a software high-security firewall running on a hardened OpenBSD/Linux base and its private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — genua genugate / genuscreen high-security application-layer firewalls (Germany; enterprise 3717).
   Firewall WatchGuard SNMP:
     name: WatchGuard (Telegraf)
     desc: WatchGuard-specific SNMP collection template for Fireware firewalls. In addition
@@ -4632,6 +4688,15 @@ monitor_object_plugin:
   Router Adtran SNMP:
     name: Adtran (Telegraf)
     desc: Adtran AOS router SNMP collection (ADTRAN-AOS MIB, IANA PEN 664). Beyond standard IF-MIB interface metrics, it collects Adtran private OIDs for device health including CPU utilisation (adGenAOSCurrentCpuUtil, reported directly as a percentage) and memory (adGenAOSMemPool total + adGenAOSHeapFree free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not exposed, so those are N/A. Supported brands/models — Adtran AOS routers/gateways (NetVanta series and other adtran-aos platforms; enterprise 664).
+  Router Cradlepoint SNMP:
+    name: Cradlepoint (Telegraf)
+    desc: Cradlepoint cellular (4G/5G) router SNMP collection (Cradlepoint private enterprise MIB, IANA PEN 20992). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Cradlepoint private scalar OIDs for device health including overall CPU utilization, memory utilization (both reported directly as percentages) and internal chassis temperature in degrees Celsius. Fan and power-supply sensors are not exposed as row-filter-free scalars by these compact cellular routers, so those are N/A. Supported brands/models — Cradlepoint NetCloud / COR / E-series and IBR-series 4G/5G enterprise routers (enterprise 20992).
+  Router Teltonika SNMP:
+    name: Teltonika (Telegraf)
+    desc: Teltonika industrial cellular router SNMP collection (RutOS is Linux + net-snmp, HOST-RESOURCES / UCD-SNMP-MIB, IANA PEN 48690). Beyond standard IF-MIB 64-bit HC interface traffic, it collects device-health metrics exposed via standard net-snmp on RutOS including CPU utilisation (HOST-RESOURCES hrProcessorLoad, per-core 0-100%, averaged across cores) and physical memory (total + free in KB, used derived as total - free, usage derived as 100*(total-free)/total). Teltonika RUT-series cellular routers are fanless compact industrial designs and do not expose temperature/power sensors as scalars, so temperature/fan/power are N/A. Supported brands/models — Teltonika RUT / TRB / RUTX industrial 4G/5G cellular routers (RutOS; enterprise 48690).
+  Router Digi SNMP:
+    name: Digi (Telegraf)
+    desc: Digi International industrial cellular/IoT router SNMP collection (DIGI-MIB, IANA PEN 332). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Digi private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)) and chassis temperature (in degrees Celsius). Digi TransPort/IX/Connect series are fanless compact industrial designs and do not expose power sensors as scalars, so fan/power are N/A. Supported brands/models — Digi International TransPort WR / IX / Connect EZ industrial cellular/IoT routers (enterprise 332).
   Router LANCOM SNMP:
     name: LANCOM (Telegraf)
     desc: LANCOM LCOS router/VPN-gateway SNMP collection (LCOS-MIB, IANA PEN 2356). Beyond standard IF-MIB interface metrics, it collects the LANCOM private hardware temperature sensor (lcsStatusHardwareInfoTemperatureDegrees, degrees Celsius). LCOS os_discovery does not expose CPU/memory utilisation or fan/power-supply state OIDs, so those are N/A. Supported brands/models — LANCOM LCOS routers and VPN gateways (1xxx / ic- / ISG series and other LCOS platforms; enterprise 2356).

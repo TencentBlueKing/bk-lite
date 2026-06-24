@@ -1,0 +1,121 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_digi",
+  "plugin": "Router Digi SNMP",
+  "plugin_desc": "Digi International 工业蜂窝/IoT 路由器专用 SNMP 采集模板（DIGI-MIB，企业号 332）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Digi 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）与机箱温度（℃）。Digi TransPort/IX/Connect 系列为无风扇紧凑型工业设计且未以标量形式暴露电源传感器，故风扇/电源为 N/A。适用品牌型号——Digi International TransPort WR / IX / Connect EZ 工业蜂窝/IoT 路由器（企业号 332）。",
+  "status_query": "any({instance_type='router', collect_type='snmp_digi'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilisation of the Digi industrial router (DIGI-MIB, reported directly as a percentage)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='router', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_used",
+      "display_name": "内存已用",
+      "query": "sum(device_memory_used{instance_type='router', __$labels__} * 1024) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Used memory of the Digi industrial router in bytes (Digi used memory, KB*1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_free",
+      "display_name": "内存空闲",
+      "query": "sum(device_memory_free{instance_type='router', __$labels__} * 1024) by (instance_id)",
+      "unit": "bytes",
+      "data_type": "Number",
+      "description": "Free memory of the Digi industrial router in bytes (Digi free memory, KB*1024)."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "sum(device_memory_used{instance_type='router', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='router', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)) * 100",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilisation of the Digi industrial router, derived as used/(used+free)."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "设备温度",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "Chassis temperature of the Digi industrial router in degrees Celsius (Digi chassis temperature)."
+    }
+  ]
+}
