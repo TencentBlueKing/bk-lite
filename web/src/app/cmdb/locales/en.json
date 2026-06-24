@@ -614,6 +614,15 @@
             "never": "none",
             "expand": "Expand overview",
             "collapse": "Collapse overview"
+        },
+        "IPTask": {
+            "chooseSubnet": "Select Subnets",
+            "scanMethod": "Scan Method",
+            "tcpPorts": "TCP Ports",
+            "tcpPortsInvalid": "Invalid port format. Enter numbers between 1-65535, separated by commas.",
+            "securityWarning": "Large-scale IP scanning may be flagged as port scanning or intrusion by security devices. Please notify your security team in advance and keep the scan scope and frequency reasonable.",
+            "rangeGuardTitle": "Large scan range — please confirm",
+            "rangeGuardContent": "The selected subnets contain more than 1,024 addresses (equivalent to a /22 network). A large scan may put load pressure on the network and security devices. Continue submitting?"
         }
     },
     "OidLibrary": {
