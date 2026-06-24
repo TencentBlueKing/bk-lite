@@ -3918,6 +3918,9 @@ monitor_object_plugin:
   Switch Microsens SNMP:
     name: Microsens（Telegraf）
     desc: MICROSENS（德国）工业光纤以太网交换机专用 SNMP 采集模板（MICROSENS-G6-MIB，企业号 3181）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 MICROSENS G6 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与冗余电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。MICROSENS Profi Line 紧凑工业光纤交换机为无风扇导热式被动散热设计，故风扇为 N/A。适用品牌型号——MICROSENS G6 / Profi Line 工业光纤网管交换机（企业号 3181）。
+  Switch Maipu SNMP:
+    name: Maipu（Telegraf）
+    desc: Maipu（迈普通信，国产）企业级以太网交换机专用 SNMP 采集模板（MAIPU-SMI，企业号 5651）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Maipu 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源模块状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Maipu 紧凑型企业接入交换机多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——Maipu MyPower S 系列企业交换机（企业号 5651）。
   Switch Moxa SNMP:
     name: Moxa（Telegraf）
     desc: Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS/IKS/ICS/SDS 系列，企业号 8691）。
@@ -4131,6 +4134,9 @@ monitor_object_plugin:
   Router Teldat SNMP:
     name: Teldat（Telegraf）
     desc: Teldat 企业级路由器/SD-WAN CPE 专用 SNMP 采集模板（TELDAT-MIB，企业号 2007）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Teldat 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Teldat 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Teldat 路由器/SD-WAN CPE（Atlas/Regesta/iMxx 系列，企业号 2007；与 bintec-elmeg 同源 MIB）。
+  Router Avaya SNMP:
+    name: Avaya（Telegraf）
+    desc: Avaya（含原 Nortel/Bay Networks 资产）企业级路由器/三层路由交换机专用 SNMP 采集模板（RAPID-CITY/AVAYA 私有 MIB，企业号 6889）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Avaya 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）。Avaya 企业路由平台多为固定配置紧凑机型，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Avaya ERS / VSP 系列路由平台（企业号 6889；含原 Nortel/Bay Networks 资产）。
   Router Viprinet SNMP:
     name: Viprinet（Telegraf）
     desc: Viprinet 多 WAN 绑定/SD-WAN 路由器专用 SNMP 采集模板（VIPRINET-MIB，企业号 35424）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Viprinet 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Viprinet 紧凑型多 WAN 路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Viprinet 多 WAN 绑定路由器（Multichannel VPN Router 系列，企业号 35424）。
