@@ -10,6 +10,7 @@ from abc import ABC, abstractmethod
 from typing import Dict, Any, List, Optional
 
 from django.db import IntegrityError
+from django.db.models import Prefetch
 
 from django.utils import timezone
 
@@ -255,6 +256,13 @@ class AlertSourceAdapter(ABC):
         if not item or not resource_name or resource_id or resource_type:
             return None
 
+        prefetch_qs = Event.objects.filter(
+            action=EventAction.CREATED,
+            source=self.alert_source,
+            item=item,
+            resource_name=resource_name,
+        ).only("external_id", "item", "resource_name", "source_id", "action")
+
         candidate_alerts = (
             Alert.objects.filter(
                 status__in=AlertStatus.ACTIVATE_STATUS,
@@ -263,7 +271,7 @@ class AlertSourceAdapter(ABC):
                 events__resource_name=resource_name,
                 events__action=EventAction.CREATED,
             )
-            .prefetch_related("events__source")
+            .prefetch_related(Prefetch("events", queryset=prefetch_qs, to_attr="_created_events"))
             .distinct()
         )
 
@@ -271,12 +279,8 @@ class AlertSourceAdapter(ABC):
         for alert in candidate_alerts:
             created_external_ids = {
                 existing_event.external_id
-                for existing_event in alert.events.all()
-                if existing_event.action == EventAction.CREATED
-                   and existing_event.source_id == self.alert_source.id
-                   and self._normalize_lookup_value(existing_event.item) == item
-                   and self._normalize_lookup_value(existing_event.resource_name) == resource_name
-                   and existing_event.external_id
+                for existing_event in alert._created_events
+                if existing_event.external_id
             }
             if len(created_external_ids) == 1:
                 matched_external_ids.append(next(iter(created_external_ids)))
