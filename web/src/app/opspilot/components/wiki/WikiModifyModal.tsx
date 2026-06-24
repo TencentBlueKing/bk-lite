@@ -91,6 +91,8 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
       onCancel={onCancel}
       width={560}
       destroyOnClose
+      // 表单较长:限制弹窗主体高度并内部滚动,确保任何视口下都不触底(前端规范:弹窗禁止触底)
+      styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' } }}
     >
       <Form form={form} layout="vertical">
         <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
