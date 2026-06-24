@@ -3334,6 +3334,10 @@ monitor_object_metric_group:
     StubStatus: Stub状态
     Performance: 性能
   Router:
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Packet Loss: 数据包丢失
     Traffic: 流量
     Packet Error: 数据包错误
@@ -3773,6 +3777,9 @@ monitor_object_plugin:
   Switch Moxa SNMP:
     name: Moxa（Telegraf）
     desc: Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS/IKS/ICS/SDS 系列，企业号 8691）。
+  Switch GarretCom SNMP:
+    name: GarretCom（Telegraf）
+    desc: GarretCom（Belden 旗下）工业以太网交换机专用 SNMP 采集模板（MAGNUM-MIB，企业号 14778）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 GarretCom Magnum 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。GarretCom 工业交换机为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——GarretCom Magnum 工业网管交换机（6K/10K/DX 系列，企业号 14778）。
   Switch Hirschmann SNMP:
     name: Hirschmann（Telegraf）
     desc: Hirschmann 工业交换机专用 SNMP 采集模板（HMPRIV-MGMT-SNMP-MIB，企业号 248）。除标准 IF-MIB 接口指标外，额外采集 Hirschmann 私有 OID 的设备健康指标：CPU 使用率（hmCpuUtilization，直接以百分比上报）、主内存（hmMemoryAllocated 已用 + hmMemoryFree 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（hmTemperature，℃）与电源状态（hmPSState，经 telegraf processors.enum 归一为 1=正常/2=异常）。未暴露独立风扇状态 OID，故风扇为 N/A。适用品牌型号——Hirschmann（Belden）工业网管交换机（RS20/RS30/RS40、MACH/MICE/GREYHOUND/EAGLE 系列，企业号 248）。
@@ -3950,6 +3957,9 @@ monitor_object_plugin:
   Router Teltonika SNMP:
     name: Teltonika（Telegraf）
     desc: Teltonika 工业蜂窝路由器专用 SNMP 采集模板（RutOS 基于 Linux + net-snmp，HOST-RESOURCES / UCD-SNMP-MIB，企业号 48690）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 RutOS 经标准 net-snmp 暴露的设备健康指标：CPU 使用率（HOST-RESOURCES hrProcessorLoad，每核 0-100%，取整机均值）、物理内存（总量 + 空闲，KB，已用由 总量 − 空闲 推导，用量按 100×（总量−空闲）/总量 推导）。Teltonika RUT 系列蜂窝路由器为无风扇紧凑型工业设计且未以标量形式暴露温度/电源传感器，故温度/风扇/电源为 N/A。适用品牌型号——Teltonika RUT/TRB/RUTX 工业 4G/5G 蜂窝路由器（RutOS，企业号 48690）。
+  Router Digi SNMP:
+    name: Digi（Telegraf）
+    desc: Digi International 工业蜂窝/IoT 路由器专用 SNMP 采集模板（DIGI-MIB，企业号 332）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Digi 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）与机箱温度（℃）。Digi TransPort/IX/Connect 系列为无风扇紧凑型工业设计且未以标量形式暴露电源传感器，故风扇/电源为 N/A。适用品牌型号——Digi International TransPort WR/IX/Connect EZ 工业蜂窝/IoT 路由器（企业号 332）。
   Router LANCOM SNMP:
     name: LANCOM（Telegraf）
     desc: LANCOM LCOS 路由器/VPN 网关专用 SNMP 采集模板（LCOS-MIB，企业号 2356）。除标准 IF-MIB 接口指标外，额外采集 LANCOM 私有硬件温度传感器（lcsStatusHardwareInfoTemperatureDegrees，℃）。LCOS os_discovery 未暴露 CPU/内存利用率或风扇/电源状态 OID，故为 N/A。适用品牌型号——LANCOM LCOS 路由器与 VPN 网关（1xxx / ic- / ISG 系列及其他 LCOS 平台，企业号 2356）。
