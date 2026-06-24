@@ -94,7 +94,7 @@ const VariablesTable: React.FC<VariablesTableProps> = ({
         {t('monitor.events.optionalVariables')}
       </div>
       <CustomTable
-        scroll={{ x: 'max-content' }}
+        autoScrollX={false}
         columns={variableColumns}
         dataSource={variableData}
         pagination={false}

@@ -250,6 +250,37 @@ def test_instance_search_results_include_collection_interval_for_gap_detection(d
     assert data["results"][0]["interval"] == 60
 
 
+def test_instance_search_by_primary_object_supports_negative_page_size_for_all_results(db):
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        default_metric='any({instance_type="os"}) by (instance_id)',
+        instance_id_keys=["instance_id"],
+    )
+    instance_a = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object_id=monitor_object.id,
+    )
+    instance_b = MonitorInstance.objects.create(
+        id="('host-b',)",
+        name="Host B",
+        monitor_object_id=monitor_object.id,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance_a.id, organization=7)
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance_b.id, organization=8)
+
+    data = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+    ).search_by_primary_object()
+
+    assert data["count"] == 2
+    assert {item["instance_id"] for item in data["results"]} == {instance_a.id, instance_b.id}
+    assert {tuple(item["organizations"]) for item in data["results"]} == {(7,), (8,)}
+
+
 def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promql(db, monkeypatch):
     logical_id = build_safe_instance_id(1, "10.10.41.149")
     monitor_object = MonitorObject.objects.create(
