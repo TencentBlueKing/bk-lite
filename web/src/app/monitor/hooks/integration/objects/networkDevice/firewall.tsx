@@ -70,6 +70,7 @@ export const useFirewallConfig = () => {
       'Firewall Sangfor SNMP': 'snmp_sangfor',
       'Firewall Kerio Control SNMP': 'snmp_kerio',
       'Firewall Clavister SNMP': 'snmp_clavister',
+      'Firewall Zorp SNMP': 'snmp_zorp',
       'Firewall WatchGuard SNMP': 'snmp_watchguard',
       'Firewall pfSense SNMP': 'snmp_pfsense',
       'Firewall OPNsense SNMP': 'snmp_opnsense',
