@@ -65,6 +65,7 @@ export const useRouterConfig = () => {
       'Router DrayTek SNMP': 'snmp_draytek',
       'Router Adtran SNMP': 'snmp_adtran',
       'Router LANCOM SNMP': 'snmp_lancom',
+      'Router Cradlepoint SNMP': 'snmp_cradlepoint',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

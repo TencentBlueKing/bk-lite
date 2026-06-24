@@ -39,6 +39,12 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 网络服务设备的整机 CPU 使用率（设备直接上报的百分比）。持续偏高表示节点的流量转发与过滤处理已接近处理能力上限。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 网络服务设备的系统内存使用率（设备直接上报的百分比）。持续偏高可能表示设备上的映射/流表存在内存压力。
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3235,6 +3241,7 @@ monitor_object_metric_group:
   NetworkService:
     Base: 基础
     Traffic: 流量
+    NetworkService: 网络服务
   VoiceGateway:
     Base: 基础
     Traffic: 流量
@@ -3615,6 +3622,9 @@ monitor_object_plugin:
   NetworkService Infoblox SNMP:
     name: Infoblox (Telegraf)
     desc: Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。
+  NetworkService Gigamon SNMP:
+    name: Gigamon（Telegraf）
+    desc: Gigamon GigaVUE 流量可视化/分流器（packet broker）专用 SNMP 采集模板（GIGAMON-SNMP-MIB，企业号 26866）。在标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与运行时长（sysUpTime）之外，额外采集 Gigamon 私有标量 OID 的机箱健康指标：整机 CPU 使用率与内存使用率，均为设备直接上报的百分比。温度/风扇/电源传感器仅以带行级过滤的 per-row 组件表暴露，inputs.snmp 无法规范化，故为 N/A。适用品牌型号——Gigamon GigaVUE HC / TA / G 系列可视化节点与分流器（企业号 26866）。
   VoiceGateway AudioCodes SNMP:
     name: AudioCodes (Telegraf)
     desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。
@@ -3925,6 +3935,9 @@ monitor_object_plugin:
   Router Adtran SNMP:
     name: Adtran（Telegraf）
     desc: Adtran AOS 路由器专用 SNMP 采集模板（ADTRAN-AOS MIB，企业号 664）。除标准 IF-MIB 接口指标外，额外采集 Adtran 私有 OID 的设备健康指标：CPU 使用率（adGenAOSCurrentCpuUtil，直接以百分比上报）与内存（adGenAOSMemPool 总量 + adGenAOSHeapFree 空闲，字节，用量按 （总量-空闲）/总量 推导）。未暴露温度/风扇/电源专用 OID，故为 N/A。适用品牌型号——Adtran AOS 路由器/网关（NetVanta 系列及其他 adtran-aos 平台，企业号 664）。
+  Router Cradlepoint SNMP:
+    name: Cradlepoint（Telegraf）
+    desc: Cradlepoint 蜂窝（4G/5G）路由器专用 SNMP 采集模板（Cradlepoint 私有企业 MIB，企业号 20992）。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 Cradlepoint 私有标量 OID 的设备健康指标：整机 CPU 使用率、内存使用率（均为直接上报的百分比）与机内温度（℃）。此类紧凑型蜂窝路由器未以无需行级过滤的标量形式暴露风扇/电源传感器，故为 N/A。适用品牌型号——Cradlepoint NetCloud / COR / E 系列及 IBR 系列 4G/5G 企业路由器（企业号 20992）。
   Router LANCOM SNMP:
     name: LANCOM（Telegraf）
     desc: LANCOM LCOS 路由器/VPN 网关专用 SNMP 采集模板（LCOS-MIB，企业号 2356）。除标准 IF-MIB 接口指标外，额外采集 LANCOM 私有硬件温度传感器（lcsStatusHardwareInfoTemperatureDegrees，℃）。LCOS os_discovery 未暴露 CPU/内存利用率或风扇/电源状态 OID，故为 N/A。适用品牌型号——LANCOM LCOS 路由器与 VPN 网关（1xxx / ic- / ISG 系列及其他 LCOS 平台，企业号 2356）。

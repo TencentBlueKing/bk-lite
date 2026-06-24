@@ -39,6 +39,12 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the network-service appliance, reported directly as a percentage. Sustained high CPU means the node is near its processing capacity for traffic forwarding and filtering.
+    device_memory_usage:
+      name: Memory Usage
+      desc: System memory utilization of the network-service appliance, reported directly as a percentage. Sustained high memory may indicate map/flow-table pressure on the device.
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3577,6 +3583,7 @@ monitor_object_metric_group:
   NetworkService:
     Base: Base
     Traffic: Traffic
+    NetworkService: NetworkService
   VoiceGateway:
     Base: Base
     Traffic: Traffic
@@ -3955,6 +3962,9 @@ monitor_object_plugin:
   NetworkService Infoblox SNMP:
     name: NetworkService Infoblox SNMP
     desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
+  NetworkService Gigamon SNMP:
+    name: Gigamon (Telegraf)
+    desc: Gigamon GigaVUE network-visibility / packet-broker SNMP collection (GIGAMON-SNMP-MIB, IANA PEN 26866). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects Gigamon private scalar OIDs for chassis health — overall CPU utilization and memory utilization, both reported directly as percentages. Temperature/fan/power sensors are exposed only as per-row component tables with row-level filtering that the SNMP input cannot normalize, so those are N/A. Supported brands/models — Gigamon GigaVUE HC / TA / G-series visibility nodes and packet brokers (enterprise 26866).
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
@@ -4515,6 +4525,9 @@ monitor_object_plugin:
   Router Adtran SNMP:
     name: Adtran (Telegraf)
     desc: Adtran AOS router SNMP collection (ADTRAN-AOS MIB, IANA PEN 664). Beyond standard IF-MIB interface metrics, it collects Adtran private OIDs for device health including CPU utilisation (adGenAOSCurrentCpuUtil, reported directly as a percentage) and memory (adGenAOSMemPool total + adGenAOSHeapFree free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not exposed, so those are N/A. Supported brands/models — Adtran AOS routers/gateways (NetVanta series and other adtran-aos platforms; enterprise 664).
+  Router Cradlepoint SNMP:
+    name: Cradlepoint (Telegraf)
+    desc: Cradlepoint cellular (4G/5G) router SNMP collection (Cradlepoint private enterprise MIB, IANA PEN 20992). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Cradlepoint private scalar OIDs for device health including overall CPU utilization, memory utilization (both reported directly as percentages) and internal chassis temperature in degrees Celsius. Fan and power-supply sensors are not exposed as row-filter-free scalars by these compact cellular routers, so those are N/A. Supported brands/models — Cradlepoint NetCloud / COR / E-series and IBR-series 4G/5G enterprise routers (enterprise 20992).
   Router LANCOM SNMP:
     name: LANCOM (Telegraf)
     desc: LANCOM LCOS router/VPN-gateway SNMP collection (LCOS-MIB, IANA PEN 2356). Beyond standard IF-MIB interface metrics, it collects the LANCOM private hardware temperature sensor (lcsStatusHardwareInfoTemperatureDegrees, degrees Celsius). LCOS os_discovery does not expose CPU/memory utilisation or fan/power-supply state OIDs, so those are N/A. Supported brands/models — LANCOM LCOS routers and VPN gateways (1xxx / ic- / ISG series and other LCOS platforms; enterprise 2356).

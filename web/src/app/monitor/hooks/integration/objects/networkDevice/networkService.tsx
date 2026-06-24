@@ -53,7 +53,8 @@ export const useNetworkServiceConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'NetworkService Infoblox SNMP': 'snmp_infoblox'
+      'NetworkService Infoblox SNMP': 'snmp_infoblox',
+      'NetworkService Gigamon SNMP': 'snmp_gigamon'
     }
   };
 };

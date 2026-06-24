@@ -1,0 +1,124 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_gigamon",
+  "plugin": "NetworkService Gigamon SNMP",
+  "plugin_desc": "Gigamon GigaVUE network-visibility / packet-broker SNMP collection (GIGAMON-SNMP-MIB, IANA PEN 26866). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects Gigamon private scalar OIDs for chassis health: overall CPU utilization and memory utilization, both reported directly as percentages. Temperature/fan/power sensors are exposed only as per-row component tables with row-level filtering that the SNMP input cannot normalize, so those are N/A. Supported brands/models — Gigamon GigaVUE HC / TA / G-series visibility nodes and packet brokers (enterprise 26866).",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_gigamon'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart (sysUpTime). By monitoring the uptime, network administrators can understand the stability and reliability of the Infoblox NIOS appliance and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Overall CPU utilization of the Gigamon GigaVUE chassis (GIGAMON-SNMP-MIB, reported directly as a percentage). Sustained high CPU means the visibility node is near its processing capacity for traffic forwarding and filtering."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "System memory utilization of the Gigamon GigaVUE chassis (GIGAMON-SNMP-MIB, reported directly as a percentage). Sustained high memory may indicate map/flow-table pressure on the packet broker."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
+    }
+  ]
+}

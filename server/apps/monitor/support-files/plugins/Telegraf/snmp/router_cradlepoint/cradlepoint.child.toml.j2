@@ -1,0 +1,72 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cradlepoint"
+        config_type = "cradlepoint"
+        brand = "cradlepoint"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Cradlepoint CPU (PRIVATE PEN 20992, system CPU utilization, 直接%, scalar) ----
+    # 待现网核验：1.3.6.1.4.1.20992.2.1.1.0（整机 CPU 使用率%，Cradlepoint NetCloud 健康 OID）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20992.2.1.1.0"
+        name = "usage"
+    # ---- Cradlepoint memory (PEN 20992, memory utilization, 直接%, scalar) ----
+    # 待现网核验：1.3.6.1.4.1.20992.2.1.2.0（内存使用率%）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20992.2.1.2.0"
+        name = "usage"
+    # ---- Cradlepoint temperature (PEN 20992, internal temperature, °C 直采, scalar) ----
+    # 待现网核验：1.3.6.1.4.1.20992.2.1.3.0（机内温度 ℃，scalar）。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20992.2.1.3.0"
+        name = "celsius"
+# ---- 风扇/电源：Cradlepoint 4G/5G 紧凑型蜂窝路由器无独立风扇/电源传感器表，MIB 未以无需行级过滤的标量暴露 → 风扇/电源 N/A。CPU/内存/温度三标量干净可采。----
