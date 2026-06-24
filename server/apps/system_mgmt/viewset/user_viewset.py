@@ -362,6 +362,7 @@ class UserViewSet(ViewSetUtils):
                 group_list=groups,
                 role_list=roles,
                 temporary_pwd=kwargs.get("temporary_pwd", False),
+                password=make_password(None),
             )
             if rules:
                 add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]

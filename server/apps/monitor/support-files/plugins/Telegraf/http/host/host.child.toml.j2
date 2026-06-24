@@ -12,6 +12,7 @@
         password = "${PASSWORD__{{ config_id }}}"
         private_key_content = "${PRIVATE_KEY_CONTENT__{{ config_id }}}"
         private_key_passphrase = "${PRIVATE_KEY_PASSPHRASE__{{ config_id }}}"
+        credential_encoding = "{{ credential_encoding | default('url', true) }}"
         auth_type = "{{ auth_type | default('password', true) }}"
         port = "{{ port | default('', true) }}"
         metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"

@@ -29,7 +29,7 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-PA_DIR = PLUGINS / "snmp_paloalto" / "firewall"
+PA_DIR = PLUGINS / "snmp" / "firewall_paloalto"
 BASE_DIR = PLUGINS / "snmp" / "firewall"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 WEB_ROOT = SERVER_ROOT.parents[0] / "web"
@@ -108,9 +108,9 @@ def languages():
 # directory / cross-file identity — firewall object, NOT switch
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_plugin_lives_under_firewall_dir():
-    assert PA_DIR.parent.name == COLLECT_TYPE
-    assert PA_DIR.name == INSTANCE_TYPE
+def test_plugin_lives_under_firewall_dir(metrics):
+    assert metrics["collect_type"] == COLLECT_TYPE  # 身份来自 metrics.json(#3590 解耦)
+    assert PA_DIR.parent.name == "snmp"  # 扁平布局
 
 
 @pytest.mark.unit

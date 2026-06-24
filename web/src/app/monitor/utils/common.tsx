@@ -338,8 +338,41 @@ export const renderChart = (
 ): ChartData[] => {
   const result: ChartData[] = [];
   const target = config[0]?.dimensions || [];
-  data.forEach((item, index) => {
+  const seriesKeyToValueKey = new Map<string, string>();
+  const getSeriesKey = (metric: Record<string, string>) => {
+    const identityKeys = Array.from(
+      new Set([
+        ...(config[0]?.instance_id_keys || []),
+        ...target.map((item) => item.name),
+      ])
+    );
+    const identityEntries = identityKeys
+      .filter((key) => Object.prototype.hasOwnProperty.call(metric || {}, key))
+      .map((key) => [key, metric[key]]);
+
+    return JSON.stringify(
+      (identityEntries.length ? identityEntries : Object.entries(metric || {}))
+        .sort(([left], [right]) => left.localeCompare(right))
+    );
+  };
+  const getValueKey = (metric: Record<string, string>) => {
+    const seriesKey = getSeriesKey(metric);
+    const existingKey = seriesKeyToValueKey.get(seriesKey);
+    if (existingKey) {
+      return existingKey;
+    }
+    const valueKey = `value${seriesKeyToValueKey.size + 1}`;
+    seriesKeyToValueKey.set(seriesKey, valueKey);
+    return valueKey;
+  };
+
+  data.forEach((item) => {
+    const valueKey = getValueKey(item.metric);
     item.values.forEach(([timestamp, value]) => {
+      const numericValue = parseFloat(value);
+      if (!Number.isFinite(numericValue)) {
+        return;
+      }
       const existing = result.find((entry) => entry.time === timestamp);
       const detailValue = Object.entries(item.metric)
         .map(([key, dimenValue]) => ({
@@ -365,28 +398,35 @@ export const renderChart = (
         });
       }
       if (existing) {
-        existing[`value${index + 1}`] = parseFloat(value);
+        existing[valueKey] = numericValue;
+        existing.seriesMetrics = {
+          ...(existing.seriesMetrics || {}),
+          [valueKey]: item.metric
+        };
         if (!existing.details) {
           existing.details = {};
         }
-        if (!existing.details[`value${index + 1}`]) {
-          existing.details[`value${index + 1}`] = [];
+        if (!existing.details[valueKey]) {
+          existing.details[valueKey] = [];
         }
-        existing.details[`value${index + 1}`].push(...detailValue);
+        existing.details[valueKey].push(...detailValue);
       } else {
         const details = {
-          [`value${index + 1}`]: detailValue
+          [valueKey]: detailValue
         };
         result.push({
           time: timestamp,
           title: config[0]?.title || '--',
-          [`value${index + 1}`]: parseFloat(value),
+          [valueKey]: numericValue,
+          seriesMetrics: {
+            [valueKey]: item.metric
+          },
           details
         });
       }
     });
   });
-  return result;
+  return result.sort((left, right) => left.time - right.time);
 };
 
 export const findTreeParentKey = (

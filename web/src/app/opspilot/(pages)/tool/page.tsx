@@ -1,6 +1,7 @@
 'use client';
 import React, { useState, useEffect } from 'react';
-import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip } from 'antd';
+import { Form, message, Button, Menu, Modal, Drawer, Switch, Tooltip, Segmented, Input, Empty, Upload, Space } from 'antd';
+import type { UploadFile } from 'antd/es/upload/interface';
 import { Store } from 'antd/lib/form/interface';
 import { useTranslation } from '@/utils/i18n';
 import EntityList from '@/components/entity-list';
@@ -12,6 +13,8 @@ import { Tool, TagOption, ToolPayload } from '@/app/opspilot/types/tool';
 import PermissionWrapper from "@/components/permission";
 import styles from '@/app/opspilot/styles/common.module.scss';
 import { useToolApi } from '@/app/opspilot/api/tool';
+import { useSkillApi } from '@/app/opspilot/api/skill';
+import type { SkillPackage } from '@/app/opspilot/types/skill';
 import VariableList from '@/app/opspilot/components/tool/variableList';
 import UrlInputWithButton from '@/app/opspilot/components/tool/urlInputWithButton';
 import Icon from '@/components/icon';
@@ -21,6 +24,7 @@ const ToolListPage: React.FC = () => {
   const { t } = useTranslation();
   const { selectedGroup } = useUserInfoContext();
   const { fetchTools, createTool, updateTool, deleteTool, fetchAvailableTools } = useToolApi();
+  const { fetchSkillPackages, importSkillPackageZip, deleteSkillPackage } = useSkillApi();
   const [loading, setLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState<boolean>(false);
   const [isModalVisible, setIsModalVisible] = useState<boolean>(false);
@@ -32,9 +36,15 @@ const ToolListPage: React.FC = () => {
   const [availableTools, setAvailableTools] = useState<any[]>([]);
   const [fetchingTools, setFetchingTools] = useState<boolean>(false);
   const [enableAuth, setEnableAuth] = useState<boolean>(false);
+  const [assetView, setAssetView] = useState<'builtin' | 'mcp' | 'skills'>('builtin');
+  const [skillAssets, setSkillAssets] = useState<SkillPackage[]>([]);
+  const [skillSearchKeyword, setSkillSearchKeyword] = useState('');
+  const [hoveredSkillAssetKey, setHoveredSkillAssetKey] = useState<string | null>(null);
+  const [isImportSkillModalVisible, setIsImportSkillModalVisible] = useState(false);
+  const [skillPackageFileList, setSkillPackageFileList] = useState<UploadFile[]>([]);
 
   const iconTypes = ['yinliugongju-biaotiyouhua', 'yinliugongju-biaotifenxi', 'yinliugongju-dijiayinliu', 'gongjuqu', 'gongjuxiang', 'gongju1'];
-  
+
   const getRandomIcon = () => {
     return iconTypes[Math.floor(Math.random() * iconTypes.length)];
   };
@@ -47,7 +57,7 @@ const ToolListPage: React.FC = () => {
       message.warning(`${t('common.inputMsg')}${t('tool.mcpUrl')}`);
       return;
     }
-    
+
     setFetchingTools(true);
     try {
       const enable_auth = form.getFieldValue('enable_auth') || false;
@@ -68,7 +78,7 @@ const ToolListPage: React.FC = () => {
 
   const renderToolsList = (tools: any[]) => {
     return tools.map((tool: any, index: number) => (
-      <div 
+      <div
         key={index}
         className="p-3 bg-gradient-to-br from-[var(--color-fill-1)] to-[var(--color-primary-bg-active)] rounded-lg hover:shadow-md transition-all duration-200"
       >
@@ -82,9 +92,9 @@ const ToolListPage: React.FC = () => {
                 {tool.name}
               </div>
             </Tooltip>
-            <Tooltip 
-              title={<div style={{ maxHeight: 300, overflowY: 'auto' }}>{tool.description || t('common.noData')}</div>} 
-              placement="topLeft" 
+            <Tooltip
+              title={<div style={{ maxHeight: 300, overflowY: 'auto' }}>{tool.description || t('common.noData')}</div>}
+              placement="topLeft"
               overlayStyle={{ maxWidth: 500 }}
             >
               <div className="text-xs text-[var(--text-color-3)] leading-relaxed line-clamp-2">
@@ -142,7 +152,7 @@ const ToolListPage: React.FC = () => {
       type: 'custom',
       label: t('tool.mcpUrl'),
       component: (
-        <UrlInputWithButton 
+        <UrlInputWithButton
           disabled={isBuiltIn}
           placeholder={`${t('common.inputMsg')}${t('tool.mcpUrl')}`}
           onFetch={handleFetchTools}
@@ -160,7 +170,7 @@ const ToolListPage: React.FC = () => {
         className: '-mt-3',
         component: (
           <div className="flex items-center gap-2 -mb-6">
-            <Switch 
+            <Switch
               size="small"
               checked={enableAuth}
               onChange={(checked) => {
@@ -226,18 +236,30 @@ const ToolListPage: React.FC = () => {
 
   useEffect(() => {
     fetchData();
+    fetchSkillPackageData();
   }, []);
+
+  const fetchSkillPackageData = async () => {
+    try {
+      const data = await fetchSkillPackages({ is_enabled: 1 });
+      setSkillAssets(data.items || []);
+    } catch (error) {
+      console.error(t('common.fetchFailed'), error);
+      message.error('技能包加载失败');
+    }
+  };
 
   const fetchData = async () => {
     setLoading(true);
     try {
       const data = await fetchTools();
-      const uniqueTags = Array.from(new Set(data.flatMap((tool: any) => tool.tags))) as string[];
+      const uniqueTags = Array.from(
+        new Set(data.filter((tool: any) => !tool.is_build_in).flatMap((tool: any) => tool.tags))
+      ) as string[];
       setAllTags(uniqueTags.map((tag: string) => ({ value: tag, label: t(`tool.${tag}`) })));
 
       const tools = data.map((tool: any) => ({
         ...tool,
-        // 内置工具的 name 是 ID 式名称，展示用翻译后的 display_name（自定义工具回退为 name）
         display_name: tool.display_name || tool.name,
         description: tool.description_tr,
         icon: tool.icon || 'gongjuji',
@@ -246,7 +268,7 @@ const ToolListPage: React.FC = () => {
       }));
 
       setToolData(tools);
-      setFilteredToolData(tools);
+      setFilteredToolData(tools.filter((tool: Tool) => !tool.is_build_in));
     } catch (error) {
       console.error(t('common.fetchFailed'), error);
     } finally {
@@ -263,7 +285,7 @@ const ToolListPage: React.FC = () => {
           message.error(`${t('common.inputMsg')}Token`);
           return;
         }
-        
+
         try {
           setConfirmLoading(true);
           const kwargs = (values.variables || []).map((variable: { key: string; type: string; isRequired: boolean }) => ({
@@ -323,14 +345,14 @@ const ToolListPage: React.FC = () => {
     return (
       <Menu className={`${styles.menuContainer}`}>
         <Menu.Item key="edit">
-          <PermissionWrapper 
+          <PermissionWrapper
             requiredPermissions={['Edit']}
             instPermissions={tool.permissions}>
             <span className="block w-full" onClick={() => showModal(tool)}>{t('common.edit')}</span>
           </PermissionWrapper>
         </Menu.Item>
         {!tool.is_build_in && (<Menu.Item key="delete">
-          <PermissionWrapper 
+          <PermissionWrapper
             requiredPermissions={['Delete']}
             instPermissions={tool.permissions}>
             <span className="block w-full" onClick={() => handleDelete(tool)}>{t('common.delete')}</span>
@@ -354,8 +376,8 @@ const ToolListPage: React.FC = () => {
       setEnableAuth(enableAuthValue);
       // 编辑时：如果 params 存在，transport 默认为 sse（兼容旧数据）
       // 新增时：transport 默认为 streamable_http
-      const transportValue = tool?.params 
-        ? (tool.params.transport || 'sse') 
+      const transportValue = tool?.params
+        ? (tool.params.transport || 'sse')
         : 'streamable_http';
       form.setFieldsValue({
         ...tool,
@@ -385,10 +407,11 @@ const ToolListPage: React.FC = () => {
   }
 
   const changeFilter = (selectedTags: string[]) => {
+    const externalTools = toolData.filter((tool) => !tool.is_build_in);
     if (selectedTags.length === 0) {
-      setFilteredToolData(toolData);
+      setFilteredToolData(externalTools);
     } else {
-      const filteredData = toolData.filter((tool) =>
+      const filteredData = externalTools.filter((tool) =>
         tool.tags.some((tag: string) => selectedTags.includes(tag))
       );
       setFilteredToolData(filteredData);
@@ -399,26 +422,171 @@ const ToolListPage: React.FC = () => {
     setSelectedToolForDetail(tool);
   };
 
+  const filteredSkillAssets = skillAssets.filter((asset) => {
+    const keyword = skillSearchKeyword.trim().toLowerCase();
+    const matchesKeyword = !keyword || [
+      asset.name,
+      asset.package_id,
+      asset.category || '',
+      asset.description || '',
+      (asset.required_tools || []).join(' '),
+      (asset.triggers || []).join(' '),
+    ].some((value) => value.toLowerCase().includes(keyword));
+    return matchesKeyword;
+  });
+
+  const handleImportSkillOk = async () => {
+    const file = (skillPackageFileList[0]?.originFileObj || skillPackageFileList[0]) as File | undefined;
+    if (!file) {
+      message.warning('请选择包含 SKILL.md 的 ZIP 技能包');
+      return;
+    }
+    await importSkillPackageZip(file);
+    await fetchSkillPackageData();
+    setSkillPackageFileList([]);
+    setIsImportSkillModalVisible(false);
+    message.success('技能包已导入');
+  };
+
+  const handleDeleteSkillAsset = (asset: SkillPackage) => {
+    Modal.confirm({
+      title: `删除技能包「${asset.name}」？`,
+      content: '删除后不会再出现在技能包列表和智能体技能选择中。',
+      onOk: async () => {
+        await deleteSkillPackage(asset.id);
+        await fetchSkillPackageData();
+        message.success('技能包已删除');
+      },
+    });
+  };
+
+  const renderAssetSwitcher = () => (
+    <Segmented
+      value={assetView}
+      onChange={(value) => setAssetView(value as 'builtin' | 'mcp' | 'skills')}
+      options={[
+        { label: '内置', value: 'builtin' },
+        { label: 'MCP', value: 'mcp' },
+        { label: '技能', value: 'skills' },
+      ]}
+    />
+  );
+
+  const renderSkillAssetControls = () => (
+    <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+      <Space.Compact>
+        <Input.Search
+          value={skillSearchKeyword}
+          onChange={(event) => setSkillSearchKeyword(event.target.value)}
+          onSearch={setSkillSearchKeyword}
+          placeholder="搜索技能名称或说明"
+          allowClear
+          enterButton
+          size="middle"
+          className="w-60"
+        />
+      </Space.Compact>
+      <Button onClick={() => setIsImportSkillModalVisible(true)}>导入技能包</Button>
+    </div>
+  );
+
+  const renderSkillAssetToolbar = () => (
+    <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+      <div className="flex min-w-0 items-center gap-2">
+        {renderAssetSwitcher()}
+      </div>
+      {renderSkillAssetControls()}
+    </div>
+  );
+
+  const renderSkillAssetView = () => (
+    <div className="w-full" aria-label="技能资产">
+      {renderSkillAssetToolbar()}
+      {filteredSkillAssets.length ? (
+        <div className="grid w-full grid-cols-[repeat(auto-fill,minmax(280px,1fr))] gap-6">
+          {filteredSkillAssets.map((asset) => {
+            const skillAssetKey = `${asset.package_id}:${asset.version}`;
+
+            return (
+              <div
+                key={skillAssetKey}
+                className="p-4 rounded-xl relative shadow-md flex h-[168px] flex-col border border-[var(--color-border)] bg-[var(--color-bg)] transition-all hover:border-[var(--color-primary)] hover:shadow-lg"
+                onMouseEnter={() => setHoveredSkillAssetKey(skillAssetKey)}
+                onMouseLeave={() => setHoveredSkillAssetKey((current) => (current === skillAssetKey ? null : current))}
+              >
+                <div className="relative flex items-center pr-8">
+                  <div className="shrink-0">
+                    <Icon type="jinengpeixun" className="text-4xl" />
+                  </div>
+                  <div className="ml-3 min-w-0">
+                    <h3 className="truncate text-sm font-semibold text-[var(--color-text-1)]">{asset.name}</h3>
+                    <div className="mt-1 truncate text-xs text-[var(--color-text-3)]">{asset.category}</div>
+                  </div>
+                  {hoveredSkillAssetKey === skillAssetKey && (
+                    <Tooltip title="删除">
+                      <Button
+                        type="text"
+                        danger
+                        size="small"
+                        className="absolute right-0 top-1/2 -translate-y-1/2"
+                        icon={<Icon type="shanchu" className="text-base" />}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          handleDeleteSkillAsset(asset);
+                        }}
+                      />
+                    </Tooltip>
+                  )}
+                </div>
+                <p
+                  className="mt-3 max-h-[72px] overflow-hidden text-sm leading-6 text-[var(--color-text-3)]"
+                  style={{
+                    display: '-webkit-box',
+                    WebkitBoxOrient: 'vertical',
+                    WebkitLineClamp: 3,
+                  }}
+                >
+                  {asset.description}
+                </p>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <Empty description="没有匹配的技能" />
+      )}
+    </div>
+  );
+
   return (
     <div className="w-full h-full">
-      <EntityList<Tool>
-        data={filteredToolData}
-        nameField="display_name"
-        loading={loading}
-        menuActions={menuActions}
-        operateSection={
-          <PermissionWrapper requiredPermissions={['Add']}>
-            <Button type="primary" className="ml-2" onClick={() => showModal(null)}>
-              {t('common.add')}
-            </Button>
-          </PermissionWrapper>
-        }
-        filter={true}
-        filterLoading={loading}
-        filterOptions={allTags}
-        changeFilter={changeFilter}
-        onCardClick={handleCardClick}
-      />
+      {assetView === 'skills' ? renderSkillAssetView() : (
+        <EntityList<Tool>
+          data={assetView === 'builtin' ? toolData.filter((tool) => tool.is_build_in) : filteredToolData}
+          nameField="display_name"
+          showBuiltinTag={false}
+          loading={loading}
+          menuActions={assetView === 'mcp' ? menuActions : undefined}
+          singleActionType="button"
+          singleAction={assetView === 'builtin' ? () => ({
+            text: t('common.edit'),
+            onClick: showModal,
+          }) : undefined}
+          operateSection={assetView === 'mcp' ? (
+            <PermissionWrapper requiredPermissions={['Add']}>
+              <Button type="primary" className="ml-2" onClick={() => showModal(null)}>
+                {t('common.add')}
+              </Button>
+            </PermissionWrapper>
+          ) : undefined}
+          filter={assetView === 'mcp'}
+          filterLoading={loading}
+          filterOptions={allTags}
+          toolbarPrefix={renderAssetSwitcher()}
+          changeFilter={changeFilter}
+          onCardClick={handleCardClick}
+        />
+      )}
       <OperateModal
         title={selectedTool ? `${t('common.edit')}` : `${t('common.add')}`}
         visible={isModalVisible}
@@ -473,8 +641,41 @@ const ToolListPage: React.FC = () => {
           </div>
         </div>
       </OperateModal>
+      <Modal
+        title="导入技能包"
+        open={isImportSkillModalVisible}
+        onOk={handleImportSkillOk}
+        onCancel={() => {
+          setIsImportSkillModalVisible(false);
+          setSkillPackageFileList([]);
+        }}
+        okText="确认导入"
+        cancelText="取消"
+        width={760}
+      >
+        <div>
+          <div className="mb-4 rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] px-4 py-3 text-sm leading-6 text-[var(--color-text-2)]">
+            上传 ZIP 技能包。包内必须包含 <code>SKILL.md</code>，可选 <code>skill.yaml</code>、<code>references/</code>、<code>templates/</code> 等目录。没有 <code>skill.yaml</code> 时会读取 <code>SKILL.md</code> 顶部 YAML frontmatter，或从标题和目录名推导基础信息。
+          </div>
+          <Upload.Dragger
+            accept=".zip"
+            maxCount={1}
+            fileList={skillPackageFileList}
+            beforeUpload={(file) => {
+              setSkillPackageFileList([file as UploadFile]);
+              return false;
+            }}
+            onRemove={() => {
+              setSkillPackageFileList([]);
+            }}
+          >
+            <p className="ant-upload-text">点击或拖拽 ZIP 技能包到这里</p>
+            <p className="ant-upload-hint">第一版支持本地 ZIP 上传；公开 Git 仓库导入后续接入同一导入器。</p>
+          </Upload.Dragger>
+        </div>
+      </Modal>
       <Drawer
-        title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.display_name || selectedToolForDetail.name}` : t('common.viewDetails')}
+        title={selectedToolForDetail ? `${t('tool.title')} - ${selectedToolForDetail.name}` : t('common.viewDetails')}
         placement="right"
         onClose={() => setSelectedToolForDetail(null)}
         open={!!selectedToolForDetail}
@@ -493,7 +694,7 @@ const ToolListPage: React.FC = () => {
                 </div>
               </div>
             </div>
-            
+
             {selectedToolForDetail.tools && selectedToolForDetail.tools.length > 0 && (
               <div>
                 <div className="mb-3 flex items-center justify-between">

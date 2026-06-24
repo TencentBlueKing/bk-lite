@@ -143,6 +143,31 @@ def test_pipeline_no_alert_when_rule_misses(levels, source, instant_strategy):
 
 
 @pytest.mark.django_db
+def test_shielded_event_does_not_create_instant_alert(levels, source, instant_strategy):
+    """事件级·不建警(2-1):命中屏蔽的事件不应生成即时告警。
+
+    main() 中屏蔽先于即时旁路执行，dispatch 跳过 status=SHIELD 的事件。
+    """
+    from apps.alerts.models.alert_operator import AlertShield
+    from apps.alerts.constants.constants import EventStatus
+
+    AlertShield.objects.create(
+        name="全屏蔽", match_type="all", match_rules=[], suppression_time={}, is_active=True,
+    )
+    adapter = RestFulAdapter(alert_source=source, secret="x", events=_sample_payload())
+    with mock.patch(
+        "apps.alerts.aggregation.processor.instant_dispatcher.current_app"
+    ) as mock_app:
+        adapter.main()
+        # 被屏蔽 → 无新告警 → 不触发异步分派
+        assert not mock_app.send_task.called
+
+    assert Event.objects.count() == 1
+    assert Event.objects.first().status == EventStatus.SHIELD
+    assert Alert.objects.count() == 0
+
+
+@pytest.mark.django_db
 def test_aggregation_processor_excludes_instant(instant_strategy):
     """AggregationProcessor 的 active strategies 列表绝不包含 INSTANT 策略。"""
     proc = AggregationProcessor()

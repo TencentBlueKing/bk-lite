@@ -24,11 +24,11 @@ class AlertSourceModelSerializer(serializers.ModelSerializer):
         model = AlertSource
         fields = "__all__"
         extra_kwargs = {
-            # "secret": {"write_only": True},
             # "config": {"write_only": True},
             "last_active_time": {"write_only": True},
             "is_delete": {"write_only": True},
             "secret": {"write_only": True},
+            "team_secrets": {"write_only": True},
         }
 
     @staticmethod

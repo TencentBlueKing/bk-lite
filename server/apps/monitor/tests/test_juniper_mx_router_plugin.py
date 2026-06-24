@@ -30,7 +30,7 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-JM_DIR = PLUGINS / "snmp_juniper_mx" / "router"
+JM_DIR = PLUGINS / "snmp" / "router_juniper_mx"
 BASE_DIR = PLUGINS / "snmp" / "router"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 WEB_ROOT = SERVER_ROOT.parents[0] / "web"
@@ -100,9 +100,9 @@ def languages():
 # directory / cross-file identity — router object, NOT switch
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
-def test_plugin_lives_under_router_dir():
-    assert JM_DIR.parent.name == COLLECT_TYPE
-    assert JM_DIR.name == INSTANCE_TYPE
+def test_plugin_lives_under_router_dir(metrics):
+    assert metrics["collect_type"] == COLLECT_TYPE  # 身份来自 metrics.json(#3590 解耦)
+    assert JM_DIR.parent.name == "snmp"  # 扁平布局
 
 
 @pytest.mark.unit

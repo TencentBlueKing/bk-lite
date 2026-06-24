@@ -32,14 +32,22 @@
 }
 
 .header {
-  position: relative;
+  position: sticky;
+  top: 0;
+  z-index: 40;
+  min-height: 42px;
+  padding: 10px 0 8px;
+  isolation: isolate;
+  background: var(--color-bg-1);
+  box-shadow: 0 10px 18px -16px rgba(24, 39, 63, 0.28);
 
   .operation {
     display: flex;
     align-items: center;
     position: absolute;
-    top: 0;
+    top: 10px;
     right: 0;
+    z-index: 1;
 
     .expand {
       display: flex;
@@ -55,12 +63,182 @@
   }
 }
 
+.header :global(.ant-segmented) {
+  position: relative;
+  z-index: 1;
+}
+
+:global(html.dark) .header {
+  background: #121212;
+  box-shadow: 0 10px 18px -16px rgba(0, 0, 0, 0.75);
+}
+
+.header::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -44px;
+  height: 44px;
+  pointer-events: none;
+  background: var(--color-bg-1);
+}
+
+:global(html.dark) .header::before {
+  background: #121212;
+}
+
+.header::after {
+  content: "";
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -12px;
+  height: 12px;
+  pointer-events: none;
+  background: var(--color-bg-1);
+  box-shadow: 0 10px 18px -18px rgba(24, 39, 63, 0.32);
+}
+
+:global(html.dark) .header::after {
+  background: #121212;
+  box-shadow: 0 10px 18px -18px rgba(0, 0, 0, 0.75);
+}
+
 .header :global(.ant-btn-link) {
   color: var(--color-text-2) !important;
 }
 
 .topo :global(.x6-widget-minimap) {
   background: var(--color-bg-1);
+}
+
+.topoCommandBar {
+  margin-top: 6px;
+  :global(.ant-btn) {
+    border-radius: 8px;
+    border-color: #dbe7f4;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 8px 18px rgba(37, 72, 111, 0.08);
+    backdrop-filter: blur(8px);
+  }
+
+  :global(.ant-btn:hover) {
+    border-color: #b9d4f2;
+    background: #ffffff;
+  }
+
+  :global(.ant-btn-primary) {
+    border-color: var(--color-primary, #1677ff);
+    background: var(--color-primary, #1677ff);
+    box-shadow: 0 10px 22px rgba(22, 119, 255, 0.18);
+  }
+
+  :global(.ant-btn-primary:hover) {
+    border-color: #0f68e8;
+    background: #0f68e8;
+  }
+
+  :global(.ant-btn[disabled]) {
+    background: rgba(255, 255, 255, 0.7);
+    box-shadow: none;
+  }
+}
+
+.portLinkBody {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  padding: 2px 0;
+}
+
+.portEndpointCard {
+  padding: 12px 0 14px;
+  border-bottom: 1px solid #edf2f7;
+}
+
+.portEndpointCard:last-child {
+  padding-bottom: 0;
+  border-bottom: 0;
+}
+
+.portEndpointHeader {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 0 10px;
+}
+
+.portEndpointBadge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 7px;
+  background: #eef6ff;
+  color: var(--color-primary, #1677ff);
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.portEndpointName {
+  min-width: 0;
+  color: #1f2a37;
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 20px;
+}
+
+.portEndpointMeta {
+  color: #8797aa;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.portEndpointBody {
+  padding: 0 0 0 34px;
+}
+
+.portSelectRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.portSelectRow :global(.ant-select) {
+  flex: 1;
+  min-width: 0;
+}
+
+.portAddButton {
+  flex: none;
+  padding-inline: 4px;
+}
+
+.portEmpty {
+  flex: 1;
+  min-height: 32px;
+  padding: 6px 10px;
+  border: 1px dashed #d8e5f4;
+  border-radius: 6px;
+  color: #8797aa;
+  background: #fbfdff;
+  font-size: 13px;
+}
+
+.portCreateForm {
+  max-height: 420px;
+  overflow-y: auto;
+  padding: 4px 2px 0 0;
+}
+
+.portCreateForm :global(.ant-form-item) {
+  margin-bottom: 14px;
+}
+
+.portCreateForm :global(.ant-form-item-label) {
+  padding-bottom: 4px;
 }
 
 // 隐藏节点图标的 CSS 类，当节点容器有 hide-image 类时，隐藏其内部的 image 元素

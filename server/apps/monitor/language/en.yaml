@@ -1,4 +1,125 @@
 monitor_object_metric:
+  IBMMQ:
+    ibmmq_qmgr_status_gauge:
+      name: Queue Manager Status
+      desc: Queue manager status. 0 means the exporter cannot connect (stopped/unavailable), 1 starting, 2 running, 3 quiescing, 4 standby.
+    ibmmq_qmgr_channel_initiator_status_gauge:
+      name: Channel Initiator Status
+      desc: Status of the channel initiator of the queue manager.
+    ibmmq_qmgr_command_server_status_gauge:
+      name: Command Server Status
+      desc: Status of the command server of the queue manager.
+    ibmmq_qmgr_uptime_gauge:
+      name: Uptime
+      desc: How long the queue manager has been running, in seconds.
+    ibmmq_qmgr_connection_count_gauge:
+      name: Connection Count
+      desc: Number of active connections to the queue manager.
+    ibmmq_qmgr_active_listeners_gauge:
+      name: Active Listeners
+      desc: Number of active listeners on the queue manager.
+    ibmmq_qmgr_concurrent_connections_high_water_mark_gauge:
+      name: Concurrent Connections High-Water Mark
+      desc: Peak number of concurrent connections to the queue manager.
+    ibmmq_qmgr_expired_message_count_gauge:
+      name: Expired Message Count
+      desc: Number of expired messages on the queue manager during the interval.
+    ibmmq_qmgr_commit_count_gauge:
+      name: Commit Count
+      desc: Number of commit operations on the queue manager during the interval.
+    ibmmq_qmgr_rollback_count_gauge:
+      name: Rollback Count
+      desc: Number of rollback operations on the queue manager during the interval.
+    ibmmq_qmgr_exporter_collection_time_gauge:
+      name: Exporter Collection Time
+      desc: Time the exporter spent on the last collection cycle, in milliseconds.
+    ibmmq_qmgr_cpu_load_one_minute_average_percentage_gauge:
+      name: CPU Load 1m Average
+      desc: One-minute average CPU load percentage of the queue manager host.
+    ibmmq_qmgr_cpu_load_five_minute_average_percentage_gauge:
+      name: CPU Load 5m Average
+      desc: Five-minute average CPU load percentage of the queue manager host.
+    ibmmq_qmgr_user_cpu_time_percentage_gauge:
+      name: User CPU Time
+      desc: User-space CPU time percentage of the queue manager host.
+    ibmmq_qmgr_system_cpu_time_percentage_gauge:
+      name: System CPU Time
+      desc: System (kernel) CPU time percentage of the queue manager host.
+    ibmmq_qmgr_ram_free_percentage_gauge:
+      name: RAM Free
+      desc: Percentage of free RAM on the queue manager host.
+    ibmmq_qmgr_ram_total_bytes_gauge:
+      name: RAM Total
+      desc: Total RAM on the queue manager host, in bytes.
+    ibmmq_qmgr_queue_manager_file_system_free_space_percentage_gauge:
+      name: Queue Manager FS Free Space
+      desc: Percentage of free space in the queue manager file system.
+    ibmmq_qmgr_queue_manager_file_system_in_use_bytes_gauge:
+      name: Queue Manager FS In Use
+      desc: Bytes in use in the queue manager file system.
+    ibmmq_qmgr_log_in_use_bytes_gauge:
+      name: Log In Use
+      desc: Bytes of recovery log currently in use.
+    ibmmq_qmgr_log_max_bytes_gauge:
+      name: Log Max
+      desc: Maximum size of the recovery log, in bytes.
+    ibmmq_qmgr_log_current_primary_space_in_use_percentage_gauge:
+      name: Log Primary Space In Use
+      desc: Percentage of the current primary log space in use.
+    ibmmq_qmgr_log_workload_primary_space_utilization_percentage_gauge:
+      name: Log Workload Primary Space Utilization
+      desc: Workload utilization of the primary log space, as a percentage.
+    ibmmq_qmgr_log_write_latency_seconds_gauge:
+      name: Log Write Latency
+      desc: Average log write latency, in seconds.
+    ibmmq_qmgr_log_file_system_in_use_bytes_gauge:
+      name: Log FS In Use
+      desc: Bytes in use in the log file system.
+    ibmmq_qmgr_log_file_system_max_bytes_gauge:
+      name: Log FS Max
+      desc: Maximum size of the log file system, in bytes.
+    ibmmq_queue_depth_gauge:
+      name: Queue Depth
+      desc: Current number of messages on the queue.
+    ibmmq_queue_attribute_max_depth_gauge:
+      name: Queue Max Depth
+      desc: Maximum number of messages allowed on the queue.
+    ibmmq_queue_oldest_message_age_gauge:
+      name: Oldest Message Age
+      desc: Age of the oldest message on the queue, in seconds.
+    ibmmq_queue_uncommitted_messages_gauge:
+      name: Uncommitted Messages
+      desc: Number of uncommitted messages on the queue.
+    ibmmq_queue_input_handles_gauge:
+      name: Input Handles
+      desc: Number of open input handles on the queue.
+    ibmmq_queue_output_handles_gauge:
+      name: Output Handles
+      desc: Number of open output handles on the queue.
+    ibmmq_queue_qtime_short_gauge:
+      name: Short Queue Time
+      desc: Short-period average time messages spent on the queue, in seconds.
+    ibmmq_queue_qtime_long_gauge:
+      name: Long Queue Time
+      desc: Long-period average time messages spent on the queue, in seconds.
+    ibmmq_topic_publisher_count_gauge:
+      name: Publisher Count
+      desc: Number of active publishers on the topic.
+    ibmmq_topic_subscriber_count_gauge:
+      name: Subscriber Count
+      desc: Number of active subscribers on the topic.
+    ibmmq_topic_messages_received_gauge:
+      name: Messages Received
+      desc: Number of messages received on the topic during the interval.
+    ibmmq_topic_time_since_msg_received_gauge:
+      name: Time Since Message Received
+      desc: Seconds since the last message was received on the topic.
+    ibmmq_subscription_messsages_received_gauge:
+      name: Subscription Messages Received
+      desc: Number of messages received by the subscription during the interval.
+    ibmmq_subscription_time_since_message_published_gauge:
+      name: Time Since Message Published
+      desc: Seconds since the last message was published to the subscription.
   Wireless:
     snmp_uptime: &id001
       name: System Uptime
@@ -3562,6 +3683,14 @@ monitor_object_metric:
       name: Runtime Heap Allocation
       desc: Current size of memory allocated and in use on the Go runtime heap.
 monitor_object_metric_group:
+  IBMMQ:
+    Base: Base
+    Status: Status
+    Resource: Resource
+    Log: Log
+    Queue: Queue
+    Topic: Topic
+    Subscription: Subscription
   Wireless:
     Base: Base
     Traffic: Traffic
@@ -3937,9 +4066,18 @@ monitor_object_metric_group:
     写入稳定性: Write Stability
     运行时: Runtime
 monitor_object_plugin:
+  IBM-MQ-Exporter:
+    name: IBM MQ(Exporter)
+    desc: Through the IBM MQ Exporter collector, connect to the queue manager over an MQI client connection and regularly gather queue manager, queue, topic and subscription status, backlog and resource metrics to help monitor message queue availability and performance. Requires the IBM MQ redistributable client (/opt/mqm) on the node.
+  IBMMQ:
+    name: IBM MQ(Exporter)
+    desc: Through the IBM MQ Exporter collector, connect to the queue manager over an MQI client connection and regularly gather queue manager, queue, topic and subscription status, backlog and resource metrics to help monitor message queue availability and performance. Requires the IBM MQ redistributable client (/opt/mqm) on the node.
   Wireless Cambium SNMP:
     name: Wireless Cambium SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/associated clients) use Cambium private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp, so they are N/A. Applicable to Cambium Networks wireless devices (cnPilot/ePMP/PMP, enterprise OID 17713) and other IF-MIB compliant wireless AP/bridges.
+  Wireless Proxim SNMP:
+    name: Wireless Proxim SNMP
+    desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/subscriber units) use Proxim ORiNOCO/Tsunami private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp; LibreNMS also has no Proxim processors/mempools/sensors discovery (only ORiNOCO-MIB for OS detection), so wireless health is N/A. Applicable to Proxim Wireless devices (ORiNOCO AP access points, Tsunami MP point-to-multipoint backhaul base stations/subscriber units, enterprise OID 841) and other IF-MIB compliant wireless AP/backhaul bridges.
   Transmission Ciena SNMP:
     name: Transmission Ciena SNMP
     desc: Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets) plus uptime. Health metrics of Ciena SAOS transmission devices (temperature/optical module power/laser bias current) use per-row indexed MIB tables with row-level filtering (skip_values); telegraf inputs.snmp cannot do row-level filtering, so they are N/A. Applicable to Ciena SAOS transmission/packet-optical devices.
@@ -4605,6 +4743,7 @@ monitor_object_plugin:
     name: Kafka(Exporter)
     desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
+  IBMMQ: IBM MQ
   Wireless: Wireless
   Transmission: Transmission
   Access: Access

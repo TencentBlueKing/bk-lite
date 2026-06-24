@@ -7,7 +7,7 @@ from apps.opspilot.viewsets.history_view import HistoryViewSet  # noqa
 from apps.opspilot.viewsets.knowledge_base_view import KnowledgeBaseViewSet  # noqa
 from apps.opspilot.viewsets.knowledge_document_view import KnowledgeDocumentViewSet  # noqa
 from apps.opspilot.viewsets.knowledge_graph_view import KnowledgeGraphViewSet  # noqa
-from apps.opspilot.viewsets.llm_view import LLMModelViewSet, LLMViewSet, SkillRequestLogViewSet, SkillToolsViewSet  # noqa
+from apps.opspilot.viewsets.llm_view import LLMModelViewSet, LLMViewSet, SkillPackageViewSet, SkillRequestLogViewSet, SkillToolsViewSet  # noqa
 from apps.opspilot.viewsets.manual_knowledge_view import ManualKnowledgeViewSet  # noqa
 from apps.opspilot.viewsets.memory_view import MemorySpaceViewSet, MemoryViewSet  # noqa
 from apps.opspilot.viewsets.model_vendor_view import ModelVendorViewSet  # noqa

@@ -1,6 +1,10 @@
+import os
+
 import nats_client
 from apps.log.models import LogGroup, CollectType, CollectInstance
 from apps.log.models.policy import Policy
+
+_PAGE_SIZE_MAX = int(os.getenv("LOG_MODULE_DATA_PAGE_SIZE_MAX", "500"))
 
 
 @nats_client.register
@@ -8,6 +12,13 @@ def get_log_module_data(module, child_module, page, page_size, group_id):
     """
     获取log模块数据
     """
+    try:
+        page = max(1, int(page))
+        page_size = max(1, min(int(page_size), _PAGE_SIZE_MAX))
+        group_id = int(group_id)
+    except (TypeError, ValueError) as exc:
+        return {"result": False, "message": f"参数类型错误: {exc}", "data": []}
+
     if module == "log_group":
         queryset = LogGroup.objects.filter(loggrouporganization__organization=group_id).distinct()
     elif module == "policy":

@@ -647,6 +647,7 @@ def test_host_remote_template_renders_ansible_executor_instance_id(monkeypatch):
     )
 
     assert 'ansible_node_id = "node-1"' in rendered
+    assert 'credential_encoding = "url"' in rendered
 
 
 def test_host_remote_template_renders_winrm_and_private_key_headers(monkeypatch):
@@ -682,6 +683,7 @@ def test_host_remote_template_renders_winrm_and_private_key_headers(monkeypatch)
     assert 'winrm_scheme = "https"' in rendered
     assert 'winrm_transport = "ntlm"' in rendered
     assert 'winrm_cert_validation = "false"' in rendered
+    assert 'credential_encoding = "url"' in rendered
 
     private_key_rendered = plugin_controller_module.Controller({}).render_template(
         template_content,
@@ -704,6 +706,7 @@ def test_host_remote_template_renders_winrm_and_private_key_headers(monkeypatch)
 
     assert 'private_key_content = "${PRIVATE_KEY_CONTENT__CONFIG2}"' in private_key_rendered
     assert 'private_key_passphrase = "${PRIVATE_KEY_PASSPHRASE__CONFIG2}"' in private_key_rendered
+    assert 'credential_encoding = "url"' in private_key_rendered
 
 
 def test_windows_wmi_template_renders_headers(monkeypatch):
