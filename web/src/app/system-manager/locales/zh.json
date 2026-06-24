@@ -865,7 +865,7 @@
     },
     "integrationCenter": {
       "pageTitle": "集成中心",
-      "back": "返回",
+      "back": "返回集成中心",
       "pageDesc": "统一管理企业微信、钉钉、目录服务和代码平台等外部接入。卡片展示各集成功能的启动状态，点击进入详情进行管理。",
       "addInstanceButton": "添加集成",
       "createInstanceTitle": "添加集成实例",
@@ -887,6 +887,9 @@
       "testStatusPending": "待测试",
       "testStatusFailed": "测试失败",
       "testStatus": "测试状态",
+      "testStatusHealthy": "已测试 · 正常",
+      "testStatusUnhealthy": "已测试 · 异常",
+      "testStatusUntested": "未测试",
       "capabilityEnabled": "能力已启用",
       "capabilityDisabled": "能力已禁用",
       "capability": {
@@ -904,6 +907,13 @@
         "github": "GitHub"
       },
       "providerTypeLabel": "集成类型",
+      "statusSummary": "状态摘要",
+      "connectionStatus": "连接状态",
+      "enableStatus": "启用状态",
+      "capabilityStatus": "能力状态",
+      "statusNormal": "正常",
+      "statusAbnormal": "异常",
+      "statusPending": "待验证",
       "platformStatus": "平台状态",
       "enabled": "已启用",
       "disabled": "已禁用",

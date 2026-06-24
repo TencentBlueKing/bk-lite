@@ -3,25 +3,25 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, message } from 'antd';
+import { ArrowLeftOutlined } from '@ant-design/icons';
+import { Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, message } from 'antd';
 
+import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
+import type { IntegrationInstance, ProviderManifest, TemplateField } from '@/app/system-manager/types/integration-center';
+import {
+  getAvailableIntegrationTabs,
+  getIntegrationCapabilityLabel,
+  getIntegrationDetailSummaryItems,
+  getIntegrationDetailTopSectionContent,
+  getIntegrationFieldBuckets,
+  isIntegrationInstanceStarted,
+  resolveIntegrationProviderIcon,
+  type IntegrationDetailTab,
+} from '@/app/system-manager/utils/intergrationCenter';
 import PermissionWrapper from '@/components/permission';
 import TopSection from '@/components/top-section';
 import { useTranslation } from '@/utils/i18n';
-import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
-import type { IntegrationInstance, ProviderManifest, TemplateField } from '@/app/system-manager/types/integration-center';
 import { isSilentRequestError } from '@/utils/request';
-
-import {
-  getIntegrationCapabilityLabel,
-  getIntegrationCapabilityStatusText,
-  getIntegrationTestStatusText,
-  isIntegrationInstanceStarted,
-  resolveIntegrationProviderIcon,
-  getAvailableIntegrationTabs,
-  getIntegrationProviderDisplayName,
-  type IntegrationDetailTab
-} from '@/app/system-manager/utils/intergrationCenter';
 
 interface IntegrationDetailFormValues {
   config?: Record<string, unknown>;
@@ -34,6 +34,7 @@ const IntegrationDetailPage: React.FC = () => {
   const [form] = Form.useForm<IntegrationDetailFormValues>();
 
   const id = searchParams?.get('id');
+  const numericId = id ? Number(id) : NaN;
   const { getInstance, getProviders, testConnection, updateInstance } = useIntegrationCenterApi();
 
   const [instance, setInstance] = useState<IntegrationInstance | null>(null);
@@ -43,7 +44,52 @@ const IntegrationDetailPage: React.FC = () => {
   const [saving, setSaving] = useState(false);
   const [isFormDirty, setIsFormDirty] = useState(false);
   const [activeTab, setActiveTab] = useState<IntegrationDetailTab>('base');
-  const numericId = id ? Number(id) : NaN;
+
+  const provider = useMemo(
+    () => providers.find((item) => item.key === instance?.provider_key),
+    [instance?.provider_key, providers],
+  );
+
+  const activeCapability = useMemo(
+    () => provider?.capabilities.find((item) => item.key === activeTab),
+    [activeTab, provider],
+  );
+
+  const activeFields = useMemo(
+    () => (activeTab === 'base' ? provider?.instance_template || [] : activeCapability?.connection_template || []),
+    [activeCapability?.connection_template, activeTab, provider?.instance_template],
+  );
+
+  const baseGroups = useMemo(() => {
+    const templates = provider?.instance_templates ? Object.values(provider.instance_templates) : [];
+    const groups = templates.flatMap((template) => template.groups);
+    return groups.length > 0 ? groups : null;
+  }, [provider?.instance_templates]);
+
+  const fieldBuckets = useMemo(
+    () => (baseGroups ? { credentialFields: [], publicInterfaceFields: [] } : getIntegrationFieldBuckets(activeFields)),
+    [activeFields, baseGroups],
+  );
+
+  const availableTabs = useMemo(
+    () => (instance ? getAvailableIntegrationTabs(instance) : []),
+    [instance],
+  );
+
+  const started = useMemo(
+    () => (instance ? isIntegrationInstanceStarted(instance.capability_status) : false),
+    [instance],
+  );
+
+  const summaryItems = useMemo(
+    () => (instance ? getIntegrationDetailSummaryItems({ activeTab, instance, t }) : []),
+    [activeTab, instance, t],
+  );
+
+  const topSectionContent = useMemo(
+    () => (instance ? getIntegrationDetailTopSectionContent(instance, t) : ''),
+    [instance, t],
+  );
 
   const fetchDetailData = async () => {
     if (!id || Number.isNaN(numericId)) {
@@ -75,37 +121,6 @@ const IntegrationDetailPage: React.FC = () => {
     fetchDetailData();
   }, [id]);
 
-  const provider = useMemo(
-    () => providers.find((item) => item.key === instance?.provider_key),
-    [instance?.provider_key, providers],
-  );
-
-  const activeCapability = useMemo(
-    () => provider?.capabilities.find((item) => item.key === activeTab),
-    [activeTab, provider],
-  );
-
-  const activeFields = useMemo(
-    () => (activeTab === 'base' ? provider?.instance_template || [] : activeCapability?.connection_template || []),
-    [activeCapability?.connection_template, activeTab, provider?.instance_template],
-  );
-
-  const baseGroups = useMemo(() => {
-    const templates = provider?.instance_templates ? Object.values(provider.instance_templates) : [];
-    const groups = templates.flatMap((tpl) => tpl.groups);
-    return groups.length > 0 ? groups : null;
-  }, [provider?.instance_templates]);
-
-  const credentialFields = useMemo(
-    () => (baseGroups ? [] : activeFields.filter((field) => field.key === 'app_id' || field.key === 'app_secret')),
-    [activeFields, baseGroups],
-  );
-
-  const publicInterfaceFields = useMemo(
-    () => (baseGroups ? [] : activeFields.filter((field) => field.key !== 'app_id' && field.key !== 'app_secret')),
-    [activeFields, baseGroups],
-  );
-
   useEffect(() => {
     if (!instance) {
       return;
@@ -118,6 +133,7 @@ const IntegrationDetailPage: React.FC = () => {
       }
       return acc;
     }, {});
+
     form.setFieldsValue({ config: configValues });
     setIsFormDirty(false);
   }, [activeFields, form, instance]);
@@ -136,6 +152,7 @@ const IntegrationDetailPage: React.FC = () => {
         }
         return acc;
       }, {});
+
       setSaving(true);
       await updateInstance(numericId, {
         name: instance.name,
@@ -163,20 +180,20 @@ const IntegrationDetailPage: React.FC = () => {
       return;
     }
 
-    const nextCapabilityEnabled = {
-      ...instance.capability_enabled,
-      [activeTab]: enabled,
-    };
-
     setSaving(true);
     try {
       await updateInstance(numericId, {
         name: instance.name,
         provider_key: instance.provider_key,
         description: instance.description || '',
-        capability_enabled: nextCapabilityEnabled,
+        capability_enabled: {
+          ...instance.capability_enabled,
+          [activeTab]: enabled,
+        },
       });
-      message.success(enabled ? t('system.integrationCenter.capabilityEnabled') : t('system.integrationCenter.capabilityDisabled'));
+      message.success(
+        enabled ? t('system.integrationCenter.capabilityEnabled') : t('system.integrationCenter.capabilityDisabled'),
+      );
       fetchDetailData();
     } catch {
       message.error(t('common.saveFailed'));
@@ -204,11 +221,9 @@ const IntegrationDetailPage: React.FC = () => {
     setTesting(true);
     try {
       const result = await testConnection(numericId, activeTab === 'base' ? undefined : activeTab);
-      if (result.result) {
-        message.success(t('system.integrationCenter.testSuccess'));
-      } else {
-        message.error(t('system.integrationCenter.testFailed'));
-      }
+      message[result.result ? 'success' : 'error'](
+        result.result ? t('system.integrationCenter.testSuccess') : t('system.integrationCenter.testFailed'),
+      );
       fetchDetailData();
     } catch (error) {
       if (!isSilentRequestError(error)) {
@@ -286,12 +301,6 @@ const IntegrationDetailPage: React.FC = () => {
     return null;
   }
 
-  const started = isIntegrationInstanceStarted(instance.capability_status);
-  const availableTabs = getAvailableIntegrationTabs(instance);
-  const currentCapabilityStatus = activeTab === 'base' ? instance.status : instance.capability_status?.[activeTab];
-  const providerLabel = `${t('system.integrationCenter.providerTypeLabel')}：${getIntegrationProviderDisplayName(instance.provider_key, t)}`;
-  const topSectionContent = instance.description ? `${providerLabel}，${instance.description}` : providerLabel;
-
   return (
     <div className="w-full space-y-4">
       <div className="flex items-center gap-3">
@@ -304,8 +313,8 @@ const IntegrationDetailPage: React.FC = () => {
         </div>
       </div>
 
-      <section className="overflow-hidden rounded-[22px] bg-white shadow-sm">
-        <div className="px-6 pt-4">
+      <section className="grid overflow-hidden rounded-md bg-white shadow-sm xl:grid-cols-[minmax(0,8.4fr)_minmax(200px,1.6fr)]">
+        <div className="px-5 py-4">
           <Tabs
             activeKey={activeTab}
             onChange={(key) => setActiveTab(key as IntegrationDetailTab)}
@@ -314,137 +323,131 @@ const IntegrationDetailPage: React.FC = () => {
               label: tabKey === 'base' ? t('system.integrationCenter.baseConnection') : getIntegrationCapabilityLabel(tabKey, t),
             }))}
           />
-        </div>
 
-        {activeTab === 'base' ? (
-          <div className="px-6 py-6">
-            <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
-              {baseGroups ? (
-                baseGroups.map((group, idx) => (
-                  <div
-                    key={group.key}
-                    className={idx < baseGroups.length - 1 ? 'mb-5 border-b border-[var(--color-border)] pb-5' : ''}
-                  >
-                    <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">{group.title}</div>
-                    {group.description ? (
-                      <div className="mb-4 text-[14px] text-[var(--color-text-3)]">{group.description}</div>
+          {activeTab === 'base' ? (
+            <div className="mt-1">
+              <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
+                {baseGroups ? (
+                  baseGroups.map((group, idx) => (
+                    <div
+                      key={group.key}
+                      className={idx < baseGroups.length - 1 ? 'border-b border-[var(--color-border)] py-4' : 'pt-4'}
+                    >
+                      <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">{group.title}</div>
+                      {group.description ? (
+                        <div className="mb-4 text-[14px] text-[var(--color-text-3)]">{group.description}</div>
+                      ) : null}
+                      {group.fields.map((field) => renderTemplateField(field))}
+                    </div>
+                  ))
+                ) : (
+                  <>
+                    {fieldBuckets.credentialFields.length > 0 ? (
+                      <div className="border-b border-[var(--color-border)] py-4">
+                        <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
+                          {t('system.integrationCenter.applicationCredential')}
+                        </div>
+                        {fieldBuckets.credentialFields.map((field) => renderTemplateField(field))}
+                      </div>
                     ) : null}
-                    {group.fields.map((field) => renderTemplateField(field))}
-                  </div>
-                ))
-              ) : (
-                <>
-                  {credentialFields.length > 0 ? (
-                    <div className="border-b border-[var(--color-border)] pb-5">
-                      <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
-                        {t('system.integrationCenter.applicationCredential')}
-                      </div>
-                      {credentialFields.map((field) => renderTemplateField(field))}
-                    </div>
-                  ) : null}
 
-                  {publicInterfaceFields.length > 0 ? (
-                    <div className={credentialFields.length > 0 ? 'pt-5' : ''}>
-                      <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
-                        {t('system.integrationCenter.requestConfig')}
+                    {fieldBuckets.publicInterfaceFields.length > 0 ? (
+                      <div className={fieldBuckets.credentialFields.length > 0 ? 'py-4' : 'pt-4'}>
+                        <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
+                          {t('system.integrationCenter.requestConfig')}
+                        </div>
+                        {fieldBuckets.publicInterfaceFields.map((field) => renderTemplateField(field))}
                       </div>
-                      {publicInterfaceFields.map((field) => renderTemplateField(field))}
-                    </div>
-                  ) : null}
-                </>
-              )}
-            </Form>
-          </div>
-        ) : (
-          <div className="px-6 py-6">
-            <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
-              <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
-                {t('system.integrationCenter.interfaceConfig')}
-              </div>
-              {activeFields.length > 0 ? (
-                activeFields.map((field) => renderTemplateField(field))
-              ) : (
-                <div className="rounded-2xl border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-6 text-[14px] text-[var(--color-text-3)]">
-                  {t('system.integrationCenter.noInterfaceConfig')}
-                </div>
-              )}
-            </Form>
-          </div>
-        )}
-
-        <div className="flex flex-col gap-3 border-t border-[var(--color-border)] px-6 py-4 lg:flex-row lg:items-center lg:justify-between">
-          <div className="text-[13px] text-[var(--color-text-3)]">
-            {activeTab === 'base'
-              ? t('system.integrationCenter.baseConnectionHint')
-              : started
-                ? t('system.integrationCenter.startedHint')
-                : t('system.integrationCenter.notStartedHint')}
-          </div>
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="text-[14px] text-[var(--color-text-2)]">
-              {t('system.integrationCenter.testStatus')}：
-              <span className="ml-2 inline-flex items-center gap-2">
-                <span
-                  className={`h-2.5 w-2.5 rounded-full ${currentCapabilityStatus === 'ready'
-                    ? 'bg-emerald-500'
-                    : currentCapabilityStatus === 'verification_failed'
-                      ? 'bg-red-500'
-                      : 'bg-slate-400'
-                    }`}
-                />
-                <span className="text-[var(--color-text)]">
-                  {activeTab === 'base'
-                    ? getIntegrationTestStatusText(instance.status, t)
-                    : getIntegrationCapabilityStatusText(currentCapabilityStatus || 'pending_verification', t)}
-                </span>
-              </span>
+                    ) : null}
+                  </>
+                )}
+              </Form>
             </div>
+          ) : (
+            <div className="pt-1">
+              <Form form={form} layout="vertical" onValuesChange={() => setIsFormDirty(true)}>
+                <div className="py-4">
+                  <div className="mb-4 text-[16px] font-semibold text-[var(--color-text)]">
+                    {t('system.integrationCenter.interfaceConfig')}
+                  </div>
+                  {activeFields.length > 0 ? (
+                    activeFields.map((field) => renderTemplateField(field))
+                  ) : (
+                    <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-6 text-[14px] text-[var(--color-text-3)]">
+                      {t('system.integrationCenter.noInterfaceConfig')}
+                    </div>
+                  )}
+                </div>
+              </Form>
+            </div>
+          )}
 
-            {activeTab !== 'base' && (
-              <div className="text-[14px] text-[var(--color-text-2)]">
-                {t('system.integrationCenter.platformStatus')}：
-                <span className="ml-2 inline-flex items-center gap-2">
-                  <span
-                    className={`h-2.5 w-2.5 rounded-full ${instance.capability_enabled?.[activeTab] ? 'bg-emerald-500' : 'bg-slate-400'
-                      }`}
-                  />
-                  <span className="text-[var(--color-text)]">
-                    {instance.capability_enabled?.[activeTab]
-                      ? t('system.integrationCenter.enabled')
-                      : t('system.integrationCenter.disabled')}
-                  </span>
-                </span>
+          <div className="flex flex-col gap-3 border-t border-[var(--color-border)] pt-2">
+            <div className="text-[13px] text-[var(--color-text-3)]">
+              {activeTab === 'base'
+                ? t('system.integrationCenter.baseConnectionHint')
+                : started
+                  ? t('system.integrationCenter.startedHint')
+                  : t('system.integrationCenter.notStartedHint')}
+            </div>
+            <div className="flex flex-wrap items-center justify-between gap-3 mt-3">
+              <Button
+                type="link"
+                icon={<ArrowLeftOutlined />}
+                className="px-0"
+                onClick={() => router.push('/system-manager/integration-center')}
+              >
+                {t('system.integrationCenter.back')}
+              </Button>
+              <div className="flex flex-wrap items-center gap-3">
+                <PermissionWrapper requiredPermissions={['Edit']}>
+                  <Button onClick={handleSave} loading={saving}>
+                    {t('common.save')}
+                  </Button>
+                </PermissionWrapper>
+                <PermissionWrapper requiredPermissions={['Edit']}>
+                  <Button onClick={handleTestConnection} loading={testing} type="primary">
+                    {testing
+                      ? t('system.integrationCenter.testing')
+                      : activeTab === 'base'
+                        ? t('system.integrationCenter.testAllConnections')
+                        : t('system.integrationCenter.testConnection')}
+                  </Button>
+                </PermissionWrapper>
+                {activeTab !== 'base' && (
+                  <PermissionWrapper requiredPermissions={['Edit']}>
+                    <Button
+                      onClick={() => handleToggleCapability(!instance.capability_enabled?.[activeTab])}
+                      loading={saving}
+                    >
+                      {instance.capability_enabled?.[activeTab]
+                        ? t('system.integrationCenter.disableCapability')
+                        : t('system.integrationCenter.enableCapability')}
+                    </Button>
+                  </PermissionWrapper>
+                )}
               </div>
-            )}
-            <Button onClick={() => router.push('/system-manager/integration-center')}>{t(`system.integrationCenter.back`)}</Button>
-            <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button onClick={handleSave} loading={saving}>
-                {t('common.save')}
-              </Button>
-            </PermissionWrapper>
-            <PermissionWrapper requiredPermissions={['Edit']}>
-              <Button onClick={handleTestConnection} loading={testing}>
-                {testing
-                  ? t('system.integrationCenter.testing')
-                  : activeTab === 'base'
-                    ? t('system.integrationCenter.testAllConnections')
-                    : t('system.integrationCenter.testConnection')}
-              </Button>
-            </PermissionWrapper>
-            {activeTab !== 'base' && (
-              <PermissionWrapper requiredPermissions={['Edit']}>
-                <Button
-                  onClick={() => handleToggleCapability(!instance.capability_enabled?.[activeTab])}
-                  loading={saving}
-                >
-                  {instance.capability_enabled?.[activeTab]
-                    ? t('system.integrationCenter.disableCapability')
-                    : t('system.integrationCenter.enableCapability')}
-                </Button>
-              </PermissionWrapper>
-            )}
+            </div>
           </div>
         </div>
+
+        <aside className="border-l border-[var(--color-border)] px-5 py-5">
+          <div className="mb-4 text-base font-semibold text-[var(--color-text)]">{t('system.integrationCenter.statusSummary')}</div>
+          <div className="space-y-3">
+            {summaryItems.map((item) => (
+              <div
+                key={item.label}
+                className="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-2"
+              >
+                <div className="mb-1 text-xs text-[var(--color-text-3)]">{item.label}</div>
+                <Badge
+                  status={item.tone === 'success' ? 'success' : item.tone === 'error' ? 'error' : 'default'}
+                  text={<span className="text-[14px] text-[var(--color-text)]">{item.value}</span>}
+                />
+              </div>
+            ))}
+          </div>
+        </aside>
       </section>
     </div>
   );
