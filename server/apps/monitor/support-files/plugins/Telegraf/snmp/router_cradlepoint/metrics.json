@@ -46,7 +46,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "CPU utilization (1-minute) of the NEC UNIVERGE IX router (NEC private MIB)."
+      "description": "CPU utilization of the Cradlepoint cellular router (Cradlepoint private MIB, IANA PEN 20992), reported directly as a percentage."
     },
     {
       "metric_group": "Router",
@@ -59,7 +59,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Memory utilization of the NEC UNIVERGE IX router (NEC private MIB), reported directly."
+      "description": "Memory utilization of the Cradlepoint cellular router (Cradlepoint private MIB, IANA PEN 20992), reported directly as a percentage."
     },
     {
       "metric_group": "Status",
@@ -234,7 +234,7 @@
       "instance_id_keys": [
         "instance_id"
       ],
-      "description": "Chassis temperature of the NEC UNIVERGE IX router in Celsius (NEC private MIB, scalar)."
+      "description": "Internal chassis temperature of the Cradlepoint cellular router in degrees Celsius (Cradlepoint private MIB, IANA PEN 20992, scalar)."
     },
     {
       "metric_group": "Traffic",
