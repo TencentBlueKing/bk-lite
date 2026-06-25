@@ -44,6 +44,15 @@ def test_normalize_failure_classifies_file_busy_and_extracts_target_path():
     assert failure["context"]["target_path"] == "/opt/fusion-collectors/bin/vector"
 
 
+def test_normalize_failure_ignores_successful_status_messages():
+    assert normalize_failure(message="Sidecar acknowledged action", details={}) is None
+    assert normalize_failure(message="Collector action completed", details={}) is None
+
+    failure = normalize_failure(message="Collector action failed", details={})
+    assert failure is not None
+    assert failure["type"] == "unknown"
+
+
 def test_normalize_failure_classifies_ssh_auth_failure_before_connection():
     failure = normalize_failure(
         message=(

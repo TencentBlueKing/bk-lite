@@ -7,7 +7,8 @@ import {
   getInstallerFailureGuidance,
   getInstallerSummaryProgressInfo,
   getInstallerSummaryGuidance,
-  normalizeInstallerResult
+  normalizeInstallerResult,
+  shouldUseControllerInstallPhases
 } from '../src/app/node-manager/utils/installerProgress.ts';
 
 const translations: Record<string, string> = {
@@ -251,6 +252,42 @@ assert.deepEqual(
 );
 assert.equal(noReportPhases[2].detailState, 'no_report');
 assert.equal(noReportPhases[2].showMissingSteps, false);
+
+assert.equal(
+  shouldUseControllerInstallPhases({
+    steps: [
+      { action: 'dispatch_command', status: 'success', message: 'Submit collector action', timestamp: '' },
+      { action: 'consume_ack', status: 'success', message: 'Sidecar acknowledged action', timestamp: '' },
+      { action: 'execute_command', status: 'running', message: 'Execute collector action', timestamp: '' }
+    ]
+  }),
+  false
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({
+    steps: [
+      { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+      { action: 'run', status: 'success', message: 'Installer bootstrap completed', timestamp: '' }
+    ]
+  }),
+  true
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({
+    steps: [
+      {
+        action: 'run',
+        status: 'success',
+        message: 'Installer bootstrap completed',
+        timestamp: '',
+        details: { installer_event: true, raw_step: 'fetch_session' }
+      }
+    ]
+  }),
+  true
+);
 
 const commandFailedWithoutInstallerEventsPhases = deriveControllerInstallPhases({
   steps: [
