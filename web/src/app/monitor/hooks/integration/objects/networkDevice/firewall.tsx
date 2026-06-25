@@ -63,6 +63,8 @@ export const useFirewallConfig = () => {
       'Firewall Sophos XG SNMP': 'snmp_sophos',
       'Firewall Forcepoint SNMP': 'snmp_forcepoint',
       'Firewall ScreenOS SNMP': 'snmp_screenos',
+      'Firewall Neteye SNMP': 'snmp_neteye',
+      'Firewall Bluedon SNMP': 'snmp_bluedon',
       'Firewall Check Point SNMP': 'snmp_checkpoint',
       'Firewall Stormshield SNMP': 'snmp_stormshield',
       'Firewall Palo Alto SNMP': 'snmp_paloalto',

@@ -4326,6 +4326,18 @@ monitor_object_plugin:
       computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
       object, so PSU is not collected (N/A).
       Supported brands/models — SNR (NAG) managed switches.
+  Switch BDCOM SNMP:
+    name: BDCOM (Telegraf)
+    desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
+      template (BDCOM private MIBs, IANA PEN 3320). In addition to standard IF-MIB
+      interface metrics, it collects BDCOM private OIDs for device health including
+      control-plane CPU utilization over the last 5 minutes (NMS-PROCESS-MIB
+      cpmCPUTotal5min), system memory pool used and free bytes (NMS-MEMORY-POOL-MIB,
+      mirroring the Cisco-style memory pool table) and per-card temperature (BDCOM-SYS
+      nmscardTemperature, a dedicated typed column). Memory utilization is computed
+      from used/(used+free). BDCOM switch MIBs expose no dedicated fan-state or
+      power-supply (PSU) state object, so fan and PSU are not collected (N/A).
+      Supported brands/models — BDCOM managed Ethernet switches and OLT line cards.
   Switch Parks SNMP:
     name: Parks (Telegraf)
     desc: Parks PK700-series switch-specific SNMP collection template (PARKS-PK700 MIB,
@@ -4409,6 +4421,9 @@ monitor_object_plugin:
   Switch Moxa SNMP:
     name: Moxa (Telegraf)
     desc: Moxa industrial Ethernet switch SNMP collection (MOXA-MIB, IANA PEN 8691). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Moxa private OIDs for device health including chassis temperature (in degrees Celsius) and dual power-input state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). Moxa industrial switches are commonly fanless passively cooled and the private MIB does not expose CPU/memory load in a row-filter-free scalar form, so CPU/memory/fan are N/A. Supported brands/models — Moxa industrial managed switches (EDS / IKS / ICS / SDS series; enterprise 8691).
+  Switch Korenix SNMP:
+    name: Korenix (Telegraf)
+    desc: Korenix JetNet industrial Ethernet switch SNMP collection (enterprise 24062). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic, per-interface incoming/outgoing error and discard rates, interface admin/oper status and bandwidth, plus device-aggregated total incoming/outgoing traffic rates. Korenix JetNet units are fanless passively cooled industrial managed switches whose temperature, dual power-input and relay-alarm environmental objects live in the vendor private MIB (enterprise 24062) and are not collected by this baseline template, so CPU, memory, temperature, fan and power are N/A. Supported brands/models — Korenix JetNet industrial Ethernet switches (JetNet 4508 / 5210G / 5310G / 6524G series; enterprise 24062).
   Switch GarretCom SNMP:
     name: GarretCom (Telegraf)
     desc: GarretCom (Belden) industrial Ethernet switch SNMP collection (MAGNUM-MIB, IANA PEN 14778). Beyond standard IF-MIB 64-bit HC interface traffic, it collects GarretCom Magnum private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in KB, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). GarretCom industrial switches use fanless passive cooling, so fan is N/A. Supported brands/models — GarretCom Magnum industrial managed switches (6K / 10K / DX series; enterprise 14778).
@@ -4577,6 +4592,12 @@ monitor_object_plugin:
   Firewall ScreenOS SNMP:
     name: Juniper ScreenOS (Telegraf)
     desc: Juniper ScreenOS (NetScreen) firewall SNMP collection (NETSCREEN-RESOURCE-MIB, IANA PEN 3224). Beyond standard IF-MIB interface metrics, it collects ScreenOS private OIDs for device health including CPU utilisation over the last 5 minutes (nsResCpuLast5Min) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Juniper NetScreen / SSG firewalls running ScreenOS (enterprise 3224).
+  Firewall Neteye SNMP:
+    name: Neteye (Telegraf)
+    desc: Neteye (网御星云 / Leadsec) firewall SNMP collection (enterprise 3224 resource MIB). Beyond standard IF-MIB interface metrics, it collects Neteye private OIDs for device health including average CPU utilisation (nsResCpuAvg) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Beijing Neteye (Leadsec) NGFW / UTM firewalls (enterprise 3224).
+  Firewall Bluedon SNMP:
+    name: Bluedon (Telegraf)
+    desc: Bluedon (蓝盾) firewall SNMP collection (enterprise 36889 private MIB). Beyond standard IF-MIB interface metrics, it collects Bluedon private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Bluedon Information Security firewalls / network-security appliances (enterprise 36889).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
@@ -4727,6 +4748,9 @@ monitor_object_plugin:
   Router OneAccess SNMP:
     name: OneAccess (Telegraf)
     desc: OneAccess enterprise CPE / SD-WAN router SNMP collection (ONEACCESS-SYS-MIB, IANA PEN 13191). Beyond standard IF-MIB 64-bit HC interface traffic, it collects OneAccess private OIDs for device health including CPU utilisation (reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). OneAccess compact enterprise CPEs are fanless fixed-configuration designs whose private MIB does not expose temperature/fan/power sensors as row-filter-free scalars, so temperature/fan/power are N/A. Supported brands/models — OneAccess enterprise routers / SD-WAN CPE (ONE series; enterprise 13191; now part of Ekinops).
+  Router Harbour SNMP:
+    name: Harbour Networks (Telegraf)
+    desc: Harbour Networks (港湾网络) router SNMP collection (enterprise 8212 private MIB). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Harbour Networks private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Harbour Networks routers (enterprise 8212).
   Router Bintec SNMP:
     name: Bintec (Telegraf)
     desc: Bintec SMB router / VPN-gateway SNMP collection (BINTEC-MIB, IANA PEN 272). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Bintec private OIDs for device health including CPU utilisation (reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). Bintec compact enterprise routers are fanless fixed-configuration designs whose private MIB does not expose temperature/fan/power sensors as row-filter-free scalars, so temperature/fan/power are N/A. Supported brands/models — Bintec routers / VPN gateways (bintec-elmeg RS / RXL / be.IP series; enterprise 272; shares the MIB family with Teldat).
