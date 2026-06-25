@@ -152,7 +152,7 @@ export function formatIntegrationInstanceDisplayName(
   t: (key: string, fallback?: string) => string,
 ): string {
   const providerDisplayName = t(`system.integrationCenter.provider.${instance.provider_key}`);
-  return `${instance.name}(${providerDisplayName})`;
+  return `${instance.name} / ${providerDisplayName}`;
 }
 
 export function getIntegrationCapabilityEnabled(

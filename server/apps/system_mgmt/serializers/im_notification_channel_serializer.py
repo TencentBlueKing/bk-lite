@@ -25,6 +25,7 @@ class IMNotificationUserMappingSerializer(serializers.ModelSerializer):
 
 class IMNotificationChannelSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
+    provider_key = serializers.SerializerMethodField()
     display_status = serializers.SerializerMethodField()
     display_sync_status = serializers.SerializerMethodField()
     display_sync_summary = serializers.SerializerMethodField()
@@ -43,6 +44,9 @@ class IMNotificationChannelSerializer(UsernameSerializer):
 
     def get_integration_instance_name(self, obj):
         return obj.integration_instance.name if obj.integration_instance_id else ""
+    
+    def get_provider_key(self, obj):
+        return obj.integration_instance.provider_key if obj.integration_instance_id else ""
 
     def get_display_status(self, obj):
         latest_run = self._get_latest_run(obj)

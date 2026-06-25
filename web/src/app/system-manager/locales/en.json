@@ -700,8 +700,8 @@
       "imNotificationPage": {
         "pageDesc": "Manage IM application notification channels, configure integration instances and user field mappings, and use dedicated actions for mapping sync and test send.",
         "name": "Name",
-        "integrationInstance": "Integration Instance",
-        "integrationInstancePlaceholder": "Please select an integration instance",
+        "integrationInstance": "Integrated System",
+        "integrationInstancePlaceholder": "Please select an integrated system",
         "description": "Description",
         "namePlaceholder": "Enter a name",
         "descriptionPlaceholder": "Enter a description",

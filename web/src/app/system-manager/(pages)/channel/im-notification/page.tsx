@@ -377,9 +377,8 @@ const ImNotificationPage: React.FC = () => {
         await fetchChannels(1, pagination.pageSize);
       }
       setModalOpen(false);
-    } catch (error) {
-      if (error && typeof error === 'object' && 'errorFields' in error) return;
-      message.error(t('common.operationFailed'));
+    } catch {
+      message.error(t('common.error'))
     } finally {
       setModalLoading(false);
     }
@@ -484,17 +483,19 @@ const ImNotificationPage: React.FC = () => {
         .filter((channel) => channel.status === 'ready')
         .map((channel) => ({
           value: channel.id,
-          label: `${channel.name} (${channel.integration_instance_name})`,
+          label: `${channel.name}`,
         })),
     [channels],
   );
 
   const sendReceiverOptions = useMemo(
     () =>
-      sendMappings.map((mapping) => ({
-        value: mapping.user,
-        label: `${mapping.username} — ${mapping.external_identity_key}: ${mapping.external_identity_value}`,
-      })),
+      sendMappings.map((mapping) => {
+        return ({
+          value: mapping.user,
+          label: `${mapping.username}`,
+        })
+      }),
     [sendMappings],
   );
 
@@ -566,11 +567,20 @@ const ImNotificationPage: React.FC = () => {
       key: 'name',
       title: t('system.channel.imNotificationPage.name'),
       dataIndex: 'name',
+      render: (_, record) => {
+        return (<>
+          <p className='font-semibold'>{record.name}</p>
+          <span className='text-xs text-[var(--color-text-3)]'>{record.description || '--'}</span>
+        </>)
+      }
     },
     {
       key: 'integration_instance_name',
       title: t('system.channel.imNotificationPage.integrationInstance'),
       dataIndex: 'integration_instance_name',
+      render: (_, record) => {
+        return (<>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</>)
+      }
     },
     {
       key: 'latest_sync',
@@ -632,7 +642,7 @@ const ImNotificationPage: React.FC = () => {
       key: 'actions',
       dataIndex: 'actions',
       fixed: 'right',
-      width: 150,
+      width: 200,
       render: (_, record: IMNotificationChannel) => (
         <Space wrap>
           <PermissionWrapper requiredPermissions={['Edit']}>
@@ -821,7 +831,7 @@ const ImNotificationPage: React.FC = () => {
                   <div className="mt-3 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3">
                     <Form.Item
                       name="platform_match_field"
-                      rules={[{ required: true }]}
+                      rules={[{ required: true, message: t(`common.selectMsg`) }]}
                       className="mb-0"
                     >
                       <Select options={platformMatchOptions} />
@@ -831,7 +841,7 @@ const ImNotificationPage: React.FC = () => {
                     </div>
                     <Form.Item
                       name="external_match_field"
-                      rules={[{ required: true }]}
+                      rules={[{ required: true, message: t(`common.selectMsg`) }]}
                       className="mb-0"
                     >
                       <Select
@@ -850,7 +860,7 @@ const ImNotificationPage: React.FC = () => {
                     <Form.Item
                       name="external_receive_field"
                       label={t('system.channel.imNotificationPage.receiveField')}
-                      rules={[{ required: true }]}
+                      rules={[{ required: true, message: t(`common.selectMsg`) }]}
                       className="mb-0"
                     >
                       <Select

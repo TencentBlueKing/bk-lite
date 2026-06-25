@@ -700,8 +700,8 @@
       "imNotificationPage": {
         "pageDesc": "维护 IM 应用通知渠道，配置集成实例与用户字段映射，并通过独立入口管理映射同步与测试发送。",
         "name": "名称",
-        "integrationInstance": "集成实例",
-        "integrationInstancePlaceholder": "请选择集成实例",
+        "integrationInstance": "集成系统",
+        "integrationInstancePlaceholder": "请选择集成系统",
         "description": "描述",
         "namePlaceholder": "请输入名称",
         "descriptionPlaceholder": "请输入描述",
@@ -914,8 +914,8 @@
       },
       "provider": {
         "label": "集成类型",
-        "feishu": "飞书",
-        "wechat": "微信",
+        "feishu": "Feishu",
+        "wechat": "Wechat",
         "ldap": "LDAP",
         "oidc": "OIDC",
         "saml": "SAML",
