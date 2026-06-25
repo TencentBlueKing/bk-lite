@@ -3869,6 +3869,10 @@ monitor_object_plugin:
     name: SNR（Telegraf）
     desc: SNR（НАГ/NAG）交换机专用 SNMP 采集模板（NAG-MIB，IANA PEN 40418）。在标准 IF-MIB 接口指标之外，额外采集 SNR 私有 OID 的设备健康指标：各 slot CPU 使用率（sysCpuUsage）、系统内存（总量/已用）、机箱温度（sysTemperature 专用温度列）与风扇状态（sysFanStatus）。风扇原始码（0=正常/1=异常）经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。NAG-MIB 无独立电源（PSU）状态对象，故电源不采集（N/A）。
       适用品牌型号——SNR（NAG）网管交换机。
+  Switch BDCOM SNMP:
+    name: BDCOM（Telegraf）
+    desc: BDCOM（上海博达数据通信）交换机专用 SNMP 采集模板（BDCOM 私有 MIB，IANA PEN 3320）。在标准 IF-MIB 接口指标之外，额外采集 BDCOM 私有 OID 的设备健康指标：最近 5 分钟控制平面 CPU 使用率（NMS-PROCESS-MIB cpmCPUTotal5min）、系统内存池已用/空闲字节（NMS-MEMORY-POOL-MIB，镜像 Cisco 风格内存池表）与各板卡温度（BDCOM-SYS nmscardTemperature 专用温度列）。内存使用率按 used/(used+free) 计算。BDCOM 交换机 MIB 无独立风扇/电源（PSU）状态对象，故风扇与电源不采集（N/A）。
+      适用品牌型号——BDCOM 网管以太网交换机及 OLT 线卡。
   Switch Parks SNMP:
     name: Parks（Telegraf）
     desc: Parks PK700 系列交换机专用 SNMP 采集模板（PARKS-PK700 MIB，IANA PEN 50224）。在标准 IF-MIB 接口指标之外，额外采集 Parks 私有 OID 的设备健康指标：CPU 使用率（cpuUsage）、内存使用率（直接百分比标量）与机箱主芯片温度（mainChipTemperature）。PARKS-PK700 MIB 无独立风扇/电源状态对象，故不采集（N/A）；SFP 光功率/模块温度属端口级诊断、非设备级健康，本插件亦不采。

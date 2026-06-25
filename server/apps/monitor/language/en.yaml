@@ -4326,6 +4326,18 @@ monitor_object_plugin:
       computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
       object, so PSU is not collected (N/A).
       Supported brands/models — SNR (NAG) managed switches.
+  Switch BDCOM SNMP:
+    name: BDCOM (Telegraf)
+    desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
+      template (BDCOM private MIBs, IANA PEN 3320). In addition to standard IF-MIB
+      interface metrics, it collects BDCOM private OIDs for device health including
+      control-plane CPU utilization over the last 5 minutes (NMS-PROCESS-MIB
+      cpmCPUTotal5min), system memory pool used and free bytes (NMS-MEMORY-POOL-MIB,
+      mirroring the Cisco-style memory pool table) and per-card temperature (BDCOM-SYS
+      nmscardTemperature, a dedicated typed column). Memory utilization is computed
+      from used/(used+free). BDCOM switch MIBs expose no dedicated fan-state or
+      power-supply (PSU) state object, so fan and PSU are not collected (N/A).
+      Supported brands/models — BDCOM managed Ethernet switches and OLT line cards.
   Switch Parks SNMP:
     name: Parks (Telegraf)
     desc: Parks PK700-series switch-specific SNMP collection template (PARKS-PK700 MIB,
