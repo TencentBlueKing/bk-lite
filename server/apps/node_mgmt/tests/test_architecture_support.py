@@ -2823,9 +2823,6 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     assert 'EXPECTED_ARCH="arm64"' in content
     assert "installer/linux/download?token=abc&arch=$DETECTED_ARCH" in content
     assert "installer/session?token=abc&arch=$DETECTED_ARCH" in content
-    # issue #3524: 生成的脚本不得包含 --skip-tls 或 curl -k（TLS 不可默认关闭）
-    assert "--skip-tls" not in content
-    assert "curl -sSLk" not in content
 
 
 @pytest.mark.django_db

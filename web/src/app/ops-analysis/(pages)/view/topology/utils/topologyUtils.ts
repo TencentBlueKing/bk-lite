@@ -1,6 +1,10 @@
 import { EdgeCreationData } from '@/app/ops-analysis/types/topology';
 import { NODE_DEFAULTS, PORT_DEFAULTS, COLORS, SPACING } from '../constants/nodeDefaults';
 import type { Node, Edge, Graph } from '@antv/x6';
+import {
+  getTopologyEdgeLabelVisual,
+  getTopologyEdgeVisual,
+} from './topologyVisualStyles';
 
 // 通用工具函数
 export const getValueByPath = (obj: unknown, path: string): unknown => {
@@ -243,18 +247,7 @@ export const createPortConfig = (fillColor = PORT_DEFAULTS.FILL_COLOR, nodeSize 
   };
 };
 export const createEdgeLabel = (text: string = '') => {
-  return {
-    attrs: {
-      text: {
-        text,
-        fill: '#333',
-        fontSize: 12,
-        textAnchor: 'middle',
-        textVerticalAnchor: 'middle',
-      },
-    },
-    position: 0.5,
-  };
+  return getTopologyEdgeLabelVisual(text);
 };
 
 // 根据样式配置获取边线样式
@@ -267,45 +260,7 @@ export const getEdgeStyleWithConfig = (
     enableAnimation?: boolean;
   }
 ) => {
-  const arrowConfig = {
-    none: { sourceMarker: null, targetMarker: null },
-    single: { sourceMarker: null, targetMarker: { name: 'block', size: 8 } },
-    double: {
-      sourceMarker: { name: 'block', size: 8 },
-      targetMarker: { name: 'block', size: 8 },
-    },
-  };
-
-  const lineAttrs: any = {
-    stroke: styleConfig?.lineColor || COLORS.EDGE.DEFAULT,
-    strokeWidth: styleConfig?.lineWidth || SPACING.STROKE_WIDTH.THIN,
-    ...arrowConfig[connectionType],
-  };
-
-  // 设置线条样式
-  if (styleConfig?.lineStyle === 'dotted') {
-    lineAttrs.strokeDasharray = '3 3';
-  } else if (styleConfig?.lineStyle === 'point') {
-    lineAttrs.strokeDasharray = '1 3';
-  } else if (styleConfig?.lineStyle === 'line') {
-    lineAttrs.strokeDasharray = null;
-  }
-
-  // 设置动画
-  if (
-    connectionType === 'single' &&
-    styleConfig?.enableAnimation &&
-    (styleConfig?.lineStyle === 'dotted' || styleConfig?.lineStyle === 'point')
-  ) {
-    lineAttrs.class = 'edge-flow-animation';
-  }
-
-  return {
-    attrs: {
-      line: lineAttrs,
-    },
-    labels: [],
-  };
+  return getTopologyEdgeVisual(connectionType, styleConfig);
 };
 
 export const getEdgeStyleWithLabel = (

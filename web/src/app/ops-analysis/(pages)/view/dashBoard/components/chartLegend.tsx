@@ -14,6 +14,7 @@ interface ChartLegendProps {
   layout?: 'vertical' | 'horizontal';
   /** 是否显示百分比（饼图用） */
   showPercent?: boolean;
+  textColor?: string;
   onSelectionChange?: (selected: Record<string, boolean>) => void;
 }
 
@@ -22,6 +23,7 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
   colors,
   layout = 'vertical',
   showPercent = false,
+  textColor,
   onSelectionChange,
 }) => {
   const themeName = resolveOpsChartThemeName();
@@ -88,7 +90,9 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
               className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
               style={{ backgroundColor: chartColors[index % chartColors.length] }}
             />
-            <span className="text-xs text-[var(--color-text-2)]">{item.name}</span>
+            <span className="text-xs text-[var(--color-text-2)]" style={{ color: textColor }}>
+              {item.name}
+            </span>
           </div>
         ))}
       </div>
@@ -115,7 +119,10 @@ const ChartLegend: React.FC<ChartLegendProps> = ({
                 className="inline-block w-2.5 h-2.5 rounded-sm flex-shrink-0"
                 style={{ backgroundColor: chartColors[index % chartColors.length] }}
               />
-              <span className="inline-block max-w-64 text-xs text-[var(--color-text-2)] truncate">
+              <span
+                className="inline-block max-w-64 text-xs text-[var(--color-text-2)] truncate"
+                style={{ color: textColor }}
+              >
                 {item.name}
                 {percent != null && ` (${percent}%)`}
               </span>

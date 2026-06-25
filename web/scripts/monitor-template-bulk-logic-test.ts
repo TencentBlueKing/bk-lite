@@ -80,6 +80,7 @@ const config = {
   enable: true,
   schedule: { type: 'min', value: 5 },
   period: { type: 'min', value: 10 },
+  trigger_count: 2,
   notice: true,
   notice_type_ids: [1, 2],
   notice_type: 'email',
@@ -107,8 +108,15 @@ assert.deepEqual(payload.asset_ids, ["('host-a',)", "('host-b',)"]);
 assert.deepEqual(payload.templates.map((item) => item.collect_type), [11, 11]);
 assert.deepEqual(payload.config.notice_type_ids, [1, 2]);
 assert.equal(payload.config.notice_type, 'email');
+assert.equal(payload.config.trigger_count, 2);
 assert.equal('no_data_level' in payload.config, false);
 assert.equal('no_data_alert_name' in payload.config, false);
+
+const defaultTriggerConfig = normalizeBulkConfig({
+  ...config,
+  trigger_count: undefined,
+});
+assert.equal(defaultTriggerConfig.trigger_count, 1);
 
 const noDataDisabledConfig = normalizeBulkConfig({
   ...config,

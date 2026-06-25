@@ -280,6 +280,7 @@ export const useNodeConfigFlow = ({
             fontSize: values.fontSize,
             fontWeight: values.fontWeight,
             renderEffect: values.renderEffect,
+            frameVariant: values.frameVariant,
             iconPadding: values.iconPadding,
             lineType: values.lineType,
             shapeType: values.shapeType,

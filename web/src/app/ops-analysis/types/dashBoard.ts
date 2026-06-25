@@ -2,6 +2,7 @@ import { TopologyNodeData } from './topology';
 import type { ParamItem, DatasourceItem } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import type { Dayjs } from 'dayjs';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -87,6 +88,7 @@ import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export interface ValueConfig {
   chartType?: string;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
   params?: Record<string, string | number | boolean | [number, number] | null>;
@@ -175,6 +177,7 @@ export interface ViewConfigProps {
   onConfirm?: (values: WidgetConfig) => void;
   onClose?: () => void;
   builtinNamespaceId?: number;
+  showChartThemeMode?: boolean;
 }
 
 export interface ComponentSelectorProps {

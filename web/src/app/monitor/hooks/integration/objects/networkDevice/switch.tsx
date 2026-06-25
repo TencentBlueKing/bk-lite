@@ -126,6 +126,7 @@ export const useSwitchConfig = () => {
       'Switch Datacom SNMP': 'snmp_datacom',
       'Switch Eltex SNMP': 'snmp_eltex',
       'Switch SNR SNMP': 'snmp_snr',
+      'Switch BDCOM SNMP': 'snmp_bdcom',
       'Switch Parks SNMP': 'snmp_parks',
       'Switch Ubiquiti SNMP': 'snmp_ubiquiti',
       'Switch Ruijie SNMP': 'snmp_ruijie',
@@ -146,6 +147,7 @@ export const useSwitchConfig = () => {
       'Switch GarretCom SNMP': 'snmp_garretcom',
       'Switch Enterasys SNMP': 'snmp_enterasys',
       'Switch Cumulus SNMP': 'snmp_cumulus',
+      'Switch Korenix SNMP': 'snmp_korenix',
       'Switch 3Com SNMP': 'snmp_3com',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'

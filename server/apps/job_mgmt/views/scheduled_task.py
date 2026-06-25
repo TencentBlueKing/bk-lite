@@ -19,6 +19,7 @@ from apps.job_mgmt.serializers.scheduled_task import (
     ScheduledTaskUpdateSerializer,
 )
 from apps.job_mgmt.services.celery_dispatch import dispatch_celery_task
+from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.scheduled_task_service import ScheduledTaskService
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_playbook_task, execute_script_task
@@ -131,6 +132,30 @@ class ScheduledTaskViewSet(AuthViewSet):
         params = instance.params if isinstance(instance.params, list) else []
         resolved_params = ScriptParamsService.resolve_params(params, script=instance.script)
         params_str = ScriptParamsService.params_to_string(resolved_params)
+
+        # 脚本内容：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
+        script_content = instance.script_content or ""
+        if instance.script:
+            script_content = instance.script.content or script_content
+
+        # 高危命令/路径预检：与 execute_scheduled_task 保持一致，命中则直接拒绝，不创建执行记录
+        team = instance.team or []
+        if instance.job_type == JobType.SCRIPT and script_content:
+            check_result = DangerousChecker.check_command(script_content, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                return Response(
+                    {"error": f"脚本包含高危命令，已拦截: {', '.join(forbidden_rules)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
+        if instance.job_type == JobType.FILE_DISTRIBUTION and instance.target_path:
+            check_result = DangerousChecker.check_path(instance.target_path, team)
+            if not check_result.can_execute:
+                forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
+                return Response(
+                    {"error": f"目标路径为高危路径，已拦截: {', '.join(forbidden_rules)}"},
+                    status=status.HTTP_400_BAD_REQUEST,
+                )
 
         # 根据作业类型创建执行记录
         execution = JobExecution.objects.create(
