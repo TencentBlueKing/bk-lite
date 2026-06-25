@@ -3881,6 +3881,10 @@ monitor_object_plugin:
     name: Pica8（Telegraf）
     desc: Pica8 PicOS 白盒交换机专用 SNMP 采集模板（PICA-PRIVATE-MIB，IANA PEN 35098）。PicOS 仅暴露公共 IF-MIB 加自有私有 MIB（不使用 NET-SNMP UCD 或 HOST-RESOURCES MIB）。在标准 IF-MIB 接口指标之外，额外采集 Pica8 私有控制平面 CPU 使用率（cpuUsage），为干净的整数百分比标量。内存（totalPhyMemory/usedPhyMemory/freePhyMemory）与温度（switchTemperature）在私有 MIB 中仅以 DisplayString 文本暴露、非数值 gauge，风扇仅为转速字符串加 trap、无可轮询的风扇状态枚举，冗余电源表的状态枚举码无公开文档，故内存/温度/风扇/电源不采集（N/A），以免上报无法解析或未经核实的脏值。
       适用品牌型号——运行 PicOS 的 Pica8 白盒交换机。
+  Switch Advantech SNMP:
+    name: Advantech（Telegraf）
+    desc: Advantech（研华）EKI 工业管理型交换机专用 SNMP 采集模板（ADVANTECH-EKI-PRONEER-MIB，IANA PEN 10297）。在标准 IF-MIB 接口指标之外，额外采集 Advantech 私有冗余电源 LED 状态对象（ledStatus 组下的 ledPWR1Status），用作电源健康指标。LED 原始码（0=notSupported / 1=up 即电源在位正常 / 2=down 即电源输入丢失）经 telegraf processors.enum 归一为 1=正常/2=异常（notSupported 视为正常）。EKI 为无风扇工业交换机，ProView MIB 无 CPU、无内存、无数值温度、无风扇对象（仅离散 LED 状态枚举），故 CPU/内存/温度/风扇不采集（N/A）。
+      适用品牌型号——Advantech EKI 管理型工业以太网交换机。
   Switch BDCOM SNMP:
     name: BDCOM（Telegraf）
     desc: BDCOM（上海博达数据通信）交换机专用 SNMP 采集模板（BDCOM 私有 MIB，IANA PEN 3320）。在标准 IF-MIB 接口指标之外，额外采集 BDCOM 私有 OID 的设备健康指标：最近 5 分钟控制平面 CPU 使用率（NMS-PROCESS-MIB cpmCPUTotal5min）、系统内存池已用/空闲字节（NMS-MEMORY-POOL-MIB，镜像 Cisco 风格内存池表）与各板卡温度（BDCOM-SYS nmscardTemperature 专用温度列）。内存使用率按 used/(used+free) 计算。BDCOM 交换机 MIB 无独立风扇/电源（PSU）状态对象，故风扇与电源不采集（N/A）。

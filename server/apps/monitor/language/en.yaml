@@ -4370,6 +4370,19 @@ monitor_object_plugin:
       status enum, so memory, temperature, fan and power supply are not collected (N/A) to
       avoid reporting unparseable or unverified values.
       Supported brands/models — Pica8 white-box switches running PicOS.
+  Switch Advantech SNMP:
+    name: Advantech (Telegraf)
+    desc: Advantech EKI industrial managed switch-specific SNMP collection template
+      (ADVANTECH-EKI-PRONEER-MIB, IANA PEN 10297). In addition to standard IF-MIB
+      interface metrics, it collects the Advantech private redundant-power LED-state
+      object (ledPWR1Status under the ledStatus group) used as a power-supply health
+      indicator. The LED raw codes (0=notSupported, 1=up meaning power present/OK, 2=down
+      meaning power input lost) are normalized via telegraf processors.enum to 1=healthy /
+      2=fault, with notSupported treated as healthy. EKI switches are fanless and the
+      ProView MIB exposes no CPU, memory, numeric temperature or fan objects (only
+      discrete LED-state enums), so CPU, memory, temperature and fan are not collected
+      (N/A).
+      Supported brands/models — Advantech EKI managed industrial Ethernet switches.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
