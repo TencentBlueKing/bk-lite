@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Divider, Form, Input, Popconfirm, Select, Space, Spin, Tag, message } from 'antd';
+import { Button, Divider, Form, Input, Popconfirm, Select, Spin, Tag, message } from 'antd';
 import { AimOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useIntl } from 'react-intl';
@@ -205,30 +205,37 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             </div>
           )}
 
-          {/* 危险操作 */}
+          {/* 危险区域(参考 GitHub Danger Zone:红框容器 + 每项 标题/后果说明/危险按钮) */}
           <div style={show('danger')} className="max-w-2xl">
             {head(<WarningOutlined />, t('wiki.dangerZone'))}
-            <Space direction="vertical" className="w-full" size="middle">
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--color-text-3)] text-sm">{t('wiki.rebuildAllTip')}</span>
+            <div className="rounded-lg border border-[var(--color-fail)]">
+              <div className="flex items-center justify-between gap-4 p-4">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-[var(--color-text-1)]">{t('wiki.rebuildAll')}</div>
+                  <div className="text-[13px] leading-6 text-[var(--color-text-3)] mt-0.5">{t('wiki.rebuildAllTip')}</div>
+                </div>
                 <Popconfirm title={t('wiki.rebuildAllConfirm')} onConfirm={() => runDanger(() => rebuildKnowledgeBase(kbId))}>
-                  <Button loading={busy}>{t('wiki.rebuildAll')}</Button>
+                  <Button loading={busy} className="flex-shrink-0">
+                    {t('wiki.rebuildAll')}
+                  </Button>
                 </Popconfirm>
               </div>
-              <Divider className="my-1" />
-              <div className="flex items-center justify-between">
-                <span className="text-[var(--color-text-3)] text-sm">{t('wiki.deleteTip')}</span>
+              <div className="flex items-center justify-between gap-4 p-4 border-t border-[var(--color-fail)]">
+                <div className="min-w-0">
+                  <div className="text-sm font-medium text-[var(--color-fail)]">{t('wiki.deleteKb')}</div>
+                  <div className="text-[13px] leading-6 text-[var(--color-text-3)] mt-0.5">{t('wiki.deleteTip')}</div>
+                </div>
                 <Popconfirm
                   title={t('wiki.deleteConfirm')}
                   okButtonProps={{ danger: true }}
                   onConfirm={() => runDanger(() => deleteKnowledgeBase(kbId), () => router.push('/opspilot/wiki'))}
                 >
-                  <Button danger loading={busy}>
+                  <Button danger loading={busy} className="flex-shrink-0">
                     {t('common.delete')}
                   </Button>
                 </Popconfirm>
               </div>
-            </Space>
+            </div>
           </div>
         </div>
 
