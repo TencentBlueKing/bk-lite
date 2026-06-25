@@ -4343,6 +4343,20 @@ monitor_object_plugin:
       does not support), so temperature, fan and power supply are not collected (N/A).
       Supported brands/models — Intelbras S/SG managed enterprise switches (Comware-based
       managed line); lower-end web-smart/unmanaged models expose only MIB-II + IF-MIB.
+  Switch Nexans SNMP:
+    name: Nexans (Telegraf)
+    desc: Nexans Advanced Networking Solutions (Nexans ANS) industrial managed
+      switch-specific SNMP collection template (NEXANS-BM-MIB, IANA PEN 266). In
+      addition to standard IF-MIB interface metrics, it collects Nexans private OIDs
+      for device health — chassis temperature (bmSwitchInfo infoTemperature, a
+      dedicated scalar in degrees Celsius) and an industrial alarm-relay state used as
+      a power-supply health proxy (infoAlarmStateM1). The alarm-relay raw codes
+      (1=notSupported, 2=alarmOff meaning OK, 3/7/8/9 and higher=alarm asserted,
+      including explicit power-supply S1/S2 faults) are normalized via telegraf
+      processors.enum to 1=healthy / 2=fault, with notSupported treated as healthy.
+      Nexans GigaSwitch/DualSwitch devices are fanless and expose no CPU, memory or fan
+      OIDs, so those are not collected (N/A).
+      Supported brands/models — Nexans ANS GigaSwitch / DualSwitch industrial switches.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
