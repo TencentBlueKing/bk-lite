@@ -4222,6 +4222,10 @@ monitor_object_plugin:
     name: NetModule（Telegraf）
     desc: NetModule 工业 4G/5G LTE 路由器专用 SNMP 采集模板（NB-MIB，IANA PEN 31496）。在标准 IF-MIB 接口指标之外，额外采集 NetModule 私有系统温度对象（systemTemperature，原始值带十分之一度显示提示，÷10=摄氏度）。NB-MIB 无 CPU/内存/风扇/电源对象（NB/NG 系列为无风扇工业路由器）；设备虽运行嵌入式 Linux net-snmp，但 HOST-RESOURCES / UCD 的 CPU·内存 OID 是否启用因固件而异、未经核实，故 CPU/内存/风扇/电源不采集（N/A），仅采集系统温度 + 标准 IF-MIB 接口指标。
       适用品牌型号——NetModule NB/NG 系列工业 4G/5G LTE 路由器（IANA PEN 31496）。
+  Router MultiTech SNMP:
+    name: MultiTech（Telegraf）
+    desc: MultiTech Systems 蜂窝路由器/IoT 网关专用 SNMP 采集模板（MultiConnect rCell 系列，IANA PEN 995）。rCell 平台 SNMP agent 为 RFC1213 兼容（标准 MIB-II + IF-MIB），故本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 rCell agent 未以可轮询标量暴露设备健康量，故不采集（N/A）；蜂窝 RSSI/信号对象跨固件未统一以可轮询标量暴露，留待后续增量。
+      适用品牌型号——MultiTech MultiConnect rCell 100/300/500 系列蜂窝路由器与 IoT 网关。
   Router NEC SNMP:
     name: NEC（Telegraf）
     desc: NEC UNIVERGE IX 系列路由器专用 SNMP 采集模板（NEC 私有企业 MIB，企业号 119）。除标准 IF-MIB 接口指标外，额外采集 NEC 私有标量 OID 的设备健康指标：1 分钟 CPU 使用率、内存使用率、机箱温度，均直接上报。风扇与电源状态仅以每单元 LLD 状态行（厂商私有状态码）暴露，SNMP 采集端无法规范化，故为 N/A。适用品牌型号——NEC UNIVERGE IX 系列路由器（IX2000/IX3000 及其他 UNIVERGE IX 平台，企业号 119）。

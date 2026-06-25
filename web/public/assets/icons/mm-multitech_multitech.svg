@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="multitechOrange" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f08a24"/>
+      <stop offset="1" stop-color="#c25e0a"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#multitechOrange)"/>
+  <path d="M34 84 V40 L52 64 L70 40 V84 H58 V60 L52 68 L46 60 V84 Z" fill="#ffffff"/>
+  <rect x="76" y="40" width="12" height="44" fill="#ffffff"/>
+</svg>
