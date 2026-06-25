@@ -12,10 +12,11 @@ from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStat
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncRunSerializer, UserSyncSourceSerializer
 from apps.system_mgmt.services.user_sync_service import (
     ALL_DEPARTMENT_SELECTION_ID,
+    delete_user_sync_source,
     flatten_department_ids,
+    get_user_sync_root_department_input_mode,
     preview_user_sync,
     sync_source_now,
-    get_user_sync_root_department_input_mode,
 )
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -47,10 +48,9 @@ class UserSyncSourceViewSet(MaintainerViewSet):
         obj = self.get_object()
         obj.delete_sync_periodic_task()
         source_name = obj.name
-        response = super().destroy(request, *args, **kwargs)
-        if response.status_code == 204:
-            log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
-        return response
+        result = delete_user_sync_source(obj)
+        log_operation(request, "delete", "system-manager", f"删除用户同步源: {source_name}")
+        return JsonResponse(result)
 
     @action(methods=["GET"], detail=False, url_path="department_options")
     @HasPermission("user_sync-View")
@@ -138,6 +138,8 @@ class UserSyncSourceViewSet(MaintainerViewSet):
     @HasPermission("user_sync-Edit")
     def sync_now(self, request, *args, **kwargs):
         source = self.get_object()
+        if not source.enabled:
+            return JsonResponse({"result": False, "message": "User sync source is disabled"}, status=400)
         sync_source_now(source.id)
         log_operation(request, "execute", "system-manager", f"执行用户同步: {source.name}")
         return JsonResponse({"result": True, "message": "User sync task has been initiated"})

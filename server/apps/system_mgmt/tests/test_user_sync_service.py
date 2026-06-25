@@ -6,13 +6,18 @@ from unittest.mock import patch
 import pytest
 from django.utils import timezone
 
-from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncRunStatusChoices, UserSyncSource
+from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncRunStatusChoices, UserSyncSource, UserSyncTriggerModeChoices
 from apps.system_mgmt.providers.adapters import feishu as feishu_adapter
 from apps.system_mgmt.providers.adapters.feishu import FeishuUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncSourceSerializer
 from apps.system_mgmt.services import user_sync_service as user_sync_service_module
-from apps.system_mgmt.services.user_sync_service import execute_user_sync, get_user_sync_business_value, preview_user_sync
+from apps.system_mgmt.services.user_sync_service import (
+    detect_root_group_name_conflicts,
+    execute_user_sync,
+    get_user_sync_business_value,
+    preview_user_sync,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -67,6 +72,59 @@ def test_user_sync_source_serializer_rejects_conflicting_root_group_name(ready_i
     assert serializer.is_valid() is False
     assert "root_group_name" in serializer.errors
 
+
+@pytest.mark.django_db
+def test_create_source_rejects_existing_root_group_name_in_active_source(ready_integration_instance):
+    UserSyncSource.objects.create(
+        name="source-a",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Root A",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "source-b",
+            "integration_instance": ready_integration_instance.id,
+            "root_group_name": "Root A",
+            "business_config": {"root_department_id": "0"},
+            "field_mapping": {},
+            "schedule_config": {},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "root_group_name" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_historical_duplicate_root_group_sources_are_reported_but_not_auto_repaired(ready_integration_instance):
+    UserSyncSource.objects.create(
+        name="source-a",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Dup Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+    UserSyncSource.objects.create(
+        name="source-b",
+        integration_instance=ready_integration_instance,
+        enabled=False,
+        root_group_name="Dup Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    conflicts = detect_root_group_name_conflicts()
+
+    assert "Dup Root" in conflicts
+    assert len(conflicts["Dup Root"]) == 2
 
 @pytest.mark.django_db
 def test_user_sync_source_records_collection_returns_paginated_runs(
@@ -503,7 +561,7 @@ def test_feishu_user_sync_pre_refreshes_expiring_cached_token():
 
 
 # ---------------------------------------------------------------------------
-# Task 2: serializer — business_config
+# Task 2: serializer 鈥?business_config
 # ---------------------------------------------------------------------------
 
 
@@ -584,7 +642,7 @@ def test_serializer_normalizes_all_department_selection_and_passes_department_id
         payload={
             "all_department_id": "dept-all",
             "items": [
-                {"id": "__all__", "name": "全部部门", "parent_id": None, "children": []},
+                {"id": "__all__", "name": "鍏ㄩ儴閮ㄩ棬", "parent_id": None, "children": []},
                 {"id": "dept-all", "name": "Dept All", "parent_id": "__all__", "children": []},
                 {"id": "dept-a", "name": "Dept A", "parent_id": "dept-all", "children": []},
             ],
@@ -777,8 +835,9 @@ def test_execute_user_sync_with_business_config_uses_correct_root_department(rea
     assert run.synced_user_count == 1
 
 
+
 @pytest.mark.django_db
-def test_execute_user_sync_fails_when_user_belongs_to_another_sync_source(ready_integration_instance):
+def test_execute_user_sync_marks_partial_when_one_user_conflicts_but_others_sync(ready_integration_instance):
     source_a = UserSyncSource.objects.create(
         name="source-a",
         integration_instance=ready_integration_instance,
@@ -804,7 +863,7 @@ def test_execute_user_sync_fails_when_user_belongs_to_another_sync_source(ready_
             "group_list": [{"id": "dept-a", "parent_id": "0", "name": "Dept A"}],
             "user_list": [
                 {
-                    "user_id": "ou_shared_user",
+                    "user_id": "shared_user",
                     "name": "Shared User",
                     "email": "shared@example.com",
                     "mobile": "13800000001",
@@ -819,41 +878,157 @@ def test_execute_user_sync_fails_when_user_belongs_to_another_sync_source(ready_
             "group_list": [{"id": "dept-b", "parent_id": "0", "name": "Dept B"}],
             "user_list": [
                 {
-                    "user_id": "ou_shared_user",
+                    "user_id": "shared_user",
                     "name": "Shared User",
                     "email": "shared@example.com",
                     "mobile": "13800000001",
                     "department_ids": ["dept-b"],
-                }
+                },
+                {
+                    "user_id": "new_user",
+                    "name": "New User",
+                    "email": "new@example.com",
+                    "mobile": "13800000002",
+                    "department_ids": ["dept-b"],
+                },
             ],
         },
     )
 
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_a):
-        first_result = execute_user_sync(source_a.id)
-
-    assert first_result["result"] is True
-    original_user = User.objects.get(username="ou_shared_user", domain="domain.com")
-    original_group_list = list(original_user.group_list)
+        assert execute_user_sync(source_a.id)["result"] is True
 
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_b):
-        second_result = execute_user_sync(source_b.id)
+        result = execute_user_sync(source_b.id)
 
-    assert second_result["result"] is False
-    assert "ou_shared_user" in second_result["message"]
-
-    original_user.refresh_from_db()
-    assert original_user.sync_source_id == source_a.id
-    assert original_user.group_list == original_group_list
-
-    failed_run = UserSyncRun.objects.get(source=source_b)
-    assert failed_run.status == UserSyncRunStatusChoices.FAILED
-    assert "ou_shared_user" in failed_run.summary
-    assert Group.objects.filter(sync_source=source_b).count() == 0
+    assert result["result"] is True
+    run = UserSyncRun.objects.get(source=source_b)
+    assert run.status == UserSyncRunStatusChoices.PARTIAL
+    assert run.synced_user_count == 1
+    assert run.payload["conflict_usernames"] == ["shared_user"]
+    assert User.objects.get(username="new_user", domain="domain.com").sync_source_id == source_b.id
 
 
 @pytest.mark.django_db
-def test_execute_user_sync_fails_when_conflicting_user_is_created_during_bulk_create(ready_integration_instance):
+def test_execute_user_sync_marks_partial_when_user_groups_point_to_another_source(ready_integration_instance):
+    source_a = UserSyncSource.objects.create(
+        name="source-a",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Root A",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+    source_b = UserSyncSource.objects.create(
+        name="source-b",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Root B",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    foreign_root = Group.objects.create(name="Root A", parent_id=0, sync_source=source_a, external_id="user-sync:a:0")
+    foreign_dept = Group.objects.create(name="Dept A", parent_id=foreign_root.id, sync_source=source_a, external_id="user-sync:a:dept-a")
+    User.objects.create(
+        username="shared_user",
+        display_name="Shared User",
+        email="shared@example.com",
+        phone="13800000001",
+        password="",
+        domain="domain.com",
+        disabled=False,
+        group_list=[foreign_dept.id],
+        sync_source=None,
+    )
+
+    payload_b = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [{"id": "dept-b", "parent_id": "0", "name": "Dept B"}],
+            "user_list": [
+                {
+                    "user_id": "shared_user",
+                    "name": "Shared User",
+                    "email": "shared@example.com",
+                    "mobile": "13800000001",
+                    "department_ids": ["dept-b"],
+                },
+                {
+                    "user_id": "new_user_2",
+                    "name": "New User 2",
+                    "email": "new2@example.com",
+                    "mobile": "13800000003",
+                    "department_ids": ["dept-b"],
+                },
+            ],
+        },
+    )
+
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_b):
+        result = execute_user_sync(source_b.id)
+
+    assert result["result"] is True
+    run = UserSyncRun.objects.get(source=source_b)
+    assert run.status == UserSyncRunStatusChoices.PARTIAL
+    assert run.payload["conflict_usernames"] == ["shared_user"]
+    assert User.objects.get(username="new_user_2", domain="domain.com").sync_source_id == source_b.id
+
+
+@pytest.mark.django_db
+def test_reappearing_disabled_user_is_reenabled(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="source-a",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Root A",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "group_list": [{"id": "dept-a", "parent_id": "0", "name": "Dept A"}],
+            "user_list": [
+                {
+                    "user_id": "alice",
+                    "name": "Alice",
+                    "email": "alice@example.com",
+                    "mobile": "13800000004",
+                    "department_ids": ["dept-a"],
+                }
+            ],
+        },
+    )
+
+    root_group = Group.objects.create(name="Root A", parent_id=0, sync_source=source, external_id="user-sync:1:0")
+    user = User.objects.create(
+        username="alice",
+        display_name="Alice",
+        email="alice@example.com",
+        phone="13800000004",
+        password="",
+        domain="domain.com",
+        disabled=True,
+        group_list=[root_group.id],
+        sync_source=source,
+    )
+
+    with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload):
+        result = execute_user_sync(source.id)
+
+    assert result["result"] is True
+    user.refresh_from_db()
+    assert user.disabled is False
+
+
+@pytest.mark.django_db
+@pytest.mark.django_db
+def test_execute_user_sync_marks_partial_when_conflicting_user_is_created_during_bulk_create(ready_integration_instance):
     source_a = UserSyncSource.objects.create(
         name="source-a",
         integration_instance=ready_integration_instance,
@@ -910,17 +1085,15 @@ def test_execute_user_sync_fails_when_conflicting_user_is_created_during_bulk_cr
         with patch.object(User.objects, "bulk_create", side_effect=bulk_create_with_race):
             result = execute_user_sync(source_b.id)
 
-    assert result["result"] is False
-    assert "ou_shared_user" in result["message"]
-
-    failed_run = UserSyncRun.objects.get(source=source_b)
-    assert failed_run.status == UserSyncRunStatusChoices.FAILED
-    assert "ou_shared_user" in failed_run.summary
-    assert Group.objects.filter(sync_source=source_b).count() == 0
+    assert result["result"] is True
+    run = UserSyncRun.objects.get(source=source_b)
+    assert run.status == UserSyncRunStatusChoices.PARTIAL
+    assert run.payload["conflict_usernames"] == ["ou_shared_user"]
+    assert Group.objects.filter(sync_source=source_b).count() >= 1
 
 
 @pytest.mark.django_db
-def test_execute_user_sync_fails_when_existing_user_groups_belong_to_another_source(ready_integration_instance):
+def test_execute_user_sync_marks_partial_when_existing_user_groups_belong_to_another_source(ready_integration_instance):
     source_a = UserSyncSource.objects.create(
         name="source-a",
         integration_instance=ready_integration_instance,
@@ -973,13 +1146,54 @@ def test_execute_user_sync_fails_when_existing_user_groups_belong_to_another_sou
     with patch("apps.system_mgmt.services.user_sync_service.RuntimeApplicationService.execute", return_value=payload_b):
         result = execute_user_sync(source_b.id)
 
-    assert result["result"] is False
-    assert "ou_shared_user" in result["message"]
-
+    assert result["result"] is True
     user = User.objects.get(username="ou_shared_user", domain="domain.com")
     assert user.sync_source_id is None
     assert user.group_list == [dept_a.id]
 
-    failed_run = UserSyncRun.objects.get(source=source_b)
-    assert failed_run.status == UserSyncRunStatusChoices.FAILED
-    assert "ou_shared_user" in failed_run.summary
+    run = UserSyncRun.objects.get(source=source_b)
+    assert run.status == UserSyncRunStatusChoices.PARTIAL
+    assert run.payload["conflict_usernames"] == ["ou_shared_user"]
+
+
+@pytest.mark.django_db
+def test_scheduled_execution_for_disabled_source_creates_failed_run(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="source-disabled-schedule",
+        integration_instance=ready_integration_instance,
+        enabled=False,
+        root_group_name="Disabled Schedule Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    result = execute_user_sync(source.id, trigger_mode=UserSyncTriggerModeChoices.SCHEDULE)
+
+    assert result["result"] is False
+    run = UserSyncRun.objects.get(source=source)
+    assert run.trigger_mode == UserSyncTriggerModeChoices.SCHEDULE
+    assert run.status == UserSyncRunStatusChoices.FAILED
+    assert "disabled" in run.summary.lower()
+
+
+@pytest.mark.django_db
+def test_queued_sync_for_disabled_source_creates_failed_run(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="source-disabled-manual",
+        integration_instance=ready_integration_instance,
+        enabled=False,
+        root_group_name="Disabled Manual Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+
+    result = execute_user_sync(source.id)
+
+    assert result["result"] is False
+    run = UserSyncRun.objects.get(source=source)
+    assert run.status == UserSyncRunStatusChoices.FAILED
+    assert "disabled" in run.summary.lower()
+
+

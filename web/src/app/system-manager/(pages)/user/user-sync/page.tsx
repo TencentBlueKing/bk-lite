@@ -348,13 +348,17 @@ const UserSyncPage: React.FC = () => {
   const handleDelete = (source: UserSyncSource) => {
     Modal.confirm({
       title: t('system.user.userSyncPage.deleteConfirm'),
+      content: t('system.user.userSyncPage.deleteConfirmContent').replace('{{sourceName}}', source.name),
+      okType: 'danger',
       onOk: async () => {
         try {
           await deleteSyncSource(source.id);
           message.success(t('common.deleteSuccess'));
           fetchSources();
-        } catch {
-          // handled by request interceptor
+        } catch (error) {
+          if (!isSilentRequestError(error)) {
+            message.error(error instanceof Error ? error.message : t('common.deleteFailed'));
+          }
         }
       },
     });
@@ -374,6 +378,7 @@ const UserSyncPage: React.FC = () => {
 
   const descSlot = useCallback((item: UserSyncEntityItem) => (
     <Button
+      disabled={!item.raw.enabled}
       type="link"
       icon={<PlayCircleOutlined />}
       onClick={(event) => {

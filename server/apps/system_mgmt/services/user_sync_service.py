@@ -3,6 +3,7 @@ from types import SimpleNamespace
 
 from django.contrib.auth.hashers import make_password
 from django.db import transaction
+from django.db.models import Count
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -76,9 +77,11 @@ def flatten_department_ids(items: list[dict]) -> set[str]:
 
 
 def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeChoices.MANUAL):
-    source = UserSyncSource.objects.select_related("integration_instance").filter(id=source_id, enabled=True).first()
+    source = UserSyncSource.objects.select_related("integration_instance").filter(id=source_id).first()
     if not source:
         return {"result": False, "message": "User sync source not found"}
+    if not source.enabled:
+        return _create_failed_user_sync_run(source, trigger_mode, "User sync source is disabled")
 
     instance = source.integration_instance
     if not instance.enabled or instance.status != "ready" or instance.capability_status.get("user_sync") != "ready":
@@ -115,12 +118,12 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
         return {"result": False, "message": str(error)}
 
-    run.status = UserSyncRunStatusChoices.SUCCESS
+    run.status = UserSyncRunStatusChoices.PARTIAL if sync_summary["conflict_usernames"] else UserSyncRunStatusChoices.SUCCESS
     run.summary = sync_summary["summary"]
     run.synced_user_count = sync_summary["synced_user_count"]
     run.synced_group_count = sync_summary["synced_group_count"]
     run.disabled_user_count = sync_summary["disabled_user_count"]
-    run.payload = _build_run_payload(result, input_summary)
+    run.payload = _build_run_payload(result, input_summary, sync_summary)
     run.finished_at = timezone.now()
     run.save(
         update_fields=[
@@ -137,6 +140,16 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     )
     return {"result": True, "message": run.summary, "data": {"run_id": run.id}}
 
+
+def _create_failed_user_sync_run(source: UserSyncSource, trigger_mode: str, summary: str):
+    run = UserSyncRun.objects.create(
+        source=source,
+        trigger_mode=trigger_mode,
+        status=UserSyncRunStatusChoices.FAILED,
+        summary=summary,
+        finished_at=timezone.now(),
+    )
+    return {"result": False, "message": summary, "data": {"run_id": run.id}}
 
 def sync_source_now(source_id: int):
     from apps.system_mgmt.tasks import execute_user_sync_source
@@ -200,13 +213,17 @@ def _extract_input_summary(provider_payload: dict | None):
     }
 
 
-def _build_run_payload(result, input_summary: dict):
+def _build_run_payload(result, input_summary: dict, sync_summary: dict | None = None):
     provider_payload = result.payload or {}
-    return {
+    payload = {
         "external_request_id": str(provider_payload.get("external_request_id") or ""),
         "errors": [item.model_dump() for item in result.errors],
         "input_summary": input_summary,
     }
+    if sync_summary is not None:
+        payload["conflict_usernames"] = list(sync_summary.get("conflict_usernames") or [])
+        payload["conflict_user_count"] = len(payload["conflict_usernames"])
+    return payload
 
 
 def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
@@ -217,18 +234,31 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
     with transaction.atomic():
         root_group = _get_or_create_root_group(source)
         group_id_mapping, active_group_ids = _sync_groups(source, group_list, root_group, root_department_id)
-        synced_usernames, disabled_user_count = _sync_users(source, user_list, group_id_mapping, root_group.id, root_department_id)
+        synced_usernames, disabled_user_count, conflict_usernames = _sync_users(
+            source,
+            user_list,
+            group_id_mapping,
+            root_group.id,
+            root_department_id,
+        )
         stale_group_ids = list(Group.objects.filter(sync_source=source).exclude(id__in=active_group_ids).exclude(id=root_group.id).values_list("id", flat=True))
         if stale_group_ids:
             Group.objects.filter(id__in=stale_group_ids).delete()
-        summary = (
-            f"User sync completed: {len(synced_usernames)} users, {len(active_group_ids) - 1 if active_group_ids else 0} groups"
-        )
+
+        synced_group_count = max(len(active_group_ids) - 1, 0)
+        if conflict_usernames:
+            summary = (
+                f"User sync partially completed: {len(synced_usernames)} users, "
+                f"{synced_group_count} groups, {len(conflict_usernames)} conflicts"
+            )
+        else:
+            summary = f"User sync completed: {len(synced_usernames)} users, {synced_group_count} groups"
         return {
             "summary": summary,
             "synced_user_count": len(synced_usernames),
-            "synced_group_count": max(len(active_group_ids) - 1, 0),
+            "synced_group_count": synced_group_count,
             "disabled_user_count": disabled_user_count,
+            "conflict_usernames": conflict_usernames,
         }
 
 
@@ -338,11 +368,11 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
     existing_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain="domain.com")
     existing_user_map = {user.username: user for user in existing_users}
     synced_usernames = []
+    conflict_usernames = []
     create_users = []
     update_users = []
 
     for item in normalized_users:
-        synced_usernames.append(item["username"])
         user = existing_user_map.get(item["username"])
         if user is None:
             create_users.append(
@@ -360,7 +390,10 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
             )
             continue
 
-        _ensure_user_sync_source_match(user, source, item["username"])
+        try:
+            _ensure_user_sync_source_match(user, source, item["username"])
+        except ValueError:
+            conflict_usernames.append(item["username"])
 
     if create_users:
         User.objects.bulk_create(create_users, ignore_conflicts=True, batch_size=100)
@@ -373,7 +406,15 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
         if user is None:
             continue
 
-        _ensure_user_sync_source_match(user, source, item["username"])
+        try:
+            _ensure_user_sync_source_match(user, source, item["username"])
+        except ValueError:
+            if item["username"] not in conflict_usernames:
+                conflict_usernames.append(item["username"])
+            continue
+
+        if item["username"] not in synced_usernames:
+            synced_usernames.append(item["username"])
 
         changed = False
         for field in ("display_name", "email", "phone", "group_list"):
@@ -406,7 +447,7 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
     if affected_usernames:
         clear_users_permission_cache([{"username": username, "domain": "domain.com"} for username in affected_usernames])
 
-    return synced_usernames, disabled_user_count
+    return synced_usernames, disabled_user_count, sorted(set(conflict_usernames))
 
 
 def _ensure_user_sync_source_match(user: User, source: UserSyncSource, username: str):
@@ -443,3 +484,76 @@ def _mapped_value(raw_user: dict, field_mapping: dict, logical_key: str):
 
 def _scoped_external_id(source_id: int, external_id: str):
     return f"user-sync:{source_id}:{external_id}"
+
+
+def _get_user_sync_root_group(source: UserSyncSource):
+    return Group.objects.filter(parent_id=0, sync_source=source, name=source.root_group_name).order_by("id").first()
+
+
+def _collect_group_subtree_ids(root_group_id: int):
+    subtree_ids = {root_group_id}
+    frontier = [root_group_id]
+    while frontier:
+        child_ids = list(Group.objects.filter(parent_id__in=frontier).values_list("id", flat=True))
+        frontier = [group_id for group_id in child_ids if group_id not in subtree_ids]
+        subtree_ids.update(frontier)
+    return subtree_ids
+
+
+def delete_user_sync_source(source: UserSyncSource):
+    root_group = _get_user_sync_root_group(source)
+    subtree_ids = _collect_group_subtree_ids(root_group.id) if root_group else set()
+
+    users_to_delete = []
+    affected_usernames = []
+    for user in User.objects.all():
+        user_group_ids = set(user.group_list or [])
+        if user.sync_source_id == source.id or (subtree_ids and user_group_ids.intersection(subtree_ids)):
+            users_to_delete.append(user.id)
+            affected_usernames.append({"username": user.username, "domain": user.domain})
+
+    with transaction.atomic():
+        if users_to_delete:
+            User.objects.filter(id__in=users_to_delete).delete()
+        if subtree_ids:
+            Group.objects.filter(id__in=subtree_ids).delete()
+        source.delete()
+
+    if affected_usernames:
+        clear_users_permission_cache(affected_usernames)
+
+    return {
+        "result": True,
+        "message": "User sync source deleted",
+        "data": {
+            "deleted_group_count": len(subtree_ids),
+            "deleted_user_count": len(users_to_delete),
+        },
+    }
+
+
+def detect_root_group_name_conflicts():
+    duplicate_names = (
+        UserSyncSource.objects.exclude(root_group_name="")
+        .values("root_group_name")
+        .annotate(source_count=Count("id"))
+        .filter(source_count__gt=1)
+    )
+    conflicts = {}
+    for item in duplicate_names:
+        root_group_name = item["root_group_name"]
+        conflicts[root_group_name] = list(
+            UserSyncSource.objects.filter(root_group_name=root_group_name)
+            .order_by("id")
+            .values_list("id", flat=True)
+        )
+    return conflicts
+
+
+def is_root_group_name_reserved(root_group_name: str, current_source_id: int | None = None):
+    queryset = UserSyncSource.objects.filter(root_group_name=root_group_name, enabled=True)
+    if current_source_id is not None:
+        queryset = queryset.exclude(id=current_source_id)
+    return queryset.exists()
+
+

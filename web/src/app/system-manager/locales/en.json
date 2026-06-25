@@ -249,7 +249,7 @@
         "syncTime": "Sync Time",
         "syncNow": "Sync Now",
         "records": "Synchronized Log",
-        "deleteConfirm": "Are you sure you want to delete this sync source?",
+        "deleteConfirm": "Delete User Source",
         "syncStarted": "Sync started",
         "syncFailed": "Failed to start sync",
         "runStatus": {
@@ -284,7 +284,8 @@
         "platformFieldColumn": "User fields within the platform",
         "externalFieldColumn": "External Platform User Fields",
         "externalFieldsHint": "Reference for Available Fields in External Systems:",
-        "externalFieldPlaceholder": "Leave blank by default and fill in the external field name when needed"
+        "externalFieldPlaceholder": "Leave blank by default and fill in the external field name when needed",
+        "deleteConfirmContent": "Deleting user source \"{{sourceName}}\" will also delete the root organization, all child organizations, and users under it. This action cannot be undone."
       }
     },
     "security": {

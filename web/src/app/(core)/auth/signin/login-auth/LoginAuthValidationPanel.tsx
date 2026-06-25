@@ -27,7 +27,7 @@ export default function LoginAuthValidationPanel({
   return (
     <div className="space-y-3 pt-5">
       {shouldShowLoadingState && (
-        <div className="flex min-h-[132px] items-center justify-center rounded-[28px] border border-[#E9EDF5] bg-white/72 px-6 py-6 shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
+        <div className="flex min-h-[132px] items-center justify-center rounded-2xl border border-[#E9EDF5] bg-white/72 px-6 py-6 shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
           <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F4F7FB] text-[18px] text-(--color-text-3)">
             <LoadingOutlined />
           </div>
@@ -47,7 +47,7 @@ export default function LoginAuthValidationPanel({
                 title={binding.name}
                 disabled={isDisabled}
                 aria-pressed={isActive}
-                className={`flex h-[104px] w-full flex-col items-center rounded-3xl px-2 pt-4 pb-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all ${
+                className={`flex h-[104px] w-full flex-col items-center rounded-2xl px-2 pt-4 pb-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all ${
                   isActive
                     ? "border border-[#4F86FF] bg-white/90 shadow-[0_10px_22px_rgba(36,107,253,0.05)]"
                     : isDisabled

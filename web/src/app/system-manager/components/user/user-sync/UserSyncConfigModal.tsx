@@ -75,7 +75,7 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
   return (
     <OperateModal
     title={t('system.user.userSyncPage.accessConfig')}
-    subTitle={source ? `${source.name} · ${t(`system.user.userSyncPage.rootGroupName`)}：${source.root_group_name}` : ''}
+    subTitle={source ? `${source.name}` : ''}
     open={open}
     onCancel={onClose}
     width={820}

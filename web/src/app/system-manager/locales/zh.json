@@ -284,7 +284,8 @@
         "platformFieldColumn": "平台内用户字段",
         "externalFieldColumn": "外部平台用户字段",
         "externalFieldsHint": "外部系统可用字段参考：",
-        "externalFieldPlaceholder": "默认留空，按需填写外部字段名"
+        "externalFieldPlaceholder": "默认留空，按需填写外部字段名",
+        "deleteConfirmContent": "删除用户源{{sourceName}}后，会同时删除根组织和其下的所有子组织及用户。"
       }
     },
     "security": {

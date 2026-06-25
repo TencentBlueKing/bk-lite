@@ -15,7 +15,6 @@ import {
 } from 'antd';
 import CustomTable from '@/components/custom-table';
 import Icon from '@/components/icon';
-import type { ColumnsType } from 'antd/es/table';
 import { DeleteOutlined, EditOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from '@/components/permission';
@@ -30,6 +29,7 @@ import {
 } from '@/app/system-manager/api/login-auth';
 import { useTranslation } from '@/utils/i18n';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
+import { ColumnItem } from '@/types';
 
 const LoginAuthPage: React.FC = () => {
   const { t } = useTranslation();
@@ -110,8 +110,11 @@ const LoginAuthPage: React.FC = () => {
     return availableInstances.find((item) => item.id === binding.integration_instance)?.provider_key || '';
   };
 
-  const isBuiltinBinding = (binding: LoginAuthBinding) =>
-    getBindingProviderKey(binding) === builtinProviderKey;
+  const isBuiltinBinding = (binding: LoginAuthBinding) => {
+    const key = getBindingProviderKey(binding);
+    if (!key) return true;
+    return getBindingProviderKey(binding) === builtinProviderKey;
+  }
   const editingBuiltinBinding = editingBinding ? isBuiltinBinding(editingBinding) : false;
 
   const handleRefresh = async () => {
@@ -292,39 +295,35 @@ const LoginAuthPage: React.FC = () => {
     }
   };
 
-  const columns: ColumnsType<LoginAuthBinding> = [
-    // {
-    //   title: t('system.user.loginAuthPage.order'),
-    //   dataIndex: 'order',
-    //   width: 80,
-    // },
+  const columns: ColumnItem[] = [
     {
+      key: 'name',
       title: t('system.user.loginAuthPage.name'),
       dataIndex: 'name',
     },
     {
+      key: 'integration_instance_name',
       title: t('system.user.loginAuthPage.integrationInstance'),
       dataIndex: 'integration_instance_name',
     },
     {
+      key: 'description',
       title: t('system.user.loginAuthPage.description'),
       dataIndex: 'description',
       ellipsis: true,
     },
     {
+      key: 'icon',
       title: t('system.user.loginAuthPage.icon'),
       dataIndex: 'icon',
-      render: (icon: string) => (
-        icon
-          ? <Icon type={icon} className="text-[20px] text-[var(--color-primary)]" />
-          : '--'
+      render: (_, record) => (
+        record.icon
+          ? <Icon type={record.icon} className="text-[20px] text-[var(--color-primary)]" />
+          : <>{'--'}</>
       ),
     },
-    // {
-    //   title: t('system.user.loginAuthPage.platformField'),
-    //   dataIndex: 'platform_field',
-    // },
     {
+      key: 'enabled',
       title: t('system.user.loginAuthPage.enabled'),
       dataIndex: 'enabled',
       render: (enabled: boolean, record) => (
@@ -339,33 +338,48 @@ const LoginAuthPage: React.FC = () => {
     {
       title: t('common.actions'),
       key: 'actions',
+      dataIndex: 'actions',
       fixed: 'right',
-      render: (_, record) => (
-        <Space>
-          <PermissionWrapper requiredPermissions={['Edit']}>
-            <Button
-              type="link"
-              size="small"
-              icon={<EditOutlined />}
-              onClick={() => handleEdit(record)}
-            >
-              {t('common.edit')}
-            </Button>
-          </PermissionWrapper>
-          {!isBuiltinBinding(record) ? (
-            <PermissionWrapper requiredPermissions={['Delete']}>
-              <Popconfirm
-                title={t('system.user.loginAuthPage.deleteConfirm')}
-                onConfirm={() => handleDelete(record)}
+      render: (_, record) => {
+        const builtin = isBuiltinBinding(record);
+        return (
+          <Space>
+            <PermissionWrapper requiredPermissions={['Edit']}>
+              <Button
+                type="link"
+                size="small"
+                icon={<EditOutlined />}
+                disabled={builtin}
+                onClick={builtin ? undefined : () => handleEdit(record)}
               >
-                <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                {t('common.edit')}
+              </Button>
+            </PermissionWrapper>
+            <PermissionWrapper requiredPermissions={['Delete']}>
+              {builtin ? (
+                <Button
+                  type="link"
+                  size="small"
+                  danger
+                  icon={<DeleteOutlined />}
+                  disabled
+                >
                   {t('common.delete')}
                 </Button>
-              </Popconfirm>
+              ) : (
+                <Popconfirm
+                  title={t('system.user.loginAuthPage.deleteConfirm')}
+                  onConfirm={() => handleDelete(record)}
+                >
+                  <Button type="link" size="small" danger icon={<DeleteOutlined />}>
+                    {t('common.delete')}
+                  </Button>
+                </Popconfirm>
+              )}
             </PermissionWrapper>
-          ) : null}
-        </Space>
-      ),
+          </Space>
+        );
+      },
     },
   ];
 

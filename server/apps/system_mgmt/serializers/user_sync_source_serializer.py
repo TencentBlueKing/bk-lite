@@ -13,6 +13,7 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.services import user_sync_service
 from apps.system_mgmt.services.user_sync_service import (
     get_user_sync_root_department_input_mode,
+    is_root_group_name_reserved,
 )
 
 
@@ -56,12 +57,15 @@ class UserSyncSourceSerializer(UsernameSerializer):
         if not root_group_name:
             raise serializers.ValidationError({"root_group_name": "Root group name is required"})
 
-        existing_root_group = Group.objects.filter(parent_id=0, name=root_group_name).first()
         current_source_id = getattr(self.instance, "id", None)
+        if is_root_group_name_reserved(root_group_name, current_source_id=current_source_id):
+            raise serializers.ValidationError({"root_group_name": "Root group name is already used by another sync source"})
+
+        existing_root_group = Group.objects.filter(parent_id=0, name=root_group_name).first()
         if existing_root_group:
             if current_source_id is None:
                 raise serializers.ValidationError({"root_group_name": "Root group name is already used by another sync source"})
-            if existing_root_group.sync_source_id != current_source_id:
+            if existing_root_group.sync_source_id not in (None, current_source_id):
                 raise serializers.ValidationError({"root_group_name": "Root group name is already used by another sync source"})
 
         raw_business_config = attrs.get("business_config")
