@@ -22,8 +22,11 @@ export const useWikiApi = () => {
   const { get, post, put, del } = useApiClient();
 
   // ---- 知识库 ----
-  const fetchKnowledgeBases = (params?: Record<string, unknown>): Promise<WikiKnowledgeBase[]> =>
-    get(`${BASE}/knowledge_base/`, { params });
+  // 后端列表返回分页对象 {count, items};归一化为数组(兼容直接返回数组),避免调用方对对象做 .map 崩溃
+  const fetchKnowledgeBases = async (params?: Record<string, unknown>): Promise<WikiKnowledgeBase[]> => {
+    const res = await get(`${BASE}/knowledge_base/`, { params });
+    return Array.isArray(res) ? res : ((res as { items?: WikiKnowledgeBase[] })?.items ?? []);
+  };
 
   const fetchKnowledgeBase = (id: number): Promise<WikiKnowledgeBase> => get(`${BASE}/knowledge_base/${id}/`);
 
