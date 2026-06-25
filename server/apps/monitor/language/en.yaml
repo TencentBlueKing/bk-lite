@@ -4916,6 +4916,19 @@ monitor_object_plugin:
       temperature plus standard IF-MIB interface metrics are gathered.
       Supported brands/models — NetModule NB/NG-series industrial 4G/5G LTE routers (IANA
       PEN 31496).
+  Router MultiTech SNMP:
+    name: MultiTech (Telegraf)
+    desc: MultiTech Systems cellular router / IoT gateway SNMP collection template
+      (MultiConnect rCell series, IANA PEN 995). The rCell platform's SNMP agent is
+      RFC1213-compatible (standard MIB-II + IF-MIB), so this is a clean baseline template —
+      it collects system uptime and IF-MIB interface metrics including 64-bit
+      ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters
+      and aggregate device traffic. CPU, memory, temperature, fan and power-supply state
+      are not collected (N/A) because the rCell agent does not expose pollable scalar
+      device-health gauges for them, and cellular RSSI/signal objects are not consistently
+      scalar-walkable across firmware and are left for a future increment.
+      Supported brands/models — MultiTech MultiConnect rCell 100/300/500 series cellular
+      routers and IoT gateways.
   Router NEC SNMP:
     name: NEC (Telegraf)
     desc: NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health including 1-minute CPU utilization, memory utilization and chassis temperature, all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000 / IX3000 and other UNIVERGE IX platforms; enterprise 119).
