@@ -252,6 +252,31 @@ assert.deepEqual(
 assert.equal(noReportPhases[2].detailState, 'no_report');
 assert.equal(noReportPhases[2].showMissingSteps, false);
 
+const commandFailedWithoutInstallerEventsPhases = deriveControllerInstallPhases({
+  steps: [
+    { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+    {
+      action: 'run',
+      status: 'error',
+      message: 'Step failed: Failed to create SSH client',
+      timestamp: ''
+    }
+  ],
+  installer_summary: missingSummaryResult?.installer_summary
+});
+
+assert.deepEqual(
+  commandFailedWithoutInstallerEventsPhases.map((phase) => [phase.code, phase.status]),
+  [
+    ['credential_validation', 'success'],
+    ['command_dispatch', 'error'],
+    ['installer_execution', 'waiting'],
+    ['node_connectivity', 'waiting']
+  ]
+);
+assert.equal(commandFailedWithoutInstallerEventsPhases[2].detailState, 'none');
+assert.equal(commandFailedWithoutInstallerEventsPhases[2].showMissingSteps, false);
+
 const partialInstallerPhases = deriveControllerInstallPhases({
   steps: [
     { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },

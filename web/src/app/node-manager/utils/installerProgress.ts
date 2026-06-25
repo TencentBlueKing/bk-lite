@@ -852,12 +852,18 @@ export const deriveControllerInstallPhases = (
   const connectivityStep = findLatestStepByAction(steps, 'connectivity_check');
   const installerStepsReceived = !!summary?.observed_count;
   const showMissingSteps = installerStepsReceived && !!summary?.missing_steps?.length;
-  const installerDetailState: ControllerInstallPhaseDetailState =
-    !installerStepsReceived
-      ? 'no_report'
-      : showMissingSteps || summary?.state === 'incomplete_installer_events'
-        ? 'partial'
-        : 'complete';
+  const commandDispatched = commandStep?.status === 'success';
+  let installerDetailState: ControllerInstallPhaseDetailState = 'none';
+  if (commandDispatched && !installerStepsReceived) {
+    installerDetailState = 'no_report';
+  } else if (
+    commandDispatched &&
+    (showMissingSteps || summary?.state === 'incomplete_installer_events')
+  ) {
+    installerDetailState = 'partial';
+  } else if (commandDispatched) {
+    installerDetailState = 'complete';
+  }
 
   let installerStatus: ControllerInstallPhaseStatus;
   if (display.phase === 'installer_execution') {

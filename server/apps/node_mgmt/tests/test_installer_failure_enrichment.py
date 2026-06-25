@@ -44,6 +44,25 @@ def test_normalize_failure_classifies_file_busy_and_extracts_target_path():
     assert failure["context"]["target_path"] == "/opt/fusion-collectors/bin/vector"
 
 
+def test_normalize_failure_classifies_ssh_auth_failure_before_connection():
+    failure = normalize_failure(
+        message=(
+            "Step failed: Failed to create SSH client: ssh: handshake failed: "
+            "ssh: unable to authenticate, attempted methods [none password], "
+            "no supported methods remain"
+        ),
+        error=(
+            "Failed to create SSH client: ssh: handshake failed: ssh: unable "
+            "to authenticate, attempted methods [none password], no supported methods remain"
+        ),
+        details={},
+    )
+
+    assert failure is not None
+    assert failure["type"] == "auth"
+    assert failure["summary"] == "Authentication failed while accessing the required resource"
+
+
 def test_build_installer_event_record_attaches_typed_failure_metadata():
     event = build_installer_event_record(
         {

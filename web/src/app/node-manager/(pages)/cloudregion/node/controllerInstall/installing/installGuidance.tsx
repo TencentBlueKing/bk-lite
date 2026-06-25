@@ -338,7 +338,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                             {summaryGuidance || failureGuidance.suggestion || failureSuggestion}
                           </div>
                         )}
-                        {isInstallerPhase && installerSummary && (
+                        {isInstallerPhase && phase.detailState !== 'none' && installerSummary && (
                           <div className="mt-[10px] border-t border-[var(--color-border-1)] pt-[10px]">
                             <div className="flex flex-wrap items-center gap-[8px] text-[12px] text-[var(--color-text-2)]">
                               <span>

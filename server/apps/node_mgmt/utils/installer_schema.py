@@ -134,15 +134,23 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
         return "object_missing"
     if "bucket" in normalized_text and "not found" in normalized_text:
         return "bucket_missing"
+    if any(
+        marker in normalized_text
+        for marker in [
+            "authentication failed",
+            "unable to authenticate",
+            "no supported methods remain",
+            "authorization violation",
+            "access denied",
+            "invalid credentials",
+            "permission violation",
+        ]
+    ):
+        return "auth"
     if explicit_error_type == "connection" or any(
         marker in normalized_text for marker in ["connection refused", "connection reset", "no route to host", "network is unreachable", "ssh client"]
     ):
         return "connection"
-    if any(
-        marker in normalized_text
-        for marker in ["authentication failed", "authorization violation", "access denied", "invalid credentials", "permission violation"]
-    ):
-        return "auth"
     if any(marker in normalized_text for marker in ["permission denied", "operation not permitted", "read-only file system"]):
         return "permission"
     if any(marker in normalized_text for marker in ["no space left on device", "disk quota exceeded", "not enough space"]):
