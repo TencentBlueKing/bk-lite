@@ -4357,6 +4357,19 @@ monitor_object_plugin:
       Nexans GigaSwitch/DualSwitch devices are fanless and expose no CPU, memory or fan
       OIDs, so those are not collected (N/A).
       Supported brands/models — Nexans ANS GigaSwitch / DualSwitch industrial switches.
+  Switch Pica8 SNMP:
+    name: Pica8 (Telegraf)
+    desc: Pica8 PicOS white-box switch-specific SNMP collection template (PICA-PRIVATE-MIB,
+      IANA PEN 35098). PicOS exposes public IF-MIB plus its private MIB only (it does not
+      use NET-SNMP UCD or HOST-RESOURCES MIBs). In addition to standard IF-MIB interface
+      metrics, it collects the Pica8 private control-plane CPU utilization (cpuUsage), a
+      clean integer percentage scalar. Memory (totalPhyMemory/usedPhyMemory/freePhyMemory)
+      and temperature (switchTemperature) are exposed only as DisplayString text rather
+      than numeric gauges, fan health is a speed string plus traps with no pollable
+      fan-state enum, and the redundant power-supply table has no publicly documented
+      status enum, so memory, temperature, fan and power supply are not collected (N/A) to
+      avoid reporting unparseable or unverified values.
+      Supported brands/models — Pica8 white-box switches running PicOS.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
