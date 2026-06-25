@@ -4542,6 +4542,9 @@ monitor_object_plugin:
   Loadbalance Kemp LoadMaster SNMP:
     name: Kemp LoadMaster (Telegraf)
     desc: Kemp LoadMaster ADC / load balancer SNMP collection (B-100-MIB / ONE4NET, IANA PEN 12196). Beyond standard IF-MIB interface metrics, it collects Kemp private OIDs for device health and load including overall CPU utilization (cpuTotal) and system memory utilization (memUsedPercent), both reported directly as percentages, plus the current total number of active connections tracked by the LoadMaster (connectionTotal). Temperature/fan/power sensor OIDs are not exposed in a row-filter-free form by the LoadMaster MIB, so those are N/A. Supported brands/models — Kemp LoadMaster ADC (hardware LM-X, Virtual LoadMaster VLM, and cloud editions; enterprise 12196).
+  Loadbalance Superiority SNMP:
+    name: Superiority (Telegraf)
+    desc: Superiority (超数) load balancer SNMP collection (Foundry/Brocade-compatible private MIB, enterprise 1991). Beyond standard IF-MIB interface metrics, it collects the 1991 private OIDs for device health including average CPU utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.50, snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.53, snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Current connections / temperature / fan / power are not declared by the 1991 private tree, so they are N/A. Supported brands/models — Superiority load balancers reusing the Foundry/Brocade 1991 MIB tree.
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon (Telegraf)
     desc: Radware Alteon application switch / load balancer SNMP collection (ALTEON-CHEETAH-SWITCH-MIB, IANA PEN 1872). Beyond standard IF-MIB interface metrics, it collects Alteon private OIDs for device health including management-processor CPU utilization (mpCpuStatsUtil1Second, reported directly as a percentage) and main memory (mpMemStatsTotal/mpMemStatsFree in bytes, usage derived as (total-free)/total). The CHEETAH MIB does not expose a scalar connection/session count or temperature/fan/power, so those are N/A. Supported brands/models — Radware Alteon ADC / application switches running AlteonOS (Alteon 4408 / 5208 / 6420 / 8420 / 9800 and VA virtual appliances; enterprise 1872).
@@ -4607,6 +4610,12 @@ monitor_object_plugin:
   Firewall Westone SNMP:
     name: Westone (Telegraf)
     desc: Westone (卫士通) firewall SNMP collection (enterprise 31648 private MIB). Beyond standard IF-MIB interface metrics, it collects Westone private OIDs for device health including average CPU utilisation (OID 31648.3.15.1, reported directly as a percentage) and memory utilisation (OID 31648.3.15.5, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Westone Information Security firewalls / network-security appliances (enterprise 31648).
+  Firewall Amaranten SNMP:
+    name: Amaranten (Telegraf)
+    desc: Amaranten (安然) firewall SNMP collection (Foundry/Brocade-compatible private MIB, enterprise 1991). Beyond standard IF-MIB interface metrics, it collects the 1991 private OIDs for device health including average CPU utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.50, snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.53, snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Amaranten firewalls / network-security appliances reusing the Foundry/Brocade 1991 MIB tree.
+  Firewall Secworld SNMP:
+    name: Secworld (Telegraf)
+    desc: Secworld (安世) firewall SNMP collection (Foundry/Brocade-compatible private MIB, enterprise 1991). Beyond standard IF-MIB interface metrics, it collects the 1991 private OIDs for device health including average CPU utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.50, snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.53, snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Secworld firewalls / network-security appliances reusing the Foundry/Brocade 1991 MIB tree.
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.

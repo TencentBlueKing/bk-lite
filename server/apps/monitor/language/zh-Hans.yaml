@@ -4023,6 +4023,9 @@ monitor_object_plugin:
   Loadbalance Kemp LoadMaster SNMP:
     name: Kemp LoadMaster（Telegraf）
     desc: Kemp LoadMaster 应用交付控制器/负载均衡器专用 SNMP 采集模板（B-100-MIB / ONE4NET，企业号 12196）。除标准 IF-MIB 接口指标外，额外采集 Kemp 私有 OID 的设备健康与负载指标：整机 CPU 使用率（cpuTotal）、系统内存使用率（memUsedPercent，均直接以百分比上报），以及 LoadMaster 当前活动连接总数（connectionTotal）。LoadMaster MIB 未以无需行过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Kemp LoadMaster ADC（硬件 LM-X、虚拟 VLM 及云版本，企业号 12196）。
+  Loadbalance Superiority SNMP:
+    name: 超数（Telegraf）
+    desc: 超数（Superiority）负载均衡专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。当前连接数/温度/风扇/电源 1991 私有树未声明，故为 N/A。适用品牌型号——超数（Superiority）负载均衡设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon（Telegraf）
     desc: Radware Alteon 应用交换机/负载均衡器专用 SNMP 采集模板（ALTEON-CHEETAH-SWITCH-MIB，企业号 1872）。除标准 IF-MIB 接口指标外，额外采集 Alteon 私有 OID 的设备健康指标：管理处理器 CPU 使用率（mpCpuStatsUtil1Second，直接以百分比上报）与主内存（mpMemStatsTotal/mpMemStatsFree，字节，用量按 (总量-空闲)/总量 推导）。CHEETAH MIB 未暴露标量连接/会话数与温度/风扇/电源，故为 N/A。适用品牌型号——运行 AlteonOS 的 Radware Alteon ADC/应用交换机（Alteon 4408/5208/6420/8420/9800 及 VA 虚拟设备，企业号 1872）。
@@ -4072,6 +4075,12 @@ monitor_object_plugin:
   Firewall Westone SNMP:
     name: 卫士通（Telegraf）
     desc: 卫士通（Westone）防火墙专用 SNMP 采集模板（企业号 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集卫士通私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——卫士通信息安全（Westone）防火墙 / 网络安全设备（企业号 31648）。
+  Firewall Amaranten SNMP:
+    name: 安然（Telegraf）
+    desc: 安然（Amaranten）防火墙专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——安然（Amaranten）防火墙 / 网络安全设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
+  Firewall Secworld SNMP:
+    name: 安世（Telegraf）
+    desc: 安世（Secworld）防火墙专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——安世（Secworld）防火墙 / 网络安全设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
   Firewall Check Point SNMP:
     name: Check Point（Telegraf）
     desc: 面向 Check Point Quantum NGFW（Gaia）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 CHECKPOINT-MIB 私有 OID 的设备健康（CPU 使用率，真实内存 总量/空闲/已用及推算使用率）与防火墙特有的 VPN 吞吐（每秒加密/解密包数）。内存使用率按 (总量-空闲)/总量 推算。
