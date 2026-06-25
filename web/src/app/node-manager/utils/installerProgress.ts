@@ -103,13 +103,23 @@ const normalizeProgress = (progress?: InstallerProgressMetric) => {
   const percent = normalizeNumber(progress.percent);
   const current = normalizeNumber(progress.current);
   const total = normalizeNumber(progress.total);
+  const unit = normalizeText(progress.unit);
+  const normalizedProgress: InstallerProgressMetric = {};
 
-  return {
-    percent: percent === null ? null : clampNumber(Math.round(percent), 0, 100),
-    current: current === null ? null : Math.max(current, 0),
-    total: total === null ? null : Math.max(total, 0),
-    unit: normalizeText(progress.unit)
-  };
+  if (percent !== null) {
+    normalizedProgress.percent = clampNumber(Math.round(percent), 0, 100);
+  }
+  if (current !== null) {
+    normalizedProgress.current = Math.max(current, 0);
+  }
+  if (total !== null) {
+    normalizedProgress.total = Math.max(total, 0);
+  }
+  if (unit) {
+    normalizedProgress.unit = unit;
+  }
+
+  return Object.keys(normalizedProgress).length ? normalizedProgress : null;
 };
 
 const normalizeStringList = (values?: string[] | null) => {
@@ -661,6 +671,28 @@ const findLatestStepByAction = (steps: LogStep[] | undefined, action: string) =>
   }
 
   return [...steps].reverse().find((step) => step.action === action) || null;
+};
+
+const CONTROLLER_INSTALL_ACTIONS = new Set([
+  'credential_check',
+  'run',
+  'connectivity_check'
+]);
+
+export const shouldUseControllerInstallPhases = (
+  result?: OperationTaskResult | null
+) => {
+  const normalizedResult = normalizeInstallerResult(result);
+  const steps = normalizedResult?.steps || [];
+  const summary = normalizedResult?.installer_summary;
+
+  if (summary || normalizedResult?.controller_install_display) {
+    return true;
+  }
+
+  return steps.some((step) =>
+    CONTROLLER_INSTALL_ACTIONS.has(step.action) || !!step.details?.installer_event
+  );
 };
 
 const buildDisplayResult = (
