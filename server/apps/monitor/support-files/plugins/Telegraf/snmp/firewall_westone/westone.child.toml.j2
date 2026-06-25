@@ -1,0 +1,64 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_westone"
+        config_type = "westone"
+        brand = "westone"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Westone(卫士通) CPU (enterprise 31648, 直接%, scalar, PEN 31648) ----
+    # 权威来源：本地 snmp.yaml CPU平均使用率 1.3.6.1.4.1.31648.3.15.1（直接%）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.31648.3.15.1.0"
+        name = "usage"
+    # ---- Westone 内存 (内存使用率, 直接%, scalar；无 used/free 字节, 直接为使用率) ----
+    # 权威来源：本地 snmp.yaml 内存使用率 1.3.6.1.4.1.31648.3.15.5（直报%）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.31648.3.15.5.0"
+        name = "usage"
+# ---- 温/风/电/会话：卫士通 31648 私有 MIB 仅声明 CPU/内存利用率, 无温度/风扇/电源/会话 OID → N/A。CPU+内存(直接%)干净可采。----
