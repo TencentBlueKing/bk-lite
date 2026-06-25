@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_nexans",
+  "plugin": "Switch Nexans SNMP",
+  "plugin_desc": "Nexans Advanced Networking Solutions (Nexans ANS) industrial managed switch-specific SNMP collection (NEXANS-BM-MIB, IANA PEN 266). In addition to standard IF-MIB interface metrics, it collects Nexans private OIDs for device health — chassis temperature (bmSwitchInfo infoTemperature, a dedicated scalar in degrees Celsius) and an industrial alarm-relay state used as a power-supply health proxy (infoAlarmStateM1). The alarm-relay raw codes (1=notSupported, 2=alarmOff which means OK, 3/7/8/9 and higher=alarm asserted including explicit power-supply S1/S2 faults) are normalized via telegraf processors.enum to 1=healthy / 2=fault, with notSupported treated as healthy. Nexans GigaSwitch/DualSwitch devices are fanless and expose no CPU, memory or fan OIDs, so those are not collected (N/A). Supported brands/models — Nexans ANS GigaSwitch / DualSwitch industrial managed switches.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_nexans'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the Nexans device (NEXANS-BM-MIB bmSwitchInfo infoTemperature, a dedicated scalar typed temperature object). High temperatures can indicate cooling failure or airflow obstruction in the cabinet and risk thermal damage; the device also exposes a configured high-temperature limit (infoTemperatureMaxAllowed)."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply health of the Nexans device, derived from the industrial alarm-relay output (NEXANS-BM-MIB infoAlarmStateM1). The raw codes (1=notSupported, 2=alarmOff meaning OK, 3 and higher=alarm asserted, including the explicit power-supply-S1/S2 fault codes 7/8/9) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates an asserted hardware/power alarm that warrants investigation."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}
