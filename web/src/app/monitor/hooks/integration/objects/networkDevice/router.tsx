@@ -71,6 +71,7 @@ export const useRouterConfig = () => {
       'Router Versa SNMP': 'snmp_versa',
       'Router Viprinet SNMP': 'snmp_viprinet',
       'Router OneAccess SNMP': 'snmp_oneaccess',
+      'Router Harbour SNMP': 'snmp_harbour',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
