@@ -4089,6 +4089,20 @@ monitor_object_plugin:
   Wireless Proxim SNMP:
     name: Wireless Proxim SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/subscriber units) use Proxim ORiNOCO/Tsunami private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp; LibreNMS also has no Proxim processors/mempools/sensors discovery (only ORiNOCO-MIB for OS detection), so wireless health is N/A. Applicable to Proxim Wireless devices (ORiNOCO AP access points, Tsunami MP point-to-multipoint backhaul base stations/subscriber units, enterprise OID 841) and other IF-MIB compliant wireless AP/backhaul bridges.
+  Wireless EnGenius SNMP:
+    name: EnGenius (Telegraf)
+    desc: Baseline SNMP collection template for EnGenius wireless devices (interface
+      traffic + uptime, Senao enterprise OID 14125). Collects IF-MIB 64-bit HC interface
+      counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime).
+      EnGenius private MIBs are config-oriented—ENGENIUS-PRIVATE-MIB exposes no CPU,
+      temperature or memory objects; only legacy mesh-firmware ENGENIUS-MESH-MIB exposes
+      a free-memory percentage and a string uptime, and cloud-managed ECW/EWS models lack
+      that private tree; there is no scalar associated-client count (the client table is
+      text-typed and not reliably gaugeable) and no channel-utilization object. To stay
+      reliably collectable across models including cloud-managed ones, CPU, memory,
+      temperature, client count and channel utilization are not collected (N/A).
+      Supported brands/models — EnGenius enterprise wireless APs (ECW/EWS cloud-managed
+      series, ENH/ENS access points, enterprise OID 14125).
   Transmission Ciena SNMP:
     name: Transmission Ciena SNMP
     desc: Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets) plus uptime. Health metrics of Ciena SAOS transmission devices (temperature/optical module power/laser bias current) use per-row indexed MIB tables with row-level filtering (skip_values); telegraf inputs.snmp cannot do row-level filtering, so they are N/A. Applicable to Ciena SAOS transmission/packet-optical devices.
@@ -4383,6 +4397,35 @@ monitor_object_plugin:
       discrete LED-state enums), so CPU, memory, temperature and fan are not collected
       (N/A).
       Supported brands/models — Advantech EKI managed industrial Ethernet switches.
+  Switch EtherWAN SNMP:
+    name: EtherWAN (Telegraf)
+    desc: EtherWAN EX-series industrial managed switch-specific SNMP collection template
+      (IANA PEN 2736). In addition to standard IF-MIB interface metrics, it collects
+      EtherWAN private OIDs for device health—chassis temperature (ewnSensorTempValue,
+      a dedicated scalar whose raw value divided by 10 gives degrees Celsius) and the
+      dual power-input status table (ewnPowerSupplyTable ewnPowerSupplyStatus, one row
+      per input named Power1/Power2). The power raw codes (0=up meaning OK, 1=down meaning
+      input lost or absent) are normalized via telegraf processors.enum to 1=healthy /
+      2=fault, and the worst power input is taken per device. EX-series switches are
+      fanless and expose no CPU, memory or fan objects, so CPU, memory and fan are not
+      collected (N/A).
+      Supported brands/models — EtherWAN EX-series hardened industrial Ethernet switches.
+  Switch Red Lion SNMP:
+    name: Red Lion (Telegraf)
+    desc: Red Lion / N-Tron industrial Ethernet switch-specific SNMP collection template
+      (NTRON714FX6-MIB, IANA PEN 28381). In addition to standard IF-MIB interface metrics,
+      it collects the N-Tron private dual power-input status object (ntronPowerFault). The
+      raw codes (1=faultNone meaning both inputs OK, 2=faultPower1 meaning input 1 lost,
+      3=faultPower2 meaning input 2 lost) are normalized via telegraf processors.enum to
+      1=healthy / 2=fault. The N-Tron MIB exposes only RAM/Flash totals (no used or free,
+      so memory utilization cannot be computed), no CPU object, no pollable numeric
+      temperature (the onboard sensor is exposed only via the web UI / N-View, not SNMP)
+      and no fan object (these switches are fanless and convection-cooled), so CPU,
+      memory, temperature and fan are not collected (N/A). The power-fault object is
+      firmware-dependent; on firmware that does not return it the plugin degrades to a
+      clean IF-MIB baseline.
+      Supported brands/models — Red Lion / N-Tron industrial Ethernet switches (714FX6
+      and N-Tron series, IANA PEN 28381).
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
@@ -4826,6 +4869,19 @@ monitor_object_plugin:
   Router LANCOM SNMP:
     name: LANCOM (Telegraf)
     desc: LANCOM LCOS router/VPN-gateway SNMP collection (LCOS-MIB, IANA PEN 2356). Beyond standard IF-MIB interface metrics, it collects the LANCOM private hardware temperature sensor (lcsStatusHardwareInfoTemperatureDegrees, degrees Celsius). LCOS os_discovery does not expose CPU/memory utilisation or fan/power-supply state OIDs, so those are N/A. Supported brands/models — LANCOM LCOS routers and VPN gateways (1xxx / ic- / ISG series and other LCOS platforms; enterprise 2356).
+  Router NetModule SNMP:
+    name: NetModule (Telegraf)
+    desc: NetModule industrial 4G/5G LTE router-specific SNMP collection template (NB-MIB,
+      IANA PEN 31496). In addition to standard IF-MIB interface metrics, it collects the
+      NetModule private system temperature object (systemTemperature), whose raw value
+      carries a tenths-of-a-degree display hint and is divided by 10 to obtain degrees
+      Celsius. The NB-MIB exposes no CPU, memory, fan or power objects (NB/NG-series are
+      fanless industrial routers); these devices run embedded Linux with net-snmp, but
+      whether HOST-RESOURCES / UCD CPU and memory OIDs are enabled is firmware-dependent
+      and unverified, so CPU, memory, fan and power are not collected (N/A) and only system
+      temperature plus standard IF-MIB interface metrics are gathered.
+      Supported brands/models — NetModule NB/NG-series industrial 4G/5G LTE routers (IANA
+      PEN 31496).
   Router NEC SNMP:
     name: NEC (Telegraf)
     desc: NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health including 1-minute CPU utilization, memory utilization and chassis temperature, all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000 / IX3000 and other UNIVERGE IX platforms; enterprise 119).
