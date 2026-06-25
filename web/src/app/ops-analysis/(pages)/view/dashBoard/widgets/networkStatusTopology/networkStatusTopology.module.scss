@@ -1,3 +1,78 @@
+.canvas {
+  position: relative;
+  height: 100%;
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid #e5eef8;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(225, 241, 255, 0.34), transparent 30%),
+    radial-gradient(circle at 78% 20%, rgba(232, 250, 246, 0.26), transparent 28%),
+    linear-gradient(180deg, #fcfeff 0%, #f9fcff 100%);
+}
+
+.toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid rgba(219, 232, 246, 0.92);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 10px 24px rgba(37, 72, 111, 0.09);
+  backdrop-filter: blur(8px);
+}
+
+.toolbarActions {
+  display: flex;
+  gap: 4px;
+}
+
+.truncated {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  max-width: 48%;
+  padding: 5px 8px;
+  border: 1px solid #ffe6b3;
+  border-radius: 6px;
+  background: rgba(255, 251, 230, 0.92);
+  color: #ad6800;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.state,
+.loadingMask {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.loadingMask {
+  pointer-events: none;
+}
+
+.popoverLayer {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+}
+
+.contextLayer {
+  position: absolute;
+  z-index: 7;
+}
+
 .popover {
   min-width: 188px;
   padding: 10px 12px;

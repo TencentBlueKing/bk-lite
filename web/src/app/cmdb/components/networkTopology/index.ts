@@ -1,7 +1,12 @@
-export { default as NetworkTopologyCanvas } from './networkTopologyCanvas';
 export { layoutNetworkTopology } from './graphModel';
+export { default as NetworkTopologyX6Canvas } from './x6Canvas';
+export { buildNetworkTopologyX6GraphData } from './x6GraphModel';
+export {
+  NETWORK_TOPO_VISUAL,
+  buildNetworkTopoPortLabel,
+} from './x6Visual';
+export type { NetworkTopologyX6GraphData } from './x6Canvas';
 export type {
-  NetworkTopologyCanvasProps,
   NetworkTopologyLayoutMode,
   NetworkTopologyLink,
   NetworkTopologyNode,

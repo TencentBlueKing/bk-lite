@@ -1,7 +1,19 @@
 'use client';
 
-import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { NetworkTopologyCanvas } from '@/app/cmdb/components/networkTopology';
+import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { Alert, Button, Empty, Segmented, Spin, Tooltip } from 'antd';
+import {
+  DownloadOutlined,
+  ReloadOutlined,
+  ZoomInOutlined,
+  ZoomOutOutlined,
+} from '@ant-design/icons';
+import type { Graph } from '@antv/x6';
+import {
+  NetworkTopologyX6Canvas,
+  buildNetworkTopologyX6GraphData,
+  layoutNetworkTopology,
+} from '@/app/cmdb/components/networkTopology';
 import type {
   NetworkTopologyLayoutMode,
   NetworkTopologyLink,
@@ -96,6 +108,11 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const [layoutMode, setLayoutMode] =
     useState<NetworkTopologyLayoutMode>('hierarchical');
   const [selectedNodeId, setSelectedNodeId] = useState('');
+  const graphRef = useRef<Graph | null>(null);
+  const [hoverNodeId, setHoverNodeId] = useState('');
+  const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
+  const [contextNodeId, setContextNodeId] = useState('');
+  const [contextPoint, setContextPoint] = useState({ x: 0, y: 0 });
 
   const topoConfig = config?.networkStatusTopology;
 
@@ -180,6 +197,50 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const faultNodeIds = useMemo(() => new Set(faultPath.nodeIds), [faultPath.nodeIds]);
   const faultLinkIds = useMemo(() => new Set(faultPath.linkIds), [faultPath.linkIds]);
   const hasFaultPath = faultNodeIds.size > 0 || faultLinkIds.size > 0;
+  const layout = useMemo(
+    () => layoutNetworkTopology({
+      nodes: canvasNodes,
+      links: canvasLinks,
+      centerId: String(data?.center_id || topoConfig?.instId || ''),
+      mode: layoutMode,
+      fitToViewport: false,
+    }),
+    [canvasLinks, canvasNodes, data?.center_id, layoutMode, topoConfig?.instId],
+  );
+  const graphData = useMemo(
+    () => buildNetworkTopologyX6GraphData({
+      nodes: layout.nodes,
+      links: layout.links,
+      centerId: String(data?.center_id || topoConfig?.instId || ''),
+      selectedNodeId,
+      activeNodeIds: faultNodeIds,
+      activeLinkIds: faultLinkIds,
+      dimInactive: hasFaultPath,
+      showStatusDot: false,
+    }),
+    [
+      data?.center_id,
+      faultLinkIds,
+      faultNodeIds,
+      hasFaultPath,
+      layout.links,
+      layout.nodes,
+      selectedNodeId,
+      topoConfig?.instId,
+    ],
+  );
+
+  const closeContextMenu = useCallback(() => setContextNodeId(''), []);
+
+  const handleExportImage = useCallback(() => {
+    const graph = graphRef.current;
+    if (!graph) return;
+    graph.exportPNG('network-status-topology', {
+      padding: 40,
+      backgroundColor: '#ffffff',
+      copyStyles: false,
+    });
+  }, []);
 
   const renderPopover = useCallback(
     (node: NetworkTopologyNode) => {
@@ -259,40 +320,148 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     [originalNodeMap, t],
   );
 
+  const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
+  const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
+
   return (
-    <NetworkTopologyCanvas
-      nodes={canvasNodes}
-      links={canvasLinks}
-      centerId={String(data?.center_id || topoConfig?.instId || '')}
-      layoutMode={layoutMode}
-      labels={{
-        layoutHierarchical: t('dashboard.networkTopoLayoutHierarchical'),
-        layoutForce: t('dashboard.networkTopoLayoutForce'),
-        layoutCircular: t('dashboard.networkTopoLayoutCircular'),
-        zoomOut: t('dashboard.networkTopoZoomOut'),
-        zoomIn: t('dashboard.networkTopoZoomIn'),
-        exportImage: t('dashboard.networkTopoExportImage'),
-        refresh: t('dashboard.networkTopoRefresh'),
-      }}
-      selectedNodeId={selectedNodeId}
-      activeNodeIds={faultNodeIds}
-      activeLinkIds={faultLinkIds}
-      dimInactive={hasFaultPath}
-      loading={loading}
-      refreshLoading={loading}
-      error={error}
-      emptyText={t('dashboard.networkTopoEmpty')}
-      truncatedText={data?.truncated ? t('dashboard.networkTopoTruncated') : undefined}
-      exportFileName="network-status-topology.svg"
-      onLayoutChange={setLayoutMode}
-      onRefresh={fetchData}
-      onBlankClick={() => setSelectedNodeId('')}
-      onNodeClick={(node) => {
-        setSelectedNodeId((current) => (current === node.id ? '' : node.id));
-      }}
-      renderPopover={renderPopover}
-      renderContextMenu={renderContextMenu}
-    />
+    <div className={styles.canvas}>
+      <div className={styles.toolbar}>
+        <Segmented
+          value={layoutMode}
+          onChange={(value) => setLayoutMode(value as NetworkTopologyLayoutMode)}
+          options={[
+            { label: t('dashboard.networkTopoLayoutHierarchical'), value: 'hierarchical' },
+            { label: t('dashboard.networkTopoLayoutForce'), value: 'force' },
+            { label: t('dashboard.networkTopoLayoutCircular'), value: 'circular' },
+          ]}
+        />
+        <div className={styles.toolbarActions}>
+          <Tooltip title={t('dashboard.networkTopoZoomOut')}>
+            <Button
+              size="small"
+              aria-label={t('dashboard.networkTopoZoomOut')}
+              icon={<ZoomOutOutlined />}
+              onClick={() => graphRef.current?.zoom(-0.1)}
+            />
+          </Tooltip>
+          <Tooltip title={t('dashboard.networkTopoZoomIn')}>
+            <Button
+              size="small"
+              aria-label={t('dashboard.networkTopoZoomIn')}
+              icon={<ZoomInOutlined />}
+              onClick={() => graphRef.current?.zoom(0.1)}
+            />
+          </Tooltip>
+          <Tooltip title={t('dashboard.networkTopoExportImage')}>
+            <Button
+              size="small"
+              aria-label={t('dashboard.networkTopoExportImage')}
+              icon={<DownloadOutlined />}
+              onClick={handleExportImage}
+              disabled={!graphData.nodes.length}
+            />
+          </Tooltip>
+          <Tooltip title={t('dashboard.networkTopoRefresh')}>
+            <Button
+              size="small"
+              aria-label={t('dashboard.networkTopoRefresh')}
+              icon={<ReloadOutlined />}
+              loading={loading}
+              onClick={fetchData}
+            />
+          </Tooltip>
+        </div>
+      </div>
+      {data?.truncated && (
+        <div className={styles.truncated}>{t('dashboard.networkTopoTruncated')}</div>
+      )}
+      {graphData.nodes.length ? (
+        <NetworkTopologyX6Canvas
+          data={graphData}
+          centerId={String(data?.center_id || topoConfig?.instId || '')}
+          graphRef={graphRef}
+          fitViewOptions={{ padding: 48, maxScale: 1.08 }}
+          minimap={{
+            width: 96,
+            height: 56,
+            style: {
+              right: 14,
+              bottom: 14,
+              position: 'absolute',
+              border: '1px solid #dbe8f6',
+              borderRadius: 6,
+              background: 'rgba(255,255,255,0.88)',
+              boxShadow: '0 8px 18px rgba(42, 72, 116, 0.08)',
+            },
+          }}
+          onBlankClick={() => {
+            setSelectedNodeId('');
+            setHoverNodeId('');
+            closeContextMenu();
+          }}
+          onBlankContextMenu={() => closeContextMenu()}
+          onNodeClick={(nodeId) => {
+            closeContextMenu();
+            setSelectedNodeId((current) => (current === nodeId ? '' : nodeId));
+          }}
+          onNodeMouseMove={(nodeId, event) => {
+            setHoverNodeId(nodeId);
+            setHoverPoint({ x: event.offsetX + 32, y: event.offsetY + 24 });
+          }}
+          onNodeMouseLeave={() => setHoverNodeId('')}
+          onNodeContextMenu={(nodeId, event) => {
+            setContextNodeId(nodeId);
+            setContextPoint({ x: event.offsetX + 8, y: event.offsetY + 8 });
+          }}
+        />
+      ) : (
+        !loading && (
+          <div className={styles.state}>
+            {error ? (
+              <Alert
+                type="error"
+                showIcon
+                message={error}
+                action={(
+                  <Button size="small" onClick={fetchData}>
+                    {t('dashboard.networkTopoRefresh')}
+                  </Button>
+                )}
+              />
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t('dashboard.networkTopoEmpty')}
+              />
+            )}
+          </div>
+        )
+      )}
+      {loading && (
+        <div className={styles.loadingMask}>
+          <Spin />
+        </div>
+      )}
+      {hoverCanvasNode && !contextNodeId && (
+        <div
+          className={styles.popoverLayer}
+          style={{ left: hoverPoint.x, top: hoverPoint.y }}
+        >
+          {renderPopover(hoverCanvasNode)}
+        </div>
+      )}
+      {contextCanvasNode && (
+        <div
+          className={styles.contextLayer}
+          style={{ left: contextPoint.x, top: contextPoint.y }}
+        >
+          {renderContextMenu(
+            contextCanvasNode,
+            closeContextMenu,
+          )}
+        </div>
+      )}
+    </div>
   );
 };
 
