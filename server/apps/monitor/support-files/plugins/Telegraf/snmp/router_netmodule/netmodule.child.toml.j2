@@ -57,5 +57,5 @@
         inherit_tags = ["source"]
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.31496.10.40.50.0"
-        name = "celsius_raw"
+        name = "celsius"
 # ---- CPU/内存/风扇/电源：NetModule NB-MIB（PEN 31496）仅暴露系统温度标量，无 CPU、无内存、无风扇、无电源/电压对象（NB/NG 系列为无风扇工业路由器）。设备虽运行嵌入式 Linux net-snmp，HOST-RESOURCES / UCD CPU·内存 OID 是否启用因固件而异、未经现网核实，故本基线模板不采，仅采集系统温度 + 标准 IF-MIB（含 64 位 HC）接口指标。CPU/内存/风扇/电源 N/A。----
