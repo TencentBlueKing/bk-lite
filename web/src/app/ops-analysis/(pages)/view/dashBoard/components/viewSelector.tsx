@@ -1,11 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { Modal, Menu, List, Input, Spin, Empty, Tag } from 'antd';
-import { LockOutlined } from '@ant-design/icons';
+import { ApartmentOutlined, DatabaseOutlined, LockOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { ComponentSelectorProps } from '@/app/ops-analysis/types/dashBoard';
 import { TagItem } from '@/app/ops-analysis/types/namespace';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
+import { SCENE_WIDGETS } from '@/app/ops-analysis/constants/sceneWidgets';
+import styles from './viewSelector.module.scss';
 import type {
   DatasourceItem,
   ChartType,
@@ -28,6 +30,10 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
   const [tagList, setTagList] = useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = useState(false);
   const [dataSourcesLoading, setDataSourcesLoading] = useState(false);
+  const [selectorMode, setSelectorMode] = useState<'dataSource' | 'sceneWidget'>('dataSource');
+  const [selectedSceneCategory, setSelectedSceneCategory] = useState<string>(
+    SCENE_WIDGETS[0]?.category || '',
+  );
 
   const { getDataSourceBriefList } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
@@ -124,14 +130,51 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
     setSearch('');
   };
 
-  const handleConfig = (item: DatasourceItem) => {
-    onOpenConfig?.(item);
+  const handleModeChange = (mode: 'dataSource' | 'sceneWidget') => {
+    setSelectorMode(mode);
+    setSearch('');
+    setHoveredDatasourceId(null);
   };
 
-  const menuItems = tagList.map((tag) => ({
-    key: tag.id,
-    label: tag.name,
-  }));
+  const handleConfig = (item: DatasourceItem) => {
+    onOpenConfig?.({
+      ...item,
+      dataSource: item.id,
+      chartType: '',
+      defaultWidth: 4,
+      defaultHeight: 3,
+    });
+  };
+
+  const sceneCategories = useMemo(
+    () =>
+      Array.from(
+        new Map(
+          SCENE_WIDGETS.map((item) => [
+            item.category,
+            {
+              key: item.category,
+              label: t(item.categoryNameKey),
+              icon: <ApartmentOutlined />,
+            },
+          ]),
+        ).values(),
+      ),
+    [t],
+  );
+
+  const filteredSceneWidgets = useMemo(
+    () =>
+      SCENE_WIDGETS.filter((item) => item.category === selectedSceneCategory),
+    [selectedSceneCategory],
+  );
+
+  const menuItems = selectorMode === 'sceneWidget'
+    ? sceneCategories
+    : tagList.map((tag) => ({
+      key: tag.id,
+      label: tag.name,
+    }));
 
   return (
     <Modal
@@ -139,24 +182,57 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
       open={visible}
       onCancel={onCancel}
       footer={null}
-      width={700}
-      style={{ top: '16%' }}
-      styles={{ body: { height: '50vh', overflowY: 'hidden' } }}
+      width={760}
+      style={{ top: '14%' }}
+      styles={{ body: { height: '56vh', overflow: 'hidden' } }}
     >
-      <div className="h-full flex mt-2">
-        {/* 左侧标签菜单 */}
-        <div className="w-44 border-r border-gray-200 pr-4">
-          {tagsLoading ? (
-            <div className="flex justify-center py-8 mt-10">
-              <Spin size="small" />
+      <div className={styles.selector}>
+        <div className={styles.modeBar}>
+          <button
+            type="button"
+            className={`${styles.modeButton} ${selectorMode === 'dataSource' ? styles.activeModeButton : ''}`}
+            onClick={() => handleModeChange('dataSource')}
+          >
+            <DatabaseOutlined />
+            {t('dashboard.dataComponents')}
+          </button>
+          <button
+            type="button"
+            className={`${styles.modeButton} ${selectorMode === 'sceneWidget' ? styles.activeModeButton : ''}`}
+            onClick={() => handleModeChange('sceneWidget')}
+          >
+            <ApartmentOutlined />
+            {t('dashboard.sceneComponents')}
+          </button>
+        </div>
+
+        <div className={styles.content}>
+          <div className={styles.categoryPane}>
+            <div className={styles.categoryTitle}>
+              {selectorMode === 'sceneWidget'
+                ? t('dashboard.sceneComponents')
+                : t('dashboard.dataComponents')}
             </div>
-          ) : (
-            <div className="max-h-96 overflow-y-auto">
+            {tagsLoading && selectorMode === 'dataSource' ? (
+              <div className={styles.loadingBox}>
+                <Spin size="small" />
+              </div>
+            ) : (
               <Menu
                 mode="vertical"
-                selectedKeys={selectedTagId ? [selectedTagId.toString()] : []}
+                selectedKeys={
+                  selectorMode === 'sceneWidget'
+                    ? [selectedSceneCategory]
+                    : selectedTagId ? [selectedTagId.toString()] : []
+                }
                 items={menuItems}
-                onSelect={({ key }) => handleTagSelect(Number(key))}
+                onSelect={({ key }) => {
+                  if (selectorMode === 'sceneWidget') {
+                    setSelectedSceneCategory(String(key));
+                    return;
+                  }
+                  handleTagSelect(Number(key));
+                }}
                 className="border-none [&_.ant-menu-item]:h-8 [&_.ant-menu-item]:leading-8 [&_.ant-menu-item]:mb-1 [&.ant-menu]:border-r-0"
                 style={{
                   backgroundColor: 'transparent',
@@ -164,87 +240,111 @@ const ComponentSelector: React.FC<ComponentSelectorProps> = ({
                 }}
                 theme="light"
               />
-            </div>
-          )}
-        </div>
+            )}
+          </div>
 
-        {/* 右侧数据源列表 */}
-        <div className="flex-1 pl-4">
-          <Input.Search
-            placeholder={t('common.search')}
-            allowClear
-            className="mb-4"
-            onSearch={(value) => setSearch(value)}
-            onClear={() => setSearch('')}
-          />
+          <div className={styles.listPane}>
+            {selectorMode === 'dataSource' && (
+              <Input.Search
+                placeholder={t('common.search')}
+                allowClear
+                className={styles.search}
+                onSearch={(value) => setSearch(value)}
+                onClear={() => setSearch('')}
+              />
+            )}
 
-          {dataSourcesLoading ? (
-            <div className="flex justify-center py-8 mt-10">
-              <Spin size="default" />
-            </div>
-          ) : (
-            <div className="h-96 overflow-y-auto">
+            {selectorMode === 'sceneWidget' ? (
               <List
                 size="small"
-                dataSource={currentDataSources}
-                locale={{
-                  emptyText: (
-                    <Empty
-                      image={Empty.PRESENTED_IMAGE_SIMPLE}
-                      description={t('common.noData')}
-                    />
-                  ),
-                }}
-                renderItem={(item: DatasourceItem) => (
+                className={styles.cardList}
+                dataSource={filteredSceneWidgets}
+                renderItem={(item) => (
                   <List.Item
-                    className={`flex items-center gap-3 justify-between p-3 rounded mb-2 last:mb-0 transition-colors ${item.hasAuth === false ? 'cursor-not-allowed opacity-50' : 'cursor-pointer'}`}
-                    style={{
-                      border: '1px solid var(--color-border-1)',
-                      backgroundColor:
-                        hoveredDatasourceId === item.id
-                          ? 'var(--color-fill-2)'
-                          : 'var(--color-fill-1)',
-                    }}
-                    onMouseEnter={() => {
-                      if (item.hasAuth !== false) {
-                        setHoveredDatasourceId(item.id);
-                      }
-                    }}
-                    onMouseLeave={() => {
-                      if (hoveredDatasourceId === item.id) {
-                        setHoveredDatasourceId(null);
-                      }
-                    }}
-                    onClick={() => item.hasAuth !== false && handleConfig(item)}
+                    className={styles.sceneCard}
+                    onClick={() =>
+                      onOpenConfig?.({
+                        id: `scene:${item.type}`,
+                        name: t(item.nameKey),
+                        desc: t(item.descriptionKey),
+                        chart_type: [],
+                        chartType: item.type,
+                        sceneWidgetType: item.type,
+                        defaultWidth: item.defaultWidth,
+                        defaultHeight: item.defaultHeight,
+                      } as any)
+                    }
                   >
-                    <div className="flex flex-col gap-1 leading-relaxed w-full">
-                      <div className="flex items-center gap-2">
-                        <span className="font-medium leading-5 text-(--color-text-1) break-all">
-                          {item.name}
-                          {item.rest_api && (
-                            <span className="font-normal text-xs text-gray-400 ml-1">
-                              ({item.rest_api})
-                            </span>
-                          )}
-                        </span>
-                        {item.hasAuth === false && (
-                          <Tag icon={<LockOutlined />} color="warning">
-                            {t('common.noAuth')}
-                          </Tag>
-                        )}
-                      </div>
-                      {item.desc ? (
-                        <span className="text-xs text-(--color-text-2) leading-4">
-                          {item.desc}
-                        </span>
-                      ) : null}
-                      {getChartTags(item.chart_type)}
+                    <div className={styles.cardIcon}>
+                      <ApartmentOutlined />
+                    </div>
+                    <div className={styles.cardBody}>
+                      <span className={styles.cardTitle}>{t(item.nameKey)}</span>
+                      <span className={styles.cardDesc}>{t(item.descriptionKey)}</span>
                     </div>
                   </List.Item>
                 )}
               />
-            </div>
-          )}
+            ) : dataSourcesLoading ? (
+              <div className={styles.loadingBox}>
+                <Spin size="default" />
+              </div>
+            ) : (
+              <div className={styles.cardList}>
+                <List
+                  size="small"
+                  dataSource={currentDataSources}
+                  locale={{
+                    emptyText: (
+                      <Empty
+                        image={Empty.PRESENTED_IMAGE_SIMPLE}
+                        description={t('common.noData')}
+                      />
+                    ),
+                  }}
+                  renderItem={(item: DatasourceItem) => (
+                    <List.Item
+                      className={`${styles.dataCard} ${item.hasAuth === false ? styles.disabledCard : ''}`}
+                      onMouseEnter={() => {
+                        if (item.hasAuth !== false) {
+                          setHoveredDatasourceId(item.id);
+                        }
+                      }}
+                      onMouseLeave={() => {
+                        if (hoveredDatasourceId === item.id) {
+                          setHoveredDatasourceId(null);
+                        }
+                      }}
+                      onClick={() => item.hasAuth !== false && handleConfig(item)}
+                      data-active={hoveredDatasourceId === item.id}
+                    >
+                      <div className={styles.cardBody}>
+                        <div className={styles.dataTitleRow}>
+                          <span className={styles.cardTitle}>
+                            {item.name}
+                            {item.rest_api && (
+                              <span className={styles.apiText}>
+                                ({item.rest_api})
+                              </span>
+                            )}
+                          </span>
+                          {item.hasAuth === false && (
+                            <Tag icon={<LockOutlined />} color="warning">
+                              {t('common.noAuth')}
+                            </Tag>
+                          )}
+                        </div>
+                        {item.desc ? (
+                          <span className={styles.cardDesc}>{item.desc}</span>
+                        ) : null}
+                        {getChartTags(item.chart_type)}
+                      </div>
+                    </List.Item>
+                  )}
+                />
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </Modal>
