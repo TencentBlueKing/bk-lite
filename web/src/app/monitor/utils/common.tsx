@@ -619,6 +619,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
+  { match: /gigamon|gigavue/i, label: 'Gigamon' },
+  { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
   { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
