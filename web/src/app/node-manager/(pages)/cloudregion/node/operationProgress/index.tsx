@@ -662,6 +662,10 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
         logs,
         installerSummary:
           normalizeControllerInstallResult(row.result)?.installer_summary,
+        displayMode:
+          isInstallController && installMethod === 'remoteInstall'
+            ? 'controllerInstall'
+            : 'stepList',
         ip: row.ip,
         nodeName: row.node_name
       }

@@ -289,6 +289,16 @@ assert.equal(
   true
 );
 
+assert.equal(
+  shouldUseControllerInstallPhases({ steps: [] }, 'controllerInstall'),
+  true
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({ steps: [] }, 'stepList'),
+  false
+);
+
 const commandFailedWithoutInstallerEventsPhases = deriveControllerInstallPhases({
   steps: [
     { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
