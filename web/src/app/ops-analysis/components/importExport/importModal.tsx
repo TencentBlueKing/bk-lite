@@ -432,7 +432,7 @@ const ImportModal: React.FC<ImportModalProps> = ({
       onCancel={handleClose}
       footer={null}
       width={700}
-      destroyOnClose
+      destroyOnHidden
       centered
       maskClosable={false}
     >

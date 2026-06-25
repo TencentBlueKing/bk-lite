@@ -161,7 +161,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                 <Form.Item
                   label={t('wiki.llmModel')}
                   name="llm_model"
-                  rules={[{ required: true }]}
+                  rules={[{ required: true, message: `${t('common.selectMsg')}${t('wiki.llmModel')}` }]}
                   tooltip={t('wiki.llmModelTip')}
                 >
                   <Select
@@ -176,7 +176,7 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                   className="md:col-span-2"
                   label={t('common.organization')}
                   name="team"
-                  rules={[{ required: true }]}
+                  rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }]}
                 >
                   <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
                 </Form.Item>

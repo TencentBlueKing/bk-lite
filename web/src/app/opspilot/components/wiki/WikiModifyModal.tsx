@@ -89,7 +89,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
       confirmLoading={confirmLoading}
       onCancel={onCancel}
       width={560}
-      destroyOnClose
+      destroyOnHidden
       // 表单较长:限制弹窗主体高度并内部滚动,确保任何视口下都不触底(前端规范:弹窗禁止触底)
       styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' } }}
     >
@@ -97,13 +97,17 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
         <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
           <Input />
         </Form.Item>
-        <Form.Item label={t('common.organization')} name="team" rules={[{ required: true }]}>
+        <Form.Item
+          label={t('common.organization')}
+          name="team"
+          rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }]}
+        >
           <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
         </Form.Item>
         <Form.Item
           label={t('wiki.llmModel')}
           name="llm_model"
-          rules={[{ required: true }]}
+          rules={[{ required: true, message: `${t('common.selectMsg')}${t('wiki.llmModel')}` }]}
           tooltip={t('wiki.llmModelTip')}
         >
           <Select

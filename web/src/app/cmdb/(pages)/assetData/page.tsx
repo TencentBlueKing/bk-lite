@@ -1159,7 +1159,7 @@ const AssetDataContent = () => {
                 </Button>
               </Space>
             )}
-            destroyOnClose
+            destroyOnHidden
             styles={{
               body: {
                 maxHeight: 'calc(100vh - 220px)',

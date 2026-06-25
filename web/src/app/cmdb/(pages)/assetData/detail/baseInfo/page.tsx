@@ -148,7 +148,7 @@ const BaseInfo = () => {
             </Button>
           </Space>
         )}
-        destroyOnClose
+        destroyOnHidden
         styles={{
           body: {
             maxHeight: 'calc(100vh - 220px)',

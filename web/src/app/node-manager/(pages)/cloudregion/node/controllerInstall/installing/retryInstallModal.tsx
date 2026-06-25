@@ -91,7 +91,7 @@ const RetryInstallModal = forwardRef<ModalRef, ModalSuccess>(
           </div>
         }
         open={visible}
-        destroyOnClose
+        destroyOnHidden
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         confirmLoading={confirmLoading}

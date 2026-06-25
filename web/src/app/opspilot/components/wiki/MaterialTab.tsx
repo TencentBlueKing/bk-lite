@@ -200,7 +200,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         onOk={handleSave}
         confirmLoading={saving}
         onCancel={() => setOpen(false)}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical">
           <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
