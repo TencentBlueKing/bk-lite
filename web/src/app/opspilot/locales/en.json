@@ -25,6 +25,7 @@
     "materialFile": "File",
     "materialWeb": "Web",
     "uploadHint": "Click or drag a file here to upload",
+    "fileRequired": "Please upload a file",
     "ingest": "Ingest",
     "build": "Build",
     "buildNeedParse": "Parse the material first",

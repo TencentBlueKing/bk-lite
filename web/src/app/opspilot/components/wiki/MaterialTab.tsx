@@ -74,7 +74,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       if (values.material_type === 'file') {
         const f = fileList[0]?.originFileObj as File | undefined;
         if (!f) {
-          message.error(t('wiki.materialFile'));
+          message.error(t('wiki.fileRequired'));
           return;
         }
         await createMaterialFile(kbId, values.name, f);

@@ -25,6 +25,7 @@
     "materialFile": "文件",
     "materialWeb": "网页",
     "uploadHint": "点击或拖拽文件到此处上传",
+    "fileRequired": "请上传文件",
     "ingest": "解析",
     "build": "构建",
     "buildNeedParse": "请先完成解析",
