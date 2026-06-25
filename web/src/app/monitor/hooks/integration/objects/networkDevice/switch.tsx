@@ -130,6 +130,7 @@ export const useSwitchConfig = () => {
       'Switch Intelbras SNMP': 'snmp_intelbras',
       'Switch EtherWAN SNMP': 'snmp_etherwan',
       'Switch Red Lion SNMP': 'snmp_redlion',
+      'Switch Alaxala SNMP': 'snmp_alaxala',
       'Switch Nexans SNMP': 'snmp_nexans',
       'Switch Pica8 SNMP': 'snmp_pica8',
       'Switch Advantech SNMP': 'snmp_advantech',
