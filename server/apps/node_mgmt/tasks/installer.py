@@ -500,7 +500,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Validate credentials ({auth_method})",
+                    f"Check credential configuration ({auth_method})",
                 ),
                 _build_step("run", "running", "Run installer"),
             ],
@@ -912,7 +912,7 @@ def uninstall_controller(task_id):
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Validate credentials ({auth_method})",
+                    f"Check credential configuration ({auth_method})",
                 ),
                 _build_step("stop_run", "running", "Stop controller service"),
             ],
