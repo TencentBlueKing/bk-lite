@@ -5,6 +5,7 @@ import ComGauge from './comGauge';
 import ComLine from './comLine';
 import ComBar from './comBar';
 import ComTable from './comTable';
+import ComTopN from './comTopN';
 import ComBarGauge from './comBarGauge';
 import ComStateTimeline from './comStateTimeline';
 import ComText from './comText';
@@ -556,6 +557,71 @@ const Showcase = () => (
             chartType: 'text',
             content:
               '# 运营值班说明\n本面板用于**值班交接**与关键链接。\n\n## 注意事项\n- 一级告警 **15 分钟**内响应\n- 变更窗口：每周二 02:00\n- 详见 [运维手册](https://example.com/runbook)',
+          }}
+        />
+      </div>
+    </Section>
+
+    <Section title="⑮ 大屏深色主题 — TopN / 表格">
+      <div
+        style={{
+          width: 420,
+          height: 220,
+          border: '1px solid rgba(48, 198, 255, 0.32)',
+          borderRadius: 8,
+          background: '#06152b',
+          padding: 12,
+        }}
+      >
+        <ComTopN
+          rawData={[
+            { source_name: 'RESTful', event_count: 9 },
+            { source_name: 'Zabbix', event_count: 5 },
+            { source_name: 'BlueKing', event_count: 3 },
+          ]}
+          loading={false}
+          dataSource={{
+            field_schema: [
+              { key: 'source_name', title: '告警源', value_type: 'string' },
+              { key: 'event_count', title: '事件数', value_type: 'number' },
+            ],
+          } as any}
+          config={{
+            chartType: 'topN',
+            chartThemeMode: 'screen-dark',
+            topNLabelField: 'source_name',
+            topNValueField: 'event_count',
+          }}
+        />
+      </div>
+      <div
+        style={{
+          width: 620,
+          height: 260,
+          border: '1px solid rgba(48, 198, 255, 0.32)',
+          borderRadius: 8,
+          background: '#06152b',
+          padding: 12,
+        }}
+      >
+        <ComTable
+          rawData={[
+            { id: 'ALERT-001', name: '数据库连接池耗尽', level: '严重' },
+            { id: 'ALERT-002', name: 'API响应超时', level: '错误' },
+            { id: 'ALERT-003', name: '磁盘空间不足', level: '严重' },
+            { id: 'ALERT-004', name: '内存告警', level: '警告' },
+          ]}
+          loading={false}
+          config={{
+            chartType: 'table',
+            chartThemeMode: 'screen-dark',
+            tableConfig: {
+              columns: [
+                { key: 'id', title: '告警ID', visible: true, order: 0 },
+                { key: 'name', title: '告警名称', visible: true, order: 1 },
+                { key: 'level', title: '等级', visible: true, order: 2 },
+              ],
+            },
           }}
         />
       </div>

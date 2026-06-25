@@ -99,10 +99,16 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       setModalAction(action);
       setModalTitle(title);
 
+      const initialGroups =
+        action === 'edit'
+          ? dir?.groups || []
+          : action === 'addChild'
+            ? dir?.groups || []
+            : [];
       const formData: any = {
         name: defaultValue,
         desc: action === 'edit' && dir ? dir.desc : '',
-        groups: action === 'edit' && dir ? dir.groups || [] : [],
+        groups: initialGroups,
       };
 
       form.setFieldsValue(formData);

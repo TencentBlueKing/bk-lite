@@ -4,22 +4,35 @@ import { Spin, Empty } from 'antd';
 import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForChart';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import {
-  getOpsChartTheme,
+  getOpsChartColorsByMode,
+  getOpsChartThemeByMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '../components/chartLegend';
+import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 
 interface OsPieProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
+  config?: ValueConfig;
 }
 
-const OsPie: React.FC<OsPieProps> = ({ rawData, loading = false, onReady }) => {
+const OsPie: React.FC<OsPieProps> = ({
+  rawData,
+  loading = false,
+  onReady,
+  config,
+}) => {
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const chartTheme = getOpsChartTheme(themeName);
-  const chartColors = randomColorForLegend(themeName);
+  const usesScreenChartTheme =
+    config?.chartThemeMode === 'screen-dark' ||
+    config?.chartThemeMode === 'screen-light';
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const chartColors = usesScreenChartTheme
+    ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
+    : randomColorForLegend(themeName);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -117,6 +130,10 @@ const OsPie: React.FC<OsPieProps> = ({ rawData, loading = false, onReady }) => {
           borderRadius: 2,
           borderColor: chartTheme.pieBorderColor,
           borderWidth: 1,
+          shadowBlur: usesScreenChartTheme ? chartTheme.pieShadowBlur : 0,
+          shadowColor: usesScreenChartTheme
+            ? chartTheme.pieShadowColor
+            : 'transparent',
         },
         emphasis: {
           focus: 'none',
@@ -162,6 +179,7 @@ const OsPie: React.FC<OsPieProps> = ({ rawData, loading = false, onReady }) => {
           colors={chartColors}
           layout="vertical"
           showPercent={true}
+          textColor={usesScreenChartTheme ? chartTheme.axisLabelColor : undefined}
           onSelectionChange={handleLegendChange}
         />
       )}

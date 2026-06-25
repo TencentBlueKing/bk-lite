@@ -7,6 +7,7 @@ import type {
   FilterBindings,
 } from './dashBoard';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
+import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 
 // 基础几何类型
 export interface Point {
@@ -18,6 +19,23 @@ export interface TopologyViewportConfig {
   width?: number;
   height?: number;
   letterboxColor?: string;
+}
+
+export interface TopologyPresentationConfig {
+  templateKey?: string;
+  templateVersion?: number;
+  viewportPreset?: string;
+  theme?: 'tech-blue' | string;
+  enableCanvasBackground?: boolean;
+  background?: {
+    type?: 'preset' | string;
+    key?: string;
+  };
+  chrome?: {
+    title?: string;
+    showTitle?: boolean;
+    showClock?: boolean;
+  };
 }
 
 // 状态管理相关类型
@@ -52,6 +70,7 @@ export interface TopologyNodeData {
   id?: string;
   type: string;
   name: string;
+  presentationRole?: 'decorative-frame' | 'screen-title' | 'screen-clock';
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -77,8 +96,9 @@ export interface TopologyNodeData {
     backgroundColor?: string;
     borderColor?: string;
     borderWidth?: number;
-    renderEffect?: 'normal' | 'glass';
+    renderEffect?: 'normal' | 'glass' | 'glow';
     iconPadding?: number;
+    frameVariant?: 'plain' | 'tech';
     lineType?: 'solid' | 'dashed' | 'dotted';
     shapeType?: 'rectangle' | 'circle';
     textColor?: string;
@@ -303,6 +323,7 @@ export interface ViewConfigFormValues {
   name: string;
   description?: string;
   chartType?: string;
+  chartThemeMode?: OpsChartThemeMode;
   dataSource?: number | string;
   compare?: boolean;
   dataSourceParams?: ParamItem[];
@@ -347,7 +368,8 @@ export interface NodeConfigFormValues {
   fontSize?: number;
   fontWeight?: string;
   iconPadding?: number;
-  renderEffect?: 'normal' | 'glass';
+  renderEffect?: 'normal' | 'glass' | 'glow';
+  frameVariant?: 'plain' | 'tech';
   lineType?: 'solid' | 'dashed' | 'dotted';
   shapeType?: 'rectangle' | 'circle';
   nameColor?: string;
@@ -370,6 +392,14 @@ export interface TopologyProps {
 
 export interface TopologyRef {
   hasUnsavedChanges: () => boolean;
+}
+
+export interface TopologyViewSets {
+  nodes: TopologyNodeData[];
+  edges: SerializedEdge[];
+  filters?: UnifiedFilterDefinition[];
+  viewport?: TopologyViewportConfig;
+  presentation?: TopologyPresentationConfig;
 }
 
 // 节点基础数据类型
@@ -401,10 +431,5 @@ export interface CreatedNodeConfig extends BaseNodeData {
 export interface TopologySaveData {
   name: string;
   desc?: string;
-  view_sets: {
-    nodes: TopologyNodeData[];
-    edges: SerializedEdge[];
-    filters?: UnifiedFilterDefinition[];
-    viewport?: TopologyViewportConfig;
-  };
+  view_sets: TopologyViewSets;
 }

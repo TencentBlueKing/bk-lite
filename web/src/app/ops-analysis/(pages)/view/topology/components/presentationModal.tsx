@@ -1,15 +1,24 @@
 import React from 'react';
-import { Button, Input, InputNumber, Modal } from 'antd';
-import type { TopologyViewportConfig } from '@/app/ops-analysis/types/topology';
+import { Button, Input, InputNumber, Modal, Switch } from 'antd';
+import type {
+  TopologyPresentationConfig,
+  TopologyViewportConfig,
+} from '@/app/ops-analysis/types/topology';
 import { DEFAULT_TOPOLOGY_LETTERBOX_COLOR } from '../utils/viewport';
 import { PRESENTATION_PRESETS } from '../hooks/useTopologyPresentation';
 
 interface TopologyPresentationModalProps {
   activePresetKey?: string;
+  chromeDraft?: TopologyPresentationConfig['chrome'];
   draft: TopologyViewportConfig;
   open: boolean;
+  showCanvasBackground: boolean;
   t: (key: string) => string;
   onCancel: () => void;
+  onCanvasBackgroundChange: (checked: boolean) => void;
+  onChromeDraftChange?: (
+    patch: Partial<NonNullable<TopologyPresentationConfig['chrome']>>,
+  ) => void;
   onClear: () => void;
   onConfirm: () => void;
   onDraftChange: (patch: { width?: number; height?: number }) => void;
@@ -21,20 +30,28 @@ interface TopologyPresentationModalProps {
 
 const TopologyPresentationModal = ({
   activePresetKey,
+  chromeDraft,
   draft,
   open,
+  showCanvasBackground,
   t,
   onCancel,
+  onCanvasBackgroundChange,
+  onChromeDraftChange = () => {},
   onClear,
   onConfirm,
   onDraftChange,
   onDraftColorChange,
   onPresetSelect,
 }: TopologyPresentationModalProps) => {
+  const showScreenTitle = Boolean(chromeDraft?.showTitle);
+
   return (
     <Modal
       open={open}
       centered
+      getContainer={() => document.body}
+      zIndex={1200}
       title={t('topology.presentationConfig')}
       onCancel={onCancel}
       footer={[
@@ -136,6 +153,63 @@ const TopologyPresentationModal = ({
             />
           </div>
         </div>
+
+        <div>
+          <div className="mb-2 flex items-center gap-2">
+            <span className="text-sm font-medium text-(--color-text-1)">
+              {t('topology.screenCanvasBackground')}
+            </span>
+            <Switch
+              size="small"
+              checked={showCanvasBackground}
+              onChange={onCanvasBackgroundChange}
+            />
+          </div>
+        </div>
+
+        <div>
+          <div className="mb-2 text-sm font-medium text-(--color-text-1)">
+            {t('topology.screenChrome')}
+          </div>
+          <div className="overflow-hidden rounded-lg border border-(--color-border-1) bg-(--color-fill-1)">
+            <div className="border-b border-(--color-border-1) p-3">
+              <div className="mb-2 flex items-center gap-2">
+                <span className="text-sm font-medium text-(--color-text-1)">
+                  {t('topology.showScreenTitle')}
+                </span>
+                <Switch
+                  size="small"
+                  checked={showScreenTitle}
+                  onChange={(checked) =>
+                    onChromeDraftChange({ showTitle: checked })
+                  }
+                />
+              </div>
+              {showScreenTitle && (
+                <Input
+                  value={chromeDraft?.title || ''}
+                  placeholder={t('topology.screenTitle')}
+                  onChange={(event) =>
+                    onChromeDraftChange({ title: event.target.value })
+                  }
+                />
+              )}
+            </div>
+            <div className="flex items-center gap-2 p-3">
+              <span className="text-sm font-medium text-(--color-text-1)">
+                {t('topology.showScreenClock')}
+              </span>
+              <Switch
+                size="small"
+                checked={Boolean(chromeDraft?.showClock)}
+                onChange={(checked) =>
+                  onChromeDraftChange({ showClock: checked })
+                }
+              />
+            </div>
+          </div>
+        </div>
+
       </div>
     </Modal>
   );

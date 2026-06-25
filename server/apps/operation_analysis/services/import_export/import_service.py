@@ -373,6 +373,8 @@ class ImportService:
         if self.target_directory_id:
             directory = Directory.objects.filter(id=self.target_directory_id).first()
 
+        canvas_groups = directory.groups if directory is not None else self.groups
+
         # 构建基础数据
         canvas_data = {
             "desc": canvas_item.desc,
@@ -383,7 +385,7 @@ class ImportService:
                 self.datasource_key_to_id,
             ),
             "directory": directory,
-            "groups": self.groups,
+            "groups": canvas_groups,
         }
 
         # Dashboard有额外的filters字段
