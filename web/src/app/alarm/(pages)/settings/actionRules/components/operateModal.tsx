@@ -213,10 +213,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
   };
 
-  const SectionTitle: React.FC<{ title: string }> = ({ title }) => (
+  const SectionTitle: React.FC<{ title: string; required?: boolean }> = ({
+    title,
+    required,
+  }) => (
     <div className="mb-3 mt-5 flex items-center">
       <div className="mr-2 h-[16px] w-[3px] rounded-sm bg-blue-500" />
-      <span className="text-[15px] font-medium text-gray-700">{title}</span>
+      <span className="text-[15px] font-medium text-gray-700">
+        {required && <span className="mr-1 text-red-500">*</span>}
+        {title}
+      </span>
     </div>
   );
 
@@ -273,13 +279,20 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <GroupTreeSelect multiple placeholder={t('common.selectTip')} />
         </Form.Item>
 
+        <Form.Item
+          name="is_active"
+          label={t('settings.assignStartStop')}
+          valuePropName="checked"
+        >
+          <Switch />
+        </Form.Item>
+
         {/* ② 触发时机 */}
-        <SectionTitle title={t('settings.actionTriggerEvent')} />
+        <SectionTitle title={t('settings.actionTriggerEvent')} required />
 
         <Form.Item
           name="trigger_events"
-          label=" "
-          colon={false}
+          wrapperCol={{ span: 24 }}
           rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <Checkbox.Group
@@ -323,16 +336,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
           <MatchRule levelType="alert" />
         </Form.Item>
 
-        <Form.Item
-          name="is_active"
-          label={t('settings.assignStartStop')}
-          valuePropName="checked"
-        >
-          <Switch />
-        </Form.Item>
-
         {/* ④ 动作配置 */}
-        <SectionTitle title={t('settings.actionType')} />
+        <SectionTitle title={t('settings.actionConfigSection')} />
 
         <Form.Item
           name="action_type"
@@ -357,6 +362,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         <Form.Item
           name="host_field"
           label={t('settings.actionTargetHostField')}
+          extra={t('settings.actionTargetHostFieldTip')}
           rules={[{ required: true, message: t('common.inputTip') }]}
         >
           <Input placeholder="ip_addr" />
