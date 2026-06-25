@@ -3928,6 +3928,9 @@ monitor_object_plugin:
   Switch Moxa SNMP:
     name: Moxa（Telegraf）
     desc: Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS/IKS/ICS/SDS 系列，企业号 8691）。
+  Switch Korenix SNMP:
+    name: Korenix（Telegraf）
+    desc: Korenix JetNet 工业以太网交换机专用 SNMP 采集模板（企业号 24062）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量、接口收发错包与丢包速率、接口管理/操作状态与带宽，并按设备汇总收发总流量速率。Korenix JetNet 为无风扇导热式被动散热的工业网管交换机，其温度、双路电源输入与继电器告警等环境量由厂商私有 MIB（企业号 24062）承载，未在本基线模板中采集，故 CPU、内存、温度、风扇、电源为 N/A。适用品牌型号——Korenix JetNet 工业以太网交换机（JetNet 4508/5210G/5310G/6524G 等系列，企业号 24062）。
   Switch GarretCom SNMP:
     name: GarretCom（Telegraf）
     desc: GarretCom（Belden 旗下）工业以太网交换机专用 SNMP 采集模板（MAGNUM-MIB，企业号 14778）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 GarretCom Magnum 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，KB，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。GarretCom 工业交换机为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——GarretCom Magnum 工业网管交换机（6K/10K/DX 系列，企业号 14778）。

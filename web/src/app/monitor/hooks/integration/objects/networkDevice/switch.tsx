@@ -152,6 +152,7 @@ export const useSwitchConfig = () => {
       'Switch DCN SNMP': 'snmp_dcn',
       'Switch Edgecore SNMP': 'snmp_edgecore',
       'Switch FS SNMP': 'snmp_fs',
+      'Switch Korenix SNMP': 'snmp_korenix',
       'Switch Maipu SNMP': 'snmp_maipu',
       'Switch Microsens SNMP': 'snmp_microsens',
       'Switch PLANET SNMP': 'snmp_planet',
