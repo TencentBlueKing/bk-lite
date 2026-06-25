@@ -28,9 +28,13 @@ import {
   ControllerManualInstallStatusItem
 } from '@/app/node-manager/types/controller';
 import {
+  deriveControllerInstallDisplay,
+  getControllerInstallDisplayLabel,
   getInstallerFailureGuidance,
   getInstallerProgressPercent,
   getInstallerProgressText,
+  getInstallerSummaryProgressInfo,
+  getInstallerSummaryGuidance,
   getInstallerStepInfo,
   getInstallerSummaryLabel,
   normalizeControllerInstallResult,
@@ -102,6 +106,14 @@ const DEFAULT_POLL_INTERVAL = 5000;
 const CONTROLLER_INSTALL_ACTIVE_POLL_INTERVAL = 2000;
 const CONTROLLER_INSTALL_CONNECTIVITY_POLL_INTERVAL = 3000;
 const AUTO_ADVANCE_DELAY = 5000;
+
+const displaySeverityConfig = {
+  success: { color: 'success', icon: <CheckCircleOutlined /> },
+  error: { color: 'error', icon: <CloseCircleOutlined /> },
+  warning: { color: 'warning', icon: <ClockCircleOutlined /> },
+  processing: { color: 'processing', icon: <SyncOutlined spin /> },
+  default: { color: 'default', icon: <ClockCircleOutlined /> }
+};
 
 const OperationProgress: React.FC<OperationProgressProps> = ({
   operationType,
@@ -386,33 +398,62 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
       ellipsis: true,
       render: (value: string, row: ControllerInstallProgressRow) => {
         const normalizedStatus = normalizeInstallerStatus(value);
-        const status = statusMap[normalizedStatus as keyof typeof statusMap];
+        const normalizedResult = normalizeControllerInstallResult(row.result);
+        const controllerDisplay =
+          isInstallController && installMethod === 'remoteInstall'
+            ? deriveControllerInstallDisplay(normalizedResult)
+            : null;
+        const displayConfig = controllerDisplay
+          ? displaySeverityConfig[
+            controllerDisplay.severity as keyof typeof displaySeverityConfig
+          ] || displaySeverityConfig.default
+          : null;
+        const status = controllerDisplay
+          ? {
+            color: displayConfig?.color || 'processing',
+            text: getControllerInstallDisplayLabel(t, controllerDisplay),
+            icon: displayConfig?.icon || <SyncOutlined spin />
+          }
+          : statusMap[normalizedStatus as keyof typeof statusMap];
         if (!status) {
           return <span>--</span>;
         }
 
         const installerProgress =
           isInstallController && installMethod === 'remoteInstall'
-            ? row.result?.installer_progress
+            ? normalizedResult?.installer_progress
             : undefined;
-        const summaryLabel = getInstallerSummaryLabel(t, installerProgress);
-        const stepInfo = getInstallerStepInfo(
+        const summaryLabel =
+          controllerDisplay?.state === 'installer_no_report'
+            ? t('node-manager.cloudregion.node.installerStepsNotReceived')
+            : getInstallerSummaryLabel(t, installerProgress);
+        const summaryProgressInfo = getInstallerSummaryProgressInfo(
+          normalizedResult?.installer_summary
+        );
+        const stepInfo = summaryProgressInfo?.stepInfo || getInstallerStepInfo(
           installerProgress?.step_index,
           installerProgress?.step_total
         );
         const progressText = getInstallerProgressText(
           installerProgress?.progress
         );
-        const progressPercent = getInstallerProgressPercent(
+        const progressPercent = summaryProgressInfo?.percent ?? getInstallerProgressPercent(
           installerProgress?.progress
         );
         const failureGuidance = getInstallerFailureGuidance(t, row.result);
+        const summaryGuidance = getInstallerSummaryGuidance(
+          t,
+          normalizedResult?.installer_summary
+        );
 
         const hasFailureInfo =
-          ['error', 'timeout'].includes(normalizedStatus) &&
-          (failureGuidance.reason || failureGuidance.suggestion);
+          ['error', 'timeout'].includes(normalizedStatus) ||
+          ['error', 'warning'].includes(controllerDisplay?.severity || '');
+        const hasTooltipContent =
+          hasFailureInfo &&
+          (failureGuidance.reason || failureGuidance.suggestion || summaryGuidance);
 
-        const tooltipContent = hasFailureInfo ? (
+        const tooltipContent = hasTooltipContent ? (
           <div className="max-w-[320px] text-[12px]">
             {failureGuidance.reason && (
               <div>
@@ -438,6 +479,13 @@ const OperationProgress: React.FC<OperationProgressProps> = ({
                 {t('node-manager.cloudregion.node.nextAction')}:
                 {' '}
                 {failureGuidance.suggestion}
+              </div>
+            )}
+            {summaryGuidance && (
+              <div className="mt-[4px]">
+                {t('node-manager.cloudregion.node.nextAction')}:
+                {' '}
+                {summaryGuidance}
               </div>
             )}
           </div>
