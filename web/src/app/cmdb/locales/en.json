@@ -83,6 +83,61 @@
     "batchEdit": "Batch Edit",
     "searchTitle": "Asset Search",
     "assetSearchTxt": "Please enter the keywords...",
+    "AssetSearch": {
+        "heroTitle": "Search assets fast and locate issues",
+        "heroPlaceholder": "Search IP, host name, business, application, service, database, owner",
+        "advancedSearch": "Advanced Search",
+        "recentSearch": "Recent",
+        "clearHistory": "Clear History",
+        "commonTags": "Common Fields",
+        "recentChanges": "Recent Asset Changes",
+        "myFollowedAssets": "My Followed Assets",
+        "assetCategories": "Asset Categories",
+        "viewAll": "View All",
+        "refresh": "Refresh",
+        "loadingMore": "Loading...",
+        "viewDetail": "View Detail",
+        "status": "Status",
+        "operationType": "Operation",
+        "object": "Object",
+        "type": "Type",
+        "operator": "Operator",
+        "time": "Time",
+        "follow": "Follow",
+        "unfollow": "Unfollow",
+        "followSuccess": "Followed",
+        "unfollowSuccess": "Unfollowed",
+        "changeFilters": {
+            "all": "All",
+            "mine": "Mine",
+            "highRisk": "High Risk"
+        },
+        "operationTypes": {
+            "create": "Create",
+            "update": "Update",
+            "delete": "Delete",
+            "execute": "Execute",
+            "createRelation": "Create relation",
+            "deleteRelation": "Remove relation",
+            "unknown": "Unknown"
+        },
+        "quickTags": {
+            "prod": "Production",
+            "core": "Core Business",
+            "database": "Database",
+            "middleware": "Middleware",
+            "webApp": "Web App",
+            "network": "Network Device"
+        },
+        "categories": {
+            "host": "Host",
+            "app": "Application",
+            "service": "Service",
+            "database": "Database",
+            "network": "Network Device",
+            "other": "Other Devices"
+        }
+    },
     "menu": {
         "log": "Log",
         "assetManage": "Model",

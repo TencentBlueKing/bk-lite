@@ -1,0 +1,64 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_amaranten"
+        config_type = "amaranten"
+        brand = "amaranten"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Amaranten(安然) CPU (enterprise 1991 snAgGblCpuUtil1SecAvg, 直接%, scalar, Foundry/Brocade 私有树) ----
+    # 权威来源：本地 snmp.yaml snAgGblCpuUtil1SecAvg 1.3.6.1.4.1.1991.1.1.2.1.50.0（CPU 平均使用率%）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.50.0"
+        name = "usage"
+    # ---- Amaranten 内存 (snAgGblDynMemUtil, 直接%, scalar；无 used/free 字节, 直接为使用率) ----
+    # 权威来源：本地 snmp.yaml snAgGblDynMemUtil 1.3.6.1.4.1.1991.1.1.2.1.53.0（内存使用率%, 直报）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.1991.1.1.2.1.53.0"
+        name = "usage"
+# ---- 温/风/电/会话：安然 1991(Foundry/Brocade贴牌)私有树 仅声明 CPU/内存利用率, 无温度/风扇/电源/会话 OID → N/A。CPU+内存(直接%)干净可采。----
