@@ -4604,6 +4604,9 @@ monitor_object_plugin:
   Firewall Bluedon SNMP:
     name: Bluedon (Telegraf)
     desc: Bluedon (蓝盾) firewall SNMP collection (enterprise 36889 private MIB). Beyond standard IF-MIB interface metrics, it collects Bluedon private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Bluedon Information Security firewalls / network-security appliances (enterprise 36889).
+  Firewall Westone SNMP:
+    name: Westone (Telegraf)
+    desc: Westone (卫士通) firewall SNMP collection (enterprise 31648 private MIB). Beyond standard IF-MIB interface metrics, it collects Westone private OIDs for device health including average CPU utilisation (OID 31648.3.15.1, reported directly as a percentage) and memory utilisation (OID 31648.3.15.5, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Westone Information Security firewalls / network-security appliances (enterprise 31648).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
