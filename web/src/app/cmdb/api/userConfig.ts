@@ -11,18 +11,33 @@ interface UserConfigsMap {
   [key: string]: unknown;
 }
 
+interface UserConfigApiResponse<T = unknown> {
+  result: boolean;
+  data: T;
+  message?: string;
+}
+
 export const useUserConfigApi = () => {
   const { get, post, del } = useApiClient();
 
   const getAllConfigs = useCallback(async (): Promise<UserConfigsMap> => {
     try {
-      const response = await get('/cmdb/api/user_configs/');
-      const records: ConfigRecord<unknown>[] = response?.data || response || [];
+      const response = await get<UserConfigApiResponse<ConfigRecord<unknown>[]>>('/cmdb/api/user_configs/');
+      const records = response.data;
       const configsMap: UserConfigsMap = {};
       records.forEach((record) => {
         configsMap[record.config_key] = record.config_value;
       });
       return configsMap;
+    } catch {
+      return {};
+    }
+  }, [get]);
+
+  const getConfigByKey = useCallback(async <T = unknown>(configKey: string): Promise<T | Record<string, never>> => {
+    try {
+      const response = await get<UserConfigApiResponse<T>>(`/cmdb/api/user_configs/by_key/${configKey}/`);
+      return response.data || {};
     } catch {
       return {};
     }
@@ -46,7 +61,7 @@ export const useUserConfigApi = () => {
     await del(`/cmdb/api/user_configs/by_key/${configKey}/`);
   }, [del]);
 
-  return { getAllConfigs, createConfig, updateConfig, deleteConfig };
+  return { getAllConfigs, getConfigByKey, createConfig, updateConfig, deleteConfig };
 };
 
 export interface SavedFilterCondition {

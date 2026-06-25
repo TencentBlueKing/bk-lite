@@ -57,47 +57,73 @@ export const getOpsChartTheme = (themeName: OpsChartThemeName) => {
   };
 };
 
-export type OpsChartTheme = ReturnType<typeof getOpsChartTheme>;
+type BaseOpsChartTheme = ReturnType<typeof getOpsChartTheme>;
+
+export type OpsChartTheme = BaseOpsChartTheme & {
+  screenCanvasBg?: string;
+  panelChromeBg?: string;
+  panelChromeHeaderBg?: string;
+  panelChromeBorderColor?: string;
+  panelChromeShadow?: string;
+  panelChromeBackdropFilter?: string;
+};
 
 const screenDarkTheme: OpsChartTheme = {
   ...getOpsChartTheme('dark'),
-  axisLabelColor: 'rgba(207, 244, 255, 0.76)',
-  axisLineColor: 'rgba(76, 211, 255, 0.22)',
-  splitLineColor: 'rgba(76, 211, 255, 0.16)',
-  tooltipBackgroundColor: 'rgba(5, 18, 40, 0.96)',
-  tooltipBorderColor: 'rgba(45, 212, 255, 0.42)',
+  screenCanvasBg: [
+    'radial-gradient(circle at 50% 44%, rgba(42, 210, 255, 0.16), transparent 34%)',
+    'radial-gradient(circle at 16% 12%, rgba(68, 150, 255, 0.12), transparent 24%)',
+    'linear-gradient(135deg, #051020 0%, #08243a 48%, #030914 100%)',
+  ].join(', '),
+  panelChromeBg: [
+    'linear-gradient(180deg, rgba(8, 34, 56, 0.54), rgba(3, 14, 30, 0.36))',
+    'rgba(4, 18, 36, 0.42)',
+  ].join(', '),
+  panelChromeHeaderBg: 'linear-gradient(180deg, rgba(8, 38, 62, 0.58), rgba(3, 16, 34, 0.38))',
+  panelChromeBorderColor: 'rgba(109, 226, 255, 0.34)',
+  panelChromeShadow: [
+    '0 16px 44px rgba(0, 12, 30, 0.34)',
+    'inset 0 1px 0 rgba(226, 251, 255, 0.12)',
+    'inset 0 -28px 52px rgba(14, 116, 144, 0.08)',
+  ].join(', '),
+  panelChromeBackdropFilter: 'blur(16px) saturate(128%)',
+  axisLabelColor: 'rgba(221, 251, 255, 0.76)',
+  axisLineColor: 'rgba(120, 223, 255, 0.22)',
+  splitLineColor: 'rgba(120, 223, 255, 0.14)',
+  tooltipBackgroundColor: 'rgba(5, 22, 42, 0.92)',
+  tooltipBorderColor: 'rgba(109, 226, 255, 0.36)',
   tooltipTextColor: 'rgba(235, 252, 255, 0.94)',
-  tooltipShadow: '0 0 18px rgba(34, 211, 238, 0.22), 0 14px 34px rgba(0, 0, 0, 0.38)',
-  pieTitleColor: 'rgba(142, 219, 255, 0.72)',
+  tooltipShadow: '0 14px 34px rgba(0, 0, 0, 0.34), 0 0 16px rgba(34, 211, 238, 0.12)',
+  pieTitleColor: 'rgba(142, 235, 255, 0.72)',
   pieValueColor: '#EAFBFF',
-  pieBorderColor: 'rgba(5, 18, 40, 0.96)',
-  zoomBrushColor: 'rgba(34, 211, 238, 0.18)',
-  zoomBrushBorderColor: 'rgba(45, 212, 255, 0.62)',
-  axisPointerColor: 'rgba(45, 212, 255, 0.82)',
-  legendHeaderBg: 'rgba(45, 212, 255, 0.08)',
-  legendRowBg: 'rgba(8, 22, 45, 0.42)',
-  legendHoverBg: 'rgba(45, 212, 255, 0.12)',
-  panelBg: 'rgba(7, 18, 38, 0.74)',
-  panelSubtleBg: 'rgba(96, 165, 250, 0.14)',
-  panelBorderColor: 'rgba(45, 212, 255, 0.34)',
+  pieBorderColor: 'rgba(5, 18, 40, 0.94)',
+  zoomBrushColor: 'rgba(54, 231, 255, 0.14)',
+  zoomBrushBorderColor: 'rgba(109, 226, 255, 0.52)',
+  axisPointerColor: 'rgba(125, 235, 255, 0.68)',
+  legendHeaderBg: 'rgba(54, 231, 255, 0.08)',
+  legendRowBg: 'rgba(8, 34, 56, 0.36)',
+  legendHoverBg: 'rgba(54, 231, 255, 0.12)',
+  panelBg: 'rgba(6, 24, 42, 0.48)',
+  panelSubtleBg: 'rgba(68, 150, 255, 0.12)',
+  panelBorderColor: 'rgba(109, 226, 255, 0.34)',
   panelTitleColor: '#EAFBFF',
-  panelDescriptionColor: 'rgba(142, 219, 255, 0.72)',
-  panelShadow: 'inset 0 1px 0 rgba(148, 230, 255, 0.18), 0 0 22px rgba(14, 165, 233, 0.16)',
-  singleValueColor: '#22D3EE',
-  singleValueGlow: '0 0 16px rgba(34, 211, 238, 0.42)',
-  singleValueMetaColor: 'rgba(142, 219, 255, 0.72)',
-  singleValueSurface: 'rgba(8, 22, 45, 0.58)',
-  lineAreaOpacity: 0.22,
-  lineOpacity: 0.98,
-  lineShadowBlur: 10,
-  lineShadowColor: 'rgba(34, 211, 238, 0.46)',
-  barShadowBlur: 12,
-  barShadowColor: 'rgba(34, 211, 238, 0.38)',
-  topNBarShadowBlur: 10,
-  topNBarShadowColor: 'rgba(34, 211, 238, 0.42)',
-  pieShadowBlur: 14,
-  pieShadowColor: 'rgba(34, 211, 238, 0.24)',
-  panelCornerAccentColor: 'rgba(45, 212, 255, 0.72)',
+  panelDescriptionColor: 'rgba(142, 235, 255, 0.68)',
+  panelShadow: 'inset 0 1px 0 rgba(226, 251, 255, 0.12), 0 16px 44px rgba(0, 12, 30, 0.34)',
+  singleValueColor: '#6EF4FF',
+  singleValueGlow: '0 0 16px rgba(54, 231, 255, 0.28)',
+  singleValueMetaColor: 'rgba(142, 235, 255, 0.68)',
+  singleValueSurface: 'rgba(8, 34, 56, 0.42)',
+  lineAreaOpacity: 0.18,
+  lineOpacity: 0.94,
+  lineShadowBlur: 6,
+  lineShadowColor: 'rgba(54, 231, 255, 0.28)',
+  barShadowBlur: 6,
+  barShadowColor: 'rgba(54, 231, 255, 0.24)',
+  topNBarShadowBlur: 6,
+  topNBarShadowColor: 'rgba(54, 231, 255, 0.24)',
+  pieShadowBlur: 8,
+  pieShadowColor: 'rgba(54, 231, 255, 0.18)',
+  panelCornerAccentColor: 'rgba(125, 235, 255, 0.58)',
 };
 
 const screenLightTheme: OpsChartTheme = {
@@ -128,11 +154,11 @@ export const getOpsChartColorsByMode = (
 ) => {
   if (mode === 'screen-dark') {
     return [
-      '#22D3EE',
-      '#60A5FA',
-      '#A3E635',
-      '#FACC15',
-      '#FB7185',
+      '#42E8F4',
+      '#6EA8FF',
+      '#9FE870',
+      '#F9C74F',
+      '#FF5D73',
       '#38BDF8',
       '#C084FC',
       '#34D399',
