@@ -1,0 +1,71 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_aethra"
+        config_type = "aethra"
+        brand = "aethra"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Aethra CPU (enterprise 7745 AETHRA-MIB, 5-minute average load %, scalar, PEN 7745) ----
+    # 权威来源：AETHRA-MIB cpuLoad5min 1.3.6.1.4.1.7745.5.2.19.2（CPU 5 分钟平均负载%，直接%）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7745.5.2.19.2.0"
+        name = "usage"
+    # ---- Aethra 内存 (总量 + 空闲, KBytes；usage=(总量-空闲)/总量) ----
+    # 权威来源：AETHRA-MIB memTotal 1.3.6.1.4.1.7745.5.2.19.5 / memFree 1.3.6.1.4.1.7745.5.2.19.6（KBytes）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7745.5.2.19.5.0"
+        name = "total"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.7745.5.2.19.6.0"
+        name = "free"
+        conversion = "int"
+# ---- 温/风/电：Aethra 7745 私有 MIB 本批仅 CPU/内存 OID（另有 DSL/VoIP 状态对象本批未纳入），无温度/风扇/电源标量 → N/A。CPU(5min avg)+内存(总量/空闲 KBytes)+HC流量干净可采。----
