@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="netmoduleRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d2353a"/>
+      <stop offset="1" stop-color="#a11418"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#netmoduleRed)"/>
+  <path d="M42 82 V38 H50 L70 66 V38 H78 V82 H70 L50 54 V82 z" fill="#ffffff"/>
+</svg>
