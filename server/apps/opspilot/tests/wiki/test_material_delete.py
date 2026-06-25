@@ -71,3 +71,36 @@ class TestDeleteView:
         assert r.status_code == 200
         assert r.json()["data"]["pending_review"] == 1
         assert not Material.objects.filter(id=mat.id).exists()
+
+
+@pytest.mark.django_db
+def test_deleting_file_material_removes_minio_file(monkeypatch):
+    """删除 file 资料应删除其 MinIO 文件对象(post_delete 信号)。"""
+    from apps.opspilot.models import Material
+    from apps.opspilot.services.wiki.update_service import handle_material_deletion
+
+    deleted = []
+    kb = _kb()
+    mat = Material.objects.create(knowledge_base=kb, name="f", material_type="file")
+    monkeypatch.setattr(type(mat.file.storage), "delete", lambda self, name: deleted.append(name))
+    mat.file = "fake/material.txt"  # 模拟已上传文件(字符串赋值不触发真实上传)
+
+    handle_material_deletion(mat, operator="sys")
+
+    assert deleted == ["fake/material.txt"]
+
+
+@pytest.mark.django_db
+def test_deleting_kb_cascade_removes_material_minio_files(monkeypatch):
+    """删除知识库 → 级联删资料 → 同样触发 post_delete,删除 MinIO 文件。"""
+    from apps.opspilot.models import Material, WikiKnowledgeBase
+
+    deleted = []
+    kb = WikiKnowledgeBase.objects.create(name="kb-cascade", team=[1])
+    mat = Material.objects.create(knowledge_base=kb, name="f", material_type="file", file="fake/cascade.txt")
+    monkeypatch.setattr(type(mat.file.storage), "delete", lambda self, name: deleted.append(name))
+
+    kb.delete()
+
+    assert not Material.objects.filter(id=mat.id).exists()
+    assert "fake/cascade.txt" in deleted
