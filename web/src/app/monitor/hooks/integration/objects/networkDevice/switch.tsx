@@ -128,6 +128,7 @@ export const useSwitchConfig = () => {
       'Switch SNR SNMP': 'snmp_snr',
       'Switch Intelbras SNMP': 'snmp_intelbras',
       'Switch Nexans SNMP': 'snmp_nexans',
+      'Switch Pica8 SNMP': 'snmp_pica8',
       'Switch BDCOM SNMP': 'snmp_bdcom',
       'Switch Parks SNMP': 'snmp_parks',
       'Switch Ubiquiti SNMP': 'snmp_ubiquiti',
