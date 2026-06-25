@@ -1,0 +1,67 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_neteye"
+        config_type = "neteye"
+        brand = "neteye"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Neteye(网御星云) CPU (enterprise 3224 nsResCpuAvg, 直接%, scalar, PEN 3224) ----
+    # 权威来源：本地 snmp.yaml nsResCpuAvg 1.3.6.1.4.1.3224.16.1.1.0（CPU 平均使用率%）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3224.16.1.1.0"
+        name = "usage"
+    # ---- Neteye 内存 (nsResMemAllocate 已用 + nsResMemLeft 空闲, bytes；用量=used/(used+free)) ----
+    # 权威来源：本地 snmp.yaml nsResMemAllocate .3224.16.2.1.0 / nsResMemLeft .3224.16.2.2.0（字节,无 total OID,total=used+free）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3224.16.2.1.0"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3224.16.2.2.0"
+        name = "free"
+# ---- 会话/温/风/电：3224 资源 MIB 会话 OID 未经现网实证,本轮 N/A;温/风/电 MIB 无 → N/A。CPU(nsResCpuAvg)+内存(used/free)干净可采。----

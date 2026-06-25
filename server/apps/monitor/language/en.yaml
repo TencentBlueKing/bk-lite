@@ -4592,6 +4592,9 @@ monitor_object_plugin:
   Firewall ScreenOS SNMP:
     name: Juniper ScreenOS (Telegraf)
     desc: Juniper ScreenOS (NetScreen) firewall SNMP collection (NETSCREEN-RESOURCE-MIB, IANA PEN 3224). Beyond standard IF-MIB interface metrics, it collects ScreenOS private OIDs for device health including CPU utilisation over the last 5 minutes (nsResCpuLast5Min) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Juniper NetScreen / SSG firewalls running ScreenOS (enterprise 3224).
+  Firewall Neteye SNMP:
+    name: Neteye (Telegraf)
+    desc: Neteye (网御星云 / Leadsec) firewall SNMP collection (enterprise 3224 resource MIB). Beyond standard IF-MIB interface metrics, it collects Neteye private OIDs for device health including average CPU utilisation (nsResCpuAvg) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Beijing Neteye (Leadsec) NGFW / UTM firewalls (enterprise 3224).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
