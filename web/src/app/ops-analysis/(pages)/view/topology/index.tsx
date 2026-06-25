@@ -47,6 +47,7 @@ import {
 } from '@/app/ops-analysis/components/unifiedFilter';
 import {
   getOpsChartTheme,
+  getOpsChartThemeByMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import { convertNodesToLayoutItems } from './utils/namespaceUtils';
@@ -249,6 +250,7 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
   ({ selectedTopology }, ref) => {
     const themeName = resolveOpsChartThemeName();
     const chartTheme = getOpsChartTheme(themeName);
+    const screenDarkTheme = getOpsChartThemeByMode('screen-dark');
     const isDarkTheme = themeName === 'dark';
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasContainerRef = useRef<HTMLDivElement>(null as any);
@@ -709,13 +711,13 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const isTechBluePresentation = isCanvasBackgroundEnabled(presentationConfig);
     const panelStyle = {
       //   border: `1px solid ${chartTheme.panelBorderColor}`,
-      backgroundColor: isTechBluePresentation
-        ? 'rgba(4, 14, 31, 0.98)'
+      background: isTechBluePresentation
+        ? screenDarkTheme.screenCanvasBg
         : chartTheme.panelBg,
     };
     const topologyContainerStyle: React.CSSProperties = {
       backgroundColor: isTechBluePresentation
-        ? '#020816'
+        ? '#02050d'
         : isDarkTheme ? 'var(--color-fill-1)' : '#f5f6f8',
       zIndex: isFullscreen ? 1100 : undefined,
     };
