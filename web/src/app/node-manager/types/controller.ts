@@ -109,10 +109,48 @@ export interface InstallerEventSummary {
   steps?: LogStep[];
 }
 
+export type ControllerInstallDisplayState =
+  | 'waiting'
+  | 'credential_failed'
+  | 'command_running'
+  | 'command_failed'
+  | 'installer_waiting'
+  | 'installer_no_report'
+  | 'installer_running'
+  | 'installer_failed'
+  | 'connectivity_waiting'
+  | 'connectivity_failed'
+  | 'success'
+  | 'success_without_detail'
+  | (string & {});
+
+export type ControllerInstallDisplayPhase =
+  | 'credential_validation'
+  | 'command_dispatch'
+  | 'installer_execution'
+  | 'node_connectivity'
+  | (string & {});
+
+export type ControllerInstallDisplaySeverity =
+  | 'default'
+  | 'processing'
+  | 'warning'
+  | 'error'
+  | 'success'
+  | (string & {});
+
+export interface ControllerInstallDisplay {
+  state: ControllerInstallDisplayState;
+  phase: ControllerInstallDisplayPhase;
+  severity: ControllerInstallDisplaySeverity;
+  installer_steps_received?: boolean;
+}
+
 export interface OperationTaskResult {
   steps?: LogStep[];
   installer_progress?: InstallerProgressSummary;
   installer_summary?: InstallerEventSummary;
+  controller_install_display?: ControllerInstallDisplay;
   failure?: InstallerFailure;
 }
 
