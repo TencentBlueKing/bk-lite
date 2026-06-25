@@ -4066,6 +4066,9 @@ monitor_object_plugin:
   Firewall Neteye SNMP:
     name: 网御星云（Telegraf）
     desc: 网御星云（Neteye/Leadsec）防火墙专用 SNMP 采集模板（企业号 3224 资源 MIB）。除标准 IF-MIB 接口指标外，额外采集网御星云私有 OID 的设备健康指标：CPU 平均使用率（nsResCpuAvg）与内存（nsResMemAllocate 已用 + nsResMemLeft 空闲，用量按 已用/(已用+空闲) 推导）。会话计数与温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——北京网御星云（Leadsec）NGFW / UTM 防火墙（企业号 3224）。
+  Firewall Bluedon SNMP:
+    name: 蓝盾（Telegraf）
+    desc: 蓝盾（Bluedon）防火墙专用 SNMP 采集模板（企业号 36889 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集蓝盾私有 OID 的设备健康指标：CPU 平均使用率（snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（snAgGblDynMemUtil，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——蓝盾信息安全（Bluedon）防火墙 / 网络安全设备（企业号 36889）。
   Firewall Check Point SNMP:
     name: Check Point（Telegraf）
     desc: 面向 Check Point Quantum NGFW（Gaia）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 CHECKPOINT-MIB 私有 OID 的设备健康（CPU 使用率，真实内存 总量/空闲/已用及推算使用率）与防火墙特有的 VPN 吞吐（每秒加密/解密包数）。内存使用率按 (总量-空闲)/总量 推算。

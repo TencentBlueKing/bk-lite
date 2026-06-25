@@ -4601,6 +4601,9 @@ monitor_object_plugin:
   Firewall Neteye SNMP:
     name: Neteye (Telegraf)
     desc: Neteye (网御星云 / Leadsec) firewall SNMP collection (enterprise 3224 resource MIB). Beyond standard IF-MIB interface metrics, it collects Neteye private OIDs for device health including average CPU utilisation (nsResCpuAvg) and memory (nsResMemAllocate used + nsResMemLeft free, usage derived as used/(used+free)). Session counters and temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Beijing Neteye (Leadsec) NGFW / UTM firewalls (enterprise 3224).
+  Firewall Bluedon SNMP:
+    name: Bluedon (Telegraf)
+    desc: Bluedon (蓝盾) firewall SNMP collection (enterprise 36889 private MIB). Beyond standard IF-MIB interface metrics, it collects Bluedon private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Bluedon Information Security firewalls / network-security appliances (enterprise 36889).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
