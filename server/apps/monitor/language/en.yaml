@@ -4443,6 +4443,20 @@ monitor_object_plugin:
       Supported brands/models — Alaxala AX2430S managed enterprise switches; other AX
       families place the same counters under model-specific subtrees and degrade to a
       clean IF-MIB baseline.
+  Switch Transition Networks SNMP:
+    name: Transition Networks (Telegraf)
+    desc: Transition Networks (now Lantronix) switch / managed media-converter SNMP
+      collection template (IANA PEN 868). The TRANSITION-SMI private tree
+      (chassis/card/slot module tables) exposes inventory and per-port module objects
+      rather than no-row-level-filter scalar device-health gauges, and the ION/SISPM
+      platform is managed primarily through standard public MIBs, so this is a clean
+      MIB-II + IF-MIB baseline template — it collects system uptime and IF-MIB interface
+      metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed,
+      error/discard/packet counters and aggregate device traffic. CPU, memory,
+      temperature, fan and power-supply state are not collected (N/A) because they are
+      not exposed as pollable scalar OIDs across the product line.
+      Supported brands/models — Transition Networks SISPM/SM hardened managed switches
+      and ION/IONMM managed media converters.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
