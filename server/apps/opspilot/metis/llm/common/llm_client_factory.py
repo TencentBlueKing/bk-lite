@@ -1,5 +1,6 @@
 """LLM客户端工厂类,用于创建不同用途的LLM客户端"""
 
+import os
 from typing import Union
 
 import anthropic
@@ -63,7 +64,7 @@ class LLMClientFactory:
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=3000,
+            timeout=int(os.getenv("LLM_INVOKE_TIMEOUT", "60")),
         )
 
         if llm.extra_body is None:
@@ -109,7 +110,7 @@ class LLMClientFactory:
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=3000,
+            timeout=int(os.getenv("LLM_INVOKE_TIMEOUT", "60")),
             model_kwargs=model_kwargs if model_kwargs else None,
         )
 
