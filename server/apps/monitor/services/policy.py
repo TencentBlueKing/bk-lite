@@ -23,6 +23,7 @@ class PolicyService:
             for index, template in enumerate(obj.templates):
                 item = {
                     **template,
+                    "trigger_count": template.get("trigger_count", 1),
                     "template_key": f"{obj.id}:{index}",
                     "monitor_object_id": obj.monitor_object_id,
                     "monitor_object_name": obj.monitor_object.name,

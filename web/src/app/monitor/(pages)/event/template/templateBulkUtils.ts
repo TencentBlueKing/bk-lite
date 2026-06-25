@@ -31,6 +31,7 @@ export interface BulkConfig {
   enable?: boolean;
   schedule?: { type: string; value: number };
   period?: { type: string; value: number };
+  trigger_count?: number;
   notice?: boolean;
   notice_type?: string;
   notice_type_ids?: Array<string | number>;
@@ -160,6 +161,7 @@ export const normalizeBulkConfig = (
   const noticeTypeIds = config.notice_type_ids || [];
   const normalized: BulkConfig = {
     ...config,
+    trigger_count: config.trigger_count || 1,
     enable_alerts: Array.from(enableAlerts),
     notice_type: getPrimaryNoticeType(noticeTypeIds, channels),
   };

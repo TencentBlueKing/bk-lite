@@ -39,6 +39,7 @@ import { renderChart } from '@/app/monitor/utils/common';
 import { useUnitTransform } from '@/app/monitor/hooks/useUnitTransform';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import type { ListRef } from 'rc-virtual-list';
+import { buildAlertSnapshotChartValues } from './alertDetailUtils';
 
 const TIMELINE_ITEM_HEIGHT = 48;
 
@@ -150,29 +151,8 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig>(
           page_size: -1,
           page: 10
         });
-        const isNoDataAlert = form.alert_type === 'no_data';
-        const data = (responseData?.snapshots || []).reduce(
-          (pre: any, cur: any) => {
-            if (
-              isNoDataAlert &&
-              (!cur.raw_data || !Object.keys(cur.raw_data).length)
-            ) {
-              if (cur.event_time) {
-                const timestamp = Math.floor(
-                  new Date(cur.event_time).getTime() / 1000
-                );
-                pre.push([timestamp, null]);
-              }
-            } else {
-              // 阈值告警或有数据的情况: 使用原逻辑
-              const values = cur.raw_data?.values?.at(-1);
-              if (values) {
-                pre.push(values);
-              }
-            }
-            return pre;
-          },
-          []
+        const data = buildAlertSnapshotChartValues(
+          responseData?.snapshots || []
         );
         const config = [
           {

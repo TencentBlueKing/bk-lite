@@ -53,6 +53,7 @@ const defaultConfig: BulkConfig = {
   enable: true,
   schedule: { type: 'min', value: 5 },
   period: { type: 'min', value: 5 },
+  trigger_count: 1,
   notice: false,
   notice_type: '',
   notice_type_ids: [],
@@ -416,6 +417,13 @@ const BulkApplyModal: React.FC<BulkApplyModalProps> = ({
                         <Select className="w-[96px]" options={timeUnitOptions} />
                       </Form.Item>
                     </Space.Compact>
+                  </Form.Item>
+                  <Form.Item
+                    label="触发条件"
+                    name="trigger_count"
+                    rules={[{ required: true, message: '请输入触发次数' }]}
+                  >
+                    <InputNumber min={1} precision={0} className="w-full" addonBefore="连续" addonAfter="个周期" />
                   </Form.Item>
                   <Form.Item label="启用状态" name="enable" valuePropName="checked">
                     <Switch checkedChildren="启用" unCheckedChildren="停用" />
