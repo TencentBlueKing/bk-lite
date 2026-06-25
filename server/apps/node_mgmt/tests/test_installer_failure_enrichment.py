@@ -145,15 +145,14 @@ def test_normalize_task_result_for_read_summarizes_missing_installer_events():
     assert summary["state"] == "no_installer_events"
     assert summary["observed_count"] == 0
     assert summary["completed_count"] == 0
-    assert summary["missing_steps"] == [
-        "fetch_session",
-        "prepare_dirs",
-        "download",
-        "extract",
-        "write_config",
-        "install",
-    ]
+    assert summary["missing_steps"] == []
     assert summary["anomalies"] == ["no_installer_events"]
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "installer_no_report"
+    assert display["phase"] == "installer_execution"
+    assert display["severity"] == "warning"
+    assert display["installer_steps_received"] is False
 
 
 def test_normalize_task_result_for_read_deduplicates_installer_events_and_flags_connectivity_wait():
@@ -204,6 +203,125 @@ def test_normalize_task_result_for_read_deduplicates_installer_events_and_flags_
     assert summary["anomalies"] == ["duplicated_events", "installer_success_connectivity_pending"]
     assert [step["action"] for step in summary["steps"]] == [step[0] for step in installer_steps]
 
+    display = normalized["controller_install_display"]
+    assert display["state"] == "connectivity_waiting"
+    assert display["phase"] == "node_connectivity"
+    assert display["severity"] == "processing"
+    assert display["installer_steps_received"] is True
+
+
+def test_normalize_task_result_for_read_reports_success_without_detail():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "success",
+            "steps": [
+                {
+                    "action": "credential_check",
+                    "status": "success",
+                    "message": "Validate credentials (password)",
+                },
+                {
+                    "action": "run",
+                    "status": "success",
+                    "message": "Installer bootstrap completed",
+                },
+                {
+                    "action": "connectivity_check",
+                    "status": "success",
+                    "message": "Sidecar connectivity confirmed",
+                },
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "installer_success_without_detail"
+    assert summary["missing_steps"] == []
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "success_without_detail"
+    assert display["phase"] == "node_connectivity"
+    assert display["severity"] == "success"
+    assert display["installer_steps_received"] is False
+
+
+def test_normalize_task_result_for_read_reports_no_report_connectivity_timeout():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "error",
+            "steps": [
+                {
+                    "action": "credential_check",
+                    "status": "success",
+                    "message": "Validate credentials (password)",
+                },
+                {
+                    "action": "run",
+                    "status": "success",
+                    "message": "Installer bootstrap completed",
+                },
+                {
+                    "action": "connectivity_check",
+                    "status": "error",
+                    "message": "Connectivity check timeout",
+                    "details": {"timeout": True},
+                },
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "installer_no_report_connectivity_timeout"
+    assert summary["missing_steps"] == []
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "installer_no_report"
+    assert display["phase"] == "installer_execution"
+    assert display["severity"] == "error"
+    assert display["installer_steps_received"] is False
+
+
+def test_normalize_task_result_for_read_reports_complete_success_display_state():
+    installer_steps = [
+        ("fetch_session", "success", "Installer session fetched"),
+        ("prepare_dirs", "success", "Directories prepared"),
+        ("download", "success", "Controller package downloaded"),
+        ("extract", "success", "Extracted 3144 files"),
+        ("write_config", "success", "Installer runtime configured"),
+        ("install", "success", "Package installer finished"),
+    ]
+
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "success",
+            "steps": [
+                {"action": "credential_check", "status": "success", "message": "Validate credentials"},
+                {"action": "run", "status": "success", "message": "Installer bootstrap completed"},
+                *[
+                    {
+                        "action": action,
+                        "status": status,
+                        "message": message,
+                        "details": {"installer_event": True, "raw_step": action},
+                    }
+                    for action, status, message in installer_steps
+                ],
+                {"action": "connectivity_check", "status": "success", "message": "Sidecar connectivity confirmed"},
+            ],
+        }
+    )
+
+    summary = normalized["installer_summary"]
+    assert summary["state"] == "installer_success_connectivity_confirmed"
+    assert summary["expected_count"] == 6
+    assert summary["completed_count"] == 6
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "success"
+    assert display["phase"] == "node_connectivity"
+    assert display["severity"] == "success"
+    assert display["installer_steps_received"] is True
+
 
 def test_normalize_task_result_for_read_reports_incomplete_installer_events():
     normalized = normalize_task_result_for_read(
@@ -233,3 +351,8 @@ def test_normalize_task_result_for_read_reports_incomplete_installer_events():
     assert summary["last_status"] == "error"
     assert summary["missing_steps"] == ["prepare_dirs", "extract", "write_config", "install"]
     assert summary["anomalies"] == ["incomplete_installer_events"]
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "installer_failed"
+    assert display["phase"] == "installer_execution"
+    assert display["severity"] == "error"
