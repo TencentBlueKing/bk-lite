@@ -4326,6 +4326,23 @@ monitor_object_plugin:
       computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
       object, so PSU is not collected (N/A).
       Supported brands/models — SNR (NAG) managed switches.
+  Switch Intelbras SNMP:
+    name: Intelbras (Telegraf)
+    desc: Intelbras managed switch-specific SNMP collection template (S/SG enterprise
+      line such as the S2328G-PB, which runs an INTELBRAS OS / Comware-derived platform,
+      IANA PEN 26138). In addition to standard IF-MIB interface metrics, it collects
+      Intelbras private OIDs for device health from the ibEntityExt state table —
+      per-entity control-plane CPU utilization (ibEntityExtCpuUsage) and system memory
+      total bytes plus utilization (ibEntityExtMemSize / ibEntityExtMemUsage). CPU and
+      memory are read from the ibEntityExt table indexed by ENTITY-MIB entPhysicalIndex;
+      the real value lives on the management entity row while other component rows report
+      zero, so the metrics are aggregated with max() to surface the real reading. The
+      ibEntityExt temperature column carries a 65535 not-applicable sentinel on
+      non-sensor rows that telegraf cannot filter out, and fan/power-supply state is only
+      distinguishable by joining ENTITY-MIB entPhysicalClass (per-row filtering telegraf
+      does not support), so temperature, fan and power supply are not collected (N/A).
+      Supported brands/models — Intelbras S/SG managed enterprise switches (Comware-based
+      managed line); lower-end web-smart/unmanaged models expose only MIB-II + IF-MIB.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
