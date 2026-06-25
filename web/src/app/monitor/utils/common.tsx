@@ -585,6 +585,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
   { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' },
   { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' },
+  { match: /intelbras/i, label: 'Intelbras', icon: 'mm-intelbras_intelbras' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
   { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },

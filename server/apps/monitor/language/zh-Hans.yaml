@@ -3869,6 +3869,10 @@ monitor_object_plugin:
     name: SNR（Telegraf）
     desc: SNR（НАГ/NAG）交换机专用 SNMP 采集模板（NAG-MIB，IANA PEN 40418）。在标准 IF-MIB 接口指标之外，额外采集 SNR 私有 OID 的设备健康指标：各 slot CPU 使用率（sysCpuUsage）、系统内存（总量/已用）、机箱温度（sysTemperature 专用温度列）与风扇状态（sysFanStatus）。风扇原始码（0=正常/1=异常）经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。NAG-MIB 无独立电源（PSU）状态对象，故电源不采集（N/A）。
       适用品牌型号——SNR（NAG）网管交换机。
+  Switch Intelbras SNMP:
+    name: Intelbras（Telegraf）
+    desc: Intelbras（英特布拉斯，巴西）管理型交换机专用 SNMP 采集模板（S/SG 企业系列，如 S2328G-PB，运行 INTELBRAS OS / Comware 衍生平台，IANA PEN 26138）。在标准 IF-MIB 接口指标之外，额外采集 Intelbras 私有 OID 的设备健康指标（取自 ibEntityExt 状态表）：各实体控制平面 CPU 使用率（ibEntityExtCpuUsage）与系统内存总量字节及利用率（ibEntityExtMemSize / ibEntityExtMemUsage）。CPU 与内存按 ENTITY-MIB entPhysicalIndex 走表，真值落在管理实体行、其余组件行为 0，故共享盘 max() 取真值。ibEntityExt 温度列在非传感器行回填 65535 哨兵值（telegraf 无法行级过滤），风扇/电源健康需配合 ENTITY-MIB entPhysicalClass 行级类型 join 才能区分（telegraf 不支持），故温度/风扇/电源不采集（N/A）。
+      适用品牌型号——Intelbras S/SG 管理型企业交换机（Comware 平台管理型产线）；低端 web-smart/非管理型仅暴露 MIB-II + IF-MIB。
   Switch BDCOM SNMP:
     name: BDCOM（Telegraf）
     desc: BDCOM（上海博达数据通信）交换机专用 SNMP 采集模板（BDCOM 私有 MIB，IANA PEN 3320）。在标准 IF-MIB 接口指标之外，额外采集 BDCOM 私有 OID 的设备健康指标：最近 5 分钟控制平面 CPU 使用率（NMS-PROCESS-MIB cpmCPUTotal5min）、系统内存池已用/空闲字节（NMS-MEMORY-POOL-MIB，镜像 Cisco 风格内存池表）与各板卡温度（BDCOM-SYS nmscardTemperature 专用温度列）。内存使用率按 used/(used+free) 计算。BDCOM 交换机 MIB 无独立风扇/电源（PSU）状态对象，故风扇与电源不采集（N/A）。
