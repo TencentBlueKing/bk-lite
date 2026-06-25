@@ -22,22 +22,28 @@ def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
     return cloned
 
 
+def _normalize_topology_presentation(value: Any) -> dict:
+    return value if isinstance(value, dict) else {}
+
+
 def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectType) -> list | dict:
     if object_type == ObjectType.DASHBOARD:
         return view_sets if isinstance(view_sets, list) else []
 
     if object_type == ObjectType.TOPOLOGY:
         if not isinstance(view_sets, dict):
-            return {"nodes": [], "edges": [], "filters": [], "viewport": {}}
+            return {"nodes": [], "edges": [], "filters": [], "viewport": {}, "presentation": {}}
         nodes = view_sets.get("nodes", [])
         edges = view_sets.get("edges", [])
         filters = view_sets.get("filters", [])
         viewport = view_sets.get("viewport", {})
+        presentation = view_sets.get("presentation", {})
         return {
             "nodes": nodes if isinstance(nodes, list) else [],
             "edges": edges if isinstance(edges, list) else [],
             "filters": filters if isinstance(filters, list) else [],
             "viewport": viewport if isinstance(viewport, dict) else {},
+            "presentation": _normalize_topology_presentation(presentation),
         }
 
     if object_type == ObjectType.ARCHITECTURE:
@@ -75,6 +81,7 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
             "edges": _rewrite_datasource_refs(view_sets.get("edges", []), ds_key_map),
             "filters": view_sets.get("filters", []) if isinstance(view_sets.get("filters", []), list) else [],
             "viewport": view_sets.get("viewport", {}) if isinstance(view_sets.get("viewport", {}), dict) else {},
+            "presentation": _normalize_topology_presentation(view_sets.get("presentation", {})),
         }
 
     if object_type == ObjectType.ARCHITECTURE:
@@ -98,6 +105,7 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
             "edges": _rewrite_datasource_refs(normalized.get("edges", []), datasource_key_to_id),
             "filters": normalized.get("filters", []) if isinstance(normalized.get("filters", []), list) else [],
             "viewport": normalized.get("viewport", {}) if isinstance(normalized.get("viewport", {}), dict) else {},
+            "presentation": _normalize_topology_presentation(normalized.get("presentation", {})),
         }
 
     if object_type == ObjectType.ARCHITECTURE:

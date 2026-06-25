@@ -15,6 +15,8 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   TopologyNodeData,
   SerializedEdge,
+  TopologyPresentationConfig,
+  TopologyViewSets,
   TopologyViewportConfig,
 } from '@/app/ops-analysis/types/topology';
 import type { ValueConfig, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
@@ -31,12 +33,23 @@ const DEFAULT_TABLE_QUERY_PARAMS = {
 const isTableLikeChartType = (chartType?: string) =>
   chartType === 'table' || chartType === 'eventTable';
 
+const CHROME_PRESENTATION_ROLES = new Set([
+  'decorative-frame',
+  'screen-title',
+  'screen-clock',
+]);
+
+const isChromePresentationRole = (
+  role: unknown
+): role is NonNullable<TopologyNodeData['presentationRole']> =>
+  typeof role === 'string' && CHROME_PRESENTATION_ROLES.has(role);
+
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
-    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
-    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect'],
-    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
-    text: ['fontSize', 'fontWeight', 'textColor'],
+    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'renderEffect', 'nameColor', 'nameFontSize', 'thresholdColors'],
+    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect', 'frameVariant'],
+    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'renderEffect', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
+    text: ['width', 'height', 'fontSize', 'fontWeight', 'textColor', 'backgroundColor', 'borderColor'],
     chart: ['width', 'height'],
   };
 
@@ -84,6 +97,9 @@ export const useGraphData = (
       const nodeData = node.getData();
       const position = node.getPosition();
       const zIndex = node.getZIndex();
+      const presentationRole = isChromePresentationRole(nodeData.presentationRole)
+        ? nodeData.presentationRole
+        : undefined;
 
       const serializedNode: TopologyNodeData = {
         id: nodeData.id,
@@ -101,6 +117,10 @@ export const useGraphData = (
         valueConfig: nodeData.valueConfig,
         styleConfig: serializeNodeConfig(nodeData, nodeData.type),
       };
+
+      if (presentationRole) {
+        serializedNode.presentationRole = presentationRole;
+      }
 
       return serializedNode;
     });
@@ -136,6 +156,7 @@ export const useGraphData = (
     selectedTopology: DirItem,
     filters?: UnifiedFilterDefinition[],
     viewport?: TopologyViewportConfig | null,
+    presentation?: TopologyPresentationConfig | null,
   ) => {
     if (!selectedTopology?.data_id) {
       message.error(t('topology.saveTopologySelectMsg'));
@@ -152,6 +173,7 @@ export const useGraphData = (
           edges: topologyData.edges,
           ...(filters && filters.length > 0 ? { filters } : {}),
           ...(viewport ? { viewport } : {}),
+          ...(presentation ? { presentation } : {}),
         },
       };
 
@@ -283,12 +305,15 @@ export const useGraphData = (
     };
   }, [handleTableQueryChange]);
 
-  const loadTopologyData = useCallback((data: { nodes: TopologyNodeData[]; edges: SerializedEdge[] }) => {
+  const loadTopologyData = useCallback((data: TopologyViewSets) => {
     if (!graphInstance) return;
 
     graphInstance.clearCells();
 
-    data.nodes?.forEach((nodeConfig) => {
+    const nodes = data.nodes || [];
+    const nodeIds = new Set(nodes.map((nodeConfig) => nodeConfig.id).filter(Boolean));
+
+    nodes.forEach((nodeConfig) => {
       let nodeData: ReturnType<typeof createNodeByType>;
       const valueConfig = nodeConfig.valueConfig || {};
 
@@ -317,49 +342,56 @@ export const useGraphData = (
       graphInstance.addNode(nodeData as any);
     });
 
-    data.edges?.forEach((edgeConfig) => {
-      const connectionType = (edgeConfig as any).arrowDirection || 'single';
-      const edgeData: any = {
-        lineType: edgeConfig.lineType as 'common_line' | 'network_line',
-        lineName: edgeConfig.lineName,
-        arrowDirection: connectionType,
-        sourceInterface: edgeConfig.sourceInterface,
-        targetInterface: edgeConfig.targetInterface,
-        vertices: edgeConfig.vertices || [],
-        styleConfig: edgeConfig.styleConfig,
-        config: edgeConfig.config,
-      };
+    (data.edges || [])
+      .filter((edgeConfig) => (
+        nodeIds.has(edgeConfig.source) &&
+        nodeIds.has(edgeConfig.target)
+      ))
+      .forEach((edgeConfig) => {
+        const connectionType = (edgeConfig as any).arrowDirection || 'single';
+        const edgeData: any = {
+          lineType: edgeConfig.lineType as 'common_line' | 'network_line',
+          lineName: edgeConfig.lineName,
+          arrowDirection: connectionType,
+          sourceInterface: edgeConfig.sourceInterface,
+          targetInterface: edgeConfig.targetInterface,
+          vertices: edgeConfig.vertices || [],
+          styleConfig: edgeConfig.styleConfig,
+          config: edgeConfig.config,
+        };
 
-      const edgeStyle = getEdgeStyleWithLabel(edgeData, connectionType, edgeConfig.styleConfig);
+        const edgeStyle = getEdgeStyleWithLabel(edgeData, connectionType, edgeConfig.styleConfig);
 
-      const edge = graphInstance.createEdge({
-        id: edgeConfig.id,
-        source: edgeConfig.source,
-        target: edgeConfig.target,
-        sourcePort: edgeConfig.sourcePort,
-        targetPort: edgeConfig.targetPort,
-        shape: 'edge',
-        ...edgeStyle,
-        data: edgeData,
+        const edge = graphInstance.createEdge({
+          id: edgeConfig.id,
+          source: edgeConfig.source,
+          target: edgeConfig.target,
+          sourcePort: edgeConfig.sourcePort,
+          targetPort: edgeConfig.targetPort,
+          shape: 'edge',
+          ...edgeStyle,
+          data: edgeData,
+        });
+
+        graphInstance.addEdge(edge);
+
+        // 恢复拐点数据
+        if (edgeConfig.vertices && edgeConfig.vertices.length > 0) {
+          edge.setVertices(edgeConfig.vertices);
+        }
       });
-
-      graphInstance.addEdge(edge);
-
-      // 恢复拐点数据
-      if (edgeConfig.vertices && edgeConfig.vertices.length > 0) {
-        edge.setVertices(edgeConfig.vertices);
-      }
-    });
   }, [graphInstance, startLoadingAnimation]);
 
   const handleLoadTopology = useCallback(async (topologyId: string | number): Promise<{
     filters: UnifiedFilterDefinition[];
     viewport: TopologyViewportConfig | null;
+    presentation: TopologyPresentationConfig | null;
   }> => {
     if (!graphInstance) {
       return {
         filters: [],
         viewport: null,
+        presentation: null,
       };
     }
 
@@ -377,15 +409,21 @@ export const useGraphData = (
       const loadedViewport = rawViewport && typeof rawViewport === 'object'
         ? (rawViewport as TopologyViewportConfig)
         : null;
+      const rawPresentation = viewSets.presentation;
+      const loadedPresentation = rawPresentation && typeof rawPresentation === 'object'
+        ? (rawPresentation as TopologyPresentationConfig)
+        : null;
       return {
         filters: loadedFilters,
         viewport: loadedViewport,
+        presentation: loadedPresentation,
       };
     } catch (error) {
       console.error('加载拓扑图失败:', error);
       return {
         filters: [],
         viewport: null,
+        presentation: null,
       };
     } finally {
       setLoading(false);
@@ -450,6 +488,7 @@ export const useGraphData = (
     setLoading,
     handleSaveTopology,
     handleLoadTopology,
+    loadTopologyData: loadTopologyData as (data: TopologyViewSets) => void,
     loadChartNodeData,
     refreshAllChartNodes,
   };

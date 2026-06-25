@@ -16,8 +16,7 @@ import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
 import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import {
-  getOpsChartTheme,
-  resolveOpsChartThemeName,
+  getOpsChartThemeByMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import {
   extractComparableValue,
@@ -172,7 +171,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   onReady,
 }) => {
   const { t } = useTranslation();
-  const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const valueAreaRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);

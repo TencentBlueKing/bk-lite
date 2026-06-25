@@ -234,6 +234,8 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
       width={600}
       open={visible}
       onClose={onClose}
+      getContainer={() => document.body}
+      zIndex={1200}
       bodyStyle={{ padding: 0 }}
       footer={
         <div style={{ textAlign: 'right', padding: '16px 24px' }}>

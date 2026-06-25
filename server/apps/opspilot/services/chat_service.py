@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import os
 import re
 import uuid
 from typing import Any, Dict, Tuple
@@ -136,9 +137,10 @@ class ChatService:
                         pass
                     loop.close()
 
+            _llm_timeout = int(os.getenv("LLM_INVOKE_TIMEOUT", "60"))
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(_run_in_new_loop)
-                response = future.result()
+                response = future.result(timeout=_llm_timeout)
 
             # 构建返回结果
             result = {
@@ -156,6 +158,27 @@ class ChatService:
                 result["message"] = content
 
             return result, doc_map, title_map
+
+        except concurrent.futures.TimeoutError:
+            # LLM 调用超时：future.result(timeout=...) 触发，worker 线程已放弃等待
+            _llm_timeout = int(os.getenv("LLM_INVOKE_TIMEOUT", "60"))
+            logger.error(f"invoke_chat LLM 调用超时（>{_llm_timeout}s）: skill_type={skill_type}")
+            loader = LanguageLoader(app="opspilot", default_lang="en")
+            message = loader.get("error.llm_timeout") or f"LLM 调用超时（>{_llm_timeout}s），请稍后重试"
+            return (
+                {
+                    "message": message,
+                    "success": False,
+                    "error": f"LLM invoke timeout after {_llm_timeout}s",
+                    "error_type": "TimeoutError",
+                    "total_tokens": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "browser_steps": [],
+                },
+                doc_map,
+                title_map,
+            )
 
         except Exception as e:
             # 记录详细的异常信息以便排查问题

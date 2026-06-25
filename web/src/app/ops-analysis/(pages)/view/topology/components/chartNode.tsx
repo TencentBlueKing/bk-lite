@@ -6,8 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { getLocaleData } from '../utils/localeStore';
 import {
-  getOpsChartTheme,
-  resolveOpsChartThemeName,
+  getOpsChartThemeByMode,
 } from '@/app/ops-analysis/utils/chartTheme';
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
@@ -17,7 +16,6 @@ interface ChartNodeProps {
 }
 
 const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
-  const chartTheme = getOpsChartTheme(resolveOpsChartThemeName());
   const { t } = useTranslation();
   const [nodeData, setNodeData] = useState(() => node.getData() || {});
 
@@ -43,6 +41,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
     onTableQueryChange,
   } = nodeData;
 
+  const chartTheme = getOpsChartThemeByMode(valueConfig?.chartThemeMode);
   const width = styleConfig?.width || NODE_DEFAULTS.CHART_NODE.width;
   const height = styleConfig?.height || NODE_DEFAULTS.CHART_NODE.height;
 
@@ -79,7 +78,8 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
         display: 'flex',
         flexDirection: 'column',
         overflow: 'hidden',
-      }}
+        position: 'relative',
+      } as React.CSSProperties}
     >
       {componentName && (
         <div
@@ -93,7 +93,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             style={{
               fontSize: '14px',
               fontWeight: '600',
-              color: 'var(--color-text-1)',
+              color: chartTheme.panelTitleColor,
               marginBottom: normalizedDescription ? '4px' : 0,
               lineHeight: '20px',
             }}
@@ -104,7 +104,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
             <div
               style={{
                 fontSize: '12px',
-                color: 'var(--color-text-3)',
+                color: chartTheme.panelDescriptionColor,
                 lineHeight: '16px',
                 opacity: 0.8,
               }}

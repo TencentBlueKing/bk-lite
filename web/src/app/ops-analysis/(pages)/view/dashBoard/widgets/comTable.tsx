@@ -11,11 +11,13 @@ import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
+import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
 import {
   parseTableLikeData,
   resolveTableLikeColumns,
   type TableLikePaginationState,
 } from './shared/tableLikeData';
+import styles from './comTable.module.scss';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   ValueConfig,
@@ -66,6 +68,21 @@ const ComTable: React.FC<ComTableProps> = ({
       current: 1,
       pageSize: 20,
     });
+  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const screenTableStyle = useMemo(() => {
+    if (!usesScreenDarkTheme) return undefined;
+
+    return {
+      '--ops-screen-table-bg': screenTableTheme.panelBg,
+      '--ops-screen-table-subtle-bg': screenTableTheme.panelSubtleBg,
+      '--ops-screen-table-border': screenTableTheme.panelBorderColor,
+      '--ops-screen-table-text': screenTableTheme.axisLabelColor,
+      '--ops-screen-table-heading': screenTableTheme.panelTitleColor,
+      '--ops-screen-table-muted': screenTableTheme.singleValueMetaColor,
+      '--ops-screen-table-accent': screenTableTheme.pieValueColor,
+    } as React.CSSProperties;
+  }, [screenTableTheme, usesScreenDarkTheme]);
   
   const { tableData, pagination } = useMemo(() => {
     const parsed = parseTableLikeData<TableDataItem>(rawData, queryPagination);
@@ -429,7 +446,9 @@ const ComTable: React.FC<ComTableProps> = ({
     }
 
     return (
-      <div className="mb-3 flex flex-wrap gap-2">
+      <div
+        className={`mb-3 flex flex-wrap gap-2 ${usesScreenDarkTheme ? styles.screenDarkFilters : ''}`}
+      >
         {searchableFilterFields.length > 0 && (
           <div className="flex items-center">
             <Input.Group compact>
@@ -548,11 +567,17 @@ const ComTable: React.FC<ComTableProps> = ({
   };
 
   return (
-    <div className="h-full flex flex-col">
+    <div
+      className={`h-full flex flex-col ${usesScreenDarkTheme ? styles.screenDarkRoot : ''}`}
+      style={screenTableStyle}
+    >
       {renderFilters()}
 
-      <div className="flex-1 min-h-0 overflow-visible">
+      <div
+        className={`flex-1 min-h-0 overflow-visible ${usesScreenDarkTheme ? styles.screenDarkTableWrap : ''}`}
+      >
         <CustomTable
+          className={usesScreenDarkTheme ? styles.screenDarkTable : undefined}
           columns={antColumns}
           dataSource={tableData}
           loading={loading}

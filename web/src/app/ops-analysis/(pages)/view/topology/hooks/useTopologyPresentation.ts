@@ -154,8 +154,9 @@ export const useTopologyPresentation = ({
 
   const handlePresentationPresetSelect = useCallback(
     (preset: { width: number; height: number }) => {
-      setPresentationConfigDraft(
+      setPresentationConfigDraft((prev) =>
         getTopologyViewportDraft({
+          letterboxColor: prev.letterboxColor,
           width: preset.width,
           height: preset.height,
         }),
