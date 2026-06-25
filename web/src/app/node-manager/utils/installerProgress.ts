@@ -680,8 +680,16 @@ const CONTROLLER_INSTALL_ACTIONS = new Set([
 ]);
 
 export const shouldUseControllerInstallPhases = (
-  result?: OperationTaskResult | null
+  result?: OperationTaskResult | null,
+  displayMode?: 'controllerInstall' | 'stepList'
 ) => {
+  if (displayMode === 'controllerInstall') {
+    return true;
+  }
+  if (displayMode === 'stepList') {
+    return false;
+  }
+
   const normalizedResult = normalizeInstallerResult(result);
   const steps = normalizedResult?.steps || [];
   const summary = normalizedResult?.installer_summary;

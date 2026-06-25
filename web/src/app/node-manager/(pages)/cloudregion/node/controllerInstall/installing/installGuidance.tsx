@@ -38,6 +38,8 @@ interface InstallGuidanceProps {
   onClose?: () => void;
 }
 
+type InstallGuidanceDisplayMode = 'controllerInstall' | 'stepList';
+
 const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
   ({ onClose }, ref) => {
     const { t } = useTranslation();
@@ -47,6 +49,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
     const [logs, setLogs] = useState<LogStep[]>([]);
     const [installerSummary, setInstallerSummary] =
       useState<InstallerEventSummary | undefined>();
+    const [displayMode, setDisplayMode] =
+      useState<InstallGuidanceDisplayMode | undefined>();
     const [nodeInfo, setNodeInfo] = useState({ ip: '', nodeName: '' });
 
     useImperativeHandle(ref, () => ({
@@ -55,6 +59,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
         setTitle(title || '');
         setLogs(normalizeInstallerLogs(form?.logs));
         setInstallerSummary(normalizeInstallerSummary(form?.installerSummary));
+        setDisplayMode(form?.displayMode);
         setNodeInfo({
           ip: form?.ip || '',
           nodeName: form?.nodeName || ''
@@ -78,6 +83,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       closeModal: () => {
         setGroupVisible(false);
         setInstallerSummary(undefined);
+        setDisplayMode(undefined);
         onClose?.();
       }
     }));
@@ -85,6 +91,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
     const handleCancel = () => {
       setGroupVisible(false);
       setInstallerSummary(undefined);
+      setDisplayMode(undefined);
       onClose?.();
     };
 
@@ -182,7 +189,10 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       steps: logs,
       installer_summary: installerSummary
     };
-    const shouldRenderControllerPhases = shouldUseControllerInstallPhases(phaseResult);
+    const shouldRenderControllerPhases = shouldUseControllerInstallPhases(
+      phaseResult,
+      displayMode
+    );
     const installDisplay = deriveControllerInstallDisplay(phaseResult);
     const installPhases = deriveControllerInstallPhases(phaseResult);
     const summaryGuidance = getInstallerSummaryGuidance(t, installerSummary);
