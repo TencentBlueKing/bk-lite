@@ -96,6 +96,7 @@ export const useRouterConfig = () => {
       'Router Viprinet SNMP': 'snmp_viprinet',
       'Router OneAccess SNMP': 'snmp_oneaccess',
       'Router Harbour SNMP': 'snmp_harbour',
+      'Router Aethra SNMP': 'snmp_aethra',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

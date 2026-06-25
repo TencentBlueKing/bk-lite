@@ -4891,6 +4891,9 @@ monitor_object_plugin:
   Router OneAccess SNMP:
     name: OneAccess (Telegraf)
     desc: OneAccess enterprise CPE / SD-WAN router SNMP collection (ONEACCESS-SYS-MIB, IANA PEN 13191). Beyond standard IF-MIB 64-bit HC interface traffic, it collects OneAccess private OIDs for device health including CPU utilisation (reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). OneAccess compact enterprise CPEs are fanless fixed-configuration designs whose private MIB does not expose temperature/fan/power sensors as row-filter-free scalars, so temperature/fan/power are N/A. Supported brands/models — OneAccess enterprise routers / SD-WAN CPE (ONE series; enterprise 13191; now part of Ekinops).
+  Router Aethra SNMP:
+    name: Aethra Telecommunications (Telegraf)
+    desc: Aethra Telecommunications IAD/DSL access router (with VoIP) SNMP collection (AETHRA-MIB, enterprise 7745). Beyond standard IF-MIB interface metrics, it collects Aethra private OIDs for device health including 5-minute average CPU load (cpuLoad5min, reported directly as a percentage) and main memory (total + free in kBytes, usage derived as (total-free)/total). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Aethra Telecommunications IAD/DSL routers (AC2036/Dolcevita series, enterprise 7745).
   Router Harbour SNMP:
     name: Harbour Networks (Telegraf)
     desc: Harbour Networks (港湾网络) router SNMP collection (enterprise 8212 private MIB). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Harbour Networks private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Harbour Networks routers (enterprise 8212).

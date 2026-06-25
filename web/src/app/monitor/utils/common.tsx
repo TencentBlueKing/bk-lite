@@ -579,6 +579,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /superiority|超数/i, label: 'Superiority', icon: 'mm-superiority_superiority' },
   { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
   { match: /harbour|港湾/i, label: 'Harbour Networks', icon: 'mm-harbour_harbour' },
+  { match: /aethra|dolcevita/i, label: 'Aethra', icon: 'mm-aethra_aethra' },
   { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
   { match: /screenos|netscreen|\bssg\b/i, label: 'Juniper ScreenOS', icon: 'mm-screenos_screenos' },
   { match: /netscaler|citrix/i, label: 'Citrix NetScaler', icon: 'mm-netscaler_netscaler' },
