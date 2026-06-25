@@ -73,10 +73,10 @@
       ],
       "name": "device_memory_total",
       "display_name": "内存总量",
-      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_total{instance_type='router', __$labels__}) by (instance_id) * 1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Total memory of the Harbour Networks router in bytes (enterprise 8212)."
+      "description": "Total main memory of the Harbour Networks router in bytes (enterprise 8212). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
     },
     {
       "metric_group": "Memory",
@@ -86,10 +86,10 @@
       ],
       "name": "device_memory_free",
       "display_name": "内存空闲",
-      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id)",
+      "query": "sum(device_memory_free{instance_type='router', __$labels__}) by (instance_id) * 1024",
       "unit": "bytes",
       "data_type": "Number",
-      "description": "Free memory of the Harbour Networks router in bytes (enterprise 8212)."
+      "description": "Free main memory of the Harbour Networks router in bytes (enterprise 8212). The raw OID is reported in kBytes and is scaled by 1024 to bytes."
     },
     {
       "metric_group": "Memory",
