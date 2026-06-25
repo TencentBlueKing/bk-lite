@@ -24,12 +24,12 @@ import {
   WidgetConfig,
   UnifiedFilterDefinition,
   FilterValue,
+  ComponentSelectorConfigItem,
 } from '@/app/ops-analysis/types/dashBoard';
 import { DirItem } from '@/app/ops-analysis/types';
 import { useDataSourceManager } from '@/app/ops-analysis/hooks/useDataSource';
 import { useUnifiedFilter } from '@/app/ops-analysis/hooks/useUnifiedFilter';
 import { useDashBoardApi } from '@/app/ops-analysis/api/dashBoard';
-import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,
@@ -554,7 +554,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       [isEditMode],
     );
 
-    const handleAddComponent = (config: WidgetConfig) => {
+    const handleAddComponent = (config: WidgetConfig, draftItem: LayoutItem) => {
       const nextUngroupedY = layout.reduce(
         (maxY, item) => Math.max(maxY, item.y + item.h),
         0,
@@ -564,14 +564,16 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
         i: uuidv4(),
         x: 0,
         y: nextUngroupedY,
-        w: 4,
-        h: 3,
+        w: draftItem.w,
+        h: draftItem.h,
         groupId: null,
-        name: config?.name || '',
-        description: config?.description || '',
+        name: config.name,
+        description: config.description,
         valueConfig: {
           dataSource: config.dataSource,
-          chartType: config.chartType || '',
+          chartType: config.chartType,
+          sceneWidgetType: config.sceneWidgetType,
+          networkStatusTopology: config.networkStatusTopology,
           dataSourceParams: config.dataSourceParams || [],
           tableConfig: config.tableConfig,
           filterBindings: config.filterBindings,
@@ -899,20 +901,21 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
       setConfigDrawerVisible(true);
     };
 
-    const handleOpenConfig = (item: DatasourceItem) => {
+    const handleOpenConfig = (item: ComponentSelectorConfigItem) => {
       setAddModalVisible(false);
 
       const configItem = {
         i: '',
         x: 0,
         y: 0,
-        w: 4,
-        h: 3,
+        w: item.defaultWidth,
+        h: item.defaultHeight,
         name: item.name,
         description: item.desc,
         valueConfig: {
-          dataSource: item?.id,
-          chartType: '',
+          dataSource: item.dataSource,
+          chartType: item.chartType,
+          sceneWidgetType: item.sceneWidgetType,
           dataSourceParams: [],
         },
       };
@@ -923,7 +926,7 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
 
     const handleConfigConfirm = (values: WidgetConfig) => {
       if (isNewComponentConfig && currentConfigItem) {
-        handleAddComponent(values);
+        handleAddComponent(values, currentConfigItem);
       } else {
         const editedWidgetId = currentConfigItem?.i;
         const nextLayout = layout.map((item) => {
@@ -936,6 +939,8 @@ const Dashboard = forwardRef<DashboardRef, DashboardProps>(
                 ...item.valueConfig,
                 dataSource: values.dataSource,
                 chartType: values.chartType,
+                sceneWidgetType: values.sceneWidgetType,
+                networkStatusTopology: values.networkStatusTopology,
                 dataSourceParams: values.dataSourceParams,
                 tableConfig: values.tableConfig,
                 filterBindings: values.filterBindings,

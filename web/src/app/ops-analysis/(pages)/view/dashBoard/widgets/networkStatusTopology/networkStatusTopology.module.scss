@@ -1,0 +1,104 @@
+.popover {
+  min-width: 188px;
+  padding: 10px 12px;
+  border: 1px solid rgba(213, 226, 242, 0.96);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.96);
+  box-shadow: 0 16px 34px rgba(39, 67, 104, 0.16);
+  color: #253244;
+  font-size: 12px;
+  line-height: 18px;
+  backdrop-filter: blur(8px);
+}
+
+.popHeader {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.popTitle {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.popLine {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  margin-top: 4px;
+  color: #607086;
+}
+
+.noAlertText {
+  color: #94a3b8;
+}
+
+.alertCount {
+  color: #dc2626;
+}
+
+.statusPill {
+  flex: none;
+  padding: 1px 7px;
+  border-radius: 999px;
+  background: #ecfdf5;
+  color: #047857;
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.warning {
+  background: #fffbeb;
+  color: #b45309;
+}
+
+.error,
+.critical {
+  background: #fef2f2;
+  color: #dc2626;
+}
+
+.contextMenu {
+  overflow: hidden;
+  padding: 5px;
+  border: 1px solid rgba(211, 225, 242, 0.98);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.98);
+  box-shadow: 0 16px 36px rgba(24, 48, 82, 0.18);
+}
+
+.contextMenuItem {
+  display: block;
+  width: 100%;
+  height: 30px;
+  padding: 0 10px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #253244;
+  font-size: 12px;
+  line-height: 30px;
+  text-align: left;
+  cursor: pointer;
+
+  &:hover {
+    background: #eef6ff;
+    color: #0068d9;
+  }
+}
+
+.disabledMenuItem {
+  color: #a8b4c3;
+  cursor: not-allowed;
+
+  &:hover {
+    background: transparent;
+    color: #a8b4c3;
+  }
+}

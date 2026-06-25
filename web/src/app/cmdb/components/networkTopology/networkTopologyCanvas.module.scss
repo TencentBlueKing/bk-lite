@@ -1,0 +1,269 @@
+.wrapper {
+  position: relative;
+  height: 100%;
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid #e5eef8;
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 18% 14%, rgba(230, 244, 255, 0.2), transparent 30%),
+    radial-gradient(circle at 78% 20%, rgba(236, 253, 245, 0.14), transparent 28%),
+    linear-gradient(180deg, #feffff 0%, #fcfeff 100%);
+}
+
+.grid {
+  position: absolute;
+  inset: 0;
+  background-image: radial-gradient(rgba(116, 145, 181, 0.14) 1px, transparent 1px);
+  background-size: 18px 18px;
+  pointer-events: none;
+}
+
+.toolbar {
+  position: absolute;
+  top: 10px;
+  right: 10px;
+  z-index: 4;
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  padding: 4px;
+  border: 1px solid rgba(219, 232, 246, 0.92);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.9);
+  box-shadow: 0 12px 28px rgba(42, 72, 116, 0.1);
+  backdrop-filter: blur(8px);
+}
+
+.toolbarActions {
+  display: flex;
+  gap: 4px;
+}
+
+.truncated {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  z-index: 4;
+  max-width: 48%;
+  padding: 5px 8px;
+  border: 1px solid #ffe6b3;
+  border-radius: 6px;
+  background: rgba(255, 251, 230, 0.92);
+  color: #ad6800;
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.surface {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+.svg {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  cursor: grab;
+}
+
+.dragging {
+  cursor: grabbing;
+}
+
+.linkPath {
+  fill: none;
+  stroke: #9fb8d5;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.6;
+  filter: drop-shadow(0 1px 2px rgba(28, 55, 92, 0.16));
+}
+
+.activeLinkPath {
+  stroke: #ff4d4f;
+  stroke-width: 3;
+}
+
+.selectedLinkPath {
+  stroke: #0070fa;
+  stroke-width: 2.4;
+}
+
+.portLabel {
+  pointer-events: none;
+}
+
+.portLabelBg {
+  fill: #fff;
+  stroke: #d7e5f3;
+  stroke-width: 1;
+  filter: drop-shadow(0 2px 4px rgba(42, 72, 116, 0.08));
+}
+
+.portLabelText {
+  fill: #60758d;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.activePortLabelText {
+  fill: #cf1322;
+}
+
+.node {
+  cursor: pointer;
+}
+
+.nodeBody {
+  fill: #fff;
+  stroke: #dbe7f4;
+  stroke-width: 1;
+  filter:
+    drop-shadow(0 12px 26px rgba(37, 72, 111, 0.08))
+    drop-shadow(0 1px 2px rgba(15, 23, 42, 0.04));
+}
+
+.selectedNodeBody {
+  stroke: #0070fa;
+  stroke-width: 2;
+  filter:
+    drop-shadow(0 14px 30px rgba(0, 112, 250, 0.14))
+    drop-shadow(0 1px 2px rgba(15, 23, 42, 0.05));
+}
+
+.activeNodeBody {
+  stroke: #ff4d4f;
+  stroke-width: 2.4;
+  filter:
+    drop-shadow(0 14px 30px rgba(255, 77, 79, 0.18))
+    drop-shadow(0 1px 2px rgba(15, 23, 42, 0.05));
+}
+
+.iconColumn {
+  fill: #f7fbff;
+}
+
+.iconDivider {
+  stroke: #e1ebf6;
+  stroke-width: 1;
+}
+
+.iconPlate {
+  fill: #edf7ff;
+  stroke: #cfe6ff;
+  stroke-width: 1;
+}
+
+.label {
+  fill: #1f2a37;
+  font-size: 14px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+.subLabel {
+  fill: #8797aa;
+  font-size: 12px;
+  pointer-events: none;
+}
+
+.badgeBg {
+  fill: #ff4d4f;
+  stroke: #fff;
+  stroke-width: 2;
+}
+
+.badgeText {
+  fill: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  pointer-events: none;
+}
+
+.dimmed {
+  opacity: 0.22;
+}
+
+.pulseHalo {
+  fill: none;
+  stroke: #ff4d4f;
+  stroke-width: 2;
+  opacity: 0;
+  animation: criticalPulse 1.4s infinite ease-out;
+}
+
+.popover {
+  position: absolute;
+  z-index: 5;
+  min-width: 190px;
+  max-width: 260px;
+  pointer-events: none;
+}
+
+.contextMenu {
+  position: absolute;
+  z-index: 7;
+  min-width: 132px;
+}
+
+.state {
+  position: absolute;
+  inset: 0;
+  z-index: 6;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.66);
+}
+
+.minimap {
+  position: absolute;
+  right: 14px;
+  bottom: 14px;
+  z-index: 3;
+  width: min(96px, 18%);
+  min-width: 74px;
+  height: min(56px, 16%);
+  min-height: 42px;
+  border: 1px solid #dbe8f6;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 8px 18px rgba(42, 72, 116, 0.08);
+
+  svg {
+    width: 100%;
+    height: 100%;
+  }
+}
+
+.minimapLink {
+  stroke: #aebfd4;
+  stroke-width: 5;
+  stroke-linecap: round;
+}
+
+.minimapNode {
+  fill: #fff;
+  stroke: #83a9d1;
+  stroke-width: 5;
+}
+
+@keyframes criticalPulse {
+  0% {
+    opacity: 0.36;
+    transform: scale(1);
+  }
+
+  70% {
+    opacity: 0;
+    transform: scale(1.16);
+  }
+
+  100% {
+    opacity: 0;
+    transform: scale(1.16);
+  }
+}
