@@ -4929,6 +4929,18 @@ monitor_object_plugin:
       scalar-walkable across firmware and are left for a future increment.
       Supported brands/models — MultiTech MultiConnect rCell 100/300/500 series cellular
       routers and IoT gateways.
+  Router Sierra Wireless SNMP:
+    name: Sierra Wireless (Telegraf)
+    desc: Sierra Wireless AirLink (ALEOS) cellular LTE router / gateway SNMP collection
+      template (SIERRA-MIB, IANA PEN 20542). In addition to standard IF-MIB interface
+      metrics, it collects the ALEOS board/radio temperature scalar (gpsStatus
+      temperature group, .20542.9.1.1.1.267), reported directly in degrees Celsius. The
+      SIERRA-MIB exposes no aggregate CPU or memory scalar; cellular RSSI (.261, dBm) and
+      power-in (.266) are available but are signed/contextual values left for a future
+      increment, and there is no fan or power-supply state object (AirLink gateways are
+      fanless), so CPU, memory, fan and PSU are not collected (N/A).
+      Supported brands/models — Sierra Wireless AirLink ALEOS routers/gateways (RV/MP/LX/
+      ES/GX series, IANA PEN 20542).
   Router NEC SNMP:
     name: NEC (Telegraf)
     desc: NEC UNIVERGE IX-series router SNMP collection (NEC private enterprise MIB, IANA PEN 119). Beyond standard IF-MIB interface metrics, it collects NEC private scalar OIDs for device health including 1-minute CPU utilization, memory utilization and chassis temperature, all reported directly. Fan and power-supply states are exposed only as per-unit LLD status rows with vendor-specific codes the SNMP input cannot normalize, so those are N/A. Supported brands/models — NEC UNIVERGE IX series routers (IX2000 / IX3000 and other UNIVERGE IX platforms; enterprise 119).

@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="sierraRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d4373b"/>
+      <stop offset="1" stop-color="#9c1418"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#sierraRed)"/>
+  <path d="M30 78 L48 44 L60 66 L70 50 L90 78 Z" fill="#ffffff"/>
+  <circle cx="84" cy="40" r="8" fill="#ffffff"/>
+</svg>
