@@ -15,6 +15,7 @@ interface LayoutInput {
   links: NetworkTopologyLink[];
   centerId?: string;
   mode: NetworkTopologyLayoutMode;
+  fitToViewport?: boolean;
   viewport?: {
     width: number;
     height: number;
@@ -200,7 +201,12 @@ export const layoutNetworkTopology = (
 ): NetworkTopologyLayoutResult => {
   const rawPositions = computeRawPositions(input);
   return {
-    nodes: fitPositions(input.nodes, rawPositions, input.viewport),
+    nodes: input.fitToViewport === false
+      ? input.nodes.map((node) => ({
+        ...node,
+        ...(rawPositions.get(normalizeId(node.id)) || { x: 0, y: 0 }),
+      }))
+      : fitPositions(input.nodes, rawPositions, input.viewport),
     links: withCurveOffsets(input.links),
   };
 };

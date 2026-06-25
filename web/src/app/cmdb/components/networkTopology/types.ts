@@ -1,5 +1,3 @@
-import type { ReactNode } from 'react';
-
 export type NetworkTopologyLayoutMode = 'hierarchical' | 'force' | 'circular';
 
 export type NetworkTopologyNodeStatus =
@@ -40,39 +38,4 @@ export interface NetworkTopologyPositionedLink extends NetworkTopologyLink {
 export interface NetworkTopologyLayoutResult {
   nodes: NetworkTopologyPositionedNode[];
   links: NetworkTopologyPositionedLink[];
-}
-
-export interface NetworkTopologyCanvasProps {
-  nodes: NetworkTopologyNode[];
-  links: NetworkTopologyLink[];
-  centerId?: string;
-  layoutMode: NetworkTopologyLayoutMode;
-  labels: {
-    layoutHierarchical: string;
-    layoutForce: string;
-    layoutCircular: string;
-    zoomOut: string;
-    zoomIn: string;
-    exportImage: string;
-    refresh: string;
-  };
-  selectedNodeId?: string;
-  activeNodeIds?: Set<string> | string[];
-  activeLinkIds?: Set<string> | string[];
-  dimInactive?: boolean;
-  loading?: boolean;
-  refreshLoading?: boolean;
-  error?: string;
-  emptyText?: ReactNode;
-  truncatedText?: ReactNode;
-  exportFileName?: string;
-  onLayoutChange?: (mode: NetworkTopologyLayoutMode) => void;
-  onRefresh?: () => void;
-  onBlankClick?: () => void;
-  onNodeClick?: (node: NetworkTopologyNode) => void;
-  renderPopover?: (node: NetworkTopologyNode) => ReactNode;
-  renderContextMenu?: (
-    node: NetworkTopologyNode,
-    closeMenu: () => void,
-  ) => ReactNode;
 }
