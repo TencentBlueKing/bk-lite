@@ -251,6 +251,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         form={form}
         layout="horizontal"
         labelCol={{ span: locale === 'en' ? 6 : 5 }}
+        wrapperCol={{ span: locale === 'en' ? 18 : 19 }}
         onFinish={onFinish}
       >
         {/* ① 基本信息 */}
@@ -267,6 +268,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         <Form.Item
           name="team"
           label={t('settings.correlation.organization')}
+          rules={[{ required: true, message: t('common.selectTip') }]}
         >
           <GroupTreeSelect multiple placeholder={t('common.selectTip')} />
         </Form.Item>

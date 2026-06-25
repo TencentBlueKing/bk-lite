@@ -637,6 +637,7 @@
         "actionTargetHostField": "Target Host Field",
         "actionParamFrom": "From",
         "actionParamField": "Alert Field",
-        "actionParamConst": "Constant"
+        "actionParamConst": "Constant",
+        "actionBindingField": "Field"
     }
 }

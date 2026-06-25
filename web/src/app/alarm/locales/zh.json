@@ -637,6 +637,7 @@
         "actionTargetHostField": "目标主机字段",
         "actionParamFrom": "来源",
         "actionParamField": "告警字段",
-        "actionParamConst": "常量"
+        "actionParamConst": "常量",
+        "actionBindingField": "字段"
     }
 }

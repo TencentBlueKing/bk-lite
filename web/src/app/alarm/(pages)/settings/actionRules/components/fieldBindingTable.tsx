@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback } from 'react';
-import { Input, Select, Table } from 'antd';
+import { Input, Table } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ActionConfig } from '@/app/alarm/types/settings';
 
@@ -19,11 +19,6 @@ interface FieldBindingTableProps {
   onChange?: (bindings: ActionConfig['param_bindings']) => void;
 }
 
-const FROM_OPTIONS = (t: (key: string) => string) => [
-  { value: 'field', label: t('settings.actionParamField') },
-  { value: 'const', label: t('settings.actionParamConst') },
-];
-
 const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
   scriptParams,
   value = [],
@@ -38,9 +33,10 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
   );
 
   const updateBinding = useCallback(
-    (name: string, patch: Partial<Omit<ParamBinding, 'name'>>) => {
+    (name: string, nextValue: string) => {
       const existing = getBinding(name);
-      const updated: ParamBinding = { ...existing, ...patch };
+      // 统一按「告警字段」解析（后端 resolve_params 在 from!=='const' 时按字段路径取值）
+      const updated: ParamBinding = { ...existing, from: 'field', value: nextValue };
       const rest = value.filter((b) => b.name !== name);
       onChange?.([...rest, updated]);
     },
@@ -49,30 +45,11 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
 
   const columns = [
     {
-      title: t('settings.actionSelectJob'),
+      title: t('settings.actionBindingField'),
       dataIndex: 'label',
       key: 'label',
-      width: 140,
+      width: 160,
       render: (_: unknown, record: ScriptParam) => record.label || record.name,
-    },
-    {
-      title: t('settings.actionParamFrom'),
-      key: 'from',
-      width: 130,
-      render: (_: unknown, record: ScriptParam) => {
-        const binding = getBinding(record.name);
-        return (
-          <Select
-            size="small"
-            value={binding.from}
-            options={FROM_OPTIONS(t)}
-            style={{ width: '100%' }}
-            onChange={(v: 'field' | 'const') =>
-              updateBinding(record.name, { from: v, value: '' })
-            }
-          />
-        );
-      },
     },
     {
       title: t('common.value'),
@@ -83,10 +60,8 @@ const FieldBindingTable: React.FC<FieldBindingTableProps> = ({
           <Input
             size="small"
             value={binding.value}
-            placeholder={
-              binding.from === 'field' ? 'labels.service' : t('common.inputTip')
-            }
-            onChange={(e) => updateBinding(record.name, { value: e.target.value })}
+            placeholder="labels.service"
+            onChange={(e) => updateBinding(record.name, e.target.value)}
           />
         );
       },
