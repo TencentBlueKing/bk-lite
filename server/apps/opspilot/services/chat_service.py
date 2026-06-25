@@ -7,7 +7,7 @@ from typing import Any, Dict, Tuple
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.utils.loader import LanguageLoader
-from apps.opspilot.models import LLMModel, SkillTools
+from apps.opspilot.models import LLMModel, SkillTools, SkillTypeChoices
 from apps.opspilot.services.builtin_tools import (
     BUILTIN_ATTACHMENT_FILE_TOOL_NAME,
     BUILTIN_MONITOR_TOOL_NAME,
