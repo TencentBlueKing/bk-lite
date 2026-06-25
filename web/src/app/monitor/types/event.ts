@@ -47,6 +47,7 @@ export interface StrategyFields {
   };
   algorithm?: string;
   threshold: ThresholdField[];
+  trigger_count?: number;
   recovery_condition?: number;
   no_data_period?: {
     type: string;

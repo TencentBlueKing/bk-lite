@@ -60,6 +60,14 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
                 raise serializers.ValidationError(f"threshold[{index}].level 非法，须为 {sorted(_VALID_THRESHOLD_LEVELS)} 之一")
         return value
 
+    def validate_trigger_count(self, value):
+        """校验阈值告警触发条件：连续 N 个汇聚周期满足阈值，N 必须为正整数。"""
+        if not isinstance(value, int) or isinstance(value, bool):
+            raise serializers.ValidationError("trigger_count 必须是正整数")
+        if value < 1:
+            raise serializers.ValidationError("trigger_count 必须大于等于 1")
+        return value
+
     def validate_query_condition(self, value):
         """校验查询条件结构完整性，并对 filter 条件执行注入防护。
 

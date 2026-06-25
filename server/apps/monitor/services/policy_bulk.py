@@ -52,6 +52,7 @@ def build_bulk_policy_payloads(
                 "algorithm": template.get("algorithm") or "avg",
                 "group_by": group_by,
                 "threshold": template.get("threshold") or [],
+                "trigger_count": config.get("trigger_count", template.get("trigger_count", 1)),
                 "recovery_condition": config.get("recovery_condition", 5),
                 "metric_unit": template.get("metric_unit") or "",
                 "calculation_unit": template.get("calculation_unit") or template.get("metric_unit") or "",

@@ -147,6 +147,34 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
                 />
               </Form.Item>
 
+              {/* 触发条件 */}
+              <Form.Item<StrategyFields>
+                label={
+                  <span className="w-[100px]">
+                    {t('monitor.events.triggerCondition')}
+                  </span>
+                }
+              >
+                {t('monitor.events.triggerConditionPrefix')}
+                <Form.Item
+                  name="trigger_count"
+                  noStyle
+                  rules={[
+                    {
+                      required: true,
+                      message: t('common.required')
+                    }
+                  ]}
+                >
+                  <InputNumber
+                    className="mx-[10px] w-[100px]"
+                    min={1}
+                    precision={0}
+                  />
+                </Form.Item>
+                {t('monitor.events.triggerConditionSuffix')}
+              </Form.Item>
+
               {/* 自动恢复 */}
               <Form.Item<StrategyFields>
                 label={

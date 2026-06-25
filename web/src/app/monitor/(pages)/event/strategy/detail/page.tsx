@@ -168,6 +168,7 @@ const StrategyOperation = () => {
         notice: false,
         period: 5,
         schedule: 5,
+        trigger_count: 1,
         recovery_condition: 5,
         collect_type: pluginList[0]?.value,
         algorithm: 'avg'
@@ -304,6 +305,7 @@ const StrategyOperation = () => {
       threshold: thresholdList,
       no_data_period,
       recovery_condition,
+      trigger_count,
       group_by,
       query_condition,
       collect_type,
@@ -316,6 +318,7 @@ const StrategyOperation = () => {
     form.setFieldsValue({
       ...data,
       collect_type: collect_type ? +collect_type : '',
+      trigger_count: trigger_count || 1,
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
       period: period?.value || null,
