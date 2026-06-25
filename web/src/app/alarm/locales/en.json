@@ -629,7 +629,7 @@
         "actionLastExec": "Last Execution",
         "actionSelectJob": "Select Job",
         "actionFieldBinding": "Field Binding",
-        "actionTriggerTip": "Unchecked lifecycle events will not trigger this rule; mobile is exempt for now",
+        "actionTriggerTip": "Lifecycle events left unchecked will not trigger this rule",
         "actionRecordsTitle": "Execution Records",
         "actionManualTrigger": "Run Action",
         "actionRerun": "Rerun",
@@ -638,6 +638,8 @@
         "actionParamFrom": "From",
         "actionParamField": "Alert Field",
         "actionParamConst": "Constant",
-        "actionBindingField": "Field"
+        "actionBindingField": "Field",
+        "actionConfigSection": "Action Config",
+        "actionTargetHostFieldTip": "Read from alert labels; default ip_addr"
     }
 }
