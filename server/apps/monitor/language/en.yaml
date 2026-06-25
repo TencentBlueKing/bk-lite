@@ -4426,6 +4426,23 @@ monitor_object_plugin:
       clean IF-MIB baseline.
       Supported brands/models — Red Lion / N-Tron industrial Ethernet switches (714FX6
       and N-Tron series, IANA PEN 28381).
+  Switch Alaxala SNMP:
+    name: Alaxala (Telegraf)
+    desc: Alaxala Networks switch-specific SNMP collection template (AlaxalA-MIB, IANA
+      PEN 21839). In addition to standard IF-MIB interface metrics, it collects Alaxala
+      private OIDs for device health from the per-chassis-member box-management table —
+      control-plane CPU load over the last minute (axsCpuLoad1m) and system memory used
+      and free bytes (axsMemoryUsedSize / axsMemoryFreeSize). The columns are indexed per
+      stack/chassis member, with the real value on the active member and standby rows
+      reporting zero, so CPU and the memory counters are aggregated with max() to surface
+      the real reading; memory utilization is derived from used/(used+free). The AX box
+      management table exposes only a discrete temperature status enum
+      (axsTemperatureStatusNumber), not a pollable numeric Celsius value, and no dedicated
+      fan-state or power-supply state numeric object, so temperature, fan and PSU are not
+      collected (N/A).
+      Supported brands/models — Alaxala AX2430S managed enterprise switches; other AX
+      families place the same counters under model-specific subtrees and degrade to a
+      clean IF-MIB baseline.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection

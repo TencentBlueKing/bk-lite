@@ -593,6 +593,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /advantech|\beki\b/i, label: 'Advantech', icon: 'mm-advantech_advantech' },
   { match: /etherwan/i, label: 'EtherWAN', icon: 'mm-etherwan_etherwan' },
   { match: /redlion|red\s*lion|n-?tron/i, label: 'Red Lion', icon: 'mm-redlion_redlion' },
+  { match: /alaxala|\bax2[0-9]{3}s\b/i, label: 'Alaxala', icon: 'mm-alaxala_alaxala' },
   { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
   { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },

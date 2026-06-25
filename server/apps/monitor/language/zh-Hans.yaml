@@ -3896,6 +3896,10 @@ monitor_object_plugin:
     name: Red Lion（Telegraf）
     desc: Red Lion / N-Tron 工业以太网交换机专用 SNMP 采集模板（NTRON714FX6-MIB，IANA PEN 28381）。在标准 IF-MIB 接口指标之外，额外采集 N-Tron 私有双路电源输入状态对象（ntronPowerFault）。原始码（1=faultNone 即双路均正常 / 2=faultPower1 即电源1失电 / 3=faultPower2 即电源2失电）经 telegraf processors.enum 归一为 1=正常/2=异常。N-Tron MIB 仅暴露 RAM/Flash 总量（无 used/free，无法算内存使用率），无 CPU 对象，无可轮询数值温度（板载温度仅 Web UI / N-View 暴露，不走 SNMP），无风扇对象（N-Tron 为无风扇对流散热），故 CPU/内存/温度/风扇不采集（N/A）。电源故障对象因固件而异，无私有响应时插件退回干净的 IF-MIB 基线。
       适用品牌型号——Red Lion / N-Tron 工业以太网交换机（714FX6 及 N-Tron 系列，IANA PEN 28381）。
+  Switch Alaxala SNMP:
+    name: Alaxala（Telegraf）
+    desc: Alaxala Networks 交换机专用 SNMP 采集模板（AlaxalA-MIB，IANA PEN 21839）。在标准 IF-MIB 接口指标之外，额外从按机箱/堆叠成员行索引的 box-management 表采集 Alaxala 私有健康 OID——控制平面 1 分钟 CPU 负载（axsCpuLoad1m）与系统内存已用、空闲字节（axsMemoryUsedSize / axsMemoryFreeSize）。各列按堆叠成员索引，真值落在 active 成员行、standby 行回 0，故 CPU 与内存计数器用 max() 聚合取真值；内存使用率由 used/(used+free) 推导。AX box-management 表仅暴露离散温度状态枚举（axsTemperatureStatusNumber），无可轮询摄氏度数值，亦无专用风扇/电源状态数值对象，故温度/风扇/电源不采集（N/A）。
+      适用品牌型号——Alaxala AX2430S 管理型企业交换机；其他 AX 系列将同名计数器置于型号专属子树，退回干净的 IF-MIB 基线。
   Switch BDCOM SNMP:
     name: BDCOM（Telegraf）
     desc: BDCOM（上海博达数据通信）交换机专用 SNMP 采集模板（BDCOM 私有 MIB，IANA PEN 3320）。在标准 IF-MIB 接口指标之外，额外采集 BDCOM 私有 OID 的设备健康指标：最近 5 分钟控制平面 CPU 使用率（NMS-PROCESS-MIB cpmCPUTotal5min）、系统内存池已用/空闲字节（NMS-MEMORY-POOL-MIB，镜像 Cisco 风格内存池表）与各板卡温度（BDCOM-SYS nmscardTemperature 专用温度列）。内存使用率按 used/(used+free) 计算。BDCOM 交换机 MIB 无独立风扇/电源（PSU）状态对象，故风扇与电源不采集（N/A）。
