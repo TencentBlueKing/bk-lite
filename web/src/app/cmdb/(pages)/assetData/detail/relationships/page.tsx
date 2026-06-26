@@ -12,6 +12,7 @@ import { useTranslation } from '@/utils/i18n';
 import AssoList from './list';
 import Topo from './topo';
 import NetworkTopo from './networkTopo';
+import IpamMatrix from './ipamMatrix';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
 import DeviceDetailDrawer from './deviceDetailDrawer';
@@ -70,6 +71,9 @@ const Ralationships = () => {
     { label: t('topo'), value: 'topo' },
     ...(themes.includes('network')
       ? [{ label: t('Model.networkTopo'), value: 'network' }]
+      : []),
+    ...(themes.includes('ipam')
+      ? [{ label: t('Model.ipView'), value: 'ipam' }]
       : []),
     ...(modelId === 'rack'
       ? [{ label: t('Model.rackElevation'), value: 'rackView' }]
@@ -142,6 +146,9 @@ const Ralationships = () => {
       )}
       {activeTab === 'network' && (
         <NetworkTopo modelId={modelId} instId={instId} />
+      )}
+      {activeTab === 'ipam' && (
+        <IpamMatrix instId={instId} />
       )}
       {activeTab === 'rackView' && (
         <RackElevation
