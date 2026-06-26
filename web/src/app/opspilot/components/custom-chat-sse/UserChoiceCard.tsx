@@ -14,6 +14,8 @@ interface UserChoiceCardProps {
 
 const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmit }) => {
   const { t } = useTranslation();
+  const a2uiComponent = request.a2ui?.component || 'user-choice';
+  const a2uiVersion = request.a2ui?.version || 'legacy';
   const [selectedKeys, setSelectedKeys] = useState<string[]>([]);
   const [textInput, setTextInput] = useState('');
   const [submitting, setSubmitting] = useState(false);
@@ -275,14 +277,19 @@ const UserChoiceCard: React.FC<UserChoiceCardProps> = ({ request, token, onSubmi
   );
 
   return (
-    <div style={{
-      margin: '8px 0',
-      padding: '14px 16px',
-      borderRadius: '12px',
-      border: '1px solid var(--color-border-1)',
-      background: 'var(--color-bg-1)',
-      maxWidth: '380px',
-    }}>
+    <div
+      data-a2ui-component={a2uiComponent}
+      data-a2ui-version={a2uiVersion}
+      data-a2ui-event={request.a2ui?.event_name || 'user_choice_request'}
+      style={{
+        margin: '8px 0',
+        padding: '14px 16px',
+        borderRadius: '12px',
+        border: '1px solid var(--color-border-1)',
+        background: 'var(--color-bg-1)',
+        maxWidth: '380px',
+      }}
+    >
       {/* Title */}
       <div style={{
         fontSize: '13px',

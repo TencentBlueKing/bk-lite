@@ -1,18 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, Segmented, Button, message, Modal } from 'antd';
-import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Empty, Spin, message, Modal } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
-import { Export } from '@antv/x6-plugin-export';
-import {
-  XFlow,
-  XFlowGraph,
-  Grid,
-  Minimap,
-  useGraphStore,
-  useGraphInstance,
-} from '@antv/xflow';
 import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
 import { getIconUrl } from '@/app/cmdb/utils/common';
@@ -41,9 +32,15 @@ import {
   validateConnection,
 } from './networkTopo/topoEditingUtils';
 import { HUB_COLOR, NODE_LIMIT } from './networkTopo/constants';
+import {
+  NETWORK_TOPO_VISUAL,
+  buildNetworkTopoPortLabel,
+} from './networkTopo/visualStyles';
+import { NetworkTopologyX6Canvas } from '@/app/cmdb/components/networkTopology';
+import topoStyle from './index.module.scss';
 
-const NODE_WIDTH = 260;
-const NODE_HEIGHT = 72;
+const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
+const NODE_HEIGHT = NETWORK_TOPO_VISUAL.node.height;
 const DEVICE_NODE_SHAPE = 'topo-network-device';
 
 // 展开策略：首屏 2 跳，最多 4 跳，节点上限 100（与后端常量一致）
@@ -51,21 +48,12 @@ const DEFAULT_HOP = 2;
 const MAX_HOP = 4;
 
 // 分层布局列距/行距：列距需足够大，让接口标签落在设备卡片之间的空隙、不遮挡卡片
-const HIER_COL_GAP = 720;
-const HIER_ROW_GAP = 160;
+const HIER_COL_GAP = NETWORK_TOPO_VISUAL.layout.columnGap;
+const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
 
 type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
-const DEFAULT_BODY_ATTRS = {
-  stroke: 'var(--color-border-1)',
-  strokeWidth: 1,
-  filter: 'drop-shadow(0 2px 6px rgba(0,0,0,0.08))',
-};
-const ACTIVE_BODY_ATTRS = {
-  stroke: HUB_COLOR,
-  strokeWidth: 2,
-  filter: 'drop-shadow(0 2px 10px rgba(0,112,250,0.35))',
-};
+const ACTIVE_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.activeBody;
 
 // inst_name 形如 `${device}-${端口名}`，展示端口时剥掉设备前缀
 const stripDevicePrefix = (instName?: string, device?: string): string => {
@@ -74,54 +62,6 @@ const stripDevicePrefix = (instName?: string, device?: string): string => {
     return instName.slice(device.length + 1) || '--';
   }
   return instName;
-};
-
-let deviceNodeRegistered = false;
-const ensureDeviceNodeRegistered = () => {
-  if (deviceNodeRegistered) return;
-  Graph.registerNode(
-    DEVICE_NODE_SHAPE,
-    {
-      inherit: 'rect',
-      markup: [
-        { tagName: 'rect', selector: 'body' },
-        { tagName: 'image', selector: 'img' },
-        { tagName: 'title', selector: 'tt' },
-        { tagName: 'text', selector: 'lbl' },
-      ],
-      attrs: {
-        body: {
-          rx: 10,
-          ry: 10,
-          fill: 'var(--color-bg-1)',
-          cursor: 'pointer',
-          ...DEFAULT_BODY_ATTRS,
-        },
-        // img/lbl 设为 pointer-events:none，让整张卡片的命中目标始终是 body —
-        // 否则从图标/文字区域起拖会落在子元素上、拿不到 body 的 magnet，连线起拖不稳定
-        img: {
-          width: 44,
-          height: 44,
-          x: 18,
-          y: (NODE_HEIGHT - 44) / 2,
-          style: { pointerEvents: 'none' },
-        },
-        lbl: {
-          refX: 0.27,
-          refY: 0.5,
-          textAnchor: 'start',
-          textVerticalAnchor: 'middle',
-          fontSize: 16,
-          fontWeight: 600,
-          fill: 'var(--color-text-1)',
-          textWrap: { width: NODE_WIDTH - 84, height: 24, ellipsis: true },
-          style: { pointerEvents: 'none' },
-        },
-      },
-    },
-    true
-  );
-  deviceNodeRegistered = true;
 };
 
 interface MergedGraph {
@@ -248,33 +188,8 @@ const computePositions = async (
   return pos;
 };
 
-const portLabelFill = 'var(--color-text-4)';
 const portLabel = (position: number, text: string) => ({
-  position,
-  markup: [
-    { tagName: 'rect', selector: 'bg' },
-    { tagName: 'text', selector: 'txt' },
-  ],
-  attrs: {
-    txt: {
-      text: text || '--',
-      fill: portLabelFill,
-      fontSize: 11,
-      textAnchor: 'middle',
-      textVerticalAnchor: 'middle',
-    },
-    bg: {
-      ref: 'txt',
-      refWidth: '130%',
-      refHeight: '130%',
-      refX: '-15%',
-      refY: '-15%',
-      fill: 'var(--color-bg-1)',
-      stroke: 'var(--color-border-3)',
-      rx: 3,
-      ry: 3,
-    },
-  },
+  ...buildNetworkTopoPortLabel(position, text),
 });
 
 interface BuiltGraph {
@@ -287,6 +202,7 @@ const buildGraphData = (
   merged: MergedGraph,
   centerId: string,
   nameOf: (id: string) => string,
+  subtitleOf: (id: string) => string,
   positions: PosMap
 ): BuiltGraph => {
   const ids = Array.from(merged.nodes.keys());
@@ -296,6 +212,7 @@ const buildGraphData = (
     const p = positions.get(id) || { x: 0, y: 0 };
     centers[id] = { x: p.x, y: p.y };
     const label = nameOf(id);
+    const subtitle = subtitleOf(id);
     return {
       id,
       x: p.x - NODE_WIDTH / 2,
@@ -303,8 +220,21 @@ const buildGraphData = (
       width: NODE_WIDTH,
       height: NODE_HEIGHT,
       shape: DEVICE_NODE_SHAPE,
+      data: {
+        isCenter: id === centerId,
+      },
       attrs: {
         body: id === centerId ? ACTIVE_BODY_ATTRS : {},
+        iconColumn: {
+          fill: id === centerId ? '#eef7ff' : '#f7fbff',
+        },
+        divider: {
+          stroke: id === centerId ? '#c7def8' : '#e1ebf6',
+        },
+        statusDot: {
+          fill: id === centerId ? '#42d9a6' : '#7dd3fc',
+          stroke: id === centerId ? '#eafff7' : '#eff8ff',
+        },
         img: {
           'xlink:href': getIconUrl({
             icn: '',
@@ -313,6 +243,7 @@ const buildGraphData = (
         },
         tt: { text: label },
         lbl: { text: label, title: label },
+        subLbl: { text: subtitle, title: subtitle },
       },
     };
   });
@@ -355,11 +286,24 @@ const buildGraphData = (
       vertices,
       connector: { name: 'smooth' },
       attrs: {
-        line: { stroke: 'var(--color-border-3)', strokeWidth: 1, targetMarker: null },
+        line: {
+          stroke: NETWORK_TOPO_VISUAL.edge.stroke,
+          strokeWidth: NETWORK_TOPO_VISUAL.edge.strokeWidth,
+          strokeLinecap: 'round',
+          strokeLinejoin: 'round',
+          targetMarker: null,
+          filter: 'drop-shadow(0 1px 2px rgba(28, 55, 92, 0.16))',
+        },
       },
       labels: [
-        portLabel(0.32, stripDevicePrefix(l.source_inst_name, nameOf(l.source_device))),
-        portLabel(0.68, stripDevicePrefix(l.target_inst_name, nameOf(l.target_device))),
+        portLabel(
+          NETWORK_TOPO_VISUAL.portLabelPosition.source,
+          stripDevicePrefix(l.source_inst_name, nameOf(l.source_device))
+        ),
+        portLabel(
+          NETWORK_TOPO_VISUAL.portLabelPosition.target,
+          stripDevicePrefix(l.target_inst_name, nameOf(l.target_device))
+        ),
       ],
     };
   });
@@ -371,80 +315,6 @@ interface NetworkTopoProps {
   modelId: string;
   instId: string;
 }
-
-interface GraphLoaderProps {
-  data: BuiltGraph;
-  centerId: string;
-  expandedRef: React.MutableRefObject<Set<string>>;
-  onExpand: (node: NetworkTopoNode) => void;
-  nodesMap: Map<string, NetworkTopoNode>;
-  graphRef: React.MutableRefObject<Graph | null>;
-  editing: boolean;
-  onGraphReady?: (g: Graph | null) => void;
-}
-
-const GraphLoader: React.FC<GraphLoaderProps> = ({
-  data,
-  centerId,
-  expandedRef,
-  onExpand,
-  nodesMap,
-  graphRef,
-  editing,
-  onGraphReady,
-}) => {
-  const initData = useGraphStore((state) => state.initData);
-  const graph = useGraphInstance();
-
-  useEffect(() => {
-    ensureDeviceNodeRegistered();
-    initData({ nodes: data.nodes, edges: data.edges });
-  }, [initData, data]);
-
-  // 把 graph 实例提升到父级 ref，并注册导出插件（供工具栏的导出图片按钮使用）
-  useEffect(() => {
-    if (!graph) return;
-    graphRef.current = graph;
-    onGraphReady?.(graph);
-    if (!graph.getPlugin('export')) {
-      graph.use(new Export());
-    }
-    return () => {
-      graphRef.current = null;
-      onGraphReady?.(null);
-    };
-  }, [graph, graphRef, onGraphReady]);
-
-  // 数据/布局变化后重新适配视口，避免切换布局后节点跑到画布外
-  useEffect(() => {
-    if (!graph) return;
-    const timer = window.setTimeout(() => {
-      try {
-        graph.zoomToFit({ padding: 40, maxScale: 1.2 });
-      } catch {
-        // 图未就绪时忽略
-      }
-    }, 60);
-    return () => window.clearTimeout(timer);
-  }, [graph, data]);
-
-  useEffect(() => {
-    if (!graph) return;
-    const handleNodeClick = ({ node }: { node: any }) => {
-      if (editing) return; // 编辑态点节点不展开，让位连线/选择
-      const id = node.id as string;
-      if (id === centerId || expandedRef.current.has(id)) return;
-      const target = nodesMap.get(id);
-      if (target) onExpand(target);
-    };
-    graph.on('node:click', handleNodeClick);
-    return () => {
-      graph.off('node:click', handleNodeClick);
-    };
-  }, [graph, centerId, expandedRef, onExpand, nodesMap, editing]);
-
-  return null;
-};
 
 const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const { t } = useTranslation();
@@ -539,10 +409,11 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
         { nodes: renderNodes, links: mergedRef.current.links },
         center,
         (id) => renderNodes.get(id)?.name || id,
+        (id) => modelNameOf(renderNodes.get(id)?.model_id || ''),
         positions
       )
     );
-  }, []);
+  }, [modelNameOf]);
 
   // 合并新拓扑数据；后端 expanded=true 的节点（已查询过其邻居）记入已展开集合
   const mergeData = useCallback((data: NetworkTopoData) => {
@@ -637,30 +508,6 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     },
     [centerId, rebuild]
   );
-
-  const handleExportImage = useCallback(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    // 默认 copyStyles 会临时禁用整页样式表再恢复，导致页面闪烁/抖动；这里关掉它，
-    // 改为只把节点用到的几个 CSS 变量解析后注入导出 SVG，颜色仍正常且不动整页样式。
-    const cs = getComputedStyle(document.documentElement);
-    const fallback: Record<string, string> = {
-      '--color-bg-1': '#ffffff',
-      '--color-text-1': '#1f2329',
-      '--color-text-4': '#8a8f99',
-      '--color-border-1': '#e5e6eb',
-      '--color-border-3': '#c9cdd4',
-    };
-    const decls = Object.keys(fallback)
-      .map((v) => `${v}:${cs.getPropertyValue(v).trim() || fallback[v]};`)
-      .join('');
-    graph.exportPNG('network-topo', {
-      padding: 40,
-      backgroundColor: '#ffffff',
-      copyStyles: false,
-      stylesheet: `:root,svg{${decls}}`,
-    });
-  }, []);
 
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
@@ -821,79 +668,90 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   ]);
 
   const hasGraph = graphData.nodes.length > 0;
+  const handleCanvasNodeClick = useCallback(
+    (id: string) => {
+      if (editing) return;
+      if (id === centerId || expandedRef.current.has(id)) return;
+      const target = mergedRef.current.nodes.get(id);
+      if (target) handleExpand(target);
+    },
+    [centerId, editing, handleExpand]
+  );
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-[10px] gap-2">
-        <Segmented
-          value={layoutMode}
-          onChange={(val) => handleLayoutChange(val as LayoutMode)}
-          options={[
-            { label: t('Model.layoutHierarchical'), value: 'hierarchical' },
-            { label: t('Model.layoutForce'), value: 'force' },
-            { label: t('Model.layoutCircular'), value: 'circular' },
-          ]}
-        />
-        <div className="flex items-center gap-2">
-          <EditToolbar
-            editing={editing}
-            onToggle={() => setEditing((v) => !v)}
-            onAddDevice={() => setAddPanelOpen(true)}
-          />
-          <Button
-            icon={<DownloadOutlined />}
-            onClick={handleExportImage}
-            disabled={!hasGraph}
-          >
-            {t('Model.exportImage')}
-          </Button>
-        </div>
-      </div>
-      {editing && (
+      <Spin spinning={loading}>
         <div
-          className="mb-[8px] px-3 py-1.5 rounded text-[13px] flex items-center gap-1.5"
+          className={topoStyle.topo}
           style={{
-            background: linkingSourceId
-              ? 'var(--color-primary-bg, #e8f3ff)'
-              : 'var(--color-fill-1, #f2f3f5)',
-            color: linkingSourceId
-              ? HUB_COLOR
-              : 'var(--color-text-3, #86909c)',
+            height: 'calc(100vh - 128px)',
+            minHeight: 560,
+            position: 'relative',
+            ...NETWORK_TOPO_VISUAL.canvas,
           }}
         >
-          <InfoCircleOutlined style={{ color: HUB_COLOR }} />
-          {linkingSourceId
-            ? t('Model.networkTopoPickTargetHint')
-            : t('Model.networkTopoEditHint')}
-        </div>
-      )}
-      <Spin spinning={loading}>
-        <div style={{ height: '66vh', position: 'relative' }}>
+          {editing && (
+            <div
+              className="absolute right-4 top-[64px] z-20 px-3 py-1.5 text-[13px] flex items-center gap-1.5"
+              style={{
+                borderRadius: 8,
+                background: linkingSourceId
+                  ? 'rgba(232, 243, 255, 0.94)'
+                  : 'rgba(255, 255, 255, 0.88)',
+                border: '1px solid rgba(205, 222, 241, 0.9)',
+                boxShadow: '0 8px 22px rgba(37, 72, 111, 0.08)',
+                color: linkingSourceId
+                  ? HUB_COLOR
+                  : 'var(--color-text-3, #86909c)',
+                backdropFilter: 'blur(8px)',
+              }}
+            >
+              <InfoCircleOutlined style={{ color: HUB_COLOR }} />
+              {linkingSourceId
+                ? t('Model.networkTopoPickTargetHint')
+                : t('Model.networkTopoEditHint')}
+            </div>
+          )}
           {hasGraph ? (
-            <XFlow>
-              <XFlowGraph zoomable pannable minScale={0.2} maxScale={4} fitView />
-              <Grid type="dot" options={{ color: '#ccc', thickness: 1 }} />
-              <Minimap
-                width={200}
-                height={120}
-                style={{
-                  border: '1px solid var(--color-border-3)',
-                  bottom: '10px',
-                  right: '10px',
-                  position: 'absolute',
-                }}
-              />
-              <GraphLoader
-                data={graphData}
-                centerId={centerId}
-                expandedRef={expandedRef}
-                onExpand={handleExpand}
-                nodesMap={mergedRef.current.nodes}
-                graphRef={graphRef}
-                editing={editing}
-                onGraphReady={setGraphInstance}
-              />
-            </XFlow>
+            <NetworkTopologyX6Canvas
+              data={graphData}
+              centerId={centerId}
+              editing={editing}
+              graphRef={graphRef}
+              onGraphReady={setGraphInstance}
+              onNodeClick={handleCanvasNodeClick}
+              toolbar={{
+                align: 'split',
+                prefix: (
+                  <div className={topoStyle.topoCommandBar} style={{ marginTop: 0 }}>
+                    <EditToolbar
+                      editing={editing}
+                      onToggle={() => setEditing((v) => !v)}
+                      onAddDevice={() => setAddPanelOpen(true)}
+                    />
+                  </div>
+                ),
+                layoutMode,
+                onLayoutChange: (value) => handleLayoutChange(value as LayoutMode),
+                layoutOptions: [
+                  { label: t('Model.layoutHierarchical'), value: 'hierarchical' },
+                  { label: t('Model.layoutForce'), value: 'force' },
+                  { label: t('Model.layoutCircular'), value: 'circular' },
+                ],
+                labels: {
+                  zoomOut: t('Model.networkTopoZoomOut'),
+                  zoomIn: t('Model.networkTopoZoomIn'),
+                  fitView: t('Model.networkTopoFitView'),
+                  exportImage: t('Model.exportImage'),
+                },
+                exportFileName: 'network-topo',
+              }}
+              minimap={{
+                width: 200,
+                height: 120,
+                style: NETWORK_TOPO_VISUAL.minimap,
+              }}
+            />
           ) : (
             !loading && (
               <div className="flex items-center justify-center h-full">

@@ -3,7 +3,7 @@ import React, { useEffect, useState, useRef, useMemo } from 'react';
 import assetSearchStyle from './index.module.scss';
 import { useTranslation } from '@/utils/i18n';
 import { SearchOutlined } from '@ant-design/icons';
-import { ArrowRightOutlined, CloseCircleOutlined } from '@ant-design/icons';
+import { ArrowRightOutlined } from '@ant-design/icons';
 import { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import {
   AssetListItem,
@@ -18,26 +18,89 @@ import {
   Input,
   Tabs,
   Button,
-  Tag,
   Empty,
   Pagination,
   Checkbox,
+  message,
 } from 'antd';
 import useApiClient from '@/utils/request';
 import { useCommon } from '@/app/cmdb/context/common';
-import { deepClone, getFieldItem } from '@/app/cmdb/utils/common';
-import { useModelApi, useInstanceApi } from '@/app/cmdb/api';
+import { deepClone, getFieldItem, getIconUrl } from '@/app/cmdb/utils/common';
+import {
+  useChangeRecordApi,
+  useClassificationApi,
+  useModelApi,
+  useInstanceApi,
+} from '@/app/cmdb/api';
 import TagCapsuleGroup from '@/app/cmdb/components/tag-capsule-group';
 import { normalizeTagValues } from '@/app/cmdb/utils/tag';
+import { useRouter } from 'next/navigation';
+import { useUserInfoContext } from '@/context/userInfo';
+import dayjs from 'dayjs';
+import AssetSearchLanding, {
+  CategoryEntryItem,
+  FollowedAssetViewItem,
+  QuickTagItem,
+  RecentChangeItem,
+} from './landing';
+import { useFollowedAssets } from '@/app/cmdb/hooks/useFollowedAssets';
+import { getChangeOperationTone } from '@/app/cmdb/utils/assetSearchDisplay';
+import {
+  buildCategoryEntries,
+  buildRecentChangeQuery,
+  canLazyLoadRecentChanges,
+  getRecentChangeMessage,
+  getRecentChangeTarget,
+  HIGH_RISK_CHANGE_TYPES,
+  mergeRecentChangeRecords,
+  type ChangeRecordSummary,
+  type HighRiskChangeType,
+  type RecentChangeFilter,
+} from '@/app/cmdb/utils/assetSearchLandingData';
 const { Search } = Input;
+
+const RECENT_CHANGE_LIMIT = 10;
+const FOLLOWED_ASSET_LIMIT = 12;
+
+interface ChangeRecordListResponse {
+  items: ChangeRecordSummary[];
+  count: number;
+}
+
+interface FollowedAssetDetailResponse {
+  model_id?: string;
+  model_name?: string;
+  inst_name?: string;
+  ip_addr?: string;
+  classification_id?: string;
+  icn?: string;
+  organization_display?: string;
+  organization?: string[];
+}
 
 const AssetSearch = () => {
   const { t } = useTranslation();
   const { isLoading } = useApiClient();
+  const router = useRouter();
   const commonContext = useCommon();
+  const { username } = useUserInfoContext();
 
   const { getModelAttrList } = useModelApi();
-  const { fulltextSearchStats, fulltextSearchByModel } = useInstanceApi();
+  const {
+    fulltextSearchStats,
+    fulltextSearchByModel,
+    getInstanceDetail,
+    getModelInstanceCount,
+  } = useInstanceApi();
+  const { getClassificationList } = useClassificationApi();
+  const { getChangeRecords } = useChangeRecordApi();
+  const {
+    items: followedItems,
+    loading: followedConfigLoading,
+    refresh: refreshFollowedConfig,
+    followAsset,
+    unfollowAsset,
+  } = useFollowedAssets();
 
   const users = useRef(commonContext?.userList || []);
   const userList: UserItem[] = users.current;
@@ -56,6 +119,19 @@ const AssetSearch = () => {
   const [pageSize, setPageSize] = useState<number>(10);
   const [totalCount, setTotalCount] = useState<number>(0);
   const [caseSensitive, setCaseSensitive] = useState<boolean>(false);
+  const [landingLoading, setLandingLoading] = useState<boolean>(false);
+  const [changesLoading, setChangesLoading] = useState<boolean>(false);
+  const [changesLoadingMore, setChangesLoadingMore] = useState<boolean>(false);
+  const [recentChangePage, setRecentChangePage] = useState<number>(1);
+  const [recentChangeHasMore, setRecentChangeHasMore] = useState<boolean>(true);
+  const [recentChangeResetKey, setRecentChangeResetKey] = useState<number>(0);
+  const [followedLoading, setFollowedLoading] = useState<boolean>(false);
+  const [recentChanges, setRecentChanges] = useState<RecentChangeItem[]>([]);
+  const [recentChangeFilter, setRecentChangeFilter] = useState<RecentChangeFilter>('all');
+  const [followedAssets, setFollowedAssets] = useState<FollowedAssetViewItem[]>([]);
+  const [categoryEntries, setCategoryEntries] = useState<CategoryEntryItem[]>([]);
+  const recentChangesFetchingRef = useRef(false);
+  const followedAssetsLoadedRef = useRef(false);
 
   useEffect(() => {
     if (isLoading || !modelList.length) return;
@@ -66,6 +142,31 @@ const AssetSearch = () => {
     if (histories) setHistoryList(JSON.parse(histories));
   }, []);
 
+  const quickTags: QuickTagItem[] = useMemo(() => [
+    { key: 'prod', label: t('AssetSearch.quickTags.prod'), keyword: t('AssetSearch.quickTags.prod') },
+    { key: 'core', label: t('AssetSearch.quickTags.core'), keyword: t('AssetSearch.quickTags.core') },
+    { key: 'database', label: t('AssetSearch.quickTags.database'), keyword: t('AssetSearch.quickTags.database') },
+    { key: 'middleware', label: t('AssetSearch.quickTags.middleware'), keyword: t('AssetSearch.quickTags.middleware') },
+    { key: 'webApp', label: t('AssetSearch.quickTags.webApp'), keyword: t('AssetSearch.quickTags.webApp') },
+    { key: 'network', label: t('AssetSearch.quickTags.network'), keyword: t('AssetSearch.quickTags.network') },
+  ], [t]);
+
+  useEffect(() => {
+    if (isLoading || !modelList.length) return;
+    void loadLandingData();
+  }, [isLoading, modelList.length]);
+
+  useEffect(() => {
+    if (
+      isLoading ||
+      followedConfigLoading ||
+      !modelList.length ||
+      followedAssetsLoadedRef.current
+    ) return;
+    followedAssetsLoadedRef.current = true;
+    void loadFollowedAssets(followedItems);
+  }, [followedItems, followedConfigLoading, isLoading, modelList.length]);
+
   useEffect(() => {
     if (propertyList.length && currentModelData.length) {
       const tabJsx = getInstDetial(currentModelData, propertyList);
@@ -73,20 +174,191 @@ const AssetSearch = () => {
     }
   }, [propertyList, currentModelData, activeInstItem, activeTab]);
 
+  const loadLandingData = async () => {
+    setLandingLoading(true);
+    await Promise.allSettled([
+      loadRecentChanges({ filter: recentChangeFilter, page: 1, append: false }),
+      loadCategoryEntries(),
+    ]);
+    setLandingLoading(false);
+  };
+
+  const mapRecentChangeRecord = (record: ChangeRecordSummary): RecentChangeItem => {
+    const modelName =
+      modelList.find((model) => model.model_id === record.model_id)?.model_name ||
+      record.model_id ||
+      '--';
+    const operation = getChangeOperationTone(record.type);
+    return {
+      id: record.id ?? `${record.created_at || ''}-${getRecentChangeTarget(record)}`,
+      operationLabelKey: operation.labelKey,
+      operationTone: operation.tone,
+      target: getRecentChangeTarget(record),
+      message: getRecentChangeMessage(record),
+      typeLabel: modelName,
+      operator: record.operator || '--',
+      time: record.created_at ? dayjs(record.created_at).format('YYYY-MM-DD HH:mm') : '--',
+    };
+  };
+
+  const appendRecentChanges = (nextList: RecentChangeItem[], append: boolean) => {
+    if (!append) {
+      setRecentChanges(nextList);
+      return;
+    }
+    setRecentChanges((prev) => {
+      const seen = new Set(prev.map((item) => item.id));
+      return [
+        ...prev,
+        ...nextList.filter((item) => {
+          if (seen.has(item.id)) return false;
+          seen.add(item.id);
+          return true;
+        }),
+      ];
+    });
+  };
+
+  const loadRecentChanges = async ({
+    filter = recentChangeFilter,
+    page = 1,
+    append = false,
+  }: {
+    filter?: RecentChangeFilter;
+    page?: number;
+    append?: boolean;
+  } = {}) => {
+    if (recentChangesFetchingRef.current) return;
+    recentChangesFetchingRef.current = true;
+    if (append) {
+      setChangesLoadingMore(true);
+    } else {
+      setChangesLoading(true);
+    }
+    try {
+      const operator = username || '';
+      const { records, hasMore } = filter === 'highRisk'
+        ? await (async () => {
+          const responses = await Promise.all(
+            HIGH_RISK_CHANGE_TYPES.map((type: HighRiskChangeType) =>
+              getChangeRecords(
+                buildRecentChangeQuery(filter, operator, type, RECENT_CHANGE_LIMIT, 1)
+              ) as Promise<ChangeRecordListResponse>
+            )
+          );
+          return {
+            records: mergeRecentChangeRecords(
+              responses.flatMap((response) => response.items),
+              RECENT_CHANGE_LIMIT
+            ),
+            hasMore: false,
+          };
+        })()
+        : await (async () => {
+          const response = await getChangeRecords(
+            buildRecentChangeQuery(filter, operator, undefined, RECENT_CHANGE_LIMIT, page)
+          ) as ChangeRecordListResponse;
+          const records = response.items.slice(0, RECENT_CHANGE_LIMIT);
+          return {
+            records,
+            hasMore: page * RECENT_CHANGE_LIMIT < response.count,
+          };
+        })();
+      const list: RecentChangeItem[] = records.map(mapRecentChangeRecord);
+      appendRecentChanges(list, append);
+      setRecentChangePage(page);
+      setRecentChangeHasMore(canLazyLoadRecentChanges(filter) && hasMore);
+    } catch {
+      if (!append) {
+        setRecentChanges([]);
+      }
+      setRecentChangeHasMore(false);
+    } finally {
+      setChangesLoading(false);
+      setChangesLoadingMore(false);
+      recentChangesFetchingRef.current = false;
+    }
+  };
+
+  const loadFollowedAssets = async (sourceItems = followedItems) => {
+    setFollowedLoading(true);
+    try {
+      const visibleItems = sourceItems.slice(0, FOLLOWED_ASSET_LIMIT);
+      const settled = await Promise.allSettled(
+        visibleItems.map(async (item) => {
+          const detail = await getInstanceDetail(String(item.inst_id)) as FollowedAssetDetailResponse;
+          if (!detail || typeof detail !== 'object') {
+            throw new Error('Invalid followed asset detail');
+          }
+          const model =
+            modelList.find((modelItem) => modelItem.model_id === item.model_id) ||
+            modelList.find((modelItem) => modelItem.model_id === detail.model_id);
+          const modelId = item.model_id;
+          return {
+            key: `${modelId}-${item.inst_id}`,
+            inst_id: item.inst_id,
+            model_id: modelId,
+            model_name: model?.model_name || detail.model_name || modelId,
+            inst_name: detail.inst_name || detail.ip_addr || String(item.inst_id),
+            classification_id: model?.classification_id || detail.classification_id || '',
+            icn: model?.icn || detail.icn || '',
+            organization: detail.organization_display || (Array.isArray(detail.organization) ? detail.organization.join(' / ') : ''),
+            icon: getIconUrl({ icn: model?.icn || detail.icn || '', model_id: modelId }),
+            followed: true,
+          } as FollowedAssetViewItem;
+        })
+      );
+      setFollowedAssets(
+        settled
+          .filter((result): result is PromiseFulfilledResult<FollowedAssetViewItem> => result.status === 'fulfilled')
+          .map((result) => result.value)
+      );
+    } catch {
+      setFollowedAssets([]);
+    } finally {
+      setFollowedLoading(false);
+    }
+  };
+
+  const loadCategoryEntries = async () => {
+    try {
+      const [groups, instCount] = await Promise.all([
+        getClassificationList(),
+        getModelInstanceCount(),
+      ]);
+      const entries = buildCategoryEntries({
+        groups,
+        modelList,
+        instanceCount: instCount,
+        limit: 6,
+      }).map((entry) => ({
+        ...entry,
+        icon: entry.target_model_id
+          ? getIconUrl({ icn: entry.target_icn || '', model_id: entry.target_model_id })
+          : '',
+      }));
+      setCategoryEntries(entries);
+    } catch {
+      setCategoryEntries([]);
+    }
+  };
+
   const handleTextChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setSearchText(e.target.value);
   };
 
-  const handleSearch = async () => {
-    setShowSearch(!searchText);
-    if (!searchText) return;
+  const handleSearch = async (keyword?: string) => {
+    const nextSearchText = typeof keyword === 'string' ? keyword : searchText;
+    setSearchText(nextSearchText);
+    setShowSearch(!nextSearchText);
+    if (!nextSearchText) return;
 
     const histories = deepClone(historyList);
     if (
       !histories.length ||
-      (histories.length && !histories.includes(searchText))
+      (histories.length && !histories.includes(nextSearchText))
     ) {
-      histories.push(searchText);
+      histories.push(nextSearchText);
     }
     localStorage.setItem('assetSearchHistory', JSON.stringify(histories));
     setHistoryList(histories);
@@ -94,7 +366,7 @@ const AssetSearch = () => {
     setPageLoading(true);
     try {
       const stats: SearchStatsResponse = await fulltextSearchStats({
-        search: searchText,
+        search: nextSearchText,
         case_sensitive: caseSensitive,
       });
 
@@ -117,7 +389,7 @@ const AssetSearch = () => {
       setActiveTab(firstModelId);
       setCurrentPage(1);
 
-      await loadModelData(firstModelId, 1, pageSize);
+      await loadModelData(firstModelId, 1, pageSize, nextSearchText);
     } catch (error) {
       console.error('Search failed:', error);
       setModelStats([]);
@@ -132,11 +404,16 @@ const AssetSearch = () => {
     }
   };
 
-  const loadModelData = async (modelId: string, page: number, size: number) => {
+  const loadModelData = async (
+    modelId: string,
+    page: number,
+    size: number,
+    keyword = searchText
+  ) => {
     setPageLoading(true);
     try {
       const result: SearchByModelResponse = await fulltextSearchByModel({
-        search: searchText,
+        search: keyword,
         model_id: modelId,
         page: page,
         page_size: size,
@@ -429,92 +706,133 @@ const AssetSearch = () => {
     loadModelData(activeTab, page, size);
   };
 
-  const clearHistoryItem = (
-    e: React.MouseEvent<HTMLElement>,
-    index: number
-  ) => {
-    e.preventDefault();
-    const histories = deepClone(historyList);
-    histories.splice(index, 1);
-    setHistoryList(histories);
-    localStorage.setItem('assetSearchHistory', JSON.stringify(histories));
-  };
-
   const clearHistories = () => {
     localStorage.removeItem('assetSearchHistory');
     setHistoryList([]);
+  };
+
+  const handleQuickTagClick = (item: QuickTagItem) => {
+    setSearchText(item.keyword || item.label);
+  };
+
+  const openFollowedAsset = (item: FollowedAssetViewItem) => {
+    const params: any = {
+      icn: item.icn || '',
+      model_name: item.model_name || '',
+      model_id: item.model_id,
+      classification_id: item.classification_id || '',
+      inst_id: item.inst_id,
+      inst_name: item.inst_name,
+    };
+    router.push(`/cmdb/assetData/detail/baseInfo?${new URLSearchParams(params).toString()}`);
+  };
+
+  const toggleFollowedAsset = async (item: FollowedAssetViewItem) => {
+    if (item.followed === false) {
+      await followAsset({ model_id: item.model_id, inst_id: item.inst_id });
+      message.success(t('AssetSearch.followSuccess'));
+      setFollowedAssets((prev) =>
+        prev.map((asset) =>
+          asset.key === item.key ? { ...asset, followed: true } : asset
+        )
+      );
+      return;
+    }
+
+    await unfollowAsset(item.model_id, item.inst_id);
+    message.success(t('AssetSearch.unfollowSuccess'));
+    setFollowedAssets((prev) =>
+      prev.map((asset) =>
+        asset.key === item.key ? { ...asset, followed: false } : asset
+      )
+    );
+  };
+
+  const refreshFollowedAssets = async () => {
+    const nextConfig = await refreshFollowedConfig();
+    await loadFollowedAssets(nextConfig.items);
+  };
+
+  const handleRecentChangeFilterChange = (filter: RecentChangeFilter) => {
+    setRecentChangeFilter(filter);
+    setRecentChangePage(1);
+    setRecentChangeHasMore(true);
+    setRecentChangeResetKey((prev) => prev + 1);
+    void loadRecentChanges({ filter, page: 1, append: false });
+  };
+
+  const refreshRecentChanges = () => {
+    setRecentChangePage(1);
+    setRecentChangeHasMore(true);
+    setRecentChangeResetKey((prev) => prev + 1);
+    void loadRecentChanges({ filter: recentChangeFilter, page: 1, append: false });
+  };
+
+  const loadMoreRecentChanges = () => {
+    if (
+      !canLazyLoadRecentChanges(recentChangeFilter) ||
+      !recentChangeHasMore ||
+      changesLoading ||
+      changesLoadingMore
+    ) return;
+    void loadRecentChanges({
+      filter: recentChangeFilter,
+      page: recentChangePage + 1,
+      append: true,
+    });
+  };
+
+  const openCategory = (item: CategoryEntryItem) => {
+    if (!item.target_model_id) {
+      return;
+    }
+    const params = new URLSearchParams({
+      modelId: item.target_model_id,
+      classificationId: item.target_classification_id || item.classification_id || '',
+    });
+    router.push(`/cmdb/assetData?${params.toString()}`);
   };
 
   return (
     <div className={assetSearchStyle.assetSearch}>
       <Spin spinning={pageLoading}>
         {showSearch ? (
-          <div className={assetSearchStyle.searchInput}>
-            <h1 className={assetSearchStyle.searchTitle}>{`${t(
-              'searchTitle'
-            )}`}</h1>
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'center' }}>
-              <Search
-                className={assetSearchStyle.inputBtn}
-                value={searchText}
-                allowClear
-                size="large"
-                placeholder={t('assetSearchTxt')}
-                enterButton={
-                  <div
-                    className={assetSearchStyle.searchBtn}
-                    onClick={handleSearch}
-                  >
-                    <SearchOutlined className="pr-[8px]" />
-                    {t('common.search')}
-                  </div>
-                }
-                onChange={handleTextChange}
-                onPressEnter={handleSearch}
-              />
-              <div
-                style={{
-                  border: '1px solid var(--color-border-2)',
-                  borderRadius: '2px',
-                  padding: '4px 12px',
-                  background: 'var(--color-bg-1)',
-                  whiteSpace: 'nowrap',
-                }}
-              >
-                <Checkbox
-                  checked={caseSensitive}
-                  onChange={(e) => setCaseSensitive(e.target.checked)}
-                >
-                  {t('FilterBar.exactMatch')}
-                </Checkbox>
-              </div>
-            </div>
-            {!!historyList.length && (
-              <div className={assetSearchStyle.history}>
-                <div className={assetSearchStyle.description}>
-                  <span className={assetSearchStyle.historyName}>
-                    {t('Model.searchHistory')}
-                  </span>
-                  <Button type="link" onClick={clearHistories}>
-                    {`${t('clear')} ${t('all')}`}
-                  </Button>
-                </div>
-                <ul>
-                  {historyList.map((item, index) => (
-                    <li key={index} onClick={() => setSearchText(item)}>
-                      <Tag
-                        color="var(--color-bg-1)"
-                        closeIcon={<CloseCircleOutlined />}
-                        onClose={(e) => clearHistoryItem(e, index)}
-                      >
-                        {item}
-                      </Tag>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-          </div>
+          <AssetSearchLanding
+            searchText={searchText}
+            historyList={historyList}
+            quickTags={quickTags}
+            recentChanges={recentChanges}
+            followedAssets={followedAssets}
+            categoryEntries={categoryEntries}
+            loading={landingLoading}
+            changesLoading={changesLoading}
+            followedLoading={followedLoading}
+            caseSensitive={caseSensitive}
+            recentChangeFilter={recentChangeFilter}
+            recentChangeHasMore={recentChangeHasMore}
+            recentChangeLoadingMore={changesLoadingMore}
+            recentChangeResetKey={recentChangeResetKey}
+            onSearchTextChange={setSearchText}
+            onCaseSensitiveChange={setCaseSensitive}
+            onSearch={() => void handleSearch()}
+            onHistoryClick={(value) => void handleSearch(value)}
+            onClearHistories={clearHistories}
+            onClearHistoryItem={(index) => {
+              const histories = deepClone(historyList);
+              histories.splice(index, 1);
+              setHistoryList(histories);
+              localStorage.setItem('assetSearchHistory', JSON.stringify(histories));
+            }}
+            onQuickTagClick={handleQuickTagClick}
+            onOpenAsset={openFollowedAsset}
+            onToggleFollow={(item) => void toggleFollowedAsset(item)}
+            onRefreshFollowedAssets={() => void refreshFollowedAssets()}
+            onOpenCategory={openCategory}
+            onViewAllChanges={() => router.push('/cmdb/assetManage/operationLog')}
+            onRefreshRecentChanges={refreshRecentChanges}
+            onLoadMoreRecentChanges={loadMoreRecentChanges}
+            onRecentChangeFilterChange={handleRecentChangeFilterChange}
+          />
         ) : (
           <div className={assetSearchStyle.searchDetail}>
             <div
@@ -533,14 +851,14 @@ const AssetSearch = () => {
                 enterButton={
                   <div
                     className={assetSearchStyle.searchBtn}
-                    onClick={handleSearch}
+                    onClick={() => void handleSearch()}
                   >
                     <SearchOutlined className="pr-[8px]" />
                     {t('common.search')}
                   </div>
                 }
                 onChange={handleTextChange}
-                onPressEnter={handleSearch}
+                onPressEnter={() => void handleSearch()}
               />
               <div
                 style={{

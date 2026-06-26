@@ -11,6 +11,7 @@ from apps.core.utils.safe_template import TemplateSecurityError, safe_render
 from apps.opspilot.models import LLMModel, LLMSkill, WorkflowAttachmentAsset
 from apps.opspilot.services.builtin_tools import BUILTIN_ATTACHMENT_FILE_TOOL_NAME
 from apps.opspilot.services.chat_service import ChatService, chat_service
+from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
@@ -192,9 +193,20 @@ class AgentNode(BaseNodeExecutor):
         # 优先使用调用方传入的当前节点 ID；flow_input["node_id"] 存储的是入口节点 ID，
         # 不是当前智能体节点的 ID，直接使用会导致附件 source_node_id 错误。
         effective_node_id = node_id or self.variable_manager.get_variable("current_node_id", "")
+        resolved_prompt = resolve_skill_params(skill.skill_prompt, skill.skill_params)
+        skill_packages = hydrate_skill_packages(getattr(skill, "skill_packages", []) or [])
+        resolved_prompt, matched_skill_packages = build_skill_package_prompt(
+            base_prompt=resolved_prompt,
+            skill_packages=skill_packages,
+            user_message=final_message,
+            available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
+        )
+        skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
         return {
             "llm_model": skill.llm_model_id,
-            "skill_prompt": resolve_skill_params(skill.skill_prompt, skill.skill_params),
+            "skill_prompt": resolved_prompt,
+            "matched_skill_packages": matched_skill_packages,
+            **skill_package_strategy,
             "temperature": skill.temperature,
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,

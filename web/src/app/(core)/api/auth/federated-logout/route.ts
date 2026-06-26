@@ -1,4 +1,3 @@
-// @ts-expect-error - next-auth v4 getToken exists but types may not be exported correctly
 import { getToken } from 'next-auth/jwt';
 import { NextRequest, NextResponse } from 'next/server';
 

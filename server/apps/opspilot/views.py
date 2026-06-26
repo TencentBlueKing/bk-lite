@@ -6,8 +6,9 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count, Q
-from django.db.models.functions import TruncDate
+from django.db.models import Count, IntegerField, Q, Sum
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, Coalesce, TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -17,6 +18,7 @@ from apps.core.decorators.api_permission import HasRole
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
+from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import WorkFlowTaskStatus
 from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, SkillRequestLog, WorkFlowTaskResult
 from apps.opspilot.serializers.request_serializers import (
@@ -34,11 +36,11 @@ from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.execution_interrupt import request_interrupt
+from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
 from apps.opspilot.utils.wechat_chat_flow_utils import WechatChatFlowUtils
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import User
-from apps.core.utils.team_utils import get_current_team
 
 
 def parse_json_body(request, default=None):
@@ -514,19 +516,36 @@ def _token_consumption_queryset(request):
     return queryset, start_time, end_time
 
 
+def _annotate_token_fields(queryset):
+    """在 DB 层从 response_detail JSONField 中提取各 token 整型字段，供聚合使用。
+
+    response_detail 结构：{"usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
+    KeyTextTransform 提取文本值后 Cast 为整型；NULL 值（路径不存在的旧行）被 Coalesce 置零。
+    """
+
+    def _int_field(path):
+        return Coalesce(Cast(KeyTextTransform(path[1], KeyTextTransform(path[0], "response_detail")), IntegerField()), 0)
+
+    return queryset.annotate(
+        _prompt=_int_field(("usage", "prompt_tokens")),
+        _completion=_int_field(("usage", "completion_tokens")),
+        _total=_int_field(("usage", "total_tokens")),
+    )
+
+
 @HasRole("admin")
 def get_total_token_consumption(request):
     queryset, _start_time, _end_time = _token_consumption_queryset(request)
-    input_tokens = output_tokens = total_tokens = 0
-    for response_detail in queryset.values_list("response_detail", flat=True).iterator():
-        prompt, completion, total = _extract_token_usage(response_detail)
-        input_tokens += prompt
-        output_tokens += completion
-        total_tokens += total
+    # DB 层聚合：不再把记录全量拉取到 Python 进程
+    result = _annotate_token_fields(queryset).aggregate(
+        input_tokens=Sum("_prompt"),
+        output_tokens=Sum("_completion"),
+        total_tokens=Sum("_total"),
+    )
     data = {
-        "total_tokens": total_tokens,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "total_tokens": result["total_tokens"] or 0,
+        "input_tokens": result["input_tokens"] or 0,
+        "output_tokens": result["output_tokens"] or 0,
     }
     return JsonResponse({"result": True, "data": data})
 
@@ -535,13 +554,19 @@ def get_total_token_consumption(request):
 def get_token_consumption_overview(request):
     queryset, start_time, end_time = _token_consumption_queryset(request)
     num_days = (end_time - start_time).days + 1
+    # 先初始化日期骨架（保证无数据日仍有 0 占位）
     daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
-    for created_at, response_detail in queryset.values_list("created_at", "response_detail").iterator():
-        _prompt, _completion, total = _extract_token_usage(response_detail)
-        date_key = created_at.strftime("%Y-%m-%d")
-        if date_key not in daily_totals:
-            daily_totals[date_key] = 0
-        daily_totals[date_key] += total
+    # DB 层按日期聚合 token 总量，不再全量拉取行到 Python
+    rows = (
+        _annotate_token_fields(queryset)
+        .annotate(date=TruncDate("created_at"))
+        .values("date")
+        .annotate(tokens=Sum("_total"))
+        .order_by("date")
+    )
+    for row in rows:
+        date_key = row["date"].strftime("%Y-%m-%d")
+        daily_totals[date_key] = (daily_totals.get(date_key) or 0) + (row["tokens"] or 0)
     items = [{"date": date, "tokens": tokens} for date, tokens in sorted(daily_totals.items())]
     return JsonResponse({"result": True, "data": {"items": items}})
 
@@ -677,6 +702,18 @@ async def execute_chat_flow(request, bot_id, node_id):
         return JsonResponse({"result": False, "message": loader.get("error.chat_flow_config_empty", "Chat flow configuration is empty.")})
 
     try:
+        # 会话级 pending 拦截：若该 (bot, session) 当前有正在等待用户输入的智能体节点，
+        # 则把本条对话框消息当作答案直接投递回该节点（在原流续跑），不新建执行——
+        # 否则消息会从工作流入口重跑，回复跑回第一个智能体而非正在等待的那个。
+        if not is_test and session_id and message:
+            delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
+            if delivered:
+                logger.info(
+                    f"[ChatFlow] 消息已投递给待回答节点，跳过新建执行 - bot_id: {bot_id}, session_id: {session_id}, "
+                    f"execution_id: {delivered.get('execution_id')}, node_id: {delivered.get('node_id')}"
+                )
+                return JsonResponse({"result": True, "data": delivered})
+
         # 创建ChatFlow引擎 - 使用数据库中的工作流配置
         engine = create_chat_flow_engine(bot_chat_flow, node_id)
 
@@ -898,9 +935,15 @@ def submit_choice(request):
         .first()
     )
     if not task_result:
-        return JsonResponse(
-            {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
-            status=404,
+        if node_id != "skill_test":
+            return JsonResponse(
+                {"result": False, "message": loader.get("error.execution_not_found", "Execution not found")},
+                status=404,
+            )
+        logger.warning(
+            "Local skill test choice submitted without workflow task result: execution_id=%s, choice_id=%s",
+            execution_id,
+            choice_id,
         )
 
     from apps.opspilot.utils.user_choice import submit_user_choice

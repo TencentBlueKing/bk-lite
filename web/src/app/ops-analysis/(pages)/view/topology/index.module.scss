@@ -10,22 +10,69 @@
 .topologyContainer {
   :global(.x6-graph-svg) {
     background:
-      radial-gradient(circle at 18% 16%, rgba(113, 170, 255, 0.14) 0%, transparent 32%),
-      radial-gradient(circle at 82% 20%, rgba(190, 155, 255, 0.12) 0%, transparent 28%),
+      radial-gradient(circle at 16% 14%, rgba(74, 144, 226, 0.12) 0%, transparent 30%),
+      radial-gradient(circle at 84% 18%, rgba(18, 190, 190, 0.08) 0%, transparent 26%),
+      linear-gradient(90deg, rgba(142, 166, 196, 0.035) 1px, transparent 1px),
+      linear-gradient(180deg, rgba(142, 166, 196, 0.035) 1px, transparent 1px),
       linear-gradient(
         135deg,
-        #eff7ff 0%,
-        #f9fbff 48%,
-        #f8f2ff 100%
+        #f5faff 0%,
+        #fbfdff 48%,
+        #f4f8fd 100%
       ) !important;
+    background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px, 100% 100% !important;
   }
 
   :global(.x6-graph-grid line) {
-    stroke: rgba(112, 140, 180, 0.12) !important;
+    stroke: rgba(117, 142, 172, 0.1) !important;
   }
 
   :global(.x6-node foreignObject) {
     overflow: hidden !important;
+  }
+
+  :global(.x6-node[data-shape='icon-node'] rect[selector='body']) {
+    transition:
+      stroke 0.18s ease,
+      filter 0.18s ease,
+      fill 0.18s ease;
+  }
+
+  :global(.x6-node[data-shape='icon-node']:hover rect[selector='body']) {
+    stroke: #8dbcf2;
+    filter:
+      drop-shadow(0 15px 28px rgba(42, 97, 160, 0.13))
+      drop-shadow(0 2px 5px rgba(15, 23, 42, 0.07));
+  }
+
+  :global(.x6-node-selected[data-shape='icon-node'] rect[selector='body']),
+  :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']) {
+    stroke: #2d7df0 !important;
+    stroke-width: 2 !important;
+    filter:
+      drop-shadow(0 0 0 rgba(45, 125, 240, 0.1))
+      drop-shadow(0 16px 30px rgba(45, 125, 240, 0.18)) !important;
+  }
+
+  :global(.x6-node[data-shape='icon-node'] text[selector='label']) {
+    paint-order: stroke;
+    stroke: rgba(255, 255, 255, 0.8);
+    stroke-width: 2px;
+  }
+
+  :global(.x6-edge path[selector='line']) {
+    transition:
+      stroke 0.18s ease,
+      stroke-width 0.18s ease,
+      filter 0.18s ease,
+      opacity 0.18s ease;
+  }
+
+  :global(.x6-edge:hover path[selector='line']),
+  :global(.x6-edge-selected path[selector='line']) {
+    stroke: #2d7df0 !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 2px 5px rgba(45, 125, 240, 0.28)) !important;
   }
   
   :global(.edge-flow-animation) {
@@ -47,6 +94,132 @@
         transparent 1px) !important;
       background-size: 20px 20px !important;
     }
+  }
+}
+
+.techBluePresentation {
+  background:
+    radial-gradient(circle at 50% 44%, rgba(42, 210, 255, 0.16), transparent 34%),
+    radial-gradient(circle at 16% 12%, rgba(68, 150, 255, 0.12), transparent 24%),
+    linear-gradient(135deg, #051020 0%, #08243a 48%, #030914 100%) !important;
+
+  :global(.x6-graph-svg) {
+    background:
+      linear-gradient(rgba(120, 223, 255, 0.042) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(120, 223, 255, 0.034) 1px, transparent 1px),
+      radial-gradient(circle at 50% 44%, rgba(42, 210, 255, 0.16), transparent 34%),
+      radial-gradient(circle at 16% 12%, rgba(68, 150, 255, 0.12), transparent 24%),
+      linear-gradient(135deg, #051020 0%, #08243a 48%, #030914 100%) !important;
+    background-size: 40px 40px, 40px 40px, 100% 100%, 100% 100%, 100% 100% !important;
+  }
+
+  :global(.x6-graph-grid line) {
+    stroke: rgba(120, 223, 255, 0.045) !important;
+  }
+
+  :global(.x6-edge path) {
+    filter: drop-shadow(0 0 7px rgba(54, 231, 255, 0.22));
+    opacity: 0.92;
+  }
+
+  :global(.x6-edge:hover path[selector='line']),
+  :global(.x6-edge-selected path[selector='line']) {
+    stroke: #6ef4ff !important;
+    stroke-width: 2 !important;
+    filter: drop-shadow(0 0 10px rgba(54, 231, 255, 0.34)) !important;
+  }
+
+  :global(.x6-node[data-shape='icon-node'] rect[selector='body']) {
+    fill: rgba(8, 34, 56, 0.42);
+    stroke: rgba(119, 232, 255, 0.42);
+    filter:
+      drop-shadow(0 14px 28px rgba(0, 12, 30, 0.3))
+      drop-shadow(0 0 24px rgba(54, 231, 255, 0.18));
+  }
+
+  :global(.x6-node[data-shape='icon-node']:hover rect[selector='body']) {
+    stroke: rgba(141, 235, 255, 0.58);
+    filter:
+      drop-shadow(0 16px 32px rgba(0, 12, 30, 0.32))
+      drop-shadow(0 0 28px rgba(54, 231, 255, 0.28));
+  }
+
+  :global(.x6-node-selected[data-shape='icon-node'] rect[selector='body']),
+  :global(.x6-node[data-shape='icon-node'].selected rect[selector='body']) {
+    stroke: rgba(110, 244, 255, 0.72) !important;
+    stroke-width: 2 !important;
+    filter:
+      drop-shadow(0 16px 32px rgba(0, 12, 30, 0.34))
+      drop-shadow(0 0 32px rgba(54, 231, 255, 0.34)) !important;
+  }
+
+  :global(.x6-node[data-shape='icon-node'] text[selector='label']) {
+    fill: rgba(234, 251, 255, 0.92);
+    stroke: rgba(2, 6, 18, 0.72);
+    stroke-width: 3px;
+  }
+
+  :global(.ops-topology-chart-node) {
+    border: 1px solid rgba(109, 226, 255, 0.38) !important;
+    border-radius: 10px !important;
+    background:
+      linear-gradient(180deg, rgba(8, 34, 56, 0.5), rgba(3, 14, 30, 0.32)),
+      rgba(4, 18, 36, 0.36) !important;
+    box-shadow:
+      0 0 0 1px rgba(125, 211, 252, 0.08),
+      0 16px 44px rgba(0, 12, 30, 0.34),
+      inset 0 1px 0 rgba(226, 251, 255, 0.16),
+      inset 0 -28px 52px rgba(14, 116, 144, 0.1) !important;
+    backdrop-filter: blur(16px) saturate(128%) !important;
+  }
+
+  :global(.ops-topology-chart-node)::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 18px;
+    right: 18px;
+    height: 1px;
+    background: linear-gradient(
+      90deg,
+      transparent,
+      rgba(125, 232, 255, 0.72),
+      transparent
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  :global(.ops-topology-chart-node > div) {
+    background:
+      linear-gradient(180deg, rgba(8, 38, 62, 0.48), rgba(3, 16, 34, 0.3)) !important;
+    border-color: rgba(109, 226, 255, 0.28) !important;
+  }
+
+  :global(.x6-node[data-shape='single-value-node'] rect[selector='body']) {
+    fill: rgba(8, 34, 56, 0.36) !important;
+    stroke: rgba(109, 226, 255, 0.42) !important;
+    filter:
+      drop-shadow(0 12px 24px rgba(0, 12, 30, 0.3))
+      drop-shadow(0 0 20px rgba(54, 231, 255, 0.18)) !important;
+  }
+
+  :global(.x6-node[data-shape='single-value-node'] text[selector='label']) {
+    fill: #6ef4ff !important;
+    filter: drop-shadow(0 0 12px rgba(54, 231, 255, 0.34));
+  }
+
+  :global(.x6-node[data-shape='single-value-node'] text[selector='nameLabel']) {
+    fill: rgba(221, 251, 255, 0.72) !important;
+  }
+
+  :global(.ops-screen-empty) {
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: rgba(142, 219, 255, 0.72);
+    font-size: 12px;
   }
 }
 

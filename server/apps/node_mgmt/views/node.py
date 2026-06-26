@@ -2,7 +2,7 @@ from typing import Any, cast
 from rest_framework import mixins
 from rest_framework.decorators import action
 from rest_framework.viewsets import GenericViewSet
-from django.db.models import Q
+from django.db.models import Count, Q
 
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.loader import LanguageLoader
@@ -36,6 +36,39 @@ from apps.node_mgmt.utils.task_result_schema import normalize_task_result_for_re
 
 class NodeFilterHandler:
     """节点查询过滤器处理器 - 统一管理所有特殊字段的过滤逻辑"""
+
+    # 白名单：允许通过标准过滤路径查询的 Node 直接字段
+    ALLOWED_FILTER_FIELDS = frozenset(
+        {
+            "id",
+            "name",
+            "ip",
+            "operating_system",
+            "cpu_architecture",
+            "install_method",
+            "node_type",
+            "cloud_region_id",
+        }
+    )
+
+    # 白名单：允许使用的 ORM lookup 表达式（不含 bool，bool 在进入此校验前已被规范化为 exact）
+    ALLOWED_LOOKUP_EXPRS = frozenset(
+        {
+            "exact",
+            "iexact",
+            "contains",
+            "icontains",
+            "startswith",
+            "istartswith",
+            "endswith",
+            "iendswith",
+            "in",
+            "gt",
+            "gte",
+            "lt",
+            "lte",
+        }
+    )
 
     @staticmethod
     def normalize_bool_value(value):
@@ -103,6 +136,10 @@ class NodeFilterHandler:
         """
         构建标准字段的 Q 对象过滤条件
 
+        只允许白名单中的字段名（ALLOWED_FILTER_FIELDS）和 lookup 表达式
+        （ALLOWED_LOOKUP_EXPRS）参与查询，不在白名单内的条目静默跳过，
+        防止攻击者通过任意字段名/lookup 进行 ORM 注入（#3609）。
+
         Args:
             params: 过滤参数字典
 
@@ -115,6 +152,10 @@ class NodeFilterHandler:
         final_q = Q()
 
         for field_name, conditions in params.items():
+            # 字段名白名单校验
+            if field_name not in NodeFilterHandler.ALLOWED_FILTER_FIELDS:
+                continue
+
             if not conditions or not isinstance(conditions, list):
                 continue
 
@@ -132,6 +173,10 @@ class NodeFilterHandler:
                 if lookup_expr == "bool":
                     value = NodeFilterHandler.normalize_bool_value(value)
                     lookup_expr = "exact"
+
+                # lookup 表达式白名单校验
+                if lookup_expr not in NodeFilterHandler.ALLOWED_LOOKUP_EXPRS:
+                    continue
 
                 # 构建查询键
                 lookup_key = f"{field_name}__{lookup_expr}"
@@ -403,15 +448,25 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
             for obj in items
         ]
 
-        summary_queryset = CollectorActionTaskNode.objects.filter(task_id=task_id, node_id__in=authorized_node_ids)
+        agg = CollectorActionTaskNode.objects.filter(
+            task_id=task_id, node_id__in=authorized_node_ids
+        ).aggregate(
+            total=Count("id"),
+            waiting=Count("id", filter=Q(status="waiting")),
+            running=Count("id", filter=Q(status="running")),
+            success=Count("id", filter=Q(status="success")),
+            error=Count("id", filter=Q(status="error")),
+            timeout=Count("id", filter=Q(result__overall_status="timeout")),
+            cancelled=Count("id", filter=Q(result__overall_status="cancelled")),
+        )
         summary = {
-            "total": summary_queryset.count(),
-            "waiting": summary_queryset.filter(status="waiting").count(),
-            "running": summary_queryset.filter(status="running").count(),
-            "success": summary_queryset.filter(status="success").count(),
-            "error": summary_queryset.filter(status="error").count(),
-            "timeout": summary_queryset.filter(result__overall_status="timeout").count(),
-            "cancelled": summary_queryset.filter(result__overall_status="cancelled").count(),
+            "total": agg["total"],
+            "waiting": agg["waiting"],
+            "running": agg["running"],
+            "success": agg["success"],
+            "error": agg["error"],
+            "timeout": agg["timeout"],
+            "cancelled": agg["cancelled"],
         }
 
         task_obj = CollectorActionTask.objects.filter(id=task_id).first()
@@ -431,10 +486,13 @@ class NodeViewSet(mixins.DestroyModelMixin, GenericViewSet):
 
     @action(detail=False, methods=["post"], url_path="node_config_asso")
     def get_node_config_asso(self, request):
+        cloud_region_id = request.data.get("cloud_region_id")
+        if not cloud_region_id:
+            return WebUtils.response_error(error_message="cloud_region_id is required")
         nodes = (
             get_authorized_node_queryset(request)
             .prefetch_related("collectorconfiguration_set")
-            .filter(cloud_region_id=request.data["cloud_region_id"])
+            .filter(cloud_region_id=cloud_region_id)
         )
         if request.data.get("ids"):
             nodes = nodes.filter(id__in=request.data["ids"])

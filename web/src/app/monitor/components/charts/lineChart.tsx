@@ -38,6 +38,11 @@ import {
 } from '@/app/monitor/types';
 import { LEVEL_MAP } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
+import {
+  GAP_INTERVAL_AREA_STYLE,
+  getChartDataWithGapBreaks,
+  getRenderedGapIntervals
+} from '@/app/monitor/utils/gapIntervals';
 
 interface LineChartProps {
   data: ChartData[];
@@ -218,6 +223,16 @@ const LineChart: React.FC<LineChartProps> = memo(
     const seriesUnits = useMemo(
       () => Object.fromEntries(chartAreaKeys.map((key, index) => [key, resolvedSeriesStyles[index]?.unit || unit])),
       [chartAreaKeys, resolvedSeriesStyles, unit]
+    );
+
+    const renderedGapIntervals = useMemo(
+      () => getRenderedGapIntervals(data, data[0]?.gapIntervals || []),
+      [data]
+    );
+
+    const chartDataWithGapBreaks = useMemo(
+      () => getChartDataWithGapBreaks(data, data[0]?.gapIntervals || []),
+      [data]
     );
 
     const yAxisTickCount = useMemo(() => {
@@ -650,7 +665,7 @@ const LineChart: React.FC<LineChartProps> = memo(
           <>
             <ResponsiveContainer className={chartLineStyle.chart}>
               <AreaChart
-                data={data}
+                data={chartDataWithGapBreaks}
                 syncId={syncId}
                 margin={{
                   top: 10,
@@ -664,6 +679,8 @@ const LineChart: React.FC<LineChartProps> = memo(
               >
                 <XAxis
                   dataKey="time"
+                  type="number"
+                  domain={['dataMin', 'dataMax']}
                   tick={{ fill: 'var(--color-text-3)', fontSize: 14 }}
                   tickFormatter={formatXAxisTick}
                   tickCount={xAxisTickCount}
@@ -682,6 +699,16 @@ const LineChart: React.FC<LineChartProps> = memo(
                   width={leftAxisWidth}
                 />
                 <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="rgba(107, 127, 152, 0.28)" />
+                {renderedGapIntervals.map((gap) => (
+                  <ReferenceArea
+                    key={`gap-${gap.start}-${gap.end}`}
+                    x1={gap.start}
+                    x2={gap.end}
+                    yAxisId="left"
+                    {...GAP_INTERVAL_AREA_STYLE}
+                    ifOverflow="extendDomain"
+                  />
+                ))}
                 <Tooltip
                   offset={-1}
                   content={
@@ -711,7 +738,6 @@ const LineChart: React.FC<LineChartProps> = memo(
                     fillOpacity={resolvedSeriesStyles[index]?.fillOpacity ?? 0}
                     fill={resolvedSeriesStyles[index]?.color || colors[index]}
                     strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? 2.5}
-                    connectNulls
                     dot={false}
                     activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color || colors[index] }}
                     isAnimationActive={false}

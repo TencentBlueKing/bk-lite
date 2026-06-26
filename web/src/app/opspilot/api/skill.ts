@@ -15,6 +15,8 @@ import type {
   SkillTemplate,
   CreateSkillPayload,
   Skill,
+  SkillPackage,
+  SkillPackageListResponse,
 } from '@/app/opspilot/types/skill';
 import type { RedisInstanceFormValue } from '@/app/opspilot/components/skill/redisToolEditor';
 import type { MysqlInstanceFormValue } from '@/app/opspilot/components/skill/mysqlToolEditor';
@@ -116,6 +118,35 @@ export const useSkillApi = () => {
     return post(`/opspilot/model_provider_mgmt/llm/${id}/toggle_pin/`);
   };
 
+  const fetchSkillPackages = async (params?: { search?: string; is_enabled?: boolean | number }): Promise<SkillPackageListResponse> => {
+    const response = await get('/opspilot/model_provider_mgmt/skill_packages/', { params });
+    if (Array.isArray(response)) {
+      return { items: response, count: response.length };
+    }
+    return {
+      items: response?.items || response?.results || [],
+      count: response?.count ?? response?.items?.length ?? response?.results?.length ?? 0,
+    };
+  };
+
+  const importSkillPackageZip = async (file: File): Promise<SkillPackage> => {
+    const formData = new FormData();
+    formData.append('file', file);
+    return post('/opspilot/model_provider_mgmt/skill_packages/import_zip/', formData, {
+      headers: {
+        'Content-Type': 'multipart/form-data',
+      },
+    });
+  };
+
+  const updateSkillPackage = async (id: number, payload: Partial<SkillPackage>): Promise<SkillPackage> => {
+    return patch(`/opspilot/model_provider_mgmt/skill_packages/${id}/`, payload);
+  };
+
+  const deleteSkillPackage = async (id: number): Promise<void> => {
+    await del(`/opspilot/model_provider_mgmt/skill_packages/${id}/`);
+  };
+
   return {
     fetchInvocationLogs,
     fetchSkill,
@@ -139,5 +170,9 @@ export const useSkillApi = () => {
     fetchSkillTemplates,
     createSkill,
     togglePin,
+    fetchSkillPackages,
+    importSkillPackageZip,
+    updateSkillPackage,
+    deleteSkillPackage,
   };
 };

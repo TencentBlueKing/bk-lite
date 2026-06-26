@@ -3,6 +3,7 @@ from __future__ import annotations
 
 from typing import Any
 
+from django.db.models import Q
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.utils.permission_utils import get_permission_rules
@@ -75,8 +76,12 @@ class ImportExportAuthorizationService:
         if not cls.has_permission(request, export_config["permission"]):
             raise PermissionDenied(f"缺少导出 {object_enum.value} 所需权限 {export_config['permission']}")
 
-        filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team)
-        return cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
+        group_ids = cls._get_export_group_ids(request, current_team)
+        filtered_ids = cls._filter_ids_by_org(object_enum, object_ids, current_team, group_ids)
+        filtered_ids = cls._filter_ids_by_scope(request, object_enum, filtered_ids, current_team)
+        if not filtered_ids:
+            raise PermissionDenied("无权导出所选对象或对象不存在")
+        return filtered_ids
 
     @classmethod
     def apply_precheck_permissions(
@@ -99,8 +104,10 @@ class ImportExportAuthorizationService:
             overwrite_allowed = cls.has_permission(request, permission_config["overwrite"])
             view_allowed = cls.has_permission(request, cls.EXPORT_PERMISSION_MAP[object_type]["permission"])
 
+            existing_map = cls.get_existing_objects_batch(object_type, items)
+
             for item in items:
-                existing = cls.get_existing_object(object_type, item)
+                existing = existing_map.get(cls._item_lookup_key(object_type, item))
                 if not existing:
                     if not create_allowed:
                         permission_errors.append(
@@ -188,8 +195,10 @@ class ImportExportAuthorizationService:
         for object_type, items in cls.iter_import_items(doc):
             permission_config = cls.IMPORT_ACTION_PERMISSION_MAP[object_type]
 
+            existing_map = cls.get_existing_objects_batch(object_type, items)
+
             for item in items:
-                existing = cls.get_existing_object(object_type, item)
+                existing = existing_map.get(cls._item_lookup_key(object_type, item))
                 conflict = conflict_map.get(item.key)
                 action = conflict_decisions.get(item.key, ConflictAction.RENAME.value)
 
@@ -268,6 +277,41 @@ class ImportExportAuthorizationService:
         return None
 
     @classmethod
+    def get_existing_objects_batch(cls, object_type: ObjectType, items) -> dict:
+        """批量查询一组 items 对应的已存在对象，返回 {lookup_key: object} 字典，消除 N+1 查询。"""
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+
+        if not items:
+            return {}
+
+        if object_type == ObjectType.DATASOURCE:
+            # DataSourceAPIModel 以 (name, rest_api) 为唯一键
+            lookup_pairs = [(item.name, item.rest_api) for item in items]
+            names = [p[0] for p in lookup_pairs]
+            qs = DataSourceAPIModel.objects.filter(name__in=names)
+            return {(obj.name, obj.rest_api): obj for obj in qs if (obj.name, obj.rest_api) in set(lookup_pairs)}
+
+        name_set = [item.name for item in items]
+        model_map = {
+            ObjectType.DASHBOARD: Dashboard,
+            ObjectType.TOPOLOGY: Topology,
+            ObjectType.ARCHITECTURE: Architecture,
+            ObjectType.NAMESPACE: NameSpace,
+        }
+        model = model_map.get(object_type)
+        if model is None:
+            return {}
+        return {obj.name: obj for obj in model.objects.filter(name__in=name_set)}
+
+    @staticmethod
+    def _item_lookup_key(object_type: ObjectType, item):
+        """返回用于 get_existing_objects_batch 结果字典的查找键。"""
+        if object_type == ObjectType.DATASOURCE:
+            return (item.name, item.rest_api)
+        return item.name
+
+    @classmethod
     def can_access_existing_object(cls, request, object_type: ObjectType, existing, current_team: int | None) -> bool:
         if getattr(request.user, "is_superuser", False):
             return True
@@ -314,7 +358,18 @@ class ImportExportAuthorizationService:
             return object_ids
 
         allowed_instance_ids = cls._normalize_ids(permission_data.get("instance", []))
-        return [object_id for object_id in object_ids if object_id in allowed_instance_ids]
+        allowed_ids = set(allowed_instance_ids)
+        model = cls._get_org_scoped_model(object_type)
+        if model is not None:
+            builtin_ids = model.objects.filter(id__in=object_ids, is_build_in=True).values_list("id", flat=True)
+            allowed_ids.update(builtin_ids)
+
+        created_by = getattr(request.user, "username", None)
+        if created_by and model is not None:
+            creator_ids = model.objects.filter(id__in=object_ids, created_by=created_by).values_list("id", flat=True)
+            allowed_ids.update(creator_ids)
+
+        return [object_id for object_id in object_ids if object_id in allowed_ids]
 
     @classmethod
     def _get_permission_data(cls, request, permission_key: str, current_team: int | None) -> dict[str, Any]:
@@ -323,28 +378,53 @@ class ImportExportAuthorizationService:
         return get_permission_rules(request.user, current_team, cls.APP_NAME, permission_key, False) or {}
 
     @classmethod
-    def _filter_ids_by_org(cls, object_type: ObjectType, object_ids: list[int], current_team: int | None) -> list[int]:
-        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+    def _filter_ids_by_org(
+        cls,
+        object_type: ObjectType,
+        object_ids: list[int],
+        current_team: int | None,
+        group_ids: list[int] | None = None,
+    ) -> list[int]:
+        from apps.operation_analysis.models.datasource_models import NameSpace
 
-        model_map = {
-            ObjectType.DASHBOARD: Dashboard,
-            ObjectType.TOPOLOGY: Topology,
-            ObjectType.ARCHITECTURE: Architecture,
-            ObjectType.DATASOURCE: DataSourceAPIModel,
-        }
-
-        model = model_map.get(object_type)
+        model = cls._get_org_scoped_model(object_type)
         if model is not None:
             queryset = model.objects.filter(id__in=object_ids)
             if current_team is not None:
-                queryset = queryset.filter(groups__contains=current_team)
+                org_query = Q()
+                for group_id in group_ids or [current_team]:
+                    org_query |= Q(groups__contains=int(group_id))
+                queryset = queryset.filter(org_query)
             return list(queryset.values_list("id", flat=True))
 
         if object_type == ObjectType.NAMESPACE:
             return list(NameSpace.objects.filter(id__in=object_ids).values_list("id", flat=True))
 
         return []
+
+    @staticmethod
+    def _get_export_group_ids(request, current_team: int | None) -> list[int]:
+        if current_team is None:
+            return []
+        if request.COOKIES.get("include_children", "0") != "1":
+            return [current_team]
+
+        from apps.core.utils.viewset_utils import GenericViewSetFun
+
+        child_ids = GenericViewSetFun.extract_child_group_ids(getattr(request.user, "group_tree", []), current_team)
+        return child_ids or [current_team]
+
+    @staticmethod
+    def _get_org_scoped_model(object_type: ObjectType):
+        from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+
+        return {
+            ObjectType.DASHBOARD: Dashboard,
+            ObjectType.TOPOLOGY: Topology,
+            ObjectType.ARCHITECTURE: Architecture,
+            ObjectType.DATASOURCE: DataSourceAPIModel,
+        }.get(object_type)
 
     @staticmethod
     def _normalize_ids(values: list[Any]) -> set[int]:

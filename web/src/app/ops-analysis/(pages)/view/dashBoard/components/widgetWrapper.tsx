@@ -225,6 +225,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     { page: 1, page_size: 20 },
   );
   const { getSourceDataByApiId } = useDataSourceApi();
+  const isSceneWidget = config?.sceneWidgetType === 'networkStatusTopology';
 
   const fetchIdRef = useRef(0);
   const tableQueryKey = useMemo(
@@ -310,7 +311,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   ]);
 
   const requestSignature = useMemo(() => {
-    if (!normalizedDataSourceId || !requestSignatureParams) {
+    if (isSceneWidget || !normalizedDataSourceId || !requestSignatureParams) {
       return null;
     }
 
@@ -318,7 +319,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       dataSourceId: normalizedDataSourceId,
       requestParams: requestSignatureParams,
     });
-  }, [normalizedDataSourceId, requestSignatureParams]);
+  }, [isSceneWidget, normalizedDataSourceId, requestSignatureParams]);
 
   const requestKey = useMemo(() => {
     if (!requestSignature) {
@@ -458,6 +459,15 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   };
 
   useEffect(() => {
+    if (isSceneWidget) {
+      setRawData(null);
+      setBaselineData(null);
+      setLoading(false);
+      setTableLoading(false);
+      setDataValidation(null);
+      return;
+    }
+
     if (!normalizedDataSourceId) {
       setRawData(null);
       setLoading(false);
@@ -484,7 +494,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       });
       return;
     }
-  }, [normalizedDataSourceId, dataSource, dataSource?.hasAuth, t]);
+  }, [isSceneWidget, normalizedDataSourceId, dataSource, dataSource?.hasAuth, t]);
 
   const previousRequestRef = useRef<{
     signature: string | null;
@@ -607,6 +617,24 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     <WidgetErrorState message={message} />
   );
 
+  if (isSceneWidget) {
+    return (
+      <div style={{ position: 'relative', height: '100%' }}>
+        <WidgetRenderer
+          chartType={chartType}
+          rawData={null}
+          loading={false}
+          config={config}
+          refreshKey={reloadVersion}
+          onReady={onReady}
+          fallback={renderError(
+            `${t('dashboard.unknownComponentType')}: ${chartType}`,
+          )}
+        />
+      </div>
+    );
+  }
+
   if (loading && !isTableLikeChart) {
     return (
       <div className="h-full flex items-center justify-center">
@@ -630,6 +658,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         baselineData={baselineData}
         loading={isTableLikeChart ? tableLoading : loading}
         config={config}
+        refreshKey={reloadVersion}
         dataSource={dataSource}
         onReady={onReady}
         onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}

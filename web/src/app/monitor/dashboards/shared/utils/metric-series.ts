@@ -1,6 +1,7 @@
 import React from 'react';
 import { ChartData, MetricItem } from '@/app/monitor/types';
 import { renderChart } from '@/app/monitor/utils/common';
+import { attachGapIntervals } from '@/app/monitor/utils/gapIntervals';
 import { BaseMetricConfig, MetricSeriesBase } from '../types';
 
 export const toMetricSeries = <T extends BaseMetricConfig>(
@@ -11,16 +12,19 @@ export const toMetricSeries = <T extends BaseMetricConfig>(
   idValues: string[],
   instanceIdKeys: string[]
 ): T & { viewData: ChartData[]; loadState: 'success' } => {
-  const viewData = renderChart(result?.data?.result || [], [
-    {
-      instance_id_values: idValues,
-      instance_name: instanceName,
-      instance_id: String(instanceId || ''),
-      instance_id_keys: instanceIdKeys,
-      dimensions: metric.dimensions || [],
-      title: metric.display_name
-    }
-  ]);
+  const viewData = attachGapIntervals(
+    renderChart(result?.data?.result || [], [
+      {
+        instance_id_values: idValues,
+        instance_name: instanceName,
+        instance_id: String(instanceId || ''),
+        instance_id_keys: instanceIdKeys,
+        dimensions: metric.dimensions || [],
+        title: metric.display_name
+      }
+    ]),
+    result?.data?.gaps || []
+  );
 
   return { ...metric, viewData, loadState: 'success' as const };
 };

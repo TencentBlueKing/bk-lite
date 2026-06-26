@@ -166,6 +166,10 @@ class BotViewSet(PinMixin, AuthViewSet):
         node_port = data.pop("node_port", None)
         workflow_data = data.pop("workflow_data", None)
         if "team" in data:
+            # 仅校验【新增】的管理组织权限（与下方 usage_team 分支一致），避免越权把 bot 改到无权组织（mass-assignment）；
+            # 保留既有组织不重新校验，否则只管理其中部分组织的用户连改其它字段都会被误拦 403。
+            new_team_orgs = [org for org in data["team"] if org not in obj.team]
+            self._validate_org_field_permission(request, new_team_orgs)
             delete_team = [i for i in obj.team if i not in data["team"]]
             self.delete_rules(obj.id, delete_team)
         # 仅允许更新明确白名单内的字段，避免恶意请求批量覆盖 team/created_by/api_token 等敏感字段（mass-assignment）

@@ -7,8 +7,9 @@ from django.utils import timezone
 from rest_framework import status
 from rest_framework.decorators import action
 from rest_framework.response import Response
-from rest_framework.viewsets import ViewSet
 
+from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.viewset_utils import AuthViewSet
 from apps.job_mgmt.constants import ExecutionStatus, JobType
 from apps.job_mgmt.models import JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.serializers.dashboard import DashboardStatsSerializer, DashboardTrendSerializer
@@ -77,9 +78,23 @@ def _duration_to_seconds(value):
     return round(value.total_seconds(), 1) if value else 0
 
 
-class DashboardViewSet(ViewSet):
+class DashboardViewSet(AuthViewSet):
     """Dashboard视图集"""
 
+    ORGANIZATION_FIELD = "team"
+    permission_key = "job"
+
+    def _get_team_filter(self, request):
+        """返回当前用户可见的 team 过滤条件。
+
+        超级管理员不做 team 过滤（返回全量）；普通用户只能看当前 team 的数据。
+        """
+        if getattr(request.user, "is_superuser", False):
+            return Q()
+        current_team = self._validate_current_team_permission(request)
+        return Q(team__contains=current_team)
+
+    @HasPermission("job_record-View")
     @action(detail=False, methods=["get"])
     def trend(self, request):
         """获取执行趋势数据（按 days 或自定义 start_date/end_date 闭区间）"""
@@ -87,9 +102,12 @@ class DashboardViewSet(ViewSet):
         if error:
             return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
+        team_filter = self._get_team_filter(request)
+
         # 按日期分组统计
         executions = (
             JobExecution.objects.filter(
+                team_filter,
                 created_at__date__gte=start_date,
                 created_at__date__lte=end_date,
             )
@@ -125,6 +143,7 @@ class DashboardViewSet(ViewSet):
         serializer = DashboardTrendSerializer(result, many=True)
         return Response(serializer.data)
 
+    @HasPermission("job_record-View")
     @action(detail=False, methods=["get"])
     def success_rate_compare(self, request):
         """获取当前周期成功率及与上一等长周期对比（支持 days 或自定义区间）"""
@@ -136,14 +155,16 @@ class DashboardViewSet(ViewSet):
         previous_end = start_date - timedelta(days=1)
         previous_start = start_date - timedelta(days=days)
 
+        team_filter = self._get_team_filter(request)
+
         # 每个周期一次聚合（含条件计数）
-        current_stats = JobExecution.objects.filter(created_at__date__gte=start_date, created_at__date__lte=end_date).aggregate(
+        current_stats = JobExecution.objects.filter(team_filter, created_at__date__gte=start_date, created_at__date__lte=end_date).aggregate(
             total=Count("id"),
             success=Count("id", filter=Q(status=ExecutionStatus.SUCCESS)),
             failed=Count("id", filter=Q(status=ExecutionStatus.FAILED)),
             avg_duration=Avg(DURATION_EXPR, filter=Q(started_at__isnull=False, finished_at__isnull=False)),
         )
-        previous_stats = JobExecution.objects.filter(created_at__date__gte=previous_start, created_at__date__lte=previous_end).aggregate(
+        previous_stats = JobExecution.objects.filter(team_filter, created_at__date__gte=previous_start, created_at__date__lte=previous_end).aggregate(
             total=Count("id"),
             success=Count("id", filter=Q(status=ExecutionStatus.SUCCESS)),
         )

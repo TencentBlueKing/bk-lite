@@ -166,7 +166,7 @@ class InstanceSearch:
 
     @staticmethod
     def _project_instance_identity(qs):
-        return qs.only("id", "name", "cloud_region_id", "ip", "fallback_sampling_rate")
+        return qs.only("id", "name", "interval", "cloud_region_id", "ip", "fallback_sampling_rate")
 
     def search(self):
         """特殊搜索接口，特殊对象不通用的查询条件"""
@@ -188,6 +188,7 @@ class InstanceSearch:
                 instance_id=instance_id,
                 instance_id_values=list(parse_instance_id(instance_id)),
                 instance_name=obj.name or obj.id,
+                interval=obj.interval,
                 time=metric["value"][0],
                 value=metric["value"][1],
             )
@@ -410,9 +411,13 @@ class InstanceSearch:
 
         page = self.query_data.get("page", 1)
         page_size = self.query_data.get("page_size", 10)
-        start = (page - 1) * page_size
-        end = start + page_size
-        results = self._project_instance_identity(qs)[start:end]
+        projected_qs = self._project_instance_identity(qs)
+        if page_size == -1:
+            results = projected_qs
+        else:
+            start = (page - 1) * page_size
+            end = start + page_size
+            results = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
         org_map = {}
         for org in org_objs:
@@ -427,6 +432,7 @@ class InstanceSearch:
                     "instance_id": obj.id,
                     "instance_name": obj.name,
                     "instance_id_values": list(parse_instance_id(obj.id)),
+                    "interval": obj.interval,
                     "cloud_region_id": obj.cloud_region_id,
                     "ip": obj.ip,
                     "fallback_sampling_rate": obj.fallback_sampling_rate,

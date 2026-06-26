@@ -1,0 +1,84 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_scalance"
+        config_type = "scalance"
+        brand = "scalance"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- SCALANCE 机箱温度 (Siemens AUTOMATION-SMI, 私有企业号 4329, 直接 ℃, scalar) ----
+    # 待现网核验：机箱温度标量 1.3.6.1.4.1.4329.6.3.3.1.1.0（℃）。
+    # 标量用 table+field 命名 → device_temperature_celsius。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4329.6.3.3.1.1.0"
+        name = "celsius"
+    # ---- SCALANCE 双路电源线状态 (AUTOMATION-SMI powerSupply, 每路 ok(1)/failure(2)) ----
+    # 待现网核验：电源线1 .4329.6.3.4.1.1.1.0 / 电源线2 .4329.6.3.4.1.1.2.0（原始码 ok=1）。
+    # 下方 enum 归一 1→1(正常),其余→2(异常)。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4329.6.3.4.1.1.1.0"
+        name = "state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.4329.6.3.4.1.1.2.0"
+        name = "state_backup"
+# ---- CPU/内存/风扇：SCALANCE X 工业以太网交换机基于网管桥 ASIC，私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载,且多为无风扇导热被动散热设计 → CPU/内存/风扇 N/A 不采。仅温度/电源线/接口干净可采。----
+# ---- 状态归一：电源线 ok(1)→1(正常),其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+    [[processors.enum.mapping]]
+        field = "state_backup"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

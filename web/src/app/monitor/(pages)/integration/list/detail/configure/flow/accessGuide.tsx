@@ -5,13 +5,12 @@ import { Alert, Button, Card, Descriptions, Spin, message } from 'antd';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import type { FlowProtocol } from '@/app/monitor/types/integration';
+import type { FlowAccessGuideDoc, FlowProtocol } from '@/app/monitor/types/integration';
+import {
+  buildFlowEndpointGuideStep,
+  shouldShowSingleFlowEndpoint
+} from '@/app/monitor/utils/flowAccessGuide';
 import type { FlowAssetWizardState } from './flowConfiguration';
-
-interface FlowGuideDocument {
-  protocol: FlowProtocol;
-  endpoint: string;
-}
 
 interface FlowDetectResult {
   success: boolean;
@@ -46,7 +45,7 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
   const { getFlowGuide, detectFlowStatus } = useIntegrationApi();
   const [loading, setLoading] = useState(false);
   const [detecting, setDetecting] = useState(false);
-  const [guide, setGuide] = useState<FlowGuideDocument | null>(null);
+  const [guide, setGuide] = useState<FlowAccessGuideDoc | null>(null);
   const [detectResult, setDetectResult] = useState<FlowDetectResult | null>(null);
 
   useEffect(() => {
@@ -60,7 +59,7 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
           protocol,
           cloud_region_id: assetState.cloud_region_id,
           monitor_object_id: objectId
-        })) as FlowGuideDocument;
+        })) as FlowAccessGuideDoc;
         setGuide(result);
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));
@@ -81,20 +80,24 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
 
   const protocolLabel = protocolLabelMap[protocol];
   const endpoint = guide?.endpoint || '--';
+  const listenerEndpoints = guide?.listener_endpoints || [];
+  const showSingleEndpoint = shouldShowSingleFlowEndpoint(listenerEndpoints);
   const guideSteps = useMemo(
     () => [
       t('monitor.integrations.flow.guideStepSelectProtocol', undefined, {
         protocol: protocolLabel
       }),
-      t('monitor.integrations.flow.guideStepSetEndpoint', undefined, {
-        endpoint
+      buildFlowEndpointGuideStep({
+        endpoint,
+        listenerEndpoints,
+        t
       }),
       t('monitor.integrations.flow.guideStepConfirmSourceIp', undefined, {
         ip: assetState.ip
       }),
       t('monitor.integrations.flow.guideStepVerifyTraffic')
     ],
-    [assetState.ip, endpoint, protocolLabel, t]
+    [assetState.ip, endpoint, listenerEndpoints, protocolLabel, t]
   );
 
   const handleDetect = async () => {
@@ -139,9 +142,24 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
               <Descriptions.Item label={t('monitor.integrations.flow.protocol')}>
                 {protocolLabel}
               </Descriptions.Item>
-              <Descriptions.Item label={t('monitor.integrations.flow.endpoint')}>
-                <span className="break-all">{endpoint}</span>
-              </Descriptions.Item>
+              {showSingleEndpoint && (
+                <Descriptions.Item label={t('monitor.integrations.flow.endpoint')}>
+                  <span className="break-all">{endpoint}</span>
+                </Descriptions.Item>
+              )}
+              {listenerEndpoints.length > 0 && (
+                <Descriptions.Item label={t('monitor.integrations.flow.listenerPorts')}>
+                  <div className="space-y-1">
+                    {listenerEndpoints.map((item) => (
+                      <div key={item.protocol} className="break-all">
+                        <span className="font-medium">{item.protocol_name}</span>
+                        <span className="mx-1">UDP {item.port}</span>
+                        <span className="text-[var(--color-text-3)]">{item.endpoint}</span>
+                      </div>
+                    ))}
+                  </div>
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label={t('monitor.integrations.flow.assetName')}>
                 {assetState.name}
               </Descriptions.Item>

@@ -23,8 +23,8 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-QTECH_DIR = PLUGINS / "snmp_qtech" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
+QTECH_DIR = PLUGINS / "snmp" / "switch_qtech"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "qtech"

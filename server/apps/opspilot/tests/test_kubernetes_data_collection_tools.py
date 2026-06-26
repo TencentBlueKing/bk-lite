@@ -479,6 +479,7 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     skill_obj = mocker.Mock()
     skill_obj.name = "k8s-collector"
     skill_obj.skill_type = 1
+    skill_obj.skill_prompt = "你是 K8s 运维助手。"
     skill_obj.tools = [{"name": "kubernetes_data_collection", "kwargs": []}]
     skill_obj.team = [7]
     skill_obj.enable_km_route = False
@@ -486,6 +487,15 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     skill_obj.enable_suggest = False
     skill_obj.enable_query_rewrite = False
     skill_obj.skill_params = []
+    skill_obj.skill_packages = [
+        {
+            "name": "RCA 复盘",
+            "description": "根因分析与复盘报告",
+            "required_tools": ["kubernetes_data_collection"],
+            "triggers": ["CrashLoopBackOff"],
+            "skill_markdown": "按事件概述、关键证据、根因结论输出。",
+        }
+    ]
 
     user = mocker.Mock()
     user.username = "tester"
@@ -516,6 +526,8 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     assert stream_params["tools"] == [{"name": "kubernetes_data_collection", "kwargs": []}]
     assert stream_params["locale"] == "zh-Hans"
     assert stream_params["group"] == 7
+    assert "RCA 复盘" in stream_params["skill_prompt"]
+    assert "按事件概述" in stream_params["skill_prompt"]
     assert stream_chat.call_args.args[1] == "k8s-collector"
 
 

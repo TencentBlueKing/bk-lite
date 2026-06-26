@@ -13,7 +13,9 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'CPU 使用率',
       description: '主机 CPU 总体使用率。',
       unit: 'percent',
-      query: 'cpu_usage_total{__$labels__}',
+      // cpu_usage_total 是派生指标（VM 无同名序列）：按采集方式回退——
+      // ①Telegraf host: 100-空闲；②HTTP agent: host_cpu_usage_percent_gauge；③Windows WMI 网关指标。
+      query: '(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__}) or host_cpu_usage_percent_gauge{instance_type="os", __$labels__} or cpu_usage_total_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}',
       color: '#2f6bff'
     },
     {
@@ -21,7 +23,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '用户态 CPU 占比',
       description: 'CPU 在用户态消耗的时间占比。',
       unit: 'percent',
-      query: 'cpu_usage_user_total{__$labels__}',
+      query: 'cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_user_total_gauge{instance_type="os", __$labels__}',
       color: '#13c2c2'
     },
     {
@@ -29,7 +31,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '内核态 CPU 占比',
       description: 'CPU 在内核态消耗的时间占比。',
       unit: 'percent',
-      query: 'cpu_usage_system_total{__$labels__}',
+      query: 'cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
       color: '#597ef7'
     },
     {
@@ -37,7 +39,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: 'I/O Wait 占比',
       description: 'CPU 等待 I/O 的时间占比。',
       unit: 'percent',
-      query: 'cpu_usage_iowait_total{__$labels__}',
+      query: 'cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__} or cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}',
       color: '#ff8a1f'
     },
     {
@@ -45,7 +47,8 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '其他 CPU 占比',
       description: '除用户态、内核态和 I/O Wait 以外的 CPU 占比。',
       unit: 'percent',
-      query: 'clamp_min(cpu_usage_total{__$labels__} - cpu_usage_user_total{__$labels__} - cpu_usage_system_total{__$labels__} - cpu_usage_iowait_total{__$labels__}, 0)',
+      // 由原始序列直接计算（不引用派生名）：Telegraf 用 100-空闲-用户-内核-iowait；HTTP agent 用网关聚合值同理。
+      query: 'clamp_min(100 - cpu_usage_idle{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_user{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_system{cpu="cpu-total", instance_type="os", __$labels__} - cpu_usage_iowait{cpu="cpu-total", instance_type="os", __$labels__}, 0) or clamp_min(host_cpu_usage_percent_gauge{instance_type="os", __$labels__} - cpu_usage_user_total_gauge{instance_type="os", __$labels__} - cpu_usage_system_total_gauge{instance_type="os", __$labels__} - cpu_usage_iowait_total_gauge{instance_type="os", __$labels__}, 0)',
       color: '#9aa9bf'
     },
     {
@@ -165,7 +168,8 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络入流量',
       description: '各网卡接收字节速率。',
       unit: 'byteps',
-      query: 'net_bytes_recv_rate{__$labels__}',
+      // *_rate 是派生指标（VM 无同名序列），须对原始累计量做 rate；按采集方式回退。
+      query: 'rate(net_bytes_recv{instance_type="os", __$labels__}[5m]) or rate(net_bytes_recv_gauge{instance_type="os", __$labels__}[5m]) or rate(net_bytes_recv_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[5m])',
       color: '#2f6bff'
     },
     {
@@ -173,7 +177,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '网络出流量',
       description: '各网卡发送字节速率。',
       unit: 'byteps',
-      query: 'net_bytes_sent_rate{__$labels__}',
+      query: 'rate(net_bytes_sent{instance_type="os", __$labels__}[5m]) or rate(net_bytes_sent_gauge{instance_type="os", __$labels__}[5m]) or rate(net_bytes_sent_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[5m])',
       color: '#27c274'
     },
     {
@@ -181,7 +185,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘读吞吐',
       description: '各磁盘设备读取字节速率。',
       unit: 'byteps',
-      query: 'diskio_read_bytes_rate{__$labels__}',
+      query: 'rate(diskio_read_bytes{instance_type="os", __$labels__}[5m]) or rate(diskio_read_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[5m])',
       color: '#13c2c2'
     },
     {
@@ -189,7 +193,7 @@ export const HOST_DASHBOARD_CONFIG: SimpleDashboardConfig = {
       display_name: '磁盘写吞吐',
       description: '各磁盘设备写入字节速率。',
       unit: 'byteps',
-      query: 'diskio_write_bytes_rate{__$labels__}',
+      query: 'rate(diskio_write_bytes{instance_type="os", __$labels__}[5m]) or rate(diskio_write_bytes_gauge_value{instance_type="os", config_type="windows_wmi", __$labels__}[5m])',
       color: '#ff8a1f'
     }
   ],

@@ -6,9 +6,9 @@ import { useCallback } from 'react';
 import { message } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import { useTranslation } from '@/utils/i18n';
-import { COLORS } from '../constants/nodeDefaults';
 import { createEdgeLabel, getEdgeStyleWithConfig } from '../utils/topologyUtils';
 import { createEdgeByType } from '../utils/registerEdge';
+import { COLORS, SPACING } from '../constants/nodeDefaults';
 import {
   TopologyState,
   MenuClickEvent,
@@ -23,6 +23,44 @@ const removeAllEdgeLabels = (edge: Edge) => {
       edge.removeLabelAt(i);
     }
   }
+};
+
+const getEndpointCellId = (
+  edge: Edge,
+  side: 'source' | 'target',
+): string => {
+  const edgeWithHelpers = edge as Edge & {
+    getSourceCellId?: () => string;
+    getTargetCellId?: () => string;
+  };
+  const helperId =
+    side === 'source'
+      ? edgeWithHelpers.getSourceCellId?.()
+      : edgeWithHelpers.getTargetCellId?.();
+
+  if (helperId) return helperId;
+
+  const terminal =
+    side === 'source'
+      ? (edge.getSource() as { cell?: string } | undefined)
+      : (edge.getTarget() as { cell?: string } | undefined);
+
+  return terminal?.cell || '';
+};
+
+const buildEndpointNodeInfo = (
+  edge: Edge,
+  side: 'source' | 'target',
+  fallbackName: string,
+) => {
+  const node = side === 'source' ? edge.getSourceNode() : edge.getTargetNode();
+  const nodeData = node?.getData?.();
+  const id = node?.id || getEndpointCellId(edge, side) || fallbackName;
+
+  return {
+    id,
+    name: nodeData?.name || id,
+  };
 };
 
 export const useContextMenuAndModal = (
@@ -133,35 +171,27 @@ export const useContextMenuAndModal = (
       if (!selectedCell.isEdge()) return;
 
       const edge = selectedCell as Edge;
-      const edgeData = edge.getData();
-      const sourceNode = edge.getSourceNode();
-      const targetNode = edge.getTargetNode();
+      const edgeData = edge.getData() || {};
 
-      if (edgeData && sourceNode && targetNode) {
-        const sourceNodeData = sourceNode.getData();
-        const targetNodeData = targetNode.getData();
-
-        setCurrentEdgeData({
-          id: edge.id,
-          lineType: edgeData.lineType || 'common_line',
-          lineName: edgeData.lineName || '',
-          arrowDirection: edgeData.arrowDirection,
-          styleConfig: edgeData.styleConfig || { lineColor: COLORS.EDGE.DEFAULT, },
-          sourceNode: {
-            id: sourceNode.id,
-            name: sourceNodeData?.name || sourceNode.id,
-          },
-          targetNode: {
-            id: targetNode.id,
-            name: targetNodeData?.name || targetNode.id,
-          },
-          sourceInterface: edgeData.sourceInterface,
-          targetInterface: edgeData.targetInterface,
-        });
-        state.setEdgeConfigVisible(true);
-      }
+      setCurrentEdgeData({
+        id: edge.id,
+        lineType: edgeData.lineType || 'common_line',
+        lineName: edgeData.lineName || '',
+        arrowDirection: edgeData.arrowDirection,
+        styleConfig: edgeData.styleConfig || {
+          lineColor: COLORS.EDGE.DEFAULT,
+          lineWidth: SPACING.STROKE_WIDTH.THIN,
+          lineStyle: 'line',
+          enableAnimation: false,
+        },
+        sourceNode: buildEndpointNodeInfo(edge, 'source', t('topology.node1')),
+        targetNode: buildEndpointNodeInfo(edge, 'target', t('topology.node2')),
+        sourceInterface: edgeData.sourceInterface,
+        targetInterface: edgeData.targetInterface,
+      });
+      state.setEdgeConfigVisible(true);
     },
-    [setCurrentEdgeData, state]
+    [setCurrentEdgeData, state, t]
   );
 
   const handleViewModeMenuClick = useCallback(
@@ -351,7 +381,7 @@ export const useContextMenuAndModal = (
           // 临时边的默认样式配置
           const tempEdgeStyleConfig = {
             lineColor: COLORS.EDGE.DEFAULT,
-            lineWidth: 1,
+            lineWidth: SPACING.STROKE_WIDTH.THIN,
             lineStyle: 'line' as const,
             enableAnimation: false,
           };

@@ -470,6 +470,32 @@ class TestSubmitChoice:
         assert resp.status_code == 404
         submit.assert_not_called()
 
+    def test_local_skill_test_choice_without_workflow_task_result_is_allowed(self, request_factory, mocker):
+        _stub_valid_token(mocker, team=99)
+        mocker.patch.object(views, "extract_api_token", return_value="tok")
+        qs_mock = mocker.MagicMock()
+        qs_mock.order_by.return_value.first.return_value = None
+        mocker.patch.object(views.WorkFlowTaskResult.objects, "filter", return_value=qs_mock)
+        submit = mocker.patch("apps.opspilot.utils.user_choice.submit_user_choice")
+
+        request = _make_request(
+            request_factory,
+            token="Bearer tok",
+            body={"execution_id": "e1", "node_id": "skill_test", "choice_id": "c1", "selected": ["opt1"]},
+        )
+        resp = views.submit_choice(request)
+
+        assert resp.status_code == 200
+        data = json.loads(resp.content)
+        assert data["result"] is True
+        assert data["data"]["node_id"] == "skill_test"
+        submit.assert_called_once_with(
+            execution_id="e1",
+            node_id="skill_test",
+            choice_id="c1",
+            selected=["opt1"],
+        )
+
     # --- field validation ---
 
     def test_missing_fields_returns_400(self, request_factory, mocker):

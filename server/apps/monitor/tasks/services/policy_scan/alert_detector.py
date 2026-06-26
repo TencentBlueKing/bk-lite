@@ -33,7 +33,8 @@ class AlertDetector:
         self.metric_query_service = metric_query_service
 
     def detect_threshold_alerts(self):
-        vm_data = self.metric_query_service.query_aggregation_metrics(self.policy.period)
+        trigger_count = getattr(self.policy, "trigger_count", 1) or 1
+        vm_data = self.metric_query_service.query_aggregation_metrics(self.policy.period, trigger_count)
         vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
         group_by_keys = self.policy.group_by or []
@@ -52,7 +53,13 @@ class AlertDetector:
             "enum_value_map": self.metric_query_service.get_enum_value_map(),
         }
 
-        alert_events, info_events = calculate_alerts(self.policy.alert_name, df, self.policy.threshold, template_context)
+        alert_events, info_events = calculate_alerts(
+            self.policy.alert_name,
+            df,
+            self.policy.threshold,
+            template_context,
+            n=trigger_count,
+        )
 
         if self.policy.source:
             alert_events = self._filter_events_by_scope(alert_events)

@@ -23,6 +23,7 @@ import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
+import SkillView from './SkillView';
 import {Annotation, CustomChatMessage, ReportFileDownload} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
@@ -108,16 +109,12 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS and CSS injection.
-// SECURITY: 'style' tag (block CSS) is intentionally excluded — allowing it enables CSS injection
-// via LLM prompt injection (e.g. `<style>*{background:url(//attacker.com)}</style>`).
-// Inline 'style' attribute is kept in ALLOWED_ATTR as it is used by guide/reference link renderers.
-// ALLOW_DATA_ATTR is false; all required data-* attributes are listed explicitly in ALLOWED_ATTR.
+// Sanitize HTML to prevent XSS
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: false,
+    ALLOW_DATA_ATTR: true,
   });
 };
 
@@ -557,7 +554,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
@@ -801,6 +798,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
         <ThinkingPanel thinking={thinking} isThinking={isThinking} />
+        <SkillView items={skillViews} />
         {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
           <AgentStepProgress steps={agentStepProgress} />
         )}

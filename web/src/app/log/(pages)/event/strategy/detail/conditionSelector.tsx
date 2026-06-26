@@ -51,7 +51,7 @@ const ConditionFilter: React.FC<ConditionFilterProps> = ({
   };
 
   return (
-    <Card className="w-[800px]">
+    <Card className="w-full">
       {data.length ? (
         <ul className={groupingStyle.conditions}>
           {data.map((conditionItem, index) => (

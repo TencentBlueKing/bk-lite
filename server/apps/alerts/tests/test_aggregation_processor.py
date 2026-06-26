@@ -395,3 +395,83 @@ def test_trigger_missing_alert_schedules_auto_assignment(source):
     alert_ids = scheduled.call_args.args[0]
     assert isinstance(alert_ids, list) and len(alert_ids) == 1
     assert alert_ids[0].startswith("ALERT-")
+
+
+# --------------------------------------------------------------------------
+# Issue #3675: logger.debug 热路径中 events.count() 不受日志级别保护
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_no_count_sql_when_debug_disabled(source):
+    """生产日志级别(INFO)下 get_events_for_strategy 不应触发额外 COUNT SQL。
+
+    若 isEnabledFor 守卫被移除，mock 的 count() 会在 INFO 级别下被调用，断言失败。
+    """
+    from unittest import mock
+
+    now = timezone.now()
+    Event.objects.create(
+        source=source, raw_data={}, title="t", level="0",
+        start_time=now, event_id="E1", action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="s-no-count", strategy_type="smart_denoise", params={"window_size": 60}
+    )
+
+    import apps.alerts.aggregation.processor.aggregation_processor as proc_module
+
+    with mock.patch.object(proc_module, "logger") as mock_logger:
+        # 模拟生产 INFO 级别：isEnabledFor(DEBUG) 返回 False
+        mock_logger.isEnabledFor.return_value = False
+
+        AggregationProcessor.get_events_for_strategy(strategy, now)
+
+        # 生产级别下 logger.debug 不应被调用（守卫生效）
+        mock_logger.debug.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_get_events_for_strategy_count_sql_when_debug_enabled(source):
+    """DEBUG 级别下 get_events_for_strategy 应输出计数日志（守卫放行）。"""
+    from unittest import mock
+
+    now = timezone.now()
+    Event.objects.create(
+        source=source, raw_data={}, title="t", level="0",
+        start_time=now, event_id="E2", action=EventAction.CREATED,
+    )
+    strategy = AlarmStrategy.objects.create(
+        name="s-with-count", strategy_type="smart_denoise", params={"window_size": 60}
+    )
+
+    import apps.alerts.aggregation.processor.aggregation_processor as proc_module
+
+    with mock.patch.object(proc_module, "logger") as mock_logger:
+        # 模拟 DEBUG 级别：isEnabledFor(DEBUG) 返回 True
+        mock_logger.isEnabledFor.return_value = True
+
+        AggregationProcessor.get_events_for_strategy(strategy, now)
+
+        # DEBUG 级别下应调用 logger.debug
+        mock_logger.debug.assert_called_once()
+
+
+@pytest.mark.django_db
+def test_match_heartbeat_events_no_count_when_debug_disabled(source):
+    """_match_heartbeat_events 在 INFO 级别下不应触发 matched_events.count() SQL。"""
+    from unittest import mock
+    from types import SimpleNamespace
+
+    proc = AggregationProcessor()
+    strategy = SimpleNamespace(id=1, match_rules=None)
+
+    # 空 QuerySet
+    empty_qs = Event.objects.none()
+
+    import apps.alerts.aggregation.processor.aggregation_processor as proc_module
+
+    with mock.patch.object(proc_module, "logger") as mock_logger:
+        mock_logger.isEnabledFor.return_value = False
+        proc._match_heartbeat_events(strategy, empty_qs)
+        mock_logger.debug.assert_not_called()

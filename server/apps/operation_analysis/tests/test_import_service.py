@@ -5,12 +5,14 @@
 """
 
 import pytest
+from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.operation_analysis.constants.import_export import ConflictAction, ImportStatus, ObjectType
+from apps.operation_analysis.constants.import_export import ConflictAction
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
-from apps.operation_analysis.models.models import Dashboard, Directory
+from apps.operation_analysis.models.models import Dashboard, Directory, Topology
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.services.import_export.import_service import ImportService
+from apps.operation_analysis.views import view as view_module
 
 
 def _doc(**sections):
@@ -52,6 +54,18 @@ def _ds_section(key="ds1::api/x", name="ds-a", **over):
 
 def _dashboard_section(key="dashboard::db-a", name="db-a", **over):
     base = {"key": key, "name": name, "desc": "", "other": {}, "view_sets": [], "filters": []}
+    base.update(over)
+    return base
+
+
+def _topology_section(key="topology::topo-a", name="topo-a", **over):
+    base = {
+        "key": key,
+        "name": name,
+        "desc": "",
+        "other": {},
+        "view_sets": {"nodes": [], "edges": [], "filters": []},
+    }
     base.update(over)
     return base
 
@@ -194,6 +208,34 @@ def test_import_dashboard_into_target_directory():
     assert result["success"] is True
     db = Dashboard.objects.get(name="db-a")
     assert db.directory_id == directory.id
+
+
+@pytest.mark.django_db
+def test_import_topology_into_target_directory_inherits_directory_groups_and_can_save(authenticated_user):
+    directory = Directory.objects.create(name="跨组织目标目录", groups=[4], created_by="s")
+    doc = _doc(topologies=[_topology_section()])
+
+    result = _service(doc, target_directory_id=directory.id, groups=[1]).execute()
+
+    assert result["success"] is True
+    topology = Topology.objects.get(name="topo-a")
+    assert topology.directory_id == directory.id
+    assert topology.groups == [4]
+
+    user = authenticated_user
+    user.is_superuser = True
+    request = APIRequestFactory().patch(
+        f"/topology/{topology.id}/",
+        data={"view_sets": topology.view_sets},
+        format="json",
+    )
+    request.COOKIES["current_team"] = "4"
+    request.COOKIES["include_children"] = "0"
+    force_authenticate(request, user=user)
+
+    response = view_module.TopologyModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(topology.id))
+
+    assert response.status_code == 200
 
 
 @pytest.mark.django_db

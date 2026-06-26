@@ -317,6 +317,95 @@ class TestOpenFileDeleteView:
         # 文件仍然存在
         assert DistributionFile.objects.filter(id=df.id).exists()
 
+    def test_s3_failure_keeps_db_record_and_returns_failed(self):
+        """S3 删除失败时 DB 记录不被删除，且 failed 列表含该文件（#3713）
+
+        核验点：revert 修复（去掉 continue）后此测试必须失败——DB 记录会消失，
+        且 failed 字段不存在于响应中。
+        """
+        from apps.job_mgmt.models import DistributionFile
+
+        df = DistributionFile.objects.create(
+            original_name="s3-fail.rpm",
+            file_key="job-files/2026/06/01/s3fail.rpm",
+            team=self.api_secret.team,
+            expire_at=timezone.now() + timedelta(days=7),
+        )
+
+        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+            mock_delete = MagicMock(side_effect=Exception("NATS connection timeout"))
+            mock_async.return_value = mock_delete
+
+            response = self.client.delete(
+                self.url,
+                {"files": [{"file_id": df.id, "file_key": df.file_key}]},
+                format="json",
+                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        # S3 失败时 deleted_count 不增加
+        assert data["deleted"] == 0
+        # failed 列表包含该文件
+        assert "failed" in data
+        assert len(data["failed"]) == 1
+        assert data["failed"][0]["file_id"] == df.id
+        assert data["failed"][0]["file_key"] == df.file_key
+        # 关键：DB 记录仍然存在（无孤儿 S3 对象）
+        assert DistributionFile.objects.filter(id=df.id).exists()
+
+    def test_s3_failure_partial_batch_consistency(self):
+        """批量删除中一个 S3 失败、一个 S3 成功：各自独立处理，互不影响（#3713）"""
+        from apps.job_mgmt.models import DistributionFile
+
+        df_ok = DistributionFile.objects.create(
+            original_name="ok.rpm",
+            file_key="job-files/2026/06/01/ok.rpm",
+            team=self.api_secret.team,
+            expire_at=timezone.now() + timedelta(days=7),
+        )
+        df_fail = DistributionFile.objects.create(
+            original_name="fail.rpm",
+            file_key="job-files/2026/06/01/fail.rpm",
+            team=self.api_secret.team,
+            expire_at=timezone.now() + timedelta(days=7),
+        )
+
+        call_count = 0
+
+        def side_effect(file_key):
+            nonlocal call_count
+            call_count += 1
+            if file_key == df_fail.file_key:
+                raise Exception("S3 bucket unavailable")
+
+        with patch("apps.job_mgmt.views.open_api.async_to_sync") as mock_async:
+            mock_async.return_value = side_effect
+
+            response = self.client.delete(
+                self.url,
+                {
+                    "files": [
+                        {"file_id": df_ok.id, "file_key": df_ok.file_key},
+                        {"file_id": df_fail.id, "file_key": df_fail.file_key},
+                    ]
+                },
+                format="json",
+                HTTP_API_AUTHORIZATION=self.api_secret.api_secret,
+            )
+
+        assert response.status_code == 200
+        data = response.json()["data"]
+        assert data["deleted"] == 1
+        assert "failed" in data
+        assert len(data["failed"]) == 1
+        assert data["failed"][0]["file_id"] == df_fail.id
+        # S3 成功的文件：DB 记录已删
+        assert not DistributionFile.objects.filter(id=df_ok.id).exists()
+        # S3 失败的文件：DB 记录保留
+        assert DistributionFile.objects.filter(id=df_fail.id).exists()
+
 
 @pytest.mark.unit
 @pytest.mark.django_db

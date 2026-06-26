@@ -103,13 +103,15 @@ apps/monitor/support-files/plugins/Oracle-Exporter/exporter/oracle/
 原因：
 
 - 系统只按固定层级扫描目录（采集器 / 采集方式 / 具体插件目录 / 文件）。
-- `collector` 和 `collect_type` 是从路径中提取的，不是只靠 `metrics.json` 内部字段决定。
+- 目录层级负责“发现文件”和提供兼容兜底值；最终导入数据库的 `collector` 和 `collect_type` 优先使用 `metrics.json` 内的显式声明。
 
 代码依据：
 
 - `apps/monitor/management/utils.py`
   - `find_files_by_pattern`
   - `extract_plugin_path_info`
+- `apps/monitor/management/services/plugin_migrate.py`
+  - `_resolve_plugin_identity`
 
 > 如果目录多一层、少一层，或者放错位置，文件可能不会被扫描到。
 
@@ -183,7 +185,32 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 - `collect_type`：采集方式，如 `ping`、`host`、`exporter`
 - `instance_type`：监控对象实例类型，如 `ping`、`os`、`oracle`
 
-### 5.2 该目录下可包含的文件
+### 5.2 collector / collect_type 声明规则
+
+`metrics.json` 可以显式声明 `collector` 和 `collect_type`：
+
+```json
+{
+  "plugin": "A10 Loadbalance SNMP",
+  "collector": "Telegraf",
+  "collect_type": "snmp_a10"
+}
+```
+
+导入规则：
+
+- 如果 `metrics.json` 中声明了非空 `collector` / `collect_type`，导入时优先使用显式声明。
+- 如果字段缺失或为空字符串，导入时按字段分别回退到路径中的 `<collector>` / `<collect_type>`。
+- 目录层级仍然必须存在；它决定插件文件能否被扫描到。
+- `UI.json` 中显式声明的 `collector` / `collect_type` 必须与最终导入值一致。
+- `*.j2` 中字面量形式的 `collect_type = "..."` 必须与最终导入值一致。
+
+典型场景：
+
+- 通用插件可保持路径与声明一致，例如 `Telegraf/ping/ping/` + `collect_type: "ping"`。
+- SNMP 厂商插件可以继续放在公共目录下，例如 `Telegraf/snmp/a10_loadbalance_thunder/`，并在 `metrics.json` 中声明 `collect_type: "snmp_a10"`，避免为了区分厂商而迁移目录。
+
+### 5.3 该目录下可包含的文件
 
 | 文件名 | 是否必需 | 作用 |
 |---|---|---|
@@ -215,6 +242,8 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 {
   "plugin": "Ping",
   "plugin_desc": "...",
+  "collector": "Telegraf",
+  "collect_type": "ping",
   "status_query": "any({instance_type='ping', collect_type='ping'}) by (instance_id)",
   "name": "Ping",
   "icon": "wangzhan1",
@@ -254,6 +283,8 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 |---|---|---|
 | plugin | string | 插件名称，全局唯一；数据库按该字段更新/删除内置插件 |
 | plugin_desc | string | 插件描述 |
+| collector | string | 采集器名称；非空时优先于路径中的 `<collector>` |
+| collect_type | string | 采集方式；非空时优先于路径中的 `<collect_type>` |
 | status_query | string | 状态查询语句 |
 | name | string | 监控对象名称；数据库中唯一 |
 | icon | string | 监控对象图标 |
@@ -270,6 +301,8 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 |---|---|---|
 | plugin | string | 插件名称，全局唯一 |
 | plugin_desc | string | 插件描述 |
+| collector | string | 采集器名称；非空时优先于路径中的 `<collector>` |
+| collect_type | string | 采集方式；非空时优先于路径中的 `<collect_type>` |
 | status_query | string | 状态查询语句 |
 | is_compound_object | bool | 固定为 `true` |
 | objects | array | 监控对象列表 |
@@ -288,9 +321,35 @@ apps/monitor/support-files/plugins/<collector>/<collect_type>/<instance_type>/
 | instance_id_keys | array | 指标实例键 |
 | description | string | 指标描述 |
 
-### 6.5 隐式规则
+### 6.5 实例身份约定
 
-- `collector` 与 `collect_type` 不是在 `metrics.json` 内手工维护，而是由文件路径自动提取后写入数据库。
+VictoriaMetrics / Prometheus 中的实例身份不是数据库中的 tuple 字符串，而是多个 label 维度。`MonitorObject.instance_id_keys` 和 `Metric.instance_id_keys` 定义了从 VM labels 到 BK-Lite `MonitorInstance.id` 的投影顺序。
+
+例如子对象指标返回：
+
+```text
+instance_id="cluster-a", pod="pod-1"
+```
+
+当 `instance_id_keys` 为：
+
+```json
+["instance_id", "pod"]
+```
+
+系统会把它重建为数据库实例 ID：
+
+```text
+("cluster-a", "pod-1")
+```
+
+因此，涉及实例匹配、权限过滤、插件状态、告警归属或实例详情查询的逻辑，都必须按 `instance_id_keys` 从 VM labels 重建完整实例 ID，不能直接把 VM label 中的 `instance_id` 当作完整数据库 ID。基础对象通常只有 `["instance_id"]`；派生对象通常使用 `["instance_id", "<child_label>"]`，其中第二个字段必须与真实上报 label 名一致。
+
+### 6.6 隐式规则
+
+- `collector` 与 `collect_type` 的最终导入值优先取 `metrics.json` 显式声明；字段缺失或为空时，再回退到文件路径。
+- 路径回退是逐字段生效的：只声明 `collect_type` 时，`collector` 仍可从路径回退。
+- 同目录的 `UI.json` 与 `*.j2` 不能声明与最终导入值冲突的身份信息，否则该插件导入会失败并输出冲突文件路径。
 - `plugin` 用于更新同名内置插件；不要随意改名。
 - `name` 对应监控对象名，在数据库中是唯一字段；与已有对象重名会被更新而不是新增。
 - 同一监控对象下，指标 `name` 需要唯一。

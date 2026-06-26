@@ -13,6 +13,7 @@ import {
   INTERFACE_MODEL,
   type PortOption,
 } from './topoEditingUtils';
+import topoStyle from '../index.module.scss';
 
 // 新建端口迷你表单里走选择框的字段类型（与实例表单一致），其余用输入框
 const SELECT_LIKE_TYPES = ['user', 'enum', 'bool', 'time', 'organization'];
@@ -77,32 +78,58 @@ const PortLinkModal: React.FC<PortLinkModalProps> = ({
   const targetModel = target?.model_id;
 
   useEffect(() => {
+    if (open) return;
+    setCreatingSide(null);
+    form.resetFields();
+  }, [open, form]);
+
+  useEffect(() => {
     if (!open || !sourceId || !targetId) return;
+    let cancelled = false;
     setSrcPortId(undefined);
     setDstPortId(undefined);
     setCreatingSide(null);
     setSrcOccupied(new Set());
     setDstOccupied(new Set());
     setLoading(true);
-    Promise.all([
-      getAssociationInstanceList(sourceModel, sourceId).then((l: any) =>
-        setSrcPorts(extractDevicePorts(l, sourceModel as string))
-      ),
-      getAssociationInstanceList(targetModel, targetId).then((l: any) =>
-        setDstPorts(extractDevicePorts(l, targetModel as string))
-      ),
+    const stopLoading = () => {
+      if (!cancelled) setLoading(false);
+    };
+    const loadingFallback = window.setTimeout(stopLoading, 1600);
+    Promise.allSettled([
+      getAssociationInstanceList(sourceModel, sourceId).then((l: any) => {
+        if (!cancelled) setSrcPorts(extractDevicePorts(l, sourceModel as string));
+      }),
+      getAssociationInstanceList(targetModel, targetId).then((l: any) => {
+        if (!cancelled) setDstPorts(extractDevicePorts(l, targetModel as string));
+      }),
       // 取各设备已占用端口（depth=1 拿该设备所有直连），用于下拉置灰
       getNetworkTopo(sourceModel as string, sourceId, 1)
-        .then((d: any) => setSrcOccupied(extractOccupiedPortNames(d?.links, sourceId)))
+        .then((d: any) => {
+          if (!cancelled) setSrcOccupied(extractOccupiedPortNames(d?.links, sourceId));
+        })
         .catch(() => undefined),
       getNetworkTopo(targetModel as string, targetId, 1)
-        .then((d: any) => setDstOccupied(extractOccupiedPortNames(d?.links, targetId)))
+        .then((d: any) => {
+          if (!cancelled) setDstOccupied(extractOccupiedPortNames(d?.links, targetId));
+        })
         .catch(() => undefined),
-    ]).finally(() => setLoading(false));
+    ]).finally(() => {
+      window.clearTimeout(loadingFallback);
+      stopLoading();
+    });
     // 预取 interface 模型属性，供内联建端口
     getModelAttrList(INTERFACE_MODEL)
-      .then(setInterfaceAttrs)
-      .catch(() => setInterfaceAttrs([]));
+      .then((attrs) => {
+        if (!cancelled) setInterfaceAttrs(attrs);
+      })
+      .catch(() => {
+        if (!cancelled) setInterfaceAttrs([]);
+      });
+    return () => {
+      cancelled = true;
+      window.clearTimeout(loadingFallback);
+    };
     // getAssociationInstanceList/getNetworkTopo/getModelAttrList 行为稳定但每次渲染新引用，故不入依赖
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, sourceId, sourceModel, targetId, targetModel]);
@@ -163,6 +190,19 @@ const PortLinkModal: React.FC<PortLinkModalProps> = ({
     }
   };
 
+  const createEndpoint =
+    creatingSide === 'src' ? source : creatingSide === 'dst' ? target : null;
+
+  const closeCreateModal = () => {
+    setCreatingSide(null);
+    form.resetFields();
+  };
+
+  const handleCreateOk = () => {
+    if (!creatingSide) return;
+    handleCreatePort(creatingSide);
+  };
+
   const renderSide = (
     side: 'src' | 'dst',
     ep: PortEndpoint | null,
@@ -171,33 +211,97 @@ const PortLinkModal: React.FC<PortLinkModalProps> = ({
     onChange: (v: string) => void,
     occupied: Set<string>
   ) => (
-    <div className="mb-4">
-      <div className="mb-1 font-medium">{ep?.name}</div>
-      {ports.length ? (
-        <Select
-          className="w-full"
-          placeholder={t('Model.networkTopoSelectPort')}
-          value={value}
-          onChange={onChange}
-          // 已有连线的端口置灰不可选，并在标签后标注「已连接」
-          options={ports.map((p) => {
-            const isOccupied = occupied.has(p.name);
-            return {
-              value: p.id,
-              disabled: isOccupied,
-              label: isOccupied
-                ? `${p.name}（${t('Model.networkTopoPortConnected')}）`
-                : p.name,
-            };
-          })}
-        />
-      ) : (
-        <div className="text-[var(--color-text-4)] text-sm">
-          {t('Model.networkTopoNoPort')}
+    <section className={topoStyle.portEndpointCard}>
+      <div className={topoStyle.portEndpointHeader}>
+        <span className={topoStyle.portEndpointBadge}>
+          {side === 'src' ? 'A' : 'B'}
+        </span>
+        <div className="min-w-0">
+          <div className={`${topoStyle.portEndpointName} truncate`}>
+            {ep?.name || '--'}
+          </div>
+          <div className={topoStyle.portEndpointMeta}>
+            {side === 'src' ? '起点设备' : '目标设备'}
+          </div>
         </div>
-      )}
-      {creatingSide === side ? (
-        <Form form={form} layout="vertical" className="mt-2 p-2 border rounded">
+      </div>
+      <div className={topoStyle.portEndpointBody}>
+        <div className={topoStyle.portSelectRow}>
+          {ports.length ? (
+            <Select
+              placeholder={t('Model.networkTopoSelectPort')}
+              value={value}
+              onChange={onChange}
+              // 已有连线的端口置灰不可选，并在标签后标注「已连接」
+              options={ports.map((p) => {
+                const isOccupied = occupied.has(p.name);
+                return {
+                  value: p.id,
+                  disabled: isOccupied,
+                  label: isOccupied
+                    ? `${p.name}（${t('Model.networkTopoPortConnected')}）`
+                    : p.name,
+                };
+              })}
+            />
+          ) : (
+            <div className={topoStyle.portEmpty}>
+              {t('Model.networkTopoNoPort')}
+            </div>
+          )}
+          {creatingSide !== side && (
+            <Button
+              type="link"
+              size="small"
+              className={topoStyle.portAddButton}
+              icon={<PlusOutlined />}
+              onClick={() => {
+                form.resetFields();
+                setCreatingSide(side);
+              }}
+            >
+              {t('Model.networkTopoAddPort')}
+            </Button>
+          )}
+        </div>
+      </div>
+    </section>
+  );
+
+  return (
+    <>
+      <Modal
+        title={t('Model.networkTopoLinkTitle')}
+        open={open}
+        centered
+        width={560}
+        onCancel={onCancel}
+        onOk={handleOk}
+        confirmLoading={submitting}
+        destroyOnClose
+      >
+        <Spin spinning={loading}>
+          <div className={topoStyle.portLinkBody}>
+            {renderSide('src', source, srcPorts, srcPortId, setSrcPortId, srcOccupied)}
+            {renderSide('dst', target, dstPorts, dstPortId, setDstPortId, dstOccupied)}
+          </div>
+        </Spin>
+      </Modal>
+      <Modal
+        title={
+          createEndpoint
+            ? `${t('Model.networkTopoAddPort')} - ${createEndpoint.name}`
+            : t('Model.networkTopoAddPort')
+        }
+        open={!!creatingSide}
+        centered
+        width={480}
+        onCancel={closeCreateModal}
+        onOk={handleCreateOk}
+        confirmLoading={submitting}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" className={topoStyle.portCreateForm}>
           {miniFields.map((a) => (
             <Form.Item
               key={a.attr_id}
@@ -220,56 +324,9 @@ const PortLinkModal: React.FC<PortLinkModalProps> = ({
               })}
             </Form.Item>
           ))}
-          <div className="flex gap-2">
-            <Button
-              type="primary"
-              size="small"
-              loading={submitting}
-              onClick={() => handleCreatePort(side)}
-            >
-              {t('common.confirm')}
-            </Button>
-            <Button
-              size="small"
-              onClick={() => {
-                setCreatingSide(null);
-                form.resetFields();
-              }}
-            >
-              {t('common.cancel')}
-            </Button>
-          </div>
         </Form>
-      ) : (
-        <Button
-          type="link"
-          size="small"
-          icon={<PlusOutlined />}
-          onClick={() => {
-            form.resetFields();
-            setCreatingSide(side);
-          }}
-        >
-          {t('Model.networkTopoAddPort')}
-        </Button>
-      )}
-    </div>
-  );
-
-  return (
-    <Modal
-      title={t('Model.networkTopoLinkTitle')}
-      open={open}
-      onCancel={onCancel}
-      onOk={handleOk}
-      confirmLoading={submitting}
-      destroyOnClose
-    >
-      <Spin spinning={loading}>
-        {renderSide('src', source, srcPorts, srcPortId, setSrcPortId, srcOccupied)}
-        {renderSide('dst', target, dstPorts, dstPortId, setDstPortId, dstOccupied)}
-      </Spin>
-    </Modal>
+      </Modal>
+    </>
   );
 };
 

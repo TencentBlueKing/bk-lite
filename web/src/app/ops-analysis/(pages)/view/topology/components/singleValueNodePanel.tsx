@@ -28,6 +28,7 @@ import {
   Button,
   Drawer,
   ColorPicker,
+  Radio,
 } from 'antd';
 
 const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
@@ -80,6 +81,8 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       conversionFactor: 1,
       decimalPlaces: 2,
       fontSize: NODE_DEFAULTS.SINGLE_VALUE_NODE.fontSize,
+      textColor: NODE_DEFAULTS.SINGLE_VALUE_NODE.textColor,
+      renderEffect: 'normal',
     };
 
     setCurrentDataSource(null);
@@ -94,12 +97,19 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     async (editingNodeData: any) => {
       const { styleConfig = {}, valueConfig = {} } = editingNodeData;
 
+      const normalizeColorForForm = (value?: string) =>
+        value === 'transparent' ? undefined : value;
+
       const formValues: any = {
         name: editingNodeData.name,
         dataSource: valueConfig.dataSource,
         compare: valueConfig.compare,
         selectedFields: valueConfig.selectedFields,
         fontSize: styleConfig.fontSize,
+        textColor: normalizeColorForForm(styleConfig.textColor),
+        backgroundColor: normalizeColorForForm(styleConfig.backgroundColor),
+        borderColor: normalizeColorForForm(styleConfig.borderColor),
+        renderEffect: styleConfig.renderEffect || 'normal',
         nameFontSize: styleConfig.nameFontSize,
         nameColor: styleConfig.nameColor,
         unit: editingNodeData.unit,
@@ -231,9 +241,11 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
     try {
       const values = await form.validateFields();
 
-      if (values.nameColor) {
-        values.nameColor = processColorValue(values.nameColor);
-      }
+      ['textColor', 'backgroundColor', 'borderColor', 'nameColor'].forEach((key) => {
+        if (values[key]) {
+          values[key] = processColorValue(values[key]);
+        }
+      });
 
       if (values.params && selectedDataSource?.params) {
         values.dataSourceParams = processFormParamsForSubmit(
@@ -376,6 +388,18 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
             />
           </Form.Item>
           <Form.Item
+            label={t('topology.nodeConfig.textColor')}
+            name="textColor"
+          >
+            <ColorPicker
+              disabled={readonly}
+              size="small"
+              showText
+              allowClear
+              format="hex"
+            />
+          </Form.Item>
+          <Form.Item
             label={t('topology.nodeConfig.nameFontSize')}
             name="nameFontSize"
           >
@@ -400,6 +424,46 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
               allowClear
               format="hex"
             />
+          </Form.Item>
+          <Form.Item
+            label={t('topology.nodeConfig.backgroundColor')}
+            name="backgroundColor"
+          >
+            <ColorPicker
+              disabled={readonly}
+              size="small"
+              showText
+              allowClear
+              format="hex"
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('topology.nodeConfig.borderColor')}
+            name="borderColor"
+          >
+            <ColorPicker
+              disabled={readonly}
+              size="small"
+              showText
+              allowClear
+              format="hex"
+            />
+          </Form.Item>
+          <Form.Item
+            label={t('topology.nodeConfig.renderEffect')}
+            name="renderEffect"
+          >
+            <Radio.Group disabled={readonly}>
+              <Radio value="normal">
+                {t('topology.nodeConfig.renderEffectNormal')}
+              </Radio>
+              <Radio value="glass">
+                {t('topology.nodeConfig.renderEffectGlass')}
+              </Radio>
+              <Radio value="glow">
+                {t('topology.nodeConfig.renderEffectGlow')}
+              </Radio>
+            </Radio.Group>
           </Form.Item>
         </div>
       </Form>

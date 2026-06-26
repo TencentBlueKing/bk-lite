@@ -4,6 +4,7 @@ from types import SimpleNamespace
 from typing import Optional
 
 from django.db.models import Count, Q
+from django.utils import timezone
 from rest_framework import serializers
 
 import nats_client
@@ -32,6 +33,7 @@ from apps.monitor.serializers.monitor_object import MonitorObjectSerializer, Mon
 from apps.monitor.serializers.monitor_policy import MonitorPolicySerializer
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
 from apps.monitor.services.metrics import Metrics
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.instance_id_keys import resolve_monitor_object_instance_id_keys
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
@@ -291,7 +293,23 @@ def _create_monitor_policy_payload(data: dict, operator: str = "api", domain: st
     return policy, MonitorPolicySerializer(policy).data
 
 
+def _require_authenticated_actor(user_info: Optional[dict]):
+    """写接口身份闸：必须携带可解析的已认证身份才允许写库。
+
+    缺身份时不再回退默认 api/domain.com 账号继续建库——对齐读接口
+    _get_monitor_instance_permission 的身份校验（缺用户即拒），消除"写比读松"的鉴权旁路：
+    仅凭向 NATS subject 发消息、不带任何身份即可新建监控对象/告警策略的攻击面。
+    校验失败时返回与读接口一致的失败结构。
+    """
+    if not isinstance(user_info, dict) or not _normalize_permission_user(user_info.get("user")):
+        return {"result": False, "data": [], "message": "缺少用户或组织信息"}
+    return None
+
+
 def _execute_nats_create(create_func, data: dict, user_info: Optional[dict] = None):
+    identity_error = _require_authenticated_actor(user_info)
+    if identity_error:
+        return identity_error
     try:
         operator, domain = _resolve_nats_actor(user_info)
         _, result_data = create_func(data, operator=operator, domain=domain)
@@ -338,14 +356,59 @@ def _escape_label_value(value) -> str:
     return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 
-def _build_metric_label_query(metric_query: str, instance_ids=None, dimensions=None) -> str:
+def _normalize_metric_instance_id_keys(metric=None, monitor_obj=None) -> list[str]:
+    raw_keys = (
+        getattr(metric, "instance_id_keys", None)
+        or getattr(monitor_obj, "instance_id_keys", None)
+        or ["instance_id"]
+    )
+    keys = [str(key).strip() for key in raw_keys if key is not None and str(key).strip()]
+    return keys or ["instance_id"]
+
+
+def _build_instance_label_conditions(instance_ids, instance_id_keys: list[str]) -> list[str]:
+    """Map stored tuple instance IDs back to the VM label dimensions."""
+    values_by_key = {key: set() for key in instance_id_keys}
+    for instance_id in instance_ids:
+        instance_id_values = parse_instance_id(instance_id)
+        for index, key in enumerate(instance_id_keys):
+            if index >= len(instance_id_values):
+                continue
+            value = instance_id_values[index]
+            if value in (None, ""):
+                continue
+            values_by_key[key].add(str(value))
+
+    return [
+        f'{key}=~"{"|".join(_escape_label_value(value) for value in sorted(values))}"'
+        for key, values in values_by_key.items()
+        if values
+    ]
+
+
+def _build_metric_instance_id_candidates(metric_labels: dict, instance_id_keys: list[str]) -> set[str]:
+    """Rebuild DB instance IDs from VM labels for permission checks."""
+    values = []
+    for key in instance_id_keys:
+        value = metric_labels.get(key)
+        if value in (None, ""):
+            return set()
+        values.append(value)
+
+    candidates = {str(tuple(values))}
+    if len(instance_id_keys) == 1:
+        candidates.add(str(values[0]))
+    return candidates
+
+
+def _build_metric_label_query(metric_query: str, instance_ids=None, dimensions=None, instance_id_keys=None) -> str:
     instance_ids = [str(instance_id) for instance_id in (instance_ids or []) if instance_id]
     dimensions = dimensions or {}
+    instance_id_keys = instance_id_keys or ["instance_id"]
 
     label_conditions = []
     if instance_ids:
-        instance_filter = "|".join(_escape_label_value(instance_id) for instance_id in instance_ids)
-        label_conditions.append(f'instance_id=~"{instance_filter}"')
+        label_conditions.extend(_build_instance_label_conditions(instance_ids, instance_id_keys))
 
     for key, value in dimensions.items():
         if value is None:
@@ -391,8 +454,11 @@ def _get_monitor_instance_permission(monitor_obj_id: str, user_info: dict):
 def _normalize_permission_user(user):
     if hasattr(user, "username") and hasattr(user, "domain"):
         return user
-    if isinstance(user, str) and user:
-        return SimpleNamespace(username=user, domain="domain.com")
+    if isinstance(user, str):
+        username = user.strip()
+        if username:
+            return SimpleNamespace(username=username, domain="domain.com")
+        return None
     return user
 
 
@@ -686,7 +752,13 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
             return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
         instance_ids = authorized_instances
 
-    query = _build_metric_label_query(query, instance_ids=instance_ids, dimensions=dimensions)
+    instance_id_keys = _normalize_metric_instance_id_keys(metric, monitor_obj)
+    query = _build_metric_label_query(
+        query,
+        instance_ids=instance_ids,
+        dimensions=dimensions,
+        instance_id_keys=instance_id_keys,
+    )
 
     try:
         # 执行范围查询
@@ -699,11 +771,14 @@ def query_monitor_data_by_metric(query_data: dict, *args, **kwargs):
 
             filtered_result = []
             for metric_data in result["data"]["result"]:
-                metric_instance_id = metric_data.get("metric", {}).get("instance_id")
+                metric_instance_ids = _build_metric_instance_id_candidates(
+                    metric_data.get("metric", {}),
+                    instance_id_keys,
+                )
 
-                if metric_instance_id:
+                if metric_instance_ids:
                     # 只返回有权限的实例数据
-                    if metric_instance_id in authorized_instance_ids:
+                    if metric_instance_ids & authorized_instance_ids:
                         filtered_result.append(metric_data)
                 else:
                     # 没有实例ID的指标数据直接返回
@@ -1120,7 +1195,7 @@ def get_monitor_statistics(user_info=None, **kwargs):
     alert_recovered = alert_qs.filter(status="recovered").count()
     alert_closed = alert_qs.filter(status="closed").count()
 
-    today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    today_start = timezone.now().replace(hour=0, minute=0, second=0, microsecond=0)
     alert_today = alert_qs.filter(created_at__gte=today_start).count()
 
     event_qs = MonitorEvent.objects.filter(policy_id__in=policy_qs.values_list("id", flat=True)) if not is_superuser else MonitorEvent.objects.all()

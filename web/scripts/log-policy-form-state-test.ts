@@ -63,9 +63,13 @@ assert.deepEqual(getDefaultShowFields(undefined), ['timestamp', 'message']);
 assert.deepEqual(getDefaultShowFields(['message', 'host']), ['timestamp', 'message', 'host']);
 
 assert.deepEqual(buildAlertNameVariables(['log.service.name', 'host']), [
-  { value: '${level}', label: '${level}' },
-  { value: '${log.service.name}', label: '${log.service.name}' },
-  { value: '${log.host}', label: '${log.host}' }
+  { value: '${level}', label: '${level}', description: 'alertLevel' },
+  {
+    value: '${log.service.name}',
+    label: '${log.service.name}',
+    description: 'groupField'
+  },
+  { value: '${log.host}', label: '${log.host}', description: 'groupField' }
 ]);
 assert.equal(buildAlertNameVariables(['host', 'host']).length, 2);
 

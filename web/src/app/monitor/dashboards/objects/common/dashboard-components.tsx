@@ -172,6 +172,60 @@ export function useFilteredDetailPanels(
 
 export type DashboardStyles = Record<string, string>;
 
+// ─── SummaryStatCard ─────────────────────────────────────────────────────────
+
+export interface SummaryStatCardProps {
+  summaryCard: PreparedSummaryCard;
+  /** Optional span/grid class so a single KPI card can sit inside a panel row. */
+  className?: string;
+  styles: DashboardStyles;
+}
+
+/**
+ * Renders one prepared summary card as a StatCard. Shared by KpiSection (KPI
+ * grid) and by dashboards that need a standalone KPI card inside a panel row.
+ */
+export const SummaryStatCard = ({ summaryCard, className, styles }: SummaryStatCardProps) => {
+  const { card, mainValue, valueColor, compare, footerItems, trendData, noDataType, uptimeState } = summaryCard;
+  const isUptime = card.isUptimeCard;
+  // 运行时长卡统一样式:不画折线,只显示「所选时间范围内是否发生重启」(运行正常 / 期间有重启 / 状态未知)。
+  const uptimeToneSuffix =
+    uptimeState?.tone === 'warning' ? 'Warning' : uptimeState?.tone === 'success' ? 'Success' : 'Empty';
+  const mergedClassName = `${isUptime ? styles.statCardRelaxed : ''} ${className ?? ''}`.trim();
+
+  return (
+    <StatCard
+      title={<TitleWithGuide title={card.title} items={card.guide} styles={styles} />}
+      value={mainValue.value}
+      unit={mainValue.unit}
+      icon={getIcon(card.icon)}
+      iconStyle={{ background: `${valueColor ?? card.color}1f`, color: valueColor ?? card.color }}
+      color={valueColor ?? card.color}
+      footer={footerItems.map((item) => (
+        <span key={item.label}>{item.label} {item.value}</span>
+      ))}
+      compare={compare}
+      compareFavorableDirection={card.compareFavorableDirection}
+      trendData={trendData}
+      hideTrend={isUptime ? true : card.hideTrend}
+      noDataType={noDataType}
+      className={mergedClassName || undefined}
+      bodyClassName={isUptime ? styles.statBodyRelaxed : undefined}
+      extra={isUptime ? (
+        <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeToneSuffix}`]}`}>
+          <span className={styles.uptimeStatusDot} />
+          <div className={styles.uptimeStatusMainWrap}>
+            <span className={styles.uptimeStatusMain}>
+              {uptimeState?.label ?? '状态未知'}
+            </span>
+          </div>
+        </div>
+      ) : undefined}
+      styles={styles}
+    />
+  );
+};
+
 // ─── KpiSection ──────────────────────────────────────────────────────────────
 
 export interface KpiSectionProps {
@@ -215,45 +269,9 @@ export const KpiSection = ({
         styles={styles}
       />
       {extraCards}
-      {summaryCards.map(({ card, mainValue, valueColor, compare, footerItems, trendData, noDataType, uptimeState }) => {
-        const isUptime = card.isUptimeCard;
-        // 运行时长卡统一样式:不画折线,只显示「所选时间范围内是否发生重启」(运行正常 / 期间有重启 / 状态未知)。
-        const uptimeToneSuffix =
-          uptimeState?.tone === 'warning' ? 'Warning' : uptimeState?.tone === 'success' ? 'Success' : 'Empty';
-
-        return (
-          <StatCard
-            key={card.title}
-            title={<TitleWithGuide title={card.title} items={card.guide} styles={styles} />}
-            value={mainValue.value}
-            unit={mainValue.unit}
-            icon={getIcon(card.icon)}
-            iconStyle={{ background: `${valueColor ?? card.color}1f`, color: valueColor ?? card.color }}
-            color={valueColor ?? card.color}
-            footer={footerItems.map((item) => (
-              <span key={item.label}>{item.label} {item.value}</span>
-            ))}
-            compare={compare}
-            compareFavorableDirection={card.compareFavorableDirection}
-            trendData={trendData}
-            hideTrend={isUptime ? true : card.hideTrend}
-            noDataType={noDataType}
-            className={isUptime ? styles.statCardRelaxed : undefined}
-            bodyClassName={isUptime ? styles.statBodyRelaxed : undefined}
-            extra={isUptime ? (
-              <div className={`${styles.uptimeStatus} ${styles[`uptimeStatus${uptimeToneSuffix}`]}`}>
-                <span className={styles.uptimeStatusDot} />
-                <div className={styles.uptimeStatusMainWrap}>
-                  <span className={styles.uptimeStatusMain}>
-                    {uptimeState?.label ?? '状态未知'}
-                  </span>
-                </div>
-              </div>
-            ) : undefined}
-            styles={styles}
-          />
-        );
-      })}
+      {summaryCards.map((summaryCard) => (
+        <SummaryStatCard key={summaryCard.card.title} summaryCard={summaryCard} styles={styles} />
+      ))}
     </section>
   );
 };
@@ -559,6 +577,7 @@ export const MetricsSection = ({ dashboard, styles }: MetricsSectionProps) => (
         externalTimeDefaultValue={dashboard.timeDefaultValue}
         externalFrequence={dashboard.frequence}
         externalRefreshSignal={dashboard.metricsRefreshSignal}
+        collectionInterval={dashboard.currentInstanceInterval}
         hideTimeSelector
         onExternalXRangeChange={dashboard.onXRangeChange}
       />

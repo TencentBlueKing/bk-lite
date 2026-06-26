@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Empty, Spin } from 'antd';
+import { Spin } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
 import CustomTable from '@/components/custom-table';
 import useSearchApi from '@/app/log/api/search';
@@ -11,6 +11,7 @@ import {
   getDefaultShowFields,
   shouldFetchLogPreview
 } from './policyFormUtils';
+import strategyStyle from '../index.module.scss';
 
 interface LogPreviewProps {
   query?: string;
@@ -103,15 +104,21 @@ const LogPreview: React.FC<LogPreviewProps> = ({
   });
 
   return (
-    <div className="border border-[var(--color-border-2)] rounded-md p-4">
-      <div className="font-medium mb-3">{t('log.event.logPreview')}</div>
+    <div className={strategyStyle.previewCard}>
+      <div
+        className={`${strategyStyle.previewCardHeader} ${strategyStyle.previewHeaderBordered}`}
+      >
+        <span>{t('log.event.logPreview')}</span>
+        <span className={strategyStyle.previewMutedText}>
+          {t('log.event.latestTenLogs')}
+        </span>
+      </div>
       {!previewReady ? (
-        <Empty
-          image={Empty.PRESENTED_IMAGE_SIMPLE}
-          description={t('log.event.logPreviewGuide')}
-        />
+        <div className={strategyStyle.previewEmpty}>
+          {t('log.event.logPreviewGuide')}
+        </div>
       ) : (
-        <Spin spinning={loading}>
+        <Spin spinning={loading} className="block">
           <CustomTable
             size="small"
             columns={columns}
@@ -120,6 +127,12 @@ const LogPreview: React.FC<LogPreviewProps> = ({
             rowKey="id"
             scroll={{ x: 520, y: 320 }}
           />
+          <div className={strategyStyle.previewFooter}>
+            <span>
+              {t('log.event.displayFields')}：{fields.join('、')}
+            </span>
+            <span>{t('log.event.sortByTimeDesc')}</span>
+          </div>
         </Spin>
       )}
     </div>

@@ -19,6 +19,7 @@ def test_monitor_object_service_projects_flow_asset_fields_for_existing_asset_pr
 
     assert '"monitor_monitorinstance"."id"' in sql
     assert '"monitor_monitorinstance"."name"' in sql
+    assert '"monitor_monitorinstance"."interval"' in sql
     assert '"monitor_monitorinstance"."cloud_region_id"' in sql
     assert '"monitor_monitorinstance"."ip"' in sql
     assert '"monitor_monitorinstance"."fallback_sampling_rate"' in sql
@@ -31,6 +32,7 @@ def test_instance_search_projects_flow_asset_fields_for_existing_asset_prefill(d
 
     assert '"monitor_monitorinstance"."id"' in sql
     assert '"monitor_monitorinstance"."name"' in sql
+    assert '"monitor_monitorinstance"."interval"' in sql
     assert '"monitor_monitorinstance"."cloud_region_id"' in sql
     assert '"monitor_monitorinstance"."ip"' in sql
     assert '"monitor_monitorinstance"."fallback_sampling_rate"' in sql
@@ -48,6 +50,7 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
         id="('flow-device-1',)",
         name="Core Switch",
         monitor_object_id=monitor_object.id,
+        interval=60,
         cloud_region_id=3,
         ip="10.0.0.12",
         fallback_sampling_rate=2000,
@@ -69,6 +72,7 @@ def test_monitor_instance_list_returns_flow_asset_fields(db, monkeypatch):
         "instance_id": "('flow-device-1',)",
         "instance_id_values": ["flow-device-1"],
         "instance_name": "Core Switch",
+        "interval": 60,
         "agent_id": "",
         "time": "",
         "cloud_region_id": 3,
@@ -187,6 +191,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
     obj = types.SimpleNamespace(
         id="('flow-device-1',)",
         name="Core Switch",
+        interval=60,
         cloud_region_id=3,
         ip="10.0.0.12",
         fallback_sampling_rate=2000,
@@ -200,6 +205,7 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "instance_id": "('flow-device-1',)",
         "instance_id_values": ["flow-device-1"],
         "instance_name": "Core Switch",
+        "interval": 60,
         "agent_id": "",
         "time": "",
         "cloud_region_id": 3,
@@ -207,6 +213,72 @@ def test_monitor_instance_list_item_serializer_includes_flow_asset_fields():
         "fallback_sampling_rate": 2000,
         "organizations": [7],
     }
+
+
+def test_instance_search_results_include_collection_interval_for_gap_detection(db, monkeypatch):
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        default_metric='any({instance_type="os"}) by (instance_id)',
+        instance_id_keys=["instance_id"],
+    )
+    instance = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object_id=monitor_object.id,
+        interval=60,
+    )
+    search = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": 20},
+        qs=MonitorInstance.objects.filter(id=instance.id),
+    )
+    monkeypatch.setattr(
+        search,
+        "get_vm_metrics",
+        lambda: [
+            {
+                "metric": {"instance_id": "host-a"},
+                "value": [1782184800, "1"],
+            }
+        ],
+    )
+    monkeypatch.setattr(MonitorObjectService, "add_attr", lambda result: None)
+
+    data = search.search()
+
+    assert data["results"][0]["interval"] == 60
+
+
+def test_instance_search_by_primary_object_supports_negative_page_size_for_all_results(db):
+    monitor_object = MonitorObject.objects.create(
+        name="Host",
+        display_name="Host",
+        default_metric='any({instance_type="os"}) by (instance_id)',
+        instance_id_keys=["instance_id"],
+    )
+    instance_a = MonitorInstance.objects.create(
+        id="('host-a',)",
+        name="Host A",
+        monitor_object_id=monitor_object.id,
+    )
+    instance_b = MonitorInstance.objects.create(
+        id="('host-b',)",
+        name="Host B",
+        monitor_object_id=monitor_object.id,
+    )
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance_a.id, organization=7)
+    MonitorInstanceOrganization.objects.create(monitor_instance_id=instance_b.id, organization=8)
+
+    data = InstanceSearch(
+        monitor_object,
+        {"page": 1, "page_size": -1},
+        qs=MonitorInstance.objects.all(),
+    ).search_by_primary_object()
+
+    assert data["count"] == 2
+    assert {item["instance_id"] for item in data["results"]} == {instance_a.id, instance_b.id}
+    assert {tuple(item["organizations"]) for item in data["results"]} == {(7,), (8,)}
 
 
 def test_monitor_instance_list_add_metrics_escapes_flow_instance_regex_for_promql(db, monkeypatch):

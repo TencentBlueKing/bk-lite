@@ -1,0 +1,67 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_versa"
+        config_type = "versa"
+        brand = "versa"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Versa SD-WAN CPU usage (VERSA-MIB, 私有企业号 42359, 直接 %, scalar) ----
+    # 待现网核验：整机 CPU 使用率标量 1.3.6.1.4.1.42359.2.2.1.1.0（设备直接以 0-100% 上报）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.1.0"
+        name = "usage"
+    # ---- Versa SD-WAN memory usage (VERSA-MIB, scalar %) ----
+    # 待现网核验：整机内存使用率标量 1.3.6.1.4.1.42359.2.2.1.2.0（设备直接以 0-100% 上报）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.42359.2.2.1.2.0"
+        name = "usage"
+# ---- 温度/风扇/电源：Versa SD-WAN（软件型/虚拟化 VNF，运行于通用计算或白盒 CPE）私有 MIB 未以无需行级过滤的标量形式暴露环境传感器 → 温度/风扇/电源 N/A 不采。仅 CPU/内存/接口干净可采。----
