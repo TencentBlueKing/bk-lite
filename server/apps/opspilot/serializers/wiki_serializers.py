@@ -137,6 +137,9 @@ class PageVersionSerializer(serializers.ModelSerializer):
 
 
 class BuildRecordSerializer(serializers.ModelSerializer):
+    # 输入资料的人性化名称(替代直接暴露 {"material_id":5} 这类 JSON)
+    input_label = serializers.SerializerMethodField()
+
     class Meta:
         model = BuildRecord
         fields = [
@@ -145,6 +148,7 @@ class BuildRecordSerializer(serializers.ModelSerializer):
             "trigger",
             "operator",
             "inputs",
+            "input_label",
             "stage",
             "progress",
             "counts",
@@ -154,3 +158,16 @@ class BuildRecordSerializer(serializers.ModelSerializer):
             "created_at",
             "updated_at",
         ]
+
+    def get_input_label(self, obj):
+        """输入资料名:优先取 inputs 内已存的资料名;否则按 material_id 查库,资料已删除则回退 #id;整库重建无单一输入返回空。"""
+        inputs = obj.inputs or {}
+        if inputs.get("material_name"):
+            return inputs["material_name"]
+        mid = inputs.get("material_id")
+        if mid:
+            from apps.opspilot.models import Material
+
+            m = Material.objects.filter(id=mid).only("name").first()
+            return m.name if m else f"#{mid}"
+        return ""

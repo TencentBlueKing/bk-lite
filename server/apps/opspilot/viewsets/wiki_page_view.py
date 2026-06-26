@@ -23,7 +23,14 @@ class WikiPageViewSet(AuthViewSet):
         page_type = request.GET.get("page_type")
         if page_type:
             queryset = queryset.filter(page_type=page_type)
-        return JsonResponse({"result": True, "data": self.get_serializer(queryset, many=True).data})
+        try:
+            page = max(int(request.GET.get("page", 1)), 1)
+            page_size = max(int(request.GET.get("page_size", 20)), 1)
+        except (TypeError, ValueError):
+            page, page_size = 1, 20
+        total = queryset.count()
+        page_items = queryset[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        return JsonResponse({"result": True, "data": {"count": total, "items": self.get_serializer(page_items, many=True).data}})
 
     def retrieve(self, request, *args, **kwargs):
         return JsonResponse({"result": True, "data": self.get_serializer(self.get_object()).data})
@@ -113,7 +120,14 @@ class WikiBuildRecordViewSet(AuthViewSet):
         kb_id = request.GET.get("knowledge_base")
         if kb_id:
             queryset = queryset.filter(knowledge_base_id=kb_id)
-        return JsonResponse({"result": True, "data": self.get_serializer(queryset, many=True).data})
+        try:
+            page = max(int(request.GET.get("page", 1)), 1)
+            page_size = max(int(request.GET.get("page_size", 20)), 1)
+        except (TypeError, ValueError):
+            page, page_size = 1, 20
+        total = queryset.count()
+        page_items = queryset[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        return JsonResponse({"result": True, "data": {"count": total, "items": self.get_serializer(page_items, many=True).data}})
 
     def retrieve(self, request, *args, **kwargs):
         return JsonResponse({"result": True, "data": self.get_serializer(self.get_object()).data})

@@ -84,6 +84,7 @@ export interface BuildRecord {
   trigger: string;
   operator?: string;
   inputs?: Record<string, unknown>;
+  input_label?: string;
   stage: string;
   progress: number;
   counts?: Record<string, number>;

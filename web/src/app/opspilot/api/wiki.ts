@@ -18,6 +18,12 @@ import {
 
 const BASE = '/opspilot/wiki_mgmt';
 
+// 后端列表统一返回的分页结构 {count, items}
+export interface Paged<T> {
+  count: number;
+  items: T[];
+}
+
 export const useWikiApi = () => {
   const { get, post, put, del } = useApiClient();
 
@@ -75,7 +81,7 @@ export const useWikiApi = () => {
   const rebuildKnowledgeBase = (id: number): Promise<BuildRecord> => post(`${BASE}/knowledge_base/${id}/rebuild/`, {});
 
   // ---- 资料 ----
-  const fetchMaterials = (kbId: number, params?: Record<string, unknown>): Promise<Material[]> =>
+  const fetchMaterials = (kbId: number, params?: Record<string, unknown>): Promise<Paged<Material>> =>
     get(`${BASE}/material/`, { params: { ...params, knowledge_base: kbId } });
 
   const fetchMaterial = (id: number): Promise<Material> => get(`${BASE}/material/${id}/`);
@@ -103,7 +109,7 @@ export const useWikiApi = () => {
   const proposeUpdate = (id: number): Promise<BuildRecord> => post(`${BASE}/material/${id}/propose_update/`, {});
 
   // ---- 页面 ----
-  const fetchPages = (kbId: number, params?: Record<string, unknown>): Promise<KnowledgePage[]> =>
+  const fetchPages = (kbId: number, params?: Record<string, unknown>): Promise<Paged<KnowledgePage>> =>
     get(`${BASE}/page/`, { params: { ...params, knowledge_base: kbId } });
 
   const fetchPage = (id: number): Promise<KnowledgePage> => get(`${BASE}/page/${id}/`);
@@ -125,7 +131,7 @@ export const useWikiApi = () => {
     get(`${BASE}/page/${id}/diff/`, { params: { from, to } });
 
   // ---- 构建记录 ----
-  const fetchBuildRecords = (kbId: number, params?: Record<string, unknown>): Promise<BuildRecord[]> =>
+  const fetchBuildRecords = (kbId: number, params?: Record<string, unknown>): Promise<Paged<BuildRecord>> =>
     get(`${BASE}/build_record/`, { params: { ...params, knowledge_base: kbId } });
 
   const fetchBuildRecord = (id: number): Promise<BuildRecord> => get(`${BASE}/build_record/${id}/`);
@@ -138,7 +144,7 @@ export const useWikiApi = () => {
   const fetchCheckItems = (
     kbId: number,
     params?: Record<string, unknown>
-  ): Promise<CheckItem[]> => get(`${BASE}/check_item/`, { params: { ...params, knowledge_base: kbId } });
+  ): Promise<Paged<CheckItem>> => get(`${BASE}/check_item/`, { params: { ...params, knowledge_base: kbId } });
 
   const acceptCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/accept/`, {});
 

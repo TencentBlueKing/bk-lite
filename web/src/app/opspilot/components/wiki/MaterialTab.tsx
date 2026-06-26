@@ -30,6 +30,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [form] = Form.useForm();
   const [data, setData] = useState<Material[]>([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [open, setOpen] = useState(false);
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState<MaterialType>('text');
@@ -39,17 +42,19 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await fetchMaterials(kbId));
+      const res = await fetchMaterials(kbId, { page, page_size: pageSize });
+      setData(res.items);
+      setTotal(res.count);
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, page, pageSize]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, page, pageSize]);
 
   // 解析/构建为 Celery 异步:有资料处于「解析中/构建中」时每 3s 轮询刷新状态,全部完成后自动停止
   useEffect(() => {
@@ -143,7 +148,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       render: (s: string) => <span className="text-[var(--color-text-3)]">{s || '--'}</span>,
     },
     {
-      title: '',
+      title: t('common.actions'),
       key: 'action',
       width: 280,
       render: (_: unknown, record) => {
@@ -178,21 +183,33 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   ];
 
   return (
-    <div>
-      <div className="flex justify-end mb-3">
+    <div className="h-full flex flex-col">
+      <div className="flex justify-end mb-3 shrink-0">
         <Button type="primary" onClick={openCreate}>
           {t('wiki.addMaterial')}
         </Button>
       </div>
-      {/* scroll x:undefined 关闭 CustomTable 默认按列宽合计强制的横向滚动,列宽自适应容器,消除底部多余横向滚动条 */}
-      <CustomTable<Material>
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={data}
-        pagination={false}
-        scroll={{ x: undefined }}
-      />
+      {/* flex-1 容器给表格确定高度,使分页时 CustomTable 自动算出的 scroll.y 稳定;
+          scroll x:undefined 关闭默认按列宽合计强制的横向滚动,列宽自适应容器 */}
+      <div className="flex-1 min-h-0">
+        <CustomTable<Material>
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+          scroll={{ x: undefined }}
+        />
+      </div>
 
       <Modal
         title={t('wiki.addMaterial')}

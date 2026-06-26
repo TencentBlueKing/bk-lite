@@ -25,8 +25,15 @@ class WikiMaterialViewSet(AuthViewSet):
         status_filter = request.GET.get("status")
         if status_filter:
             queryset = queryset.filter(status=status_filter)
-        serializer = self.get_serializer(queryset, many=True)
-        return JsonResponse({"result": True, "data": serializer.data})
+        try:
+            page = max(int(request.GET.get("page", 1)), 1)
+            page_size = max(int(request.GET.get("page_size", 20)), 1)
+        except (TypeError, ValueError):
+            page, page_size = 1, 20
+        total = queryset.count()
+        page_items = queryset[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        serializer = self.get_serializer(page_items, many=True)
+        return JsonResponse({"result": True, "data": {"count": total, "items": serializer.data}})
 
     def retrieve(self, request, *args, **kwargs):
         instance = self.get_object()

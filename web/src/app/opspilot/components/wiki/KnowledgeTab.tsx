@@ -11,9 +11,10 @@ const KnowledgeTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const [view, setView] = useState<'page' | 'graph'>('page');
   return (
-    <div>
+    // 撑满内容区:图谱视图据此 flex 填充满高,避免固定高 calc 撑出纵向滚动条
+    <div className="h-full flex flex-col">
       <Segmented
-        className="mb-3"
+        className="mb-3 shrink-0"
         value={view}
         onChange={(v) => setView(v as 'page' | 'graph')}
         options={[
@@ -21,7 +22,9 @@ const KnowledgeTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           { label: t('wiki.graph'), value: 'graph' },
         ]}
       />
-      {view === 'page' ? <PageTab kbId={kbId} /> : <GraphTab kbId={kbId} />}
+      <div className="flex-1 min-h-0">
+        {view === 'page' ? <PageTab kbId={kbId} /> : <GraphTab kbId={kbId} />}
+      </div>
     </div>
   );
 };

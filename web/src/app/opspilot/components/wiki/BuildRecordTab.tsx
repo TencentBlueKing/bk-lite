@@ -16,28 +16,63 @@ const STATUS_COLOR: Record<string, string> = {
   cancelled: 'default',
 };
 
+// 计数键 → 中文标签 + 配色(避免直接暴露 {"new":0,...} 这类 JSON,用户看不懂)
+const COUNT_META: Record<string, { key: string; color: string }> = {
+  new: { key: 'wiki.countNew', color: 'green' },
+  updated: { key: 'wiki.countUpdated', color: 'blue' },
+  unchanged: { key: 'wiki.countUnchanged', color: 'default' },
+  pending_review: { key: 'wiki.countPendingReview', color: 'gold' },
+};
+
+// 触发/阶段/状态 → i18n key(避免界面直接显示 material / done / success 这类裸 key)
+const TRIGGER_LABEL: Record<string, string> = {
+  material: 'wiki.triggerMaterial',
+  material_delete: 'wiki.triggerMaterialDelete',
+  material_update: 'wiki.triggerMaterialUpdate',
+  rebuild: 'wiki.triggerRebuild',
+};
+const STAGE_LABEL: Record<string, string> = {
+  done: 'wiki.stageDone',
+  failed: 'wiki.stageFailed',
+  generating: 'wiki.stageGenerating',
+  running: 'wiki.stageRunning',
+  cancelled: 'wiki.stageCancelled',
+};
+const STATUS_LABEL: Record<string, string> = {
+  success: 'wiki.buildSuccess',
+  running: 'wiki.buildRunning',
+  partial: 'wiki.buildPartial',
+  failed: 'wiki.buildFailed',
+  cancelled: 'wiki.buildCancelled',
+};
+
 // 构建记录工作区(spec 4.4):长期记录 + 详情(输入版本/受影响页/错误)+ 重试/继续/取消/查看结果
 const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
   const { fetchBuildRecords, fetchBuildRecord, retryBuild, cancelBuild } = useWikiApi();
   const [data, setData] = useState<BuildRecord[]>([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [detail, setDetail] = useState<BuildRecord | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await fetchBuildRecords(kbId));
+      const res = await fetchBuildRecords(kbId, { page, page_size: pageSize });
+      setData(res.items);
+      setTotal(res.count);
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, page, pageSize]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, page, pageSize]);
 
   // 有 running 记录时每 3s 轮询刷新进度,全部结束自动停止
   useEffect(() => {
@@ -59,26 +94,57 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     load();
   };
 
+  // 计数渲染:仅展示非零项为标签(新增 6 / 修改 3 …);全为 0 显示"无变更"
+  const renderCounts = (c?: Record<string, number>) => {
+    const entries = Object.entries(c || {}).filter(([, v]) => v);
+    if (!entries.length) return <span className="text-[var(--color-text-4)]">{t('wiki.noChange')}</span>;
+    return (
+      <Space size={[4, 4]} wrap>
+        {entries.map(([k, v]) => {
+          const meta = COUNT_META[k];
+          return (
+            <Tag key={k} color={meta?.color || 'default'} className="m-0">
+              {meta ? t(meta.key) : k} {v}
+            </Tag>
+          );
+        })}
+      </Space>
+    );
+  };
+
+  const labelOf = (map: Record<string, string>, v: string) => (map[v] ? t(map[v]) : v || '--');
+
   const columns: ColumnsType<BuildRecord> = [
-    { title: 'ID', dataIndex: 'id', key: 'id', width: 70 },
-    { title: t('wiki.trigger'), dataIndex: 'trigger', key: 'trigger', width: 120 },
+    {
+      title: t('wiki.trigger'),
+      dataIndex: 'trigger',
+      key: 'trigger',
+      width: 120,
+      render: (v: string) => labelOf(TRIGGER_LABEL, v),
+    },
     {
       title: t('wiki.status'),
       dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{s}</Tag>,
+      render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{labelOf(STATUS_LABEL, s)}</Tag>,
     },
-    { title: t('wiki.stage'), dataIndex: 'stage', key: 'stage', width: 120 },
+    {
+      title: t('wiki.stage'),
+      dataIndex: 'stage',
+      key: 'stage',
+      width: 120,
+      render: (v: string) => labelOf(STAGE_LABEL, v),
+    },
     {
       title: t('wiki.counts'),
       dataIndex: 'counts',
       key: 'counts',
-      render: (c: Record<string, number>) => <span className="text-xs">{JSON.stringify(c || {})}</span>,
+      render: (c: Record<string, number>) => renderCounts(c),
     },
     { title: t('wiki.time'), dataIndex: 'created_at', key: 'created_at', width: 170 },
     {
-      title: '',
+      title: t('common.actions'),
       key: 'action',
       width: 180,
       render: (_: unknown, r) => (
@@ -104,15 +170,27 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   ];
 
   return (
-    <div>
-      <CustomTable<BuildRecord>
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={data}
-        pagination={false}
-        scroll={{ x: undefined }}
-      />
+    // h-full + flex:给表格一个确定高度的父级,使 CustomTable 开启分页时自动算出的 scroll.y 稳定(否则只显示 1 行)
+    <div className="h-full flex flex-col">
+      <div className="flex-1 min-h-0">
+        <CustomTable<BuildRecord>
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+          scroll={{ x: undefined }}
+        />
+      </div>
       <Drawer
         title={`${t('wiki.buildRecord')} #${detail?.id ?? ''}`}
         open={!!detail}
@@ -121,16 +199,16 @@ const BuildRecordTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       >
         {detail && (
           <Descriptions column={1} bordered size="small">
-            <Descriptions.Item label={t('wiki.trigger')}>{detail.trigger}</Descriptions.Item>
+            <Descriptions.Item label={t('wiki.trigger')}>{labelOf(TRIGGER_LABEL, detail.trigger)}</Descriptions.Item>
             <Descriptions.Item label={t('wiki.operator')}>{detail.operator || '--'}</Descriptions.Item>
-            <Descriptions.Item label={t('wiki.inputMaterial')}>{JSON.stringify(detail.inputs || {})}</Descriptions.Item>
+            <Descriptions.Item label={t('wiki.inputMaterial')}>{detail.input_label || '--'}</Descriptions.Item>
             <Descriptions.Item label={t('wiki.stage')}>
-              {detail.stage}({detail.progress ?? 0}%)
+              {labelOf(STAGE_LABEL, detail.stage)}({detail.progress ?? 0}%)
             </Descriptions.Item>
             <Descriptions.Item label={t('wiki.status')}>
-              <Tag color={STATUS_COLOR[detail.status] || 'default'}>{detail.status}</Tag>
+              <Tag color={STATUS_COLOR[detail.status] || 'default'}>{labelOf(STATUS_LABEL, detail.status)}</Tag>
             </Descriptions.Item>
-            <Descriptions.Item label={t('wiki.counts')}>{JSON.stringify(detail.counts || {})}</Descriptions.Item>
+            <Descriptions.Item label={t('wiki.counts')}>{renderCounts(detail.counts)}</Descriptions.Item>
             <Descriptions.Item label={t('wiki.affectedPages')}>
               {(detail.affected_pages || []).join(', ') || '--'}
             </Descriptions.Item>

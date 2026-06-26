@@ -27,7 +27,14 @@ class WikiCheckItemViewSet(AuthViewSet):
         check_type = request.GET.get("check_type")
         if check_type:
             queryset = queryset.filter(check_type=check_type)
-        return JsonResponse({"result": True, "data": self.get_serializer(queryset, many=True).data})
+        try:
+            page = max(int(request.GET.get("page", 1)), 1)
+            page_size = max(int(request.GET.get("page_size", 20)), 1)
+        except (TypeError, ValueError):
+            page, page_size = 1, 20
+        total = queryset.count()
+        page_items = queryset[(page - 1) * page_size : (page - 1) * page_size + page_size]
+        return JsonResponse({"result": True, "data": {"count": total, "items": self.get_serializer(page_items, many=True).data}})
 
     def retrieve(self, request, *args, **kwargs):
         return JsonResponse({"result": True, "data": self.get_serializer(self.get_object()).data})

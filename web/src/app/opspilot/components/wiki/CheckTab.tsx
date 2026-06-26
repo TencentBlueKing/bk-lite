@@ -43,23 +43,28 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { fetchCheckItems, acceptCheck, rejectCheck, scan } = useWikiApi();
   const [data, setData] = useState<CheckItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(20);
+  const [total, setTotal] = useState(0);
   const [scanning, setScanning] = useState(false);
   const [detail, setDetail] = useState<CheckItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      setData(await fetchCheckItems(kbId));
+      const res = await fetchCheckItems(kbId, { page, page_size: pageSize });
+      setData(res.items);
+      setTotal(res.count);
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, page, pageSize]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId]);
+  }, [kbId, page, pageSize]);
 
   const handleScan = async () => {
     setScanning(true);
@@ -107,7 +112,7 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       },
     },
     {
-      title: '',
+      title: t('common.actions'),
       key: 'action',
       width: 200,
       render: (_: unknown, r) => (
@@ -140,20 +145,32 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const pages = detail?.related_pages || [];
 
   return (
-    <div>
-      <div className="flex justify-end mb-3">
+    <div className="h-full flex flex-col">
+      <div className="flex justify-end mb-3 shrink-0">
         <Button onClick={handleScan} loading={scanning}>
           {t('wiki.scan')}
         </Button>
       </div>
-      <CustomTable<CheckItem>
-        rowKey="id"
-        loading={loading}
-        columns={columns}
-        dataSource={data}
-        pagination={false}
-        scroll={{ x: undefined }}
-      />
+      {/* flex-1 容器给表格确定高度,使分页时 CustomTable 自动算出的 scroll.y 稳定 */}
+      <div className="flex-1 min-h-0">
+        <CustomTable<CheckItem>
+          rowKey="id"
+          loading={loading}
+          columns={columns}
+          dataSource={data}
+          pagination={{
+            current: page,
+            pageSize,
+            total,
+            showSizeChanger: true,
+            onChange: (p, ps) => {
+              setPage(p);
+              setPageSize(ps);
+            },
+          }}
+          scroll={{ x: undefined }}
+        />
+      </div>
 
       {/* 检查详情:候选类展示「当前 vs 候选」对比,扫描类展示涉及页面内容 */}
       <Drawer

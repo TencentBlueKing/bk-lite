@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Form, Input, Popconfirm, Select, Spin, message } from 'antd';
+import { Button, Form, Input, Popconfirm, Select, Spin, Tabs, message } from 'antd';
 import { AimOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useIntl } from 'react-intl';
@@ -19,7 +19,7 @@ const HELP_KEY: Record<SectionKey, string> = {
   danger: 'wiki.helpDangerDesc',
 };
 
-// 设置工作区(spec 4.6):左侧导航 | 中部表单 | 右侧预览/说明
+// 设置工作区(spec 4.6):顶部 Tab 切换分区(与其它详情页统一),内容下方铺开
 // 生成语言默认跟随登录用户语言;网页同步已迁到「新增资料(网页)」按站点单独配置
 const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
@@ -35,13 +35,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [active, setActive] = useState<SectionKey>('basic');
   // 保存原始 KB:PUT 为全量更新,被移除的设置字段需回填原值,避免被重置
   const kbRef = useRef<WikiKnowledgeBase | null>(null);
-
-  const sections: { key: SectionKey; label: string; icon: React.ReactNode; danger?: boolean }[] = [
-    { key: 'basic', label: t('wiki.settingsBasic'), icon: <InfoCircleOutlined /> },
-    { key: 'purpose', label: t('wiki.settingsPurposeSchema'), icon: <AimOutlined /> },
-    { key: 'danger', label: t('wiki.dangerZone'), icon: <WarningOutlined />, danger: true },
-  ];
-  const activeSection = sections.find((s) => s.key === active)!;
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -105,149 +98,145 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     }
   };
 
-  const show = (key: SectionKey) => ({ display: active === key ? 'block' : 'none' });
-  // 分区标题:图标 + 标题 + 下边框分隔(扁平分层,符合 DESIGN「Flat By Default」)
-  const head = (icon: React.ReactNode, text: string) => (
-    <div className="flex items-center gap-2 pb-3 mb-5 border-b border-[var(--color-border)]">
-      <span className="flex items-center text-[var(--color-text-2)]">{icon}</span>
-      <span className="text-[15px] font-semibold text-[var(--color-text-1)]">{text}</span>
+  // 各分区帮助说明(扁平内联提示,替代原右侧说明卡)
+  const hint = (key: string) => (
+    <p className="text-[13px] leading-6 text-[var(--color-text-3)] mb-4 mt-0">{t(key)}</p>
+  );
+
+  const basicPane = (
+    <div className="max-w-3xl">
+      {hint(HELP_KEY.basic)}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
+        <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item
+          label={t('wiki.llmModel')}
+          name="llm_model"
+          rules={[{ required: true, message: `${t('common.selectMsg')}${t('wiki.llmModel')}` }]}
+          tooltip={t('wiki.llmModelTip')}
+        >
+          <Select
+            placeholder={t('wiki.llmModelPlaceholder')}
+            options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
+          />
+        </Form.Item>
+        <Form.Item className="md:col-span-2" label={t('wiki.introduction')} name="introduction">
+          <Input.TextArea rows={3} />
+        </Form.Item>
+        <Form.Item
+          className="md:col-span-2"
+          label={t('common.organization')}
+          name="team"
+          rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }]}
+        >
+          <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
+        </Form.Item>
+      </div>
+    </div>
+  );
+
+  const purposePane = (
+    <div>
+      {hint(HELP_KEY.purpose)}
+      {/* 两个文本域拉高(autoSize 起步 18 行),保存按钮自然贴近底部,常规内容无需内部滚动 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
+        <Form.Item label={t('wiki.purpose')} name="purpose_md">
+          <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
+        </Form.Item>
+        <Form.Item label={t('wiki.schema')} name="schema_md">
+          <Input.TextArea autoSize={{ minRows: 18, maxRows: 28 }} />
+        </Form.Item>
+      </div>
+    </div>
+  );
+
+  const dangerPane = (
+    <div className="max-w-2xl">
+      {hint(HELP_KEY.danger)}
+      {/* 危险区域(参考 GitHub Danger Zone:红框容器 + 每项 标题/后果说明/危险按钮) */}
+      <div className="rounded-lg border border-[var(--color-fail)]">
+        <div className="flex items-center justify-between gap-4 p-4">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-[var(--color-text-1)]">{t('wiki.rebuildAll')}</div>
+            <div className="text-[13px] leading-6 text-[var(--color-text-3)] mt-0.5">{t('wiki.rebuildAllTip')}</div>
+          </div>
+          <Popconfirm title={t('wiki.rebuildAllConfirm')} onConfirm={() => runDanger(() => rebuildKnowledgeBase(kbId))}>
+            <Button loading={busy} className="flex-shrink-0">
+              {t('wiki.rebuildAll')}
+            </Button>
+          </Popconfirm>
+        </div>
+        <div className="flex items-center justify-between gap-4 p-4 border-t border-[var(--color-fail)]">
+          <div className="min-w-0">
+            <div className="text-sm font-medium text-[var(--color-fail)]">{t('wiki.deleteKb')}</div>
+            <div className="text-[13px] leading-6 text-[var(--color-text-3)] mt-0.5">{t('wiki.deleteTip')}</div>
+          </div>
+          <Popconfirm
+            title={t('wiki.deleteConfirm')}
+            okButtonProps={{ danger: true }}
+            onConfirm={() => runDanger(() => deleteKnowledgeBase(kbId), () => router.push('/opspilot/wiki'))}
+          >
+            <Button danger loading={busy} className="flex-shrink-0">
+              {t('common.delete')}
+            </Button>
+          </Popconfirm>
+        </div>
+      </div>
     </div>
   );
 
   return (
     <Spin spinning={loading}>
-      <div className="grid grid-cols-[160px_minmax(0,1fr)] xl:grid-cols-[188px_minmax(0,1fr)_400px] gap-6 min-h-[calc(100vh-280px)]">
-        {/* 左侧导航(竖线撑满面板高度) */}
-        <nav className="border-r border-[var(--color-border)] pr-3">
-          {sections.map((s) => {
-            const on = active === s.key;
-            return (
-              <button
-                key={s.key}
-                type="button"
-                onClick={() => setActive(s.key)}
-                className={`w-full flex items-center gap-2.5 px-3 py-2 mb-1 rounded-md text-sm text-left transition-colors ${
-                  on
-                    ? 'bg-[var(--color-primary-bg-active)] text-[var(--color-primary)] font-medium'
-                    : s.danger
-                      ? 'text-[var(--color-fail)] hover:bg-[var(--color-fill-2)]'
-                      : 'text-[var(--color-text-2)] hover:bg-[var(--color-fill-2)]'
-                }`}
-              >
-                <span className="flex items-center">{s.icon}</span>
-                {s.label}
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* 中部表单 */}
-        <div className="min-w-0">
-          <Form form={form} layout="vertical">
-            {/* 基本信息 */}
-            <div style={show('basic')}>
-              {head(<InfoCircleOutlined />, t('wiki.settingsBasic'))}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-x-8">
-                <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
-                  <Input />
-                </Form.Item>
-                <Form.Item
-                  label={t('wiki.llmModel')}
-                  name="llm_model"
-                  rules={[{ required: true, message: `${t('common.selectMsg')}${t('wiki.llmModel')}` }]}
-                  tooltip={t('wiki.llmModelTip')}
-                >
-                  <Select
-                    placeholder={t('wiki.llmModelPlaceholder')}
-                    options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
-                  />
-                </Form.Item>
-                <Form.Item className="md:col-span-2" label={t('wiki.introduction')} name="introduction">
-                  <Input.TextArea rows={3} />
-                </Form.Item>
-                <Form.Item
-                  className="md:col-span-2"
-                  label={t('common.organization')}
-                  name="team"
-                  rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }]}
-                >
-                  <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
-                </Form.Item>
-              </div>
-            </div>
-
-            {/* 用途与结构 */}
-            <div style={show('purpose')}>
-              {head(<AimOutlined />, t('wiki.settingsPurposeSchema'))}
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-x-6">
-                <Form.Item label={t('wiki.purpose')} name="purpose_md">
-                  <Input.TextArea rows={12} />
-                </Form.Item>
-                <Form.Item label={t('wiki.schema')} name="schema_md">
-                  <Input.TextArea rows={12} />
-                </Form.Item>
-              </div>
-            </div>
-          </Form>
-
-          {active !== 'danger' && (
-            <div className="pt-5 mt-6 border-t border-[var(--color-border)]">
-              <Button type="primary" loading={saving} onClick={handleSave}>
-                {t('common.save')}
-              </Button>
-            </div>
-          )}
-
-          {/* 危险区域(参考 GitHub Danger Zone:红框容器 + 每项 标题/后果说明/危险按钮) */}
-          <div style={show('danger')} className="max-w-2xl">
-            {head(<WarningOutlined />, t('wiki.dangerZone'))}
-            <div className="rounded-lg border border-[var(--color-fail)]">
-              <div className="flex items-center justify-between gap-4 p-4">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-[var(--color-text-1)]">{t('wiki.rebuildAll')}</div>
-                  <div className="text-[13px] leading-6 text-[var(--color-text-3)] mt-0.5">{t('wiki.rebuildAllTip')}</div>
-                </div>
-                <Popconfirm title={t('wiki.rebuildAllConfirm')} onConfirm={() => runDanger(() => rebuildKnowledgeBase(kbId))}>
-                  <Button loading={busy} className="flex-shrink-0">
-                    {t('wiki.rebuildAll')}
-                  </Button>
-                </Popconfirm>
-              </div>
-              <div className="flex items-center justify-between gap-4 p-4 border-t border-[var(--color-fail)]">
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-[var(--color-fail)]">{t('wiki.deleteKb')}</div>
-                  <div className="text-[13px] leading-6 text-[var(--color-text-3)] mt-0.5">{t('wiki.deleteTip')}</div>
-                </div>
-                <Popconfirm
-                  title={t('wiki.deleteConfirm')}
-                  okButtonProps={{ danger: true }}
-                  onConfirm={() => runDanger(() => deleteKnowledgeBase(kbId), () => router.push('/opspilot/wiki'))}
-                >
-                  <Button danger loading={busy} className="flex-shrink-0">
-                    {t('common.delete')}
-                  </Button>
-                </Popconfirm>
-              </div>
-            </div>
+      <Form form={form} layout="vertical">
+        {/* forceRender:所有分区始终挂载,切 Tab 不丢失未提交字段值,保存时全量校验通过 */}
+        <Tabs
+          activeKey={active}
+          onChange={(k) => setActive(k as SectionKey)}
+          items={[
+            {
+              key: 'basic',
+              label: (
+                <span>
+                  <InfoCircleOutlined className="mr-1.5" />
+                  {t('wiki.settingsBasic')}
+                </span>
+              ),
+              forceRender: true,
+              children: basicPane,
+            },
+            {
+              key: 'purpose',
+              label: (
+                <span>
+                  <AimOutlined className="mr-1.5" />
+                  {t('wiki.settingsPurposeSchema')}
+                </span>
+              ),
+              forceRender: true,
+              children: purposePane,
+            },
+            {
+              key: 'danger',
+              label: (
+                <span className="text-[var(--color-fail)]">
+                  <WarningOutlined className="mr-1.5" />
+                  {t('wiki.dangerZone')}
+                </span>
+              ),
+              forceRender: true,
+              children: dangerPane,
+            },
+          ]}
+        />
+        {active !== 'danger' && (
+          <div className="pt-2">
+            <Button type="primary" loading={saving} onClick={handleSave}>
+              {t('common.save')}
+            </Button>
           </div>
-        </div>
-
-        {/* 右侧:说明(xl 起显示) */}
-        <aside className="hidden xl:block">
-          <div className="sticky top-2 space-y-4">
-            <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
-              <div className="flex items-center gap-2 text-sm font-medium mb-2 text-[var(--color-text-1)]">
-                <span className="flex items-center text-[var(--color-text-2)]">{activeSection.icon}</span>
-                {t('wiki.settingsHelpTitle')}
-              </div>
-              <p className="text-[13px] leading-6 text-[var(--color-text-3)] m-0">{t(HELP_KEY[active])}</p>
-              {active === 'purpose' && (
-                <p className="text-[13px] leading-6 text-[var(--color-text-3)] mt-2 mb-0">{t('wiki.helpPurposeTip')}</p>
-              )}
-            </div>
-          </div>
-        </aside>
-      </div>
+        )}
+      </Form>
     </Spin>
   );
 };

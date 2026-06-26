@@ -46,13 +46,20 @@ const GraphTab: React.FC<{ kbId: number }> = ({ kbId }) => {
 
   if (!graph) {
     return (
-      <Spin spinning={loading}>
-        <Empty />
-      </Spin>
+      <div className="h-full flex items-center justify-center">
+        <Spin spinning={loading}>
+          <Empty />
+        </Spin>
+      </div>
     );
   }
 
-  return <GraphExplorer graph={graph} titleOf={titleOf} onRebuild={handleRebuild} rebuilding={rebuilding} />;
+  // height="100%":铺满父级 flex 容器,使图谱随内容区高度自适应,不再用固定 calc 撑出滚动条
+  return (
+    <div className="h-full">
+      <GraphExplorer graph={graph} titleOf={titleOf} onRebuild={handleRebuild} rebuilding={rebuilding} height="100%" />
+    </div>
+  );
 };
 
 export default GraphTab;

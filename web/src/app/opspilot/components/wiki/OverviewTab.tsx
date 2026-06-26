@@ -6,6 +6,7 @@ import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiOverview } from '@/app/opspilot/types/wiki';
 import WikiQaAssistant from './WikiQaAssistant';
+import ContributionTag from './ContributionTag';
 
 const MAT_STATUS_META: Record<string, { color: string; key: string }> = {
   pending: { color: 'default', key: 'wiki.statusPending' },
@@ -108,7 +109,7 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                   renderItem={(p) => (
                     <List.Item>
                       <span className="truncate mr-2">{String(p.title)}</span>
-                      <Tag>{String(p.contribution)}</Tag>
+                      <ContributionTag value={String(p.contribution)} />
                     </List.Item>
                   )}
                 />
