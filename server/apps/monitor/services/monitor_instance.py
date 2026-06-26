@@ -411,9 +411,13 @@ class InstanceSearch:
 
         page = self.query_data.get("page", 1)
         page_size = self.query_data.get("page_size", 10)
-        start = (page - 1) * page_size
-        end = start + page_size
-        results = self._project_instance_identity(qs)[start:end]
+        projected_qs = self._project_instance_identity(qs)
+        if page_size == -1:
+            results = projected_qs
+        else:
+            start = (page - 1) * page_size
+            end = start + page_size
+            results = projected_qs[start:end]
         org_objs = MonitorInstanceOrganization.objects.filter(monitor_instance_id__in=[obj.id for obj in results])
         org_map = {}
         for org in org_objs:

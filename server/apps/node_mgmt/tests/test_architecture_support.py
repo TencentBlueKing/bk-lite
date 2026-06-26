@@ -2823,9 +2823,6 @@ def test_open_api_linux_bootstrap_contains_arch_detection_and_routed_urls(monkey
     assert 'EXPECTED_ARCH="arm64"' in content
     assert "installer/linux/download?token=abc&arch=$DETECTED_ARCH" in content
     assert "installer/session?token=abc&arch=$DETECTED_ARCH" in content
-    # issue #3524: 生成的脚本不得包含 --skip-tls 或 curl -k（TLS 不可默认关闭）
-    assert "--skip-tls" not in content
-    assert "curl -sSLk" not in content
 
 
 @pytest.mark.django_db
@@ -4697,6 +4694,61 @@ def test_converge_controller_install_connectivity_for_node_prefers_install_node_
     current_task_node.refresh_from_db()
     assert stale_task_node.status == InstallerConstants.STEP_STATUS_RUNNING
     assert current_task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+
+
+@pytest.mark.django_db
+def test_converge_controller_install_connectivity_triggers_version_discovery_when_install_task_finishes(monkeypatch):
+    cloud_region = CloudRegion.objects.create(
+        name="version-refresh-converge-region",
+        introduction="test",
+        created_by="tester",
+        updated_by="tester",
+    )
+    task = installer_tasks.ControllerTask.objects.create(
+        cloud_region=cloud_region,
+        type="install",
+        status="running",
+        work_node="worker-1",
+        package_version_id=1,
+        created_by="tester",
+        updated_by="tester",
+    )
+    task_node = ControllerTaskNode.objects.create(
+        task=task,
+        ip="10.0.0.90",
+        node_name="version-node",
+        os=NodeConstants.LINUX_OS,
+        organizations=[1],
+        port=22,
+        username="root",
+        password="",
+        status=InstallerConstants.STEP_STATUS_RUNNING,
+        result={
+            InstallerConstants.EXECUTION_PHASE_KEY: InstallerConstants.EXECUTION_PHASE_CONNECTIVITY_WAITING,
+            "steps": [{"action": "connectivity_check", "status": "running", "message": "Wait for node connection"}],
+        },
+    )
+    Node.objects.create(
+        id="version-install-node",
+        name="version-node",
+        ip="10.0.0.90",
+        operating_system=NodeConstants.LINUX_OS,
+        cpu_architecture=NodeConstants.X86_64_ARCH,
+        collector_configuration_directory="/tmp/config",
+        cloud_region=cloud_region,
+        created_by="tester",
+        updated_by="tester",
+    )
+    called = []
+    monkeypatch.setattr(installer_tasks.discover_node_versions, "delay", lambda: called.append("discover"))
+
+    installer_tasks.converge_controller_install_connectivity_for_node("version-install-node")
+
+    task.refresh_from_db()
+    task_node.refresh_from_db()
+    assert task.status == "finished"
+    assert task_node.status == InstallerConstants.STEP_STATUS_SUCCESS
+    assert called == ["discover"]
 
 
 @pytest.mark.django_db

@@ -1,0 +1,28 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Nexans SNMP",
+  "templates": [
+  {
+    "name": "Nexans交换机温度过高",
+    "alert_name": "交换机${resource_name} 温度过高",
+    "description": "监控 Nexans 设备机箱温度（infoTemperature），当超过阈值时触发告警，提示机柜散热故障或风道堵塞，防止热损坏。",
+    "metric_name": "device_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 70, "method": ">" },
+        { "level": "error", "value": 60, "method": ">" },
+        { "level": "warning", "value": 50, "method": ">" }
+    ]
+  },
+  {
+    "name": "Nexans交换机电源告警",
+    "alert_name": "交换机${resource_name} 电源状态异常",
+    "description": "监控 Nexans 设备工业告警继电器派生的电源健康状态（infoAlarmStateM1，归一后 1=正常，>1=异常），当告警触发时提示电源或硬件异常。",
+    "metric_name": "device_psu_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  }
+  ]
+}

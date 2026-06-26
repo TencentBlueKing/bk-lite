@@ -73,7 +73,7 @@ class MetricQueryService:
 
         Args:
             period: 周期配置 {"type": "min|hour|day", "value": int}
-            points: 数据点数,默认为1
+            points: 兼容参数，不改变步长；连续触发只扩展查询范围
 
         Returns:
             str: 格式化后的步长字符串,如 "5m", "1h", "1d"
@@ -85,7 +85,7 @@ class MetricQueryService:
             raise BaseAppException("policy period is empty")
 
         period_type = period["type"]
-        period_value = int(period["value"] / points)
+        period_value = int(period["value"])
 
         period_unit_map = {
             "min": "m",
@@ -129,7 +129,7 @@ class MetricQueryService:
 
         Args:
             period: 周期配置
-            points: 数据点数
+            points: 需要返回的连续汇聚点数；查询范围扩展为 period * points，步长仍为 period
 
         Returns:
             dict: VictoriaMetrics返回的指标数据
@@ -140,7 +140,8 @@ class MetricQueryService:
         # 计算查询时间范围
         end_timestamp = int(self.policy.last_run_time.timestamp())
         period_seconds = period_to_seconds(period)
-        start_timestamp = end_timestamp - period_seconds
+        points = max(1, int(points or 1))
+        start_timestamp = end_timestamp - period_seconds * points
 
         # 准备查询参数
         query = self.format_pmq()

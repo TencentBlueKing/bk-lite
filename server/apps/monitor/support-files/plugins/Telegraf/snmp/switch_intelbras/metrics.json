@@ -1,0 +1,96 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_intelbras",
+  "plugin": "Switch Intelbras SNMP",
+  "plugin_desc": "Intelbras managed switch-specific SNMP collection (S/SG enterprise line, e.g. S2328G-PB, which runs an INTELBRAS OS / Comware-derived platform, IANA PEN 26138). In addition to standard IF-MIB interface metrics, it collects Intelbras private OIDs for device health from the ibEntityExt state table: per-entity control-plane CPU utilization (ibEntityExtCpuUsage) and system memory total bytes plus utilization (ibEntityExtMemSize / ibEntityExtMemUsage). CPU and memory are read from the ibEntityExt table indexed by ENTITY-MIB entPhysicalIndex; the real value lives on the management/CPU entity row while other component rows report zero, so device_cpu_usage and device_memory_usage are aggregated with max() to surface the real reading. The ibEntityExt temperature column carries a 65535 not-applicable sentinel on non-sensor rows that cannot be filtered out by telegraf inputs.snmp, and fan/power-supply health is only distinguishable by joining ENTITY-MIB entPhysicalClass (per-row class filtering telegraf does not support), so temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Intelbras S/SG managed enterprise switches (S2328G-PB and the Comware-based managed line). Lower-end web-smart/unmanaged Intelbras switches expose only MIB-II + IF-MIB.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_intelbras'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the Intelbras device control plane (ibEntityExt table, ibEntityExtCpuUsage column), expressed as a percentage from 0 to 100. The value is read from the ibEntityExt table indexed by ENTITY-MIB entPhysicalIndex; component rows that do not carry a CPU report zero, so the metric is aggregated with max() to surface the real management-entity reading. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_total",
+      "query": "max(device_memory_total{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the total size in bytes of the Intelbras device system memory (ibEntityExt table, ibEntityExtMemSize column). The value is read from the management entity row of the ibEntityExt table and aggregated with max() to surface the real reading. It provides context for the reported memory utilization percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "max(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the overall memory utilization of the Intelbras device (ibEntityExt table, ibEntityExtMemUsage column), reported directly as a percentage from 0 to 100. The value is read from the ibEntityExt table indexed by ENTITY-MIB entPhysicalIndex and aggregated with max() to surface the real management-entity reading. High memory usage may indicate memory leaks, oversized routing/MAC/ARP tables, or insufficient capacity, and can cause instability or failed allocations."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}

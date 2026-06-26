@@ -23,6 +23,13 @@ from apps.alerts.views import (
     receiver_source_data,
     request_test,
 )
+from apps.alerts.views.action import (
+    ActionCallbackView,
+    ActionExecutionViewSet,
+    ActionJobScriptDetailView,
+    ActionJobScriptListView,
+    ActionRuleViewSet,
+)
 
 router = routers.DefaultRouter()
 router.register(r"api/alert_source", AlertSourceModelViewSet, basename="alert_source")
@@ -44,11 +51,16 @@ router.register(
 )
 router.register(r"api/log", SystemLogModelViewSet, basename="log")
 router.register(r"open_api/k8s", K8sOpenAPIViewSet, basename="alerts_k8s_open_api")
+router.register(r"api/action_rule", ActionRuleViewSet, basename="action_rule")
+router.register(r"api/action_execution", ActionExecutionViewSet, basename="action_execution")
 
 urlpatterns = [
     path("api/test/", request_test),
     path("api/receiver_data/", receiver_data),
     path("api/source/<str:source_id>/webhook/", receiver_source_data),
+    path("api/action_callback/", ActionCallbackView.as_view()),
+    path("api/action_job/scripts/", ActionJobScriptListView.as_view()),
+    path("api/action_job/scripts/<int:script_id>/", ActionJobScriptDetailView.as_view()),
 ]
 
 urlpatterns += router.urls

@@ -232,7 +232,23 @@ def _message_to_text(value: Any) -> str:
 def _missing_required_tools(package: dict[str, Any], available_tool_names: set[str]) -> list[str]:
     if not available_tool_names:
         return _as_list(package.get("required_tools"))
-    return [tool for tool in _as_list(package.get("required_tools")) if tool not in available_tool_names]
+    normalized_available = [_normalize_tool_key(tool) for tool in available_tool_names]
+    missing = []
+    for tool in _as_list(package.get("required_tools")):
+        normalized_tool = _normalize_tool_key(tool)
+        if not normalized_tool or not any(_tool_key_matches(normalized_tool, available) for available in normalized_available):
+            missing.append(tool)
+    return missing
+
+
+def _normalize_tool_key(value: Any) -> str:
+    return "".join(char for char in str(value or "").casefold() if char.isalnum())
+
+
+def _tool_key_matches(required: str, available: str) -> bool:
+    if not required or not available:
+        return False
+    return required == available or required in available or available in required
 
 
 def _as_list(value: Any) -> list[str]:

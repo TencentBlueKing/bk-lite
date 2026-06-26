@@ -1,0 +1,81 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_cumulus"
+        config_type = "cumulus"
+        brand = "cumulus"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Cumulus Linux CPU load (HOST-RESOURCES-MIB hrProcessorLoad, per-core %, telegraf averages over the table) ----
+    # 待现网核验：hrProcessorLoad 表 1.3.6.1.2.1.25.3.3.1.2（每核 0-100%），盘侧 avg by instance 取整机均值。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.3.3.1.2"
+        name = "usage"
+    # ---- Cumulus Linux memory (UCD-SNMP-MIB memTotalReal/memAvailReal, KB → 字节经 conversion) ----
+    # 待现网核验：内存总量 .2021.4.5.0 (memTotalReal, KB) / 空闲 .2021.4.6.0 (memAvailReal, KB)。
+    # conversion="float(0)" 后 *1024 由盘侧不做，这里直接以字节口径上报：UCD 报 KB，乘 1024 得字节。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.4.5.0"
+        name = "total"
+        conversion = "int"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.4.6.0"
+        name = "free"
+        conversion = "int"
+    # ---- Cumulus Linux temperature (LM-SENSORS-MIB lmTempSensorsValue, 表 OID, 单位 m℃ → ℃ 由设备/盘侧口径) ----
+    # 待现网核验：lmTempSensorsValue 表 1.3.6.1.4.1.2021.13.16.2.1.3（℃，部分平台 m℃ 需缩放）；盘侧 max by instance 取最高温传感器。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2021.13.16.2.1.3"
+        name = "celsius"
+# ---- 风扇/电源：Cumulus Linux 以软件 NOS 运行于白盒交换机硬件，标准 NET-SNMP（HOST-RESOURCES/UCD/LM-SENSORS）未以无需行级过滤的标量形式暴露独立风扇状态与电源状态 OID → 风扇/电源 N/A 不采。CPU/内存/温度/接口四项干净可采。----

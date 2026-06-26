@@ -4,6 +4,7 @@ import React, { useEffect, useState, useRef, useMemo, useCallback } from 'react'
 import Icon from '@/components/icon';
 import useApiClient from '@/utils/request';
 import dayjs from 'dayjs';
+import { useSearchParams } from 'next/navigation';
 import TimeSelector from '@/components/time-selector';
 import StackedBarChart from '@/app/alarm/components/stackedBarChart';
 import alertStyle from './index.module.scss';
@@ -39,6 +40,11 @@ const getSettings = () => {
 const Alert: React.FC = () => {
   const { isLoading } = useApiClient();
   const { t } = useTranslation();
+  const searchParams = useSearchParams();
+  const initialResourceType = searchParams.get('resource_type') || '';
+  const initialResourceId = searchParams.get('resource_id') || '';
+  const initialActivate = searchParams.get('activate') || '';
+  const initialStatus = searchParams.get('status') || '';
   const { levelList, levelMap } = useCommon();
   const { getAlarmList } = useAlarmApi();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -47,7 +53,11 @@ const Alert: React.FC = () => {
   const beginTime: number = dayjs().subtract(10080, 'minute').valueOf();
   const lastTime: number = dayjs().valueOf();
   const [searchCondition, setSearchCondition] =
-    useState<SearchFilterCondition | null>(null);
+    useState<SearchFilterCondition | null>(() => (
+      initialResourceId
+        ? { field: 'resource_id', type: 'str', value: initialResourceId }
+        : null
+    ));
   const [tableLoading, setTableLoading] = useState<boolean>(false);
   const [chartLoading, setChartLoading] = useState<boolean>(false);
   const [tableData, setTableData] = useState<AlarmTableDataItem[]>([]);
@@ -105,7 +115,9 @@ const Alert: React.FC = () => {
     const { stateFilters } = getSettings();
     return {
       level: [],
-      state: stateFilters || ['pending', 'processing'],
+      state: initialStatus
+        ? initialStatus.split(',').filter(Boolean)
+        : stateFilters || ['pending', 'processing'],
       alarm_source: [],
     };
   });
@@ -206,9 +218,12 @@ const Alert: React.FC = () => {
       page_size: pagination.pageSize,
       created_at_after: dayjs(timeRange[0]).toISOString(),
       created_at_before: dayjs(timeRange[1]).toISOString(),
-      activate: isActiveAlarms ? 1 : '',
-      my_alert: isActiveAlarms ? (myAlarms ? 1 : '') : undefined,
+      activate: initialActivate || (isActiveAlarms ? 1 : ''),
+      my_alert: initialResourceId
+        ? ''
+        : isActiveAlarms ? (myAlarms ? 1 : '') : undefined,
       has_incident: '',
+      resource_type: initialResourceType,
       [conditionValue?.field as string]: conditionValue?.value,
     };
     return params;

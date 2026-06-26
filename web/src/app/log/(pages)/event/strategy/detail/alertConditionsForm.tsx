@@ -69,38 +69,6 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
       </Form.Item>
       <Form.Item<StrategyFields>
         required
-        label={<span className="w-[100px]">{t('log.event.alertName')}</span>}
-        shouldUpdate={(prevValues, currentValues) =>
-          prevValues.alert_type !== currentValues.alert_type
-        }
-      >
-        {() => (
-          <>
-            <Form.Item
-              name="alert_name"
-              noStyle
-              rules={[
-                {
-                  required: true,
-                  message: t('common.required')
-                }
-              ]}
-            >
-              <Input
-                placeholder={t('log.event.alertName')}
-                className="w-[800px]"
-              />
-            </Form.Item>
-            <div className="text-[var(--color-text-3)] mt-[10px]">
-              {lockedPolicyType === 'aggregate'
-                ? t('log.event.alertNameTitle')
-                : t('log.event.keyWordAlertNameTitle')}
-            </div>
-          </>
-        )}
-      </Form.Item>
-      <Form.Item<StrategyFields>
-        required
         label={
           <span className="w-[100px]">{t('log.integration.logGroup')}</span>
         }
@@ -111,7 +79,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           rules={[{ required: true, message: t('common.required') }]}
         >
           <Select
-            style={{ width: 800 }}
+            style={{ width: '100%' }}
             showSearch
             mode="multiple"
             maxTagCount="responsive"
@@ -139,7 +107,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         >
           <Input
             placeholder={t('common.inputMsg')}
-            className="w-[800px]"
+            className="w-full"
             allowClear
           />
         </Form.Item>
@@ -165,7 +133,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
             ]}
           >
             <Select
-              style={{ width: 800 }}
+              style={{ width: '100%' }}
               showSearch
               mode="multiple"
               maxTagCount="responsive"
@@ -193,7 +161,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
         >
           <Form.Item name="group_by" noStyle>
             <Select
-              style={{ width: 800 }}
+              style={{ width: '100%' }}
               allowClear
               showSearch
               mode="multiple"
@@ -227,7 +195,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
               }
             ]}
           >
-            <div className="flex items-center mb-[20px] w-[800px]">
+            <div className="flex items-center mb-[20px] w-full">
               <span>{t('log.integration.meetRule')}</span>
               <Select
                 className="ml-[8px] flex-1"
@@ -266,7 +234,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           ]}
         >
           <InputNumber
-            className="w-[800px]"
+            className="w-full"
             min={SCHEDULE_UNIT_MAP[`${unit}Min`]}
             max={SCHEDULE_UNIT_MAP[`${unit}Max`]}
             precision={0}
@@ -304,7 +272,7 @@ const AlertConditionsForm: React.FC<AlertConditionsFormProps> = ({
           ]}
         >
           <InputNumber
-            className="w-[800px]"
+            className="w-full"
             min={SCHEDULE_UNIT_MAP[`${periodUnit}Min`]}
             max={SCHEDULE_UNIT_MAP[`${periodUnit}Max`]}
             precision={0}

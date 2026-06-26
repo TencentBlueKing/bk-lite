@@ -1,0 +1,44 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Moxa SNMP",
+  "templates": [
+    {
+      "name": "Moxa交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Moxa 工业交换机的机箱温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 60,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Moxa交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Moxa 工业交换机的双路电源输入状态，当任一电源输入故障或断电时触发告警，提示需检查供电冗余，避免单电源失效导致设备宕机。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

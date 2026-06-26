@@ -154,6 +154,7 @@ def get_guest_provider(group_id):
 def consume_bot_event(kwargs):
     """
     kwargs 参数：
+        bot_id: （必填）目标 Bot 的 ID，缺失时拒绝处理并返回错误
         text： 对话内容
         send_id: 用户ID
         timestamp： 对话时间
@@ -167,7 +168,10 @@ def consume_bot_event(kwargs):
         sender_id = kwargs["sender_id"]
         if not sender_id.strip():
             return {"result": True}
-        bot_id = int(kwargs.get("bot_id", 7))
+        raw_bot_id = kwargs.get("bot_id")
+        if not raw_bot_id:
+            return {"result": False, "message": "bot_id is required"}
+        bot_id = int(raw_bot_id)
         created_at = datetime.datetime.fromtimestamp(kwargs["timestamp"], tz=datetime.timezone.utc)
 
         # 优化 input_channel 获取逻辑

@@ -22,6 +22,12 @@ STOPPED_STATUS = {3, 4}
 ACTION_TASK_TIMEOUT_SECONDS = 300
 
 
+def _normalize_step_details(status, details=None, message=None):
+    if status in {"error", "timeout", "cancelled"}:
+        return normalize_task_details(details, message=message)
+    return normalize_task_details(details)
+
+
 def _add_step(task_node, action, status, message, details=None):
     result = task_node.result or {}
     append_step(
@@ -30,7 +36,7 @@ def _add_step(task_node, action, status, message, details=None):
         status,
         message,
         timestamp=now_iso(),
-        details=normalize_task_details(details, message=message),
+        details=_normalize_step_details(status, details, message),
     )
     task_node.result = result
 
@@ -42,7 +48,7 @@ def _update_step_by_action(task_node, action, status, message, details=None):
         action,
         status,
         message,
-        details=normalize_task_details(details, message=message),
+        details=_normalize_step_details(status, details, message),
         timestamp=now_iso(),
     )
     task_node.result = result
@@ -55,7 +61,7 @@ def _update_last_running_step(task_node, status, message, details=None):
         result,
         status,
         message,
-        details=normalize_task_details(details, message=message),
+        details=_normalize_step_details(status, details, message),
         timestamp=now_iso(),
     )
     task_node.result = result

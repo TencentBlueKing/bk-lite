@@ -16,6 +16,7 @@
 import datetime
 from typing import Dict, Any, Optional
 
+from django.db.models import Q
 from django.utils import timezone
 
 from apps.core.logger import alert_logger as logger
@@ -53,6 +54,43 @@ class TimeRangeChecker:
         if timezone.is_aware(self.check_time):
             return timezone.localtime(self.check_time)
         return self.check_time
+
+    def to_orm_filter(self, field_name: str = "created_at") -> Optional[Q]:
+        """尝试将时间范围配置转换为 Django ORM Q 表达式，下推到数据库过滤。
+
+        仅 ``type="one"``（绝对时段）支持直接翻译为 SQL range 查询；
+        其余循环型时段（day/week/month）依赖本地时区的时/分/秒或周几/月日，
+        需要数据库生成列支持，暂返回 ``None`` 退化到 Python 过滤。
+
+        Args:
+            field_name: 模型上存储时间戳的字段名，默认 ``"created_at"``。
+
+        Returns:
+            ``Q`` 对象（可直接传给 ``.filter()``），或 ``None``（表示无法下推）。
+        """
+        if not self.config:
+            return Q()  # 无配置 → 全部匹配，返回空 Q（.filter(Q()) 等同于无条件）
+
+        time_type = self.config.get("type", "one")
+        if time_type != "one":
+            return None  # 循环型时段无法用 SQL 精确下推，由调用方退化到 Python 过滤
+
+        start_time_str = self.config.get("start_time")
+        end_time_str = self.config.get("end_time")
+        if not start_time_str or not end_time_str:
+            return None  # 配置不完整，退安全，让 Python 层处理
+
+        try:
+            start_time = timezone.make_aware(
+                datetime.datetime.strptime(start_time_str, "%Y-%m-%d %H:%M:%S")
+            )
+            end_time = timezone.make_aware(
+                datetime.datetime.strptime(end_time_str, "%Y-%m-%d %H:%M:%S")
+            )
+        except ValueError:
+            return None  # 格式异常，退到 Python 过滤
+
+        return Q(**{f"{field_name}__range": (start_time, end_time)})
 
     def is_in_range(self) -> bool:
         """

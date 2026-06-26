@@ -1,0 +1,75 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_intelbras"
+        config_type = "intelbras"
+        brand = "intelbras"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Intelbras ibEntityExt state table (Comware-derived, IANA PEN 26138), indexed by ENTITY-MIB entPhysicalIndex ----
+    # 待现网核验：表基址 1.3.6.1.4.1.26138.2.6.1.1.1.1.<列>.<entPhysicalIndex>。
+    # CPU 列 .6 (ibEntityExtCpuUsage, %)；内存 总量列 .10 (ibEntityExtMemSize, bytes)、利用率列 .8 (ibEntityExtMemUsage, 直接%)。
+    # 真值落在管理/CPU 实体行，其余组件行为 0 → 共享盘 max() by instance_id 取真值。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26138.2.6.1.1.1.1.6"
+        name = "usage"
+    # ---- Intelbras system memory (ibEntityExtMemSize 总量字节 + ibEntityExtMemUsage 直接利用率%) ----
+    # 待现网核验：total 列 ...1.1.10（字节，例 518561792≈512MB）/ usage 列 ...1.1.8（直接 %）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26138.2.6.1.1.1.1.10"
+        name = "total"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26138.2.6.1.1.1.1.8"
+        name = "usage"
+# ---- 温度/风扇/电源：N/A 不采。----
+# ---- 温度列 ibEntityExtTemperature(...1.1.12, °C) 在非传感器实体行回填 65535 哨兵值，telegraf inputs.snmp 无法行级过滤 → max() 会被哨兵污染，故不采。----
+# ---- 风扇/电源健康靠 ibEntityExtErrorStatus(...1.1.19) 配合 ENTITY-MIB entPhysicalClass(powerSupply=6/fan=7) 行级类型 join 才能区分（telegraf 不支持行级过滤），故风扇/电源 → N/A。----

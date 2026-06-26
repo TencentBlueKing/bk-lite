@@ -105,7 +105,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                 {channelList.length ? (
                   <SelectCard
                     data={channelCardData}
-                    style={{ maxWidth: 800 }}
+                    style={{ width: '100%' }}
                     onChange={(val) => {
                       form.setFieldValue('notice_type_id', val);
                       handleChannelChange();
@@ -160,7 +160,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                       >
                         <Select
                           style={{
-                            width: '800px'
+                            width: '100%'
                           }}
                           showSearch
                           allowClear
@@ -211,7 +211,7 @@ const NotificationForm: React.FC<NotificationFormProps> = ({
                     >
                       <Select
                         style={{
-                          width: '800px'
+                          width: '100%'
                         }}
                         mode="tags"
                         placeholder={t('log.event.notifierTagsPlaceholder')}
