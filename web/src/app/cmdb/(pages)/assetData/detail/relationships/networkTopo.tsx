@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, Segmented, Button, message, Modal } from 'antd';
-import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Empty, Spin, message, Modal } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
 import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
@@ -509,30 +509,6 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     [centerId, rebuild]
   );
 
-  const handleExportImage = useCallback(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    // 默认 copyStyles 会临时禁用整页样式表再恢复，导致页面闪烁/抖动；这里关掉它，
-    // 改为只把节点用到的几个 CSS 变量解析后注入导出 SVG，颜色仍正常且不动整页样式。
-    const cs = getComputedStyle(document.documentElement);
-    const fallback: Record<string, string> = {
-      '--color-bg-1': '#ffffff',
-      '--color-text-1': '#1f2329',
-      '--color-text-4': '#8a8f99',
-      '--color-border-1': '#e5e6eb',
-      '--color-border-3': '#c9cdd4',
-    };
-    const decls = Object.keys(fallback)
-      .map((v) => `${v}:${cs.getPropertyValue(v).trim() || fallback[v]};`)
-      .join('');
-    graph.exportPNG('network-topo', {
-      padding: 40,
-      backgroundColor: '#ffffff',
-      copyStyles: false,
-      stylesheet: `:root,svg{${decls}}`,
-    });
-  }, []);
-
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
     async (relationshipId: string) => {
@@ -708,52 +684,15 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
         <div
           className={topoStyle.topo}
           style={{
-            height: 'calc(100vh - 178px)',
-            minHeight: 620,
+            height: 'calc(100vh - 128px)',
+            minHeight: 560,
             position: 'relative',
             ...NETWORK_TOPO_VISUAL.canvas,
           }}
         >
-          <div
-            className="absolute left-4 top-4 z-20 flex items-center"
-            style={{
-              padding: 3,
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.9)',
-              border: '1px solid rgba(215, 229, 244, 0.92)',
-              boxShadow: '0 10px 24px rgba(37, 72, 111, 0.09)',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            <Segmented
-              value={layoutMode}
-              onChange={(val) => handleLayoutChange(val as LayoutMode)}
-              options={[
-                { label: t('Model.layoutHierarchical'), value: 'hierarchical' },
-                { label: t('Model.layoutForce'), value: 'force' },
-                { label: t('Model.layoutCircular'), value: 'circular' },
-              ]}
-            />
-          </div>
-          <div
-            className={`${topoStyle.topoCommandBar} absolute right-4 top-4 z-20 flex items-center gap-2`}
-          >
-            <EditToolbar
-              editing={editing}
-              onToggle={() => setEditing((v) => !v)}
-              onAddDevice={() => setAddPanelOpen(true)}
-            />
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={handleExportImage}
-              disabled={!hasGraph}
-            >
-              {t('Model.exportImage')}
-            </Button>
-          </div>
           {editing && (
             <div
-              className="absolute left-4 top-[58px] z-20 px-3 py-1.5 text-[13px] flex items-center gap-1.5"
+              className="absolute right-4 top-[64px] z-20 px-3 py-1.5 text-[13px] flex items-center gap-1.5"
               style={{
                 borderRadius: 8,
                 background: linkingSourceId
@@ -781,6 +720,32 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
               graphRef={graphRef}
               onGraphReady={setGraphInstance}
               onNodeClick={handleCanvasNodeClick}
+              toolbar={{
+                align: 'split',
+                prefix: (
+                  <div className={topoStyle.topoCommandBar} style={{ marginTop: 0 }}>
+                    <EditToolbar
+                      editing={editing}
+                      onToggle={() => setEditing((v) => !v)}
+                      onAddDevice={() => setAddPanelOpen(true)}
+                    />
+                  </div>
+                ),
+                layoutMode,
+                onLayoutChange: (value) => handleLayoutChange(value as LayoutMode),
+                layoutOptions: [
+                  { label: t('Model.layoutHierarchical'), value: 'hierarchical' },
+                  { label: t('Model.layoutForce'), value: 'force' },
+                  { label: t('Model.layoutCircular'), value: 'circular' },
+                ],
+                labels: {
+                  zoomOut: t('Model.networkTopoZoomOut'),
+                  zoomIn: t('Model.networkTopoZoomIn'),
+                  fitView: t('Model.networkTopoFitView'),
+                  exportImage: t('Model.exportImage'),
+                },
+                exportFileName: 'network-topo',
+              }}
               minimap={{
                 width: 200,
                 height: 120,
