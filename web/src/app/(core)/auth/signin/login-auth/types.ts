@@ -1,5 +1,10 @@
 export type LoginAuthRequestStatus = 'pending' | 'success' | 'failed' | 'expired' | 'cancelled';
 export type LoginAuthResultStatus = 'success' | 'failed' | 'cancelled' | 'expired';
+export type LoginAuthBindingsLoadState =
+  | 'loading-bindings'
+  | 'bindings-ready'
+  | 'bindings-empty'
+  | 'bindings-error';
 
 export type LoginAuthValidationViewState =
   | 'idle'

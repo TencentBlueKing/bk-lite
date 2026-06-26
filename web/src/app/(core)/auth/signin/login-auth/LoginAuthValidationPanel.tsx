@@ -2,48 +2,35 @@
 
 import {
   ArrowLeftOutlined,
-  LoadingOutlined,
 } from "@ant-design/icons";
 import Icon from "@/components/icon";
 import type { LoginAuthBindingItem } from "./types";
 
 interface LoginAuthValidationPanelProps {
   bindings: LoginAuthBindingItem[];
-  isLoadingBindings: boolean;
-  activeBindingId: number | null;
+  selectedBindingId: number | null;
   isSelectionLocked: boolean;
-  onStartLoginAuth: (binding: LoginAuthBindingItem) => void;
+  onSelectBinding: (bindingId: number) => void;
 }
 
 export default function LoginAuthValidationPanel({
   bindings,
-  isLoadingBindings,
-  activeBindingId,
+  selectedBindingId,
   isSelectionLocked,
-  onStartLoginAuth,
+  onSelectBinding,
 }: LoginAuthValidationPanelProps) {
-  const shouldShowLoadingState = isLoadingBindings && bindings.length === 0;
-
   return (
     <div className="space-y-3 pt-5">
-      {shouldShowLoadingState && (
-        <div className="flex min-h-[132px] items-center justify-center rounded-2xl border border-[#E9EDF5] bg-white/72 px-6 py-6 shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
-          <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F4F7FB] text-[18px] text-(--color-text-3)">
-            <LoadingOutlined />
-          </div>
-        </div>
-      )}
-
       {bindings.length > 0 && (
         <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,100px))] justify-center gap-4">
           {bindings.map((binding) => {
-            const isActive = isSelectionLocked && binding.id === activeBindingId;
+            const isActive = binding.id === selectedBindingId;
             const isDisabled = isSelectionLocked;
             return (
               <button
                 key={binding.id}
                 type="button"
-                onClick={() => onStartLoginAuth(binding)}
+                onClick={() => onSelectBinding(binding.id)}
                 title={binding.name}
                 disabled={isDisabled}
                 aria-pressed={isActive}
@@ -70,12 +57,6 @@ export default function LoginAuthValidationPanel({
               </button>
             );
           })}
-        </div>
-      )}
-
-      {!isLoadingBindings && bindings.length === 0 && (
-        <div className="rounded-2xl border border-dashed border-(--color-border-2) bg-(--color-fill-1) px-4 py-6 text-center text-sm text-(--color-text-3)">
-          No external login methods are currently available.
         </div>
       )}
     </div>

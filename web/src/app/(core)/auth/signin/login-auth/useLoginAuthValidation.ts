@@ -2,8 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { toSafeRelativeCallbackUrl } from "@/utils/authRedirect";
+import {
+  resolveBindingsLoadState,
+  resolveInitialBindingId,
+  resolveSelectedBinding,
+} from "./orderedBindingState";
 import type {
   LoginAuthBindingItem,
+  LoginAuthBindingsLoadState,
   LoginAuthLoginResult,
   LoginAuthStatusResponseData,
   LoginAuthValidationViewState,
@@ -23,8 +29,6 @@ interface ActiveRequestMeta {
   expiresAt: string;
 }
 
-const BUILTIN_PROVIDER_KEY = "bk_lite_builtin";
-
 function isOtpChallengeResult(loginResult?: LoginAuthLoginResult): boolean {
   return Boolean(loginResult?.require_otp && loginResult?.challenge_id);
 }
@@ -40,14 +44,17 @@ export function useLoginAuthValidation({
   onSessionSync,
 }: UseLoginAuthValidationOptions) {
   const [bindings, setBindings] = useState<LoginAuthBindingItem[]>([]);
+  const [bindingsLoadState, setBindingsLoadState] = useState<LoginAuthBindingsLoadState>("loading-bindings");
   const [isLoadingBindings, setIsLoadingBindings] = useState(false);
   const [viewState, setViewState] = useState<LoginAuthValidationViewState>("idle");
   const [errorMessage, setErrorMessage] = useState("");
+  const [selectedBindingId, setSelectedBindingId] = useState<number | null>(null);
   const [activeBindingId, setActiveBindingId] = useState<number | null>(null);
   const [activeBindingName, setActiveBindingName] = useState("");
   const [activeRequest, setActiveRequest] = useState<ActiveRequestMeta | null>(null);
   const pollingTimerRef = useRef<number | null>(null);
   const pollingInFlightRef = useRef(false);
+  const selectedBinding = resolveSelectedBinding(bindings, selectedBindingId);
 
   const stopPolling = () => {
     if (pollingTimerRef.current !== null) {
@@ -60,7 +67,6 @@ export function useLoginAuthValidation({
   const resetFlow = () => {
     stopPolling();
     setActiveRequest(null);
-    setActiveBindingId(null);
     setActiveBindingName("");
     setErrorMessage("");
     setViewState("idle");
@@ -69,10 +75,49 @@ export function useLoginAuthValidation({
   const resetSelectionState = (nextState: Extract<LoginAuthValidationViewState, "failed" | "cancelled" | "expired">, nextErrorMessage: string) => {
     stopPolling();
     setActiveRequest(null);
-    setActiveBindingId(null);
     setActiveBindingName("");
     setViewState(nextState);
     setErrorMessage(nextErrorMessage);
+  };
+
+  const fetchBindings = async () => {
+    setIsLoadingBindings(true);
+    setBindingsLoadState("loading-bindings");
+    setErrorMessage("");
+
+    try {
+      const response = await fetch("/api/proxy/core/api/get_login_auth_bindings/", {
+        method: "GET",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+      });
+      const responseData = await response.json();
+
+      if (!response.ok || !responseData?.result || !Array.isArray(responseData?.data)) {
+        throw new Error(responseData?.message || "Failed to load login auth bindings");
+      }
+
+      const nextBindings = responseData.data as LoginAuthBindingItem[];
+      setBindings(nextBindings);
+      setBindingsLoadState(resolveBindingsLoadState(nextBindings, false));
+      setSelectedBindingId((current) => {
+        if (current && nextBindings.some((binding) => binding.id === current)) {
+          return current;
+        }
+
+        return resolveInitialBindingId(nextBindings);
+      });
+    } catch (error) {
+      console.error("Failed to fetch login auth bindings:", error);
+      setBindings([]);
+      setBindingsLoadState("bindings-error");
+      setErrorMessage("Failed to load login methods. Please refresh and try again.");
+      setSelectedBindingId(null);
+    } finally {
+      setIsLoadingBindings(false);
+    }
   };
 
   useEffect(() => {
@@ -80,50 +125,11 @@ export function useLoginAuthValidation({
       return;
     }
 
-    let cancelled = false;
-
-    const fetchBindings = async () => {
-      setIsLoadingBindings(true);
-      setErrorMessage("");
-      try {
-        const response = await fetch("/api/proxy/core/api/get_login_auth_bindings/", {
-          method: "GET",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          credentials: "include",
-        });
-        const responseData = await response.json();
-
-        if (!response.ok || !responseData?.result || !Array.isArray(responseData?.data)) {
-          throw new Error(responseData?.message || "Failed to load login auth bindings");
-        }
-
-        if (!cancelled) {
-          setBindings(
-            responseData.data.filter(
-              (binding: LoginAuthBindingItem) => binding.provider_key !== BUILTIN_PROVIDER_KEY,
-            ),
-          );
-        }
-      } catch (error) {
-        if (!cancelled) {
-          console.error("Failed to fetch login auth bindings:", error);
-          setBindings([]);
-          setErrorMessage("Failed to load login methods. Please refresh and try again.");
-        }
-      } finally {
-        if (!cancelled) {
-          setIsLoadingBindings(false);
-        }
-      }
+    const loadBindings = async () => {
+      await fetchBindings();
     };
 
-    void fetchBindings();
-
-    return () => {
-      cancelled = true;
-    };
+    void loadBindings();
   }, [enabled]);
 
   useEffect(() => () => {
@@ -212,9 +218,19 @@ export function useLoginAuthValidation({
     }
   };
 
+  const selectBinding = (bindingId: number) => {
+    if (viewState === "starting" || viewState === "waiting" || viewState === "syncing-session") {
+      return;
+    }
+
+    setSelectedBindingId(bindingId);
+    setErrorMessage("");
+  };
+
   const startLoginAuth = async (binding: LoginAuthBindingItem) => {
     stopPolling();
     setErrorMessage("");
+    setSelectedBindingId(binding.id);
     setActiveBindingId(binding.id);
     setActiveBindingName(binding.name);
     setViewState("starting");
@@ -266,15 +282,29 @@ export function useLoginAuthValidation({
     }
   };
 
+  const startSelectedBindingLogin = async () => {
+    if (!selectedBinding) {
+      return;
+    }
+
+    await startLoginAuth(selectedBinding);
+  };
+
   return {
     bindings,
+    bindingsLoadState,
     isLoadingBindings,
     viewState,
     errorMessage,
+    selectedBinding,
+    selectedBindingId,
     activeBindingId,
     activeBindingName,
     activeRequest,
+    selectBinding,
+    reloadBindings: fetchBindings,
     startLoginAuth,
+    startSelectedBindingLogin,
     resetFlow,
   };
 }

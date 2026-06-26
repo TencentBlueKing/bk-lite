@@ -352,6 +352,43 @@ def test_get_login_auth_bindings_returns_builtin_binding_public_payload():
 
 
 @pytest.mark.django_db
+def test_get_login_auth_bindings_returns_enabled_ready_items_in_order():
+    builtin_instance, builtin_binding = create_builtin_platform_login_auth()
+    builtin_binding.order = 20
+    builtin_binding.save(update_fields=["order"])
+
+    ready_instance = IntegrationInstance.objects.create(
+        name="Feishu Ready",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    ready_binding = LoginAuthBinding.objects.create(
+        name="Feishu Login",
+        integration_instance=ready_instance,
+        description="Feishu SSO",
+        order=10,
+        enabled=True,
+        icon="feishu",
+        external_field="open_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+        default_group_name="",
+    )
+
+    from apps.system_mgmt.nats_api import get_login_auth_bindings
+
+    response = get_login_auth_bindings()
+
+    assert response["result"] is True
+    assert [item["id"] for item in response["data"]] == [ready_binding.id, builtin_binding.id]
+    assert [item["provider_key"] for item in response["data"]] == ["feishu", "bk_lite_builtin"]
+    assert [item["order"] for item in response["data"]] == [10, 20]
+
+
+@pytest.mark.django_db
 def test_get_login_auth_bindings_materializes_wechat_binding_from_login_module():
     LoginModule.objects.create(
         name="微信开放平台",

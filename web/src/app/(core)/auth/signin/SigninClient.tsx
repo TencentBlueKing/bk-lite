@@ -4,8 +4,13 @@ import {useState} from "react";
 import {Input} from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
+import LoginAuthBindingContent from "./login-auth/LoginAuthBindingContent";
 import LoginAuthValidationPanel from "./login-auth/LoginAuthValidationPanel";
 import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
+import {
+  isBindingSelectionLocked,
+  isBuiltinBinding,
+} from "./login-auth/orderedBindingState";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
@@ -371,55 +376,24 @@ export default function SigninClient({
       onError={setFormError}
     />
   );
-  const shouldRenderValidationPanel = authStep === 'login';
-  const isValidationStartingState = shouldRenderValidationPanel && loginAuthValidation.viewState === 'starting';
-  const isValidationWaitingState = shouldRenderValidationPanel && loginAuthValidation.viewState === 'waiting';
-  const isValidationSyncingState = shouldRenderValidationPanel && loginAuthValidation.viewState === 'syncing-session';
-  const isValidationSelectionLocked = isValidationStartingState || isValidationWaitingState || isValidationSyncingState;
-  const shouldShowValidationFormState = shouldRenderValidationPanel && !isValidationSelectionLocked;
-  const shouldShowValidationStatusState = shouldRenderValidationPanel && isValidationSelectionLocked;
+  const selectedBinding = loginAuthValidation.selectedBinding;
+  const isValidationSelectionLocked = isBindingSelectionLocked({
+    authStep,
+    viewState: loginAuthValidation.viewState,
+  });
+  const showBindingsSelector = authStep === 'login' && loginAuthValidation.bindingsLoadState === 'bindings-ready';
+  const showBuiltinLoginForm = authStep === 'login' && (
+    loginAuthValidation.bindingsLoadState === 'bindings-empty'
+    || (
+      loginAuthValidation.bindingsLoadState === 'bindings-ready'
+      && isBuiltinBinding(selectedBinding)
+    )
+  );
+  const shouldShowValidationFormState = authStep === 'login';
   const validationInlineError = shouldShowValidationFormState
     && ['failed', 'cancelled', 'expired'].includes(loginAuthValidation.viewState)
     ? loginAuthValidation.errorMessage
     : '';
-
-  const renderValidationStatusContent = () => (
-    <div className="absolute inset-0 z-10 flex items-center justify-center bg-[linear-gradient(180deg,rgba(255,255,255,0.12),rgba(255,255,255,0.20))] backdrop-blur-[1px]">
-      <div className="flex flex-col items-center gap-5 px-8 text-center">
-        <div className="flex h-18 w-18 items-center justify-center rounded-full bg-[rgba(255,255,255,0.62)] text-[#246BFD]">
-          <svg
-            className={`h-9 w-9 ${isValidationSyncingState ? '' : 'animate-spin'}`}
-            viewBox="0 0 24 24"
-            fill="none"
-            aria-hidden="true"
-          >
-            {isValidationSyncingState ? (
-              <path
-                d="M7 12.5l3 3 7-8"
-                stroke="currentColor"
-                strokeWidth="2.2"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              />
-            ) : (
-              <>
-                <circle cx="12" cy="12" r="9" stroke="currentColor" strokeOpacity="0.2" strokeWidth="2.2" />
-                <path d="M21 12a9 9 0 00-9-9" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" />
-              </>
-            )}
-          </svg>
-        </div>
-        <p className="text-[17px] font-semibold tracking-[0.01em] text-(--color-text-1)">
-          {isValidationSyncingState ? 'Completing sign-in' : isValidationStartingState ? 'Starting authentication' : 'Waiting for authentication'}
-        </p>
-        {!isValidationSyncingState && loginAuthValidation.activeBindingName && (
-          <p className="text-sm text-(--color-text-3)">
-            Continue with {loginAuthValidation.activeBindingName} in the newly opened tab.
-          </p>
-        )}
-      </div>
-    </div>
-  );
 
   const content = (
     <div className={`w-full ${isModalMode ? '' : 'max-w-md'}`} style={isModalMode ? { maxWidth: 388 } : undefined}>
@@ -459,22 +433,31 @@ export default function SigninClient({
         </div>
       )}
 
-      {authStep === 'login' && (
-        <div className="relative">
-          <div className={shouldShowValidationStatusState ? 'pointer-events-none select-none opacity-28 blur-[0.5px]' : ''}>
-            {renderLoginForm()}
-          </div>
-          {shouldShowValidationStatusState && renderValidationStatusContent()}
-        </div>
+      {showBuiltinLoginForm && renderLoginForm()}
+
+      {authStep === 'login' && !showBuiltinLoginForm && (
+        <LoginAuthBindingContent
+          mode={mode}
+          bindingLoadState={loginAuthValidation.bindingsLoadState}
+          selectedBinding={selectedBinding}
+          viewState={loginAuthValidation.viewState}
+          activeBindingName={loginAuthValidation.activeBindingName}
+          errorMessage={loginAuthValidation.errorMessage}
+          onRetryBindings={() => {
+            void loginAuthValidation.reloadBindings();
+          }}
+          onContinueThirdParty={() => {
+            void loginAuthValidation.startSelectedBindingLogin();
+          }}
+        />
       )}
 
-      {shouldRenderValidationPanel && (
+      {showBindingsSelector && (
         <LoginAuthValidationPanel
           bindings={loginAuthValidation.bindings}
-          isLoadingBindings={loginAuthValidation.isLoadingBindings}
-          activeBindingId={loginAuthValidation.activeBindingId}
+          selectedBindingId={loginAuthValidation.selectedBindingId}
           isSelectionLocked={isValidationSelectionLocked}
-          onStartLoginAuth={loginAuthValidation.startLoginAuth}
+          onSelectBinding={loginAuthValidation.selectBinding}
         />
       )}
       {authStep === 'reset-password' && renderPasswordResetForm()}
