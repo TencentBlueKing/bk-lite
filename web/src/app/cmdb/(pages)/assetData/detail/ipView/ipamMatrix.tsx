@@ -1,6 +1,6 @@
 'use client';
 
-import React, { useEffect, useRef, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { Spin, Tooltip, Drawer, Button, Tag, Empty } from 'antd';
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -264,9 +264,8 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
 
 // ─── Square Grid (prefixlen >= 24) ────────────────────────────────────────────
 
-const COLS = 16;
-const CELL_SIZE = 28;
-const CELL_GAP = 3;
+const CELL_MIN = 38; // px — minimum cell edge; grid auto-fills columns to fill the row
+const GRID_GAP = 4;
 
 interface SquareGridProps {
   data: IpamViewData;
@@ -280,35 +279,6 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [selectedIp, setSelectedIp] = useState<IpInstance | null>(null);
 
-  // Pan + zoom state
-  const [scale, setScale] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
-  const dragging = useRef(false);
-  const dragStart = useRef({ mx: 0, my: 0, px: 0, py: 0 });
-  const containerRef = useRef<HTMLDivElement>(null);
-
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    setScale((s) => Math.min(3, Math.max(0.3, s - e.deltaY * 0.001)));
-  }, []);
-
-  const onMouseDown = useCallback((e: React.MouseEvent) => {
-    // Only pan on background (not on cells)
-    if ((e.target as HTMLElement).dataset.role === 'cell') return;
-    dragging.current = true;
-    dragStart.current = { mx: e.clientX, my: e.clientY, px: pan.x, py: pan.y };
-  }, [pan]);
-
-  const onMouseMove = useCallback((e: React.MouseEvent) => {
-    if (!dragging.current) return;
-    setPan({
-      x: dragStart.current.px + e.clientX - dragStart.current.mx,
-      y: dragStart.current.py + e.clientY - dragStart.current.my,
-    });
-  }, []);
-
-  const onMouseUp = useCallback(() => { dragging.current = false; }, []);
-
   const cells: Array<{ hostNum: number; ip: IpInstance | null; kind: CellKind }> = [];
   for (let i = 0; i < data.capacity; i++) {
     const hostNum = baseOffset + i;
@@ -317,128 +287,81 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
     cells.push({ hostNum, ip, kind });
   }
 
-  const gridWidth = COLS * (CELL_SIZE + CELL_GAP) - CELL_GAP;
-  const rows = Math.ceil(data.capacity / COLS);
-  const gridHeight = rows * (CELL_SIZE + CELL_GAP) - CELL_GAP;
-
   const handleCellClick = (ip: IpInstance | null) => {
     if (!ip) return; // free cell — nothing to show
     setSelectedIp(ip);
     setDrawerOpen(true);
   };
 
+  const subnetPrefix = data.subnet_address.split('.').slice(0, 3).join('.');
+
   return (
     <>
+      <style>{`
+        .ipam-cell { transition: transform .12s ease, box-shadow .12s ease; }
+        .ipam-cell:hover { transform: translateY(-2px); box-shadow: 0 4px 10px rgba(0,0,0,.18); z-index: 1; }
+      `}</style>
       <div
-        ref={containerRef}
         style={{
-          overflow: 'hidden',
+          display: 'grid',
+          gridTemplateColumns: `repeat(auto-fill, minmax(${CELL_MIN}px, 1fr))`,
+          gap: GRID_GAP,
+          padding: 16,
           border: '1px solid var(--color-border-2)',
-          borderRadius: 8,
+          borderRadius: 10,
           background: 'var(--color-bg-2)',
-          cursor: dragging.current ? 'grabbing' : 'grab',
-          userSelect: 'none',
-          minHeight: 200,
-          position: 'relative',
         }}
-        onWheel={onWheel}
-        onMouseDown={onMouseDown}
-        onMouseMove={onMouseMove}
-        onMouseUp={onMouseUp}
-        onMouseLeave={onMouseUp}
       >
-        <div
-          style={{
-            transform: `translate(${pan.x}px, ${pan.y}px) scale(${scale})`,
-            transformOrigin: '0 0',
-            padding: 16,
-            width: gridWidth + 32,
-            height: gridHeight + 32,
-          }}
-        >
-          <svg
-            width={gridWidth}
-            height={gridHeight}
-            style={{ display: 'block', overflow: 'visible' }}
-          >
-            {cells.map(({ hostNum, ip, kind }) => {
-              const idx = hostNum - baseOffset;
-              const col = idx % COLS;
-              const row = Math.floor(idx / COLS);
-              const x = col * (CELL_SIZE + CELL_GAP);
-              const y = row * (CELL_SIZE + CELL_GAP);
-              const color = KIND_COLOR[kind];
-              const isFree = kind === 'free';
-              const ipAddr = ip?.ip_addr ?? `${data.subnet_address.split('.').slice(0, 3).join('.')}.${hostNum}`;
-              const label = String(hostNum);
+        {cells.map(({ hostNum, ip, kind }) => {
+          const color = KIND_COLOR[kind];
+          const isFree = kind === 'free';
+          const ipAddr = ip?.ip_addr ?? `${subnetPrefix}.${hostNum}`;
 
-              const tooltipTitle = (
-                <div style={{ fontSize: 12 }}>
-                  <div><strong>{ipAddr}</strong></div>
-                  {ip && (
-                    <>
-                      {ip.ip_status && ip.ip_status.length > 0 && (
-                        <div>{t('Model.ipViewTooltipStatus')}: {ip.ip_status.join(', ')}</div>
-                      )}
-                      {ip.ip_allocated_status && ip.ip_allocated_status.length > 0 && (
-                        <div>{t('Model.ipViewTooltipType')}: {ip.ip_allocated_status.join(', ')}</div>
-                      )}
-                      {ip.inst_name && (
-                        <div>{t('Model.ipViewTooltipUser')}: {ip.inst_name}</div>
-                      )}
-                    </>
+          const tooltipTitle = (
+            <div style={{ fontSize: 12 }}>
+              <div><strong>{ipAddr}</strong></div>
+              {ip && (
+                <>
+                  {ip.ip_status && ip.ip_status.length > 0 && (
+                    <div>{t('Model.ipViewTooltipStatus')}: {ip.ip_status.join(', ')}</div>
                   )}
-                </div>
-              );
+                  {ip.ip_allocated_status && ip.ip_allocated_status.length > 0 && (
+                    <div>{t('Model.ipViewTooltipType')}: {ip.ip_allocated_status.join(', ')}</div>
+                  )}
+                  {ip.inst_name && (
+                    <div>{t('Model.ipViewTooltipUser')}: {ip.inst_name}</div>
+                  )}
+                </>
+              )}
+            </div>
+          );
 
-              return (
-                <Tooltip key={hostNum} title={tooltipTitle} placement="top">
-                  <g
-                    style={{ cursor: ip ? 'pointer' : 'default' }}
-                    onClick={() => handleCellClick(ip)}
-                    data-role="cell"
-                  >
-                    <rect
-                      x={x}
-                      y={y}
-                      width={CELL_SIZE}
-                      height={CELL_SIZE}
-                      rx={4}
-                      fill={isFree ? 'transparent' : color}
-                      stroke={color}
-                      strokeWidth={isFree ? 1 : 0}
-                      opacity={isFree ? 0.4 : 0.85}
-                      data-role="cell"
-                    />
-                    <text
-                      x={x + CELL_SIZE / 2}
-                      y={y + CELL_SIZE / 2 + 4}
-                      textAnchor="middle"
-                      fontSize={9}
-                      fill={isFree ? color : '#fff'}
-                      pointerEvents="none"
-                      data-role="cell"
-                    >
-                      {label}
-                    </text>
-                  </g>
-                </Tooltip>
-              );
-            })}
-          </svg>
-        </div>
-        <div
-          style={{
-            position: 'absolute',
-            bottom: 8,
-            right: 12,
-            fontSize: 11,
-            color: 'var(--color-text-3)',
-            pointerEvents: 'none',
-          }}
-        >
-          scroll to zoom · drag to pan
-        </div>
+          return (
+            <Tooltip key={hostNum} title={tooltipTitle} placement="top" mouseEnterDelay={0.15}>
+              <div
+                className="ipam-cell"
+                onClick={() => handleCellClick(ip)}
+                style={{
+                  aspectRatio: '1 / 1',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  borderRadius: 6,
+                  fontSize: 11,
+                  fontVariantNumeric: 'tabular-nums',
+                  cursor: ip ? 'pointer' : 'default',
+                  background: isFree ? 'rgba(82,196,26,0.12)' : color,
+                  border: `1px solid ${isFree ? 'rgba(82,196,26,0.35)' : color}`,
+                  color: isFree ? '#389e0d' : '#fff',
+                  fontWeight: isFree ? 400 : 600,
+                  userSelect: 'none',
+                }}
+              >
+                {hostNum}
+              </div>
+            </Tooltip>
+          );
+        })}
       </div>
       <IpDetailDrawer
         ip={selectedIp}
