@@ -36,7 +36,7 @@ import {
   MetricItem,
   ThresholdField
 } from '@/app/monitor/types';
-import { LEVEL_MAP } from '@/app/monitor/constants';
+import { LEVEL_MAP, CHART_COLORS } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
 import {
   GAP_INTERVAL_AREA_STYLE,
@@ -44,13 +44,9 @@ import {
   getRenderedGapIntervals
 } from '@/app/monitor/utils/gapIntervals';
 
-// 折线图固定分类色板（AntV/G2，跨图表统一）。按序列索引稳定分配，
-// 替代随机配色，保证同一序列跨刷新/跨视图颜色稳定、彼此可区分。
-const CHART_PALETTE = [
-  '#5B8FF9', '#5AD8A6', '#F6BD16', '#E86452', '#6DC8EC',
-  '#945FB9', '#FF9845', '#1E9493'
-];
-// 折线图默认视觉 token（报告风）：细线 + linear 折角 + 渐变淡填充
+// 折线图默认视觉 token（报告风）：细线 + linear 折角 + 渐变淡填充。
+// 配色用固定分类色板 CHART_COLORS 按序列索引稳定分配（替代随机配色），
+// 与 echarts 版折线图共用同一色板，保证两类图表配色一致。
 const DEFAULT_STROKE_WIDTH = 1;
 const DEFAULT_FILL_OPACITY = 0.36;
 
@@ -219,7 +215,7 @@ const LineChart: React.FC<LineChartProps> = memo(
           color:
             seriesStyles[index]?.color ||
             (index === 0 && metric && typeof metric.color === 'string' ? metric.color : '') ||
-            CHART_PALETTE[index % CHART_PALETTE.length],
+            CHART_COLORS[index % CHART_COLORS.length],
           strokeDasharray: seriesStyles[index]?.strokeDasharray,
           fillOpacity: seriesStyles[index]?.fillOpacity ?? DEFAULT_FILL_OPACITY,
           strokeOpacity: seriesStyles[index]?.strokeOpacity ?? 1,
@@ -722,6 +718,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                     <CustomTooltip
                       unit={unit}
                       visible={!isDragging}
+                      dark
                       metric={metric as MetricItem}
                       seriesUnits={seriesUnits}
                       maxHeight={

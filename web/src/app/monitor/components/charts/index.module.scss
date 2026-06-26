@@ -3,14 +3,13 @@
     pointer-events: auto;
     max-height: 300px;
     max-width: 390px;
+    overflow-x: hidden;
     overflow-y: auto;
-    font-size: 12px;
-    color: #fff;
-    background: rgba(28, 28, 30, 0.92);
-    border: none;
-    padding: 8px 12px 10px;
-    border-radius: 6px;
-    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
+    font-size: 14px;
+    background: var(--color-bg-1);
+    border: 1px solid var(--color-border-1);
+    padding: 10px;
+    border-radius: 5px;
 }
 
 .chart {
