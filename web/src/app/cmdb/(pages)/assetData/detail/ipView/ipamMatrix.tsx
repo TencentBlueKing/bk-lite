@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { Spin, Tooltip, Drawer, Button, Tag } from 'antd';
+import { Spin, Tooltip, Drawer, Button, Tag, Empty } from 'antd';
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
@@ -124,6 +124,9 @@ const SummaryBar: React.FC<SummaryBarProps> = ({ data }) => {
         <span style={{ color: 'var(--color-text-3)', fontSize: 12, marginRight: 4 }}>{t('Model.ipViewRatio')}:</span>
         <strong style={{ color: pct > 80 ? '#ff4d4f' : '#1677ff' }}>{pct}%</strong>
       </span>
+      <div style={{ flexBasis: '100%', height: 6, background: 'var(--color-fill-2)', borderRadius: 3, overflow: 'hidden', marginTop: 2 }}>
+        <div style={{ width: `${pct}%`, height: '100%', background: pct > 80 ? '#ff4d4f' : '#1677ff', transition: 'width .3s' }} />
+      </div>
     </div>
   );
 };
@@ -610,7 +613,13 @@ const IpamMatrix: React.FC<IpamMatrixProps> = ({ instId }) => {
     );
   }
 
-  if (!data) return null;
+  if (!data || !data.subnet_address || !data.subnet_mask) {
+    return (
+      <div style={{ padding: 40, textAlign: 'center' }}>
+        <Empty description={t('Model.ipViewEmptyHint')} />
+      </div>
+    );
+  }
 
   const isSmallSubnet = data.prefixlen >= 24;
 
