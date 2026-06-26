@@ -1988,60 +1988,97 @@ class ToolsNodes(BasicNode):
         return normalized
 
     def _build_skill_backend_and_sources(self, graph_request):
-        """把启用的 SkillPackage 物化到本地工作目录，返回 (backend, sources)。
+        """把启用的 SkillPackage 物化到「一次性沙箱目录」，返回 (backend, sources, sandbox_dir)。
 
         采用 deepagents 自带的 ``LocalShellBackend``：它既是 ``FilesystemBackend``
         （读写技能文件），又实现 ``SandboxBackendProtocol``（提供 ``execute`` shell
-        工具）。这样技能就是「CLI 自运行」的——SKILL.md 里直接写
-        ``uvx markitdown ...`` / ``npx ...`` / 二进制命令，由模型通过 ``execute``
-        在宿主 shell 里跑，完全不依赖业务工具（SSH/浏览器）的接线，保住扩展性。
+        工具）。技能即「CLI 自运行」：SKILL.md 里直接写 ``uvx ...`` / ``npx ...`` /
+        二进制命令，由模型通过 ``execute`` 在 shell 里跑，不依赖业务工具接线。
 
-        sources 指向技能目录父路径（"/skills/"），SkillsMiddleware 据此扫描
-        SKILL.md 的 frontmatter 并渐进式披露。
-        best-effort：无技能或失败返回 (None, [])，不影响主引擎。
-
-        注意（安全）：LocalShellBackend 在 app 宿主机上执行任意命令、无隔离。
-        当前按产品决策直接启用（含 prod），未来可替换为 NATS executor / 容器
-        沙箱（只需换一个实现了 SandboxBackendProtocol 的 backend）。
+        加固（人造沙箱，best-effort 隔离，非容器级强隔离），见实现注释：
+          1. 每次运行新建临时目录、用完即弃（调用方在 finally 中 rmtree）；
+          2. virtual_mode=True：文件工具关进沙箱，不能读写宿主任意路径；
+          3. inherit_env=False + 精简白名单：不把宿主 DB 密码/密钥泄露给技能 shell。
+        sandbox_dir 交给调用方清理。best-effort：无技能或失败返回 (None, [], None)。
         """
         packages = self._resolve_skill_packages(graph_request)
         if not packages:
-            return None, []
+            return None, [], None
+        sandbox_dir = None
         try:
             import os
+            import tempfile
 
             from deepagents.backends import LocalShellBackend
 
             from apps.opspilot.services.skill_package.materializer import materialize_skill_package
 
-            # 按用户做工作目录隔离，避免多租户技能文件串读
-            user_id = str(getattr(graph_request, "user_id", "") or "shared")
-            root_dir = os.path.join(self._skill_local_root(), user_id)
-            skills_dir = os.path.join(root_dir, "skills")
+            base = self._skill_sandbox_base()
+            os.makedirs(base, exist_ok=True)
+            # 一次性沙箱目录：run-XXXX，用完即弃（由调用方在 finally 中清理）
+            sandbox_dir = tempfile.mkdtemp(prefix="run-", dir=base)
+            skills_dir = os.path.join(sandbox_dir, "skills")
             os.makedirs(skills_dir, exist_ok=True)
 
-            # virtual_mode=False：文件工具与 execute 共用同一套真实主机路径，避免
-            #   「execute 写 /tmp/x，read_file 在虚拟根找不到」的路径错配。
-            # root_dir 作为 execute 的工作目录；inherit_env 继承宿主 PATH，使
-            #   uvx/npx/curl 等 CLI 在 execute 中可用。
-            backend = LocalShellBackend(root_dir=root_dir, virtual_mode=False, inherit_env=True)
+            # 加固说明：
+            #   - virtual_mode=True：沙箱目录即虚拟根，read/write/ls/glob/grep 关在沙箱内。
+            #   - inherit_env=False + 精简白名单：杜绝 Django 进程 DB 密码/密钥外泄；
+            #     TMPDIR 也指向沙箱，临时文件不外溢。
+            #   - execute 的 cwd 即沙箱目录；技能命令用相对路径，产物随沙箱销毁。
+            # 局限：execute 跑真实宿主 shell，绝对路径仍可访问宿主，非强隔离；要强隔离
+            #   需换 NATS executor / 容器沙箱（替换 SandboxBackendProtocol 即可）。
+            backend = LocalShellBackend(
+                root_dir=sandbox_dir,
+                virtual_mode=True,
+                inherit_env=False,
+                env=self._sandbox_env(sandbox_dir),
+            )
+            # virtual_mode 下，物化到虚拟根的 /skills/ 即落在 sandbox_dir/skills/
             for pkg in packages:
                 try:
-                    materialize_skill_package(pkg, backend, skills_root=skills_dir)
+                    materialize_skill_package(pkg, backend, skills_root="/skills")
                 except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
                     logger.debug("技能物化跳过(%s): %r", pkg.get("name") if isinstance(pkg, dict) else pkg, me)
-            return backend, [skills_dir + "/"]
+            return backend, ["/skills/"], sandbox_dir
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
-            return None, []
+            self._cleanup_sandbox(sandbox_dir)
+            return None, [], None
 
     @staticmethod
-    def _skill_local_root() -> str:
-        """技能本地工作目录根（execute 在此 cwd 下运行）。"""
+    def _skill_sandbox_base() -> str:
+        """一次性技能沙箱的父目录（每次运行在其下新建临时子目录）。"""
         import os
         import tempfile
 
-        return os.getenv("OPSPILOT_SKILL_LOCAL_ROOT", os.path.join(tempfile.gettempdir(), "opspilot-skills"))
+        return os.getenv("OPSPILOT_SKILL_LOCAL_ROOT", os.path.join(tempfile.gettempdir(), "opspilot-sandbox"))
+
+    @staticmethod
+    def _sandbox_env(sandbox_dir: str) -> dict:
+        """技能 shell 的精简环境白名单：只给 CLI 必需项，绝不带宿主敏感变量。"""
+        import os
+
+        env = {
+            "PATH": os.environ.get("PATH", "/usr/local/bin:/usr/bin:/bin"),
+            "LANG": os.environ.get("LANG", "C.UTF-8"),
+            "LC_ALL": os.environ.get("LC_ALL", os.environ.get("LANG", "C.UTF-8")),
+            "TMPDIR": sandbox_dir,  # 临时文件也落在沙箱内，用完即弃
+        }
+        # HOME 给 uvx/npx 定位缓存（缓存非敏感，复用可加速）；缺省回退到沙箱内。
+        env["HOME"] = os.environ.get("HOME", sandbox_dir)
+        return env
+
+    @staticmethod
+    def _cleanup_sandbox(sandbox_dir: Optional[str]) -> None:
+        """删除一次性沙箱目录（用完即弃）；失败仅记录，不影响主流程。"""
+        if not sandbox_dir:
+            return
+        import shutil
+
+        try:
+            shutil.rmtree(sandbox_dir, ignore_errors=True)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("沙箱清理失败(%s): %r", sandbox_dir, e)
 
     @staticmethod
     def _skill_bucket_name() -> str:
@@ -2116,7 +2153,7 @@ class ToolsNodes(BasicNode):
 
             llm = self.get_llm_client(graph_request)
             tools = self._collect_deepagent_tools(graph_request)
-            backend, skill_sources = self._build_skill_backend_and_sources(graph_request)
+            backend, skill_sources, sandbox_dir = self._build_skill_backend_and_sources(graph_request)
             interrupt_on = self._build_interrupt_on(graph_request, tools)
 
             agent_kwargs: Dict[str, Any] = {
@@ -2137,7 +2174,11 @@ class ToolsNodes(BasicNode):
             # DeepAgent 返回 CompiledStateGraph；提高递归限制以容纳复杂任务
             deep_config = {**config, "recursion_limit": 100}
 
-            result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
+            try:
+                result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
+            finally:
+                # 用完即弃：销毁本次运行的一次性技能沙箱目录
+                self._cleanup_sandbox(sandbox_dir)
 
             # 获取完整的消息列表
             final_messages = result.get("messages", [])

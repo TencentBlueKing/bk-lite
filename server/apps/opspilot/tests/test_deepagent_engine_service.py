@@ -6,6 +6,7 @@ tools/MCP、knowledge_retrieve 工具、SKILL.md 技能（MinIO backend）、人
 """
 
 import asyncio
+import os
 from types import SimpleNamespace
 from unittest.mock import MagicMock, patch
 
@@ -81,33 +82,65 @@ class TestSkillBackendSources:
     def test_no_packages_returns_none_empty(self):
         n = ToolsNodes()
         with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=[]):
-            backend, sources = n._build_skill_backend_and_sources(_request())
-        assert backend is None and sources == []
+            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
+        assert backend is None and sources == [] and sandbox_dir is None
 
-    def test_materializes_packages_and_returns_skills_source(self):
+    def test_materializes_packages_into_ephemeral_sandbox(self):
+        import os
+
         n = ToolsNodes()
         pkgs = [{"name": "k8s-triage"}, {"name": "log-analysis"}]
-        fake_backend = MagicMock()
         with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "apps.opspilot.metis.llm.backends.MinIOBackend", return_value=fake_backend
-        ), patch("apps.opspilot.services.skill_package.materializer.materialize_skill_package") as mat:
-            backend, sources = n._build_skill_backend_and_sources(_request())
-        assert backend is fake_backend
+            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
+        ) as backend_cls, patch(
+            "apps.opspilot.services.skill_package.materializer.materialize_skill_package"
+        ) as mat:
+            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
+        assert backend is not None
         assert sources == ["/skills/"]
         assert mat.call_count == 2
+        # 一次性沙箱目录被创建（用完即弃，由调用方清理）
+        assert sandbox_dir and os.path.isdir(sandbox_dir)
+        # 用的是 LocalShellBackend：虚拟根 + 不继承宿主环境
+        _, kwargs = backend_cls.call_args
+        assert kwargs["virtual_mode"] is True
+        assert kwargs["inherit_env"] is False
+        n._cleanup_sandbox(sandbox_dir)
 
     def test_single_package_materialize_failure_is_isolated(self):
         n = ToolsNodes()
         pkgs = [{"name": "a"}, {"name": "b"}]
         with patch.object(ToolsNodes, "_resolve_skill_packages", return_value=pkgs), patch(
-            "apps.opspilot.metis.llm.backends.MinIOBackend", return_value=MagicMock()
+            "deepagents.backends.LocalShellBackend", return_value=MagicMock()
         ), patch(
             "apps.opspilot.services.skill_package.materializer.materialize_skill_package",
             side_effect=[RuntimeError("boom"), None],
         ):
-            backend, sources = n._build_skill_backend_and_sources(_request())
+            backend, sources, sandbox_dir = n._build_skill_backend_and_sources(_request())
         # 单包失败不影响整体返回
         assert backend is not None and sources == ["/skills/"]
+        n._cleanup_sandbox(sandbox_dir)
+
+    def test_sandbox_env_excludes_host_secrets(self):
+        n = ToolsNodes()
+        os.environ["DB_PASSWORD"] = "should-not-leak"
+        try:
+            env = n._sandbox_env("/tmp/run-xyz")
+        finally:
+            os.environ.pop("DB_PASSWORD", None)
+        assert "DB_PASSWORD" not in env
+        assert set(env).issubset({"PATH", "LANG", "LC_ALL", "TMPDIR", "HOME"})
+        assert env["TMPDIR"] == "/tmp/run-xyz"
+
+    def test_cleanup_sandbox_removes_dir(self):
+        import tempfile
+
+        n = ToolsNodes()
+        d = tempfile.mkdtemp(prefix="run-")
+        assert os.path.isdir(d)
+        n._cleanup_sandbox(d)
+        assert not os.path.exists(d)
+        n._cleanup_sandbox(None)  # None 安全
 
 
 class _FakeGraphBuilder:
@@ -177,7 +210,7 @@ class TestBuildDeepagentNodes:
         captured = {}
         fake_backend = MagicMock()
         with patch.object(ToolsNodes, "_build_knowledge_retrieve_tool", return_value=None), patch.object(
-            ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"])
+            ToolsNodes, "_build_skill_backend_and_sources", return_value=(fake_backend, ["/skills/"], None)
         ):
             self._run_wrapper(node, req, captured)
         kwargs = captured["create_kwargs"]
