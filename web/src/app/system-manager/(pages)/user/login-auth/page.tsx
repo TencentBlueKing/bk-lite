@@ -300,27 +300,39 @@ const LoginAuthPage: React.FC = () => {
       key: 'name',
       title: t('system.user.loginAuthPage.name'),
       dataIndex: 'name',
+      render: (_, record) => {
+        return (
+          <div className='flex content-center'>
+            <div className='w-[26px] mr-2 flex justify-center items-center'>
+              {
+                record.icon
+                  ? <Icon type={record.icon} className="w-[26px]! h-[26px]!" />
+                  : ''
+              }
+            </div>
+            <div>
+              <p className='font-semibold'>{record.name}</p>
+              <span className='text-xs text-[var(--color-text-3)]'>{t(`system.user.loginAuthPage.currentOrder`)}：{record.order}</span>
+            </div>
+          </div>
+        )
+      }
     },
     {
       key: 'integration_instance_name',
-      title: t('system.user.loginAuthPage.integrationInstance'),
+      title: t('system.user.loginAuthPage.integratedSystems'),
       dataIndex: 'integration_instance_name',
+      render: (_, record) => {
+        if(record.provider_key && record.provider_key !== "bk_lite_builtin")
+          return (<>{record.integration_instance_name} / {t(`system.integrationCenter.provider.${record.provider_key}`)}</>)
+        return (<>{record.integration_instance_name}</>)
+      }
     },
     {
       key: 'description',
       title: t('system.user.loginAuthPage.description'),
       dataIndex: 'description',
       ellipsis: true,
-    },
-    {
-      key: 'icon',
-      title: t('system.user.loginAuthPage.icon'),
-      dataIndex: 'icon',
-      render: (_, record) => (
-        record.icon
-          ? <Icon type={record.icon} className="text-[20px] text-[var(--color-primary)]" />
-          : <>{'--'}</>
-      ),
     },
     {
       key: 'enabled',
@@ -451,13 +463,13 @@ const LoginAuthPage: React.FC = () => {
               <Input placeholder={t('system.user.loginAuthPage.namePlaceholder')} />
             </Form.Item>
             {editingBuiltinBinding ? (
-              <Form.Item label={t('system.user.loginAuthPage.integrationInstance')}>
+              <Form.Item label={t('system.user.loginAuthPage.integratedSystems')}>
                 <Input value={editingBinding.integration_instance_name} disabled />
               </Form.Item>
             ) : (
               <Form.Item
                 name="integration_instance"
-                label={t('system.user.loginAuthPage.integrationInstance')}
+                label={t('system.user.loginAuthPage.integratedSystems')}
                 rules={[{ required: true }]}
               >
                 <Select
