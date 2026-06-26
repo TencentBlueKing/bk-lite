@@ -43,6 +43,41 @@
           "suffix": "s"
         }
       }
+    },
+    {
+      "name": "ip_version",
+      "label": "IP版本",
+      "type": "select",
+      "required": true,
+      "default_value": "ipv4",
+      "description": "选择 Ping 使用的 IP 协议版本。IPv4 为默认模式；选择 IPv6 时 Telegraf 将启用 IPv6 探测。",
+      "options": [
+        {
+          "label": "IPv4",
+          "value": "ipv4"
+        },
+        {
+          "label": "IPv6",
+          "value": "ipv6"
+        }
+      ],
+      "widget_props": {
+        "placeholder": "请选择 IP 版本"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.ip_version",
+        "to_form": {
+          "mapping": {
+            "ipv4": [
+              null,
+              "",
+              "ipv4"
+            ],
+            "ipv6": "ipv6"
+          }
+        },
+        "to_api": {}
+      }
     }
   ],
   "table_columns": [
@@ -67,8 +102,8 @@
       "rules": [
         {
           "type": "pattern",
-          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$",
-          "message": "请输入有效的域名或IP地址",
+          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}$",
+          "message": "请输入有效的域名、IPv4或IPv6地址",
           "excel_formula": "OR(ISNUMBER(FIND(\".\",{{CELL}})),AND(LEN({{CELL}})>=7,LEN({{CELL}})<=253))"
         }
       ],
@@ -76,6 +111,26 @@
         "type": "simple",
         "source_fields": ["url"],
         "target_field": "instance_name"
+      }
+    },
+    {
+      "name": "ip_version",
+      "label": "IP版本",
+      "type": "select",
+      "required": true,
+      "default_value": "ipv4",
+      "options": [
+        {
+          "label": "IPv4",
+          "value": "ipv4"
+        },
+        {
+          "label": "IPv6",
+          "value": "ipv6"
+        }
+      ],
+      "widget_props": {
+        "placeholder": "请选择 IP 版本"
       }
     },
     {

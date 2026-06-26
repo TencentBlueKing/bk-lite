@@ -1,4 +1,5 @@
 import json
+import re
 from pathlib import Path
 
 import pytest
@@ -98,3 +99,13 @@ def test_website_https_probe_can_opt_into_skipping_certificate_verification(ui, 
     assert fields["insecure_skip_verify"]["type"] == "switch"
     assert fields["insecure_skip_verify"]["default_value"] is False
     assert "insecure_skip_verify = {{ insecure_skip_verify | default(false) | lower }}" in toml_text
+
+
+@pytest.mark.unit
+def test_website_url_rule_accepts_bracketed_ipv6_literals(ui):
+    url_field = {field["name"]: field for field in ui["table_columns"]}["url"]
+    pattern = url_field["rules"][0]["pattern"]
+
+    assert re.fullmatch(pattern, "http://[2001:db8::1]/")
+    assert re.fullmatch(pattern, "https://[2001:db8::1]:8443/health")
+    assert re.fullmatch(pattern, "2001:db8::1") is None

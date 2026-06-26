@@ -2,6 +2,7 @@
     startup_error_behavior = "retry"
     urls = ["{{ url }}"]
     interval = "{{ interval }}s"
+    ipv6 = {{ ((ip_version | default("ipv4", true)) == "ipv6") | lower }}
     [inputs.ping.tags]
         instance_id = "{{ instance_id }}"
         instance_type = "{{ instance_type }}"
