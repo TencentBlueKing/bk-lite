@@ -120,6 +120,10 @@ export const useInstanceApi = () => {
   const getFileUrl = (fileId: string, download = false): Promise<{ url: string }> =>
     get(`/cmdb/api/instance/download_file/${fileId}/${download ? '?download=1' : ''}`);
 
+  // 获取 IPAM 子网 IP 视图矩阵数据
+  const getIpamView = (instId: string) =>
+    get(`/cmdb/api/instance/ipam_view/${instId}/`);
+
   return {
     searchInstances,
     fulltextSearchInstances,
@@ -149,5 +153,6 @@ export const useInstanceApi = () => {
     uploadFile,
     deleteFile,
     getFileUrl,
+    getIpamView,
   };
 };

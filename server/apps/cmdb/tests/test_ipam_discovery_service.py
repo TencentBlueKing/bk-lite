@@ -1,0 +1,138 @@
+"""选子网发现：范围推导 + 下发 payload 组装（单子网）+ 回调回写。规格 §13.1/§13.2/§13.4。"""
+import pytest
+from unittest.mock import patch, MagicMock
+from apps.cmdb.services.ipam_discovery import build_scan_payload
+
+pytestmark = pytest.mark.unit
+
+SUBNETS = {
+    1: {"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24", "gateway": "10.0.1.1"},
+    2: {"_id": 2, "subnet_address": "192.168.0.0", "subnet_mask": "30", "gateway": ""},
+}
+
+
+class TestBuildScanPayload:
+    def test_payload单子网推导目标并排除网关(self):
+        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[1]]):
+            payload = build_scan_payload(subnet_id=1, scan_method="icmp", ports=None)
+        assert payload["model_id"] == "ip"
+        assert payload["scan_method"] == "icmp"
+        assert payload["subnet_id"] == 1
+        assert len(payload["targets"]) == 253  # /24 去掉网络/广播/网关
+        assert "10.0.1.1" not in payload["targets"]
+        assert "10.0.1.0" not in payload["targets"]
+        assert payload["callback_subject"] == "receive_ip_discovery_result"
+
+    def test_subnet_id存在于payload中(self):
+        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
+            payload = build_scan_payload(subnet_id=2, scan_method="icmp", ports=None)
+        assert "subnet_id" in payload
+        assert payload["subnet_id"] == 2
+        assert len(payload["targets"]) == 2  # /30 有2个主机地址
+
+    def test_tcp默认端口(self):
+        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
+            payload = build_scan_payload(subnet_id=2, scan_method="tcp", ports=None)
+        assert payload["ports"] == [22, 80, 443, 3389]
+
+
+class TestApplyDiscoveryResult:
+    def test_在线入账_未探到的自动发现置离线_手工不动(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [
+            {"_id": 11, "ip_addr": "10.0.1.10", "auto_collect": True, "subnet_id": "1"},
+            {"_id": 12, "ip_addr": "10.0.1.20", "auto_collect": True, "subnet_id": "1"},
+            {"_id": 13, "ip_addr": "10.0.1.30", "auto_collect": False, "subnet_id": "1"},
+        ])
+        ups, offs = [], []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1,
+            alive=[{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}, {"ip": "10.0.1.40", "mac": ""}],
+        )
+        assert {u["ip_addr"] for u in ups} == {"10.0.1.10", "10.0.1.40"}
+        assert offs == [12]
+        assert result["offline"] == 1
+        assert 13 not in offs
+
+    def test_auto_collect缺失的已有记录不被覆盖(self, monkeypatch):
+        """非自动创建的记录（auto_collect 缺失/None）在探到同地址时也不能被覆盖。
+        仅 auto_collect is True 的记录才归发现采集所有、可写。"""
+        from apps.cmdb.services import ipam_discovery
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [
+            {"_id": 21, "ip_addr": "10.0.1.50", "subnet_id": "1"},  # 无 auto_collect 字段
+        ])
+        ups, offs = [], []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1, alive=[{"ip": "10.0.1.50", "mac": ""}],
+        )
+        assert ups == []          # 探到同地址但记录非自动创建 -> 不覆盖
+        assert offs == []         # 也不会被置离线（offline 仅作用于 auto_collect is True）
+        assert result["created"] == 0 and result["updated"] == 0
+
+
+# ---------------------------------------------------------------------------
+# DEFECT A — apply_discovery_result must forward organization from subnet
+# ---------------------------------------------------------------------------
+
+class TestApplyDiscoveryResultOrganization:
+    """DEFECT A: organization from subnet must be passed through to _upsert_alive_ip."""
+
+    def test_organization_forwarded_to_upsert(self, monkeypatch):
+        """apply_discovery_result should load the subnet, extract organization, and
+        pass it to every _upsert_alive_ip call (so instance_create never gets []
+        when the subnet defines a real org)."""
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(
+            ipam_discovery, "_load_subnets_by_ids",
+            lambda ids: [{"_id": 1, "organization": [7], "subnet_address": "10.0.1.0", "subnet_mask": "24"}],
+        )
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [])
+        captured = []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: captured.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        ipam_discovery.apply_discovery_result(1, [{"ip": "10.0.1.10", "mac": ""}])
+
+        assert len(captured) == 1
+        assert captured[0]["organization"] == [7]
+
+
+# ---------------------------------------------------------------------------
+# DEFECT B — _upsert_alive_ip must write collect_time
+# ---------------------------------------------------------------------------
+
+class TestUpsertAliveIpCollectTime:
+    """DEFECT B: _upsert_alive_ip payload must include collect_time."""
+
+    def test_collect_time_in_payload(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+        from apps.cmdb.services.instance import InstanceManage
+
+        captured_payloads = []
+
+        def fake_instance_create(model_id, payload, operator, **kw):
+            captured_payloads.append(payload)
+            return {"_id": 999}
+
+        monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(fake_instance_create))
+
+        ipam_discovery._upsert_alive_ip(
+            existing_id=None,
+            subnet_id=1,
+            ip_addr="10.0.1.5",
+            mac="",
+            organization=[1],
+        )
+
+        assert len(captured_payloads) == 1
+        assert "collect_time" in captured_payloads[0]
+        assert captured_payloads[0]["collect_time"]  # non-empty

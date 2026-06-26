@@ -334,18 +334,20 @@ def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
         notify_channels=[{"id": 9, "channel_type": "nats"}, {"id": 3, "channel_type": "email"}],
     )
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-AN", team=[2])
-    op = AlertOperator(user="system")
+    # 自动分派操作人=系统(SYSTEM_OPERATOR_USER="admin")；策略也分派给 admin，
+    # 不能把与操作人同名的收件人过滤掉，否则收件人为空、不发通知。
+    op = AlertOperator(user="admin")
 
-    result = op.format_assignment_notify_data(assignment, ["op1", "system"], alert)
+    result = op.format_assignment_notify_data(assignment, ["admin", "op1"], alert)
 
     nats = next(p for p in result if p["channel_type"] == "nats")
     assert nats["channel_id"] == 9
-    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["op1"]}
+    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["admin", "op1"]}
     assert nats["object_id"] == "A-AN"
     email = next(p for p in result if p["channel_type"] == "email")
     assert email["channel_id"] == 3
     assert email["content"] == "正文"
-    assert email["username_list"] == ["op1"]
+    assert email["username_list"] == ["admin", "op1"]
 
 
 @pytest.mark.django_db
