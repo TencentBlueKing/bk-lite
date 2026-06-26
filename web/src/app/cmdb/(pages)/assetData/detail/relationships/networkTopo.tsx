@@ -1,18 +1,9 @@
 'use client';
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Empty, Spin, Segmented, Button, message, Modal } from 'antd';
-import { DownloadOutlined, InfoCircleOutlined } from '@ant-design/icons';
+import { Empty, Spin, message, Modal } from 'antd';
+import { InfoCircleOutlined } from '@ant-design/icons';
 import { Graph } from '@antv/x6';
-import { Export } from '@antv/x6-plugin-export';
-import {
-  XFlow,
-  XFlowGraph,
-  Grid,
-  Minimap,
-  useGraphStore,
-  useGraphInstance,
-} from '@antv/xflow';
 import { ForceLayout } from '@antv/layout';
 import { useTranslation } from '@/utils/i18n';
 import { getIconUrl } from '@/app/cmdb/utils/common';
@@ -45,6 +36,7 @@ import {
   NETWORK_TOPO_VISUAL,
   buildNetworkTopoPortLabel,
 } from './networkTopo/visualStyles';
+import { NetworkTopologyX6Canvas } from '@/app/cmdb/components/networkTopology';
 import topoStyle from './index.module.scss';
 
 const NODE_WIDTH = NETWORK_TOPO_VISUAL.node.width;
@@ -61,7 +53,6 @@ const HIER_ROW_GAP = NETWORK_TOPO_VISUAL.layout.rowGap;
 
 type LayoutMode = 'hierarchical' | 'force' | 'circular';
 
-const DEFAULT_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.defaultBody;
 const ACTIVE_BODY_ATTRS = NETWORK_TOPO_VISUAL.node.activeBody;
 
 // inst_name 形如 `${device}-${端口名}`，展示端口时剥掉设备前缀
@@ -71,117 +62,6 @@ const stripDevicePrefix = (instName?: string, device?: string): string => {
     return instName.slice(device.length + 1) || '--';
   }
   return instName;
-};
-
-const ensureDeviceNodeRegistered = () => {
-  Graph.registerNode(
-    DEVICE_NODE_SHAPE,
-    {
-      inherit: 'rect',
-      markup: [
-        { tagName: 'rect', selector: 'body' },
-        { tagName: 'rect', selector: 'iconColumn' },
-        { tagName: 'line', selector: 'divider' },
-        { tagName: 'rect', selector: 'iconPlate' },
-        { tagName: 'image', selector: 'img' },
-        { tagName: 'circle', selector: 'statusDot' },
-        { tagName: 'title', selector: 'tt' },
-        { tagName: 'text', selector: 'lbl' },
-        { tagName: 'text', selector: 'subLbl' },
-      ],
-      attrs: {
-        body: {
-          rx: NETWORK_TOPO_VISUAL.node.radius,
-          ry: NETWORK_TOPO_VISUAL.node.radius,
-          cursor: 'pointer',
-          ...DEFAULT_BODY_ATTRS,
-        },
-        iconColumn: {
-          x: 1,
-          y: 1,
-          width: NETWORK_TOPO_VISUAL.node.iconColumnWidth - 1,
-          height: NODE_HEIGHT - 2,
-          rx: NETWORK_TOPO_VISUAL.node.radius - 1,
-          ry: NETWORK_TOPO_VISUAL.node.radius - 1,
-          fill: '#f7fbff',
-          stroke: 'transparent',
-          strokeWidth: 0,
-          style: { pointerEvents: 'none' },
-        },
-        divider: {
-          x1: NETWORK_TOPO_VISUAL.node.iconColumnWidth,
-          y1: 9,
-          x2: NETWORK_TOPO_VISUAL.node.iconColumnWidth,
-          y2: NODE_HEIGHT - 9,
-          stroke: '#e1ebf6',
-          strokeWidth: 1,
-          style: { pointerEvents: 'none' },
-        },
-        iconPlate: {
-          x: (NETWORK_TOPO_VISUAL.node.iconColumnWidth - NETWORK_TOPO_VISUAL.node.iconPlateSize) / 2,
-          y: (NODE_HEIGHT - NETWORK_TOPO_VISUAL.node.iconPlateSize) / 2,
-          width: NETWORK_TOPO_VISUAL.node.iconPlateSize,
-          height: NETWORK_TOPO_VISUAL.node.iconPlateSize,
-          rx: 11,
-          ry: 11,
-          fill: NETWORK_TOPO_VISUAL.node.iconPlate.fill,
-          stroke: NETWORK_TOPO_VISUAL.node.iconPlate.stroke,
-          strokeWidth: 1,
-          style: { pointerEvents: 'none' },
-        },
-        // img/lbl 设为 pointer-events:none，让整张卡片的命中目标始终是 body —
-        // 否则从图标/文字区域起拖会落在子元素上、拿不到 body 的 magnet，连线起拖不稳定
-        img: {
-          width: NETWORK_TOPO_VISUAL.node.iconSize,
-          height: NETWORK_TOPO_VISUAL.node.iconSize,
-          x: (NETWORK_TOPO_VISUAL.node.iconColumnWidth - NETWORK_TOPO_VISUAL.node.iconSize) / 2,
-          y: (NODE_HEIGHT - NETWORK_TOPO_VISUAL.node.iconSize) / 2,
-          opacity: 0.95,
-          style: { pointerEvents: 'none' },
-        },
-        statusDot: {
-          cx: NODE_WIDTH - 18,
-          cy: 16,
-          r: 4,
-          fill: '#55d6ad',
-          stroke: '#eafff7',
-          strokeWidth: 2,
-          style: { pointerEvents: 'none' },
-        },
-        lbl: {
-          refX: NETWORK_TOPO_VISUAL.node.label.x,
-          refY: 0.41,
-          textAnchor: 'start',
-          textVerticalAnchor: 'middle',
-          fontSize: 14,
-          fontWeight: 600,
-          fill: NETWORK_TOPO_VISUAL.node.label.fill,
-          textWrap: {
-            width: NETWORK_TOPO_VISUAL.node.label.width,
-            height: 22,
-            ellipsis: true,
-          },
-          style: { pointerEvents: 'none' },
-        },
-        subLbl: {
-          refX: NETWORK_TOPO_VISUAL.node.label.x,
-          refY: 0.67,
-          textAnchor: 'start',
-          textVerticalAnchor: 'middle',
-          fontSize: 12,
-          fontWeight: 400,
-          fill: NETWORK_TOPO_VISUAL.node.label.subFill,
-          textWrap: {
-            width: NETWORK_TOPO_VISUAL.node.label.width,
-            height: 18,
-            ellipsis: true,
-          },
-          style: { pointerEvents: 'none' },
-        },
-      },
-    },
-    true
-  );
 };
 
 interface MergedGraph {
@@ -436,80 +316,6 @@ interface NetworkTopoProps {
   instId: string;
 }
 
-interface GraphLoaderProps {
-  data: BuiltGraph;
-  centerId: string;
-  expandedRef: React.MutableRefObject<Set<string>>;
-  onExpand: (node: NetworkTopoNode) => void;
-  nodesMap: Map<string, NetworkTopoNode>;
-  graphRef: React.MutableRefObject<Graph | null>;
-  editing: boolean;
-  onGraphReady?: (g: Graph | null) => void;
-}
-
-const GraphLoader: React.FC<GraphLoaderProps> = ({
-  data,
-  centerId,
-  expandedRef,
-  onExpand,
-  nodesMap,
-  graphRef,
-  editing,
-  onGraphReady,
-}) => {
-  const initData = useGraphStore((state) => state.initData);
-  const graph = useGraphInstance();
-
-  useEffect(() => {
-    ensureDeviceNodeRegistered();
-    initData({ nodes: data.nodes, edges: data.edges });
-  }, [initData, data]);
-
-  // 把 graph 实例提升到父级 ref，并注册导出插件（供工具栏的导出图片按钮使用）
-  useEffect(() => {
-    if (!graph) return;
-    graphRef.current = graph;
-    onGraphReady?.(graph);
-    if (!graph.getPlugin('export')) {
-      graph.use(new Export());
-    }
-    return () => {
-      graphRef.current = null;
-      onGraphReady?.(null);
-    };
-  }, [graph, graphRef, onGraphReady]);
-
-  // 数据/布局变化后重新适配视口，避免切换布局后节点跑到画布外
-  useEffect(() => {
-    if (!graph) return;
-    const timer = window.setTimeout(() => {
-      try {
-        graph.zoomToFit({ padding: 112, maxScale: 1.12 });
-      } catch {
-        // 图未就绪时忽略
-      }
-    }, 60);
-    return () => window.clearTimeout(timer);
-  }, [graph, data]);
-
-  useEffect(() => {
-    if (!graph) return;
-    const handleNodeClick = ({ node }: { node: any }) => {
-      if (editing) return; // 编辑态点节点不展开，让位连线/选择
-      const id = node.id as string;
-      if (id === centerId || expandedRef.current.has(id)) return;
-      const target = nodesMap.get(id);
-      if (target) onExpand(target);
-    };
-    graph.on('node:click', handleNodeClick);
-    return () => {
-      graph.off('node:click', handleNodeClick);
-    };
-  }, [graph, centerId, expandedRef, onExpand, nodesMap, editing]);
-
-  return null;
-};
-
 const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   const { t } = useTranslation();
   const {
@@ -703,30 +509,6 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
     [centerId, rebuild]
   );
 
-  const handleExportImage = useCallback(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    // 默认 copyStyles 会临时禁用整页样式表再恢复，导致页面闪烁/抖动；这里关掉它，
-    // 改为只把节点用到的几个 CSS 变量解析后注入导出 SVG，颜色仍正常且不动整页样式。
-    const cs = getComputedStyle(document.documentElement);
-    const fallback: Record<string, string> = {
-      '--color-bg-1': '#ffffff',
-      '--color-text-1': '#1f2329',
-      '--color-text-4': '#8a8f99',
-      '--color-border-1': '#e5e6eb',
-      '--color-border-3': '#c9cdd4',
-    };
-    const decls = Object.keys(fallback)
-      .map((v) => `${v}:${cs.getPropertyValue(v).trim() || fallback[v]};`)
-      .join('');
-    graph.exportPNG('network-topo', {
-      padding: 40,
-      backgroundColor: '#ffffff',
-      copyStyles: false,
-      stylesheet: `:root,svg{${decls}}`,
-    });
-  }, []);
-
   // 删除连线（已落库），更新合并图并 rebuild
   const handleDeleteLink = useCallback(
     async (relationshipId: string) => {
@@ -886,6 +668,15 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
   ]);
 
   const hasGraph = graphData.nodes.length > 0;
+  const handleCanvasNodeClick = useCallback(
+    (id: string) => {
+      if (editing) return;
+      if (id === centerId || expandedRef.current.has(id)) return;
+      const target = mergedRef.current.nodes.get(id);
+      if (target) handleExpand(target);
+    },
+    [centerId, editing, handleExpand]
+  );
 
   return (
     <div>
@@ -893,52 +684,15 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
         <div
           className={topoStyle.topo}
           style={{
-            height: 'calc(100vh - 178px)',
-            minHeight: 620,
+            height: 'calc(100vh - 128px)',
+            minHeight: 560,
             position: 'relative',
             ...NETWORK_TOPO_VISUAL.canvas,
           }}
         >
-          <div
-            className="absolute left-4 top-4 z-20 flex items-center"
-            style={{
-              padding: 3,
-              borderRadius: 8,
-              background: 'rgba(255,255,255,0.9)',
-              border: '1px solid rgba(215, 229, 244, 0.92)',
-              boxShadow: '0 10px 24px rgba(37, 72, 111, 0.09)',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            <Segmented
-              value={layoutMode}
-              onChange={(val) => handleLayoutChange(val as LayoutMode)}
-              options={[
-                { label: t('Model.layoutHierarchical'), value: 'hierarchical' },
-                { label: t('Model.layoutForce'), value: 'force' },
-                { label: t('Model.layoutCircular'), value: 'circular' },
-              ]}
-            />
-          </div>
-          <div
-            className={`${topoStyle.topoCommandBar} absolute right-4 top-4 z-20 flex items-center gap-2`}
-          >
-            <EditToolbar
-              editing={editing}
-              onToggle={() => setEditing((v) => !v)}
-              onAddDevice={() => setAddPanelOpen(true)}
-            />
-            <Button
-              icon={<DownloadOutlined />}
-              onClick={handleExportImage}
-              disabled={!hasGraph}
-            >
-              {t('Model.exportImage')}
-            </Button>
-          </div>
           {editing && (
             <div
-              className="absolute left-4 top-[58px] z-20 px-3 py-1.5 text-[13px] flex items-center gap-1.5"
+              className="absolute right-4 top-[64px] z-20 px-3 py-1.5 text-[13px] flex items-center gap-1.5"
               style={{
                 borderRadius: 8,
                 background: linkingSourceId
@@ -959,31 +713,45 @@ const NetworkTopo: React.FC<NetworkTopoProps> = ({ modelId, instId }) => {
             </div>
           )}
           {hasGraph ? (
-            <XFlow>
-              <XFlowGraph zoomable pannable minScale={0.2} maxScale={4} fitView />
-              <Grid
-                type="dot"
-                options={{
-                  color: NETWORK_TOPO_VISUAL.grid.color,
-                  thickness: NETWORK_TOPO_VISUAL.grid.thickness,
-                }}
-              />
-              <Minimap
-                width={200}
-                height={120}
-                style={NETWORK_TOPO_VISUAL.minimap}
-              />
-              <GraphLoader
-                data={graphData}
-                centerId={centerId}
-                expandedRef={expandedRef}
-                onExpand={handleExpand}
-                nodesMap={mergedRef.current.nodes}
-                graphRef={graphRef}
-                editing={editing}
-                onGraphReady={setGraphInstance}
-              />
-            </XFlow>
+            <NetworkTopologyX6Canvas
+              data={graphData}
+              centerId={centerId}
+              editing={editing}
+              graphRef={graphRef}
+              onGraphReady={setGraphInstance}
+              onNodeClick={handleCanvasNodeClick}
+              toolbar={{
+                align: 'split',
+                prefix: (
+                  <div className={topoStyle.topoCommandBar} style={{ marginTop: 0 }}>
+                    <EditToolbar
+                      editing={editing}
+                      onToggle={() => setEditing((v) => !v)}
+                      onAddDevice={() => setAddPanelOpen(true)}
+                    />
+                  </div>
+                ),
+                layoutMode,
+                onLayoutChange: (value) => handleLayoutChange(value as LayoutMode),
+                layoutOptions: [
+                  { label: t('Model.layoutHierarchical'), value: 'hierarchical' },
+                  { label: t('Model.layoutForce'), value: 'force' },
+                  { label: t('Model.layoutCircular'), value: 'circular' },
+                ],
+                labels: {
+                  zoomOut: t('Model.networkTopoZoomOut'),
+                  zoomIn: t('Model.networkTopoZoomIn'),
+                  fitView: t('Model.networkTopoFitView'),
+                  exportImage: t('Model.exportImage'),
+                },
+                exportFileName: 'network-topo',
+              }}
+              minimap={{
+                width: 200,
+                height: 120,
+                style: NETWORK_TOPO_VISUAL.minimap,
+              }}
+            />
           ) : (
             !loading && (
               <div className="flex items-center justify-center h-full">

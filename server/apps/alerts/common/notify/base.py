@@ -33,8 +33,10 @@ class NotifyParamsFormat(object):
     def format_title(self):
         if self.build_in:
             alert = self.alerts[0]
-            level = Level.objects.get(level_type=LevelType.ALERT, level_id=int(alert.level))
-            title = f"【{level.level_display_name}】{alert.title}"
+            # 兜底：缺失 Level 行时用原始级别，绝不抛 DoesNotExist 致分派/提醒/升级事务回滚
+            level = Level.objects.filter(level_type=LevelType.ALERT, level_id=int(alert.level)).first()
+            level_name = level.level_display_name if level else alert.level
+            title = f"【{level_name}】{alert.title}"
         else:
             title = f"系统有{len(self.alerts)}条告警未分派，请及时处理"
         return title

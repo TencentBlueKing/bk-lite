@@ -57,6 +57,24 @@ def test_shield_filter_match_by_title(source):
 
 
 @pytest.mark.django_db
+def test_shield_filter_match_by_level(source):
+    """前端按「级别」屏蔽下发的规则 key 为 level（value 为 level_id），应能匹配并屏蔽事件。"""
+    _make_event(source, "E1", level="2")
+    _make_event(source, "E2", level="1")
+    AlertShield.objects.create(
+        name="级别屏蔽",
+        match_type="filter",
+        match_rules=[[{"key": "level", "operator": "eq", "value": "2"}]],
+        suppression_time={},
+    )
+
+    execute_shield_check_for_events(["E1", "E2"])
+    # 仅 level=2 的事件被屏蔽
+    assert Event.objects.get(event_id="E1").status == EventStatus.SHIELD
+    assert Event.objects.get(event_id="E2").status == EventStatus.RECEIVED
+
+
+@pytest.mark.django_db
 def test_shield_no_active_shields(source):
     _make_event(source, "E1")
     result = execute_shield_check_for_events(["E1"])

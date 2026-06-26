@@ -3,6 +3,10 @@ import type { ParamItem, DatasourceItem } from './dataSource';
 import type { ValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import type { Dayjs } from 'dayjs';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
+import type {
+  NetworkStatusTopologyConfig,
+  SceneWidgetType,
+} from './sceneWidget';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -46,8 +50,12 @@ export interface LayoutChangeItem {
 export interface AddComponentConfig {
   name?: string;
   description?: string;
+  defaultWidth?: number;
+  defaultHeight?: number;
   dataSource?: string | number;
   chartType?: string;
+  sceneWidgetType?: SceneWidgetType;
+  networkStatusTopology?: NetworkStatusTopologyConfig;
   dataSourceParams?: ParamItem[];
   tableConfig?: TableConfig;
 }
@@ -88,6 +96,8 @@ import { ThresholdColorConfig } from '@/app/ops-analysis/utils/thresholdUtils';
 
 export interface ValueConfig {
   chartType?: string;
+  sceneWidgetType?: SceneWidgetType;
+  networkStatusTopology?: NetworkStatusTopologyConfig;
   chartThemeMode?: OpsChartThemeMode;
   dataSource?: string | number;
   compare?: boolean;
@@ -137,6 +147,8 @@ export interface DashboardActionConfig {
 export interface WidgetConfig extends ValueConfig {
   name: string;
   description?: string;
+  defaultWidth?: number;
+  defaultHeight?: number;
   tableConfig?: TableConfig;
 }
 
@@ -152,7 +164,7 @@ export interface LayoutItem {
 }
 
 export interface DashboardWidgetLayoutItem extends LayoutItem {
-  itemType?: 'widget';
+  itemType?: 'widget' | 'sceneWidget';
   groupId?: string | null;
 }
 
@@ -180,10 +192,18 @@ export interface ViewConfigProps {
   showChartThemeMode?: boolean;
 }
 
+export interface ComponentSelectorConfigItem extends DatasourceItem {
+  chartType: string;
+  dataSource?: string | number;
+  defaultWidth: number;
+  defaultHeight: number;
+  sceneWidgetType?: SceneWidgetType;
+}
+
 export interface ComponentSelectorProps {
   visible: boolean;
   onCancel: () => void;
-  onOpenConfig?: (item: DatasourceItem) => void;
+  onOpenConfig?: (item: ComponentSelectorConfigItem) => void;
 }
 
 export interface BaseWidgetProps {

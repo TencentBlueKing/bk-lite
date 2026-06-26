@@ -9,6 +9,7 @@ interface WidgetRendererProps {
   baselineData?: any;
   loading?: boolean;
   config?: ValueConfig;
+  refreshKey?: string | number;
   dataSource?: DatasourceItem;
   onReady?: (ready?: boolean) => void;
   onQueryChange?: (params: Record<string, any>) => void;
@@ -21,6 +22,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   baselineData,
   loading = false,
   config,
+  refreshKey,
   dataSource,
   onReady,
   onQueryChange,
@@ -37,6 +39,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       baselineData={baselineData}
       loading={loading}
       config={config}
+      refreshKey={refreshKey}
       dataSource={dataSource}
       onReady={onReady}
       onQueryChange={onQueryChange}

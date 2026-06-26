@@ -28,7 +28,8 @@ class EventShieldOperator(object):
     # 字段映射到模型字段
     FIELD_MAPPING = {
         "source_id": "source__source_id",
-        "level_id": "level",
+        "level": "level",
+        "level_id": "level",  # 兼容历史数据下发的 level_id
         "resource_type": "resource_type",
         "resource_id": "resource_id",
         "content": "description",
