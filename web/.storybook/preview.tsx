@@ -3,8 +3,11 @@ import '@/styles/globals.css';
 import Script from 'next/script';
 import { AntdRegistry } from '@ant-design/nextjs-registry';
 import React from 'react';
+import { IntlProvider } from 'react-intl';
 import { SessionProvider } from 'next-auth/react';
 import { LocaleProvider } from '@/context/locale';
+import zhCommon from '@/locales/zh.json';
+import zhOpspilot from '@/app/opspilot/locales/zh.json';
 import { ThemeProvider } from '@/context/theme';
 import { ClientProvider } from '@/context/client';
 import { PermissionsProvider } from '@/context/permissions';
@@ -21,6 +24,20 @@ const mockSession = {
   },
 };
 
+// Storybook 无 /api/locales,故直接从本地 JSON 扁平化(嵌套 → 点号 key)注入消息,
+// 内层 IntlProvider 覆盖 LocaleProvider 取不到时的空消息,让 t('wiki.xxx') 正常显示中文。
+type LocaleJson = Record<string, unknown>;
+const flatten = (obj: LocaleJson, prefix = '', out: Record<string, string> = {}) => {
+  Object.keys(obj).forEach((k) => {
+    const v = obj[k];
+    const key = prefix ? `${prefix}.${k}` : k;
+    if (v && typeof v === 'object' && !Array.isArray(v)) flatten(v as LocaleJson, key, out);
+    else out[key] = String(v);
+  });
+  return out;
+};
+const sbMessages = { ...flatten(zhCommon as LocaleJson), ...flatten(zhOpspilot as LocaleJson) };
+
 const preview: Preview = {
   decorators: [
     (Story) => (
@@ -33,7 +50,10 @@ const preview: Preview = {
                 <ClientProvider>
                   <PermissionsProvider>
                     <AntdRegistry>
-                      <Story />
+                      {/* @ts-expect-error react-intl type incompatibility with React 19 */}
+                      <IntlProvider locale="zh" messages={sbMessages}>
+                        <Story />
+                      </IntlProvider>
                     </AntdRegistry>
                   </PermissionsProvider>
                 </ClientProvider>

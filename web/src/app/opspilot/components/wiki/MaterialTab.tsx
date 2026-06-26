@@ -166,7 +166,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             >
               {t('wiki.build')}
             </Button>
-            <Popconfirm title={t('wiki.deleteConfirm')} onConfirm={() => handleDelete(record.id)}>
+            <Popconfirm title={t('wiki.deleteMaterialConfirm')} onConfirm={() => handleDelete(record.id)}>
               <Button type="link" size="small" danger disabled={busy}>
                 {t('common.delete')}
               </Button>

@@ -5,7 +5,7 @@ import { Card, Col, Empty, List, Row, Space, Spin, Statistic, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiOverview } from '@/app/opspilot/types/wiki';
-import QaTab from './QaTab';
+import WikiQaAssistant from './WikiQaAssistant';
 
 const MAT_STATUS_META: Record<string, { color: string; key: string }> = {
   pending: { color: 'default', key: 'wiki.statusPending' },
@@ -164,10 +164,8 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           </Row>
         </>
       )}
-      {/* 问答试用:按 spec 4.1 归属「概览」工作区 */}
-      <Card title={t('wiki.qa')} className="mt-2" size="small">
-        <QaTab kbId={kbId} />
-      </Card>
+      {/* 问答试用:改为右下悬浮智能助手,默认不展示,点击展开对话弹窗(更省版面、样式更统一) */}
+      <WikiQaAssistant kbId={kbId} />
     </Spin>
   );
 };
