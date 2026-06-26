@@ -595,6 +595,19 @@ class AlertOperator(object):
             alert.alert_id,
         )
 
+    def format_assignment_notify_data(self, assignment_id, assignee, alert):
+        """auto-dispatch：严格按分派策略勾选的通知方式(notify_channels)构造通知，
+        勾哪个发哪个(含 opspilot)；无策略 / 无渠道 / 无接收人 → 返回 []。"""
+        from apps.alerts.common.notify.dispatcher import build_channel_params
+        from apps.alerts.models.alert_operator import AlertAssignment
+
+        assignment = AlertAssignment.objects.filter(id=assignment_id).first()
+        if not assignment:
+            return []
+        channels = assignment.notify_channels or []
+        user_list = [i for i in assignee if i != self.user]
+        return build_channel_params(user_list, channels, [alert], alert.alert_id)
+
     @staticmethod
     def operator_log(log_data: dict):
         """

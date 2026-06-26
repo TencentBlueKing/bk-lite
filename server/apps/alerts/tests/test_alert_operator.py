@@ -312,3 +312,52 @@ def test_is_alert_allowed_restricts():
     op = AlertOperator(user="op1", allowed_alert_ids=["A1"])
     assert op._is_alert_allowed("A1") is True
     assert op._is_alert_allowed("A2") is False
+
+
+# --------------------------------------------------------------------------
+# format_assignment_notify_data（auto-dispatch 按策略勾选的 notify_channels）
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="正文")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="标题")
+def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=True,
+        notify_channels=[{"id": 9, "channel_type": "nats"}, {"id": 3, "channel_type": "email"}],
+    )
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-AN", team=[2])
+    op = AlertOperator(user="system")
+
+    result = op.format_assignment_notify_data(assignment.id, ["op1", "system"], alert)
+
+    nats = next(p for p in result if p["channel_type"] == "nats")
+    assert nats["channel_id"] == 9
+    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["op1"]}
+    assert nats["object_id"] == "A-AN"
+    email = next(p for p in result if p["channel_type"] == "email")
+    assert email["channel_id"] == 3
+    assert email["content"] == "正文"
+    assert email["username_list"] == ["op1"]
+
+
+@pytest.mark.django_db
+def test_format_assignment_notify_data_assignment_not_found_returns_empty():
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-NF")
+    op = AlertOperator(user="system")
+    assert op.format_assignment_notify_data(999999, ["op1"], alert) == []
+
+
+@pytest.mark.django_db
+def test_format_assignment_notify_data_empty_channels_returns_empty():
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=True, notify_channels=[],
+    )
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-EC", team=[2])
+    op = AlertOperator(user="system")
+    assert op.format_assignment_notify_data(assignment.id, ["op1"], alert) == []
