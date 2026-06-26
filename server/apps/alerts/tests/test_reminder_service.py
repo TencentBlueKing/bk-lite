@@ -204,9 +204,34 @@ def test_send_reminder_notification_session_observing_skipped():
 
 @pytest.mark.django_db
 def test_advance_reminder_missing_returns_false():
-    # AlertReminderTask 主键是 alert(OneToOne)，无 "id" 字段；
-    # _advance_reminder_after_enqueue 用 filter(id=...) 会触发 FieldError 被捕获，返回 False。
+    # 不存在的提醒任务（按 pk=alert 主键查不到）应安全返回 False。
     assert RS._advance_reminder_after_enqueue(999999) is False
+
+
+@pytest.mark.django_db
+def test_advance_reminder_existing_advances_count():
+    """入队后推进现存提醒任务：按主键查到并自增计数。
+
+    复现缺陷：原 filter(id=...) 会抛 FieldError 被吞掉返回 False，
+    导致 reminder_count 永远不递增。修复后应返回 True 且计数 +1。
+    """
+    from django.utils import timezone
+
+    from apps.alerts.constants.constants import AlertStatus
+
+    alert = _make_alert(level="0")
+    alert.status = AlertStatus.PENDING
+    alert.save()
+    assignment = _make_assignment(frequency={"0": {"interval_minutes": 30}})
+    reminder = AlertReminderTask.objects.create(
+        alert=alert, assignment=assignment, is_active=True,
+        current_frequency_minutes=30, current_max_reminders=5, reminder_count=0,
+        next_reminder_time=timezone.now(),
+    )
+
+    assert RS._advance_reminder_after_enqueue(reminder.pk) is True
+    reminder.refresh_from_db()
+    assert reminder.reminder_count == 1
 
 
 # --------------------------------------------------------------------------
@@ -306,6 +331,31 @@ def test_send_reminder_notification_with_channels_does_not_raise():
 
 @pytest.mark.django_db
 def test_check_and_process_reminders_none_due():
-    # 无到期提醒任务时返回零计数（注意：底层 filter(id=...) 存在已知缺陷，见 spawn task）
+    # 无到期提醒任务时返回零计数
     result = RS.check_and_process_reminders()
     assert result == {"processed": 0, "success": 0}
+
+
+@pytest.mark.django_db
+def test_check_and_process_reminders_due_task_is_processed():
+    """到期的 active 提醒任务必须被处理。
+
+    复现缺陷：AlertReminderTask 主键是 alert(OneToOne)，无 "id" 字段，
+    check_and_process_reminders 用 values_list("id") 会抛 FieldError，
+    被外层 try/except 吞掉后静默返回 processed=0，导致提醒永远发不出去。
+    """
+    from datetime import timedelta
+
+    from django.utils import timezone
+
+    alert = _make_alert(level="0")  # 默认 status=UNASSIGNED，处理时计入 processed 后停用
+    assignment = _make_assignment(frequency={"0": {"interval_minutes": 30}})
+    AlertReminderTask.objects.create(
+        alert=alert, assignment=assignment, is_active=True,
+        current_frequency_minutes=30, current_max_reminders=5,
+        next_reminder_time=timezone.now() - timedelta(minutes=1),
+    )
+
+    result = RS.check_and_process_reminders()
+
+    assert result["processed"] == 1

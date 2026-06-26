@@ -80,6 +80,33 @@ def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
 
 
 @nats_client.register
+def job_script_detail(data: dict):
+    """返回单个脚本模板的完整详情（content/script_type/params/timeout）。
+
+    供第三方 App（如告警动作）按 id 读取脚本内容以内联执行。
+    Args:
+        data: {"id": <script_id>}
+    Returns:
+        {"result": True, "data": {id, name, script_type, content, params, timeout}} 或 {"result": False, "message": "..."}
+    """
+    script_id = data.get("id")
+    script = Script.objects.filter(id=script_id).first()
+    if not script:
+        return {"result": False, "message": f"脚本不存在: id={script_id}"}
+    return {
+        "result": True,
+        "data": {
+            "id": script.id,
+            "name": script.name,
+            "script_type": script.script_type,
+            "content": script.content,
+            "params": script.params,
+            "timeout": script.timeout,
+        },
+    }
+
+
+@nats_client.register
 def ansible_task_callback(data: dict):
     """
     Ansible 任务执行回调

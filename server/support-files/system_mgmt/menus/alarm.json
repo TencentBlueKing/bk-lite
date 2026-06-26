@@ -108,6 +108,23 @@
           "operation": [
             "View"
           ]
+        },
+        {
+          "id": "action_rules",
+          "name": "Alert Actions",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        },
+        {
+          "id": "action_records",
+          "name": "Action Records",
+          "operation": [
+            "View"
+          ]
         }
       ]
     }
@@ -129,7 +146,9 @@
         "correlation_rules-View",
         "alert_assign-View",
         "shield_strategy-View",
-        "alert_enrichment-View"
+        "alert_enrichment-View",
+        "action_rules-View",
+        "action_records-View"
       ]
     }
   ]

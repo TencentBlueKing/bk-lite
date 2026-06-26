@@ -65,6 +65,18 @@
           "icon": "guize1"
         },
         {
+          "title": "告警处理",
+          "url": "/alarm/settings/actionRules",
+          "name": "action_rules",
+          "icon": "guize1"
+        },
+        {
+          "title": "执行记录",
+          "url": "/alarm/settings/actionRecords",
+          "name": "action_records",
+          "icon": "guize1"
+        },
+        {
           "title": "全局配置",
           "url": "/alarm/settings/globalConfig",
           "name": "global_config",
@@ -142,6 +154,18 @@
           "title": "Alert Enrichment",
           "url": "/alarm/settings/alertEnrichment",
           "name": "alert_enrichment",
+          "icon": "guize1"
+        },
+        {
+          "title": "Alert Actions",
+          "url": "/alarm/settings/actionRules",
+          "name": "action_rules",
+          "icon": "guize1"
+        },
+        {
+          "title": "Action Records",
+          "url": "/alarm/settings/actionRecords",
+          "name": "action_records",
           "icon": "guize1"
         },
         {

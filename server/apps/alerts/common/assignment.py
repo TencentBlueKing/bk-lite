@@ -69,6 +69,9 @@ class AlertAssignmentOperator:
     # 字段映射到模型字段
     FIELD_MAPPING = {
         "source_id": "source_name",
+        # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
+        # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
+        "level": "level",
         "level_id": "level",
         "resource_type": "resource_type",
         "resource_id": "resource_id",
