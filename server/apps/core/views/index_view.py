@@ -106,7 +106,7 @@ def _is_safe_relative_callback_url(callback_url: str) -> bool:
 
 
 def _build_login_auth_callback_uri(request):
-    base_url = _get_login_auth_external_base_url(local_port=8011)
+    base_url = _get_login_auth_external_base_url()
     if base_url:
         return f"{base_url}/api/v1/core/api/login_auth/callback/"
     return request.build_absolute_uri("/api/v1/core/api/login_auth/callback/")
@@ -123,12 +123,6 @@ def _get_login_auth_external_base_url(local_port: int | None = None):
     base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
     if not base_url:
         return ""
-
-    parsed = urlparse(base_url)
-    # TODO: 本地联调临时逻辑，上线前移除。当前强制改写为本地前后端分端口地址。
-    if local_port and parsed.hostname:
-        scheme = parsed.scheme or "http"
-        return f"{scheme}://{parsed.hostname}:{local_port}"
     return base_url
 
 
@@ -139,9 +133,6 @@ def _build_login_auth_result_redirect(status_key: str, message: str):
             "message": message,
         }
     )
-    base_url = _get_login_auth_external_base_url(local_port=3000)
-    if base_url:
-        return HttpResponseRedirect(f"{base_url}/auth/signin/login-auth-result?{query_string}")
     return HttpResponseRedirect(f"/auth/signin/login-auth-result?{query_string}")
 
 

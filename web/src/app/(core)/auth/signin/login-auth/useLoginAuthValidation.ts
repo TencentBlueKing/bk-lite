@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { toSafeRelativeCallbackUrl } from "@/utils/authRedirect";
 import type {
   LoginAuthBindingItem,
   LoginAuthLoginResult,
@@ -219,6 +220,7 @@ export function useLoginAuthValidation({
     setViewState("starting");
 
     try {
+      const safeCallbackUrl = toSafeRelativeCallbackUrl(callbackUrl);
       const response = await fetch("/api/proxy/core/api/start_login_auth/", {
         method: "POST",
         headers: {
@@ -227,7 +229,7 @@ export function useLoginAuthValidation({
         credentials: "include",
         body: JSON.stringify({
           binding_id: binding.id,
-          callback_url: callbackUrl || "/",
+          callback_url: safeCallbackUrl,
         }),
       });
       const responseData = await response.json();
