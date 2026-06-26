@@ -11,37 +11,28 @@ import time
 from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.metis.llm.agent.chatbot_workflow import ChatBotWorkflowGraph, ChatBotWorkflowRequest
 from apps.opspilot.metis.llm.agent.react_agent import ReActAgentGraph, ReActAgentRequest
-from apps.opspilot.models import SkillTypeChoices
 
 
 def create_agent_instance(skill_type, chat_kwargs):
     """
-    根据技能类型创建对应的 Agent 实例和请求对象
+    创建 Agent 实例和请求对象。
+
+    单 Agent 架构（推倒重来）：所有旧引擎（BASIC_TOOL / KNOWLEDGE_TOOL / PLAN_EXECUTE /
+    LATS）统一为唯一的 ReAgent（DeepAgent 引擎）。deepagents 原生提供规划、子代理、
+    虚拟文件系统与技能；知识库通过 knowledge_retrieve 工具 + 可选预检索接入（覆盖原
+    RAG/KNOWLEDGE_TOOL 能力）。Plan-Execute、LATS、ChatBot 旧引擎全部下线。
+    skill_type 入参保留仅为兼容存量调用与数据，不再影响引擎选择。
 
     Args:
-        skill_type: 技能类型，来自 SkillTypeChoices
+        skill_type: 技能类型（已废弃，保留兼容；所有值均路由到 ReAgent）
         chat_kwargs: Agent 请求参数字典
 
     Returns:
         tuple: (graph, request) - Agent 图实例和请求对象
     """
-    # 推倒重来：所有“有工具/规划”的旧引擎（BASIC_TOOL / LATS / PLAN_EXECUTE）统一
-    # 迁移到 ReAgent（DeepAgent 引擎）。deepagents 原生提供规划（TodoListMiddleware）
-    # 与子代理，覆盖 Plan-Execute 能力；LATS 树搜索下线。存量 skill_type 数据不会报错。
-    if skill_type in (
-        SkillTypeChoices.BASIC_TOOL,
-        SkillTypeChoices.LATS,
-        SkillTypeChoices.PLAN_EXECUTE,
-    ):
-        request = ReActAgentRequest(**chat_kwargs)
-        graph = ReActAgentGraph()
-    else:
-        # 默认使用 ChatBot Workflow
-        request = ChatBotWorkflowRequest(**chat_kwargs)
-        graph = ChatBotWorkflowGraph()
-
+    request = ReActAgentRequest(**chat_kwargs)
+    graph = ReActAgentGraph()
     return graph, request
 
 
