@@ -1,21 +1,6 @@
 {
   "zh": [
     {
-      "title": "知识库",
-      "icon": "zhishiku",
-      "url": "/opspilot/wiki",
-      "name": "wiki_list",
-      "hasDetail": true,
-      "children": [
-        {
-          "title": "详情",
-          "url": "/opspilot/wiki/detail",
-          "name": "wiki_detail",
-          "isNotMenuItem": true
-        }
-      ]
-    },
-    {
       "title": "工作台",
       "icon": "jiqiren2",
       "url": "/opspilot/studio",
@@ -88,6 +73,21 @@
       ]
     },
     {
+      "title": "知识库",
+      "icon": "zhishiku",
+      "url": "/opspilot/wiki",
+      "name": "wiki_list",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "详情",
+          "url": "/opspilot/wiki/detail",
+          "name": "wiki_detail",
+          "isNotMenuItem": true
+        }
+      ]
+    },
+    {
       "title": "工具",
       "icon": "gongju-",
       "url": "/opspilot/tool",
@@ -140,21 +140,6 @@
     }
   ],
   "en": [
-    {
-      "title": "Knowledge Base",
-      "icon": "zhishiku",
-      "url": "/opspilot/wiki",
-      "name": "wiki_list",
-      "hasDetail": true,
-      "children": [
-        {
-          "title": "Detail",
-          "url": "/opspilot/wiki/detail",
-          "name": "wiki_detail",
-          "isNotMenuItem": true
-        }
-      ]
-    },
     {
       "title": "Studio",
       "icon": "jiqiren2",
@@ -218,6 +203,21 @@
           "url": "/opspilot/skill/detail/settings",
           "icon": "shezhi",
           "name": "skill_setting"
+        }
+      ]
+    },
+    {
+      "title": "Knowledge Base",
+      "icon": "zhishiku",
+      "url": "/opspilot/wiki",
+      "name": "wiki_list",
+      "hasDetail": true,
+      "children": [
+        {
+          "title": "Detail",
+          "url": "/opspilot/wiki/detail",
+          "name": "wiki_detail",
+          "isNotMenuItem": true
         }
       ]
     },

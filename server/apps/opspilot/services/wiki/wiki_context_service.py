@@ -44,5 +44,11 @@ def augment_prompt(system_prompt, kb_ids, query, top_k=5):
     result = build_context(kb_ids, query, top_k=top_k)
     if not result["context"]:
         return system_prompt, []
-    augmented = f"{system_prompt or ''}\n\n" "【相关知识库信息】(回答时请优先参考以下内容,并在末尾用 [n] 标注所引用的条目)\n" f"{result['context']}"
+    augmented = (
+        f"{system_prompt or ''}\n\n"
+        "【相关知识库信息】请严格依据以下知识库内容回答用户问题,并在末尾用 [n] 标注所引用的条目;"
+        "若以下内容未覆盖用户的问题,请明确回复「知识库中暂无相关内容」,"
+        "不得使用知识库以外的信息,也不得自行推测或编造。\n"
+        f"{result['context']}"
+    )
     return augmented, result["citations"]

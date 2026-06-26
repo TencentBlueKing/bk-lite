@@ -111,8 +111,11 @@ def scan_health(knowledge_base):
         if not title or len(group) < 2:
             continue
         check_type = "conflict" if len({p.page_type for p in group}) > 1 else "duplicate"
+        # 整组同标题页面放进同一条检查的 related,便于在审核详情里并列对比(而非每页一条只看到一页)。
+        # ensure_check 幂等:首个页面创建含全组的检查,组内其余页面命中后跳过 → 每组一条。
+        group_ids = [p.id for p in group]
         for page in group:
-            created += ensure_check(kb, check_type, page)
+            created += ensure_check(kb, check_type, page, related={"pages": group_ids})
 
     # 失效关系:关系指向非 active 页面
     broken = PageRelation.objects.filter(from_page__knowledge_base=kb).exclude(to_page__status="active").select_related("from_page")
@@ -122,8 +125,11 @@ def scan_health(knowledge_base):
     return created
 
 
-def ensure_check(knowledge_base, check_type, page, suggested_actions=None):
-    """幂等创建检查事项:同库同类型同页面已有 open 检查则不重复。返回新建列表。"""
+def ensure_check(knowledge_base, check_type, page, suggested_actions=None, related=None):
+    """幂等创建检查事项:同库同类型同页面已有 open 检查则不重复。返回新建列表。
+
+    related 可显式传入(如重复/冲突整组页面);缺省为仅本页 {"pages": [page.id]}。
+    """
     exists = CheckItem.objects.filter(
         knowledge_base=knowledge_base, check_type=check_type, status="open", related__pages__contains=[page.id]
     ).exists()
@@ -134,7 +140,7 @@ def ensure_check(knowledge_base, check_type, page, suggested_actions=None):
             knowledge_base=knowledge_base,
             check_type=check_type,
             status="open",
-            related={"pages": [page.id]},
+            related=related or {"pages": [page.id]},
             suggested_actions=suggested_actions or ["dismiss", "supplement_source"],
         )
     ]

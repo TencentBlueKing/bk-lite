@@ -118,6 +118,17 @@ export interface CustomChatMessage {
   repairCommands?: RepairCommands[];
   agentStepProgress?: AgentStepProgressData[];
   skillViews?: SkillViewItem[];
+  wikiCitations?: WikiCitation[];
+}
+
+// Wiki 知识库引用:答案中对应的来源(知识页面/资料)。
+// n/kb_id 仅智能体对话(按 [n] 标注)有;概览问答助手按标题引用,无 n。
+export interface WikiCitation {
+  n?: number;
+  kb_id?: number;
+  kind: string; // page | material_summary
+  id: number;
+  title: string;
 }
 
 export interface ConfigDiffItem {

@@ -94,13 +94,22 @@ export interface BuildRecord {
   updated_at?: string;
 }
 
+export interface CheckPage {
+  id: number;
+  title: string;
+  page_type: string;
+  body: string;
+}
+
 export interface CheckItem {
   id: number;
   knowledge_base: number;
   check_type: string;
   status: string;
   related?: Record<string, unknown>;
+  related_pages?: CheckPage[];
   candidate_version?: number | null;
+  candidate?: { id: number; body: string } | null;
   suggested_actions?: string[];
   created_at?: string;
   updated_at?: string;

@@ -88,6 +88,10 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
 
 
 class CheckItemSerializer(serializers.ModelSerializer):
+    # 涉及页面的标题/正文 与 候选版本正文:供前端展示内容、做「当前 vs 候选」对比,无需逐个再查
+    related_pages = serializers.SerializerMethodField()
+    candidate = serializers.SerializerMethodField()
+
     class Meta:
         model = CheckItem
         fields = [
@@ -96,11 +100,34 @@ class CheckItemSerializer(serializers.ModelSerializer):
             "check_type",
             "status",
             "related",
+            "related_pages",
             "candidate_version",
+            "candidate",
             "suggested_actions",
             "created_at",
             "updated_at",
         ]
+
+    def get_related_pages(self, obj):
+        related = obj.related if isinstance(obj.related, dict) else {}
+        page_ids = related.get("pages", []) or []
+        pages = {p.id: p for p in KnowledgePage.objects.filter(id__in=page_ids)}
+        result = []
+        for pid in page_ids:  # 保持 related 中的顺序
+            p = pages.get(pid)
+            if not p:
+                continue
+            cur = p.current_version
+            result.append(
+                {"id": p.id, "title": p.title, "page_type": p.page_type, "body": (cur.body if cur else "") or ""}
+            )
+        return result
+
+    def get_candidate(self, obj):
+        cand = obj.candidate_version
+        if not cand:
+            return None
+        return {"id": cand.id, "body": cand.body or ""}
 
 
 class PageVersionSerializer(serializers.ModelSerializer):

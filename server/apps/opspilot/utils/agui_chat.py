@@ -450,6 +450,18 @@ async def _generate_agui_stream(
             accumulated_content.append(skill_view_event)
             yield _build_sse_line(skill_view_event)
 
+        # Wiki 知识库引用:把检索到的来源作为 CUSTOM 事件下发,供前端把答案中的 [n] 渲染为可点来源
+        wiki_citations = (chat_kwargs.get("extra_config") or {}).get("wiki_citations")
+        if wiki_citations:
+            citation_event = {
+                "type": "CUSTOM",
+                "name": "wiki_citations",
+                "value": {"citations": wiki_citations},
+                "timestamp": int(time.time() * 1000),
+            }
+            accumulated_content.append(citation_event)
+            yield _build_sse_line(citation_event)
+
         async for sse_line in graph.agui_stream(request):
             if execution_id and await is_interrupt_requested_async(execution_id):
                 interrupt_data = {"type": "INTERRUPTED", "error": "执行已中断", "execution_id": execution_id, "timestamp": int(time.time() * 1000)}

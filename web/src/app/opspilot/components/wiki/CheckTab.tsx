@@ -1,12 +1,19 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Space, Tag, message } from 'antd';
+import { Button, Drawer, Empty, Space, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
+import MarkdownIt from 'markdown-it';
+import DOMPurify from 'dompurify';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { CheckItem } from '@/app/opspilot/types/wiki';
+
+const md = new MarkdownIt({ html: false, linkify: true, breaks: true });
+const mdHtml = (body: string) => ({ __html: DOMPurify.sanitize(md.render(body || '')) });
+const MD_CLS =
+  'text-sm leading-7 break-words [&_h1]:text-base [&_h2]:text-[15px] [&_h3]:text-sm [&_h1]:font-semibold [&_h2]:font-semibold [&_h3]:font-medium [&_ul]:list-disc [&_ul]:pl-5 [&_ol]:list-decimal [&_ol]:pl-5 [&_code]:rounded [&_code]:bg-[var(--color-fill-1)] [&_code]:px-1';
 
 const STATUS_COLOR: Record<string, string> = {
   open: 'gold',
@@ -37,6 +44,7 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [data, setData] = useState<CheckItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [scanning, setScanning] = useState(false);
+  const [detail, setDetail] = useState<CheckItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -64,17 +72,14 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     }
   };
 
-  const handleAccept = async (id: number) => {
-    await acceptCheck(id);
+  const act = async (fn: () => Promise<unknown>) => {
+    await fn();
     message.success(t('wiki.saveSuccess'));
+    setDetail(null);
     load();
   };
 
-  const handleReject = async (id: number) => {
-    await rejectCheck(id);
-    message.success(t('wiki.saveSuccess'));
-    load();
-  };
+  const typeLabel = (ct: string) => (CHECK_TYPE_KEY[ct] ? t(CHECK_TYPE_KEY[ct]) : ct);
 
   const columns: ColumnsType<CheckItem> = [
     {
@@ -82,38 +87,57 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       dataIndex: 'check_type',
       key: 'check_type',
       width: 160,
-      render: (ct: string) => (CHECK_TYPE_KEY[ct] ? t(CHECK_TYPE_KEY[ct]) : ct),
+      render: (ct: string) => typeLabel(ct),
     },
     {
       title: t('wiki.status'),
       dataIndex: 'status',
       key: 'status',
-      width: 120,
+      width: 110,
       render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{s}</Tag>,
     },
     {
       title: t('wiki.related'),
-      dataIndex: 'related',
       key: 'related',
-      render: (r: Record<string, unknown>) => <span className="text-xs">{JSON.stringify(r || {})}</span>,
+      render: (_: unknown, r) => {
+        const pages = r.related_pages || [];
+        if (!pages.length) return <span className="text-xs text-[var(--color-text-3)]">--</span>;
+        // 列出涉及页面标题(同标题重复时会一致),点「详情」看实际内容/对比
+        return <span className="text-[var(--color-text-2)]">{pages.map((p) => p.title).join('  ·  ')}</span>;
+      },
     },
     {
       title: '',
       key: 'action',
-      width: 160,
-      render: (_: unknown, record) =>
-        record.status === 'open' ? (
-          <Space>
-            <Button type="link" size="small" onClick={() => handleAccept(record.id)}>
-              {t('wiki.accept')}
-            </Button>
-            <Button type="link" size="small" danger onClick={() => handleReject(record.id)}>
-              {t('wiki.reject')}
-            </Button>
-          </Space>
-        ) : null,
+      width: 200,
+      render: (_: unknown, r) => (
+        <Space size={4}>
+          <Button type="link" size="small" onClick={() => setDetail(r)}>
+            {t('wiki.detail')}
+          </Button>
+          {r.status === 'open' &&
+            (r.candidate_version ? (
+              // 候选类(资料更新等):可采纳候选版本或丢弃
+              <>
+                <Button type="link" size="small" onClick={() => act(() => acceptCheck(r.id))}>
+                  {t('wiki.accept')}
+                </Button>
+                <Button type="link" size="small" danger onClick={() => act(() => rejectCheck(r.id))}>
+                  {t('wiki.reject')}
+                </Button>
+              </>
+            ) : (
+              // 扫描类(重复/低置信等):无候选版本,仅能忽略(标记已处理)
+              <Button type="link" size="small" onClick={() => act(() => rejectCheck(r.id))}>
+                {t('wiki.dismiss')}
+              </Button>
+            ))}
+        </Space>
+      ),
     },
   ];
+
+  const pages = detail?.related_pages || [];
 
   return (
     <div>
@@ -122,7 +146,6 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           {t('wiki.scan')}
         </Button>
       </div>
-      {/* scroll x:undefined 关闭 CustomTable 默认强制的横向滚动,列宽自适应容器,消除底部多余横向滚动条 */}
       <CustomTable<CheckItem>
         rowKey="id"
         loading={loading}
@@ -131,6 +154,48 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         pagination={false}
         scroll={{ x: undefined }}
       />
+
+      {/* 检查详情:候选类展示「当前 vs 候选」对比,扫描类展示涉及页面内容 */}
+      <Drawer
+        title={detail ? typeLabel(detail.check_type) : ''}
+        open={!!detail}
+        width={760}
+        onClose={() => setDetail(null)}
+        destroyOnHidden
+      >
+        {detail &&
+          (detail.candidate ? (
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <div className="mb-2 text-xs font-medium text-[var(--color-text-3)]">{t('wiki.currentVersion')}</div>
+                <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(pages[0]?.body || '')} />
+              </div>
+              <div className="border-l border-[var(--color-border-2)] pl-4">
+                <div className="mb-2 text-xs font-medium text-[var(--color-primary)]">{t('wiki.candidateVersion')}</div>
+                <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(detail.candidate.body)} />
+              </div>
+            </div>
+          ) : pages.length ? (
+            <div className="space-y-4">
+              <div className="text-xs text-[var(--color-text-3)]">{t('wiki.involvedPages')}</div>
+              {pages.map((p) => (
+                <div key={p.id} className="rounded-lg border border-[var(--color-border-2)] p-3">
+                  <div className="mb-2 flex items-center gap-2 font-medium text-[var(--color-text-1)]">
+                    {p.title}
+                    <Tag className="m-0">{p.page_type}</Tag>
+                  </div>
+                  {p.body ? (
+                    <div className={MD_CLS} dangerouslySetInnerHTML={mdHtml(p.body)} />
+                  ) : (
+                    <span className="text-xs text-[var(--color-text-3)]">--</span>
+                  )}
+                </div>
+              ))}
+            </div>
+          ) : (
+            <Empty />
+          ))}
+      </Drawer>
     </div>
   );
 };

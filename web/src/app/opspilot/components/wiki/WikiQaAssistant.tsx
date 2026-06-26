@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useEffect, useRef, useState } from 'react';
-import { Button, Input, Spin, Tag, Tooltip } from 'antd';
+import { Button, Input, Spin, Tooltip } from 'antd';
 import {
   CloseOutlined,
   CommentOutlined,
@@ -13,11 +13,13 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiQaResult } from '@/app/opspilot/types/wiki';
+import { WikiCitation } from '@/app/opspilot/types/global';
+import WikiCitations from '@/app/opspilot/components/custom-chat-sse/WikiCitations';
 
 interface Msg {
   role: 'user' | 'bot';
   text: string;
-  citations?: { kind: string; title: string }[];
+  citations?: WikiCitation[];
 }
 
 // 知识库问答助手:默认仅右下悬浮按钮,点击展开对话弹窗(可全屏),用知识库 qa 接口逐轮问答。
@@ -118,15 +120,7 @@ const WikiQaAssistant: React.FC<{ kbId: number }> = ({ kbId }) => {
                       }
                     >
                       <p className="m-0 whitespace-pre-wrap break-words">{m.text}</p>
-                      {!!m.citations?.length && (
-                        <div className="mt-2 flex flex-wrap gap-1 border-t border-[var(--color-border-2)] pt-2">
-                          {m.citations.map((c, j) => (
-                            <Tag key={j} className="m-0">
-                              {c.title}
-                            </Tag>
-                          ))}
-                        </div>
-                      )}
+                      {!!m.citations?.length && <WikiCitations citations={m.citations} content={m.text} />}
                     </div>
                   </div>
                 ))}

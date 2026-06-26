@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, Divider, Form, Input, Popconfirm, Select, Spin, Tag, message } from 'antd';
+import { Button, Form, Input, Popconfirm, Select, Spin, message } from 'antd';
 import { AimOutlined, InfoCircleOutlined, WarningOutlined } from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import { useIntl } from 'react-intl';
@@ -33,14 +33,8 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [saving, setSaving] = useState(false);
   const [busy, setBusy] = useState(false);
   const [active, setActive] = useState<SectionKey>('basic');
-  const [kbStatus, setKbStatus] = useState<string>('active');
   // 保存原始 KB:PUT 为全量更新,被移除的设置字段需回填原值,避免被重置
   const kbRef = useRef<WikiKnowledgeBase | null>(null);
-
-  const nameW = Form.useWatch('name', form);
-  const modelW = Form.useWatch('llm_model', form);
-  const introW = Form.useWatch('introduction', form);
-  const modelName = llmModels.find((m) => m.id === modelW)?.name;
 
   const sections: { key: SectionKey; label: string; icon: React.ReactNode; danger?: boolean }[] = [
     { key: 'basic', label: t('wiki.settingsBasic'), icon: <InfoCircleOutlined /> },
@@ -55,7 +49,6 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       const [kb, models] = await Promise.all([fetchKnowledgeBase(kbId), fetchLlmModels().catch(() => [])]);
       kbRef.current = kb;
       setLlmModels(models || []);
-      setKbStatus(kb.status || 'active');
       form.setFieldsValue({
         name: kb.name,
         introduction: kb.introduction,
@@ -239,28 +232,9 @@ const SettingsTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           </div>
         </div>
 
-        {/* 右侧:预览 + 说明(xl 起显示,填满右侧) */}
+        {/* 右侧:说明(xl 起显示) */}
         <aside className="hidden xl:block">
           <div className="sticky top-2 space-y-4">
-            {active === 'basic' && (
-              <div className="rounded-lg border border-[var(--color-border)] p-4">
-                <div className="text-xs text-[var(--color-text-3)] mb-3">{t('wiki.settingsPreviewTitle')}</div>
-                <div className="text-base font-medium text-[var(--color-text-1)] truncate">{nameW || '—'}</div>
-                <div className="mt-1.5">
-                  <Tag color={kbStatus === 'archived' ? 'default' : 'green'} className="!mr-0">
-                    {kbStatus === 'archived' ? t('wiki.statusArchived') : t('wiki.statusActive')}
-                  </Tag>
-                </div>
-                {introW ? (
-                  <div className="mt-3 text-[13px] leading-6 text-[var(--color-text-3)] line-clamp-3">{introW}</div>
-                ) : null}
-                <Divider className="my-3" />
-                <div className="flex justify-between text-sm">
-                  <span className="text-[var(--color-text-3)]">{t('wiki.llmModel')}</span>
-                  <span className="text-[var(--color-text-1)] truncate ml-3 text-right">{modelName || '—'}</span>
-                </div>
-              </div>
-            )}
             <div className="rounded-lg border border-[var(--color-border)] bg-[var(--color-fill-1)] p-4">
               <div className="flex items-center gap-2 text-sm font-medium mb-2 text-[var(--color-text-1)]">
                 <span className="flex items-center text-[var(--color-text-2)]">{activeSection.icon}</span>

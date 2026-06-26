@@ -303,6 +303,9 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["enable_query_rewrite"] = params["enable_query_rewrite"] if params.get("enable_query_rewrite") else skill_obj.enable_query_rewrite
             params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
+            # 透传技能绑定的 Wiki 知识库,触发 format_chat_server_kwargs 的检索增强;
+            # 否则智能体对话不会引用知识库内容,易凭 LLM 自身知识作答(幻觉)。
+            params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
             self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
             from apps.opspilot.utils.prompt_utils import merge_skill_params
@@ -374,6 +377,8 @@ class LLMViewSet(PinMixin, AuthViewSet):
             params["show_think"] = params["show_think"] if params.get("show_think") is not None else skill_obj.show_think
             params["locale"] = getattr(request.user, "locale", "en")  # 用户语言设置
             params["browser_use_force_task"] = True
+            # 同 execute:透传 Wiki 知识库以触发检索增强,避免智能体不查知识库而凭空作答。
+            params["wiki_kb_ids"] = list(skill_obj.wiki_knowledge_bases.values_list("id", flat=True))
             self._apply_skill_packages_to_params(params, skill_obj)
             # 合并前端传入的 skill_params 和 DB 中的值（处理 ****** 掩码）
             from apps.opspilot.utils.prompt_utils import merge_skill_params
