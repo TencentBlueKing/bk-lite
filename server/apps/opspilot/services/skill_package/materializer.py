@@ -101,10 +101,18 @@ def _safe_join(base: str, rel: str) -> str | None:
     return joined
 
 
-def materialize_skill_package(package: Any, backend: Any) -> list[str]:
-    """把 package 物化为后端中的 SKILL.md 与附属资源，返回写入的路径列表。"""
+def materialize_skill_package(package: Any, backend: Any, skills_root: str = SKILLS_ROOT) -> list[str]:
+    """把 package 物化为后端中的 SKILL.md 与附属资源，返回写入的路径列表。
+
+    Args:
+        package: SkillPackage（或等价 dict）。
+        backend: 任意 deepagents BackendProtocol 后端（只用到 ``write``）。
+        skills_root: 技能目录父路径。默认 ``/skills``；当后端使用真实主机路径
+            （如 ``LocalShellBackend(virtual_mode=False)``）时，传入工作目录下的
+            绝对路径（如 ``{root_dir}/skills``）以避免写到主机根目录。
+    """
     name = sanitize_skill_name(_get(package, "package_id", None) or _get(package, "name", None))
-    skill_dir = f"{SKILLS_ROOT}/{name}"
+    skill_dir = f"{skills_root.rstrip('/')}/{name}"
 
     written: list[str] = []
 

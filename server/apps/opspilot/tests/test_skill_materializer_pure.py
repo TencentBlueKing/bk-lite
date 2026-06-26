@@ -168,6 +168,17 @@ def test_materialize_writes_skill_md_to_expected_path():
     assert backend.writes["/skills/net-inspect/SKILL.md"].startswith("---\n")
 
 
+def test_materialize_honors_custom_skills_root():
+    # 当后端用真实主机路径时（LocalShellBackend virtual_mode=False），
+    # 必须把技能落到工作目录下的 skills_root，而非主机根 /skills。
+    backend = FakeBackend()
+    pkg = {"package_id": "Net Inspect", "skill_markdown": "# body"}
+    written = materialize_skill_package(pkg, backend, skills_root="/work/u1/skills")
+    assert "/work/u1/skills/net-inspect/SKILL.md" in backend.writes
+    assert "/work/u1/skills/net-inspect/SKILL.md" in written
+    assert not any(p.startswith("/skills/") for p in backend.writes)
+
+
 def test_materialize_copies_scripts_references_assets():
     backend = FakeBackend()
     pkg = {

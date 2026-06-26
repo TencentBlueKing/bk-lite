@@ -1988,31 +1988,60 @@ class ToolsNodes(BasicNode):
         return normalized
 
     def _build_skill_backend_and_sources(self, graph_request):
-        """把启用的 SkillPackage 物化为 SKILL.md 写入 MinIO，返回 (backend, sources)。
+        """把启用的 SkillPackage 物化到本地工作目录，返回 (backend, sources)。
 
-        sources 指向 backend 中存放各技能目录的父路径（"/skills/"），
-        SkillsMiddleware 据此扫描 SKILL.md 的 frontmatter 并渐进式披露。
+        采用 deepagents 自带的 ``LocalShellBackend``：它既是 ``FilesystemBackend``
+        （读写技能文件），又实现 ``SandboxBackendProtocol``（提供 ``execute`` shell
+        工具）。这样技能就是「CLI 自运行」的——SKILL.md 里直接写
+        ``uvx markitdown ...`` / ``npx ...`` / 二进制命令，由模型通过 ``execute``
+        在宿主 shell 里跑，完全不依赖业务工具（SSH/浏览器）的接线，保住扩展性。
+
+        sources 指向技能目录父路径（"/skills/"），SkillsMiddleware 据此扫描
+        SKILL.md 的 frontmatter 并渐进式披露。
         best-effort：无技能或失败返回 (None, [])，不影响主引擎。
+
+        注意（安全）：LocalShellBackend 在 app 宿主机上执行任意命令、无隔离。
+        当前按产品决策直接启用（含 prod），未来可替换为 NATS executor / 容器
+        沙箱（只需换一个实现了 SandboxBackendProtocol 的 backend）。
         """
         packages = self._resolve_skill_packages(graph_request)
         if not packages:
             return None, []
         try:
-            from apps.opspilot.metis.llm.backends import MinIOBackend
+            import os
+
+            from deepagents.backends import LocalShellBackend
+
             from apps.opspilot.services.skill_package.materializer import materialize_skill_package
 
-            # 按 bot/用户做命名空间隔离，避免多租户串读
-            user_id = getattr(graph_request, "user_id", "") or "shared"
-            backend = MinIOBackend(bucket_name=self._skill_bucket_name(), prefix=f"opspilot-skills/{user_id}")
+            # 按用户做工作目录隔离，避免多租户技能文件串读
+            user_id = str(getattr(graph_request, "user_id", "") or "shared")
+            root_dir = os.path.join(self._skill_local_root(), user_id)
+            skills_dir = os.path.join(root_dir, "skills")
+            os.makedirs(skills_dir, exist_ok=True)
+
+            # virtual_mode=False：文件工具与 execute 共用同一套真实主机路径，避免
+            #   「execute 写 /tmp/x，read_file 在虚拟根找不到」的路径错配。
+            # root_dir 作为 execute 的工作目录；inherit_env 继承宿主 PATH，使
+            #   uvx/npx/curl 等 CLI 在 execute 中可用。
+            backend = LocalShellBackend(root_dir=root_dir, virtual_mode=False, inherit_env=True)
             for pkg in packages:
                 try:
-                    materialize_skill_package(pkg, backend)
+                    materialize_skill_package(pkg, backend, skills_root=skills_dir)
                 except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
                     logger.debug("技能物化跳过(%s): %r", pkg.get("name") if isinstance(pkg, dict) else pkg, me)
-            return backend, ["/skills/"]
+            return backend, [skills_dir + "/"]
         except Exception as e:  # pragma: no cover - defensive
             logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
             return None, []
+
+    @staticmethod
+    def _skill_local_root() -> str:
+        """技能本地工作目录根（execute 在此 cwd 下运行）。"""
+        import os
+        import tempfile
+
+        return os.getenv("OPSPILOT_SKILL_LOCAL_ROOT", os.path.join(tempfile.gettempdir(), "opspilot-skills"))
 
     @staticmethod
     def _skill_bucket_name() -> str:
