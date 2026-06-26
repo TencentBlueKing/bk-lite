@@ -523,21 +523,21 @@ def test_render_template_supports_lower_filter_for_toml_booleans(monkeypatch):
     assert rendered == "insecure_skip_verify = false"
 
 
-def test_render_template_supports_ping_ipv6_switch(monkeypatch):
+def test_render_template_keeps_ping_address_family_implicit(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
-    template = 'ipv6 = {{ ((ip_version | default("ipv4", true)) == "ipv6") | lower }}'
+    template = 'urls = ["{{ url }}"]'
 
     ipv6_rendered = plugin_controller_module.Controller({}).render_template(
         template,
-        {"ip_version": "ipv6"},
+        {"url": "::1"},
     )
-    default_rendered = plugin_controller_module.Controller({}).render_template(
+    ipv4_rendered = plugin_controller_module.Controller({}).render_template(
         template,
-        {},
+        {"url": "127.0.0.1"},
     )
 
-    assert ipv6_rendered == "ipv6 = true"
-    assert default_rendered == "ipv6 = false"
+    assert ipv6_rendered == 'urls = ["::1"]'
+    assert ipv4_rendered == 'urls = ["127.0.0.1"]'
 
 
 def test_render_template_allows_business_default_variables(monkeypatch):

@@ -43,41 +43,6 @@
           "suffix": "s"
         }
       }
-    },
-    {
-      "name": "ip_version",
-      "label": "IP版本",
-      "type": "select",
-      "required": true,
-      "default_value": "ipv4",
-      "description": "选择 Ping 使用的 IP 协议版本。IPv4 为默认模式；选择 IPv6 时 Telegraf 将启用 IPv6 探测。",
-      "options": [
-        {
-          "label": "IPv4",
-          "value": "ipv4"
-        },
-        {
-          "label": "IPv6",
-          "value": "ipv6"
-        }
-      ],
-      "widget_props": {
-        "placeholder": "请选择 IP 版本"
-      },
-      "transform_on_edit": {
-        "origin_path": "child.content.config.ip_version",
-        "to_form": {
-          "mapping": {
-            "ipv4": [
-              null,
-              "",
-              "ipv4"
-            ],
-            "ipv6": "ipv6"
-          }
-        },
-        "to_api": {}
-      }
     }
   ],
   "table_columns": [
@@ -87,17 +52,19 @@
       "type": "select",
       "required": true,
       "widget_props": {
-        "placeholder": "请选择节点"
+        "placeholder": "请选择节点",
+        "width": 220
       },
       "enable_row_filter": false
     },
     {
       "name": "url",
-      "label": "URL",
+      "label": "目标地址",
       "type": "input",
       "required": true,
       "widget_props": {
-        "placeholder": "192.168.1.1"
+        "placeholder": "example.com / 192.168.1.1 / 2001:db8::1",
+        "width": 340
       },
       "rules": [
         {
@@ -114,33 +81,14 @@
       }
     },
     {
-      "name": "ip_version",
-      "label": "IP版本",
-      "type": "select",
-      "required": true,
-      "default_value": "ipv4",
-      "options": [
-        {
-          "label": "IPv4",
-          "value": "ipv4"
-        },
-        {
-          "label": "IPv6",
-          "value": "ipv6"
-        }
-      ],
-      "widget_props": {
-        "placeholder": "请选择 IP 版本"
-      }
-    },
-    {
       "name": "instance_name",
       "label": "实例名称",
       "type": "input",
       "required": true,
       "widget_props": {
         "placeholder": "实例名称",
-        "disabled": false
+        "disabled": false,
+        "width": 220
       }
     },
     {
@@ -149,7 +97,8 @@
       "type": "group_select",
       "required": false,
       "widget_props": {
-        "placeholder": "请选择组"
+        "placeholder": "请选择组",
+        "width": 220
       }
     }
   ]

@@ -41,21 +41,27 @@ def test_ping_url_rule_accepts_domain_ipv4_and_ipv6(ui):
 
 
 @pytest.mark.unit
-def test_ping_exposes_ipv4_default_and_ipv6_option(ui):
+def test_ping_does_not_require_manual_ip_version_selection(ui):
     fields = {field["name"]: field for field in ui["table_columns"]}
     form_fields = {field["name"]: field for field in ui["form_fields"]}
-    ip_version = fields["ip_version"]
 
-    assert ip_version["type"] == "select"
-    assert ip_version["default_value"] == "ipv4"
-    assert ip_version["options"] == [
-        {"label": "IPv4", "value": "ipv4"},
-        {"label": "IPv6", "value": "ipv6"},
-    ]
-    assert form_fields["ip_version"]["default_value"] == "ipv4"
-    assert form_fields["ip_version"]["transform_on_edit"]["origin_path"] == "child.content.config.ip_version"
+    assert "ip_version" not in fields
+    assert "ip_version" not in form_fields
 
 
 @pytest.mark.unit
-def test_ping_template_enables_ipv6_only_when_selected(toml_text):
-    assert 'ipv6 = {{ ((ip_version | default("ipv4", true)) == "ipv6") | lower }}' in toml_text
+def test_ping_auto_access_columns_have_compact_layout(ui):
+    fields = {field["name"]: field for field in ui["table_columns"]}
+
+    assert fields["url"]["label"] == "目标地址"
+    assert fields["url"]["widget_props"]["placeholder"] == "example.com / 192.168.1.1 / 2001:db8::1"
+    assert fields["node_ids"]["widget_props"]["width"] == 220
+    assert fields["url"]["widget_props"]["width"] == 340
+    assert fields["instance_name"]["widget_props"]["width"] == 220
+    assert fields["group_ids"]["widget_props"]["width"] == 220
+
+
+@pytest.mark.unit
+def test_ping_template_does_not_force_address_family(toml_text):
+    assert "ipv4" not in toml_text
+    assert "ipv6" not in toml_text
