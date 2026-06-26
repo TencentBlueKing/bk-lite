@@ -608,7 +608,9 @@ class AlertOperator(object):
             logger.info("[AlertNotify] 分派通知: 无有效策略, 不发送, alert_id=%s", alert.alert_id)
             return []
         channels = assignment.notify_channels or []
-        user_list = [i for i in assignee if i != self.user]
+        # 自动分派操作人是系统(SYSTEM_OPERATOR_USER)，按策略配置的全部人员通知，
+        # 不排除操作人——否则与系统同名(如 admin)的收件人会被过滤导致不发。
+        user_list = list(assignee)
         logger.info(
             "[AlertNotify] 分派通知构造: alert_id=%s, assignment_id=%s, team=%s, notify_channels=%s, 接收人=%s",
             alert.alert_id, assignment.id, alert.team, channels, user_list,
