@@ -215,15 +215,20 @@ class AlertOperator(object):
 
             transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "assigned"))
 
-            notify_param = self.format_notify_data(assignee, alert)
+            # 通知分流：auto-dispatch(有策略) 严格按勾选的通知方式发(勾哪个发哪个,含 opspilot)；
+            # manual(无策略) 维持默认邮件。
+            if assignment_id:
+                notify_param = self.format_assignment_notify_data(assignment_id, assignee, alert)
+            else:
+                notify_param = self.format_notify_data(assignee, alert)
             if notify_param:
                 from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
                 enqueue_notifications(notify_param)
             else:
                 logger.warning(
-                    "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
-                    alert_id, assignee,
+                    "[AlertOperator] 分派通知无可用渠道，未发送！alert_id=%s, assignee=%s, assignment_id=%s",
+                    alert_id, assignee, assignment_id,
                 )
 
             logger.info(

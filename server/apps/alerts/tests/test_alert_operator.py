@@ -361,3 +361,54 @@ def test_format_assignment_notify_data_empty_channels_returns_empty():
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-EC", team=[2])
     op = AlertOperator(user="system")
     assert op.format_assignment_notify_data(assignment.id, ["op1"], alert) == []
+
+
+# --------------------------------------------------------------------------
+# _assign_alert 通知分流：auto→notify_channels / manual→默认邮件
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="正文")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="标题")
+@mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+def test_assign_auto_dispatch_notifies_via_notify_channels(mock_enqueue, _mt, _mc, sys_user):
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=True,
+        personnel=["op1"],
+        notify_channels=[{"id": 9, "channel_type": "nats"}],
+        notification_frequency={"0": {"interval_minutes": 30}},
+    )
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+
+    result = op.operate("assign", "A1", {"assignee": ["op1"], "assignment_id": assignment.id})
+
+    assert result["result"] is True
+    assert mock_enqueue.called
+    params = mock_enqueue.call_args.args[0]
+    assert len(params) == 1
+    nats = next((p for p in params if p["channel_type"] == "nats"), None)
+    assert nats is not None, "expected nats channel in enqueued params"
+    assert nats["content"] == {"message": "正文", "team": 1, "user_ids": ["op1"]}
+    assert all(p["channel_type"] != "email" for p in params)
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+def test_assign_manual_still_uses_default_email(mock_enqueue, _mt, _mc, _chan, sys_user):
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+
+    result = op.operate("assign", "A1", {"assignee": ["op1"]})  # 无 assignment_id → manual
+
+    assert result["result"] is True
+    assert mock_enqueue.called
+    params = mock_enqueue.call_args.args[0]
+    assert len(params) == 1
+    assert params[0]["channel_type"] == "email" and params[0]["channel_id"] == 5
