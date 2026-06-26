@@ -234,6 +234,10 @@ class LLMViewSet(PinMixin, AuthViewSet):
                 setattr(instance, key, params[key])
         instance.updated_by = request.user.username
         instance.save()
+        # wiki_knowledge_bases 是 ManyToMany,Django 禁止直接 setattr 赋值,需在保存后用 set() 持久化关联。
+        # 否则智能体选择的 Wiki 知识库不会入库(保存后刷新即丢失)。
+        if "wiki_knowledge_bases" in params:
+            instance.wiki_knowledge_bases.set(params.get("wiki_knowledge_bases") or [])
         log_operation(request, "update", "opspilot", f"编辑智能体: {instance.name}")
         return JsonResponse({"result": True})
 
