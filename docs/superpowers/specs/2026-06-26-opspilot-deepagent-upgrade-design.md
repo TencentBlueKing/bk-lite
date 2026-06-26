@@ -163,7 +163,7 @@ ChatService.invoke_chat
 4. **P3 KB 双模式**:`knowledge_retrieve` 工具 + 保留 `naive_rag_node` 开关。
 5. **P4 MinIO backend + skills 物化**:backend 适配器、SkillPackage→SKILL.md 发布管线、原生 SkillsMiddleware 接通,下线伪 skills 注入。
 6. **P5 收口**:Plan-Execute 切到原生规划、删 LATS、`agent_factory` 所有分支归一,删除手写特性死代码。
-7. **P6 回归**:approval(interrupt_on)、compaction(summarization)、subagents 行为验证;按需补回被舍弃特性。
+7. **P6 回归与收口**:approval(interrupt_on)、compaction(summarization)、subagents 行为验证;§16 的 T1–T5 真实 LLM 集成测试全部打勾;`git grep` 校验测试凭据未入库;按需补回被舍弃特性。
 
 ## 14. 风险与缓解
 
@@ -173,7 +173,46 @@ ChatService.invoke_chat
 - **存量技能数据**:`LLMSkill.skill_packages` 旧格式。缓解:物化管线兼容旧 manifest,`LATS` 枚举降级为别名。
 - **MinIO 一致性/延迟**:skills 读取走对象存储。缓解:启动期物化 + 进程内缓存 frontmatter,运行时 `read_file` 才回源。
 
-## 15. 不做(YAGNI)
+## 15. TDD 策略(每一期先红后绿)
+
+遵循 `server/docs/testing-guide.md`:`pytest` + `pytest-django` + `pytest-bdd` + `factory_boy`,markers `unit/integration/bdd/slow`,按文件后缀分层 `_pure`(无 DB/IO)/`_service`(mock 依赖)/`_views`(DRF)。本次改造**全程 TDD**:每一期先写失败测试,再实现到通过。
+
+**三层测试金字塔:**
+
+1. **单元/纯逻辑(`_pure`,mock LLM)** —— 主力,默认 CI 必跑:
+   - MinIO backend 适配器:对 `ls_info/read/grep_raw/glob_info/write/edit` 用 mock/in-memory MinIO 逐方法断言(含 external-storage 语义 `files_update=None`、命名空间隔离、glob/grep)。
+   - SkillPackage → SKILL.md 物化:断言 frontmatter(`name`/`description≤1024`)、目录结构(`scripts/references/assets`)、旧 manifest 兼容。
+   - `build_deepagent_nodes` 装配:断言传入 `create_deep_agent` 的 tools/skills/backend/interrupt_on 参数正确(mock `create_deep_agent`)。
+   - AG-UI/A2UI 事件映射:喂入构造的 deepagent astream chunk(含 `write_todos`/`read_file`/子 agent/思考块),断言输出 AG-UI 事件序列与过滤规则。
+   - `knowledge_retrieve` 工具:mock 检索服务,断言入参/出参契约。
+   - `agent_factory` 分支归一、LATS 枚举降级为别名。
+
+2. **服务层(`_service`,mock LLM/MinIO)**:`ChatService.invoke_chat` 端到端走 deepagent 路径(LLM 用假 client 返回预设 tool_call 序列),断言工具被调用、skills 被加载、流式产出顺序。
+
+3. **集成(`integration`+`slow`,真实 LLM)**:见 §16,用真实 endpoint 跑通最小闭环,证明"真的能测试通过"。
+
+每期 DoD:本期单元+服务测试全绿,且不破坏 opspilot 现有测试基线(P0 先固化基线)。
+
+## 16. 真实 LLM 集成验证(凭据不入库)
+
+允许用真实 endpoint 做集成验证,**证明 deepagent 真的能调用 tools/MCP/skills/知识库并通过测试**。
+
+**凭据管理(强约束):**
+- 通过**环境变量**注入,**严禁硬编码进任何文件或提交**:`OPSPILOT_TEST_LLM_BASE_URL` / `OPSPILOT_TEST_LLM_API_KEY` / `OPSPILOT_TEST_LLM_MODEL`(OpenAI 兼容,模型 `gpt-4o`)。
+- 本地放入 **gitignored** 的 `server/.env`(`.env` 已被根与 server 的 `.gitignore` 忽略)或 shell export;实施期凭据另存于仓库外。
+- CI 默认**不带**密钥;集成测试用 `@pytest.mark.integration`+`@pytest.mark.slow` 标记,**未设置环境变量时 `pytest.skip`**,保证无密钥环境不红。
+- 提交前用 `git grep` 校验密钥串不在任何 tracked 文件中(已纳入 §13 收口检查)。
+
+**集成测试最小闭环(各一条,`gpt-4o` 真实跑):**
+- T1 工具调用:agent 真实选择并调用一个内置/示例工具,断言结果进入回答。
+- T2 MCP:连一个本地/测试 MCP server,断言 MCP 工具可被发现并调用。
+- T3 Skills:启用一个物化到 MinIO 的 SKILL.md,断言 agent 通过 `read_file` 渐进式加载并按其指令产出(回答含技能特征标记)。
+- T4 知识库:`knowledge_retrieve` 工具模式下 agent 自主检索并引用。
+- T5 AG-UI/A2UI:真实流式跑通,断言事件序列对前端可用(文本/思考/工具/进度)。
+
+这 5 条构成"真的能测试通过"的验收证据;P2–P5 各期对应打勾。
+
+## 17. 不做(YAGNI)
 
 - 不换 agent SDK(Claude Agent SDK / pi.dev)。
 - 不为 LATS 重建树搜索。
