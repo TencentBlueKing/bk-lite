@@ -85,16 +85,13 @@ class AlertOperator(object):
         """
         return Alert.objects.select_for_update().get(alert_id=alert_id)
 
-    def _create_reminder_record(self, alert: Alert, assignment_id: str):
-        """创建提醒记录"""
+    def _create_reminder_record(self, alert: Alert, assignment):
+        """创建提醒记录（assignment 已由调用方查出并校验 is_active）"""
         try:
             from apps.alerts.service.reminder_service import ReminderService
 
-            assignment = AlertAssignment.objects.get(id=assignment_id, is_active=True)
             ReminderService.create_reminder_task(alert, assignment)
-        except AlertAssignment.DoesNotExist:
-            logger.error("[AlertOperator] 分派策略不存在: assignment_id=%s", assignment_id)
-        except Exception as e:
+        except Exception:
             logger.exception("[AlertOperator] 创建提醒记录失败: alert_id=%s", alert.alert_id)
 
     def _stop_reminder_tasks(self, alert: Alert):
@@ -128,15 +125,12 @@ class AlertOperator(object):
         except Exception as e:
             logger.error("[AlertOperator] 恢复提醒任务失败: %s", e, exc_info=True)
 
-    def _create_escalation_task(self, alert: Alert, assignment_id: str):
-        """分派时创建升级任务"""
+    def _create_escalation_task(self, alert: Alert, assignment):
+        """分派时创建升级任务（assignment 已由调用方查出并校验 is_active）"""
         try:
             from apps.alerts.service.escalation_service import EscalationService
 
-            assignment = AlertAssignment.objects.get(id=assignment_id, is_active=True)
             EscalationService.create_escalation_task(alert, assignment)
-        except AlertAssignment.DoesNotExist:
-            logger.error("[AlertOperator] 分派策略不存在: assignment_id=%s", assignment_id)
         except Exception:
             logger.exception("[AlertOperator] 创建升级任务失败: alert_id=%s", alert.alert_id)
 
@@ -205,11 +199,16 @@ class AlertOperator(object):
             alert.updated_at = timezone.now()
             alert.save()
 
-            # 创建提醒记录
+            # 创建提醒记录（一次查出策略对象，复用给提醒/升级/通知，避免重复查询）
             assignment_id = data.get("assignment_id")  # 分派策略ID
+            assignment = None
             if assignment_id:
-                self._create_reminder_record(alert, assignment_id)
-                self._create_escalation_task(alert, assignment_id)
+                assignment = AlertAssignment.objects.filter(id=assignment_id, is_active=True).first()
+                if assignment:
+                    self._create_reminder_record(alert, assignment)
+                    self._create_escalation_task(alert, assignment)
+                else:
+                    logger.error("[AlertOperator] 分派策略不存在或未激活: assignment_id=%s", assignment_id)
 
             from apps.alerts.action.engine import ActionEngine
 
@@ -217,8 +216,8 @@ class AlertOperator(object):
 
             # 通知分流：auto-dispatch(有策略) 严格按勾选的通知方式发(勾哪个发哪个,含 opspilot)；
             # manual(无策略) 维持默认邮件。
-            if assignment_id:
-                notify_param = self.format_assignment_notify_data(assignment_id, assignee, alert)
+            if assignment:
+                notify_param = self.format_assignment_notify_data(assignment, assignee, alert)
             else:
                 notify_param = self.format_notify_data(assignee, alert)
             if notify_param:
@@ -600,13 +599,11 @@ class AlertOperator(object):
             alert.alert_id,
         )
 
-    def format_assignment_notify_data(self, assignment_id, assignee, alert):
+    def format_assignment_notify_data(self, assignment, assignee, alert):
         """auto-dispatch：严格按分派策略勾选的通知方式(notify_channels)构造通知，
         勾哪个发哪个(含 opspilot)；无策略 / 无渠道 / 无接收人 → 返回 []。"""
         from apps.alerts.common.notify.dispatcher import build_channel_params
-        from apps.alerts.models.alert_operator import AlertAssignment
 
-        assignment = AlertAssignment.objects.filter(id=assignment_id).first()
         if not assignment:
             return []
         channels = assignment.notify_channels or []

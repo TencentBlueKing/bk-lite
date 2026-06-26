@@ -280,10 +280,14 @@ def test_stop_reminder_tasks_noop_when_none():
 
 
 @pytest.mark.django_db
-def test_create_reminder_record_assignment_not_found():
-    alert = _make_alert()
-    op = AlertOperator(user="u1")
-    op._create_reminder_record(alert, assignment_id=999999)
+def test_assign_missing_assignment_id_is_graceful(sys_user):
+    from apps.alerts.models.alert_operator import AlertReminderTask
+
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+    result = op.operate("assign", "A1", {"assignee": ["op1"], "assignment_id": 999999})
+    assert result["result"] is True
+    assert not AlertReminderTask.objects.filter(alert__alert_id="A1").exists()
 
 
 @pytest.mark.django_db
@@ -332,7 +336,7 @@ def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-AN", team=[2])
     op = AlertOperator(user="system")
 
-    result = op.format_assignment_notify_data(assignment.id, ["op1", "system"], alert)
+    result = op.format_assignment_notify_data(assignment, ["op1", "system"], alert)
 
     nats = next(p for p in result if p["channel_type"] == "nats")
     assert nats["channel_id"] == 9
@@ -345,10 +349,10 @@ def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
 
 
 @pytest.mark.django_db
-def test_format_assignment_notify_data_assignment_not_found_returns_empty():
+def test_format_assignment_notify_data_none_returns_empty():
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-NF")
     op = AlertOperator(user="system")
-    assert op.format_assignment_notify_data(999999, ["op1"], alert) == []
+    assert op.format_assignment_notify_data(None, ["op1"], alert) == []
 
 
 @pytest.mark.django_db
@@ -360,7 +364,7 @@ def test_format_assignment_notify_data_empty_channels_returns_empty():
     )
     alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-EC", team=[2])
     op = AlertOperator(user="system")
-    assert op.format_assignment_notify_data(assignment.id, ["op1"], alert) == []
+    assert op.format_assignment_notify_data(assignment, ["op1"], alert) == []
 
 
 # --------------------------------------------------------------------------
@@ -406,6 +410,31 @@ def test_assign_manual_still_uses_default_email(mock_enqueue, _mt, _mc, _chan, s
     op = AlertOperator(user="system")
 
     result = op.operate("assign", "A1", {"assignee": ["op1"]})  # 无 assignment_id → manual
+
+    assert result["result"] is True
+    assert mock_enqueue.called
+    params = mock_enqueue.call_args.args[0]
+    assert len(params) == 1
+    assert params[0]["channel_type"] == "email" and params[0]["channel_id"] == 5
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+def test_assign_inactive_assignment_falls_back_to_default_email(mock_enqueue, _mt, _mc, _chan, sys_user):
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    # 非活跃策略：_assign_alert 用 is_active=True 查不到 → assignment=None → 回退默认邮件
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=False,
+        notify_channels=[{"id": 9, "channel_type": "nats"}],
+    )
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+
+    result = op.operate("assign", "A1", {"assignee": ["op1"], "assignment_id": assignment.id})
 
     assert result["result"] is True
     assert mock_enqueue.called
