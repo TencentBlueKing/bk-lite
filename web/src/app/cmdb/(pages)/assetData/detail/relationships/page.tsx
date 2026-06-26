@@ -101,7 +101,7 @@ const Ralationships = () => {
     <Spin spinning={loading}>
       <header className={relationshipsStyle.header}>
         <Segmented
-          className="mb-[10px]"
+          className="mb-0"
           value={activeTab}
           options={segmentedOptions}
           onChange={handleTabChange}
