@@ -13,7 +13,7 @@ import json
 # 告警处理(动作引擎)测试：把它设成你「节点管理」里已纳管主机的真实 IP，
 # mock 会以 MANAGED_HOST_IP_RATIO 的概率用它，方便测「真跑作业」那一段；
 # 留空("")则始终随机（随机 IP 命不中已纳管主机 → 走 config_error 未纳管，验证安全兜底）。
-MANAGED_HOST_IP = "172.18.0.19"
+MANAGED_HOST_IP = ""
 MANAGED_HOST_IP_RATIO = 0.3
 
 
