@@ -1,7 +1,7 @@
 """回调服务单元测试"""
 
 from datetime import datetime
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock, call, patch
 
 import pytest
 from celery.exceptions import Retry
@@ -9,48 +9,52 @@ from celery.exceptions import Retry
 from apps.core.utils.ssrf_validator import SSRFError
 
 
+def _make_execution(callback_type="web", callback_url=None, callback_subject=None):
+    """构造带具体字段值的执行记录 mock，便于断言回调分发与 payload。"""
+    execution = MagicMock()
+    execution.callback_type = callback_type
+    execution.callback_url = callback_url
+    execution.callback_subject = callback_subject
+    execution.id = 1
+    execution.name = "job-1"
+    execution.job_type = "script"
+    execution.trigger_source = "api"
+    execution.status = "success"
+    execution.total_count = 3
+    execution.success_count = 3
+    execution.failed_count = 0
+    execution.started_at = datetime(2026, 4, 30, 9, 0, 0)
+    execution.finished_at = datetime(2026, 4, 30, 10, 0, 0)
+    execution.execution_results = [{"target_key": "t1", "status": "success"}]
+    return execution
+
+
+def _web_calls(mock_app):
+    """从 send_task 调用记录中过滤出 web 通道（do_callback_task）调用。"""
+    return [c for c in mock_app.send_task.call_args_list if c.args and c.args[0] == "apps.job_mgmt.tasks.do_callback_task"]
+
+
+def _nats_calls(mock_app):
+    """从 send_task 调用记录中过滤出 nats 通道（do_nats_callback_task）调用。"""
+    return [c for c in mock_app.send_task.call_args_list if c.args and c.args[0] == "apps.job_mgmt.tasks.do_nats_callback_task"]
+
+
 @pytest.mark.unit
 class TestSendCallback:
-    """测试 send_callback 入口函数"""
+    """测试 send_callback 按 callback_type 分发到 web / nats / both 通道"""
 
-    def test_no_callback_url_does_nothing(self):
+    def test_web_only_dispatches_http_callback(self):
         from apps.job_mgmt.services.callback_service import send_callback
 
-        execution = MagicMock()
-        execution.callback_url = None
-
+        execution = _make_execution(callback_type="web", callback_url="http://example.com/cb")
         with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
             send_callback(execution)
-            mock_app.send_task.assert_not_called()
-
-    def test_empty_callback_url_does_nothing(self):
-        from apps.job_mgmt.services.callback_service import send_callback
-
-        execution = MagicMock()
-        execution.callback_url = ""
-
-        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
-            send_callback(execution)
-            mock_app.send_task.assert_not_called()
-
-    def test_sends_celery_task_when_url_present(self):
-        from apps.job_mgmt.services.callback_service import send_callback
-
-        execution = MagicMock()
-        execution.callback_url = "http://example.com/callback"
-        execution.id = 1
-        execution.status = "success"
-        execution.total_count = 3
-        execution.success_count = 3
-        execution.failed_count = 0
-        execution.finished_at = datetime(2026, 4, 30, 10, 0, 0)
-
-        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
-            send_callback(execution)
-            mock_app.send_task.assert_called_once_with(
+            web_calls = _web_calls(mock_app)
+            assert len(web_calls) == 1
+            assert web_calls[0] == call(
                 "apps.job_mgmt.tasks.do_callback_task",
                 args=[
-                    "http://example.com/callback",
+                    "http://example.com/cb",
                     {
                         "task_id": 1,
                         "status": "success",
@@ -62,6 +66,122 @@ class TestSendCallback:
                     1,
                 ],
             )
+            assert _nats_calls(mock_app) == []
+
+    def test_web_without_url_does_nothing(self):
+        from apps.job_mgmt.services.callback_service import send_callback
+
+        execution = _make_execution(callback_type="web", callback_url=None)
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
+            send_callback(execution)
+            mock_app.send_task.assert_not_called()
+
+    def test_default_type_is_web(self):
+        from apps.job_mgmt.services.callback_service import send_callback
+
+        # callback_type 缺省/为空时按 web 处理（向后兼容现有 callback_url 调用方）
+        execution = _make_execution(callback_type=None, callback_url="http://example.com/cb")
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
+            send_callback(execution)
+            assert len(_web_calls(mock_app)) == 1
+            assert _nats_calls(mock_app) == []
+
+    def test_nats_only_dispatches_nats_callback(self):
+        from apps.job_mgmt.services.callback_service import send_callback
+
+        execution = _make_execution(callback_type="nats", callback_subject="bklite.alert_job_result")
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
+            send_callback(execution)
+            nats_calls = _nats_calls(mock_app)
+            assert len(nats_calls) == 1
+            args = nats_calls[0].kwargs["args"]
+            assert args[0] == "bklite.alert_job_result"  # subject
+            assert args[1]["task_id"] == 1  # payload
+            assert args[2] == 1  # execution_id
+            assert _web_calls(mock_app) == []
+
+    def test_nats_without_subject_does_nothing(self):
+        from apps.job_mgmt.services.callback_service import send_callback
+
+        execution = _make_execution(callback_type="nats", callback_subject=None)
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
+            send_callback(execution)
+            mock_app.send_task.assert_not_called()
+
+    def test_both_dispatches_web_and_nats(self):
+        from apps.job_mgmt.services.callback_service import send_callback
+
+        execution = _make_execution(callback_type="both", callback_url="http://example.com/cb", callback_subject="bklite.alert_job_result")
+        with patch("apps.job_mgmt.services.callback_service.current_app") as mock_app:
+            send_callback(execution)
+            assert len(_web_calls(mock_app)) == 1
+            assert len(_nats_calls(mock_app)) == 1
+
+
+@pytest.mark.unit
+class TestBuildCallbackPayload:
+    """测试 nats 通道回调 payload 构造（含逐主机明细）"""
+
+    def test_build_callback_payload(self):
+        from apps.job_mgmt.services.callback_service import build_callback_payload
+
+        payload = build_callback_payload(_make_execution())
+        assert payload == {
+            "task_id": 1,
+            "name": "job-1",
+            "job_type": "script",
+            "trigger_source": "api",
+            "status": "success",
+            "total_count": 3,
+            "success_count": 3,
+            "failed_count": 0,
+            "started_at": "2026-04-30T09:00:00",
+            "finished_at": "2026-04-30T10:00:00",
+            "execution_results": [{"target_key": "t1", "status": "success"}],
+        }
+
+
+@pytest.mark.unit
+class TestPublishJobResultToSubject:
+    """测试把作业结果 publish 到指定 NATS 主题（subject 拆分 namespace.method）"""
+
+    @patch("apps.job_mgmt.services.callback_service.publish_sync")
+    def test_full_subject_split(self, mock_publish):
+        from apps.job_mgmt.services.callback_service import publish_job_result_to_subject
+
+        payload = {"task_id": 7}
+        publish_job_result_to_subject("bklite.alert_job_result", payload)
+        mock_publish.assert_called_once_with("bklite", "alert_job_result", data=payload)
+
+    @patch("apps.job_mgmt.services.callback_service.publish_sync")
+    def test_bare_method_uses_default_namespace(self, mock_publish, monkeypatch):
+        from apps.job_mgmt.services.callback_service import publish_job_result_to_subject
+
+        monkeypatch.setenv("NATS_NAMESPACE", "bklite")
+        payload = {"task_id": 7}
+        publish_job_result_to_subject("alert_job_result", payload)
+        mock_publish.assert_called_once_with("bklite", "alert_job_result", data=payload)
+
+
+@pytest.mark.unit
+class TestDoNatsCallbackTask:
+    """测试 do_nats_callback_task Celery 任务：调用 publish 帮助函数，异常被吞掉"""
+
+    @patch("apps.job_mgmt.services.callback_service.publish_job_result_to_subject")
+    def test_publishes(self, mock_pub):
+        from apps.job_mgmt.tasks import do_nats_callback_task
+
+        payload = {"task_id": 1, "status": "success"}
+        do_nats_callback_task("bklite.alert_job_result", payload, 1)
+        mock_pub.assert_called_once_with("bklite.alert_job_result", payload)
+
+    @patch("apps.job_mgmt.services.callback_service.publish_job_result_to_subject")
+    def test_swallows_exception(self, mock_pub):
+        from apps.job_mgmt.tasks import do_nats_callback_task
+
+        mock_pub.side_effect = Exception("nats down")
+        # 不应抛出，避免影响 web 通道及作业本身
+        do_nats_callback_task("bklite.alert_job_result", {"task_id": 1}, 1)
 
 
 @pytest.mark.unit
