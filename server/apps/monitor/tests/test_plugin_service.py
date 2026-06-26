@@ -523,6 +523,23 @@ def test_render_template_supports_lower_filter_for_toml_booleans(monkeypatch):
     assert rendered == "insecure_skip_verify = false"
 
 
+def test_render_template_supports_ping_ipv6_switch(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    template = 'ipv6 = {{ ((ip_version | default("ipv4", true)) == "ipv6") | lower }}'
+
+    ipv6_rendered = plugin_controller_module.Controller({}).render_template(
+        template,
+        {"ip_version": "ipv6"},
+    )
+    default_rendered = plugin_controller_module.Controller({}).render_template(
+        template,
+        {},
+    )
+
+    assert ipv6_rendered == "ipv6 = true"
+    assert default_rendered == "ipv6 = false"
+
+
 def test_render_template_allows_business_default_variables(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
 

@@ -79,8 +79,8 @@
       "rules": [
         {
           "type": "pattern",
-          "pattern": "^(http|https)://.*",
-          "message": "URL必须以http://或https://开头",
+          "pattern": "^(http|https)://(\\[[0-9A-Fa-f:.]+\\]|[^\\s/:]+)(:\\d+)?(/.*)?$",
+          "message": "URL必须以http://或https://开头，IPv6地址需使用方括号",
           "excel_formula": "OR(LEFT({{CELL}},7)=\"http://\",LEFT({{CELL}},8)=\"https://\")"
         }
       ],
