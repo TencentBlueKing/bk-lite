@@ -69,15 +69,7 @@ const EntityList = <T,>({
 
   const getTypeConfig = (): TypeConfig => {
     if (typeConfig) return typeConfig;
-    if (itemTypeSingle === 'skill') {
-      return {
-        options: [
-          { key: 2, title: t('skill.form.qaTag') },
-          { key: 1, title: t('skill.form.toolsTag') }
-        ],
-        searchField: 'skill_type'
-      };
-    } else if (itemTypeSingle === 'studio') {
+    if (itemTypeSingle === 'studio') {
       return {
         options: [
           { key: 1, title: t('studio.pilot') },
@@ -276,7 +268,7 @@ const EntityList = <T,>({
   return (
     <div className="w-full h-full">
       <div className="flex justify-end mb-4">
-        {itemTypeSingle === 'skill' ? (
+        {currentTypeOptions.length > 0 ? (
           <Space.Compact>
             <Select
               mode="multiple"

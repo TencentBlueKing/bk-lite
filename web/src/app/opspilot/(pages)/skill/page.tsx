@@ -7,13 +7,12 @@ import SkillCard from '@/app/opspilot/components/skill/skillCard';
 import OperateModal from '@/components/operate-modal';
 import { Skill } from '@/app/opspilot/types/skill';
 import { useTranslation } from '@/utils/i18n';
-import { Segmented, Button, Spin, Empty, message } from 'antd';
+import { Button, Spin, Empty, message } from 'antd';
 import Icon from '@/components/icon';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 
 const SkillPage: React.FC = () => {
   const [isTemplateModalVisible, setIsTemplateModalVisible] = useState(false);
-  const [activeTab, setActiveTab] = useState<number>(2);
   const [templates, setTemplates] = useState<any[]>([]);
   const [loading, setLoading] = useState<boolean>(false);
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -68,8 +67,6 @@ const SkillPage: React.FC = () => {
     }
   };
 
-  const filteredTemplates = templates.filter((template) => template.skill_type === activeTab);
-
   return (
     <>
       <EntityList<Skill>
@@ -84,13 +81,6 @@ const SkillPage: React.FC = () => {
           />
         )}
         itemTypeSingle="skill"
-        typeConfig={{
-          options: [
-            { key: 2, title: t('skill.form.qaTag') },
-            { key: 1, title: t('skill.form.toolsTag') },
-          ],
-          searchField: 'skill_type',
-        }}
         onCreateFromTemplate={handleCreateFromTemplate}
         onTogglePin={handleTogglePin}
       />
@@ -101,24 +91,14 @@ const SkillPage: React.FC = () => {
         onCancel={() => !submitting && setIsTemplateModalVisible(false)}
         footer={null}
       >
-        <Segmented
-          options={[
-            { label: t('skill.form.qaType'), value: 2 },
-            { label: t('skill.form.toolsType'), value: 1 },
-          ]}
-          value={activeTab}
-          onChange={(value) => !submitting && setActiveTab(value as number)}
-          className="mb-4"
-          disabled={submitting}
-        />
         {loading ? (
           <div className="flex justify-center items-center min-h-[150px]">
             <Spin />
           </div>
         ) : (
-          filteredTemplates.length > 0 ? (
+          templates.length > 0 ? (
             <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-4 mb-4">
-              {filteredTemplates.map((template, index) => (
+              {templates.map((template, index) => (
                 <div
                   key={template.id}
                   className={`shadow-md cursor-pointer rounded-xl relative overflow-hidden bg-[var(--color-bg)] group p-4 border-[0.5px] ${submitting ? 'pointer-events-none opacity-50' : ''}`}
