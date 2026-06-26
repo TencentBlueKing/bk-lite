@@ -306,6 +306,11 @@ class AlertBuilder:
             # 初始化新创建Alert的缓存
             AlertBuilder._alert_event_cache[alert.pk] = set(event_ids)
 
+        from django.db import transaction
+        from apps.alerts.action.engine import ActionEngine
+
+        transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "created"))
+
         return alert
 
     @staticmethod

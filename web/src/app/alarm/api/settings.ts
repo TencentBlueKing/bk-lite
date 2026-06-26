@@ -109,6 +109,18 @@ export const useSettingApi = () => {
   const getEnrichmentMetrics = () =>
     get('/alerts/api/enrichment/metrics/');
 
+  // Action Rule API (告警处理动作规则)
+  const getActionRuleList = (params: any) => get('/alerts/api/action_rule/', { params });
+  const getActionRule = (id: number) => get(`/alerts/api/action_rule/${id}/`);
+  const createActionRule = (params: any) => post('/alerts/api/action_rule/', params);
+  const updateActionRule = (id: number, params: any) => put(`/alerts/api/action_rule/${id}/`, params);
+  const deleteActionRule = (id: number) => del(`/alerts/api/action_rule/${id}/`);
+  const patchActionRule = (id: number, params: any) => patch(`/alerts/api/action_rule/${id}/`, params);
+  const getActionExecutions = (params: any) => get('/alerts/api/action_execution/', { params });
+  const manualTriggerAction = (params: any) => post('/alerts/api/action_execution/manual_trigger/', params);
+  const getActionJobScripts = (params: any) => get('/alerts/api/action_job/scripts/', { params });
+  const getActionJobScript = (id: number) => get(`/alerts/api/action_job/scripts/${id}/`);
+
   return {
     getAssignmentList,
     getAssignment,
@@ -147,5 +159,15 @@ export const useSettingApi = () => {
     deleteEnrichment,
     patchEnrichment,
     getEnrichmentMetrics,
+    getActionRuleList,
+    getActionRule,
+    createActionRule,
+    updateActionRule,
+    deleteActionRule,
+    patchActionRule,
+    getActionExecutions,
+    manualTriggerAction,
+    getActionJobScripts,
+    getActionJobScript,
   };
 };

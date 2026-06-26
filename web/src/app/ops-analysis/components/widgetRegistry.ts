@@ -10,6 +10,7 @@ import ComBarGauge from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comBa
 import ComStateTimeline from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comStateTimeline';
 import ComText from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comText';
 import EventTable from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/eventTable/eventTable';
+import NetworkStatusTopology from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/networkStatusTopology';
 
 export const widgetRegistry: Record<string, ComponentType<any>> = {
   line: ComLine,
@@ -23,6 +24,7 @@ export const widgetRegistry: Record<string, ComponentType<any>> = {
   stateTimeline: ComStateTimeline,
   text: ComText,
   eventTable: EventTable,
+  networkStatusTopology: NetworkStatusTopology,
 };
 
 export const getWidgetComponent = (chartType?: string) => {

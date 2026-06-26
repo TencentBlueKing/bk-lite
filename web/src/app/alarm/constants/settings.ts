@@ -101,3 +101,21 @@ export const weekList = [
   { name: '星期六', value: 6 },
   { name: '星期天', value: 7 },
 ];
+
+export const ACTION_TRIGGER_EVENTS = [
+  { value: 'created', label: '创建' },
+  { value: 'assigned', label: '分派' },
+  { value: 'acknowledged', label: '认领' },
+  { value: 'resolved', label: '恢复' },
+  { value: 'closed', label: '关闭' },
+];
+export const ACTION_TYPES = [
+  { value: 'job', label: '作业', disabled: false },
+  { value: 'itsm', label: 'ITSM', disabled: true },
+  { value: 'webhook', label: 'Webhook', disabled: true },
+];
+export const ACTION_EXEC_STATUS: Record<string, { text: string; color: string }> = {
+  pending: { text: '等待', color: 'default' }, running: { text: '执行中', color: 'processing' },
+  success: { text: '成功', color: 'success' }, failed: { text: '失败', color: 'error' },
+  skipped: { text: '已跳过', color: 'warning' }, config_error: { text: '未执行', color: 'warning' },
+};

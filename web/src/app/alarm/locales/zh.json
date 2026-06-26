@@ -620,6 +620,26 @@
                 "delete": "删除",
                 "execute": "执行"
             }
-        }
+        },
+        "actionRuleTitle": "告警处理规则",
+        "actionRuleName": "规则名称",
+        "actionTriggerEvent": "触发事件",
+        "actionMatchSummary": "匹配条件",
+        "actionType": "动作类型",
+        "actionLastExec": "最近执行",
+        "actionSelectJob": "选择作业",
+        "actionFieldBinding": "字段绑定",
+        "actionTriggerTip": "未勾选的生命周期事件不会触发本规则",
+        "actionRecordsTitle": "执行记录",
+        "actionManualTrigger": "执行动作",
+        "actionRerun": "重跑",
+        "actionTab": "处理动作",
+        "actionTargetHostField": "目标主机字段",
+        "actionParamFrom": "来源",
+        "actionParamField": "告警字段",
+        "actionParamConst": "常量",
+        "actionBindingField": "字段",
+        "actionConfigSection": "动作配置",
+        "actionTargetHostFieldTip": "从告警 labels 取，默认 ip_addr"
     }
 }

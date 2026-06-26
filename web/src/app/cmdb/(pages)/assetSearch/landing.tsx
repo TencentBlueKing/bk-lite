@@ -383,7 +383,15 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
               dataSource={recentChanges}
               tableLayout="fixed"
               pagination={false}
-              locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+              locale={{
+                emptyText: (
+                  <Empty
+                    className={assetSearchStyle.tableEmptyState}
+                    image={Empty.PRESENTED_IMAGE_SIMPLE}
+                    description={t('common.noData')}
+                  />
+                ),
+              }}
             />
             {recentChangeLoadingMore && (
               <div className={assetSearchStyle.lazyLoadingIndicator}>
@@ -414,7 +422,15 @@ const AssetSearchLanding: React.FC<AssetSearchLandingProps> = ({
             className={assetSearchStyle.followedList}
             loading={followedLoading || loading}
             dataSource={followedAssets}
-            locale={{ emptyText: <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} /> }}
+            locale={{
+              emptyText: (
+                <Empty
+                  className={assetSearchStyle.followedEmptyState}
+                  image={Empty.PRESENTED_IMAGE_SIMPLE}
+                  description={t('common.noData')}
+                />
+              ),
+            }}
             renderItem={(item) => (
               <List.Item
                 className={assetSearchStyle.followedItem}

@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useMemo, useCallback } from 'react';
+import React, { useEffect, useState, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import {
@@ -35,6 +35,11 @@ import { SingleValueSettingsSection } from '@/app/ops-analysis/components/single
 import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
+import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
+import {
+  filterNetworkTopologyModelOptions,
+  getNetworkTopologyModelIds,
+} from '@/app/ops-analysis/utils/networkTopologyModels';
 import {
   getFilterDefinitionId,
   getBindableFilterParams,
@@ -49,6 +54,7 @@ import type {
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
 import ComponentSelector from './viewSelector';
+import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
 
 import { useTableConfig } from './viewConfig/hooks/useTableConfig';
 import { TableSettingsSection } from './viewConfig/sections/tableSettingsSection';
@@ -68,8 +74,10 @@ interface FormValues {
   name: string;
   description?: string;
   chartType: string;
+  sceneWidgetType?: 'networkStatusTopology';
+  networkStatusTopology?: NetworkStatusTopologyConfig;
   chartThemeMode?: OpsChartThemeMode;
-  dataSource: string | number;
+  dataSource?: string | number;
   compare?: boolean;
   dataSourceParams?: ParamItem[];
   params?: Record<string, string | number | boolean | [number, number] | null>;
@@ -96,6 +104,23 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
   unifiedFilterValues?: Record<string, FilterValue>;
 }
 
+const NETWORK_INSTANCE_PAGE_SIZE = 100;
+const SELECT_SCROLL_LOAD_OFFSET = 24;
+
+interface SelectOption {
+  label: string;
+  value: string;
+}
+
+const mergeSelectOptions = (
+  previous: SelectOption[],
+  next: SelectOption[],
+): SelectOption[] => {
+  const optionMap = new Map(previous.map((item) => [item.value, item]));
+  next.forEach((item) => optionMap.set(item.value, item));
+  return Array.from(optionMap.values());
+};
+
 const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   open,
   item: widgetItem,
@@ -116,6 +141,20 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [actions, setActions] = useState<DashboardActionConfig[]>([]);
   const [dataSourceSelectorVisible, setDataSourceSelectorVisible] = useState(false);
   const { getSourceDataByApiId } = useDataSourceApi();
+  const { getModelList, getModelAssociations } = useModelApi();
+  const { searchInstances } = useInstanceApi();
+  const [networkModelOptions, setNetworkModelOptions] = useState<
+    { label: string; value: string }[]
+  >([]);
+  const [networkInstanceOptions, setNetworkInstanceOptions] = useState<SelectOption[]>([]);
+  const [networkModelsLoading, setNetworkModelsLoading] = useState(false);
+  const [networkInstancesLoading, setNetworkInstancesLoading] = useState(false);
+  const [networkInstancePage, setNetworkInstancePage] = useState(1);
+  const [networkInstanceTotal, setNetworkInstanceTotal] = useState(0);
+  const [networkInstanceKeyword, setNetworkInstanceKeyword] = useState('');
+  const networkInstanceRequestIdRef = useRef(0);
+  const networkInstanceSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const sceneModelId = Form.useWatch(['networkStatusTopology', 'modelId'], form);
 
   const {
     selectedDataSource,
@@ -215,6 +254,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   });
   const isTableLikeChartType =
     chartType === 'table' || chartType === 'eventTable';
+  const isNetworkStatusTopology =
+    chartType === 'networkStatusTopology' ||
+    form.getFieldValue('sceneWidgetType') === 'networkStatusTopology';
 
   const singleValueConfig = useSingleValueConfig({
     form,
@@ -400,10 +442,15 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     widgetItem: ViewConfigItem,
   ): Promise<void> => {
     const { valueConfig } = widgetItem;
+    const isSceneWidget =
+      valueConfig?.sceneWidgetType === 'networkStatusTopology' ||
+      valueConfig?.chartType === 'networkStatusTopology';
     const formValues: FormValues = {
       name: widgetItem?.name || '',
       description: widgetItem.description || '',
       chartType: valueConfig?.chartType || '',
+      sceneWidgetType: valueConfig?.sceneWidgetType,
+      networkStatusTopology: valueConfig?.networkStatusTopology,
       chartThemeMode: showChartThemeMode
         ? valueConfig?.chartThemeMode || 'default'
         : undefined,
@@ -415,6 +462,26 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     };
     setChartType(formValues.chartType);
     setActions(valueConfig?.actions || []);
+
+    if (isSceneWidget) {
+      const networkStatusTopology = valueConfig?.networkStatusTopology || {
+        modelId: '',
+        instId: '',
+        depth: 2,
+      };
+      setSelectedDataSource(undefined);
+      setFilterBindings({});
+      tableConfig.resetTableConfig();
+      singleValueConfig.resetSingleValueConfig();
+      form.setFieldsValue({
+        ...formValues,
+        chartType: 'networkStatusTopology',
+        sceneWidgetType: 'networkStatusTopology',
+        dataSource: undefined,
+        networkStatusTopology,
+      });
+      return;
+    }
 
     if (valueConfig?.tableConfig?.filterFields) {
       tableConfig.setFilterFields(
@@ -586,8 +653,164 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     setFilterBindings({});
     setActions([]);
     setDataSourceSelectorVisible(false);
+    setNetworkInstanceOptions([]);
     tableConfig.resetTableConfig();
     singleValueConfig.resetSingleValueConfig();
+  };
+
+  useEffect(() => {
+    if (!open || !isNetworkStatusTopology || networkModelOptions.length > 0) {
+      return;
+    }
+
+    let cancelled = false;
+    const fetchModels = async () => {
+      try {
+        setNetworkModelsLoading(true);
+        const [models, associations] = await Promise.all([
+          getModelList(),
+          getModelAssociations('interface'),
+        ]);
+        if (cancelled) return;
+        setNetworkModelOptions(
+          filterNetworkTopologyModelOptions(
+            Array.isArray(models) ? models : [],
+            getNetworkTopologyModelIds(
+              Array.isArray(associations) ? associations : [],
+            ),
+          ),
+        );
+      } catch (error) {
+        console.error('获取模型列表失败:', error);
+        if (!cancelled) setNetworkModelOptions([]);
+      } finally {
+        if (!cancelled) setNetworkModelsLoading(false);
+      }
+    };
+
+    void fetchModels();
+    return () => {
+      cancelled = true;
+    };
+    // API hooks return fresh function references; this load is driven by panel/component state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isNetworkStatusTopology, networkModelOptions.length, open]);
+
+  const fetchNetworkInstances = async ({
+    page,
+    keyword,
+    append,
+  }: {
+    page: number;
+    keyword: string;
+    append: boolean;
+  }) => {
+    if (!sceneModelId) return;
+
+    const requestId = networkInstanceRequestIdRef.current + 1;
+    networkInstanceRequestIdRef.current = requestId;
+    setNetworkInstancesLoading(true);
+
+    try {
+      const trimmedKeyword = keyword.trim();
+      const instanceRes = await searchInstances({
+        model_id: sceneModelId,
+        query_list: trimmedKeyword
+          ? [{ field: 'inst_name', type: 'str*', value: trimmedKeyword }]
+          : [],
+        page,
+        page_size: NETWORK_INSTANCE_PAGE_SIZE,
+        order: '',
+        role: '',
+        case_sensitive: false,
+      });
+
+      if (requestId !== networkInstanceRequestIdRef.current) return;
+
+      const nextOptions = (instanceRes?.insts || []).map((instance: any) => {
+        const instanceId = instance._id || instance.id;
+        return {
+          label: String(instance.inst_name || instance.name || instanceId),
+          value: String(instanceId),
+        };
+      });
+      setNetworkInstanceOptions((previous) =>
+        append ? mergeSelectOptions(previous, nextOptions) : nextOptions,
+      );
+      setNetworkInstancePage(page);
+      setNetworkInstanceTotal(Number(instanceRes?.count) || nextOptions.length);
+    } catch (error) {
+      console.error('获取网络拓扑实例失败:', error);
+      if (requestId === networkInstanceRequestIdRef.current) {
+        setNetworkInstanceOptions((previous) => (append ? previous : []));
+        setNetworkInstanceTotal((previous) => (append ? previous : 0));
+      }
+    } finally {
+      if (requestId === networkInstanceRequestIdRef.current) {
+        setNetworkInstancesLoading(false);
+      }
+    }
+  };
+
+  useEffect(() => {
+    if (!open || !isNetworkStatusTopology || !sceneModelId) {
+      setNetworkInstanceOptions([]);
+      setNetworkInstancePage(1);
+      setNetworkInstanceTotal(0);
+      setNetworkInstanceKeyword('');
+      return;
+    }
+
+    setNetworkInstanceOptions([]);
+    setNetworkInstancePage(1);
+    setNetworkInstanceTotal(0);
+    setNetworkInstanceKeyword('');
+    void fetchNetworkInstances({ page: 1, keyword: '', append: false });
+    // API hooks return fresh function references; this load is driven by model/panel state.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [
+    isNetworkStatusTopology,
+    open,
+    sceneModelId,
+  ]);
+
+  useEffect(() => {
+    return () => {
+      if (networkInstanceSearchTimerRef.current) {
+        clearTimeout(networkInstanceSearchTimerRef.current);
+      }
+    };
+  }, []);
+
+  const handleNetworkInstanceSearch = (keyword: string) => {
+    setNetworkInstanceKeyword(keyword);
+    if (networkInstanceSearchTimerRef.current) {
+      clearTimeout(networkInstanceSearchTimerRef.current);
+    }
+    networkInstanceSearchTimerRef.current = setTimeout(() => {
+      setNetworkInstanceOptions([]);
+      setNetworkInstancePage(1);
+      setNetworkInstanceTotal(0);
+      void fetchNetworkInstances({ page: 1, keyword, append: false });
+    }, 300);
+  };
+
+  const handleNetworkInstancePopupScroll = (event: React.UIEvent<HTMLDivElement>) => {
+    const target = event.currentTarget;
+    const hasMore = networkInstanceOptions.length < networkInstanceTotal;
+    const isNearBottom =
+      target.scrollTop + target.offsetHeight >=
+      target.scrollHeight - SELECT_SCROLL_LOAD_OFFSET;
+
+    if (!hasMore || networkInstancesLoading || !isNearBottom) {
+      return;
+    }
+
+    void fetchNetworkInstances({
+      page: networkInstancePage + 1,
+      keyword: networkInstanceKeyword,
+      append: true,
+    });
   };
 
   const handleFormValuesChange = (changedValues: Record<string, any>) => {
@@ -627,6 +850,22 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const handleConfirm = async () => {
     try {
       const values: FormValues = await form.validateFields();
+      if (values.sceneWidgetType === 'networkStatusTopology') {
+        const topologyConfig = values.networkStatusTopology;
+        onConfirm?.({
+          name: values.name,
+          description: values.description,
+          chartType: 'networkStatusTopology',
+          sceneWidgetType: 'networkStatusTopology',
+          networkStatusTopology: {
+            modelId: topologyConfig?.modelId || '',
+            instId: topologyConfig?.instId || '',
+            depth: topologyConfig?.depth || 2,
+          },
+        });
+        return;
+      }
+
       if (selectedDataSource?.params?.length) {
         const formParams = values.params || form.getFieldValue('params') || {};
         values.dataSourceParams = processFormParamsForSubmit(
@@ -809,44 +1048,114 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           >
             <Input placeholder={t('dashboard.inputName')} />
           </Form.Item>
-          <Form.Item
-            label={t('dashboard.dataSource')}
-            name="dataSource"
-            rules={[{ required: true, message: t('common.selectTip') }]}
-            getValueProps={() => ({
-              value: selectedDataSource
-                ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
-                : '',
-            })}
-          >
-            <Input
-              readOnly
-              placeholder={t('common.selectTip')}
-              suffix={
-                <SwapOutlined
-                  className="cursor-pointer text-(--color-primary)"
-                  onClick={() => setDataSourceSelectorVisible(true)}
+          <Form.Item name="sceneWidgetType" hidden>
+            <Input />
+          </Form.Item>
+          {isNetworkStatusTopology ? (
+            <>
+              <Form.Item
+                label={t('dashboard.networkTopoModel')}
+                name={['networkStatusTopology', 'modelId']}
+                rules={[{ required: true, message: t('dashboard.selectModel') }]}
+                tooltip={t('dashboard.networkTopoModelHelp')}
+              >
+                <Select
+                  showSearch
+                  loading={networkModelsLoading}
+                  placeholder={t('dashboard.selectModel')}
+                  options={networkModelOptions}
+                  optionFilterProp="label"
+                  notFoundContent={
+                    networkModelsLoading
+                      ? undefined
+                      : t('dashboard.networkTopoNoSupportedModel')
+                  }
+                  onChange={() => {
+                    form.setFieldValue(['networkStatusTopology', 'instId'], undefined);
+                    setNetworkInstanceOptions([]);
+                    setNetworkInstancePage(1);
+                    setNetworkInstanceTotal(0);
+                    setNetworkInstanceKeyword('');
+                  }}
                 />
-              }
-              onClick={() => setDataSourceSelectorVisible(true)}
-              className="cursor-pointer"
-            />
-          </Form.Item>
-          <Form.Item
-            label={t('dashboard.chartTypeLabel')}
-            name="chartType"
-            rules={[{ required: true, message: t('common.selectTip') }]}
-            initialValue={getDataSourceChartTypes[0]?.value}
-          >
-            <Radio.Group onChange={handleChartTypeChange}>
-              {getDataSourceChartTypes.map((item: ChartTypeItem) => (
-                <Radio.Button key={item.value} value={item.value}>
-                  {t(item.label)}
-                </Radio.Button>
-              ))}
-            </Radio.Group>
-          </Form.Item>
-          {showChartThemeMode && (
+              </Form.Item>
+              <Form.Item
+                label={t('dashboard.networkTopoInstance')}
+                name={['networkStatusTopology', 'instId']}
+                rules={[{ required: true, message: t('dashboard.selectInstance') }]}
+                tooltip={t('dashboard.networkTopoInstanceHelp')}
+              >
+                <Select
+                  showSearch
+                  loading={networkInstancesLoading}
+                  placeholder={t('dashboard.selectInstance')}
+                  options={networkInstanceOptions}
+                  filterOption={false}
+                  disabled={!sceneModelId}
+                  notFoundContent={
+                    networkInstancesLoading ? t('common.loading') : t('dashboard.noData')
+                  }
+                  onSearch={handleNetworkInstanceSearch}
+                  onPopupScroll={handleNetworkInstancePopupScroll}
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('dashboard.expandDepth')}
+                name={['networkStatusTopology', 'depth']}
+                initialValue={2}
+              >
+                <Select
+                  options={[
+                    { label: '1', value: 1 },
+                    { label: '2', value: 2 },
+                    { label: '3', value: 3 },
+                    { label: '4', value: 4 },
+                  ]}
+                />
+              </Form.Item>
+            </>
+          ) : (
+            <>
+              <Form.Item
+                label={t('dashboard.dataSource')}
+                name="dataSource"
+                rules={[{ required: true, message: t('common.selectTip') }]}
+                getValueProps={() => ({
+                  value: selectedDataSource
+                    ? `${selectedDataSource.name}（${selectedDataSource.rest_api}）`
+                    : '',
+                })}
+              >
+                <Input
+                  readOnly
+                  placeholder={t('common.selectTip')}
+                  suffix={
+                    <SwapOutlined
+                      className="cursor-pointer text-(--color-primary)"
+                      onClick={() => setDataSourceSelectorVisible(true)}
+                    />
+                  }
+                  onClick={() => setDataSourceSelectorVisible(true)}
+                  className="cursor-pointer"
+                />
+              </Form.Item>
+              <Form.Item
+                label={t('dashboard.chartTypeLabel')}
+                name="chartType"
+                rules={[{ required: true, message: t('common.selectTip') }]}
+                initialValue={getDataSourceChartTypes[0]?.value}
+              >
+                <Radio.Group onChange={handleChartTypeChange}>
+                  {getDataSourceChartTypes.map((item: ChartTypeItem) => (
+                    <Radio.Button key={item.value} value={item.value}>
+                      {t(item.label)}
+                    </Radio.Button>
+                  ))}
+                </Radio.Group>
+              </Form.Item>
+            </>
+          )}
+          {showChartThemeMode && !isNetworkStatusTopology && (
             <Form.Item
               label={t('dashboard.chartThemeMode')}
               name="chartThemeMode"
