@@ -43,6 +43,7 @@ _MONITOR_TEMPLATE_ALLOWED_VARIABLES = {
     "instance_type",
     "interval",
     "ip",
+    "ip_version",
     "jmx_url",
     "logical_instance_value",
     "metrics_modules",
