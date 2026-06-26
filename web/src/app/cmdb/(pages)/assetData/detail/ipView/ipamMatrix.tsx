@@ -264,7 +264,8 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
 
 // ─── Square Grid (prefixlen >= 24) ────────────────────────────────────────────
 
-const CELL_MIN = 38; // px — minimum cell edge; grid auto-fills columns to fill the row
+const CELL_MIN = 40; // px — minimum cell width; grid auto-fills columns to fill the row
+const CELL_H = 28;   // px — fixed compact row height (keeps the grid from growing tall on wide screens)
 const GRID_GAP = 4;
 
 interface SquareGridProps {
@@ -342,7 +343,7 @@ const SquareGrid: React.FC<SquareGridProps> = ({ data, baseOffset = 1 }) => {
                 className="ipam-cell"
                 onClick={() => handleCellClick(ip)}
                 style={{
-                  aspectRatio: '1 / 1',
+                  height: CELL_H,
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
