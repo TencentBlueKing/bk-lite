@@ -22,10 +22,13 @@ from pathlib import PurePosixPath
 from typing import Any, Optional
 
 from deepagents.backends.protocol import (
+    FILE_NOT_FOUND,
     BackendProtocol,
     EditResult,
     FileData,
+    FileDownloadResponse,
     FileInfo,
+    FileUploadResponse,
     GrepMatch,
     ReadResult,
     WriteResult,
@@ -334,3 +337,32 @@ class MinIOBackend(BackendProtocol):
                 }
             )
         return infos
+
+    # ------------------------------------------------------------------ #
+    # 批量上传 / 下载（SkillsMiddleware 依赖 download_files 加载 SKILL.md）
+    # ------------------------------------------------------------------ #
+    def download_files(self, paths: list[str]) -> list[FileDownloadResponse]:
+        """批量下载文件原始字节；缺失文件返回 ``file_not_found``。
+
+        deepagents 的 ``SkillsMiddleware`` 通过 ``ls`` 找到各技能目录后，调用
+        本方法批量读取 ``SKILL.md`` 的原始内容（bytes）做 frontmatter 解析。
+        """
+        responses: list[FileDownloadResponse] = []
+        for file_path in paths:
+            data = self._get_object_bytes(self._to_key(file_path))
+            if data is None:
+                responses.append(FileDownloadResponse(path=file_path, content=None, error=FILE_NOT_FOUND))
+            else:
+                responses.append(FileDownloadResponse(path=file_path, content=data, error=None))
+        return responses
+
+    def upload_files(self, files: list[tuple[str, bytes]]) -> list[FileUploadResponse]:
+        """批量上传文件原始字节（覆盖写）。"""
+        responses: list[FileUploadResponse] = []
+        for file_path, content in files:
+            try:
+                self._put_object_bytes(self._to_key(file_path), content)
+                responses.append(FileUploadResponse(path=file_path, error=None))
+            except Exception as exc:  # noqa: BLE001
+                responses.append(FileUploadResponse(path=file_path, error=str(exc)))
+        return responses

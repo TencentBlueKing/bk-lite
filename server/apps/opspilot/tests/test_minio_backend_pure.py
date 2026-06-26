@@ -316,6 +316,44 @@ def test_empty_prefix_uses_root_keys(client):
     assert backend.read("/top.txt").file_data["content"] == "data"
 
 
+# --------------------------------------------------------------------------- #
+# download_files / upload_files（SkillsMiddleware 依赖）
+# --------------------------------------------------------------------------- #
+@pytest.mark.unit
+def test_download_files_returns_raw_bytes(backend, client):
+    _seed(client, "agent-files", "/skills/markitdown/SKILL.md", "---\nname: markitdown\n---\nbody")
+    [resp] = backend.download_files(["/skills/markitdown/SKILL.md"])
+    assert resp.error is None
+    assert resp.path == "/skills/markitdown/SKILL.md"
+    assert resp.content == b"---\nname: markitdown\n---\nbody"
+
+
+@pytest.mark.unit
+def test_download_files_missing_returns_file_not_found(backend):
+    from deepagents.backends.protocol import FILE_NOT_FOUND
+
+    [resp] = backend.download_files(["/skills/nope/SKILL.md"])
+    assert resp.content is None
+    assert resp.error == FILE_NOT_FOUND
+
+
+@pytest.mark.unit
+def test_download_files_batch_preserves_order_and_partial(backend, client):
+    _seed(client, "agent-files", "/a.txt", "AAA")
+    resps = backend.download_files(["/a.txt", "/missing.txt"])
+    assert [r.path for r in resps] == ["/a.txt", "/missing.txt"]
+    assert resps[0].content == b"AAA" and resps[0].error is None
+    assert resps[1].content is None and resps[1].error is not None
+
+
+@pytest.mark.unit
+def test_upload_files_writes_namespaced_keys(backend, client):
+    resps = backend.upload_files([("/skills/x/SKILL.md", b"hello"), ("/data/y.bin", b"\x00\x01")])
+    assert all(r.error is None for r in resps)
+    assert client.store["agent-files/skills/x/SKILL.md"] == b"hello"
+    assert client.store["agent-files/data/y.bin"] == b"\x00\x01"
+
+
 @pytest.mark.unit
 def test_put_object_receives_stream_and_length(client):
     captured = {}
