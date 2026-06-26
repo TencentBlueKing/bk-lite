@@ -74,6 +74,7 @@ export const buildNetworkTopologyX6GraphData = ({
       },
       attrs: {
         body: {
+          ...NETWORK_TOPO_VISUAL.node.defaultBody,
           ...(selected ? NETWORK_TOPO_VISUAL.node.activeBody : {}),
           ...(active ? { stroke: '#ff4d4f', strokeWidth: 2.4 } : {}),
           ...toOpacityAttrs(dimmed),
@@ -119,7 +120,6 @@ export const buildNetworkTopologyX6GraphData = ({
           fill: '#fff',
           opacity: badgeOpacity,
         },
-        tt: { text: node.name },
         lbl: {
           text: node.name,
           title: node.name,

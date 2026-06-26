@@ -5,7 +5,10 @@ export {
   NETWORK_TOPO_VISUAL,
   buildNetworkTopoPortLabel,
 } from './x6Visual';
-export type { NetworkTopologyX6GraphData } from './x6Canvas';
+export type {
+  NetworkTopologyToolbarConfig,
+  NetworkTopologyX6GraphData,
+} from './x6Canvas';
 export type {
   NetworkTopologyLayoutMode,
   NetworkTopologyLink,

@@ -1,13 +1,7 @@
 'use client';
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { Alert, Button, Empty, Segmented, Spin, Tooltip } from 'antd';
-import {
-  DownloadOutlined,
-  ReloadOutlined,
-  ZoomInOutlined,
-  ZoomOutOutlined,
-} from '@ant-design/icons';
+import { Alert, Button, Empty, Spin } from 'antd';
 import type { Graph } from '@antv/x6';
 import {
   NetworkTopologyX6Canvas,
@@ -109,6 +103,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
     useState<NetworkTopologyLayoutMode>('hierarchical');
   const [selectedNodeId, setSelectedNodeId] = useState('');
   const graphRef = useRef<Graph | null>(null);
+  const canvasRef = useRef<HTMLDivElement | null>(null);
   const [hoverNodeId, setHoverNodeId] = useState('');
   const [hoverPoint, setHoverPoint] = useState({ x: 0, y: 0 });
   const [contextNodeId, setContextNodeId] = useState('');
@@ -229,16 +224,24 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       topoConfig?.instId,
     ],
   );
+  const fitViewKey = useMemo(
+    () => [
+      layoutMode,
+      data?.center_id || topoConfig?.instId || '',
+      canvasNodes.map((node) => node.id).join(','),
+      canvasLinks.map((link) => link.id).join(','),
+    ].join('|'),
+    [canvasLinks, canvasNodes, data?.center_id, layoutMode, topoConfig?.instId],
+  );
 
   const closeContextMenu = useCallback(() => setContextNodeId(''), []);
 
-  const handleExportImage = useCallback(() => {
-    const graph = graphRef.current;
-    if (!graph) return;
-    graph.exportPNG('network-status-topology', {
-      padding: 40,
-      backgroundColor: '#ffffff',
-      copyStyles: false,
+  const updateHoverPoint = useCallback((nodeId: string, event: MouseEvent) => {
+    const rect = canvasRef.current?.getBoundingClientRect();
+    setHoverNodeId(nodeId);
+    setHoverPoint({
+      x: event.clientX - (rect?.left || 0) + 28,
+      y: event.clientY - (rect?.top || 0) + 20,
     });
   }, []);
 
@@ -324,54 +327,7 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
 
   return (
-    <div className={styles.canvas}>
-      <div className={styles.toolbar}>
-        <Segmented
-          value={layoutMode}
-          onChange={(value) => setLayoutMode(value as NetworkTopologyLayoutMode)}
-          options={[
-            { label: t('dashboard.networkTopoLayoutHierarchical'), value: 'hierarchical' },
-            { label: t('dashboard.networkTopoLayoutForce'), value: 'force' },
-            { label: t('dashboard.networkTopoLayoutCircular'), value: 'circular' },
-          ]}
-        />
-        <div className={styles.toolbarActions}>
-          <Tooltip title={t('dashboard.networkTopoZoomOut')}>
-            <Button
-              size="small"
-              aria-label={t('dashboard.networkTopoZoomOut')}
-              icon={<ZoomOutOutlined />}
-              onClick={() => graphRef.current?.zoom(-0.1)}
-            />
-          </Tooltip>
-          <Tooltip title={t('dashboard.networkTopoZoomIn')}>
-            <Button
-              size="small"
-              aria-label={t('dashboard.networkTopoZoomIn')}
-              icon={<ZoomInOutlined />}
-              onClick={() => graphRef.current?.zoom(0.1)}
-            />
-          </Tooltip>
-          <Tooltip title={t('dashboard.networkTopoExportImage')}>
-            <Button
-              size="small"
-              aria-label={t('dashboard.networkTopoExportImage')}
-              icon={<DownloadOutlined />}
-              onClick={handleExportImage}
-              disabled={!graphData.nodes.length}
-            />
-          </Tooltip>
-          <Tooltip title={t('dashboard.networkTopoRefresh')}>
-            <Button
-              size="small"
-              aria-label={t('dashboard.networkTopoRefresh')}
-              icon={<ReloadOutlined />}
-              loading={loading}
-              onClick={fetchData}
-            />
-          </Tooltip>
-        </div>
-      </div>
+    <div ref={canvasRef} className={styles.canvas}>
       {data?.truncated && (
         <div className={styles.truncated}>{t('dashboard.networkTopoTruncated')}</div>
       )}
@@ -381,6 +337,26 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
           centerId={String(data?.center_id || topoConfig?.instId || '')}
           graphRef={graphRef}
           fitViewOptions={{ padding: 48, maxScale: 1.08 }}
+          fitViewKey={fitViewKey}
+          toolbar={{
+            layoutMode,
+            onLayoutChange: (value) => setLayoutMode(value as NetworkTopologyLayoutMode),
+            layoutOptions: [
+              { label: t('dashboard.networkTopoLayoutHierarchical'), value: 'hierarchical' },
+              { label: t('dashboard.networkTopoLayoutForce'), value: 'force' },
+              { label: t('dashboard.networkTopoLayoutCircular'), value: 'circular' },
+            ],
+            labels: {
+              zoomOut: t('dashboard.networkTopoZoomOut'),
+              zoomIn: t('dashboard.networkTopoZoomIn'),
+              fitView: t('topology.fitView'),
+              exportImage: t('dashboard.networkTopoExportImage'),
+              refresh: t('dashboard.networkTopoRefresh'),
+            },
+            exportFileName: 'network-status-topology',
+            refreshLoading: loading,
+            onRefresh: fetchData,
+          }}
           minimap={{
             width: 96,
             height: 56,
@@ -404,10 +380,8 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
             closeContextMenu();
             setSelectedNodeId((current) => (current === nodeId ? '' : nodeId));
           }}
-          onNodeMouseMove={(nodeId, event) => {
-            setHoverNodeId(nodeId);
-            setHoverPoint({ x: event.offsetX + 32, y: event.offsetY + 24 });
-          }}
+          onNodeMouseEnter={updateHoverPoint}
+          onNodeMouseMove={updateHoverPoint}
           onNodeMouseLeave={() => setHoverNodeId('')}
           onNodeContextMenu={(nodeId, event) => {
             setContextNodeId(nodeId);
