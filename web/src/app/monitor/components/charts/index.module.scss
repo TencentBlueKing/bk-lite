@@ -4,11 +4,13 @@
     max-height: 300px;
     max-width: 390px;
     overflow-y: auto;
-    font-size: 14px;
-    background: var(--color-bg-1);
-    border: 1px solid var(--color-border-1);
-    padding: 10px;
-    border-radius: 5px;
+    font-size: 12px;
+    color: #fff;
+    background: rgba(28, 28, 30, 0.92);
+    border: none;
+    padding: 8px 12px 10px;
+    border-radius: 6px;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.28);
 }
 
 .chart {
@@ -97,6 +99,12 @@
 
             .dimeLabel {
                 flex: 1;
+                // flex 子项必须 min-width:0 才能收缩到内容宽度以下，
+                // 否则超长维度文本会撑破容器、与相邻行重叠。
+                min-width: 0;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
             }
         }
     }

@@ -79,13 +79,12 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
             <div className="flex items-start mt-[4px] text-[13px]">
               <span
                 style={{
-                  width: '10px',
-                  minWidth: '10px',
-                  height: '10px',
-                  backgroundColor: item.color,
-                  borderRadius: '50%',
-                  marginRight: '5px',
-                  marginTop: '5px'
+                  width: '16px',
+                  minWidth: '16px',
+                  height: 0,
+                  borderTop: `2px solid ${item.color}`,
+                  marginRight: '8px',
+                  marginTop: '8px'
                 }}
               ></span>
               <span className="flex-1">
