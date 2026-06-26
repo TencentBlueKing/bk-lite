@@ -238,6 +238,33 @@ def test_normalize_task_result_for_read_deduplicates_installer_events_and_flags_
     assert display["installer_steps_received"] is True
 
 
+def test_normalize_task_result_for_read_treats_installer_events_as_command_dispatched():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {"action": "credential_check", "status": "success", "message": "Validate credentials"},
+                {"action": "run", "status": "running", "message": "Run installer"},
+                {
+                    "action": "fetch_session",
+                    "status": "success",
+                    "message": "Installer session fetched",
+                    "details": {
+                        "installer_event": True,
+                        "raw_step": "fetch_session",
+                    },
+                },
+            ],
+        }
+    )
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "installer_running"
+    assert display["phase"] == "installer_execution"
+    assert display["severity"] == "processing"
+    assert display["installer_steps_received"] is True
+
+
 def test_normalize_task_result_for_read_reports_success_without_detail():
     normalized = normalize_task_result_for_read(
         {
