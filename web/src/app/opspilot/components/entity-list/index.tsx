@@ -73,9 +73,7 @@ const EntityList = <T,>({
       return {
         options: [
           { key: 2, title: t('skill.form.qaTag') },
-          { key: 1, title: t('skill.form.toolsTag') },
-          { key: 3, title: t('skill.form.planTag') },
-          { key: 4, title: t('skill.form.complexTag') }
+          { key: 1, title: t('skill.form.toolsTag') }
         ],
         searchField: 'skill_type'
       };
