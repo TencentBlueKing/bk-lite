@@ -782,7 +782,7 @@ export const deriveControllerInstallDisplay = (
     );
   }
 
-  if (commandStep?.status === 'running') {
+  if (commandStep?.status === 'running' && !installerStepsReceived) {
     return buildDisplayResult(
       'command_running',
       'command_dispatch',
@@ -892,7 +892,7 @@ export const deriveControllerInstallPhases = (
   const connectivityStep = findLatestStepByAction(steps, 'connectivity_check');
   const installerStepsReceived = !!summary?.observed_count;
   const showMissingSteps = installerStepsReceived && !!summary?.missing_steps?.length;
-  const commandDispatched = commandStep?.status === 'success';
+  const commandDispatched = commandStep?.status === 'success' || installerStepsReceived;
   let installerDetailState: ControllerInstallPhaseDetailState = 'none';
   if (commandDispatched && !installerStepsReceived) {
     installerDetailState = 'no_report';
@@ -927,7 +927,9 @@ export const deriveControllerInstallPhases = (
     },
     {
       code: 'command_dispatch',
-      status: stepStatusToPhaseStatus(commandStep?.status),
+      status: installerStepsReceived
+        ? 'success'
+        : stepStatusToPhaseStatus(commandStep?.status),
       detailState: 'none',
       showMissingSteps: false
     },
