@@ -6,10 +6,23 @@ pytestmark = pytest.mark.django_db
 
 def test_reconcile_source_model_fields():
     from apps.cmdb.models.ipam_models import IPAMReconcileSource
-    src = IPAMReconcileSource.objects.create(model_id="host", ip_attr_id="ip_addr", enabled=True)
-    assert src.model_id == "host"
+    # 用非默认种子的来源，避免与数据迁移 0029 预置的 host.ip_addr/network.ip 撞唯一键
+    src = IPAMReconcileSource.objects.create(model_id="switch", ip_attr_id="mgmt_ip", enabled=True)
+    assert src.model_id == "switch"
     assert src.enabled is True
-    assert IPAMReconcileSource.objects.filter(enabled=True).count() == 1
+    assert IPAMReconcileSource.objects.filter(model_id="switch", ip_attr_id="mgmt_ip").exists()
+
+
+def test_seed_reconcile_sources_idempotent():
+    """seed_reconcile_sources 预置 host.ip_addr / network.ip，且可重复执行不重复插入。
+    数据迁移与（如有）init 流程共用此函数；替代被删除的 ipam_init 命令。"""
+    from apps.cmdb.models.ipam_models import IPAMReconcileSource, seed_reconcile_sources
+    seed_reconcile_sources(IPAMReconcileSource)
+    assert IPAMReconcileSource.objects.filter(model_id="host", ip_attr_id="ip_addr").exists()
+    assert IPAMReconcileSource.objects.filter(model_id="network", ip_attr_id="ip").exists()
+    n = IPAMReconcileSource.objects.count()
+    seed_reconcile_sources(IPAMReconcileSource)  # 幂等
+    assert IPAMReconcileSource.objects.count() == n
 
 
 # ---------------------------------------------------------------------------

@@ -16,3 +16,18 @@ class IPAMReconcileSource(TimeInfo):
         db_table = "cmdb_ipam_reconcile_source"
         unique_together = ("model_id", "ip_attr_id")
         verbose_name = "IPAM对账来源"
+
+
+# 默认对账来源：哪些 CI 模型的哪个属性承载 IP。由数据迁移预置（不再用单独的 management 命令）。
+DEFAULT_RECONCILE_SOURCES = [
+    ("host", "ip_addr"),
+    ("network", "ip"),
+]
+
+
+def seed_reconcile_sources(model_cls):
+    """幂等预置默认对账来源。data migration 用 apps.get_model 取到的模型类调用，单测直接传真实模型类。"""
+    for model_id, ip_attr_id in DEFAULT_RECONCILE_SOURCES:
+        model_cls.objects.get_or_create(
+            model_id=model_id, ip_attr_id=ip_attr_id, defaults={"enabled": True}
+        )
