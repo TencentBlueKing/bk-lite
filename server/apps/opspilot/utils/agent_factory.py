@@ -12,8 +12,6 @@ from asgiref.sync import sync_to_async
 
 from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.agent.chatbot_workflow import ChatBotWorkflowGraph, ChatBotWorkflowRequest
-from apps.opspilot.metis.llm.agent.lats_agent import LatsAgentGraph, LatsAgentRequest
-from apps.opspilot.metis.llm.agent.plan_and_execute_agent import PlanAndExecuteAgentGraph, PlanAndExecuteAgentRequest
 from apps.opspilot.metis.llm.agent.react_agent import ReActAgentGraph, ReActAgentRequest
 from apps.opspilot.models import SkillTypeChoices
 
@@ -29,15 +27,16 @@ def create_agent_instance(skill_type, chat_kwargs):
     Returns:
         tuple: (graph, request) - Agent 图实例和请求对象
     """
-    if skill_type == SkillTypeChoices.BASIC_TOOL:
+    # 推倒重来：所有“有工具/规划”的旧引擎（BASIC_TOOL / LATS / PLAN_EXECUTE）统一
+    # 迁移到 ReAgent（DeepAgent 引擎）。deepagents 原生提供规划（TodoListMiddleware）
+    # 与子代理，覆盖 Plan-Execute 能力；LATS 树搜索下线。存量 skill_type 数据不会报错。
+    if skill_type in (
+        SkillTypeChoices.BASIC_TOOL,
+        SkillTypeChoices.LATS,
+        SkillTypeChoices.PLAN_EXECUTE,
+    ):
         request = ReActAgentRequest(**chat_kwargs)
         graph = ReActAgentGraph()
-    elif skill_type == SkillTypeChoices.PLAN_EXECUTE:
-        request = PlanAndExecuteAgentRequest(**chat_kwargs)
-        graph = PlanAndExecuteAgentGraph()
-    elif skill_type == SkillTypeChoices.LATS:
-        request = LatsAgentRequest(**chat_kwargs)
-        graph = LatsAgentGraph()
     else:
         # 默认使用 ChatBot Workflow
         request = ChatBotWorkflowRequest(**chat_kwargs)

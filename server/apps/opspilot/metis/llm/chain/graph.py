@@ -30,6 +30,33 @@ from apps.core.logger import opspilot_logger as logger
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMResponse
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
+# deepagents 引擎内置工具（规划/虚拟文件系统/子代理）。这些是 agent 的内部
+# 机制，默认不在 AG-UI/A2UI 流中展示，避免污染前端的工具调用视图，保持与
+# 旧 ReAct 引擎一致的用户体验。可通过环境变量 OPSPILOT_AGUI_SHOW_BUILTIN_TOOLS=1
+# 打开（用于调试 deepagent 的规划/文件读写过程）。
+_DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
+    {
+        "write_todos",
+        "write_file",
+        "read_file",
+        "ls",
+        "edit_file",
+        "glob_search",
+        "grep_search",
+        "task",
+    }
+)
+
+
+def _is_hidden_builtin_tool(tool_name: str) -> bool:
+    """该工具是否为应在 AG-UI 流中隐藏的 deepagents 内置工具。"""
+    import os
+
+    if os.getenv("OPSPILOT_AGUI_SHOW_BUILTIN_TOOLS", "0") == "1":
+        return False
+    return tool_name in _DEEPAGENT_BUILTIN_TOOL_NAMES
+
+
 # Sensitive field patterns for masking in SSE events (logging/frontend display only)
 _SENSITIVE_FIELD_PATTERNS = frozenset(
     {
@@ -605,6 +632,10 @@ class BasicGraph(ABC):
         """处理 on_tool_start 事件"""
         events = []
         tool_name = event.get("name", "unknown")
+        # 隐藏 deepagents 内置工具（规划/文件系统/子代理），保持前端体验一致。
+        # 跳过 start 后，对应的 tool_end 因找不到已登记的 tool_call_id 自然 no-op。
+        if _is_hidden_builtin_tool(tool_name):
+            return events
         tool_input = event_data.get("input", {})
         run_id_from_event = event.get("run_id", "")
 
@@ -783,6 +814,10 @@ class BasicGraph(ABC):
                 tool_call_id = getattr(tool_call, "id", None) or f"tool_{uuid.uuid4()}"
                 tool_name = getattr(tool_call, "name", "unknown")
                 tool_args = getattr(tool_call, "args", None)
+
+            # 隐藏 deepagents 内置工具的调用事件
+            if _is_hidden_builtin_tool(tool_name):
+                continue
 
             if tool_call_id not in current_tool_calls:
                 current_tool_calls[tool_call_id] = {"name": tool_name, "started": True}

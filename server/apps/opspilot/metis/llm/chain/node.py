@@ -3358,6 +3358,170 @@ class ToolsNodes(BasicNode):
         return self.tools
 
     # ========== 使用 DeepAgent 实现 ==========
+    #
+    # 统一引擎入口：所有 agent 图（ReAct / Plan-Execute / ChatBot）均通过
+    # build_deepagent_nodes 委托给 deepagents 的 create_deep_agent。
+    # deepagents 原生提供规划（TodoListMiddleware）、虚拟文件系统、子代理、
+    # 上下文压缩（SummarizationMiddleware）、Anthropic prompt 缓存、以及
+    # 技能（SkillsMiddleware，SKILL.md 渐进式披露）能力。
+    #
+    # 在 deepagents 之上，本方法真实接入 BK-Lite 的四项能力：
+    #   - tools / MCP：复用 setup() 已加载的 self.all_tools / self.tools
+    #   - knowledge base：knowledge_retrieve 工具（agent 自主检索，见 _build_knowledge_retrieve_tool）
+    #   - skills：把 SkillPackage 物化为 SKILL.md 写入 MinIO 对象存储 backend
+    #   - approval：approval_config -> deepagents 原生 interrupt_on（HITL）
+    #
+    # 手写 ReAct 循环（build_react_nodes）暂时保留以兼容存量单测，但图层不再使用。
+
+    # deepagents 内置工具名（规划/文件系统/子代理），用于 AG-UI 事件过滤与审批排除。
+    DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
+        {
+            "write_todos",
+            "write_file",
+            "read_file",
+            "ls",
+            "edit_file",
+            "glob_search",
+            "grep_search",
+            "task",
+        }
+    )
+
+    def _collect_deepagent_tools(self, graph_request) -> list:
+        """汇总传给 deepagent 的业务工具：langchain + MCP（+ 知识库检索工具）。"""
+        tools = list(self.all_tools or self.tools or [])
+        kb_tool = self._build_knowledge_retrieve_tool(graph_request)
+        if kb_tool is not None:
+            tools.append(kb_tool)
+        return tools
+
+    def _build_knowledge_retrieve_tool(self, graph_request):
+        """构建 agent 可调用的 knowledge_retrieve 工具（双模式中的“工具模式”）。
+
+        基于 request.naive_rag_request（DocumentRetrieverRequest 列表）按需检索：
+        每次调用用 agent 的 query 覆盖各请求的 search_query 再走 PgvectorRag。
+        best-effort：无知识库配置或构建失败时返回 None，不影响主引擎。
+        """
+        naive_rag_request = list(getattr(graph_request, "naive_rag_request", None) or [])
+        if not naive_rag_request:
+            return None
+        try:
+            from types import SimpleNamespace
+
+            from apps.opspilot.metis.llm.tools.knowledge_tool import build_knowledge_retrieve_tool
+            from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+
+            # 用 DocumentRetrieverRequest 作为“知识库”载体；kwargs_map 不参与（search_fn 自带逻辑）
+            knowledge_bases = []
+            kwargs_map = {}
+            for idx, req in enumerate(naive_rag_request):
+                kb_id = str(getattr(req, "index_name", None) or f"kb_{idx}")
+                knowledge_bases.append(SimpleNamespace(id=kb_id, name=kb_id, req=req))
+                kwargs_map[kb_id] = {}
+
+            def _search_fn(kb, query, kwargs, score_threshold=0, is_qa=False):
+                req = kb.req
+                try:
+                    cloned = req.model_copy(update={"search_query": query})
+                except Exception:
+                    cloned = req
+                    try:
+                        cloned.search_query = query
+                    except Exception:
+                        pass
+                results = PgvectorRag().search(cloned)
+                return self._normalize_kb_results(results)
+
+            return build_knowledge_retrieve_tool(knowledge_bases, kwargs_map, search_fn=_search_fn)
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("knowledge_retrieve 工具构建失败，跳过: %r", e)
+            return None
+
+    @staticmethod
+    def _normalize_kb_results(results) -> list:
+        """把 PgvectorRag 返回结果规整成 knowledge_tool 期望的 dict 列表。"""
+        normalized = []
+        for item in results or []:
+            meta = getattr(item, "metadata", None)
+            if meta is None and isinstance(item, dict):
+                meta = item.get("metadata", {})
+            page = getattr(item, "page_content", None)
+            if page is None and isinstance(item, dict):
+                page = item.get("page_content") or item.get("content", "")
+            normalized.append(
+                {
+                    "content": page or "",
+                    "title": (meta or {}).get("title") or (meta or {}).get("source", ""),
+                    "score": (meta or {}).get("score") or getattr(item, "score", 0),
+                }
+            )
+        return normalized
+
+    def _build_skill_backend_and_sources(self, graph_request):
+        """把启用的 SkillPackage 物化为 SKILL.md 写入 MinIO，返回 (backend, sources)。
+
+        sources 指向 backend 中存放各技能目录的父路径（"/skills/"），
+        SkillsMiddleware 据此扫描 SKILL.md 的 frontmatter 并渐进式披露。
+        best-effort：无技能或失败返回 (None, [])，不影响主引擎。
+        """
+        packages = self._resolve_skill_packages(graph_request)
+        if not packages:
+            return None, []
+        try:
+            from apps.opspilot.metis.llm.backends import MinIOBackend
+            from apps.opspilot.services.skill_package.materializer import materialize_skill_package
+
+            # 按 bot/用户做命名空间隔离，避免多租户串读
+            user_id = getattr(graph_request, "user_id", "") or "shared"
+            backend = MinIOBackend(bucket_name=self._skill_bucket_name(), prefix=f"opspilot-skills/{user_id}")
+            for pkg in packages:
+                try:
+                    materialize_skill_package(pkg, backend)
+                except Exception as me:  # 幂等：已存在/单包失败不影响其它技能
+                    logger.debug("技能物化跳过(%s): %r", pkg.get("name") if isinstance(pkg, dict) else pkg, me)
+            return backend, ["/skills/"]
+        except Exception as e:  # pragma: no cover - defensive
+            logger.warning("技能 backend 构建失败，跳过 skills: %r", e)
+            return None, []
+
+    @staticmethod
+    def _skill_bucket_name() -> str:
+        """技能文件所在的私有桶（沿用项目私有桶约定）。"""
+        import os
+
+        return os.getenv("OPSPILOT_SKILL_BUCKET", "munchkin-private")
+
+    @staticmethod
+    def _resolve_skill_packages(graph_request) -> list:
+        """从 request.extra_config 解析本次启用的技能包（已 hydrate 的 dict 列表）。"""
+        try:
+            from apps.opspilot.services.skill_package.runtime import hydrate_skill_packages, normalize_skill_packages
+
+            ec = ExtraConfig.from_raw(getattr(graph_request, "extra_config", None))
+            raw = list(getattr(ec, "matched_skill_packages", None) or [])
+            if not raw:
+                return []
+            return hydrate_skill_packages(normalize_skill_packages(raw))
+        except Exception as e:  # pragma: no cover - defensive
+            logger.debug("技能包解析失败: %r", e)
+            return []
+
+    def _build_interrupt_on(self, graph_request, tools) -> Optional[dict]:
+        """approval_config -> deepagents interrupt_on（人工审批 HITL）。
+
+        approval_config.tools 为空且启用 = 对所有业务工具审批（排除 deepagents 内置工具）。
+        """
+        approval = getattr(graph_request, "approval_config", None)
+        if not approval or not getattr(approval, "enabled", False):
+            return None
+        named = list(getattr(approval, "tools", None) or [])
+        if named:
+            target_names = named
+        else:
+            target_names = [t.name for t in (tools or []) if getattr(t, "name", None) and t.name not in self.DEEPAGENT_BUILTIN_TOOL_NAMES]
+        if not target_names:
+            return None
+        return {name: True for name in target_names}
 
     async def build_deepagent_nodes(
         self,
@@ -3367,16 +3531,14 @@ class ToolsNodes(BasicNode):
         next_node: str = END,
         tools_node: Optional[ToolNode] = None,
     ) -> str:
-        """构建DeepAgent节点
-
-        DeepAgent 自动提供规划、文件系统工具和子代理能力
+        """构建统一 DeepAgent 节点（所有 agent 图的执行引擎）。
 
         Args:
             graph_builder: StateGraph实例
             composite_node_name: 组合节点名称前缀
             additional_system_prompt: 附加系统提示词
             next_node: 下一个节点名称
-            tools_node: 可选的工具节点
+            tools_node: 兼容签名（deepagent 自管工具，忽略）
 
         Returns:
             DeepAgent包装节点名称
@@ -3394,13 +3556,27 @@ class ToolsNodes(BasicNode):
             )
 
             llm = self.get_llm_client(graph_request)
+            tools = self._collect_deepagent_tools(graph_request)
+            backend, skill_sources = self._build_skill_backend_and_sources(graph_request)
+            interrupt_on = self._build_interrupt_on(graph_request, tools)
 
-            # 创建 DeepAgent (自动包含规划、文件系统工具和子代理能力)
-            deep_agent = create_deep_agent(model=llm, tools=self.tools, system_prompt=final_system_prompt, debug=True)
+            agent_kwargs: Dict[str, Any] = {
+                "model": llm,
+                "tools": tools,
+                "system_prompt": final_system_prompt,
+            }
+            if backend is not None:
+                agent_kwargs["backend"] = backend
+            if skill_sources:
+                agent_kwargs["skills"] = skill_sources
+            if interrupt_on:
+                agent_kwargs["interrupt_on"] = interrupt_on
 
-            # DeepAgent返回的是CompiledStateGraph,需要调用它
-            # 增加递归限制以允许复杂任务完成
-            deep_config = {**config, "recursion_limit": 100}  # DeepAgent 需要更高的递归限制
+            # 创建 DeepAgent (自动包含规划、文件系统、子代理、压缩与技能能力)
+            deep_agent = create_deep_agent(**agent_kwargs)
+
+            # DeepAgent 返回 CompiledStateGraph；提高递归限制以容纳复杂任务
+            deep_config = {**config, "recursion_limit": 100}
 
             result = await deep_agent.ainvoke({"messages": state["messages"]}, config=deep_config)
 
