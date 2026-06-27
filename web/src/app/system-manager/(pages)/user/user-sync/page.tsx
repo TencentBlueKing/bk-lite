@@ -3,17 +3,19 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Button,
-  Menu,
   Modal,
   message,
 } from 'antd';
-import { PlayCircleOutlined, PlusOutlined, ReloadOutlined } from '@ant-design/icons';
+import { PlusOutlined, ReloadOutlined } from '@ant-design/icons';
 
 import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
-import EntityList from '@/components/entity-list';
 import { useTranslation } from '@/utils/i18n';
 import PermissionWrapper from '@/components/permission';
+import UserSyncSourceList, {
+  type UserSyncSourceCardItem,
+  type UserSyncStatusTone,
+} from '@/app/system-manager/components/user/user-sync/UserSyncSourceList';
 import UserSyncOperateModal from '@/app/system-manager/components/user/user-sync/UserSyncOperateModal';
 import UserSyncBasicModal from '@/app/system-manager/components/user/user-sync/UserSyncBasicModal';
 import UserSyncConfigModal from '@/app/system-manager/components/user/user-sync/UserSyncConfigModal';
@@ -44,18 +46,22 @@ import {
   toFieldMappingPayload,
 } from '@/app/system-manager/utils/userSyncPageUtils';
 import { isSilentRequestError } from '@/utils/request';
+import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
-interface UserSyncEntityItem {
-  id: number;
+interface UserSyncEntityItem extends UserSyncSourceCardItem {
   raw: UserSyncSource;
-  name: string;
-  description: string;
-  icon: string;
-  tagList: Array<{ name: string; color?: string }>;
+}
+
+const STATUS_TONE_MAP: Record<keyof typeof RUN_STATUS_TEXT_STYLE, UserSyncStatusTone> = {
+  running: 'processing',
+  success: 'success',
+  failed: 'error',
+  partial: 'waiting',
 };
 
 const UserSyncPage: React.FC = () => {
   const { t } = useTranslation();
+  const { convertToLocalizedTime } = useLocalizedTime();
   const {
     getSyncSources,
     createSyncSource,
@@ -134,26 +140,33 @@ const UserSyncPage: React.FC = () => {
       const providerKey =
         availableInstances.find((item) => item.id === source.integration_instance)?.provider_key || '';
       const latestStatus = source.latest_run?.status;
+      const latestSyncTimeText = source.latest_run?.started_at
+        ? convertToLocalizedTime(source.latest_run.started_at, 'YYYY-MM-DD HH:mm')
+        : '--';
+      const latestStatusText = latestStatus
+        ? t(`system.user.userSyncPage.runStatus.${latestStatus}`)
+        : t('system.user.userSyncPage.noRun');
+      const syncCycleText = source.schedule_config?.enabled && source.schedule_config.sync_time
+        ? source.schedule_config.sync_time
+        : t('system.user.userSyncPage.manualSync');
 
       return {
         id: source.id,
         raw: source,
         name: source.name,
         description: source.description || '--',
-        icon: providerKey,
-        tagList: [
-          latestStatus
-            ? {
-              name: t(`system.user.userSyncPage.runStatus.${latestStatus}`),
-              color: RUN_STATUS_TEXT_STYLE[latestStatus],
-            }
-            : {
-              name: t('system.user.userSyncPage.noRun'),
-            },
-        ],
+        providerIcon: providerKey || 'shezhi',
+        integrationSystemName: source.integration_instance_name || '--',
+        rootGroupName: source.root_group_name || '--',
+        syncedUsersText: source.latest_run ? source.latest_run.synced_user_count.toLocaleString() : '--',
+        syncCycleText,
+        latestSyncTimeText,
+        latestStatusText,
+        latestStatusTone: latestStatus ? STATUS_TONE_MAP[latestStatus] : 'default',
+        syncDisabled: !source.enabled,
       };
     });
-  }, [sources, availableInstances, t]);
+  }, [availableInstances, convertToLocalizedTime, sources, t]);
 
   const showPreviewSuccess = (result: { estimated_user_count: number; estimated_group_count?: number }) => {
     const countMessage = result.estimated_group_count !== undefined
@@ -376,29 +389,6 @@ const UserSyncPage: React.FC = () => {
     }
   };
 
-  const descSlot = useCallback((item: UserSyncEntityItem) => (
-    <Button
-      disabled={!item.raw.enabled}
-      type="link"
-      icon={<PlayCircleOutlined />}
-      onClick={(event) => {
-        event.stopPropagation();
-        handleSyncNow(item.raw);
-      }}
-    >
-      {t('system.user.userSyncPage.syncNow')}
-    </Button>
-  ), [handleSyncNow, t]);
-
-  const menuActions = useCallback((item: UserSyncEntityItem) => (
-    <Menu>
-      <Menu.Item key="edit" onClick={() => openBasic(item.raw)}>{t('common.edit')}</Menu.Item>
-      <Menu.Item key="config" onClick={() => openConfig(item.raw)}>{t('system.user.userSyncPage.accessConfig')}</Menu.Item>
-      <Menu.Item key="strategy" onClick={() => openStrategy(item.raw)}>{t('system.user.userSyncPage.syncStrategy')}</Menu.Item>
-      <Menu.Item key="delete" onClick={() => handleDelete(item.raw)}>{t('common.delete')}</Menu.Item>
-    </Menu>
-  ), [handleDelete, openBasic, openConfig, openStrategy, t]);
-
   const fetchRecords = useCallback(async (current = 1, pageSize = recordsPagination.pageSize) => {
     setRecordsLoading(true);
     try {
@@ -463,15 +453,15 @@ const UserSyncPage: React.FC = () => {
           />
         }
         rightSection={
-          <EntityList
+          <UserSyncSourceList
             data={entityListItems}
             loading={loading}
-            search
-            nameField="name"
-            onCardClick={undefined}
-            menuActions={menuActions}
             operateSection={operateSection}
-            descSlot={descSlot}
+            onEdit={(item) => openBasic(item.raw)}
+            onConfig={(item) => openConfig(item.raw)}
+            onStrategy={(item) => openStrategy(item.raw)}
+            onDelete={(item) => handleDelete(item.raw)}
+            onSyncNow={(item) => handleSyncNow(item.raw)}
           />
         }
       />
