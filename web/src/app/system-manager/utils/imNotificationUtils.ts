@@ -29,6 +29,56 @@ export function parseScheduleConfig(
   };
 }
 
+export function resolveImNotificationFieldPatches(input: {
+  editing: boolean;
+  currentMatch?: string;
+  currentReceive?: string;
+  template: {
+    matchable_fields?: string[];
+    receivable_fields?: string[];
+    default_external_match_field?: string;
+    default_external_receive_field?: string;
+  } | null;
+}): {
+  external_match_field?: string;
+  external_receive_field?: string;
+} {
+  const { editing, currentMatch, currentReceive, template } = input;
+
+  if (!template) {
+    return {};
+  }
+
+  const nextValues: {
+    external_match_field?: string;
+    external_receive_field?: string;
+  } = {};
+
+  const matchableFields = template.matchable_fields || [];
+  const receivableFields = template.receivable_fields || [];
+
+  if (currentMatch && !matchableFields.includes(currentMatch)) {
+    nextValues.external_match_field = undefined;
+  }
+  if (currentReceive && !receivableFields.includes(currentReceive)) {
+    nextValues.external_receive_field = undefined;
+  }
+
+  if (!editing) {
+    const nextMatch = nextValues.external_match_field ?? currentMatch;
+    const nextReceive = nextValues.external_receive_field ?? currentReceive;
+
+    if (!nextMatch && template.default_external_match_field) {
+      nextValues.external_match_field = template.default_external_match_field;
+    }
+    if (!nextReceive && template.default_external_receive_field) {
+      nextValues.external_receive_field = template.default_external_receive_field;
+    }
+  }
+
+  return nextValues;
+}
+
 export function getDisplayStatusColor(status: string): string {
   const map: Record<string, string> = {
     pending_sync: 'default',

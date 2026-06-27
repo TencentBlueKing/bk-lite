@@ -52,6 +52,7 @@ import {
   getSyncTriggerModeText,
   isChannelSyncRunning,
   parseScheduleConfig,
+  resolveImNotificationFieldPatches,
 } from '@/app/system-manager/utils/imNotificationUtils';
 import { useTranslation } from '@/utils/i18n';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
@@ -257,29 +258,12 @@ const ImNotificationPage: React.FC = () => {
 
     const currentMatch = form.getFieldValue('external_match_field');
     const currentReceive = form.getFieldValue('external_receive_field');
-    const nextValues: Partial<IMNotificationChannelPayload> = {};
-
-    const matchableFields = resolvedTemplate?.matchable_fields || [];
-    const receivableFields = resolvedTemplate?.receivable_fields || [];
-
-    if (currentMatch && !matchableFields.includes(currentMatch)) {
-      nextValues.external_match_field = undefined;
-    }
-    if (currentReceive && !receivableFields.includes(currentReceive)) {
-      nextValues.external_receive_field = undefined;
-    }
-
-    if (!editing) {
-      const nextMatch = nextValues.external_match_field ?? currentMatch;
-      const nextReceive = nextValues.external_receive_field ?? currentReceive;
-
-      if (!nextMatch && resolvedTemplate?.default_external_match_field) {
-        nextValues.external_match_field = resolvedTemplate.default_external_match_field;
-      }
-      if (!nextReceive && resolvedTemplate?.default_external_receive_field) {
-        nextValues.external_receive_field = resolvedTemplate.default_external_receive_field;
-      }
-    }
+    const nextValues = resolveImNotificationFieldPatches({
+      editing: Boolean(editing),
+      currentMatch,
+      currentReceive,
+      template: resolvedTemplate,
+    });
 
     if (Object.keys(nextValues).length > 0) {
       form.setFieldsValue(nextValues);
