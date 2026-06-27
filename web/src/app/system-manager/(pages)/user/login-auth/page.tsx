@@ -1,12 +1,11 @@
 // Route: /system-manager/user/login-auth
 'use client';
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import {
   Button,
   Form,
   Input,
-  InputNumber,
   message,
   Popconfirm,
   Select,
@@ -30,6 +29,11 @@ import {
 import { useTranslation } from '@/utils/i18n';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 import { ColumnItem } from '@/types';
+import {
+  buildLoginAuthBindingPayload,
+  resolveLoginAuthProviderKey,
+  shouldShowLoginAuthUnmatchedUserAction,
+} from '@/app/system-manager/utils/loginAuthFormUtils';
 
 const LoginAuthPage: React.FC = () => {
   const { t } = useTranslation();
@@ -52,6 +56,7 @@ const LoginAuthPage: React.FC = () => {
   const [selectedIcon, setSelectedIcon] = useState<string>('');
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
   const [unmatchedAction, setUnmatchedAction] = useState<string>('deny');
+  const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
   const [pagination, setPagination] = useState({
     current: 1,
     total: 0,
@@ -116,6 +121,11 @@ const LoginAuthPage: React.FC = () => {
     return getBindingProviderKey(binding) === builtinProviderKey;
   }
   const editingBuiltinBinding = editingBinding ? isBuiltinBinding(editingBinding) : false;
+  const currentProviderKey = useMemo(
+    () => resolveLoginAuthProviderKey(watchedIntegrationInstance, availableInstances, editingBinding),
+    [availableInstances, editingBinding, watchedIntegrationInstance],
+  );
+  const showUnmatchedUserAction = shouldShowLoginAuthUnmatchedUserAction(currentProviderKey);
 
   const handleRefresh = async () => {
     try {
@@ -187,7 +197,6 @@ const LoginAuthPage: React.FC = () => {
     form.setFieldsValue({
       name: record.name,
       integration_instance: record.integration_instance,
-      order: record.order,
       icon: record.icon,
       description: record.description,
       external_field: record.external_field,
@@ -231,20 +240,9 @@ const LoginAuthPage: React.FC = () => {
             name: values.name.trim(),
             icon: values.icon || '',
             description: values.description || '',
-            order: values.order,
           }
           : {
-            name: values.name.trim(),
-            integration_instance: values.integration_instance,
-            icon: values.icon || '',
-            description: values.description || '',
-            order: values.order,
-            external_field: values.external_field.trim(),
-            platform_field: values.platform_field,
-            unmatched_user_action: values.unmatched_user_action,
-            default_group_name: values.unmatched_user_action === 'create'
-              ? values.default_group_name?.trim() || ''
-              : '',
+            ...buildLoginAuthBindingPayload(values, currentProviderKey),
           };
         const updated = await updateLoginAuthBinding(editingBinding.id, payload);
         setBindings(prev =>
@@ -252,19 +250,7 @@ const LoginAuthPage: React.FC = () => {
         );
         message.success(t('common.saveSuccess'));
       } else {
-        const payload: LoginAuthBindingPayload = {
-          name: values.name.trim(),
-          integration_instance: values.integration_instance,
-          icon: values.icon || '',
-          description: values.description || '',
-          order: values.order,
-          external_field: values.external_field.trim(),
-          platform_field: values.platform_field,
-          unmatched_user_action: values.unmatched_user_action,
-          default_group_name: values.unmatched_user_action === 'create'
-            ? values.default_group_name?.trim() || ''
-            : '',
-        };
+        const payload: LoginAuthBindingPayload = buildLoginAuthBindingPayload(values, currentProviderKey);
         await createLoginAuthBinding(payload);
         message.success(t('common.addSuccess'));
         await fetchBindings();
@@ -502,15 +488,6 @@ const LoginAuthPage: React.FC = () => {
             >
               <Input.TextArea rows={3} placeholder={t('system.user.loginAuthPage.descriptionPlaceholder')} />
             </Form.Item>
-            {editingBinding ? (
-              <Form.Item
-                name="order"
-                label={t('system.user.loginAuthPage.order')}
-                rules={[{ required: true }]}
-              >
-                <InputNumber min={1} precision={0} className="w-full" />
-              </Form.Item>
-            ) : null}
           </div>
 
           {!editingBuiltinBinding ? (
@@ -559,29 +536,33 @@ const LoginAuthPage: React.FC = () => {
                   {t('system.user.loginAuthPage.fieldMappingDesc')}
                 </div>
               </div>
-              <Form.Item
-                name="unmatched_user_action"
-                label={t('system.user.loginAuthPage.unmatchedUserAction')}
-                initialValue="deny"
-                className="mt-5"
-              >
-                <Select
-                  options={[
-                    { value: 'deny', label: t('system.user.loginAuthPage.actionDeny') },
-                    { value: 'create', label: t('system.user.loginAuthPage.actionCreate') },
-                  ]}
-                  onChange={handleUnmatchedActionChange}
-                />
-              </Form.Item>
-              {unmatchedAction === 'create' && (
-                <Form.Item
-                  name="default_group_name"
-                  label={t('system.user.loginAuthPage.defaultGroupName')}
-                  rules={[{ required: true, whitespace: true }]}
-                >
-                  <Input placeholder={t('system.user.loginAuthPage.defaultGroupNamePlaceholder')} />
-                </Form.Item>
-              )}
+              {showUnmatchedUserAction ? (
+                <>
+                  <Form.Item
+                    name="unmatched_user_action"
+                    label={t('system.user.loginAuthPage.unmatchedUserAction')}
+                    initialValue="deny"
+                    className="mt-5"
+                  >
+                    <Select
+                      options={[
+                        { value: 'deny', label: t('system.user.loginAuthPage.actionDeny') },
+                        { value: 'create', label: t('system.user.loginAuthPage.actionCreate') },
+                      ]}
+                      onChange={handleUnmatchedActionChange}
+                    />
+                  </Form.Item>
+                  {unmatchedAction === 'create' && (
+                    <Form.Item
+                      name="default_group_name"
+                      label={t('system.user.loginAuthPage.defaultGroupName')}
+                      rules={[{ required: true, whitespace: true }]}
+                    >
+                      <Input placeholder={t('system.user.loginAuthPage.defaultGroupNamePlaceholder')} />
+                    </Form.Item>
+                  )}
+                </>
+              ) : null}
             </div>
           ) : null}
         </Form>
