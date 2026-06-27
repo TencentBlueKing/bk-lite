@@ -20,9 +20,9 @@ export default function LoginAuthValidationPanel({
   onSelectBinding,
 }: LoginAuthValidationPanelProps) {
   return (
-    <div className="space-y-3 pt-5">
+    <div className="space-y-3">
       {bindings.length > 0 && (
-        <div className="grid grid-cols-[repeat(auto-fit,minmax(88px,100px))] justify-center gap-4">
+        <div className="flex flex-wrap items-start gap-x-4 gap-y-1.5">
           {bindings.map((binding) => {
             const isActive = binding.id === selectedBindingId;
             const isDisabled = isSelectionLocked;
@@ -34,24 +34,39 @@ export default function LoginAuthValidationPanel({
                 title={binding.name}
                 disabled={isDisabled}
                 aria-pressed={isActive}
-                className={`flex h-[104px] w-full flex-col items-center rounded-2xl px-2 pt-4 pb-3 text-center shadow-[0_8px_20px_rgba(15,23,42,0.04)] transition-all ${
+                className={`flex w-[42px] shrink-0 flex-col items-center px-0.5 pt-0.5 pb-0 text-center transition-colors ${
                   isActive
-                    ? "border border-[#4F86FF] bg-white/90 shadow-[0_10px_22px_rgba(36,107,253,0.05)]"
+                    ? ""
                     : isDisabled
-                      ? "cursor-not-allowed border border-[#DCE4F1] bg-white/72 opacity-70"
-                      : "border border-[#E9EDF5] bg-white/90 hover:-translate-y-0.5 hover:border-[#D4E4FF] hover:shadow-[0_12px_28px_rgba(36,107,253,0.10)]"
+                      ? "cursor-not-allowed opacity-70"
+                      : ""
                 }`}
               >
-                <span className="flex min-h-0 flex-1 items-center justify-center">
-                  <span className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${isActive ? "bg-[#F4F8FF]" : "bg-[#F4F7FB]"}`}>
+                <span className="flex items-center justify-center">
+                  <span
+                    className={`flex h-[42px] w-[42px] shrink-0 items-center justify-center rounded-[12px] border bg-[#F4F7FB] transition-colors ${
+                      isActive ? "border-[#D7E6FF]" : "border-[#E6EDF5]"
+                    }`}
+                    style={isActive ? { boxShadow: "inset 0 0 0 1px #6EA8FF" } : undefined}
+                  >
                     {binding.icon ? (
-                      <Icon type={binding.icon} className={`h-6! w-6! ${isActive ? "text-[#246BFD]" : "text-(--color-text-1)"}`} />
+                      <Icon type={binding.icon} className={`h-[18px]! w-[18px]! ${isActive ? "text-[#246BFD]" : "text-(--color-text-1)"}`} />
                     ) : (
-                      <ArrowLeftOutlined rotate={180} className={`text-base ${isActive ? "text-[#246BFD]" : "text-(--color-text-3)"}`} />
+                      <ArrowLeftOutlined rotate={180} className={`text-[15px] ${isActive ? "text-[#246BFD]" : "text-(--color-text-3)"}`} />
                     )}
                   </span>
                 </span>
-                <span className={`mt-2 block w-full shrink-0 truncate text-[12px] leading-4 font-medium ${isActive ? "text-[#246BFD]" : "text-(--color-text-2)"}`}>
+                <span
+                  className={`mt-1.5 block break-words text-[11px] leading-[1.25] font-medium ${isActive ? "text-[#246BFD]" : "text-(--color-text-2)"}`}
+                  style={{
+                    width: 42,
+                    maxWidth: 42,
+                    display: "-webkit-box",
+                    WebkitLineClamp: 2,
+                    WebkitBoxOrient: "vertical",
+                    overflow: "hidden",
+                  }}
+                >
                   {binding.name}
                 </span>
               </button>

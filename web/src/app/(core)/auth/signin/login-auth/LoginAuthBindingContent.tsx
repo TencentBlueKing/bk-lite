@@ -36,16 +36,16 @@ export default function LoginAuthBindingContent({
   bindingLoadState,
   selectedBinding,
   viewState,
-  activeBindingName,
   errorMessage,
   onRetryBindings,
   onContinueThirdParty,
 }: LoginAuthBindingContentProps) {
   const isModalMode = mode === "modal";
+  const helperMessage = "点击后将在新窗口中完成验证。若未跳转，可检查浏览器是否拦截弹窗。";
 
   if (bindingLoadState === "loading-bindings") {
     return (
-      <div className="flex min-h-[216px] items-center justify-center rounded-2xl border border-[#E9EDF5] bg-white/72 px-6 py-6 shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
+      <div className="flex min-h-[196px] items-center justify-center px-4 py-6">
         <div className="flex h-11 w-11 items-center justify-center rounded-full bg-[#F4F7FB] text-[18px] text-(--color-text-3)">
           <LoadingOutlined />
         </div>
@@ -55,7 +55,7 @@ export default function LoginAuthBindingContent({
 
   if (bindingLoadState === "bindings-error") {
     return (
-      <div className="rounded-[24px] border border-[#E9EDF5] bg-white/88 px-6 py-7 text-center shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
+      <div className="px-1 py-2 text-center">
         <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-full bg-[#FFF4E8] text-[#D46B08]">
           <ReloadOutlined />
         </div>
@@ -82,44 +82,72 @@ export default function LoginAuthBindingContent({
 
   if (viewState === "starting" || viewState === "waiting" || viewState === "syncing-session") {
     return (
-      <div className="rounded-[24px] border border-[#E9EDF5] bg-white/88 px-6 py-8 text-center shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
-        <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-[#F4F8FF] text-[#246BFD]">
-          <LoadingOutlined className={`text-[24px] ${viewState === "syncing-session" ? "" : "animate-spin"}`} />
+      <div className="px-1 py-1">
+        <div className="rounded-[10px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
+          <div className="flex items-center gap-[10px]">
+            <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]">
+              {selectedBinding.icon ? (
+                <Icon type={selectedBinding.icon} className="h-5! w-5! text-[#246BFD]" />
+              ) : (
+                <div className="text-[18px] leading-none text-[#246BFD]">#</div>
+              )}
+            </div>
+            <div className="min-w-0">
+              <div className={`font-semibold text-[#1E4FD6] ${isModalMode ? "text-[13px] leading-[1.35]" : "text-[14px] leading-[1.4]"}`}>
+                {selectedBinding.name}登录
+              </div>
+              <div className="mt-[2px] text-[12px] leading-[1.45] text-[#7A8A9D]">
+                {getWaitingTitle(viewState)}
+              </div>
+            </div>
+          </div>
         </div>
-        <div className={`mt-5 font-semibold text-(--color-text-1) ${isModalMode ? "text-[15px]" : "text-[18px]"}`}>
-          {getWaitingTitle(viewState)}
-        </div>
-        <p className={`mt-2 text-(--color-text-3) ${isModalMode ? "text-[12px] leading-5" : "text-sm leading-6"}`}>
-          {viewState === "syncing-session"
-            ? "Finalizing your BK-Lite session."
-            : `Continue with ${activeBindingName || selectedBinding.name} in the newly opened tab.`}
+        <button
+          type="button"
+          disabled
+          className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#246BFD] px-4 text-white opacity-90 ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
+        >
+          <LoadingOutlined className={viewState === "syncing-session" ? "" : "animate-spin"} />
+          <span>Waiting...</span>
+        </button>
+        <p className="mt-3 rounded-[10px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
+          {helperMessage}
         </p>
       </div>
     );
   }
 
   return (
-    <div className="rounded-[24px] border border-[#E9EDF5] bg-white/88 px-6 py-7 text-center shadow-[0_10px_26px_rgba(15,23,42,0.04)]">
-      <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-[20px] bg-[#F4F7FB]">
-        {selectedBinding.icon ? (
-          <Icon type={selectedBinding.icon} className="h-8! w-8! text-[#246BFD]" />
-        ) : (
-          <div className="text-[28px] leading-none text-[#246BFD]">#</div>
-        )}
+    <div className="px-1 py-1">
+      <div className="rounded-[10px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
+        <div className="flex items-center gap-[10px]">
+          <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]">
+            {selectedBinding.icon ? (
+              <Icon type={selectedBinding.icon} className="h-5! w-5! text-[#246BFD]" />
+            ) : (
+              <div className="text-[18px] leading-none text-[#246BFD]">#</div>
+            )}
+          </div>
+          <div className="min-w-0">
+            <div className={`font-semibold text-[#1E4FD6] ${isModalMode ? "text-[13px] leading-[1.35]" : "text-[14px] leading-[1.4]"}`}>
+              {selectedBinding.name}登录
+            </div>
+            <div className="mt-[2px] text-[12px] leading-[1.45] text-[#7A8A9D]">
+              适合已在工作台中使用{selectedBinding.name}身份的用户
+            </div>
+          </div>
+        </div>
       </div>
-      <div className={`mt-5 font-semibold text-(--color-text-1) ${isModalMode ? "text-[15px]" : "text-[18px]"}`}>
-        {selectedBinding.name}
-      </div>
-      <p className={`mt-2 text-(--color-text-3) ${isModalMode ? "text-[12px] leading-5" : "text-sm leading-6"}`}>
-        {selectedBinding.description || "Continue with this login method to authenticate your account."}
-      </p>
       <button
         type="button"
         onClick={onContinueThirdParty}
-        className={`mt-5 inline-flex items-center justify-center rounded-xl bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
+        className={`mt-5 inline-flex w-full items-center justify-center rounded-[10px] bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
       >
-        Continue sign-in
+        Click to continue sign in
       </button>
+      <p className="mt-3 rounded-[10px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
+        {helperMessage}
+      </p>
     </div>
   );
 }

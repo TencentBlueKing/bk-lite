@@ -1,11 +1,12 @@
 "use client";
 import {signIn} from "next-auth/react";
 import {useState} from "react";
-import {Input} from "antd";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
+import BuiltinSigninContent from "./login-auth/BuiltinSigninContent";
 import LoginAuthBindingContent from "./login-auth/LoginAuthBindingContent";
 import LoginAuthValidationPanel from "./login-auth/LoginAuthValidationPanel";
+import SigninContentShell from "./login-auth/SigninContentShell";
 import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
 import {
   isBindingSelectionLocked,
@@ -312,51 +313,6 @@ export default function SigninClient({
       setIsLoading(false);
     }
   };
-  const renderLoginForm = () => (
-    <form onSubmit={handleLoginSubmit} className={`flex w-full flex-col ${isModalMode ? 'space-y-5' : 'space-y-6'}`}>
-      <div className={isModalMode ? 'space-y-1.5' : 'space-y-2'}>
-        <label htmlFor="username" className={`font-medium ${isModalMode ? 'text-[13px] text-(--color-text-1)' : 'text-sm text-(--color-text-1)'}`}>Username</label>
-        <Input
-          id="username"
-          placeholder="Enter your username"
-          value={username}
-          onChange={(e) => setUsername(e.target.value)}
-          size="large"
-          required
-          className={isModalMode ? 'h-10 rounded-xl' : 'h-12'}
-        />
-      </div>
-
-      <div className={isModalMode ? 'space-y-1.5' : 'space-y-2'}>
-        <label htmlFor="password" className={`font-medium ${isModalMode ? 'text-[13px] text-(--color-text-1)' : 'text-sm text-(--color-text-1)'}`}>Password</label>
-        <Input.Password
-          id="password"
-          placeholder="Enter your password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          size="large"
-          required
-          className={isModalMode ? 'h-10 rounded-xl' : 'h-12'}
-        />
-      </div>
-
-      <button
-        type="submit"
-        disabled={isLoading}
-        className={`w-full text-white font-medium transition-all duration-150 ease-in-out ${isModalMode ? 'h-11 rounded-xl bg-[#246BFD] px-4 text-[14px] shadow-[0_12px_28px_rgba(36,107,253,0.24)] hover:bg-[#1F5DE0]' : 'rounded-lg bg-blue-600 px-4 py-3 shadow hover:-translate-y-0.5 hover:bg-blue-700'} ${isLoading ? 'cursor-not-allowed opacity-70' : ''}`}
-      >
-        {isLoading ? (
-          <span className="flex items-center justify-center">
-            <svg className="animate-spin -ml-1 mr-3 h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 718-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-            </svg>
-            Signing in...
-          </span>
-        ) : 'Sign In'}
-      </button>
-    </form>
-  );
 
   const renderPasswordResetForm = () => (
     <PasswordResetForm
@@ -395,26 +351,49 @@ export default function SigninClient({
     ? loginAuthValidation.errorMessage
     : '';
 
-  const content = (
-    <div className={`w-full ${isModalMode ? '' : 'max-w-md'}`} style={isModalMode ? { maxWidth: 388 } : undefined}>
-      {mode === 'page' && (
-        <div className="text-center mb-10">
-          <div className="flex justify-center mb-6">
-            <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />
-          </div>
-          <h2 className="text-3xl font-bold text-(--color-text-1)">
-            {authStep === 'login' && 'Sign In'}
-            {authStep === 'reset-password' && 'Reset Password'}
-            {authStep === 'otp-verification' && 'Verify Identity'}
-          </h2>
-          <p className="text-(--color-text-3) mt-2">
-            {authStep === 'login' && 'Enter your credentials to continue'}
-            {authStep === 'reset-password' && 'Create a new password to secure your account'}
-            {authStep === 'otp-verification' && 'Complete the verification process'}
-          </p>
-        </div>
-      )}
+  const builtinContent = (
+    <BuiltinSigninContent
+      mode={mode}
+      username={username}
+      password={password}
+      isLoading={isLoading}
+      onUsernameChange={setUsername}
+      onPasswordChange={setPassword}
+      onSubmit={handleLoginSubmit}
+    />
+  );
 
+  const bindingContent = (
+    <LoginAuthBindingContent
+      mode={mode}
+      bindingLoadState={loginAuthValidation.bindingsLoadState}
+      selectedBinding={selectedBinding}
+      viewState={loginAuthValidation.viewState}
+      activeBindingName={loginAuthValidation.activeBindingName}
+      errorMessage={loginAuthValidation.errorMessage}
+      onRetryBindings={() => {
+        void loginAuthValidation.reloadBindings();
+      }}
+      onContinueThirdParty={() => {
+        void loginAuthValidation.startSelectedBindingLogin();
+      }}
+    />
+  );
+
+  const bindingsSelector = showBindingsSelector ? (
+    <LoginAuthValidationPanel
+      bindings={loginAuthValidation.bindings}
+      selectedBindingId={loginAuthValidation.selectedBindingId}
+      isSelectionLocked={isValidationSelectionLocked}
+      onSelectBinding={loginAuthValidation.selectBinding}
+    />
+  ) : null;
+
+  // SigninClient owns the shared authentication content area.
+  // In page mode it wraps that content with the page shell; in modal mode
+  // the modal shell above is rendered by auth.tsx.
+  const sharedContent = (
+    <div>
       {error && (
         <div className={`mb-6 rounded border text-red-700 ${isModalMode ? 'px-3 py-2.5 text-[12px]' : 'border-l-4 border-red-500 bg-red-50 p-4'}`} style={isModalMode ? { borderColor: isDarkTheme ? 'rgba(239, 68, 68, 0.35)' : '#F5D4D4', background: isDarkTheme ? 'rgba(127, 29, 29, 0.18)' : '#FFF7F7' } : undefined}>
           <p className="font-medium">{signinErrors[error.toLowerCase()] || signinErrors.default || error}</p>
@@ -433,31 +412,12 @@ export default function SigninClient({
         </div>
       )}
 
-      {showBuiltinLoginForm && renderLoginForm()}
-
-      {authStep === 'login' && !showBuiltinLoginForm && (
-        <LoginAuthBindingContent
+      {authStep === 'login' && (
+        <SigninContentShell
           mode={mode}
-          bindingLoadState={loginAuthValidation.bindingsLoadState}
-          selectedBinding={selectedBinding}
-          viewState={loginAuthValidation.viewState}
-          activeBindingName={loginAuthValidation.activeBindingName}
-          errorMessage={loginAuthValidation.errorMessage}
-          onRetryBindings={() => {
-            void loginAuthValidation.reloadBindings();
-          }}
-          onContinueThirdParty={() => {
-            void loginAuthValidation.startSelectedBindingLogin();
-          }}
-        />
-      )}
-
-      {showBindingsSelector && (
-        <LoginAuthValidationPanel
-          bindings={loginAuthValidation.bindings}
-          selectedBindingId={loginAuthValidation.selectedBindingId}
-          isSelectionLocked={isValidationSelectionLocked}
-          onSelectBinding={loginAuthValidation.selectBinding}
+          mainContent={showBuiltinLoginForm ? builtinContent : bindingContent}
+          methodsContent={bindingsSelector}
+          methodsTitle="切换登录方式"
         />
       )}
       {authStep === 'reset-password' && renderPasswordResetForm()}
@@ -466,7 +426,7 @@ export default function SigninClient({
   );
 
   if (mode === 'modal') {
-    return <div className="mx-auto w-full py-1" style={{ maxWidth: 388 }}>{content}</div>;
+    return <div className="mx-auto w-full py-1" style={{ maxWidth: 388 }}>{sharedContent}</div>;
   }
 
   return (
@@ -483,7 +443,16 @@ export default function SigninClient({
 
       <div className="w-full h-full md:w-2/5 flex items-center justify-center p-8 bg-(--bg-color-1) overflow-y-auto">
         <div className="w-full h-full flex items-center justify-center">
-          {content}
+          <div className="w-full max-w-md">
+            <div className="mb-10 text-center">
+              <div className="mb-6 flex justify-center">
+                <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />
+              </div>
+              <h2 className="text-3xl font-bold text-(--color-text-1)">Sign In</h2>
+              <p className="mt-2 text-(--color-text-3)">Enter your credentials to continue</p>
+            </div>
+            {sharedContent}
+          </div>
         </div>
       </div>
     </div>

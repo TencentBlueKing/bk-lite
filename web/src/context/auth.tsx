@@ -382,34 +382,24 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
           style={{ backdropFilter: 'blur(4px)' }}
         >
           <div
-            className="relative w-full overflow-hidden rounded-[28px] border backdrop-blur-xl"
+            className="relative w-full overflow-hidden rounded-[16px] border"
             style={{
-              maxWidth: 460,
-              borderColor: themeName === 'dark' ? 'var(--color-border-1)' : 'rgba(255,255,255,0.6)',
-              background: themeName === 'dark' ? 'rgba(12,37,54,0.94)' : 'rgba(255,255,255,0.96)',
-              boxShadow: themeName === 'dark' ? '0 30px 90px rgba(0,0,0,0.42)' : '0 30px 90px rgba(15,23,42,0.28)',
+              maxWidth: 420,
+              borderColor: themeName === 'dark' ? 'var(--color-border-1)' : '#DBE3EC',
+              background: themeName === 'dark' ? 'var(--bg-color-2)' : '#FFFFFF',
+              boxShadow: themeName === 'dark' ? '0 18px 42px rgba(0,0,0,0.42)' : '0 10px 28px rgba(15,23,42,0.10)',
             }}
           >
-            <div
-              className="pointer-events-none absolute inset-x-0 top-0 h-24"
-              style={{
-                background: themeName === 'dark'
-                  ? 'linear-gradient(180deg, rgba(21,90,239,0.18) 0%, rgba(12,37,54,0) 100%)'
-                  : 'linear-gradient(180deg, rgba(236, 244, 255, 0.9) 0%, rgba(255, 255, 255, 0) 100%)',
-              }}
-            />
-            <div className="relative px-7 pb-7 pt-6">
-              <div className="mb-6">
-                <div className="mx-auto max-w-md text-center">
-                  <div className="text-[16px] font-semibold leading-none text-(--color-text-1)">
+            <div className="relative px-6 pb-5 pt-6">
+              <div className="mb-5">
+                <div className="max-w-[388px]">
+                  <div className="text-[24px] leading-[1.18] font-bold text-(--color-text-1)">
                     {t('common.sessionExpiredTitle')}
                   </div>
 
-                  <div className="mx-auto mt-2 max-w-sm text-[12px] leading-5 text-(--color-text-2)">
+                  <div className="mt-2 text-[13px] leading-[1.65] text-(--color-text-2)">
                     {t('common.sessionExpiredDescription')}
                   </div>
-
-                  <div className="mx-auto mt-4 h-px w-14 bg-[linear-gradient(90deg,transparent_0%,var(--color-border-2)_50%,transparent_100%)]" />
                 </div>
               </div>
               <SigninClient
