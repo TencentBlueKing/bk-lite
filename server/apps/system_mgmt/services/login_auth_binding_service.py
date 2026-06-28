@@ -1,111 +1,20 @@
 from urllib.parse import urlencode
 
 from django.contrib.auth.hashers import make_password
-from django.db.models import Max
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
 from apps.system_mgmt.models import (
     Group,
-    IntegrationInstance,
-    IntegrationInstanceStatusChoices,
     LoginAuthBinding,
     LoginAuthBindingPlatformFieldChoices,
     LoginAuthBindingUnmatchedActionChoices,
-    LoginModule,
     User,
 )
 from apps.system_mgmt.providers import RuntimeApplicationService
 
-WECHAT_PROVIDER_KEY = "wechat"
-WECHAT_PLATFORM_INSTANCE_NAME = "微信开放平台"
-WECHAT_PLATFORM_INSTANCE_DESCRIPTION = "由现有微信登录配置同步出的标准登录认证 Provider"
-WECHAT_BINDING_NAME = "微信登录"
-WECHAT_BINDING_DESCRIPTION = "通过微信开放平台完成登录认证"
-
-
-def _encode_instance_secret(field_key: str, value: str) -> str:
-    config = {field_key: value}
-    IntegrationInstance.encrypt_field(field_key, config)
-    return config[field_key]
-
-
-def _sync_wechat_login_auth_binding():
-    login_module = LoginModule.objects.filter(source_type="wechat").order_by("-enabled", "id").first()
-    instance = IntegrationInstance.objects.filter(provider_key=WECHAT_PROVIDER_KEY).first()
-    has_ready_config = bool(login_module and login_module.enabled and login_module.app_id and login_module.decrypted_app_secret)
-
-    if not has_ready_config:
-      if instance:
-          instance.enabled = False
-          instance.status = IntegrationInstanceStatusChoices.PENDING_VERIFICATION
-          capability_status = dict(instance.capability_status or {})
-          capability_status["login_auth"] = IntegrationInstanceStatusChoices.PENDING_VERIFICATION
-          instance.capability_status = capability_status
-          instance.save(update_fields=["enabled", "status", "capability_status", "updated_at"])
-          instance.login_auth_bindings.update(enabled=False)
-      return
-
-    runtime_config = {
-        "app_id": login_module.app_id,
-        "app_secret": _encode_instance_secret("app_secret", login_module.decrypted_app_secret),
-    }
-
-    if not instance:
-        instance = IntegrationInstance.objects.create(
-            name=login_module.name or WECHAT_PLATFORM_INSTANCE_NAME,
-            provider_key=WECHAT_PROVIDER_KEY,
-            config=runtime_config,
-            status=IntegrationInstanceStatusChoices.READY,
-            capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
-            enabled=True,
-            description=WECHAT_PLATFORM_INSTANCE_DESCRIPTION,
-        )
-    else:
-        instance.name = instance.name or login_module.name or WECHAT_PLATFORM_INSTANCE_NAME
-        instance.config = runtime_config
-        instance.status = IntegrationInstanceStatusChoices.READY
-        instance.capability_status = {"login_auth": IntegrationInstanceStatusChoices.READY}
-        instance.enabled = True
-        if not instance.description:
-            instance.description = WECHAT_PLATFORM_INSTANCE_DESCRIPTION
-        instance.save(update_fields=["name", "config", "status", "capability_status", "enabled", "description", "updated_at"])
-
-    binding = LoginAuthBinding.objects.filter(integration_instance=instance).order_by("order", "id").first()
-    if not binding:
-        max_order = LoginAuthBinding.objects.aggregate(max_order=Max("order")).get("max_order") or 0
-        LoginAuthBinding.objects.create(
-            name=WECHAT_BINDING_NAME,
-            integration_instance=instance,
-            description=WECHAT_BINDING_DESCRIPTION,
-            order=max_order + 1,
-            enabled=True,
-            external_field="open_id",
-            platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
-            unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
-            default_group_name="OpsPilotGuest",
-        )
-        return
-
-    binding.enabled = True
-    binding.external_field = "open_id"
-    binding.platform_field = LoginAuthBindingPlatformFieldChoices.USERNAME
-    binding.unmatched_user_action = LoginAuthBindingUnmatchedActionChoices.CREATE
-    binding.default_group_name = binding.default_group_name or "OpsPilotGuest"
-    binding.save(
-        update_fields=[
-            "enabled",
-            "external_field",
-            "platform_field",
-            "unmatched_user_action",
-            "default_group_name",
-            "updated_at",
-        ]
-    )
-
 
 def get_active_login_auth_bindings():
-    _sync_wechat_login_auth_binding()
     bindings = []
     queryset = LoginAuthBinding.objects.select_related("integration_instance").filter(enabled=True).order_by("order", "id")
     for binding in queryset:

@@ -389,15 +389,23 @@ def test_get_login_auth_bindings_returns_enabled_ready_items_in_order():
 
 
 @pytest.mark.django_db
-def test_get_login_auth_bindings_materializes_wechat_binding_from_login_module():
-    LoginModule.objects.create(
+def test_get_login_auth_bindings_returns_existing_wechat_binding_only():
+    instance = IntegrationInstance.objects.create(
         name="微信开放平台",
-        source_type="wechat",
-        app_id="wx-app-id",
-        app_secret="wx-app-secret",
-        other_config={},
+        provider_key="wechat",
+        config={"app_id": "wx-app-id", "app_secret": "wx-app-secret"},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
         enabled=True,
-        is_build_in=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="微信登录",
+        integration_instance=instance,
+        enabled=True,
+        external_field="open_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
+        default_group_name="OpsPilotGuest",
     )
 
     from apps.system_mgmt.nats_api import get_login_auth_bindings
@@ -405,18 +413,9 @@ def test_get_login_auth_bindings_materializes_wechat_binding_from_login_module()
     response = get_login_auth_bindings()
 
     assert response["result"] is True
-    assert any(item["provider_key"] == "wechat" for item in response["data"])
-
-    instance = IntegrationInstance.objects.get(provider_key="wechat")
-    binding = LoginAuthBinding.objects.get(integration_instance=instance)
-    runtime_config = instance.get_runtime_config()
-
-    assert instance.enabled is True
-    assert instance.capability_status == {"login_auth": IntegrationInstanceStatusChoices.READY}
-    assert runtime_config["app_id"] == "wx-app-id"
-    assert runtime_config["app_secret"] == "wx-app-secret"
-    assert binding.enabled is True
-    assert binding.external_field == "open_id"
+    assert any(item["id"] == binding.id and item["provider_key"] == "wechat" for item in response["data"])
+    assert IntegrationInstance.objects.filter(provider_key="wechat").count() == 1
+    assert LoginAuthBinding.objects.filter(integration_instance=instance).count() == 1
 
 
 @pytest.mark.django_db

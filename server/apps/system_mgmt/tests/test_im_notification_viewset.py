@@ -358,3 +358,99 @@ def test_send_action_rejects_channel_not_ready(api_client, authenticated_user, c
 
     assert response.status_code == 400
     assert "requires a successful sync" in response.json()["message"]
+
+
+@pytest.mark.django_db
+def test_mappings_returns_channel_user_mappings(api_client, authenticated_user, channel):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    user = User.objects.create(
+        username="mapped-user",
+        display_name="Mapped User",
+        email="mapped@example.com",
+        domain="domain.com",
+    )
+    IMNotificationUserMapping.objects.create(
+        channel=channel,
+        user=user,
+        external_identity_key="user_id",
+        external_identity_value="ou_123",
+        external_receive_key="user_id",
+        external_snapshot={"user_id": "ou_123"},
+    )
+
+    response = api_client.get(f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/mappings/", {"page": 1, "page_size": 10})
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["items"][0]["username"] == "mapped-user"
+
+
+@pytest.mark.django_db
+def test_test_send_uses_default_receiver_when_receivers_missing(api_client, authenticated_user, channel):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    with patch("apps.system_mgmt.viewset.im_notification_channel_viewset.send_im_notification", return_value={"result": True, "message": "ok"}) as mock_send:
+        response = api_client.post(
+            f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/test_send/",
+            {"title": "Ping", "content": "Body"},
+            format="json",
+        )
+
+    assert response.status_code == 200
+    assert response.json()["result"] is True
+    assert mock_send.call_args.kwargs["receivers"] == [authenticated_user.id]
+
+
+@pytest.mark.django_db
+def test_test_send_returns_error_payload(api_client, authenticated_user, channel):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    with patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.send_im_notification",
+        return_value={"result": False, "message": "failed"},
+    ):
+        response = api_client.post(
+            f"/api/v1/system_mgmt/im_notification_channel/{channel.id}/test_send/",
+            {"title": "Ping", "content": "Body", "receivers": ["tester"]},
+            format="json",
+        )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "failed"
+
+
+@pytest.mark.django_db
+def test_send_action_rejects_invalid_channel_or_user_ids(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/send/",
+        {"channel_id": "bad", "user_ids": ["oops"], "title": "Hello", "content": "World"},
+    )
+
+    assert response.status_code == 400
+    assert response.json()["message"] == "Invalid channel_id or user_ids"
+
+
+@pytest.mark.django_db
+def test_send_action_rejects_missing_channel(api_client, authenticated_user):
+    authenticated_user.is_superuser = True
+    authenticated_user.save(update_fields=["is_superuser"])
+    authenticated_user.permission = {"system-manager": {"channel_list-Edit"}}
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/im_notification_channel/send/",
+        {"channel_id": 999999, "user_ids": [1], "title": "Hello", "content": "World"},
+    )
+
+    assert response.status_code == 404
+    assert response.json()["message"] == "IM notification channel not found"

@@ -195,6 +195,7 @@
         "title": "Normal users have the following permissions:"
       },
       "passwordTitle": "Set Password",
+      "deleteBlockedBySyncSource": "The selected users include synced users and cannot be deleted here. Please delete them from the user sync source.",
       "desc": "Display all information about the organization structure and users. You can maintain organizations at all levels, perform CRUD operations, set user information, and assign roles and organizations.",
       "organizationRoles": "Organization Roles",
       "title": "Organization Structure",

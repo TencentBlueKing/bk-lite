@@ -1,20 +1,26 @@
 from types import SimpleNamespace
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
+
+from urllib.parse import parse_qs, urlparse
 
 import pytest
 
 from apps.system_mgmt.models import (
+    Group,
     IntegrationInstance,
     IntegrationInstanceStatusChoices,
     LoginAuthBinding,
     LoginAuthBindingPlatformFieldChoices,
     LoginAuthBindingUnmatchedActionChoices,
+    User,
 )
 from apps.system_mgmt.providers.adapters.feishu import FeishuLoginAuthAdapter
 from apps.system_mgmt.providers.adapters.base import BaseUserSyncAdapter
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult, RuntimeApplicationService
 from apps.system_mgmt.services.login_auth_binding_service import (
+    build_login_auth_redirect,
     get_active_login_auth_bindings,
+    login_with_binding,
     serialize_public_login_auth_binding,
 )
 
@@ -166,28 +172,27 @@ def test_runtime_application_service_can_execute_list_departments():
     assert result.payload["items"][0]["id"] == "__all__"
 
 
-def test_feishu_build_login_url_prints_redirect_uri_and_authorize_url():
+def test_feishu_build_login_url_returns_authorize_url_payload():
     config = {
         "app_id": "cli_test_app",
         "login_auth_authorize_url": "https://accounts.feishu.cn/open-apis/authen/v1/authorize",
     }
     redirect_uri = "http://10.10.40.91:8011/api/v1/core/api/login_auth/callback/"
 
-    with patch("builtins.print") as mock_print:
-        result = FeishuLoginAuthAdapter.build_login_url(
-            config=config,
-            provider_key="feishu",
-            capability_key="login_auth",
-            redirect_uri=redirect_uri,
-            state="state-1",
-        )
+    result = FeishuLoginAuthAdapter.build_login_url(
+        config=config,
+        provider_key="feishu",
+        capability_key="login_auth",
+        redirect_uri=redirect_uri,
+        state="state-1",
+    )
 
     assert result.success is True
-    mock_print.assert_called_once()
-    printed_message = mock_print.call_args.args[0]
-    assert "redirect_uri=" in printed_message
-    assert redirect_uri in printed_message
-    assert "authorize_url=" in printed_message
+    assert "authorize_url" in result.payload
+    parsed = urlparse(result.payload["authorize_url"])
+    query = parse_qs(parsed.query)
+    assert query["redirect_uri"] == [redirect_uri]
+    assert query["state"] == ["state-1"]
 
 
 @pytest.mark.django_db
@@ -218,3 +223,257 @@ def test_serialize_public_login_auth_binding_includes_builtin_provider_key():
     assert payload["provider_key"] == "bk_lite_builtin"
     assert payload["integration_instance_id"] == instance.id
     assert payload["integration_instance_name"] == instance.name
+
+
+@pytest.mark.django_db
+def test_build_login_auth_redirect_delegates_to_runtime_service():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={"app_id": "cli_xxx"},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    runtime_result = CapabilityExecutionResult.success_result("ok", payload={"authorize_url": "https://example.com"})
+
+    with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result) as mock_execute:
+        result = build_login_auth_redirect(binding, redirect_uri="https://console.example.com/callback", state="signed")
+
+    assert result.success is True
+    assert result.payload["authorize_url"] == "https://example.com"
+    assert mock_execute.call_args.kwargs["binding"] == binding
+    assert mock_execute.call_args.kwargs["redirect_uri"] == "https://console.example.com/callback"
+    assert mock_execute.call_args.kwargs["state"] == "signed"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_returns_not_found_when_binding_missing():
+    result = login_with_binding(999999, "auth-code")
+
+    assert result["result"] is False
+    assert result["message"] == "Login auth binding not found"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_rejects_binding_that_is_not_ready():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.PENDING_VERIFICATION},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+
+    result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is False
+    assert result["message"] == "Login auth binding is not ready"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_returns_provider_failure_payload():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    runtime_result = CapabilityExecutionResult.failed_result("auth failed", code="provider.auth_failed")
+
+    with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result):
+        result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is False
+    assert result["message"] == "auth failed"
+    assert result["data"]["success"] is False
+
+
+@pytest.mark.django_db
+def test_login_with_binding_returns_adapter_supplied_login_result():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    runtime_result = CapabilityExecutionResult.success_result("ok", payload={"login_result": {"token": "abc"}})
+
+    with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result):
+        result = login_with_binding(binding.id, "auth-code")
+
+    assert result == {"result": True, "data": {"token": "abc"}}
+
+
+@pytest.mark.django_db
+def test_login_with_binding_returns_error_when_no_matching_user_found():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    runtime_result = CapabilityExecutionResult.success_result("ok", payload={"external_user": {"user_id": "ghost"}})
+
+    with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result):
+        result = login_with_binding(binding.id, "auth-code")
+
+    assert result["result"] is False
+    assert result["message"] == "No matching platform user found"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_creates_user_when_unmatched_action_is_create():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
+        default_group_name="OpsGuests",
+    )
+    runtime_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={"external_user": {"user_id": "new-user", "name": "New User", "email": "new@example.com", "mobile": "13800000000"}},
+    )
+
+    with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result), patch(
+        "apps.system_mgmt.nats_api.get_user_login_token",
+        return_value={"result": True, "data": {"token": "login-token", "username": "new-user"}},
+    ):
+        result = login_with_binding(binding.id, "auth-code")
+
+    created_user = User.objects.get(username="new-user")
+    default_group = Group.objects.get(name="OpsGuests", parent_id=0)
+    assert created_user.group_list == [default_group.id]
+    assert result["result"] is True
+    assert result["data"]["domain"] == "domain.com"
+
+
+@pytest.mark.django_db
+def test_login_with_binding_updates_existing_user_profile_before_token_issue():
+    instance = IntegrationInstance.objects.create(
+        name="Feishu Login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="Feishu Binding",
+        integration_instance=instance,
+        enabled=True,
+        external_field="user_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.DENY,
+    )
+    user = User.objects.create(
+        username="match-user",
+        display_name="Old Name",
+        email="old@example.com",
+        phone="13900000000",
+        password="",
+        domain="domain.com",
+    )
+    runtime_result = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={"external_user": {"user_id": "match-user", "name": "New Name", "email": "new@example.com", "mobile": "13800000000"}},
+    )
+
+    with patch("apps.system_mgmt.services.login_auth_binding_service.RuntimeApplicationService.execute", return_value=runtime_result), patch(
+        "apps.system_mgmt.nats_api.get_user_login_token",
+        return_value={"result": True, "data": {"token": "login-token", "username": "match-user"}},
+    ):
+        result = login_with_binding(binding.id, "auth-code")
+
+    user.refresh_from_db()
+    assert user.display_name == "New Name"
+    assert user.email == "new@example.com"
+    assert user.phone == "13800000000"
+    assert result["result"] is True
+
+
+@pytest.mark.django_db
+def test_get_active_login_auth_bindings_keeps_ready_wechat_binding_without_login_module():
+    instance = IntegrationInstance.objects.create(
+        name="微信开放平台",
+        provider_key="wechat",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        enabled=True,
+    )
+    binding = LoginAuthBinding.objects.create(
+        name="微信登录",
+        integration_instance=instance,
+        enabled=True,
+        external_field="open_id",
+        platform_field=LoginAuthBindingPlatformFieldChoices.USERNAME,
+        unmatched_user_action=LoginAuthBindingUnmatchedActionChoices.CREATE,
+        default_group_name="OpsGuests",
+    )
+
+    bindings = get_active_login_auth_bindings()
+
+    instance.refresh_from_db()
+    binding.refresh_from_db()
+    assert [item.id for item in bindings] == [binding.id]
+    assert instance.enabled is True
+    assert binding.enabled is True
