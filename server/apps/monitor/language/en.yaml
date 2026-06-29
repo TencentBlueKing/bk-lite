@@ -895,6 +895,15 @@ monitor_object_metric:
     device_temperature_celsius:
       name: Device Temperature
       desc: Device hardware temperature sensor reading in degrees Celsius. Abnormally high values may indicate fan failure, poor airflow, or high ambient temperature.
+    device_swap_usage:
+      name: Swap Usage
+      desc: Swap-space utilization of the firewall reported directly as a 0-100 percentage. Sustained swap usage indicates memory exhaustion and degrades session performance.
+    device_disk_usage:
+      name: Disk Usage
+      desc: Disk-space utilization of the firewall reported directly as a 0-100 percentage. A nearly full disk can prevent logging and configuration changes and may destabilize the device.
+    device_web_users:
+      name: Signed-In Web Users
+      desc: Number of currently signed-in web users on the gateway. Tracking the active session count helps capacity planning and detecting abnormal connection spikes.
     device_psu_state:
       name: Power Supply Status
       desc: Operational state of each power supply unit (enum). A non-normal state indicates a power redundancy or hardware fault and should be remediated promptly.
@@ -4756,6 +4765,9 @@ monitor_object_plugin:
   Firewall Bluedon SNMP:
     name: Bluedon (Telegraf)
     desc: Bluedon (蓝盾) firewall SNMP collection (enterprise 36889 private MIB). Beyond standard IF-MIB interface metrics, it collects Bluedon private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Bluedon Information Security firewalls / network-security appliances (enterprise 36889).
+  Firewall Pulse Secure SNMP:
+    name: Pulse Secure (Telegraf)
+    desc: Pulse Secure / Ivanti Connect Secure (IVE) SSL VPN gateway SNMP collection (PULSESECURE-PSG-MIB, enterprise PEN 12532). Beyond standard IF-MIB interface metrics, it collects the IVE system health scalars — CPU utilization (iveCpuUtil), memory utilization (iveMemoryUtil), swap utilization (iveSwapUtil), disk utilization (diskFullPercent) all reported directly as 0-100 percentages, chassis temperature (iveTemperature, degrees Celsius read directly — only MAG blades return a real value, other platforms return 0) and the number of signed-in web users (signedInWebUsers). Fan and power-supply objects are not exposed by the MIB, so they are N/A. Supported brands/models — Pulse Connect Secure / Ivanti Connect Secure, MAG / PSA series SSL VPN and ZTNA gateways (enterprise PEN 12532).
   Firewall DPtech SNMP:
     name: DPtech (Telegraf)
     desc: DPtech (迪普科技) firewall SNMP collection (enterprise PEN 31648 private MIB). Beyond standard IF-MIB interface metrics, it collects DPtech private OIDs for device health including average CPU utilization (OID 31648.3.15.1, reported directly as a percentage) and memory utilization (OID 31648.3.15.5, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — DPtech NGFW / UTM / network-security appliances (FW1000 and the like, enterprise PEN 31648).

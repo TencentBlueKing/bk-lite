@@ -831,6 +831,15 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 设备温度
       desc: 该指标报告设备硬件温度传感器读数，单位摄氏度。温度异常升高可能由风扇故障、散热不良或环境温度过高导致，严重时触发热保护或损坏硬件。
+    device_swap_usage:
+      name: Swap 使用率
+      desc: 该指标报告防火墙的 Swap（交换分区）使用率，0~100 直接百分比。Swap 持续被占用通常意味着物理内存耗尽，会拖慢会话处理性能。
+    device_disk_usage:
+      name: 磁盘使用率
+      desc: 该指标报告防火墙的磁盘空间使用率，0~100 直接百分比。磁盘将满会阻碍日志记录与配置变更，并可能导致设备不稳定。
+    device_web_users:
+      name: 已登录 Web 用户数
+      desc: 该指标报告网关当前已登录的 Web 用户数量。跟踪活动会话数有助于容量规划与发现异常连接激增。
     device_psu_state:
       name: 电源状态
       desc: 该指标报告设备电源模块的运行状态（枚举）。非正常状态表示电源冗余或硬件故障；在冗余电源设备上单个故障会移除冗余，需尽快处理。
@@ -4111,6 +4120,9 @@ monitor_object_plugin:
   Firewall Bluedon SNMP:
     name: 蓝盾（Telegraf）
     desc: 蓝盾（Bluedon）防火墙专用 SNMP 采集模板（企业号 36889 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集蓝盾私有 OID 的设备健康指标：CPU 平均使用率（snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（snAgGblDynMemUtil，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——蓝盾信息安全（Bluedon）防火墙 / 网络安全设备（企业号 36889）。
+  Firewall Pulse Secure SNMP:
+    name: Pulse Secure（Telegraf）
+    desc: Pulse Secure / Ivanti Connect Secure（IVE）SSL VPN 网关专用 SNMP 采集模板（PULSESECURE-PSG-MIB，企业号 PEN 12532）。除标准 IF-MIB 接口指标外，额外采集 IVE 系统健康标量：CPU 使用率（iveCpuUtil）、内存使用率（iveMemoryUtil）、Swap 使用率（iveSwapUtil）、磁盘使用率（diskFullPercent，均为 0~100 直接百分比）、机箱温度（iveTemperature，摄氏度直采无缩放——仅 MAG 刀片返回真值，其他平台返回 0）以及已登录 Web 用户数（signedInWebUsers）。该 MIB 不暴露风扇/电源对象，故为 N/A。适用品牌型号——Pulse Connect Secure / Ivanti Connect Secure，MAG / PSA 系列 SSL VPN 与 ZTNA 网关（企业号 PEN 12532）。
   Firewall DPtech SNMP:
     name: 迪普（Telegraf）
     desc: 迪普科技（DPtech）防火墙专用 SNMP 采集模板（企业号 PEN 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集 DPtech 私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——迪普科技（DPtech）NGFW / UTM / 网络安全设备（如 FW1000 系列，企业号 PEN 31648）。
