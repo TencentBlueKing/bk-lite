@@ -136,6 +136,15 @@ monitor_object_metric:
     device_total_outgoing_traffic: &id005
       name: Device Total Outgoing Traffic Rate
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second, summed across all interfaces from the 64-bit ifHCOutOctets counter. It helps administrators assess sending performance for traffic management and optimization.
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the wireless device reported directly as a 0-100 percentage. Sustained high CPU usage can indicate heavy client-association load, control-plane pressure, or RF management overhead affecting roaming and management responsiveness.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the wireless device reported directly as a 0-100 percentage. High memory pressure can cause the access point to drop client associations or restart services, so investigate client counts or abnormal load promptly.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Chassis temperature in degrees Celsius of the wireless device, read directly with no scaling. Only models equipped with a temperature sensor report a real value; fanless access points return 0. High temperatures can indicate cooling failure or poor airflow and risk thermal shutdown.
   Transmission:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3709,6 +3718,8 @@ monitor_object_metric_group:
   Wireless:
     Base: Base
     Traffic: Traffic
+    Wireless: Wireless
+    Temperature: Temperature
   Transmission:
     Base: Base
     Traffic: Traffic
@@ -4098,6 +4109,9 @@ monitor_object_plugin:
   Wireless Proxim SNMP:
     name: Wireless Proxim SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/subscriber units) use Proxim ORiNOCO/Tsunami private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp; LibreNMS also has no Proxim processors/mempools/sensors discovery (only ORiNOCO-MIB for OS detection), so wireless health is N/A. Applicable to Proxim Wireless devices (ORiNOCO AP access points, Tsunami MP point-to-multipoint backhaul base stations/subscriber units, enterprise OID 841) and other IF-MIB compliant wireless AP/backhaul bridges.
+  Wireless Aerohive SNMP:
+    name: Aerohive (Telegraf)
+    desc: Aerohive / Extreme Networks HiveAP access-point and controller SNMP collection template (AH-SYSTEM-MIB, enterprise PEN 26928). In addition to IF-MIB 64-bit HC interface traffic and uptime, it collects the HiveOS platform health scalars — CPU utilization (ahCpuUtilization, OID 26928.1.2.3) and memory utilization (ahMemUtilization, OID 26928.1.2.4) both reported directly as 0-100 percentages, and chassis temperature (ahEnvirmentTemp, OID 26928.1.2.10) read directly in degrees Celsius (only models with a temperature sensor return a real value, fanless APs return 0). The fan object (ahEnvirmentFan) is an RPM speed reading rather than a normalized up/down state and most APs are fanless, so fan and power-supply status are N/A. Applicable to Aerohive / Extreme HiveAP access points and HiveManager-managed wireless devices running HiveOS (enterprise PEN 26928).
   Wireless EnGenius SNMP:
     name: EnGenius (Telegraf)
     desc: Baseline SNMP collection template for EnGenius wireless devices (interface
