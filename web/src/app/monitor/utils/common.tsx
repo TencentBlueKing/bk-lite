@@ -606,6 +606,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /pica8|picos/i, label: 'Pica8', icon: 'mm-pica8_pica8' },
   { match: /advantech|\beki\b/i, label: 'Advantech', icon: 'mm-advantech_advantech' },
   { match: /etherwan/i, label: 'EtherWAN', icon: 'mm-etherwan_etherwan' },
+  { match: /sixnet|\bslx\b/i, label: 'Sixnet', icon: 'mm-sixnet_sixnet' },
   { match: /redlion|red\s*lion|n-?tron/i, label: 'Red Lion', icon: 'mm-redlion_redlion' },
   { match: /alaxala|\bax2[0-9]{3}s\b/i, label: 'Alaxala', icon: 'mm-alaxala_alaxala' },
   { match: /transition\s*networks?|\bsispm\b|\bionmm\b/i, label: 'Transition Networks', icon: 'mm-transition_transition' },
