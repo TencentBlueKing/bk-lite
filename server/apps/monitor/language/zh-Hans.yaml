@@ -4384,6 +4384,18 @@ monitor_object_plugin:
   Storage SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集存储设备各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 存储设备SNMP通用（Telegraf）
+  Storage Synology SNMP:
+    name: 群晖 Synology（Telegraf）
+    desc: 群晖 Synology NAS 存储 SNMP 采集（企业号 PEN 6574）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——机箱温度（synologyTemperature，直采摄氏度无缩放）、系统风扇与电源运行状态（synologySystemFanStatus / synologyPowerStatus，原生 1=正常 / 2=异常）、RAID/卷阵列状态（synologyRaidStatus，按最差阵列归一为 1=正常 / 2=异常）。私有树仅暴露粗粒度 normal/failed 系统状态码，无可轮询的系统级 CPU / 内存 gauge，故 CPU、内存为 N/A，不伪造。适用品牌型号——群晖 DiskStation / RackStation NAS（DSM 系统，DS / RS / FS / SA 系列）。
+  Storage MacroSAN SNMP:
+    name: 宏杉 MacroSAN（Telegraf）
+    desc: 宏杉 MacroSAN 存储阵列 SNMP 采集（企业号 PEN 35904）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集完整厂商私有健康量——控制器 CPU 利用率（cpuRate，直接百分比）、控制器内存利用率（vmRate，直接百分比，无 used/free 拆分）、风扇/电源/磁盘健康状态（fanState / powerState / diskHealthState，归一为 1=正常 / 2=异常，按实例取最差行）。温度为 N/A。适用品牌型号——宏杉 MS 系列 SAN/NAS 存储阵列（企业号 PEN 35904）。
+  Storage Sugon SNMP:
+    name: 曙光 Sugon（Telegraf）
+    desc: 曙光 Sugon ParaStor 存储 SNMP 采集（企业号 PEN 35904；ParaStor 复用宏杉私有树）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有硬件健康量——风扇/电源/磁盘运行状态（fanState / powerState / diskState，归一为 1=正常 / 2=异常，按实例取最差行）。本 profile 未暴露控制器级 CPU / 内存 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——曙光 ParaStor 分布式存储阵列（企业号 PEN 35904）。
+  Storage NetApp SNMP:
+    name: NetApp（Telegraf）
+    desc: NetApp 存储 SNMP 采集（企业号 PEN 789）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 繁忙时间（cpuBusyTimePerCent，直接百分比）与 RAID 磁盘驱动器状态（raidStatus，active 正常归一为 1=正常 / 2=异常，按实例取最差磁盘行）。环境标量（风扇/电源失效计数、超温）为计数/布尔型，未纳入共享盘 enum 语义，故温度、风扇、电源为 N/A，不伪造，待现网核验后扩展。适用品牌型号——NetApp FAS / AFF 存储系统（Data ONTAP，企业号 PEN 789）。
   Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）

@@ -5142,6 +5142,18 @@ monitor_object_plugin:
       key IF-MIB metrics from storage device interfaces, including traffic volume,
       packet loss, and error counts.
     name: Storage SNMP General (Telegraf)
+  Storage Synology SNMP:
+    name: Synology (Telegraf)
+    desc: Synology NAS storage SNMP collection (enterprise PEN 6574). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — chassis temperature (synologyTemperature, read directly in degrees Celsius with no scaling), system fan and power-supply operational state (synologySystemFanStatus / synologyPowerStatus, natively 1=normal / 2=fault), and RAID/volume array state (synologyRaidStatus, normalized by the worst array to 1=healthy / 2=fault). The private tree exposes only a coarse normal/failed system-status code with no pollable system-level CPU or memory gauge, so CPU and memory are N/A and not faked. Supported brands/models — Synology DiskStation / RackStation NAS running DSM (DS / RS / FS / SA series).
+  Storage MacroSAN SNMP:
+    name: MacroSAN (Telegraf)
+    desc: MacroSAN storage-array SNMP collection (enterprise PEN 35904). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects full vendor private health — controller CPU utilization (cpuRate, direct percent), controller memory utilization (vmRate, direct percent usage with no used/free split), and fan, power-supply and disk health state (fanState / powerState / diskHealthState, normalized to 1=normal / 2=fault, worst row per instance). Temperature is N/A. Supported brands/models — MacroSAN MS series SAN/NAS storage arrays (enterprise PEN 35904).
+  Storage Sugon SNMP:
+    name: Sugon (Telegraf)
+    desc: Sugon ParaStor storage SNMP collection (enterprise PEN 35904; ParaStor reuses the MacroSAN private tree). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private hardware health — fan, power-supply and disk operational state (fanState / powerState / diskState, normalized to 1=normal / 2=fault, worst row per instance). This profile exposes no controller-level CPU or memory gauge, so CPU, memory and temperature are N/A and not faked. Supported brands/models — Sugon ParaStor distributed storage arrays (enterprise PEN 35904).
+  Storage NetApp SNMP:
+    name: NetApp (Telegraf)
+    desc: NetApp storage SNMP collection (enterprise PEN 789). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — controller CPU busy time (cpuBusyTimePerCent, direct percent) and RAID disk-drive state (raidStatus, active=normal normalized to 1=healthy / 2=fault, worst disk per instance). The environment scalars (failed fan / power-supply counts, over-temperature) are count/boolean types not mapped into the shared-disk enum semantics, so temperature, fan and power are N/A and not faked pending field verification. Supported brands/models — NetApp FAS / AFF storage systems running Data ONTAP (enterprise PEN 789).
   Oracle:
     desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
       uptime, operation counts, transaction commits and rollbacks, as well as various
