@@ -64,6 +64,7 @@ export const useRouterConfig = () => {
       'Router NetModule SNMP': 'snmp_netmodule',
       'Router MultiTech SNMP': 'snmp_multitech',
       'Router Avici SNMP': 'snmp_avici',
+      'Router Unisphere SNMP': 'snmp_unisphere',
       'Router Sierra Wireless SNMP': 'snmp_sierrawireless',
       'Router NEC SNMP': 'snmp_nec',
       'Router DrayTek SNMP': 'snmp_draytek',
