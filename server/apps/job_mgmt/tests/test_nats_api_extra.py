@@ -180,12 +180,24 @@ class TestQueries:
         assert nats_api.job_detail_query({})["result"] is False
 
     def test_detail_query_not_found(self):
-        assert nats_api.job_detail_query({"task_id": 999999})["result"] is False
+        assert nats_api.job_detail_query({"task_id": 999999, "team": [1]})["result"] is False
 
     def test_detail_query_found(self):
         ex = _exec()
-        out = nats_api.job_detail_query({"task_id": ex.id})
+        out = nats_api.job_detail_query({"task_id": ex.id, "team": [1]})
         assert out["result"] is True and out["data"]["task_id"] == ex.id
+
+    def test_detail_query_requires_team(self):
+        ex = _exec()
+        out = nats_api.job_detail_query({"task_id": ex.id})
+        assert out["result"] is False
+        assert "team" in out["message"]
+
+    def test_detail_query_rejects_cross_team(self):
+        ex = _exec(team=[2])
+        out = nats_api.job_detail_query({"task_id": ex.id, "team": [1]})
+        assert out["result"] is False
+        assert "无权" in out["message"]
 
     def test_target_list_filters_and_pagination(self):
         from apps.job_mgmt.models import Target

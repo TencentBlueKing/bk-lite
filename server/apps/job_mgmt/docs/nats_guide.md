@@ -130,7 +130,7 @@ status = client.call("job_status_batch_query", {"task_ids": [task_id]})
 print(status)
 
 # 查询任务详情
-detail = client.call("job_detail_query", {"task_id": task_id})
+detail = client.call("job_detail_query", {"task_id": task_id, "team": [1]})
 print(detail)
 ```
 
@@ -143,7 +143,7 @@ print(detail)
 | `bklite.job_script_execute` | 脚本执行 | `{name, target_source, target_list, script_type, script_content, team, ...}` |
 | `bklite.job_file_distribute` | 文件分发 | `{name, file_keys, target_source, target_list, target_path, team, ...}` |
 | `bklite.job_status_batch_query` | 批量查询状态 | `{task_ids}` |
-| `bklite.job_detail_query` | 查询作业详情 | `{task_id}` |
+| `bklite.job_detail_query` | 查询作业详情 | `{task_id, team}` |
 
 > 完整参数说明见 [open_api.md](./open_api.md)
 

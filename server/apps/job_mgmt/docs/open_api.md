@@ -463,8 +463,13 @@ Content-Type: application/json
 
 **Request:**
 ```json
-{"task_id": 123}
+{"task_id": 123, "team": [1]}
 ```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| task_id | integer | 是 | 作业执行 ID |
+| team | array | 是 | 调用方团队 ID 列表，必须与作业执行记录归属团队有交集 |
 
 **Response:**
 ```json

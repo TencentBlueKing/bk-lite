@@ -190,15 +190,22 @@ class TestJobDetailQuery:
     def test_not_found(self):
         from apps.job_mgmt.nats_api import job_detail_query
 
-        result = job_detail_query({"task_id": 99999})
+        result = job_detail_query({"task_id": 99999, "team": [1]})
         assert result["result"] is False
         assert "不存在" in result["message"]
 
     def test_missing_task_id(self):
         from apps.job_mgmt.nats_api import job_detail_query
 
-        result = job_detail_query({})
+        result = job_detail_query({"team": [1]})
         assert result["result"] is False
+
+    def test_missing_team(self):
+        from apps.job_mgmt.nats_api import job_detail_query
+
+        result = job_detail_query({"task_id": 1})
+        assert result["result"] is False
+        assert "team" in result["message"]
 
 
 @pytest.mark.unit

@@ -14,6 +14,7 @@ from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task, finalize_cancelling_execution
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
 
@@ -566,19 +567,25 @@ def job_detail_query(data: dict):
     查询单个作业详情（NATS 开放接口）
 
     Args:
-        data: {"task_id": 123}
+        data: {"task_id": 123, "team": [1]}
 
     Returns:
         {"result": True, "data": {...}} 或 {"result": False, "message": "..."}
     """
     task_id = data.get("task_id")
+    team = normalize_team(data.get("team", []))
     if not task_id:
         return {"result": False, "message": "task_id 不能为空"}
+    if not team:
+        return {"result": False, "message": "team 不能为空"}
 
     try:
         execution = JobExecution.objects.get(id=task_id)
     except JobExecution.DoesNotExist:
         return {"result": False, "message": "任务不存在"}
+
+    if not is_team_authorized(execution.team, team):
+        return {"result": False, "message": "无权查询该任务"}
 
     return {
         "result": True,
