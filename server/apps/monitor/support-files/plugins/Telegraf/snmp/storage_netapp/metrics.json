@@ -1,0 +1,84 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_netapp",
+  "plugin": "Storage NetApp SNMP",
+  "plugin_desc": "NetApp storage-specific SNMP collection for NetApp FAS/AFF/ONTAP storage systems (NETWORK-APPLIANCE-MIB, IANA PEN 789). In addition to standard IF-MIB interface metrics, it collects NetApp private OIDs for device health — controller CPU busy time as a percentage (cpuBusyTimePerCent) and the per-RAID disk-drive status (raidStatus, one row per drive). The RAID raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault and the worst drive is taken per device with max(). Supported brands/models — NetApp FAS, AFF and ONTAP-based storage systems with SNMP enabled."
+  ,
+  "status_query": "any({instance_type='storage', collect_type='snmp_netapp'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_disk_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the controller CPU busy time of the NetApp storage system (NETWORK-APPLIANCE-MIB cpuBusyTimePerCent), expressed as a percentage from 0 to 100. Sustained high CPU usage can indicate controller overload, heavy IO or deduplication/replication workload and may slow down host IO response."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_disk_state",
+      "query": "max(device_disk_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Disk Health State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the physical disk-drive health of the NetApp storage system, derived from the per-RAID drive status table (NETWORK-APPLIANCE-MIB raidStatus, one row per drive). The raw codes (active(1) is healthy; reconstructing/failed and other non-active states are faults) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst drive is taken per device with max(). A value greater than 1 indicates a degraded or failed drive that risks data loss and warrants immediate replacement."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
+    }
+  ]
+}

@@ -9,6 +9,7 @@ export const useStorageConfig = () => {
       'Storage Synology SNMP': 'snmp_synology',
       'Storage MacroSAN SNMP': 'snmp_macrosan',
       'Storage Sugon SNMP': 'snmp_sugon',
+      'Storage NetApp SNMP': 'snmp_netapp',
     },
   };
 };
