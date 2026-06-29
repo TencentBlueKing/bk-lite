@@ -134,6 +134,7 @@ export const useStorageConfig = () => {
       'Storage Sugon SNMP': 'snmp_sugon',
       'Storage NetApp SNMP': 'snmp_netapp',
       'Storage Fujitsu SNMP': 'snmp_fujitsu',
+      'Storage Inspur SNMP': 'snmp_inspur',
     },
   };
 };

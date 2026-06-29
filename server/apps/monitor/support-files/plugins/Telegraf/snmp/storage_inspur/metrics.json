@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_inspur",
+  "plugin": "Storage Inspur SNMP",
+  "plugin_desc": "Inspur AS5500 storage-specific SNMP collection for Inspur AS5500 enterprise storage arrays (Inspur private MIB, IANA PEN 48512). In addition to standard IF-MIB interface metrics, it collects the Inspur private OIDs for device health — the managed-disk status (statuaDisk, one row per managed disk), the physical drive availability (driveStatus, one row per drive) and the power-supply status (powerStatus, one row per power supply). The disk and drive raw codes are folded into the shared disk-health metric and the power-supply codes into the power metric, normalized via telegraf processors.enum to 1=healthy / 2=fault, with the worst component taken per device with max(). The vendor enum value codes have not been verified on a live device, so conservatively only 1 is treated as healthy and any other code as a fault. This profile does not publish a pollable controller CPU/memory utilization gauge, chassis temperature, or fan status, so CPU, memory, temperature and fan are not collected (N/A). Supported brands/models — Inspur AS5500 series enterprise storage arrays with SNMP enabled.",
+  "status_query": "any({instance_type='storage', collect_type='snmp_inspur'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_disk_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_disk_state",
+      "query": "max(device_disk_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Disk Health State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the physical disk health of the Inspur AS5500 storage device, derived from the managed-disk status (statuaDisk) and physical drive availability (driveStatus) tables. The raw codes are normalized via telegraf processors.enum so that 1 = healthy and any other code = fault (the vendor enum value codes are not yet field-verified), and the worst disk is taken per device with max(). A value greater than 1 indicates a degraded or failed disk that carries a risk of data loss and should be replaced immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply health of the Inspur AS5500 storage device (powerStatus, one row per power supply). The raw codes are normalized via telegraf processors.enum so that 1 = healthy and any other code = fault (the vendor enum value codes are not yet field-verified), and the worst power supply is taken per device with max(). A value greater than 1 indicates a power-supply fault or loss of power redundancy that warrants investigation."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
+    }
+  ]
+}

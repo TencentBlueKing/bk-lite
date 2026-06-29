@@ -1,0 +1,102 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_inspur"
+        config_type = "inspur"
+        brand = "inspur"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Inspur AS5500 managed-disk status (INSPUR private MIB statuaDisk, 每受管磁盘一行) ----
+    # statuaDisk 1.3.6.1.4.1.48512.1.107.1.1.3，受管磁盘状态。normal(1)→1 正常，其余→2 异常。
+    # 共享盘 device_disk_state(1=正常,>1=异常) max() by instance_id 取最差磁盘行。
+    # ⚠️ 厂商枚举真值码未现网核验，保守仅 1→正常，其余→异常。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.48512.1.107.1.1"
+        name = "device_disk"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.48512.1.107.1.1.3"
+        name = "state"
+    # ---- Inspur AS5500 physical drive availability (INSPUR private MIB driveStatus, 每物理盘一行) ----
+    # driveStatus 1.3.6.1.4.1.48512.1.108.4.1.2，物理磁盘可用性。normal(1)→1 正常，其余→2 异常。
+    # 与受管磁盘同归 device_disk_state，max() 取最差盘。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.48512.1.108.4.1"
+        name = "device_disk"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.48512.1.108.4.1.2"
+        name = "state"
+    # ---- Inspur AS5500 power-supply status (INSPUR private MIB powerStatus, 每电源一行) ----
+    # powerStatus 1.3.6.1.4.1.48512.1.108.8.1.3，电源状态。normal(1)→1 正常，其余→2 异常。
+    # 共享盘 device_psu_state(1=正常,>1=异常) max() by instance_id 取最差电源行。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.48512.1.108.8.1"
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.48512.1.108.8.1.3"
+        name = "state"
+# ---- 磁盘健康状态归一：normal(1)→1(正常)，其余→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_disk"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 电源状态归一：normal(1)→1(正常)，其余→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- CPU/内存/温度/风扇 N/A ----
+# INSPUR AS5500 私有树本 profile 仅暴露磁盘/电源状态与每盘容量/使用率，
+# 未发布控制器 CPU/内存利用率、机箱温度或风扇状态 gauge → CPU/内存/温度/风扇 N/A 不采（不臆造）。
+# 每盘 driveUitl(.108.4.1.13)/driveCapacity(.108.4.1.3)/capacityDisk(.107.1.1.4) 为按盘索引数值，
+# 非共享盘标准健康量 → 不采。
