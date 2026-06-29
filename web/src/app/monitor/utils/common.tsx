@@ -612,6 +612,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
   { match: /synology|diskstation|rackstation|\bdsm\b/i, label: 'Synology', icon: 'mm-synology_synology' },
   { match: /macrosan|\bms[0-9]{3,4}\b/i, label: 'MacroSAN', icon: 'mm-macrosan_macrosan' },
+  { match: /sugon|parastor/i, label: 'Sugon', icon: 'mm-sugon_sugon' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
