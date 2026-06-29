@@ -53,6 +53,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     }
                 ],
                 "available_external_fields": ["open_id", "unionid", "nickname"],
+                "default_external_match_field": "open_id",
             }
         },
         "capabilities": [

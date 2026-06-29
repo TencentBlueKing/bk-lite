@@ -2,7 +2,10 @@ import assert from 'node:assert/strict';
 
 import {
   buildLoginAuthBindingPayload,
+  resolveLoginAuthDefaultIcon,
+  resolveLoginAuthDefaultExternalField,
   resolveLoginAuthProviderKey,
+  resolveLoginAuthTemplate,
   shouldShowLoginAuthUnmatchedUserAction,
 } from '../src/app/system-manager/utils/loginAuthFormUtils';
 
@@ -26,6 +29,74 @@ assert.equal(
     default_group_name: '',
   }),
   'wechat'
+);
+assert.equal(resolveLoginAuthDefaultIcon('feishu'), 'feishu');
+assert.equal(resolveLoginAuthDefaultIcon('wechat'), 'wechat');
+assert.equal(resolveLoginAuthDefaultIcon('unknown'), '');
+assert.equal(
+  resolveLoginAuthDefaultExternalField({
+    title: 'Login Auth',
+    groups: [],
+    available_external_fields: ['user_id', 'open_id'],
+    matchable_fields: [],
+    receivable_fields: [],
+    default_external_match_field: 'user_id',
+    default_external_receive_field: '',
+  }),
+  'user_id'
+);
+assert.equal(
+  resolveLoginAuthDefaultExternalField({
+    title: 'Login Auth',
+    groups: [],
+    available_external_fields: ['open_id', 'unionid'],
+    matchable_fields: [],
+    receivable_fields: [],
+    default_external_match_field: '',
+    default_external_receive_field: '',
+  }),
+  'open_id'
+);
+assert.equal(resolveLoginAuthDefaultExternalField(null), '');
+assert.deepEqual(
+  resolveLoginAuthTemplate(
+    18,
+    [{ id: 18, name: 'Feishu SSO', provider_key: 'feishu', provider_name: 'Feishu' }],
+    [{
+      key: 'feishu',
+      name: 'Feishu',
+      description: '',
+      instance_template: [],
+      instance_templates: {},
+      business_templates: {
+        login_auth_form: {
+          title: 'Login Auth',
+          groups: [],
+          available_external_fields: ['user_id', 'open_id'],
+          matchable_fields: [],
+          receivable_fields: [],
+          default_external_match_field: 'user_id',
+          default_external_receive_field: '',
+        },
+      },
+      capabilities: [{
+        key: 'login_auth',
+        name: 'Login Auth',
+        description: '',
+        connection_template: [],
+        business_template: 'login_auth_form',
+      }],
+    }],
+  ),
+  {
+    title: 'Login Auth',
+    groups: [],
+    available_external_fields: ['user_id', 'open_id'],
+    matchable_fields: [],
+    receivable_fields: [],
+    default_external_match_field: 'user_id',
+    default_external_receive_field: '',
+  }
 );
 
 assert.deepEqual(

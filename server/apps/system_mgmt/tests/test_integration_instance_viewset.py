@@ -161,7 +161,15 @@ class TestIntegrationInstanceViewSet:
         assert draft_instance.id in returned_ids
         assert hidden.id not in returned_ids
 
-    def test_retrieve_returns_instance_for_team_member(self, api_client, authenticated_user, draft_instance):
+    @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
+    def test_retrieve_returns_instance_for_team_member(
+        self,
+        mock_get_login_auth_callback_uri,
+        api_client,
+        authenticated_user,
+        draft_instance,
+    ):
+        mock_get_login_auth_callback_uri.return_value = "http://testserver/api/v1/core/api/login_auth/callback/"
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}
         authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
         authenticated_user.save(update_fields=["group_list"])
@@ -170,6 +178,7 @@ class TestIntegrationInstanceViewSet:
 
         assert response.status_code == 200
         assert response.data["id"] == draft_instance.id
+        assert response.data["login_auth_callback_url"] == "http://testserver/api/v1/core/api/login_auth/callback/"
 
     def test_retrieve_rejects_instance_outside_user_team(self, api_client, authenticated_user, draft_instance):
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}

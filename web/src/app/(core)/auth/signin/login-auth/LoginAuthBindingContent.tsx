@@ -68,7 +68,7 @@ export default function LoginAuthBindingContent({
         <button
           type="button"
           onClick={onRetryBindings}
-          className={`mt-5 inline-flex items-center justify-center rounded-xl bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
+          className={`mt-5 inline-flex items-center justify-center rounded-lg bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
         >
           Retry
         </button>
@@ -83,7 +83,7 @@ export default function LoginAuthBindingContent({
   if (viewState === "starting" || viewState === "waiting" || viewState === "syncing-session") {
     return (
       <div className="px-1 py-1">
-        <div className="rounded-[10px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
+        <div className="rounded-[8px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
           <div className="flex items-center gap-[10px]">
             <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]">
               {selectedBinding.icon ? (
@@ -105,12 +105,12 @@ export default function LoginAuthBindingContent({
         <button
           type="button"
           disabled
-          className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[10px] bg-[#246BFD] px-4 text-white opacity-90 ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
+          className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#246BFD] px-4 text-white opacity-90 ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
         >
           <LoadingOutlined className={viewState === "syncing-session" ? "" : "animate-spin"} />
           <span>Waiting...</span>
         </button>
-        <p className="mt-3 rounded-[10px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
+        <p className="mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
           {helperMessage}
         </p>
       </div>
@@ -119,7 +119,7 @@ export default function LoginAuthBindingContent({
 
   return (
     <div className="px-1 py-1">
-      <div className="rounded-[10px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
+      <div className="rounded-[8px] border border-[#DBE5F2] bg-[linear-gradient(180deg,#FBFCFE_0%,#F4F8FC_100%)] px-[14px] py-[12px]">
         <div className="flex items-center gap-[10px]">
           <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[8px] bg-[#E8F0FF]">
             {selectedBinding.icon ? (
@@ -129,11 +129,11 @@ export default function LoginAuthBindingContent({
             )}
           </div>
           <div className="min-w-0">
-            <div className={`font-semibold text-[#1E4FD6] ${isModalMode ? "text-[13px] leading-[1.35]" : "text-[14px] leading-[1.4]"}`}>
+            <div className={`font-semibold text-[var(--color-text-1)] ${isModalMode ? "text-[13px] leading-[1.35]" : "text-[14px] leading-[1.4]"}`}>
               {selectedBinding.name}登录
             </div>
             <div className="mt-[2px] text-[12px] leading-[1.45] text-[#7A8A9D]">
-              适合已在工作台中使用{selectedBinding.name}身份的用户
+              使用{selectedBinding.name}账号完成登录
             </div>
           </div>
         </div>
@@ -141,11 +141,11 @@ export default function LoginAuthBindingContent({
       <button
         type="button"
         onClick={onContinueThirdParty}
-        className={`mt-5 inline-flex w-full items-center justify-center rounded-[10px] bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
+        className={`mt-5 inline-flex w-full items-center justify-center rounded-[8px] bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
       >
         Click to continue sign in
       </button>
-      <p className="mt-3 rounded-[10px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
+      <p className="mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
         {helperMessage}
       </p>
     </div>

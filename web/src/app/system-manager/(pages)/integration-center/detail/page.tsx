@@ -3,8 +3,8 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
-import { ArrowLeftOutlined } from '@ant-design/icons';
-import { Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, message } from 'antd';
+import { ArrowLeftOutlined, CopyOutlined } from '@ant-design/icons';
+import { Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, Tabs, Tooltip, message } from 'antd';
 
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type { IntegrationInstance, ProviderManifest, TemplateField } from '@/app/system-manager/types/integration-center';
@@ -89,6 +89,10 @@ const IntegrationDetailPage: React.FC = () => {
   const topSectionContent = useMemo(
     () => (instance ? getIntegrationDetailTopSectionContent(instance, t) : ''),
     [instance, t],
+  );
+  const loginAuthCallbackUrl = useMemo(
+    () => (activeTab === 'login_auth' ? instance?.login_auth_callback_url || '' : ''),
+    [activeTab, instance?.login_auth_callback_url],
   );
 
   const fetchDetailData = async () => {
@@ -234,6 +238,19 @@ const IntegrationDetailPage: React.FC = () => {
     }
   };
 
+  const handleCopyLoginAuthCallbackUrl = async () => {
+    if (!loginAuthCallbackUrl) {
+      return;
+    }
+
+    try {
+      await navigator.clipboard.writeText(loginAuthCallbackUrl);
+      message.success(t('common.copySuccess'));
+    } catch {
+      message.error(t('common.copyFailed'));
+    }
+  };
+
   const renderTemplateField = (field: TemplateField) => {
     const fieldName = ['config', field.key] as (string | number)[];
     const baseRules = field.required
@@ -371,7 +388,35 @@ const IntegrationDetailPage: React.FC = () => {
                     {t('system.integrationCenter.interfaceConfig')}
                   </div>
                   {activeFields.length > 0 ? (
-                    activeFields.map((field) => renderTemplateField(field))
+                    <>
+                      {activeFields.map((field) => renderTemplateField(field))}
+                      {activeTab === 'login_auth' ? (
+                        <Form.Item
+                          label={t('system.integrationCenter.loginAuthCallbackUrl')}
+                          className="mb-0"
+                        >
+                          <Input
+                            value={loginAuthCallbackUrl}
+                            readOnly
+                            suffix={
+                              <Tooltip title={t('common.copy')}>
+                                <button
+                                  type="button"
+                                  aria-label={t('common.copy')}
+                                  className="inline-flex items-center justify-center text-[var(--color-primary)] hover:text-[#1F5DE0]"
+                                  onClick={handleCopyLoginAuthCallbackUrl}
+                                >
+                                  <CopyOutlined />
+                                </button>
+                              </Tooltip>
+                            }
+                          />
+                          <div className="mt-2 text-[12px] text-[var(--color-text-3)]">
+                            {t('system.integrationCenter.loginAuthCallbackUrlHint')}
+                          </div>
+                        </Form.Item>
+                      ) : null}
+                    </>
                   ) : (
                     <div className="rounded-md border border-dashed border-[var(--color-border)] bg-[var(--color-bg)] px-5 py-6 text-[14px] text-[var(--color-text-3)]">
                       {t('system.integrationCenter.noInterfaceConfig')}

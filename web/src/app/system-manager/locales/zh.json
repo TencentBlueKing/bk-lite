@@ -229,6 +229,7 @@
         "platformUsername": "用户名",
         "platformPhone": "手机号",
         "platformEmail": "邮箱",
+        "externalFieldsHint": "常用字段参考：",
         "unmatchedUserAction": "用户不匹配时的操作",
         "actionDeny": "拒绝登录",
         "actionCreate": "创建用户",
@@ -949,6 +950,8 @@
       "applicationCredential": "应用凭证",
       "requestConfig": "公共接口",
       "interfaceConfig": "接口配置",
+      "loginAuthCallbackUrl": "平台回调地址",
+      "loginAuthCallbackUrlHint": "请将此地址填写到第三方平台的回调地址或重定向 URL 配置中。",
       "noInterfaceConfig": "当前能力暂无额外接口配置。",
       "keepSecretPlaceholder": "如无需变更可留空",
       "primaryStatus": {

@@ -77,6 +77,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                     }
                 ],
                 "available_external_fields": ["user_id", "open_id", "name", "email", "mobile"],
+                "default_external_match_field": "user_id",
             },
             "user_sync_form": {
                 "title": "用户同步配置",

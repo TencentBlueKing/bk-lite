@@ -2,6 +2,7 @@ from copy import deepcopy
 
 from rest_framework import serializers
 
+from apps.core.services.login_auth_request_service import get_login_auth_callback_uri
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import get_provider_registry
@@ -10,6 +11,7 @@ from apps.system_mgmt.providers import get_provider_registry
 class IntegrationInstanceSerializer(UsernameSerializer):
     provider = serializers.SerializerMethodField()
     display_name = serializers.SerializerMethodField()
+    login_auth_callback_url = serializers.SerializerMethodField()
     is_draft = serializers.BooleanField(write_only=True, required=False, default=False)
     config_scope = serializers.CharField(write_only=True, required=False, allow_blank=True, default="")
 
@@ -27,6 +29,13 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         manifest = get_provider_registry().get(obj.provider_key)
         provider_name = manifest.name if manifest else obj.provider_key
         return f"{obj.name}({provider_name})"
+
+    def get_login_auth_callback_url(self, obj):
+        capability_status = obj.capability_status or {}
+        capability_enabled = obj.capability_enabled or {}
+        has_login_auth = "login_auth" in capability_status or "login_auth" in capability_enabled
+        request = self.context.get("request")
+        return get_login_auth_callback_uri(request=request, local_port=8011) if has_login_auth else ""
 
     def validate(self, attrs):
         provider_key = attrs.get("provider_key") or getattr(self.instance, "provider_key", "")

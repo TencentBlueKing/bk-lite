@@ -57,6 +57,7 @@ export interface IntegrationInstance {
   id: number;
   name: string;
   display_name?: string;
+  login_auth_callback_url?: string;
   provider_key: string;
   provider: { key: string; name: string };
   description: string;

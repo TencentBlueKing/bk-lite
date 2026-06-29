@@ -40,7 +40,7 @@ export default function BuiltinSigninContent({
           onChange={(event) => onUsernameChange(event.target.value)}
           size="large"
           required
-          className={isModalMode ? "h-10 rounded-xl" : "h-11 rounded-xl"}
+          className={isModalMode ? "h-10 rounded-lg" : "h-11 rounded-lg"}
         />
       </div>
 
@@ -58,14 +58,14 @@ export default function BuiltinSigninContent({
           onChange={(event) => onPasswordChange(event.target.value)}
           size="large"
           required
-          className={isModalMode ? "h-10 rounded-xl" : "h-11 rounded-xl"}
+          className={isModalMode ? "h-10 rounded-lg" : "h-11 rounded-lg"}
         />
       </div>
 
       <button
         type="submit"
         disabled={isLoading}
-        className={`w-full rounded-xl bg-[#246BFD] px-4 text-white font-medium transition-all duration-150 ease-in-out hover:bg-[#1F5DE0] ${isModalMode ? "h-11 text-[14px] shadow-[0_12px_28px_rgba(36,107,253,0.24)]" : "h-11 text-[14px] shadow-[0_10px_24px_rgba(36,107,253,0.2)]"} ${isLoading ? "cursor-not-allowed opacity-70" : ""}`}
+        className={`w-full rounded-lg bg-[#246BFD] px-4 text-white font-medium transition-all duration-150 ease-in-out hover:bg-[#1F5DE0] ${isModalMode ? "h-11 text-[14px] shadow-[0_12px_28px_rgba(36,107,253,0.24)]" : "h-11 text-[14px] shadow-[0_10px_24px_rgba(36,107,253,0.2)]"} ${isLoading ? "cursor-not-allowed opacity-70" : ""}`}
       >
         {isLoading ? (
           <span className="flex items-center justify-center">

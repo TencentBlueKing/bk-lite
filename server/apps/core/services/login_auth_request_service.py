@@ -1,6 +1,8 @@
 from copy import deepcopy
+import os
 import uuid
 from datetime import timedelta
+from urllib.parse import urlparse
 
 from django.conf import settings as django_settings
 from django.core.exceptions import ImproperlyConfigured
@@ -31,6 +33,18 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "need_binding",
     "need_bindng",
 }
+
+
+def get_login_auth_callback_uri(request=None, local_port: int | None = None) -> str:
+    base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
+    if base_url:
+        parsed = urlparse(base_url)
+        if local_port and parsed.hostname:
+            scheme = parsed.scheme or "http"
+            return f"{scheme}://{parsed.hostname}:{local_port}/api/v1/core/api/login_auth/callback/"
+        return f"{base_url}/api/v1/core/api/login_auth/callback/"
+
+    return ""
 
 
 def create_auth_request(binding_id: int, provider_key: str, callback_url: str) -> dict:

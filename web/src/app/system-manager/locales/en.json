@@ -229,6 +229,7 @@
         "platformUsername": "Username",
         "platformPhone": "Phone",
         "platformEmail": "Email",
+        "externalFieldsHint": "Common external fields: ",
         "unmatchedUserAction": "Unmatched User Action",
         "actionDeny": "Deny Login",
         "actionCreate": "Create User",
@@ -949,6 +950,8 @@
       "applicationCredential": "Application Credentials",
       "requestConfig": "Public Interface",
       "interfaceConfig": "Interface Configuration",
+      "loginAuthCallbackUrl": "Platform Callback URL",
+      "loginAuthCallbackUrlHint": "Fill this address into the callback URL or redirect URL setting of the third-party platform.",
       "noInterfaceConfig": "There is no extra interface configuration for this capability.",
       "keepSecretPlaceholder": "Leave empty to keep the existing secret",
       "primaryStatus": {

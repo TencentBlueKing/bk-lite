@@ -20,18 +20,23 @@ import PermissionWrapper from '@/components/permission';
 import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
 import IconFontSelector from '@/app/system-manager/components/user/IconFontSelector';
+import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import {
   useLoginAuthApi,
   type LoginAuthBindingPayload,
   type AvailableInstance,
   type LoginAuthBinding,
 } from '@/app/system-manager/api/login-auth';
+import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
 import { useTranslation } from '@/utils/i18n';
 import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 import { ColumnItem } from '@/types';
 import {
   buildLoginAuthBindingPayload,
+  resolveLoginAuthDefaultIcon,
+  resolveLoginAuthDefaultExternalField,
   resolveLoginAuthProviderKey,
+  resolveLoginAuthTemplate,
   shouldShowLoginAuthUnmatchedUserAction,
 } from '@/app/system-manager/utils/loginAuthFormUtils';
 
@@ -44,6 +49,7 @@ const LoginAuthPage: React.FC = () => {
     deleteLoginAuthBinding,
     getAvailableInstances,
   } = useLoginAuthApi();
+  const { getProviders } = useIntegrationCenterApi();
   const [form] = Form.useForm();
 
   const [bindings, setBindings] = useState<LoginAuthBinding[]>([]);
@@ -55,6 +61,7 @@ const LoginAuthPage: React.FC = () => {
   const [editingBinding, setEditingBinding] = useState<LoginAuthBinding | null>(null);
   const [selectedIcon, setSelectedIcon] = useState<string>('');
   const [availableInstances, setAvailableInstances] = useState<AvailableInstance[]>([]);
+  const [providers, setProviders] = useState<ProviderManifest[]>([]);
   const [unmatchedAction, setUnmatchedAction] = useState<string>('deny');
   const watchedIntegrationInstance = Form.useWatch('integration_instance', form);
   const [pagination, setPagination] = useState({
@@ -108,6 +115,7 @@ const LoginAuthPage: React.FC = () => {
   useEffect(() => {
     fetchBindings();
     fetchAvailableInstances();
+    void getProviders().then(setProviders).catch(() => setProviders([]));
   }, []);
 
   const getBindingProviderKey = (binding: LoginAuthBinding) => {
@@ -126,6 +134,10 @@ const LoginAuthPage: React.FC = () => {
     [availableInstances, editingBinding, watchedIntegrationInstance],
   );
   const showUnmatchedUserAction = shouldShowLoginAuthUnmatchedUserAction(currentProviderKey);
+  const resolvedTemplate = useMemo(
+    () => resolveLoginAuthTemplate(watchedIntegrationInstance, availableInstances, providers),
+    [availableInstances, providers, watchedIntegrationInstance],
+  );
 
   const handleRefresh = async () => {
     try {
@@ -272,6 +284,16 @@ const LoginAuthPage: React.FC = () => {
   const handleIconChange = (iconName: string) => {
     setSelectedIcon(iconName);
     form.setFieldValue('icon', iconName);
+  };
+
+  const handleIntegrationInstanceChange = (instanceId: number) => {
+    const providerKey = availableInstances.find((item) => item.id === instanceId)?.provider_key || '';
+    const template = resolveLoginAuthTemplate(instanceId, availableInstances, providers);
+    const nextIcon = resolveLoginAuthDefaultIcon(providerKey);
+    const nextExternalField = resolveLoginAuthDefaultExternalField(template);
+    setSelectedIcon(nextIcon);
+    form.setFieldValue('icon', nextIcon);
+    form.setFieldValue('external_field', nextExternalField);
   };
 
   const handleUnmatchedActionChange = (value: string) => {
@@ -464,6 +486,7 @@ const LoginAuthPage: React.FC = () => {
                     value: i.id,
                     label: formatIntegrationInstanceDisplayName(i, t),
                   }))}
+                  onChange={handleIntegrationInstanceChange}
                 />
               </Form.Item>
             )}
@@ -535,6 +558,12 @@ const LoginAuthPage: React.FC = () => {
                 <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
                   {t('system.user.loginAuthPage.fieldMappingDesc')}
                 </div>
+                {resolvedTemplate?.available_external_fields && resolvedTemplate.available_external_fields.length > 0 ? (
+                  <div className="mt-2 text-[12px] text-[var(--color-text-3)]">
+                    {t('system.user.loginAuthPage.externalFieldsHint')}
+                    {resolvedTemplate.available_external_fields.join(' / ')}
+                  </div>
+                ) : null}
               </div>
               {showUnmatchedUserAction ? (
                 <>
