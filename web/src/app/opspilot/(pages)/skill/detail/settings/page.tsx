@@ -1,7 +1,7 @@
 'use client';
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Tag, Modal, Checkbox, Empty } from 'antd';
+import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Modal, Checkbox, Empty } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useGroups from '@/app/opspilot/hooks/useGroups';
 import styles from './index.module.scss';
@@ -17,6 +17,7 @@ import { useSkillApi } from '@/app/opspilot/api/skill';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
 import { DeleteOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -425,12 +426,10 @@ const SkillSettingsPage: React.FC = () => {
             return (
               <div
                 key={assetKey}
-                className="flex min-h-[58px] items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-3"
+                className="flex w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-2"
               >
-                <div className="flex min-w-0 items-center gap-3">
-                  <span className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-[var(--color-primary-bg)] text-sm font-semibold text-[var(--color-primary)]">
-                    {(asset.name || 'S').slice(0, 1).toUpperCase()}
-                  </span>
+                <div className="flex min-w-0 items-center">
+                  <Icon type="jinengpeixun" className="mr-1 shrink-0 text-xl" />
                   <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{asset.name}</span>
                 </div>
                 <DeleteOutlined
@@ -486,12 +485,10 @@ const SkillSettingsPage: React.FC = () => {
                     className="mt-0.5"
                     onChange={(event) => toggleDraftSkillAsset(assetKey, event.target.checked)}
                   />
+                  <Icon type="jinengpeixun" className="shrink-0 text-4xl" />
                   <div className="flex min-w-0 flex-1 flex-col">
                     <div className="flex min-w-0 items-center gap-2">
                       <div className="truncate font-medium text-[var(--color-text-1)]">{asset.name}</div>
-                      <Tag color={asset.source_type === 'builtin' ? 'blue' : 'purple'} className="m-0">
-                        {asset.source_type === 'builtin' ? '内置' : '导入'}
-                      </Tag>
                     </div>
                     <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-[var(--color-text-3)]">
                       {asset.description || '暂无描述'}
