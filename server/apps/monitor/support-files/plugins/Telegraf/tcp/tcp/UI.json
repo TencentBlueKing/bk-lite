@@ -1,0 +1,197 @@
+{
+  "object_name": "TCPPort",
+  "instance_type": "tcp",
+  "collect_type": "tcp",
+  "config_type": ["net_response"],
+  "collector": "Telegraf",
+  "instance_id": "{{instance_type}}_{{host}}_{{port}}",
+  "form_fields": [
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "TCP 探测目标主机，支持域名、IPv4 或 IPv6（无需手动加方括号）。",
+      "widget_props": {
+        "placeholder": "example.com / 192.168.1.1 / 2001:db8::1"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.address",
+        "to_form": {
+          "regex": "^\\[?([^\\]]+?)\\]?:\\d+$"
+        }
+      }
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "visible_in": "edit",
+      "editable": false,
+      "description": "TCP 探测目标端口。",
+      "widget_props": {
+        "min": 1,
+        "max": 65535,
+        "precision": 0,
+        "placeholder": "端口"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.address",
+        "to_form": {
+          "regex": ":(\\d+)$"
+        }
+      }
+    },
+    {
+      "name": "interval",
+      "label": "间隔",
+      "type": "inputNumber",
+      "required": true,
+      "default_value": 10,
+      "description": "监控数据的采集时间间隔（单位：秒）",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "间隔",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.interval",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    },
+    {
+      "name": "timeout",
+      "label": "超时",
+      "type": "inputNumber",
+      "required": false,
+      "default_value": 5,
+      "description": "单次 TCP 连接的超时时间（单位：秒）。",
+      "widget_props": {
+        "min": 1,
+        "precision": 0,
+        "placeholder": "超时",
+        "addonAfter": "s"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.timeout",
+        "to_form": {
+          "regex": "^(\\d+)s$"
+        },
+        "to_api": {
+          "suffix": "s"
+        }
+      }
+    },
+    {
+      "name": "send",
+      "label": "发送内容",
+      "type": "input",
+      "required": false,
+      "description": "建连后发送的字符串，留空表示仅做端口连通性探测。",
+      "widget_props": {
+        "placeholder": "可选，如 PING\\r\\n"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.send"
+      }
+    },
+    {
+      "name": "expect",
+      "label": "期望返回",
+      "type": "input",
+      "required": false,
+      "description": "期望在响应中匹配到的字符串，需与发送内容配合使用。",
+      "widget_props": {
+        "placeholder": "可选，如 PONG"
+      },
+      "transform_on_edit": {
+        "origin_path": "child.content.config.expect"
+      }
+    }
+  ],
+  "table_columns": [
+    {
+      "name": "node_ids",
+      "label": "节点",
+      "type": "select",
+      "required": true,
+      "widget_props": {
+        "placeholder": "请选择节点",
+        "width": 200
+      },
+      "enable_row_filter": false
+    },
+    {
+      "name": "host",
+      "label": "主机",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "example.com / 192.168.1.1 / 2001:db8::1",
+        "width": 260
+      },
+      "rules": [
+        {
+          "type": "pattern",
+          "pattern": "^([a-zA-Z0-9]([a-zA-Z0-9\\-]{0,61}[a-zA-Z0-9])?\\.)+[a-zA-Z]{2,}$|^((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)$|^([0-9A-Fa-f]{0,4}:){2,7}[0-9A-Fa-f]{0,4}$",
+          "message": "请输入有效的域名、IPv4或IPv6地址（IPv6无需方括号）"
+        }
+      ],
+      "change_handler": {
+        "type": "combine",
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
+        "separator": ":"
+      }
+    },
+    {
+      "name": "port",
+      "label": "端口",
+      "type": "inputNumber",
+      "required": true,
+      "widget_props": {
+        "min": 1,
+        "max": 65535,
+        "precision": 0,
+        "placeholder": "端口",
+        "width": 120
+      },
+      "change_handler": {
+        "type": "combine",
+        "source_fields": ["host", "port"],
+        "target_field": "instance_name",
+        "separator": ":"
+      }
+    },
+    {
+      "name": "instance_name",
+      "label": "实例名称",
+      "type": "input",
+      "required": true,
+      "widget_props": {
+        "placeholder": "实例名称",
+        "disabled": false,
+        "width": 200
+      }
+    },
+    {
+      "name": "group_ids",
+      "label": "组",
+      "type": "group_select",
+      "required": false,
+      "widget_props": {
+        "placeholder": "请选择组",
+        "width": 200
+      }
+    }
+  ]
+}

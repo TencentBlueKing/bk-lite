@@ -1,0 +1,66 @@
+{
+  "plugin": "TCPPort",
+  "plugin_desc": "The TCP plugin uses Telegraf net_response to probe TCP port reachability for a target host:port, supporting IPv4 and IPv6, with optional send/expect string matching.",
+  "status_query": "any({instance_type='tcp', collect_type='tcp'}) by (instance_id)",
+  "name": "TCPPort",
+  "icon": "mm-website_网站",
+  "type": "Web",
+  "description": "",
+  "default_metric": "any({instance_type='tcp'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": ["net_response_response_time", "net_response_result_code"],
+  "display_fields": [
+    {"name": "Response Time", "sort_order": 0, "metrics": [{"plugin": "TCPPort", "metric": "net_response_response_time"}]},
+    {"name": "Result Code", "sort_order": 1, "metrics": [{"plugin": "TCPPort", "metric": "net_response_result_code"}]}
+  ],
+  "metrics": [
+    {
+      "metric_group": "TCPPort",
+      "name": "net_response_response_time",
+      "query": "net_response_response_time{__$labels__} * 1000",
+      "display_name": "Response Time",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "TCP connection round-trip time. net_response emits seconds; the query multiplies by 1000 to display milliseconds."
+    },
+    {
+      "metric_group": "TCPPort",
+      "name": "net_response_result_code",
+      "query": "net_response_result_code{__$labels__}",
+      "display_name": "Result Code",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"成功\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"超时\",\"id\":1,\"color\":\"#ff4d4f\"},{\"name\":\"连接失败\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"读取失败\",\"id\":3,\"color\":\"#ff4d4f\"},{\"name\":\"返回不匹配\",\"id\":4,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "TCP probe result code: 0 success, 1 timeout, 2 connection failed, 3 read failed, 4 response string mismatch."
+    },
+    {
+      "metric_group": "TCPPort",
+      "name": "net_response_string_found",
+      "query": "net_response_string_found{__$labels__}",
+      "display_name": "String Found",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"未命中\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"命中\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [
+        {
+          "name": "agent_id",
+          "description": "agent_id"
+        }
+      ],
+      "instance_id_keys": ["instance_id"],
+      "description": "Whether the expected response string was matched. Only reported when an expect string is configured."
+    }
+  ]
+}

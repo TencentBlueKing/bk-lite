@@ -1,0 +1,44 @@
+{
+  "object": "TCPPort",
+  "plugin": "TCPPort",
+  "templates": [
+    {
+      "name": "TCP 探测失败",
+      "alert_name": "目标${resource_name} 节点${metric_agent_id} TCP探测失败",
+      "description": "监控TCP探测结果码，当连接超时、连接失败、读取失败或返回不匹配（结果码非0）时触发告警。注意结果码4为返回内容不匹配，此时端口可达但响应不符合期望。",
+      "metric_name": "net_response_result_code",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">="
+        }
+      ]
+    },
+    {
+      "name": "TCP 响应时间过高",
+      "alert_name": "目标${resource_name} 节点${metric_agent_id} TCP响应时间过高",
+      "description": "评估TCP建连耗时（毫秒），当连接延迟超过阈值时分级告警，提示用户检查目标服务的网络性能或负载情况。",
+      "metric_name": "net_response_response_time",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 500,
+          "method": ">="
+        },
+        {
+          "level": "error",
+          "value": 300,
+          "method": ">="
+        },
+        {
+          "level": "warning",
+          "value": 200,
+          "method": ">="
+        }
+      ]
+    }
+  ]
+}
