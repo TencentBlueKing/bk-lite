@@ -215,7 +215,7 @@ def test_sync_remote_host_child_configs_updates_only_host_remote_and_wmi(monkeyp
 
     child_contents = {
         "sync-host": 'metrics_modules = "cpu,mem,disk,net"\n',
-        "sync-wmi": 'metrics_modules = "cpu,mem,disk,net"\n',
+        "sync-wmi": 'metrics_modules = "cpu,mem"\n',
         "skip-snmp": 'metrics_modules = "cpu,mem,disk,net"\n',
         "skip-base": 'metrics_modules = "cpu,mem,disk,net"\n',
         "skip-other": 'metrics_modules = "cpu,mem,disk,net"\n',
