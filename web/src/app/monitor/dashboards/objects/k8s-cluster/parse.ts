@@ -6,8 +6,14 @@ type QueryResult = { data?: { result?: Array<{ metric?: Record<string, string>; 
 
 const lastValue = (values?: Array<[number, string]>): number => {
   if (!values || values.length === 0) return 0;
-  const v = Number(values[values.length - 1][1]);
-  return Number.isFinite(v) ? v : 0;
+  // 跳过尾部 gap 检测插入的 null 标记点,取最后一个有效采样值
+  for (let i = values.length - 1; i >= 0; i -= 1) {
+    const raw = values[i][1];
+    if (raw === null || raw === undefined) continue;
+    const v = Number(raw);
+    if (Number.isFinite(v)) return v;
+  }
+  return 0;
 };
 
 /** 取单序列结果的最新标量(无数据 → 0)。 */

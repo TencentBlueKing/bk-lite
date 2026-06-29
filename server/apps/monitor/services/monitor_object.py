@@ -246,33 +246,39 @@ class MonitorObjectService:
         # 也应纳入其「上报插件」的展示列取数;否则插件隔离会把它们一律判为 --。
         # 与 effective_plugins 的 reported 逻辑一致:按对象各插件 status_query 反查上报实例,
         # 以实例主键(instance_id)前缀匹配,使集群及其下 Pod/Node 都能命中所属插件。
-        plugin_status_qs = (
-            MonitorPlugin.objects.filter(monitor_object=monitor_object_id)
-            .exclude(status_query="")
-            .values_list("name", "status_query")
-            .distinct()
-        )
-        for plugin_name, status_query in plugin_status_qs:
-            query = (status_query or "").strip()
-            if not query:
-                continue
-            try:
-                resp = VictoriaMetricsAPI().query(query)
-            except Exception:
-                logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
-                continue
-            reported_primary_ids = {
-                metric["metric"].get("instance_id")
-                for metric in resp.get("data", {}).get("result", [])
-            }
-            reported_primary_ids.discard(None)
-            if not reported_primary_ids:
-                continue
-            for inst in result:
-                parsed = parse_instance_id(inst["instance_id"])
-                primary = str(parsed[0]) if parsed else None
-                if primary in reported_primary_ids:
-                    instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
+        #
+        # 门控:仅当存在未被 CollectConfig 覆盖的实例(即派生/上报型)时才反查。常规对象实例全有
+        # CollectConfig,反查纯属浪费——本函数在实例列表热路径被调用,Switch(65)/Firewall(28) 等
+        # 多插件对象若无条件反查会每次分页串行发数十次 VM status_query。
+        uncovered = [inst for inst in result if inst["instance_id"] not in instance_plugin_map]
+        if uncovered:
+            plugin_status_qs = (
+                MonitorPlugin.objects.filter(monitor_object=monitor_object_id)
+                .exclude(status_query="")
+                .values_list("name", "status_query")
+                .distinct()
+            )
+            for plugin_name, status_query in plugin_status_qs:
+                query = (status_query or "").strip()
+                if not query:
+                    continue
+                try:
+                    resp = VictoriaMetricsAPI().query(query)
+                except Exception:
+                    logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+                    continue
+                reported_primary_ids = {
+                    metric["metric"].get("instance_id")
+                    for metric in resp.get("data", {}).get("result", [])
+                }
+                reported_primary_ids.discard(None)
+                if not reported_primary_ids:
+                    continue
+                for inst in uncovered:
+                    parsed = parse_instance_id(inst["instance_id"])
+                    primary = str(parsed[0]) if parsed else None
+                    if primary in reported_primary_ids:
+                        instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
 
         # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
         metric_by_plugin = {}

@@ -28,6 +28,10 @@ export interface DashboardInstanceCardProps {
   onInstanceChange: (value: string) => void;
   selectorPlaceholder?: string;
   selectorTitle?: string;
+  /** 传入时在实例选择器左侧渲染「集群」级联过滤下拉(K8s Pod/Node 等多集群对象)。 */
+  clusterOptions?: readonly { label: string; value: string; searchTokens?: string[] }[];
+  clusterValue?: string;
+  onClusterChange?: (value: string) => void;
   isDashboardMode?: boolean;
   /** 传入时在实例选择器右侧内联渲染时间选择器 + 刷新组（统一布局，单一来源）。 */
   timeSelectorProps?: DashboardInstanceCardTimeSelectorProps;
@@ -45,6 +49,9 @@ export function DashboardInstanceCard({
   onInstanceChange,
   selectorPlaceholder = '选择实例',
   selectorTitle,
+  clusterOptions,
+  clusterValue,
+  onClusterChange,
   isDashboardMode = true,
   timeSelectorProps,
   styles
@@ -70,6 +77,18 @@ export function DashboardInstanceCard({
         </div>
       </div>
       <div className={styles.instanceActions}>
+        {clusterOptions && clusterOptions.length > 0 && onClusterChange ? (
+          <InstanceSelector
+            styles={styles}
+            label="集群"
+            value={clusterValue}
+            options={clusterOptions}
+            onChange={onClusterChange}
+            placeholder="选择集群"
+            title={clusterValue}
+            popupWidth={220}
+          />
+        ) : null}
         <InstanceSelector
           styles={styles}
           value={selectorValue}

@@ -307,6 +307,51 @@ def test_effective_plugins_service_resolves_derived_instance_without_row(db, mon
     assert by_name["K8sPod"]["collect_mode"] == "manual"
 
 
+def test_effective_plugins_service_matches_multi_key_derived_by_primary(db, monkeypatch):
+    # 回归：多键派生实例(K8s Pod，instance_id_keys=[instance_id, pod])的主键退化匹配。
+    # K8S 插件 status_query 仅 `... by (instance_id)`，标签里没有 pod 维度，全键精确匹配必然失败。
+    # 修复后退化为按主键 instance_id(集群)匹配，使同集群下 Pod/Node 派生实例命中其上报插件，
+    # 否则其生效插件 / 全量指标会一律为空。
+    from apps.monitor.services import effective_plugins
+
+    monitor_object = MonitorObject.objects.create(
+        name="PodMultiKey",
+        display_name="PodMultiKey",
+        instance_id_keys=["instance_id", "pod"],
+    )
+    reported_plugin = MonitorPlugin.objects.create(
+        name="K8S",
+        display_name="K8S",
+        template_id="k8s-mk",
+        template_type="api",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="any({instance_type='k8s'}) by (instance_id)",
+        is_pre=False,
+    )
+    reported_plugin.monitor_object.add(monitor_object)
+
+    multi_key_instance_id = "('mac', 'coredns-abc')"
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            # status_query 仅按 instance_id 分组，标签里没有 pod —— 全键匹配会得到 ('mac', None)，
+            # 必然不等于 ('mac', 'coredns-abc')，只有按主键退化才能命中。
+            return {"data": {"result": [{"metric": {"instance_id": "mac"}, "value": [100, "1"]}]}}
+
+    monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = effective_plugins.MonitorEffectivePluginService.get_effective_plugins(
+        monitor_object.id,
+        multi_key_instance_id,
+        locale="zh-Hans",
+    )
+
+    by_name = {item["name"]: item for item in result}
+    assert "K8S" in by_name, "多键派生实例应按主键 instance_id 退化命中上报插件"
+    assert by_name["K8S"]["status"] == "normal"
+
+
 def test_primary_object_plugin_list_keeps_builtin_plugins_distinct_by_plugin_id(db, monkeypatch):
     from apps.monitor.constants.plugin import PluginConstants
     from apps.monitor.services import monitor_instance

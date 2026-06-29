@@ -172,6 +172,12 @@ export interface SimpleDashboardConfig {
   barPanels?: BarPanelConfig[];
   statusPanels?: StatusPanelConfig[];
   details: DetailPanelConfig[];
+  /**
+   * 开启「集群」级联过滤:实例 id 形如 (cluster, name) 的对象(如 K8s Pod/Node),
+   * 实例选择器前增加集群下拉,先按集群过滤,避免跨集群实例混在一个长列表里。
+   * 集群取 instance_id_values[0]。
+   */
+  clusterFilter?: boolean;
 }
 
 export interface PreparedSummaryCard {
@@ -415,8 +421,27 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     [currentInstanceOption, normalizedInstanceName]
   );
   const hasReadableInstanceName = Boolean(normalizedInstanceName && normalizedInstanceName !== String(instanceId || ''));
+  // ── 集群级联过滤(K8s Pod/Node 等 (cluster,name) 实例)──
+  const clusterFilterEnabled = Boolean(config.clusterFilter);
+  // 当前激活集群跟随 URL(当前实例 id 的第一维),无需独立状态,避免与导航状态失同步。
+  const activeCluster = useMemo(
+    () => (clusterFilterEnabled ? (idValues[0] ? String(idValues[0]) : undefined) : undefined),
+    [clusterFilterEnabled, idValues]
+  );
+  const clusterFilterOptions = useMemo(() => {
+    if (!clusterFilterEnabled) return [];
+    const seen = new Map<string, { label: string; value: string; searchTokens: string[] }>();
+    instanceOptions.forEach((item) => {
+      const cluster = item.instanceIdValues[0];
+      if (cluster && !seen.has(cluster)) seen.set(cluster, { label: cluster, value: cluster, searchTokens: [cluster] });
+    });
+    return Array.from(seen.values());
+  }, [clusterFilterEnabled, instanceOptions]);
   const instanceSelectOptions = useMemo(() => {
-    const options = [...instanceOptions];
+    const source = clusterFilterEnabled && activeCluster
+      ? instanceOptions.filter((item) => item.instanceIdValues[0] === activeCluster)
+      : instanceOptions;
+    const options = [...source];
     const selectedValue = String(instanceId || '');
     if (selectedValue && hasReadableInstanceName && !options.some((item) => item.value === selectedValue)) {
       options.unshift({
@@ -428,7 +453,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       });
     }
     return options;
-  }, [currentInstanceOption?.interval, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
+  }, [activeCluster, clusterFilterEnabled, currentInstanceOption?.interval, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
   const instanceSelectValue = currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
   const currentInstanceInterval = currentInstanceOption?.interval;
 
@@ -809,6 +834,12 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
     router.push(`/monitor/view/dashboard/${config.routeKey}?${params.toString()}`);
   };
+  // 切换集群:跳到该集群下首个实例(立即反馈 + 实例下拉随之过滤)。
+  const onClusterFilterChange = (cluster: string) => {
+    if (cluster === activeCluster) return;
+    const first = instanceOptions.find((item) => item.instanceIdValues[0] === cluster);
+    if (first) onInstanceChange(first.value);
+  };
   const onRefresh = () => {
     if (displayMode === 'dashboard') {
       loadMetrics();
@@ -840,6 +871,10 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     instanceSelectValue,
     instanceLoading,
     instanceSelectOptions,
+    clusterFilterEnabled,
+    clusterFilterValue: activeCluster,
+    clusterFilterOptions,
+    onClusterFilterChange,
     currentInstanceInterval,
     currentInstanceLabel: currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName,
     isDashboardMode,

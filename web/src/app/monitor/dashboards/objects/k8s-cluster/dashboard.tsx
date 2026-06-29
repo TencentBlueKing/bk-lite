@@ -5,6 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation';
 import { DatabaseOutlined, CloudServerOutlined, AppstoreOutlined, DeploymentUnitOutlined, PartitionOutlined, ReloadOutlined } from '@ant-design/icons';
 import useViewApi from '@/app/monitor/api/view';
 import useMonitorApi from '@/app/monitor/api';
+import MetricViews from '@/app/monitor/components/metric-views';
 import { ChartData, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
   buildSearchParams,
@@ -455,6 +456,21 @@ export default function K8sClusterDashboardPage() {
           />
         </div>
 
+        {displayMode === 'metrics' ? (
+          <MetricViews
+            monitorObjectId={monitorObjectId}
+            monitorObjectName={searchParams.get('name') || 'Cluster'}
+            instanceId={instanceId}
+            instanceName={resolvedInstanceName}
+            idValues={idValues}
+            externalTimeValues={timeValues}
+            externalTimeDefaultValue={timeDefaultValue}
+            externalFrequence={frequence}
+            collectionInterval={currentInstanceInterval}
+            hideTimeSelector
+          />
+        ) : (
+          <>
         {/* Tier 1 · 概览:6 张等宽卡(采集状态 + 5 KPI),全 span2(=12) */}
         <div className={styles.sectionLabel}>概览</div>
         <section className={styles.dashboardSection}>
@@ -610,6 +626,8 @@ export default function K8sClusterDashboardPage() {
             />
           </div>
         </section>
+          </>
+        )}
       </div>
     </div>
   );

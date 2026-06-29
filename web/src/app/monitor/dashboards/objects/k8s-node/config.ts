@@ -10,6 +10,7 @@ export const NODE_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   pageTitle: 'K8s 节点监控仪表盘',
   objectFallbackName: 'K8s 节点',
   instanceType: 'k8s',
+  clusterFilter: true,
   collectionStatusQuery:
     "count(prometheus_remote_write_kube_node_info{instance_type='k8s', __$labels__}) by (instance_id)",
   metaItems: ['Telegraf', 'k8s'],

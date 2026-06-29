@@ -205,7 +205,11 @@ class InstanceSearch:
             results = items[start:end]
 
         if self.query_data.get("add_metrics", False) and page_size != -1:
-            results = self.add_other_metrics(results)
+            # 用 display_fields 的复合 key 回填(与前端 displayFieldKey 一致:有插件 `<plugin>::<metric>`)。
+            # 旧 add_other_metrics 用 supplementary_indicators 的裸指标名回填,对绑定了插件的对象
+            # (K8s 集群/Pod/Node 等)前端按复合 key 取值取不到 → 列显示 --。改走 _fill_display_metrics
+            # 统一 key 形态,并复用其「按上报插件纳入派生实例」的逻辑。
+            MonitorObjectService._fill_display_metrics(self.monitor_obj.id, self.obj_metric_map, results)
 
         MonitorObjectService.add_attr(results)
 
