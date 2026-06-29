@@ -7,6 +7,7 @@ export const useStorageConfig = () => {
       'Storage IPMI': 'ipmi',
       OceanStor: 'oceanstor',
       'Storage Synology SNMP': 'snmp_synology',
+      'Storage MacroSAN SNMP': 'snmp_macrosan',
     },
   };
 };

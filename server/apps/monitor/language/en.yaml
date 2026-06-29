@@ -1502,6 +1502,15 @@ monitor_object_metric:
         minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
         for ensuring data transmission quality and optimizing network performance.
   Storage:
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the controller CPU utilization of the storage device as a percentage, sourced from the vendor private SNMP OID and normalized to 0-100. Sustained high CPU usage can indicate controller overload, heavy IO processing, or a background array rebuild and may slow down host IO response.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports the controller memory utilization of the storage device as a percentage, sourced from the vendor private SNMP OID and normalized to 0-100. Sustained high memory usage can indicate cache pressure or a memory leak and may degrade IO performance or trigger controller failover.
+    device_disk_state:
+      name: Disk Health State
+      desc: This metric reports the physical disk health of the storage device, normalized by the worst disk to 1=healthy and 2=fault. A degraded or failed disk carries a risk of data loss and should be replaced immediately.
     device_temperature_celsius:
       name: Temperature
       desc: This metric reports the chassis temperature sensor reading of the storage device in degrees Celsius, sourced from the vendor private SNMP OID (read directly, no scaling). An abnormal temperature rise can indicate fan failure, blocked airflow, or an overheating environment and, if left unaddressed, may trigger thermal protection or damage the disks and hardware.
@@ -3930,6 +3939,8 @@ monitor_object_metric_group:
     Packet: Packet
     Environment: Environment
     Power: Power
+    CPU: CPU
+    Memory: Memory
     Temperature: Temperature
     Hardware Status: Hardware Status
     Traffic: Traffic
