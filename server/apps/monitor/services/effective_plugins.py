@@ -3,7 +3,7 @@ from apps.core.logger import monitor_logger as logger
 from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.plugin import PluginConstants
-from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject, MonitorPlugin
+from apps.monitor.models import CollectConfig, MonitorObject, MonitorPlugin
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -14,13 +14,14 @@ class MonitorEffectivePluginService:
         if not monitor_object:
             raise BaseAppException("Monitor object does not exist")
 
-        instance = MonitorInstance.objects.filter(
-            id=instance_id,
-            monitor_object_id=monitor_object_id,
-            is_deleted=False,
-        ).first()
-        if not instance:
-            raise BaseAppException("Monitor instance does not exist")
+        # Note: we intentionally do not require a MonitorInstance row here.
+        # Derived / auto-discovered instances (e.g. K8s Pod and Node) report
+        # metrics under an instance_id that has no MonitorInstance row of its
+        # own. Their effective plugins are still fully resolvable from reported
+        # metrics and collect configs (both keyed by instance_id only), so
+        # requiring a row would 500 the detail view of every derived instance.
+        # A bogus instance_id simply yields no configured/reported plugins below
+        # and returns an empty list.
 
         plugins = list(MonitorPlugin.objects.filter(monitor_object=monitor_object).distinct())
         if not plugins:
