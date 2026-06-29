@@ -11,6 +11,7 @@ import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
+import IpTask from './components/ipTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
 import NodeMgmtSyncDetail from './components/nodeMgmtSyncDetail';
@@ -599,6 +600,7 @@ const ProfessionalCollection: React.FC = () => {
         config_file: ConfigFileTask,
         snmp: SNMPTask,
         protocol: SQLTask,
+        ip: IpTask,
       };
 
     if (currentPlugin.id === 'physcial_server_ipmi') {

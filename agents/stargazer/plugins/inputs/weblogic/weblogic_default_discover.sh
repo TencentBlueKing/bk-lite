@@ -86,8 +86,8 @@ Cover_Weblogic(){
         fi
         inst_name_array[${#inst_name_array[@]}]=$bk_inst_name
         current_datetime=$(date +%Y-%m-%d\ %H:%M:%S)
-        json_template='{"inst_name": "%s", "bk_obj_id":"weblogic", "ip_addr": "%s", "port": "%s", "wlst_path": "%s", "java_version": "%s", "domain_version": "%s", "admin_server_name": "%s", "name":"%s"}'
-        json_string=$(printf "$json_template" "$bk_inst_name" "$bk_host_innerip" "$listen_port" "$wlst_path" "$java_version" "$domain_version" "$admin_server_name" "$name")
+        json_template='{"inst_name": "%s", "bk_obj_id":"weblogic", "ip_addr": "%s", "port": "%s", "wlst_path": "%s", "java_version": "%s", "domain_version": "%s", "admin_server_name": "%s", "name":"%s", "domain_path": "%s"}'
+        json_string=$(printf "$json_template" "$bk_inst_name" "$bk_host_innerip" "$listen_port" "$wlst_path" "$java_version" "$domain_version" "$admin_server_name" "$name" "$domain_path")
         echo "$json_string"
     done
 }

@@ -550,6 +550,9 @@ class InstanceManage(object):
         attrs = ModelManage.search_model_attr(model_id)
         instance_info = apply_tag_validation_for_instance(instance_info, attrs, model_id)
         instance_info = apply_enum_validation_for_instance(instance_info, attrs)
+        if model_id == "subnet":
+            from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
+            validate_subnet_no_overlap(instance_info)
         # 企业版附件/图片字段：校验并把值规范化为元数据 JSON
         instance_info = get_instance_enterprise_extension().normalize_file_fields(
             model_id, instance_info, attrs, operator=operator
@@ -624,6 +627,13 @@ class InstanceManage(object):
         attrs = ModelManage.parse_attrs(model_info.get("attrs", "[]"))
         update_attr = apply_tag_validation_for_instance(update_attr, attrs, inst_info["model_id"])
         update_attr = apply_enum_validation_for_instance(update_attr, attrs)
+        if inst_info["model_id"] == "subnet":
+            from apps.cmdb.services.ipam_subnet import validate_subnet_no_overlap
+            merged = {
+                "subnet_address": update_attr.get("subnet_address", inst_info.get("subnet_address")),
+                "subnet_mask": update_attr.get("subnet_mask", inst_info.get("subnet_mask")),
+            }
+            validate_subnet_no_overlap(merged, exclude_inst_id=inst_id)
         # 企业版附件/图片字段：校验并规范化（old_instance 用于跨实例引用校验）
         update_attr = get_instance_enterprise_extension().normalize_file_fields(
             inst_info["model_id"], update_attr, attrs, operator=operator, old_instance=inst_info

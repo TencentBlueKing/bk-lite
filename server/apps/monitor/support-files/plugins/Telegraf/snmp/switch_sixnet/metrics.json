@@ -1,0 +1,295 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_sixnet",
+  "plugin": "Switch Sixnet SNMP",
+  "plugin_desc": "Sixnet SLX 工业以太网交换机专用 SNMP 采集模板（企业号 20540）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量、接口收发错包与丢包速率、接口管理/操作状态与带宽，并按设备汇总收发总流量速率。Sixnet SLX 为无风扇导热式被动散热的工业网管交换机，其温度、双路冗余电源输入与告警继电器等环境量主要经 Modbus/TCP 与 LED/告警继电器对外暴露，厂商私有 MIB 未以无需行级过滤的标量形式公开发布稳定的 CPU/内存/温度/电源健康对象，故 CPU、内存、温度、风扇、电源为 N/A。适用品牌型号——Sixnet SLX/SL SlimLine 工业以太网交换机（SLX-5MS/8MS/10MG/16MS 等系列，企业号 20540）。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_sixnet'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='switch', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifAdminStatus",
+      "query": "interface_ifAdminStatus{instance_type='switch', __$labels__}",
+      "display_name": "Interface Admin Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the administrative status of the network interface."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type='switch', __$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reflects the actual operational status of the network interface."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "interface_ifSpeed",
+      "query": "interface_ifSpeed{instance_type='switch', __$labels__}",
+      "display_name": "Interface Bandwidth",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the maximum data transmission speed supported by the network interface."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Incoming Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Incoming Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifInUcastPkts",
+      "query": "rate(interface_ifInUcastPkts{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Incoming Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifOutUcastPkts",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Outgoing Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifInOctets",
+      "query": "rate(interface_ifInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifOutOctets",
+      "query": "rate(interface_ifOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifInOctets{instance_type='switch', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifOutOctets{instance_type='switch', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    }
+  ]
+}

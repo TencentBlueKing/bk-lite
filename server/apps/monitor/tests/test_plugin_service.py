@@ -523,6 +523,23 @@ def test_render_template_supports_lower_filter_for_toml_booleans(monkeypatch):
     assert rendered == "insecure_skip_verify = false"
 
 
+def test_render_template_keeps_ping_address_family_implicit(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    template = 'urls = ["{{ url }}"]'
+
+    ipv6_rendered = plugin_controller_module.Controller({}).render_template(
+        template,
+        {"url": "::1"},
+    )
+    ipv4_rendered = plugin_controller_module.Controller({}).render_template(
+        template,
+        {"url": "127.0.0.1"},
+    )
+
+    assert ipv6_rendered == 'urls = ["::1"]'
+    assert ipv4_rendered == 'urls = ["127.0.0.1"]'
+
+
 def test_render_template_allows_business_default_variables(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
 
