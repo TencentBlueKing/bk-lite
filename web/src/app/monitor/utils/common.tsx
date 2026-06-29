@@ -616,6 +616,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /netapp|ontap|\bfas[0-9]|\baff\b/i, label: 'NetApp', icon: 'mm-netapp_netapp' },
   { match: /fujitsu|eternus/i, label: 'Fujitsu', icon: 'mm-fujitsu_fujitsu' },
   { match: /inspur|as5500/i, label: 'Inspur', icon: 'mm-inspur_inspur' },
+  { match: /ceresdata|ceres\s*data|希磁/i, label: 'CeresData', icon: 'mm-ceresdata_ceresdata' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },

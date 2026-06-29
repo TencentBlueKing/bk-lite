@@ -135,6 +135,7 @@ export const useStorageConfig = () => {
       'Storage NetApp SNMP': 'snmp_netapp',
       'Storage Fujitsu SNMP': 'snmp_fujitsu',
       'Storage Inspur SNMP': 'snmp_inspur',
+      'Storage CeresData SNMP': 'snmp_ceresdata',
     },
   };
 };
