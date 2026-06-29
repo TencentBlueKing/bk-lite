@@ -637,6 +637,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },
+  { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
   { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
