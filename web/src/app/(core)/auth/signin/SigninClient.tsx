@@ -10,7 +10,8 @@ import SigninContentShell from "./login-auth/SigninContentShell";
 import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
 import {
   isBindingSelectionLocked,
-  isBuiltinBinding,
+  resolveInlineValidationError,
+  shouldUseBuiltinSigninForm,
 } from "./login-auth/orderedBindingState";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
@@ -338,17 +339,17 @@ export default function SigninClient({
     viewState: loginAuthValidation.viewState,
   });
   const showBindingsSelector = authStep === 'login' && loginAuthValidation.bindingsLoadState === 'bindings-ready';
-  const showBuiltinLoginForm = authStep === 'login' && (
-    loginAuthValidation.bindingsLoadState === 'bindings-empty'
-    || (
-      loginAuthValidation.bindingsLoadState === 'bindings-ready'
-      && isBuiltinBinding(selectedBinding)
-    )
+  const showBuiltinLoginForm = authStep === 'login' && shouldUseBuiltinSigninForm(
+    loginAuthValidation.bindingsLoadState,
+    selectedBinding,
   );
   const shouldShowValidationFormState = authStep === 'login';
   const validationInlineError = shouldShowValidationFormState
-    && ['failed', 'cancelled', 'expired'].includes(loginAuthValidation.viewState)
-    ? loginAuthValidation.errorMessage
+    ? resolveInlineValidationError(
+      loginAuthValidation.bindingsLoadState,
+      loginAuthValidation.viewState,
+      loginAuthValidation.errorMessage,
+    )
     : '';
 
   const builtinContent = (

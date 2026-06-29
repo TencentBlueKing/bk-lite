@@ -32,6 +32,29 @@ export function isBuiltinBinding(binding?: LoginAuthBindingItem | null): boolean
   return binding?.provider_key === BUILTIN_PROVIDER_KEY;
 }
 
+export function shouldUseBuiltinSigninForm(
+  bindingsLoadState: LoginAuthBindingsLoadState,
+  selectedBinding?: LoginAuthBindingItem | null,
+): boolean {
+  return (
+    bindingsLoadState === 'bindings-error'
+    || bindingsLoadState === 'bindings-empty'
+    || (bindingsLoadState === 'bindings-ready' && isBuiltinBinding(selectedBinding))
+  );
+}
+
+export function resolveInlineValidationError(
+  bindingsLoadState: LoginAuthBindingsLoadState,
+  viewState: LoginAuthValidationViewState,
+  errorMessage: string,
+): string {
+  if (bindingsLoadState === 'bindings-error') {
+    return errorMessage;
+  }
+
+  return ['failed', 'cancelled', 'expired'].includes(viewState) ? errorMessage : '';
+}
+
 export function isBindingSelectionLocked(args: {
   authStep: 'login' | 'reset-password' | 'otp-verification';
   viewState: LoginAuthValidationViewState;

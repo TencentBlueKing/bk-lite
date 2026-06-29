@@ -48,6 +48,7 @@ def init_builtin_platform_login_auth():
                 "name": BUILTIN_PLATFORM_BINDING_NAME,
                 "description": BUILTIN_PLATFORM_BINDING_DESCRIPTION,
                 "order": BUILTIN_PLATFORM_BINDING_ORDER,
+                "icon": "zhanghaomima",
                 "enabled": True,
                 "external_field": BUILTIN_PLATFORM_BINDING_EXTERNAL_FIELD,
                 "platform_field": LoginAuthBindingPlatformFieldChoices.USERNAME,
