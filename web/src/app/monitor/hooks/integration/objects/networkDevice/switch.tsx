@@ -130,6 +130,7 @@ export const useSwitchConfig = () => {
       'Switch Intelbras SNMP': 'snmp_intelbras',
       'Switch EtherWAN SNMP': 'snmp_etherwan',
       'Switch Sixnet SNMP': 'snmp_sixnet',
+      'Switch ALLNET SNMP': 'snmp_allnet',
       'Switch Red Lion SNMP': 'snmp_redlion',
       'Switch Alaxala SNMP': 'snmp_alaxala',
       'Switch Transition Networks SNMP': 'snmp_transition',
