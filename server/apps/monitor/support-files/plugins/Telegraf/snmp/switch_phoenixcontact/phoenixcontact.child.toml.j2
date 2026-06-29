@@ -1,0 +1,51 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_phoenixcontact"
+        config_type = "phoenixcontact"
+        brand = "phoenixcontact"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, telegraf auto-walks ifTable columns: ifInOctets/ifOutOctets/ifInErrors/ifOutErrors/ifInDiscards/ifOutDiscards/ifInUcastPkts/ifOutUcastPkts/ifSpeed/ifAdminStatus/ifOperStatus) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+# ---- CPU/内存/温度/风扇/电源：Phoenix Contact FL SWITCH 工业以太网交换机的温度、双路冗余电源输入(P1/P2)与告警继电器等环境量由按产品家族区分的厂商私有 MIB（企业号 4346）承载，且该 MIB 随固件软件包(zip)发布、未以无需行级过滤的稳定标量在 GHS/MM/SMN/SMCS/EP74/2000 各系列统一公开 → CPU/内存/温度/风扇/电源 N/A 不采,不臆造。本基线模板仅采集标准 MIB-II 运行时长与 IF-MIB（含 64 位 HC）接口指标,干净可采。----

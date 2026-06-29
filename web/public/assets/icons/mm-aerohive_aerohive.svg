@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="aerohiveTeal" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2fb8a6"/>
+      <stop offset="1" stop-color="#0e7c6e"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#aerohiveTeal)"/>
+  <path d="M60 34 L80 46 V70 L60 82 L40 70 V46 z" fill="none" stroke="#ffffff" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M54 50 H66 L72 70 H62 L60 63 H59 L58 70 H48 z" fill="#ffffff"/>
+</svg>

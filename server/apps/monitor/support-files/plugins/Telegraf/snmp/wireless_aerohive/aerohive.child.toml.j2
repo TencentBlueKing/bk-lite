@@ -1,0 +1,80 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_aerohive"
+        config_type = "aerohive"
+        brand = "aerohive"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB ifTable, 用于自动展开 ifDescr 等接口属性列) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64 位 IF-MIB HC 流量计数器 (ifXTable，按 ifIndex 与上表接口行对齐) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.31.1.1"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.1"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Aerohive / Extreme HiveOS health scalars (AH-SYSTEM-MIB, PEN 26928) ----
+    # CPU 使用率 ahCpuUtilization 1.3.6.1.4.1.26928.1.2.3（INTEGER 0..100，直接%）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26928.1.2.3.0"
+        name = "usage"
+    # ---- 内存使用率 ahMemUtilization 1.3.6.1.4.1.26928.1.2.4（INTEGER 0..100，直接%，无 used/free 字节） ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26928.1.2.4.0"
+        name = "usage"
+    # ---- 机箱温度 ahEnvirmentTemp 1.3.6.1.4.1.26928.1.2.10（INTEGER，°C 直采无缩放；无温度传感器机型/无风扇 AP 返回 0） ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26928.1.2.10.0"
+        name = "celsius"
+    # ---- 风扇/电源：AH-SYSTEM-MIB 的 ahEnvirmentFan 是 RPM 转速读数（非归一化 up/down 状态），且多数 AP 无风扇；无电源状态对象 → 风扇/电源 N/A，不伪造状态枚举。----

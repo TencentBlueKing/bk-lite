@@ -1,0 +1,50 @@
+{
+  "object": "Switch",
+  "plugin": "Switch APRESIA SNMP",
+  "templates": [
+  {
+    "name": "APRESIA交换机CPU使用率过高",
+    "alert_name": "交换机${resource_name} CPU 使用率过高",
+    "description": "监控 APRESIA 设备控制平面的 CPU 使用率（npCpuUtilizationValue 主装置 CPU），当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+    "metric_name": "device_cpu_usage",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 90, "method": ">" },
+        { "level": "error", "value": 80, "method": ">" },
+        { "level": "warning", "value": 70, "method": ">" }
+    ]
+  },
+  {
+    "name": "APRESIA交换机温度过高",
+    "alert_name": "交换机${resource_name} 温度过高",
+    "description": "监控 APRESIA 设备机箱温度（npTemperatureCurrent，单位摄氏度），当超过阈值时触发告警，便于及时发现散热失效或机柜风道堵塞，防止高温损坏设备。",
+    "metric_name": "device_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 70, "method": ">" },
+        { "level": "error", "value": 60, "method": ">" },
+        { "level": "warning", "value": 55, "method": ">" }
+    ]
+  },
+  {
+    "name": "APRESIA交换机风扇异常",
+    "alert_name": "交换机${resource_name} 风扇状态异常",
+    "description": "监控 APRESIA 设备风扇状态（npFanStatus，归一为 1=正常/2=异常），当出现异常风扇时触发告警，风扇故障会导致设备过热，需尽快处理。",
+    "metric_name": "device_fan_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  },
+  {
+    "name": "APRESIA交换机电源异常",
+    "alert_name": "交换机${resource_name} 电源状态异常",
+    "description": "监控 APRESIA 设备电源状态（npPowerStatus，归一为 1=正常/2=异常），当出现故障电源时触发告警，提示电源失效或供电中断风险，需及时排查。",
+    "metric_name": "device_psu_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  }
+  ]
+}

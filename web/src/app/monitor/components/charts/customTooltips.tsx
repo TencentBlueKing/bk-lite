@@ -13,6 +13,9 @@ interface CustomToolTipProps extends Omit<TooltipProps<any, string>, 'unit'> {
   maxHeight?: number;
   maxWidth?: number;
   seriesUnits?: Record<string, string>;
+  // 深色「报告风」变体：深底白字 + 线段色标。仅折线图启用，
+  // 柱状图等其它消费方不传，保持原浅色 + 圆点样式不变。
+  dark?: boolean;
 }
 
 const CustomTooltip: React.FC<CustomToolTipProps> = ({
@@ -24,7 +27,8 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
   visible = true,
   maxHeight,
   maxWidth,
-  seriesUnits = {}
+  seriesUnits = {},
+  dark = false
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
   const { findUnitNameById } = useUnitTransform();
@@ -68,7 +72,19 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
         className={customTooltipStyle.customTooltip}
         style={{
           ...(maxHeight ? { maxHeight: `${maxHeight}px` } : {}),
-          ...(maxWidth ? { maxWidth: `${maxWidth}px` } : {})
+          ...(maxWidth ? { maxWidth: `${maxWidth}px` } : {}),
+          // 深色变体：覆盖浅色底，并用半透明白边在暗色图表背景上保持分界
+          ...(dark
+            ? {
+              background: 'rgba(28, 28, 30, 0.92)',
+              color: '#fff',
+              border: '1px solid rgba(255, 255, 255, 0.14)',
+              borderRadius: '6px',
+              boxShadow: '0 4px 16px rgba(0, 0, 0, 0.28)',
+              fontSize: '12px',
+              padding: '8px 12px 10px'
+            }
+            : {})
         }}
       >
         <p className="label font-[600]">{`${convertToLocalizedTime(
@@ -77,18 +93,31 @@ const CustomTooltip: React.FC<CustomToolTipProps> = ({
         {sortedPayload.map((item: any, index: number) => (
           <div key={index}>
             <div className="flex items-start mt-[4px] text-[13px]">
-              <span
-                style={{
-                  width: '10px',
-                  minWidth: '10px',
-                  height: '10px',
-                  backgroundColor: item.color,
-                  borderRadius: '50%',
-                  marginRight: '5px',
-                  marginTop: '5px'
-                }}
-              ></span>
-              <span className="flex-1">
+              {dark ? (
+                <span
+                  style={{
+                    width: '16px',
+                    minWidth: '16px',
+                    height: 0,
+                    borderTop: `2px solid ${item.color}`,
+                    marginRight: '8px',
+                    marginTop: '8px'
+                  }}
+                ></span>
+              ) : (
+                <span
+                  style={{
+                    width: '10px',
+                    minWidth: '10px',
+                    height: '10px',
+                    backgroundColor: item.color,
+                    borderRadius: '50%',
+                    marginRight: '5px',
+                    marginTop: '5px'
+                  }}
+                ></span>
+              )}
+              <span className="flex-1 min-w-0 break-words">
                 {(item.payload.details?.[item.dataKey] || [])
                   .map((detail: any) => formatDetailText(detail))
                   .filter(Boolean)
