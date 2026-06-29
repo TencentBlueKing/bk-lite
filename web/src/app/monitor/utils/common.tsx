@@ -610,6 +610,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },
   { match: /grandstream|\bgwn\d/i, label: 'Grandstream', icon: 'mm-grandstream_grandstream' },
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
+  { match: /synology|diskstation|rackstation|\bdsm\b/i, label: 'Synology', icon: 'mm-synology_synology' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },

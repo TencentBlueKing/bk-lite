@@ -1502,6 +1502,24 @@ monitor_object_metric:
         minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
         for ensuring data transmission quality and optimizing network performance.
   Storage:
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the chassis temperature sensor reading of the storage device in degrees Celsius, sourced from the vendor private SNMP OID (read directly, no scaling). An abnormal temperature rise can indicate fan failure, blocked airflow, or an overheating environment and, if left unaddressed, may trigger thermal protection or damage the disks and hardware.
+    device_fan_state:
+      name: Fan State
+      desc: This metric reports the operational state of the storage device cooling fan, normalized to 1=healthy and 2=fault. A non-healthy state indicates a cooling failure that can rapidly overheat the device and should be investigated immediately.
+    device_psu_state:
+      name: Power Supply State
+      desc: This metric reports the operational state of the storage device power supply, normalized to 1=healthy and 2=fault. A non-healthy state indicates loss of power redundancy or a hardware fault and should be repaired as soon as possible.
+    device_raid_state:
+      name: RAID State
+      desc: This metric reports the operational state of the storage device RAID/volume array, normalized by the worst array to 1=healthy and 2=fault. A degraded or crashed array carries a risk of data loss and should be investigated immediately.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes (from the 64-bit IF-MIB ifHCInOctets counter), measured in bytes per second. The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes (from the 64-bit IF-MIB ifHCOutOctets counter), measured in bytes per second. The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate.
     ipmi_power_watts:
       name: Power Consumption
       desc: The power indicator is measured in watts and reflects the current power
@@ -3912,6 +3930,8 @@ monitor_object_metric_group:
     Packet: Packet
     Environment: Environment
     Power: Power
+    Temperature: Temperature
+    Hardware Status: Hardware Status
     Traffic: Traffic
     Packet Loss: Packet Loss
     Status: Status

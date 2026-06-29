@@ -6,6 +6,7 @@ export const useStorageConfig = () => {
     collectTypes: {
       'Storage IPMI': 'ipmi',
       OceanStor: 'oceanstor',
+      'Storage Synology SNMP': 'snmp_synology',
     },
   };
 };
