@@ -110,3 +110,28 @@ def test_superuser_can_create_channel_for_any_team(authenticated_user):
 
     assert response.status_code == 201
     assert Channel.objects.get(name="mail").team == [2]
+
+
+def test_superuser_can_update_existing_channel_with_empty_team(authenticated_user):
+    user = _grant(authenticated_user, "channel_list-Edit")
+    user.is_superuser = True
+    channel = Channel.objects.create(
+        name="mail",
+        channel_type=ChannelChoices.EMAIL,
+        config={},
+        description="old",
+        team=[],
+    )
+
+    factory = APIRequestFactory()
+    payload = _payload([])
+    payload["description"] = "new"
+    request = factory.put(f"/system_mgmt/channel/{channel.id}/", payload, format="json")
+    force_authenticate(request, user=user)
+
+    response = ChannelViewSet.as_view({"put": "update"})(request, pk=channel.id)
+
+    assert response.status_code == 200
+    channel.refresh_from_db()
+    assert channel.team == []
+    assert channel.description == "new"

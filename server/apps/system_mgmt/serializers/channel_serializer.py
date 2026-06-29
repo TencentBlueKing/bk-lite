@@ -22,7 +22,7 @@ class ChannelSerializer(UsernameSerializer):
     def validate_team(self, value):
         if isinstance(value, (int, str)):
             value = [value]
-        if not isinstance(value, (list, tuple, set)) or not value:
+        if not isinstance(value, (list, tuple, set)):
             raise serializers.ValidationError("请选择渠道所属组织")
 
         team_ids = []
