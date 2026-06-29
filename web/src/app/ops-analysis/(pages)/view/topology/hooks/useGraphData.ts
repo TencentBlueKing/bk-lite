@@ -15,9 +15,7 @@ import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import {
   TopologyNodeData,
   SerializedEdge,
-  TopologyPresentationConfig,
   TopologyViewSets,
-  TopologyViewportConfig,
 } from '@/app/ops-analysis/types/topology';
 import type { ValueConfig, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -33,22 +31,11 @@ const DEFAULT_TABLE_QUERY_PARAMS = {
 const isTableLikeChartType = (chartType?: string) =>
   chartType === 'table' || chartType === 'eventTable';
 
-const CHROME_PRESENTATION_ROLES = new Set([
-  'decorative-frame',
-  'screen-title',
-  'screen-clock',
-]);
-
-const isChromePresentationRole = (
-  role: unknown
-): role is NonNullable<TopologyNodeData['presentationRole']> =>
-  typeof role === 'string' && CHROME_PRESENTATION_ROLES.has(role);
-
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
-    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'renderEffect', 'nameColor', 'nameFontSize', 'thresholdColors'],
-    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect', 'frameVariant'],
-    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'renderEffect', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
+    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
+    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType'],
+    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
     text: ['width', 'height', 'fontSize', 'fontWeight', 'textColor', 'backgroundColor', 'borderColor'],
     chart: ['width', 'height'],
   };
@@ -97,10 +84,6 @@ export const useGraphData = (
       const nodeData = node.getData();
       const position = node.getPosition();
       const zIndex = node.getZIndex();
-      const presentationRole = isChromePresentationRole(nodeData.presentationRole)
-        ? nodeData.presentationRole
-        : undefined;
-
       const serializedNode: TopologyNodeData = {
         id: nodeData.id,
         type: nodeData.type,
@@ -117,10 +100,6 @@ export const useGraphData = (
         valueConfig: nodeData.valueConfig,
         styleConfig: serializeNodeConfig(nodeData, nodeData.type),
       };
-
-      if (presentationRole) {
-        serializedNode.presentationRole = presentationRole;
-      }
 
       return serializedNode;
     });
@@ -155,8 +134,6 @@ export const useGraphData = (
   const handleSaveTopology = useCallback(async (
     selectedTopology: DirItem,
     filters?: UnifiedFilterDefinition[],
-    viewport?: TopologyViewportConfig | null,
-    presentation?: TopologyPresentationConfig | null,
   ) => {
     if (!selectedTopology?.data_id) {
       message.error(t('topology.saveTopologySelectMsg'));
@@ -172,8 +149,6 @@ export const useGraphData = (
           nodes: topologyData.nodes,
           edges: topologyData.edges,
           ...(filters && filters.length > 0 ? { filters } : {}),
-          ...(viewport ? { viewport } : {}),
-          ...(presentation ? { presentation } : {}),
         },
       };
 
@@ -384,14 +359,10 @@ export const useGraphData = (
 
   const handleLoadTopology = useCallback(async (topologyId: string | number): Promise<{
     filters: UnifiedFilterDefinition[];
-    viewport: TopologyViewportConfig | null;
-    presentation: TopologyPresentationConfig | null;
   }> => {
     if (!graphInstance) {
       return {
         filters: [],
-        viewport: null,
-        presentation: null,
       };
     }
 
@@ -405,25 +376,13 @@ export const useGraphData = (
 
       const rawFilters = viewSets.filters;
       const loadedFilters: UnifiedFilterDefinition[] = Array.isArray(rawFilters) ? rawFilters : [];
-      const rawViewport = viewSets.viewport;
-      const loadedViewport = rawViewport && typeof rawViewport === 'object'
-        ? (rawViewport as TopologyViewportConfig)
-        : null;
-      const rawPresentation = viewSets.presentation;
-      const loadedPresentation = rawPresentation && typeof rawPresentation === 'object'
-        ? (rawPresentation as TopologyPresentationConfig)
-        : null;
       return {
         filters: loadedFilters,
-        viewport: loadedViewport,
-        presentation: loadedPresentation,
       };
     } catch (error) {
       console.error('加载拓扑图失败:', error);
       return {
         filters: [],
-        viewport: null,
-        presentation: null,
       };
     } finally {
       setLoading(false);

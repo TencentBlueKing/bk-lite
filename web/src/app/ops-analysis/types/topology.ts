@@ -15,29 +15,6 @@ export interface Point {
   y: number;
 }
 
-export interface TopologyViewportConfig {
-  width?: number;
-  height?: number;
-  letterboxColor?: string;
-}
-
-export interface TopologyPresentationConfig {
-  templateKey?: string;
-  templateVersion?: number;
-  viewportPreset?: string;
-  theme?: 'tech-blue' | string;
-  enableCanvasBackground?: boolean;
-  background?: {
-    type?: 'preset' | string;
-    key?: string;
-  };
-  chrome?: {
-    title?: string;
-    showTitle?: boolean;
-    showClock?: boolean;
-  };
-}
-
 // 状态管理相关类型
 export interface GraphState {
   instance: X6Graph | null;
@@ -70,7 +47,6 @@ export interface TopologyNodeData {
   id?: string;
   type: string;
   name: string;
-  presentationRole?: 'decorative-frame' | 'screen-title' | 'screen-clock';
   unit?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
@@ -96,9 +72,7 @@ export interface TopologyNodeData {
     backgroundColor?: string;
     borderColor?: string;
     borderWidth?: number;
-    renderEffect?: 'normal' | 'glass' | 'glow';
     iconPadding?: number;
-    frameVariant?: 'plain' | 'tech';
     lineType?: 'solid' | 'dashed' | 'dotted';
     shapeType?: 'rectangle' | 'circle';
     textColor?: string;
@@ -315,7 +289,6 @@ export interface ToolbarProps {
   onFrequencyChange?: (frequency: number) => void;
   onCancel?: () => void;
   onFilterConfig?: () => void;
-  onPresentationConfig?: () => void;
 }
 
 // ViewConfig 表单值类型
@@ -368,8 +341,6 @@ export interface NodeConfigFormValues {
   fontSize?: number;
   fontWeight?: string;
   iconPadding?: number;
-  renderEffect?: 'normal' | 'glass' | 'glow';
-  frameVariant?: 'plain' | 'tech';
   lineType?: 'solid' | 'dashed' | 'dotted';
   shapeType?: 'rectangle' | 'circle';
   nameColor?: string;
@@ -398,8 +369,6 @@ export interface TopologyViewSets {
   nodes: TopologyNodeData[];
   edges: SerializedEdge[];
   filters?: UnifiedFilterDefinition[];
-  viewport?: TopologyViewportConfig;
-  presentation?: TopologyPresentationConfig;
 }
 
 // 节点基础数据类型

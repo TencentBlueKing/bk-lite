@@ -6,13 +6,15 @@
 # 文件为空或不存在时不会报错，静默跳过。
 
 meta:
-  schema_version: 1.0.0
+  schema_version: 1.1.0
   exported_at: '2026-05-19T07:12:20.951018+00:00'
   source:
     organization_id: 0
   object_counts:
     dashboards: 3
-    topologies: 3
+    topologies: 1
+    screens: 2
+    reports: 0
     architectures: 0
     datasources: 19
     namespaces: 1
@@ -1705,12 +1707,13 @@ topologies:
     - 告警统计概览::alert/get_alert_statistics
     namespace_keys:
     - 默认命名空间
-- key: topology::基础资源态势大屏_内置
+screens:
+- key: screen::基础资源态势大屏_内置
   name: 基础资源态势大屏_内置
-  desc: 以基础资源拓扑为中心展示 CMDB、监控、采集、策略与告警态势的大屏拓扑
+  desc: 以基础资源为中心展示 CMDB、监控、采集、策略与告警态势的大屏
   other: {}
   view_sets:
-    nodes:
+    items:
     - id: kpi-cmdb-instance-total
       name: CMDB实例
       type: single-value
@@ -2364,203 +2367,11 @@ topologies:
         borderColor: transparent
         backgroundColor: transparent
       presentationRole: screen-clock
-    edges:
-    - id: edge-cmdb-center
-      source: resource-cmdb
-      target: resource-center
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-center-collector
-      source: resource-center
-      target: resource-collector
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-center-metric
-      source: resource-center
-      target: resource-metric
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-metric-policy
-      source: resource-metric
-      target: resource-policy
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-policy-alert
-      source: resource-policy
-      target: resource-alert
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#F87171'
-        lineStyle: dotted
-        lineWidth: 2
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-business-center
-      source: resource-business
-      target: resource-center
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-network-center
-      source: resource-network
-      target: resource-center
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-cloud-cmdb
-      source: resource-cloud
-      target: resource-cmdb
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-cloud-host
-      source: resource-cloud
-      target: resource-host
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-host-metric
-      source: resource-host
-      target: resource-metric
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-storage-center
-      source: resource-storage
-      target: resource-center
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-storage-database
-      source: resource-storage
-      target: resource-database
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#F87171'
-        lineStyle: dotted
-        lineWidth: 2
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-database-alert
-      source: resource-database
-      target: resource-alert
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#F87171'
-        lineStyle: dotted
-        lineWidth: 2
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-collector-network
-      source: resource-collector
-      target: resource-network
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#38BDF8'
-        lineStyle: dotted
-        lineWidth: 1
-        enableAnimation: true
-      arrowDirection: single
-    - id: edge-alert-business
-      source: resource-alert
-      target: resource-business
-      lineName: ''
-      lineType: network_line
-      vertices: []
-      styleConfig:
-        lineColor: '#F87171'
-        lineStyle: dotted
-        lineWidth: 2
-        enableAnimation: true
-      arrowDirection: single
-    filters:
-    - id: time__timeRange
-      key: time
-      name: time
-      type: timeRange
-      order: 0
-      enabled: true
-      defaultValue:
-        end: '2026-06-23T06:15:20.774Z'
-        start: '2026-06-16T06:15:20.774Z'
-        selectValue: 10080
     viewport:
       width: 1920
       height: 1080
       letterboxColor: '#000000'
-    presentation:
+    decorations:
       theme: tech-blue
       chrome:
         title: 基础资源态势大屏
@@ -2582,12 +2393,12 @@ topologies:
     - 告警统计概览::alert/get_alert_statistics
     - 监控中心总览统计::monitor/get_monitor_statistics
     namespace_keys: []
-- key: topology::告警运营大屏_内置
+- key: screen::告警运营大屏_内置
   name: 告警运营大屏_内置
   desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
   other: {}
   view_sets:
-    nodes:
+    items:
     - id: alert-frame-today-summary
       name: ''
       type: basic-shape
@@ -3180,13 +2991,11 @@ topologies:
         borderColor: transparent
         backgroundColor: transparent
       presentationRole: screen-clock
-    edges: []
-    filters: []
     viewport:
       width: 1920
       height: 1080
       letterboxColor: '#000000'
-    presentation:
+    decorations:
       theme: tech-blue
       chrome:
         title: 告警运营大屏
@@ -3209,6 +3018,7 @@ topologies:
     - 告警状态分布::alert/get_alert_status_distribution
     - 近7日告警等级趋势::alert/get_alert_level_trend
     namespace_keys: []
+reports: []
 architectures: []
 datasources:
 - key: CMDB 变更趋势::cmdb/get_change_trend

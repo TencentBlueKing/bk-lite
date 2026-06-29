@@ -37,71 +37,36 @@ class TreeNodeBuilder:
     @staticmethod
     def get_dashboard_nodes(dashboards, parent_children_map):
         """构建仪表盘节点"""
-        nodes = {}
-
-        for dashboard in dashboards:
-            node_key = f"dashboard_{dashboard.id}"
-            nodes[node_key] = {
-                "id": node_key,
-                "data_id": dashboard.id,
-                "name": dashboard.name,
-                "desc": dashboard.desc,
-                "type": "dashboard",
-                "groups": dashboard.groups,
-                "is_build_in": dashboard.is_build_in,
-                "children": [],
-            }
-
-            # 仪表盘属于目录的子节点
-            parent_key = f"directory_{dashboard.directory_id}"
-            if parent_key not in parent_children_map:
-                parent_children_map[parent_key] = []
-            parent_children_map[parent_key].append(node_key)
-
-        return nodes
+        return TreeNodeBuilder.get_canvas_nodes(dashboards, parent_children_map, "dashboard")
 
     @staticmethod
     def get_topology_nodes(topologies, parent_children_map):
         """构建拓扑图节点"""
-        nodes = {}
-        for topology in topologies:
-            node_key = f"topology_{topology.id}"
-            nodes[node_key] = {
-                "id": node_key,
-                "data_id": topology.id,
-                "name": topology.name,
-                "desc": topology.desc,
-                "type": "topology",
-                "groups": topology.groups,
-                "is_build_in": topology.is_build_in,
-                "children": [],
-            }
-
-            parent_key = f"directory_{topology.directory_id}"
-            if parent_key not in parent_children_map:
-                parent_children_map[parent_key] = []
-            parent_children_map[parent_key].append(node_key)
-
-        return nodes
+        return TreeNodeBuilder.get_canvas_nodes(topologies, parent_children_map, "topology")
 
     @staticmethod
     def get_architecture_nodes(architectures, parent_children_map):
         """构建架构图节点"""
+        return TreeNodeBuilder.get_canvas_nodes(architectures, parent_children_map, "architecture")
+
+    @staticmethod
+    def get_canvas_nodes(instances, parent_children_map, object_type):
+        """构建通用画布节点"""
         nodes = {}
-        for architecture in architectures:
-            node_key = f"architecture_{architecture.id}"
+        for instance in instances:
+            node_key = f"{object_type}_{instance.id}"
             nodes[node_key] = {
                 "id": node_key,
-                "data_id": architecture.id,
-                "name": architecture.name,
-                "desc": architecture.desc,
-                "type": "architecture",
-                "groups": architecture.groups,
-                "is_build_in": architecture.is_build_in,
+                "data_id": instance.id,
+                "name": instance.name,
+                "desc": instance.desc,
+                "type": object_type,
+                "groups": instance.groups,
+                "is_build_in": instance.is_build_in,
                 "children": [],
             }
 
-            parent_key = f"directory_{architecture.directory_id}"
+            parent_key = f"directory_{instance.directory_id}"
             if parent_key not in parent_children_map:
                 parent_children_map[parent_key] = []
             parent_children_map[parent_key].append(node_key)

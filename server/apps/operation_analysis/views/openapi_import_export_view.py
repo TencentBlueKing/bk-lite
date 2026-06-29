@@ -88,12 +88,14 @@ class OpenImportExportViewSet(OpenAPIViewSet):
     def _filter_ids_by_org(self, object_type: str, object_ids: list[int], current_team: int = None) -> list[int]:
         """按组织过滤对象 ID，返回当前组织可见的合法 ID 列表"""
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
 
         MODEL_MAP = {
             ObjectType.DASHBOARD.value: Dashboard,
             ObjectType.TOPOLOGY.value: Topology,
             ObjectType.ARCHITECTURE.value: Architecture,
+            ObjectType.SCREEN.value: Screen,
+            ObjectType.REPORT.value: Report,
             ObjectType.DATASOURCE.value: DataSourceAPIModel,
         }
 

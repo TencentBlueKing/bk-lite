@@ -10,24 +10,24 @@ import yaml
 from django.core.management import call_command
 
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-from apps.operation_analysis.models.models import Dashboard, Directory, Topology
+from apps.operation_analysis.models.models import Dashboard, Directory, Screen
 
 BUILTIN_CANVASES_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_canvases.yaml"
 
 
 def _load_builtin_resource_screen():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
-    return next(topology for topology in payload["topologies"] if topology.get("name", "").startswith("基础资源态势大屏"))
+    return next(screen for screen in payload["screens"] if screen.get("name", "").startswith("基础资源态势大屏"))
 
 
 def _load_builtin_alert_screen():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
-    return next(topology for topology in payload["topologies"] if topology.get("name", "").startswith("告警运营大屏"))
+    return next(screen for screen in payload["screens"] if screen.get("name", "").startswith("告警运营大屏"))
 
 
 def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
-    topology = _load_builtin_resource_screen()
-    nodes = topology["view_sets"]["nodes"]
+    screen = _load_builtin_resource_screen()
+    nodes = screen["view_sets"]["items"]
     chart_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value"}]
     node_by_id = {node["id"]: node for node in nodes}
 
@@ -38,11 +38,12 @@ def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
     assert node_by_id["screen-title-frame"]["type"] == "basic-shape"
     assert node_by_id["screen-title-left-line"]["type"] == "basic-shape"
     assert node_by_id["screen-title-right-line"]["type"] == "basic-shape"
-    assert topology["view_sets"]["presentation"]["chrome"] == {
+    assert screen["view_sets"]["decorations"]["chrome"] == {
         "title": "基础资源态势大屏",
         "showTitle": True,
         "showClock": True,
     }
+    assert "edges" not in screen["view_sets"]
     assert not any(node.get("name") == "活跃告警详情" for node in nodes)
     assert all(node.get("valueConfig", {}).get("chartType") not in {"list", "presentation-list"} for node in chart_nodes)
     assert all(
@@ -74,8 +75,8 @@ def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
 
 
 def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
-    topology = _load_builtin_alert_screen()
-    nodes = topology["view_sets"]["nodes"]
+    screen = _load_builtin_alert_screen()
+    nodes = screen["view_sets"]["items"]
     ordinary_nodes = [
         node for node in nodes if node.get("type") in {"chart", "single-value", "icon", "basic-shape"} and not node["id"].startswith("screen-")
     ]
@@ -83,17 +84,18 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     data_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value"}]
     chart_types = {node.get("valueConfig", {}).get("chartType") for node in data_nodes}
 
-    assert topology["view_sets"]["presentation"]["templateKey"] == "custom-screen"
-    assert topology["view_sets"]["presentation"]["chrome"] == {
+    assert screen["view_sets"]["decorations"]["templateKey"] == "custom-screen"
+    assert screen["view_sets"]["decorations"]["chrome"] == {
         "title": "告警运营大屏",
         "showTitle": True,
         "showClock": True,
     }
+    assert "edges" not in screen["view_sets"]
     assert all("presentationRole" not in node for node in ordinary_nodes)
     assert {"single", "bar", "line", "pie", "topN", "table"} <= chart_types
     assert not any(node.get("valueConfig", {}).get("chartType") in {"list", "presentation-list"} for node in chart_nodes)
 
-    datasource_refs = set(topology["refs"]["datasource_keys"])
+    datasource_refs = set(screen["refs"]["datasource_keys"])
     assert "今日告警状态总览::alert/get_alert_today_status_summary" in datasource_refs
     assert "告警状态分布::alert/get_alert_status_distribution" in datasource_refs
     assert "近7日告警等级趋势::alert/get_alert_level_trend" in datasource_refs
@@ -168,32 +170,32 @@ def test_init_builtin_canvases_rerun_is_idempotent():
 
 
 @pytest.mark.django_db
-def test_init_builtin_canvases_creates_builtin_presentation_topology():
+def test_init_builtin_canvases_creates_builtin_presentation_screen():
     from apps.system_mgmt.models.user import Group
 
     Group.objects.get_or_create(name="Default")
     _ensure_default_namespace()
     call_command("init_builtin_canvases")
 
-    topology = Topology.objects.get(name__startswith="基础资源态势大屏", is_build_in=True)
+    screen = Screen.objects.get(name__startswith="基础资源态势大屏", is_build_in=True)
 
-    assert topology.view_sets["presentation"]["templateKey"] == "custom-screen"
-    assert topology.view_sets["presentation"]["chrome"] == {
+    assert screen.view_sets["decorations"]["templateKey"] == "custom-screen"
+    assert screen.view_sets["decorations"]["chrome"] == {
         "title": "基础资源态势大屏",
         "showTitle": True,
         "showClock": True,
     }
-    assert topology.view_sets["viewport"]["width"] == 1920
-    assert len(topology.view_sets["edges"]) >= 10
-    node_by_id = {node["id"]: node for node in topology.view_sets["nodes"]}
+    assert screen.view_sets["viewport"]["width"] == 1920
+    assert "edges" not in screen.view_sets
+    node_by_id = {node["id"]: node for node in screen.view_sets["items"]}
     assert node_by_id["screen-title"]["type"] == "text"
     assert node_by_id["screen-title"]["presentationRole"] == "screen-title"
     assert node_by_id["screen-title"]["name"] == "基础资源态势大屏"
     assert node_by_id["screen-clock"]["type"] == "text"
     assert node_by_id["screen-clock"]["presentationRole"] == "screen-clock"
 
-    chart_nodes = [node for node in topology.view_sets["nodes"] if node.get("type") in {"chart", "single-value"}]
-    ordinary_nodes = [node for node in topology.view_sets["nodes"] if node.get("type") in {"chart", "single-value", "icon"}]
+    chart_nodes = [node for node in screen.view_sets["items"] if node.get("type") in {"chart", "single-value"}]
+    ordinary_nodes = [node for node in screen.view_sets["items"] if node.get("type") in {"chart", "single-value", "icon"}]
     allowed_chart_types = {"single", "topN", "line", "pie", "bar", "gauge", "barGauge", "stateTimeline", "text"}
     assert all("presentationRole" not in node for node in ordinary_nodes)
     assert all(node.get("valueConfig", {}).get("chartType") in allowed_chart_types for node in chart_nodes)
@@ -202,10 +204,10 @@ def test_init_builtin_canvases_creates_builtin_presentation_topology():
     assert all(node.get("valueConfig", {}).get("chartThemeMode") == "screen-dark" for node in chart_nodes)
     assert all("presentationVariant" not in node.get("valueConfig", {}) for node in chart_nodes)
     assert all("presentationAdapter" not in node.get("valueConfig", {}) for node in chart_nodes)
-    assert not any(node.get("name") == "活跃告警详情" for node in topology.view_sets["nodes"])
+    assert not any(node.get("name") == "活跃告警详情" for node in screen.view_sets["items"])
 
     datasource_names = [
-        node.get("valueConfig", {}).get("dataSource") for node in topology.view_sets["nodes"] if node.get("valueConfig", {}).get("dataSource")
+        node.get("valueConfig", {}).get("dataSource") for node in screen.view_sets["items"] if node.get("valueConfig", {}).get("dataSource")
     ]
     datasource_ids = set(datasource_names)
     assert DataSourceAPIModel.objects.get(name="活跃告警 TOP N").id not in datasource_ids
@@ -222,13 +224,14 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     _ensure_default_namespace()
     call_command("init_builtin_canvases")
 
-    topology = Topology.objects.get(name__startswith="告警运营大屏", is_build_in=True)
-    nodes = topology.view_sets["nodes"]
+    screen = Screen.objects.get(name__startswith="告警运营大屏", is_build_in=True)
+    nodes = screen.view_sets["items"]
     ordinary_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value", "icon"}]
     datasource_names = [node.get("valueConfig", {}).get("dataSource") for node in nodes if node.get("valueConfig", {}).get("dataSource")]
     datasource_ids = set(datasource_names)
 
-    assert topology.view_sets["presentation"]["templateKey"] == "custom-screen"
+    assert screen.view_sets["decorations"]["templateKey"] == "custom-screen"
+    assert "edges" not in screen.view_sets
     assert all("presentationRole" not in node for node in ordinary_nodes)
     assert DataSourceAPIModel.objects.get(name="今日告警状态总览").id in datasource_ids
     assert DataSourceAPIModel.objects.get(name="告警状态分布").id in datasource_ids
@@ -279,7 +282,7 @@ def test_init_builtin_canvases_merges_extra_yaml_files(tmp_path, settings, monke
     base_yaml.write_text(
         """
 meta:
-  schema_version: 1.0.0
+  schema_version: 1.1.0
 dashboards:
 - key: dashboard::社区内置仪表盘
   name: 社区内置仪表盘
@@ -302,7 +305,7 @@ architectures: []
     enterprise_yaml.write_text(
         """
 meta:
-  schema_version: 1.0.0
+  schema_version: 1.1.0
 dashboards:
 - key: dashboard::企业内置仪表盘
   name: 企业内置仪表盘

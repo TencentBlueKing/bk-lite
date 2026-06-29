@@ -1,5 +1,7 @@
-export type DirectoryType = 'directory' | 'dashboard' | 'topology' | 'architecture' | 'settings';
-export type CreateDirectoryType = 'directory' | 'dashboard' | 'topology' | 'architecture';
+import type { CanvasType } from '@/app/ops-analysis/constants/canvasTypes';
+
+export type DirectoryType = 'directory' | CanvasType | 'settings';
+export type CreateDirectoryType = 'directory' | CanvasType;
 export type ModalAction = 'addRoot' | 'addChild' | 'edit';
 
 export interface DirItem {
@@ -35,6 +37,7 @@ export interface ItemData {
   directory?: number;
   parent?: number | null;
   groups?: number[];
+  view_sets?: unknown;
 }
 
 export interface IconWithSize {

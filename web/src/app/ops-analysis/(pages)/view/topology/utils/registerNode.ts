@@ -2,12 +2,6 @@ import ChartNode from '../components/chartNode';
 import { Graph, Node } from '@antv/x6';
 import { register } from '@antv/x6-react-shape';
 import { NODE_DEFAULTS, PORT_DEFAULTS } from '../constants/nodeDefaults';
-import {
-  buildTechFramePath,
-  getNodeGlowAttrs,
-  resolveConfiguredNodeSize,
-  toRgbaColor,
-} from './nodeRenderEffects';
 import { createPortConfig } from './topologyUtils';
 import { iconList } from '@/app/cmdb/utils/common';
 import type {
@@ -26,18 +20,21 @@ const NODE_TYPE_MAP = {
 
 const DEFAULT_ICON_PATH = '/assets/icons/cc-default_默认.svg';
 
+const resolveConfiguredNodeSize = (
+  styleConfig: { width?: number; height?: number } | undefined,
+  fallback: { width: number; height: number },
+): { width: number; height: number } => ({
+  width: Number(styleConfig?.width) || fallback.width,
+  height: Number(styleConfig?.height) || fallback.height,
+});
+
 const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): Record<string, any> => {
   const { BASIC_SHAPE_NODE } = NODE_DEFAULTS;
   const backgroundColor = nodeConfig.styleConfig?.backgroundColor;
   const borderColor = nodeConfig.styleConfig?.borderColor;
   const borderWidth = nodeConfig.styleConfig?.borderWidth;
   const lineType = nodeConfig.styleConfig?.lineType;
-  const renderEffect = nodeConfig.styleConfig?.renderEffect;
-  const frameVariant = nodeConfig.styleConfig?.frameVariant;
-  const width = nodeConfig.styleConfig?.width || BASIC_SHAPE_NODE.width;
-  const height = nodeConfig.styleConfig?.height || BASIC_SHAPE_NODE.height;
   const effectiveBorderColor = borderColor || BASIC_SHAPE_NODE.borderColor;
-  const effectiveBorderWidth = Math.max(Number(borderWidth) || 1, 1);
 
   const isTransparent = !backgroundColor ||
     backgroundColor === 'transparent' ||
@@ -57,44 +54,6 @@ const getBasicShapeAttrs = (nodeConfig: TopologyNodeData, shapeType?: string): R
     frame: { display: 'none' },
     innerFrame: { display: 'none' },
   };
-
-  if (renderEffect === 'glow') {
-    Object.assign(
-      baseAttrs.body,
-      getNodeGlowAttrs(effectiveBorderColor, effectiveBorderWidth),
-    );
-  } else if (['glass', undefined].includes(renderEffect)) {
-    baseAttrs.body.filter = 'drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.25))';
-    baseAttrs.body.stroke = toRgbaColor(effectiveBorderColor, 0.8);
-  } else {
-    baseAttrs.body.filter = '';
-  }
-
-  if (frameVariant === 'tech') {
-    baseAttrs.body.stroke = 'transparent';
-    baseAttrs.body.strokeWidth = 0;
-    baseAttrs.body.rx = 10;
-    baseAttrs.body.ry = 10;
-    baseAttrs.frame = {
-      display: 'block',
-      d: buildTechFramePath(width, height, { cornerSize: 24 }),
-      fill: 'none',
-      stroke: effectiveBorderColor,
-      strokeWidth: effectiveBorderWidth,
-      filter: renderEffect === 'glow'
-        ? getNodeGlowAttrs(effectiveBorderColor, effectiveBorderWidth).filter
-        : baseAttrs.body.filter,
-      pointerEvents: 'none',
-    };
-    baseAttrs.innerFrame = {
-      display: 'block',
-      d: buildTechFramePath(width, height, { inset: 9, cornerSize: 18 }),
-      fill: 'none',
-      stroke: toRgbaColor(effectiveBorderColor, 0.34),
-      strokeWidth: Math.max(effectiveBorderWidth - 1, 1),
-      pointerEvents: 'none',
-    };
-  }
 
   if (lineType === 'dashed') {
     baseAttrs.body.strokeDasharray = '8,4';
@@ -384,25 +343,6 @@ const getIconUrl = (nodeConfig: TopologyNodeData): string => {
   return DEFAULT_ICON_PATH;
 };
 
-const getRenderEffectBodyAttrs = (
-  nodeConfig: TopologyNodeData,
-  defaultStrokeWidth = 1,
-): Record<string, any> => {
-  const renderEffect = nodeConfig.styleConfig?.renderEffect;
-  if (renderEffect === 'glow') {
-    return getNodeGlowAttrs(nodeConfig.styleConfig?.borderColor, defaultStrokeWidth);
-  }
-  if (renderEffect === 'glass') {
-    return {
-      stroke: toRgbaColor(nodeConfig.styleConfig?.borderColor, 0.72),
-      strokeWidth: Math.max(Number(defaultStrokeWidth) || 0, 1),
-      filter: 'drop-shadow(2px 4px 6px rgba(0, 0, 0, 0.22))',
-    };
-  }
-
-  return { filter: '' };
-};
-
 const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData): CreatedNodeConfig => {
   const logoUrl = getIconUrl(nodeConfig);
   const { ICON_NODE } = NODE_DEFAULTS;
@@ -428,7 +368,6 @@ const createIconNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseNodeData
         fill: nodeConfig.styleConfig?.backgroundColor || ICON_NODE.backgroundColor,
         rx: ICON_NODE.borderRadius,
         ry: ICON_NODE.borderRadius,
-        ...getRenderEffectBodyAttrs(nodeConfig, ICON_NODE.strokeWidth),
       },
       image: {
         'xlink:href': logoUrl,
@@ -480,7 +419,6 @@ const createSingleValueNode = (nodeConfig: TopologyNodeData, baseNodeData: BaseN
         fill: nodeConfig.styleConfig?.backgroundColor || 'transparent',
         stroke: nodeConfig.styleConfig?.borderColor || 'transparent',
         strokeWidth: NODE_DEFAULTS.SINGLE_VALUE_NODE.strokeWidth,
-        ...getRenderEffectBodyAttrs(nodeConfig, NODE_DEFAULTS.SINGLE_VALUE_NODE.strokeWidth),
       },
       label: {
         fill: nodeConfig.styleConfig?.textColor,
@@ -638,7 +576,6 @@ const updateIconNodeAttributes = (node: Node, nodeConfig: TopologyNodeData) => {
       fill: nodeConfig.styleConfig?.backgroundColor || ICON_NODE.backgroundColor,
       rx: ICON_NODE.borderRadius,
       ry: ICON_NODE.borderRadius,
-      ...getRenderEffectBodyAttrs(nodeConfig, ICON_NODE.strokeWidth),
     },
     image: {
       'xlink:href': logoUrl,
@@ -696,7 +633,6 @@ const updateSingleValueNodeAttributes = (node: Node, nodeConfig: TopologyNodeDat
       fill: nodeConfig.styleConfig?.backgroundColor || 'transparent',
       stroke: nodeConfig.styleConfig?.borderColor || 'transparent',
       strokeWidth: NODE_DEFAULTS.SINGLE_VALUE_NODE.strokeWidth,
-      ...getRenderEffectBodyAttrs(nodeConfig, NODE_DEFAULTS.SINGLE_VALUE_NODE.strokeWidth),
     },
     label: {
       fill: nodeConfig.styleConfig?.textColor,

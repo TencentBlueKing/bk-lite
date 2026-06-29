@@ -10,7 +10,6 @@ import {
   PlusSquareOutlined,
   FullscreenOutlined,
   FullscreenExitOutlined,
-  DesktopOutlined,
   DeleteOutlined,
   SelectOutlined,
   EditOutlined,
@@ -40,7 +39,6 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
   onFrequencyChange,
   onCancel,
   onFilterConfig,
-  onPresentationConfig,
 }) => {
   const { t } = useTranslation();
   const iconButtonClassName =
@@ -180,18 +178,6 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
                     className={iconButtonClassName}
                   />
                 </Tooltip>
-              </PermissionWrapper>
-            )}
-            {onPresentationConfig && (
-              <PermissionWrapper requiredPermissions={['EditChart']}>
-                <Button
-                  type="text"
-                  icon={<DesktopOutlined style={{ fontSize: 16 }} />}
-                  onClick={onPresentationConfig}
-                  className="rounded-full! px-3!"
-                >
-                  {t('topology.presentationConfig')}
-                </Button>
               </PermissionWrapper>
             )}
           </div>

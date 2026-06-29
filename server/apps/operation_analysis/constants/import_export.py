@@ -36,12 +36,14 @@ class ObjectType(str, Enum):
     DASHBOARD = "dashboard"
     TOPOLOGY = "topology"
     ARCHITECTURE = "architecture"
+    SCREEN = "screen"
+    REPORT = "report"
     DATASOURCE = "datasource"
     NAMESPACE = "namespace"
 
 
 # 画布类型集合，用于判断对象是否为画布对象
-CANVAS_TYPES = {ObjectType.DASHBOARD, ObjectType.TOPOLOGY, ObjectType.ARCHITECTURE}
+CANVAS_TYPES = {ObjectType.DASHBOARD, ObjectType.TOPOLOGY, ObjectType.ARCHITECTURE, ObjectType.SCREEN, ObjectType.REPORT}
 
 # 配置对象类型集合
 CONFIG_TYPES = {ObjectType.DATASOURCE, ObjectType.NAMESPACE}
@@ -82,7 +84,7 @@ YAML_MAX_SIZE_BYTES = 2 * 1024 * 1024  # 2MB
 IMPORT_OBJECT_LIMIT = 200
 
 # YAML schema版本号，用于版本兼容性检查
-YAML_SCHEMA_VERSION = "1.0.0"
+YAML_SCHEMA_VERSION = "1.1.0"
 
 
 # ===== 敏感字段配置 =====
@@ -154,6 +156,8 @@ OBJECT_TYPE_TO_SECTION = {
     ObjectType.DASHBOARD: "dashboards",
     ObjectType.TOPOLOGY: "topologies",
     ObjectType.ARCHITECTURE: "architectures",
+    ObjectType.SCREEN: "screens",
+    ObjectType.REPORT: "reports",
     ObjectType.DATASOURCE: "datasources",
     ObjectType.NAMESPACE: "namespaces",
 }

@@ -22,7 +22,7 @@ from apps.operation_analysis.constants.import_export import (
     ScopeType,
 )
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
 from apps.operation_analysis.services.import_export.view_sets import (
     normalize_canvas_view_sets_for_storage,
     normalize_canvas_view_sets_for_yaml,
@@ -49,6 +49,8 @@ class ExportService:
         ObjectType.DASHBOARD: Dashboard,
         ObjectType.TOPOLOGY: Topology,
         ObjectType.ARCHITECTURE: Architecture,
+        ObjectType.SCREEN: Screen,
+        ObjectType.REPORT: Report,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -266,6 +268,7 @@ class ExportService:
             "summary": {"exported": {...}}
         }
         """
+        section_names = list(OBJECT_TYPE_TO_SECTION.values())
         export_data = {
             "meta": {
                 "schema_version": YAML_SCHEMA_VERSION,
@@ -273,12 +276,9 @@ class ExportService:
                 "source": {"organization_id": organization_id},
                 "object_counts": {},
             },
-            "dashboards": [],
-            "topologies": [],
-            "architectures": [],
-            "datasources": [],
-            "namespaces": [],
         }
+        for section in section_names:
+            export_data[section] = []
 
         if scope_type == ScopeType.CANVAS.value:
             collected_datasource_ids, collected_namespace_ids = cls._collect_canvas_dependencies(object_type, object_ids)
@@ -307,16 +307,10 @@ class ExportService:
 
         cls._convert_canvases_to_yaml(scope_type, object_type, object_ids, ds_key_map, ns_key_map, export_data)
 
-        for section in ["dashboards", "topologies", "architectures", "datasources", "namespaces"]:
+        for section in section_names:
             export_data[section].sort(key=lambda x: x.get("name", ""))
 
-        export_data["meta"]["object_counts"] = {
-            "dashboards": len(export_data["dashboards"]),
-            "topologies": len(export_data["topologies"]),
-            "architectures": len(export_data["architectures"]),
-            "datasources": len(export_data["datasources"]),
-            "namespaces": len(export_data["namespaces"]),
-        }
+        export_data["meta"]["object_counts"] = {section: len(export_data[section]) for section in section_names}
 
         yaml_content = yaml.dump(
             export_data,

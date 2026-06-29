@@ -28,7 +28,6 @@ import {
   Button,
   Drawer,
   ColorPicker,
-  Radio,
 } from 'antd';
 
 const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
@@ -82,7 +81,6 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
       decimalPlaces: 2,
       fontSize: NODE_DEFAULTS.SINGLE_VALUE_NODE.fontSize,
       textColor: NODE_DEFAULTS.SINGLE_VALUE_NODE.textColor,
-      renderEffect: 'normal',
     };
 
     setCurrentDataSource(null);
@@ -109,7 +107,6 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
         textColor: normalizeColorForForm(styleConfig.textColor),
         backgroundColor: normalizeColorForForm(styleConfig.backgroundColor),
         borderColor: normalizeColorForForm(styleConfig.borderColor),
-        renderEffect: styleConfig.renderEffect || 'normal',
         nameFontSize: styleConfig.nameFontSize,
         nameColor: styleConfig.nameColor,
         unit: editingNodeData.unit,
@@ -448,22 +445,6 @@ const SingleValueNodePanel: React.FC<NodeConfPanelProps> = ({
               allowClear
               format="hex"
             />
-          </Form.Item>
-          <Form.Item
-            label={t('topology.nodeConfig.renderEffect')}
-            name="renderEffect"
-          >
-            <Radio.Group disabled={readonly}>
-              <Radio value="normal">
-                {t('topology.nodeConfig.renderEffectNormal')}
-              </Radio>
-              <Radio value="glass">
-                {t('topology.nodeConfig.renderEffectGlass')}
-              </Radio>
-              <Radio value="glow">
-                {t('topology.nodeConfig.renderEffectGlow')}
-              </Radio>
-            </Radio.Group>
           </Form.Item>
         </div>
       </Form>

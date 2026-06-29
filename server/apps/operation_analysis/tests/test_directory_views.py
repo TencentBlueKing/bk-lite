@@ -343,6 +343,116 @@ def test_tree_node_builder_topology_and_architecture_nodes(authenticated_user):
     assert arch_nodes[f"architecture_{arch.id}"]["type"] == "architecture"
 
 
+def test_canvas_registry_contains_all_first_class_canvas_types():
+    from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
+
+    assert set(CANVAS_TYPE_REGISTRY.keys()) == {"dashboard", "topology", "architecture", "screen", "report"}
+    assert CANVAS_TYPE_REGISTRY["screen"].permission_key == "directory.screen"
+    assert CANVAS_TYPE_REGISTRY["report"].section_name == "reports"
+
+
+def test_all_canvas_serializers_share_canvas_object_base():
+    from apps.operation_analysis.serializers.directory_serializers import (
+        ArchitectureModelSerializer,
+        CanvasObjectSerializer,
+        DashboardModelSerializer,
+        ReportModelSerializer,
+        ScreenModelSerializer,
+        TopologyModelSerializer,
+    )
+
+    serializers = [
+        DashboardModelSerializer,
+        TopologyModelSerializer,
+        ArchitectureModelSerializer,
+        ScreenModelSerializer,
+        ReportModelSerializer,
+    ]
+
+    assert all(issubclass(serializer, CanvasObjectSerializer) for serializer in serializers)
+
+
+@pytest.mark.django_db
+def test_screen_and_report_create_with_directory_succeed(authenticated_user):
+    from apps.operation_analysis.models.models import Report, Screen
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="内容目录", groups=[1], created_by="testuser")
+
+    screen_request = _request("post", "/screen/", user, data={"name": "值班大屏", "groups": [1], "directory": directory.id})
+    screen_response = view_module.ScreenModelViewSet.as_view({"post": "create"})(screen_request)
+    screen_payload = _render(screen_response)
+
+    report_request = _request("post", "/report/", user, data={"name": "周报", "groups": [1], "directory": directory.id})
+    report_response = view_module.ReportModelViewSet.as_view({"post": "create"})(report_request)
+    report_payload = _render(report_response)
+
+    assert screen_response.status_code == status.HTTP_201_CREATED
+    assert screen_payload["data"]["name"] == "值班大屏"
+    assert report_response.status_code == status.HTTP_201_CREATED
+    assert report_payload["data"]["name"] == "周报"
+    assert Screen.objects.filter(name="值班大屏", directory=directory).exists()
+    assert Report.objects.filter(name="周报", directory=directory).exists()
+
+
+@pytest.mark.django_db
+def test_screen_create_without_directory_returns_400(authenticated_user):
+    user = _superuser(authenticated_user)
+    request = _request("post", "/screen/", user, data={"name": "无目录大屏", "groups": [1]})
+    response = view_module.ScreenModelViewSet.as_view({"post": "create"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "directory" in json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.django_db
+def test_report_update_builtin_forbidden(authenticated_user):
+    from apps.operation_analysis.models.models import Report
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="报表目录", groups=[1], created_by="testuser")
+    report = Report.objects.create(name="内置报表", groups=[1], directory=directory, is_build_in=True, build_in_key="builtin-report")
+    request = _request("put", f"/report/{report.id}/", user, data={"name": "改名", "groups": [1], "directory": directory.id})
+    response = view_module.ReportModelViewSet.as_view({"put": "update"})(request, pk=str(report.id))
+    _render(response)
+
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
+def test_tree_endpoint_includes_screen_and_report(authenticated_user):
+    from apps.operation_analysis.models.models import Report, Screen
+
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="目录", groups=[1], created_by="testuser")
+    Screen.objects.create(name="大屏A", groups=[1], directory=directory, created_by="testuser")
+    Report.objects.create(name="报表A", groups=[1], directory=directory, created_by="testuser")
+
+    request = _request("get", "/directory/tree/", user)
+    response = view_module.DirectoryModelViewSet.as_view({"get": "tree"})(request)
+    payload = _render(response)
+
+    root = next(item for item in payload["data"] if item["data_id"] == directory.id)
+    child_types = {child["type"] for child in root["children"]}
+    assert {"screen", "report"}.issubset(child_types)
+
+
+@pytest.mark.django_db
+def test_get_directory_modules_data_screen_and_report(authenticated_user):
+    from apps.operation_analysis.models.models import Report, Screen
+
+    directory = Directory.objects.create(name="目录Y", groups=[1], created_by="testuser")
+    Screen.objects.create(name="屏1", groups=[1], directory=directory, created_by="testuser")
+    Report.objects.create(name="表1", groups=[1], directory=directory, created_by="testuser")
+
+    screen_result = DictDirectoryService.get_directory_modules_data("screen", page=1, page_size=10, group_id=1)
+    report_result = DictDirectoryService.get_directory_modules_data("report", page=1, page_size=10, group_id=1)
+
+    assert screen_result["items"][0]["name"] == "【目录Y】屏1"
+    assert report_result["items"][0]["name"] == "【目录Y】表1"
+
+
 # --------------------------------------------------------------------------
 # 视图层 helper 函数
 # --------------------------------------------------------------------------

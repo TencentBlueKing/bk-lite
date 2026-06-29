@@ -21,6 +21,12 @@ import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
 import { ExportModal, ImportModal } from './importExport';
 import { ObjectType } from '@/app/ops-analysis/api/importExport';
+import { buildDefaultScreenViewSets } from '@/app/ops-analysis/(pages)/view/screen/utils/viewport';
+import {
+  CANVAS_TYPES,
+  getCanvasTypeMeta,
+  isCanvasType,
+} from '@/app/ops-analysis/constants/canvasTypes';
 import {
   SidebarProps,
   SidebarRef,
@@ -36,6 +42,8 @@ import {
   BarChartOutlined,
   FolderOutlined,
   ApartmentOutlined,
+  DesktopOutlined,
+  FileTextOutlined,
 } from '@ant-design/icons';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
@@ -148,10 +156,11 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             desc: values.desc,
             groups: values.groups,
           };
+          if (newItemType === 'screen') {
+            itemData.view_sets = buildDefaultScreenViewSets();
+          }
           if (modalAction === 'addChild' && currentDir?.data_id) {
-            if (
-              ['dashboard', 'topology', 'architecture'].includes(newItemType)
-            ) {
+            if (isCanvasType(newItemType)) {
               itemData.directory = parseInt(currentDir.data_id, 10);
             } else if (newItemType === 'directory') {
               itemData.parent = parseInt(currentDir.data_id, 10);
@@ -212,12 +221,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     };
 
     const mapTypeToObjectType = (type: DirectoryType): ObjectType | null => {
-      const typeMap: Record<string, ObjectType> = {
-        dashboard: 'dashboard',
-        topology: 'topology',
-        architecture: 'architecture',
-      };
-      return typeMap[type] || null;
+      return getCanvasTypeMeta(type)?.objectType || null;
     };
 
     const handleExport = (item: DirItem) => {
@@ -231,18 +235,20 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     };
 
     const getDirectoryIcon = (type: DirectoryType) => {
-      switch (type) {
-        case 'dashboard':
-          return <BarChartOutlined className="mr-1 text-purple-600" />;
-        case 'topology':
-          return <Icon type="tuoputu" className="mr-1" />;
-        case 'architecture':
-          return <ApartmentOutlined className="mr-1 text-green-600 text-sm" />;
-        case 'directory':
-          return <FolderOutlined className="mr-1" />;
-        default:
-          return '';
+      const meta = getCanvasTypeMeta(type);
+      if (!meta) {
+        return type === 'directory' ? <FolderOutlined className="mr-1" /> : '';
       }
+
+      const className = 'mr-1 text-sm';
+      const iconMap = {
+        dashboard: <BarChartOutlined className={`${className} text-purple-600`} />,
+        topology: <Icon type="tuoputu" className="mr-1" />,
+        architecture: <ApartmentOutlined className={`${className} text-green-600`} />,
+        screen: <DesktopOutlined className={`${className} text-cyan-600`} />,
+        report: <FileTextOutlined className={`${className} text-orange-600`} />,
+      };
+      return iconMap[meta.icon];
     };
 
     const hasChildren = (item: DirItem): boolean => {
@@ -252,9 +258,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
 
       return item.children.some(
         (child) =>
-          child.type === 'dashboard' ||
-          child.type === 'topology' ||
-          child.type === 'architecture' ||
+          isCanvasType(child.type) ||
           (child.type === 'directory' && hasChildren(child))
       );
     };
@@ -303,63 +307,30 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         <Menu selectable={false}>
           {isGroup && (
             <>
-              <Menu.Item
-                key="addDashboard"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  setNewItemType('dashboard');
-                  showModal(
-                    'addChild',
-                    t('opsAnalysisSidebar.addDash'),
-                    '',
-                    item,
-                    'dashboard',
-                  );
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addDash')}
-                </PermissionWrapper>
-              </Menu.Item>
-              <Menu.Item
-                key="addTopology"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  setNewItemType('topology');
-                  showModal(
-                    'addChild',
-                    t('opsAnalysisSidebar.addTopo'),
-                    '',
-                    item,
-                    'topology',
-                  );
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addTopo')}
-                </PermissionWrapper>
-              </Menu.Item>
-              <Menu.Item
-                key="addArchitecture"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  setNewItemType('architecture');
-                  showModal(
-                    'addChild',
-                    t('opsAnalysisSidebar.addArch'),
-                    '',
-                    item,
-                    'architecture',
-                  );
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addArch')}
-                </PermissionWrapper>
-              </Menu.Item>
+              {CANVAS_TYPES.map((canvasType) => {
+                const meta = getCanvasTypeMeta(canvasType)!;
+                return (
+                  <Menu.Item
+                    key={`add-${canvasType}`}
+                    onClick={(e) => {
+                      stopEventPropagation(e.domEvent);
+                      if (!hasPermission(['AddChart'])) return;
+                      setNewItemType(canvasType);
+                      showModal(
+                        'addChild',
+                        t(meta.addLabelKey),
+                        '',
+                        item,
+                        canvasType,
+                      );
+                    }}
+                  >
+                    <PermissionWrapper requiredPermissions={['AddChart']}>
+                      {t(meta.addLabelKey)}
+                    </PermissionWrapper>
+                  </Menu.Item>
+                );
+              })}
               <Menu.Item
                 key="import"
                 onClick={(e) => {
@@ -405,11 +376,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 'edit',
                 item.type === 'directory'
                   ? t('opsAnalysisSidebar.editGroup')
-                  : item.type === 'dashboard'
-                    ? t('opsAnalysisSidebar.editDash')
-                    : item.type === 'topology'
-                      ? t('opsAnalysisSidebar.editTopo')
-                      : t('opsAnalysisSidebar.editArch'),
+                  : t(getCanvasTypeMeta(item.type)?.editLabelKey || 'common.edit'),
                 item.name,
                 item,
                 item.type,
@@ -582,9 +549,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (
         item &&
         item.type === urlType &&
-        (item.type === 'dashboard' ||
-          item.type === 'topology' ||
-          item.type === 'architecture')
+        isCanvasType(item.type)
       ) {
         setSelectedKeys([item.id]);
         if (onSelect) {
