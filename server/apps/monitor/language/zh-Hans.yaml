@@ -3872,6 +3872,10 @@ monitor_object_plugin:
     name: SNR（Telegraf）
     desc: SNR（НАГ/NAG）交换机专用 SNMP 采集模板（NAG-MIB，IANA PEN 40418）。在标准 IF-MIB 接口指标之外，额外采集 SNR 私有 OID 的设备健康指标：各 slot CPU 使用率（sysCpuUsage）、系统内存（总量/已用）、机箱温度（sysTemperature 专用温度列）与风扇状态（sysFanStatus）。风扇原始码（0=正常/1=异常）经 telegraf processors.enum 归一为 1=正常/2=异常。内存使用率按 used/total 计算。NAG-MIB 无独立电源（PSU）状态对象，故电源不采集（N/A）。
       适用品牌型号——SNR（NAG）网管交换机。
+  Switch APRESIA SNMP:
+    name: APRESIA（Telegraf）
+    desc: APRESIA（日本，原日立电线）管理型交换机专用 SNMP 采集模板，适用于 APRESIA NP 系列（AEOS-NP 平台，如 ApresiaNP3000/NP4000/NP7000，IANA PEN 278）。在标准 IF-MIB 接口指标之外，额外采集 APRESIA-NP-HW 私有 OID 的设备健康指标——控制平面 CPU 使用率（npCpuUtilizationValue，主装置 CPU，0~100 百分比）、机箱温度（npTemperatureCurrent，摄氏度直采无缩放）、各风扇状态（npFanStatus）、各电源状态（npPowerStatus）。CPU 表固定 3 行（同一主 CPU 的过去 5 秒/1 分钟/5 分钟平均值），telegraf 无法行级过滤，故共享盘 max() 取代表值。风扇/电源原始码经 telegraf processors.enum 归一为 1=正常/2=异常（电源 empty(3) 表示插槽未安装，视为正常），共享盘取最差组件。私有树的内存仅有 npMemoryUtilizationFailureStatusCode（OCTET STRING，仅 trap 绑定时有效，非可轮询 gauge），故内存利用率不采集（N/A）。
+      适用品牌型号——APRESIA NP 系列（ApresiaNP2000/NP2100/NP2500/NP3000/NP4000/NP5000/NP7000），运行 AEOS-NP 固件。
   Switch Intelbras SNMP:
     name: Intelbras（Telegraf）
     desc: Intelbras（英特布拉斯，巴西）管理型交换机专用 SNMP 采集模板（S/SG 企业系列，如 S2328G-PB，运行 INTELBRAS OS / Comware 衍生平台，IANA PEN 26138）。在标准 IF-MIB 接口指标之外，额外采集 Intelbras 私有 OID 的设备健康指标（取自 ibEntityExt 状态表）：各实体控制平面 CPU 使用率（ibEntityExtCpuUsage）与系统内存总量字节及利用率（ibEntityExtMemSize / ibEntityExtMemUsage）。CPU 与内存按 ENTITY-MIB entPhysicalIndex 走表，真值落在管理实体行、其余组件行为 0，故共享盘 max() 取真值。ibEntityExt 温度列在非传感器行回填 65535 哨兵值（telegraf 无法行级过滤），风扇/电源健康需配合 ENTITY-MIB entPhysicalClass 行级类型 join 才能区分（telegraf 不支持），故温度/风扇/电源不采集（N/A）。

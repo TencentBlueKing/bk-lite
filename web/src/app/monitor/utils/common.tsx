@@ -588,6 +588,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
   { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' },
   { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' },
+  { match: /apresia/i, label: 'APRESIA', icon: 'mm-apresia_apresia' },
   { match: /intelbras/i, label: 'Intelbras', icon: 'mm-intelbras_intelbras' },
   { match: /nexans/i, label: 'Nexans', icon: 'mm-nexans_nexans' },
   { match: /pica8|picos/i, label: 'Pica8', icon: 'mm-pica8_pica8' },

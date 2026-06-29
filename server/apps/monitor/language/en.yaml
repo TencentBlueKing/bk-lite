@@ -4340,6 +4340,24 @@ monitor_object_plugin:
       computed from used/total. NAG-MIB exposes no dedicated power-supply (PSU) state
       object, so PSU is not collected (N/A).
       Supported brands/models — SNR (NAG) managed switches.
+  Switch APRESIA SNMP:
+    name: APRESIA (Telegraf)
+    desc: APRESIA managed switch-specific SNMP collection template for the APRESIA NP
+      series (AEOS-NP platform such as ApresiaNP3000/NP4000/NP7000, IANA PEN 278). In
+      addition to standard IF-MIB interface metrics, it collects APRESIA-NP-HW private
+      OIDs for device health — control-plane CPU utilization (npCpuUtilizationValue, the
+      master device CPU usage as a 0-100 percentage), chassis temperature in degrees
+      Celsius (npTemperatureCurrent, read directly with no scaling), per-fan status
+      (npFanStatus) and per-power-supply status (npPowerStatus). The CPU utilization
+      table carries three fixed rows for the same master CPU averaged over the past 5
+      seconds, 1 minute and 5 minutes; since telegraf cannot filter rows, the metric is
+      aggregated with max() per device. Fan and power-supply raw codes are normalized via
+      telegraf processors.enum to 1=healthy / 2=fault (power-supply empty(3) means an
+      unpopulated slot and is treated as healthy), taking the worst component per device.
+      The private tree only exposes memory through npMemoryUtilizationFailureStatusCode,
+      an OCTET STRING valid only when trap-bound and not a pollable gauge, so memory
+      utilization is not collected (N/A).
+      Supported brands/models — APRESIA NP series (ApresiaNP2000/NP2100/NP2500/NP3000/NP4000/NP5000/NP7000) running AEOS-NP firmware.
   Switch Intelbras SNMP:
     name: Intelbras (Telegraf)
     desc: Intelbras managed switch-specific SNMP collection template (S/SG enterprise
