@@ -160,6 +160,13 @@ export const useSwitchConfig = () => {
       'Switch Enterasys SNMP': 'snmp_enterasys',
       'Switch Cumulus SNMP': 'snmp_cumulus',
       'Switch Korenix SNMP': 'snmp_korenix',
+      'Switch Phoenix Contact SNMP': 'snmp_phoenixcontact',
+      'Switch Maipu SNMP': 'snmp_maipu',
+      'Switch Microsens SNMP': 'snmp_microsens',
+      'Switch PLANET SNMP': 'snmp_planet',
+      'Switch Pluribus SNMP': 'snmp_pluribus',
+      'Switch RuggedCOM SNMP': 'snmp_ruggedcom',
+      'Switch Scalance SNMP': 'snmp_scalance',
       'Switch 3Com SNMP': 'snmp_3com',
       'Switch Flow NetFlow': 'netflow',
       'Switch Flow sFlow': 'sflow'
