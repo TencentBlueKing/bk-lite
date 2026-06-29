@@ -4858,6 +4858,9 @@ monitor_object_plugin:
       temperature/fan/power sensors are not exposed in a row-filter-free scalar form by
       the Kerio Control MIB (software UTM appliance), so those are N/A. Supported
       brands/models — GFI Kerio Control UTM firewall / VPN gateway (enterprise 17028).
+  Firewall Blockbit SNMP:
+    name: Blockbit (Telegraf)
+    desc: Baseline SNMP collection template for Blockbit UTM / NGFW security appliances. Based on standard MIB-II / IF-MIB, it collects device uptime, 64-bit HC interface traffic, per-interface incoming/outgoing error and discard rates, interface admin/oper status and bandwidth, plus device-aggregated total incoming/outgoing traffic rates. Blockbit appliances run a hardened Unix-like OS whose CPU/memory/disk are exposed only via row-indexed standard host-resource tables that telegraf inputs.snmp cannot filter row-wise, and no vendor private health scalar is publicly documented, so CPU, memory, temperature, fan and power are N/A and not faked. Supported brands/models — Blockbit UTM / NGFW security gateways managed over SNMP.
   Firewall Clavister SNMP:
     name: Clavister (Telegraf)
     desc: Clavister next-generation firewall SNMP collection (CLAVISTER-MIB, IANA PEN 5089). Beyond standard IF-MIB interface metrics and 64-bit HC traffic counters, it collects Clavister private OIDs for device health (overall CPU utilisation and memory utilisation, both reported directly as percentages) and firewall load (current active connections). Clavister NGFWs are commonly deployed as software / virtual appliances and the private MIB does not expose temperature/fan/power sensors in a row-filter-free scalar form, so those are N/A. Supported brands/models — Clavister NetWall / cOS Core next-generation firewalls (Sweden; enterprise 5089).

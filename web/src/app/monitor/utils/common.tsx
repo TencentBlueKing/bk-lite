@@ -624,6 +624,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },
   { match: /grandstream|\bgwn\d/i, label: 'Grandstream', icon: 'mm-grandstream_grandstream' },
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
+  { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
   { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },

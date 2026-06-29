@@ -4182,6 +4182,9 @@ monitor_object_plugin:
     name: Kerio Control（Telegraf）
     desc: 面向 GFI Kerio Control UTM 防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 Kerio Control 私有 MIB（KERIO-CONTROL-SNMP-MIB，IANA 企业号 17028）的当前活动连接数。Kerio Control 为软件型 UTM 设备，其 MIB 未以无需行级过滤的标量形式暴露 CPU/内存与温度/风扇/电源传感器，故均为 N/A。
       适用品牌型号——GFI Kerio Control UTM 防火墙/VPN 网关（企业号 17028）。
+  Firewall Blockbit SNMP:
+    name: Blockbit（Telegraf）
+    desc: Blockbit UTM / NGFW 安全网关 SNMP 采集基线模板。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量、接口收发错包与丢包速率、接口管理/操作状态与带宽，并按设备汇总收发总流量速率。Blockbit 设备运行加固类 Unix 系统，其 CPU/内存/磁盘仅经按行索引的标准 host-resource 表暴露，telegraf inputs.snmp 无法行级过滤，且无公开可查的厂商私有健康标量，故 CPU、内存、温度、风扇、电源为 N/A，不伪造。适用品牌型号——通过 SNMP 纳管的 Blockbit UTM / NGFW 安全网关。
   Firewall Clavister SNMP:
     name: Clavister（Telegraf）
     desc: Clavister 下一代防火墙专用 SNMP 采集模板（CLAVISTER-MIB，企业号 5089）。除标准 IF-MIB 接口指标与 64 位 HC 流量计数外，额外采集 Clavister 私有 OID 的设备健康（整机 CPU 使用率与内存使用率，均为设备直接上报的百分比）与防火墙负载（当前活动连接数）。Clavister NGFW 多为软件/虚拟化部署，其私有 MIB 未以无需行级过滤的标量形式暴露温度/风扇/电源传感器，故为 N/A。适用品牌型号——Clavister NetWall / cOS Core 下一代防火墙（瑞典，企业号 5089）。
