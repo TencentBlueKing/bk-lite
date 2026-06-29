@@ -60,6 +60,7 @@ const ACCESS_POINT_TASK_TYPES = [
   'cloud',
   'vm',
   'ipmi',
+  'ip', // IP 发现：由接入点直连目标网段执行探测（规格 §13.1）
 ];
 
 import {

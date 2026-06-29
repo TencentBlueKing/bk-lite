@@ -12,35 +12,27 @@
     revert 修复后，以下测试均应失败，从而证明测试覆盖了修复点。
 """
 
-import inspect
 import os
 import re
-import concurrent.futures
 
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Lazy imports of the target modules to avoid Django bootstrap at collection time
 # ---------------------------------------------------------------------------
 
+
 def _load_chat_service_source():
     path = os.path.join(os.path.dirname(__file__), "..", "services", "chat_service.py")
-    with open(os.path.normpath(path)) as f:
+    with open(os.path.normpath(path), encoding="utf-8") as f:
         return f.read()
 
 
 def _load_llm_client_factory_source():
-    path = os.path.join(
-        os.path.dirname(__file__),
-        "..", "..", "opspilot", "metis", "llm", "common", "llm_client_factory.py",
-    )
     # Resolve relative to this file
     base = os.path.dirname(__file__)  # .../apps/opspilot/tests/
-    factory_path = os.path.normpath(
-        os.path.join(base, "..", "metis", "llm", "common", "llm_client_factory.py")
-    )
-    with open(factory_path) as f:
+    factory_path = os.path.normpath(os.path.join(base, "..", "metis", "llm", "common", "llm_client_factory.py"))
+    with open(factory_path, encoding="utf-8") as f:
         return f.read()
 
 
@@ -72,10 +64,7 @@ class TestChatServiceFutureTimeout:
         match = re.search(r"future\.result\s*\(([^)]*)\)", chat_service_src)
         assert match, "chat_service.py 中未找到 future.result() 调用"
         args = match.group(1).strip()
-        assert "timeout" in args, (
-            f"future.result() 缺少 timeout 参数，当前参数为：({args})。"
-            "没有 timeout 参数时，LLM 卡死会导致 worker 线程永久阻塞（Issue #3718）。"
-        )
+        assert "timeout" in args, f"future.result() 缺少 timeout 参数，当前参数为：({args})。" "没有 timeout 参数时，LLM 卡死会导致 worker 线程永久阻塞（Issue #3718）。"
 
     def test_llm_invoke_timeout_env_var_referenced(self, chat_service_src):
         """
@@ -83,10 +72,7 @@ class TestChatServiceFutureTimeout:
 
         revert 后（移除 os.getenv("LLM_INVOKE_TIMEOUT", ...)）此测试失败。
         """
-        assert "LLM_INVOKE_TIMEOUT" in chat_service_src, (
-            "chat_service.py 中未引用 LLM_INVOKE_TIMEOUT 环境变量。"
-            "超时值应可通过环境变量配置。"
-        )
+        assert "LLM_INVOKE_TIMEOUT" in chat_service_src, "chat_service.py 中未引用 LLM_INVOKE_TIMEOUT 环境变量。" "超时值应可通过环境变量配置。"
 
     def test_timeout_error_is_explicitly_caught(self, chat_service_src):
         """
@@ -95,8 +81,7 @@ class TestChatServiceFutureTimeout:
         revert（移除 except concurrent.futures.TimeoutError 块）后此测试失败。
         """
         assert "except concurrent.futures.TimeoutError" in chat_service_src, (
-            "chat_service.py 未专门处理 concurrent.futures.TimeoutError。"
-            "未处理的 TimeoutError 会向上传播为 500 错误，缺少明确提示。"
+            "chat_service.py 未专门处理 concurrent.futures.TimeoutError。" "未处理的 TimeoutError 会向上传播为 500 错误，缺少明确提示。"
         )
 
     def test_timeout_error_handler_returns_error_type_field(self, chat_service_src):
@@ -107,19 +92,13 @@ class TestChatServiceFutureTimeout:
         idx = chat_service_src.find("except concurrent.futures.TimeoutError")
         assert idx != -1, "未找到 TimeoutError 处理块"
         # Check the next 500 chars for the error_type field
-        handler_snippet = chat_service_src[idx: idx + 600]
-        assert '"TimeoutError"' in handler_snippet or "'TimeoutError'" in handler_snippet, (
-            "TimeoutError 处理块应设置 error_type='TimeoutError'"
-        )
-        assert "False" in handler_snippet, (
-            "TimeoutError 处理块应设置 success=False"
-        )
+        handler_snippet = chat_service_src[idx : idx + 600]
+        assert '"TimeoutError"' in handler_snippet or "'TimeoutError'" in handler_snippet, "TimeoutError 处理块应设置 error_type='TimeoutError'"
+        assert "False" in handler_snippet, "TimeoutError 处理块应设置 success=False"
 
     def test_os_is_imported(self, chat_service_src):
         """os 模块必须被 import，用于 os.getenv('LLM_INVOKE_TIMEOUT', ...)"""
-        assert "import os" in chat_service_src, (
-            "chat_service.py 缺少 import os，无法调用 os.getenv()"
-        )
+        assert "import os" in chat_service_src, "chat_service.py 缺少 import os，无法调用 os.getenv()"
 
 
 class TestLLMClientFactoryTimeout:
@@ -140,22 +119,16 @@ class TestLLMClientFactoryTimeout:
         revert 修复后，此测试应失败——证明测试覆盖了修复点。
         """
         count = factory_src.count("timeout=3000")
-        assert count == 0, (
-            f"llm_client_factory.py 中仍存在 {count} 处 timeout=3000（50分钟无效超时）。"
-            "应改为使用 LLM_INVOKE_TIMEOUT 环境变量。"
-        )
+        assert count == 0, f"llm_client_factory.py 中仍存在 {count} 处 timeout=3000（50分钟无效超时）。" "应改为使用 LLM_INVOKE_TIMEOUT 环境变量。"
 
     def test_llm_invoke_timeout_env_var_in_factory(self, factory_src):
         """
         llm_client_factory.py 也应通过 LLM_INVOKE_TIMEOUT 统一控制客户端超时。
         """
         assert "LLM_INVOKE_TIMEOUT" in factory_src, (
-            "llm_client_factory.py 未使用 LLM_INVOKE_TIMEOUT 环境变量。"
-            "client-level timeout 应与 future.result() 超时保持一致。"
+            "llm_client_factory.py 未使用 LLM_INVOKE_TIMEOUT 环境变量。" "client-level timeout 应与 future.result() 超时保持一致。"
         )
 
     def test_os_is_imported_in_factory(self, factory_src):
         """os 模块必须被 import，用于 os.getenv()"""
-        assert "import os" in factory_src, (
-            "llm_client_factory.py 缺少 import os，无法调用 os.getenv()"
-        )
+        assert "import os" in factory_src, "llm_client_factory.py 缺少 import os，无法调用 os.getenv()"

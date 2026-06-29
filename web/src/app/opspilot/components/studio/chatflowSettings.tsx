@@ -55,8 +55,8 @@ const nodeCategories = [
     key: 'memory',
     labelKey: 'chatflow.memoryNodes',
     items: [
-      { type: 'memory_read', icon: 'database', labelKey: 'chatflow.memoryRead' },
-      { type: 'memory_write', icon: 'edit', labelKey: 'chatflow.memoryWrite' }
+      { type: 'memory_read', icon: 'zhishiku2', labelKey: 'chatflow.memoryRead' },
+      { type: 'memory_write', icon: 'bianji', labelKey: 'chatflow.memoryWrite' }
     ]
   },
   {
