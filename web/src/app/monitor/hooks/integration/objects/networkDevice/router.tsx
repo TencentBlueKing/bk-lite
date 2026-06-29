@@ -83,6 +83,10 @@ export const useRouterConfig = () => {
       'Router Huawei AR SNMP': 'snmp_huawei_ar',
       'Router Vyatta SNMP': 'snmp_vyatta',
       'Router NetModule SNMP': 'snmp_netmodule',
+      'Router MultiTech SNMP': 'snmp_multitech',
+      'Router Avici SNMP': 'snmp_avici',
+      'Router Unisphere SNMP': 'snmp_unisphere',
+      'Router Sierra Wireless SNMP': 'snmp_sierrawireless',
       'Router NEC SNMP': 'snmp_nec',
       'Router DrayTek SNMP': 'snmp_draytek',
       'Router Adtran SNMP': 'snmp_adtran',
@@ -94,6 +98,7 @@ export const useRouterConfig = () => {
       'Router Viprinet SNMP': 'snmp_viprinet',
       'Router OneAccess SNMP': 'snmp_oneaccess',
       'Router Harbour SNMP': 'snmp_harbour',
+      'Router Aethra SNMP': 'snmp_aethra',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

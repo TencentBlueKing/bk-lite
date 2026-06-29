@@ -1,0 +1,75 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_alaxala"
+        config_type = "alaxala"
+        brand = "alaxala"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Alaxala 私有 box-management 表 (AlaxalA-MIB, IANA PEN 21839)，按机箱/堆叠成员行索引 ----
+    # 待现网核验：AX2430S 表基址 1.3.6.1.4.1.21839.2.2.6.2.1.2.1.<列>.<成员索引>。
+    # CPU 列 .11 (axsCpuLoad1m, 直接 %)。真值落在 active 成员行，standby/空行回 0 → 共享盘 max() by instance_id 取真值。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21839.2.2.6.2.1.2.1.11"
+        name = "usage"
+    # ---- Alaxala 系统内存 (axsMemoryUsedSize 已用字节 .8 + axsMemoryFreeSize 空闲字节 .9) ----
+    # 待现网核验：used 列 ...1.1.8 / free 列 ...1.1.9（字节）。总量列 .7 (axsMemoryTotalSize) 与 used/free 同表冗余；
+    # 这里只采 used/free，内存使用率由 metrics.json 按 used/(used+free)*100 推导。active 成员行真值，max() 取真值。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21839.2.2.6.2.1.2.1.8"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.21839.2.2.6.2.1.2.1.9"
+        name = "free"
+# ---- 温度/风扇/电源：N/A 不采。----
+# ---- box-management 表只有离散温度状态枚举 axsTemperatureStatusNumber(...1.1.20)，非可轮询摄氏度数值 → 温度不采。----
+# ---- 无专用风扇/电源状态数值对象（仅整机告警 trap），故风扇/电源 → N/A。----
