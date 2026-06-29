@@ -3769,6 +3769,9 @@ monitor_object_plugin:
   Wireless Proxim SNMP:
     name: Proxim (Telegraf)
     desc: 无线设备 SNMP 采集基线模板（接口流量 + 运行时长）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。无线信号强度/SNR/远端订户单元等健康指标因 Proxim ORiNOCO/Tsunami 私有 MIB 采用 per-row 索引表（按射频单元/订户单元逐行）并需行级过滤（skip_values），而 telegraf inputs.snmp 不支持行级过滤；LibreNMS 亦无 Proxim 的 processors/mempools/sensors 发现定义，仅有 ORiNOCO-MIB 用于 OS 识别，故无线健康为 N/A，不伪造。适用品牌型号——Proxim Wireless 无线设备（ORiNOCO AP 系列接入点、Tsunami MP 点对多点回传基站/订户单元，企业号 841）及其他遵循 IF-MIB 标准的无线 AP/回传网桥。
+  Wireless Grandstream SNMP:
+    name: Grandstream（Telegraf）
+    desc: Grandstream GWN 无线设备 SNMP 采集基线模板（接口流量 + 运行时长，企业号 PEN 42397）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。GRANDSTREAM-GWN-MIB 以无线射频统计与连接客户端信息为主，仅暴露 gwnDeviceUptime 这一标量系统量，无 CPU/内存/温度对象；关联客户端数仅以按 MAC 索引的 gwnClientTable 逐行呈现，无标量计数对象，telegraf inputs.snmp 无法行级聚合。故 CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。适用品牌型号——Grandstream GWN76xx/GWN78xx Wi-Fi 接入点与控制器（企业号 PEN 42397）及其他遵循 IF-MIB 标准的无线 AP 设备。
   Wireless Aerohive SNMP:
     name: Aerohive（Telegraf）
     desc: Aerohive / Extreme Networks HiveAP 接入点与控制器 SNMP 采集模板（AH-SYSTEM-MIB，企业号 PEN 26928）。除 IF-MIB 64 位 HC 接口流量与运行时长外，额外采集 HiveOS 平台健康标量——CPU 使用率（ahCpuUtilization，OID 26928.1.2.3）与内存使用率（ahMemUtilization，OID 26928.1.2.4），均以 0-100 百分比直接上报；机箱温度（ahEnvirmentTemp，OID 26928.1.2.10）以摄氏度直采无缩放（仅带温度传感器机型返回真实值，无风扇 AP 返回 0）。风扇对象 ahEnvirmentFan 为 RPM 转速读数而非归一化 up/down 状态，且多数 AP 无风扇，故风扇与电源状态为 N/A。适用品牌型号——运行 HiveOS 的 Aerohive / Extreme HiveAP 接入点及 HiveManager 纳管的无线设备（企业号 PEN 26928）。
