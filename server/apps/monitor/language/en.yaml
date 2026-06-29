@@ -4925,6 +4925,9 @@ monitor_object_plugin:
       temperature plus standard IF-MIB interface metrics are gathered.
       Supported brands/models — NetModule NB/NG-series industrial 4G/5G LTE routers (IANA
       PEN 31496).
+  Router Unisphere SNMP:
+    name: Unisphere (Telegraf)
+    desc: Unisphere Networks edge router SNMP collection template (E-series, acquired by Juniper, IANA PEN 4064 / Juniper-Unisphere 4874). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because the Unisphere private MIBs do not publish stable row-filter-free scalar device-health gauges that can be reliably polled across these legacy edge-router firmware revisions. Supported brands/models — Unisphere Networks / Juniper E-series (ERX) edge routers (enterprise 4064 / 4874).
   Router Avici SNMP:
     name: Avici (Telegraf)
     desc: Avici Systems core router SNMP collection template (TSR / SSR series, IANA PEN 2474). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because the Avici private MIB (enterprise 2474) does not publish stable row-filter-free scalar device-health gauges that can be reliably polled on these legacy high-speed core routers. Supported brands/models — Avici Systems TSR / SSR core routers (enterprise 2474).

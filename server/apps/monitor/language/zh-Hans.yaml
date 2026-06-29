@@ -4222,6 +4222,9 @@ monitor_object_plugin:
     name: NetModule（Telegraf）
     desc: NetModule 工业 4G/5G LTE 路由器专用 SNMP 采集模板（NB-MIB，IANA PEN 31496）。在标准 IF-MIB 接口指标之外，额外采集 NetModule 私有系统温度对象（systemTemperature，原始值带十分之一度显示提示，÷10=摄氏度）。NB-MIB 无 CPU/内存/风扇/电源对象（NB/NG 系列为无风扇工业路由器）；设备虽运行嵌入式 Linux net-snmp，但 HOST-RESOURCES / UCD 的 CPU·内存 OID 是否启用因固件而异、未经核实，故 CPU/内存/风扇/电源不采集（N/A），仅采集系统温度 + 标准 IF-MIB 接口指标。
       适用品牌型号——NetModule NB/NG 系列工业 4G/5G LTE 路由器（IANA PEN 31496）。
+  Router Unisphere SNMP:
+    name: Unisphere（Telegraf）
+    desc: Unisphere Networks 边缘路由器专用 SNMP 采集模板（E-series，后被 Juniper 收购，IANA PEN 4064 / Juniper-Unisphere 4874）。本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 Unisphere 私有 MIB 未以无需行级过滤的稳定标量形式公开可靠轮询的设备健康量，故不采集（N/A）。适用品牌型号——Unisphere Networks / Juniper E-series（ERX）边缘路由器（企业号 4064 / 4874）。
   Router Avici SNMP:
     name: Avici（Telegraf）
     desc: Avici Systems 高速核心路由器专用 SNMP 采集模板（TSR / SSR 系列，IANA PEN 2474）。本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 Avici 私有 MIB（企业号 2474）未以无需行级过滤的稳定标量形式公开可靠轮询的设备健康量，故不采集（N/A）。适用品牌型号——Avici Systems TSR / SSR 核心路由器（企业号 2474）。
