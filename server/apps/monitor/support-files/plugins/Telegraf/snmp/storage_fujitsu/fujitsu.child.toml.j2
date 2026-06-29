@@ -1,0 +1,95 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_fujitsu"
+        config_type = "fujitsu"
+        brand = "fujitsu"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Fujitsu ETERNUS chassis temperature sensors (fjdary-MIB fjdaryMachineTempInfo, 每传感器一行, °C 直采无缩放) ----
+    # fjdaryMachineTempInfo 1.3.6.1.4.1.211.1.21.1.100.13.3.2.1.5，按温度传感器索引一行，单位摄氏度（直采，无 ÷10）。
+    # 共享盘 device_temperature_celsius max() by instance_id 取最热传感器行。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.211.1.21.1.100.13.3.2"
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.211.1.21.1.100.13.3.2.1.5"
+        name = "celsius"
+    # ---- Fujitsu ETERNUS RAID group array status (fjdary-MIB fjdaryMgtRaidGrpStatus, 每 RAID 组一行) ----
+    # fjdaryMgtRaidGrpStatus 1.3.6.1.4.1.211.1.21.1.100.14.3.2.1.2，RAID 组状态。
+    # 原始枚举 {unknown(1), ok(2), degraded(3), error(6), dormant(15)}：ok(2)→1 正常，其余→2 异常。
+    # 共享盘 device_raid_state(1=正常,>1=异常) max() by instance_id 取最差阵列行（RAID 组 + 卷）。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.211.1.21.1.100.14.3.2"
+        name = "device_raid"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.211.1.21.1.100.14.3.2.1.2"
+        name = "state"
+    # ---- Fujitsu ETERNUS logical volume array status (fjdary-MIB fjdaryMgtOpVolumeStatus, 每卷一行) ----
+    # fjdaryMgtOpVolumeStatus 1.3.6.1.4.1.211.1.21.1.100.14.2.2.1.2，逻辑卷状态。
+    # 原始枚举 {unknown(1), ok(2), degraded(3), error(6), dormant(15)}：ok(2)→1 正常，其余→2 异常。
+    # 与 RAID 组同归 device_raid_state，max() 取最差（阵列/卷整体健康）。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.211.1.21.1.100.14.2.2"
+        name = "device_raid"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.211.1.21.1.100.14.2.2.1.2"
+        name = "state"
+# ---- RAID/卷状态归一：ok(2)→1(正常)，其余(unknown/degraded/error/dormant)→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_raid"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "2" = 1
+# ---- CPU/内存/风扇/电源 N/A ----
+# fjdary-MIB 私有树未发布控制器 CPU/内存利用率 gauge → CPU/内存 N/A 不采。
+# fjdaryMachinePowerInfo(.13.1.2.1.5) 为电源功率（瓦数读数）而非 up/down 状态枚举，
+# 不能归一为 device_psu_state → 电源状态 N/A 不采（不臆造）。无风扇状态对象 → 风扇 N/A。
+# fjdaryPfDiskBusy(.5.3.2.1.3) 为每磁盘繁忙率百分比，非共享盘标准磁盘健康状态量 → 不采。
