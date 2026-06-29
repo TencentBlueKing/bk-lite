@@ -2712,6 +2712,16 @@ monitor_object_metric:
     ping_ttl:
       name: Time To Live
       desc: Time To Live value of received ICMP response packets, reflecting number of network hops
+  TCPPort:
+    net_response_response_time:
+      name: Response Time
+      desc: TCP connection round-trip time in milliseconds. net_response emits seconds; the query multiplies by 1000 for display. Higher values indicate slower connections or higher network latency.
+    net_response_result_code:
+      name: Result Code
+      desc: TCP probe result code. 0 success, 1 connection timeout, 2 connection failed, 3 read failed, 4 response string mismatch. Any non-zero value indicates a probe failure.
+    net_response_string_found:
+      name: String Found
+      desc: Whether the expected string was matched in the response. Reported only when an expect string is configured; 1 means found, 0 means not found.
   Nginx:
     nginx_active:
       name: Active Connections
@@ -4077,6 +4087,8 @@ monitor_object_metric_group:
     Service: Service
   Ping:
     Ping: Ping
+  TCPPort:
+    TCPPort: TCP
   SNMP Trap: None
   Website:
     HTTP: HTTP
@@ -5089,6 +5101,9 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, regularly send ICMP Echo Requests (ECHO_REQUEST)
       to check the connectivity and response time of target hosts or network devices.
     name: Ping(Telegraf)
+  TCPPort:
+    name: TCP(Telegraf)
+    desc: Probe TCP port reachability of a target host through the Telegraf net_response plugin, supporting IPv4 and IPv6, with optional send payload and expected response matching.
   MongoDB:
     name: MongoDB(Telegraf)
     desc: Through the Telegraf collector, regularly collect MongoDB metrics including
@@ -5149,6 +5164,7 @@ monitor_object:
   Minio: Minio
   Postgres: Postgres
   Ping: Ping
+  TCPPort: TCP
   vCenter: vCenter
   Switch: Switch
   WebLogic: WebLogic
