@@ -65,6 +65,7 @@ export const useFirewallConfig = () => {
       'Firewall ScreenOS SNMP': 'snmp_screenos',
       'Firewall Neteye SNMP': 'snmp_neteye',
       'Firewall Bluedon SNMP': 'snmp_bluedon',
+      'Firewall DPtech SNMP': 'snmp_dptech',
       'Firewall Westone SNMP': 'snmp_westone',
       'Firewall Amaranten SNMP': 'snmp_amaranten',
       'Firewall Secworld SNMP': 'snmp_secworld',

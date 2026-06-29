@@ -570,6 +570,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /sophos|\bxg\b|sfos|cyberoam/i, label: 'Sophos XG', icon: 'mm-sophos_sophos' },
   { match: /neteye|leadsec|网御/i, label: 'Neteye', icon: 'mm-neteye_neteye' },
   { match: /bluedon|蓝盾/i, label: 'Bluedon', icon: 'mm-bluedon_bluedon' },
+  { match: /\bdptech\b|迪普/i, label: 'DPtech', icon: 'mm-dptech_dptech' },
   { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
   { match: /amaranten|安然/i, label: 'Amaranten', icon: 'mm-amaranten_amaranten' },
   { match: /secworld|安世/i, label: 'Secworld', icon: 'mm-secworld_secworld' },

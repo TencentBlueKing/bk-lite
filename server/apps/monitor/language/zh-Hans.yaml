@@ -4117,6 +4117,9 @@ monitor_object_plugin:
   Firewall Bluedon SNMP:
     name: 蓝盾（Telegraf）
     desc: 蓝盾（Bluedon）防火墙专用 SNMP 采集模板（企业号 36889 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集蓝盾私有 OID 的设备健康指标：CPU 平均使用率（snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（snAgGblDynMemUtil，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——蓝盾信息安全（Bluedon）防火墙 / 网络安全设备（企业号 36889）。
+  Firewall DPtech SNMP:
+    name: 迪普（Telegraf）
+    desc: 迪普科技（DPtech）防火墙专用 SNMP 采集模板（企业号 PEN 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集 DPtech 私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——迪普科技（DPtech）NGFW / UTM / 网络安全设备（如 FW1000 系列，企业号 PEN 31648）。
   Firewall Westone SNMP:
     name: 卫士通（Telegraf）
     desc: 卫士通（Westone）防火墙专用 SNMP 采集模板（企业号 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集卫士通私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——卫士通信息安全（Westone）防火墙 / 网络安全设备（企业号 31648）。
