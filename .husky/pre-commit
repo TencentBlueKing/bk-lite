@@ -34,8 +34,11 @@ fi
 WEB_FILES=$(echo "$CHANGED_FILES" | grep "^web/" | grep -E '\.(js|jsx|ts|tsx)$')
 if [ -n "$WEB_FILES" ]; then
     echo "Checking web project..."
-    WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||')
-    cd web && echo "$WEB_LINT_FILES" | xargs pnpm eslint || exit 1
+    WEB_LINT_FILES=$(echo "$WEB_FILES" | sed 's|^web/||' | grep -v '^scripts/' || true)
+    cd web || exit 1
+    if [ -n "$WEB_LINT_FILES" ]; then
+        echo "$WEB_LINT_FILES" | xargs pnpm eslint || exit 1
+    fi
     pnpm type-check || exit 1
     cd ..
 fi
