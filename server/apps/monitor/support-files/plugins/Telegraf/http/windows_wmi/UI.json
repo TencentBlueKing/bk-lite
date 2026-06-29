@@ -66,22 +66,9 @@
     },
     {
       "name": "metrics_modules",
-      "label": "采集模块",
-      "type": "checkbox_group",
+      "type": "hidden",
       "required": true,
-      "editable": false,
       "default_value": ["cpu", "mem", "disk", "diskio", "net", "processes", "system"],
-      "description": "选择需要通过 WMI 远程采集的 Windows 主机指标模块",
-      "options": [
-        {"label": "CPU", "value": "cpu"},
-        {"label": "Memory", "value": "mem"},
-        {"label": "Disk", "value": "disk"},
-        {"label": "Disk IO", "value": "diskio"},
-        {"label": "Network", "value": "net"},
-        {"label": "Processes", "value": "processes"},
-        {"label": "System", "value": "system"}
-      ],
-      "widget_props": {},
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.metrics_modules",
         "to_form": {
