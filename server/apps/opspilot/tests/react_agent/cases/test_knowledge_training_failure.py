@@ -18,24 +18,59 @@ Test approach: replicate the control-flow logic from tasks.py source and verify
 state transitions, since Django ORM cannot be imported without DB.
 """
 
+import ast
 import os
 import re
+from types import SimpleNamespace
 
 import pytest
 
-# ---------------------------------------------------------------------------
-# Source reader helper
-# ---------------------------------------------------------------------------
-
-
-def _read_source(rel_path, start_line, end_line):
-    """Read source lines from tasks.py for analysis."""
+def _read_function_source(func_name):
+    """Read a function body by name, so tests survive unrelated line movement."""
 
     base = os.path.dirname(os.path.abspath(__file__))
-    full = os.path.normpath(os.path.join(base, "..", "..", "..", rel_path))
+    full = os.path.normpath(os.path.join(base, "..", "..", "..", "tasks.py"))
     with open(full, encoding="utf-8") as f:
-        lines = f.readlines()
-    return lines[start_line - 1 : end_line]
+        content = f.read()
+    tree = ast.parse(content, filename=full)
+    target = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == func_name
+    )
+    return ast.get_source_segment(content, target).splitlines(keepends=True)
+
+
+def _load_tasks_function(func_name, **overrides):
+    """Load one function body from tasks.py with lightweight fakes.
+
+    This keeps the test focused on the real task behavior without importing the
+    full Django settings stack or relying on fixed source line numbers.
+    """
+
+    base = os.path.dirname(os.path.abspath(__file__))
+    full = os.path.normpath(os.path.join(base, "..", "..", "..", "tasks.py"))
+    with open(full, encoding="utf-8") as f:
+        tree = ast.parse(f.read(), filename=full)
+
+    target = next(
+        node for node in tree.body if isinstance(node, ast.FunctionDef) and node.name == func_name
+    )
+    module = ast.Module(body=[target], type_ignores=[])
+    ast.fix_missing_locations(module)
+
+    namespace = {
+        "DocumentStatus": SimpleNamespace(ERROR=2, READY=1),
+        "KnowledgeTaskStatus": SimpleNamespace(RUNNING="running", FAILED="failed"),
+        "KnowledgeTask": SimpleNamespace(objects=None),
+        "logger": SimpleNamespace(
+            info=lambda *args, **kwargs: None,
+            warning=lambda *args, **kwargs: None,
+            exception=lambda *args, **kwargs: None,
+        ),
+        "tqdm": lambda iterable: iterable,
+    }
+    namespace.update(overrides)
+    exec(compile(module, full, "exec"), namespace)
+    return namespace[func_name]
 
 
 # ---------------------------------------------------------------------------
@@ -46,55 +81,94 @@ def _read_source(rel_path, start_line, end_line):
 class TestGeneralEmbedByDocumentList:
     """Verify the fix: KnowledgeTask is retained when any document fails."""
 
-    def _get_source(self):
-        return _read_source("tasks.py", 78, 123)
+    class FakeTask:
+        def __init__(self, **kwargs):
+            self.__dict__.update(kwargs)
+            self.id = kwargs.get("id", 1)
+            self.completed_count = kwargs.get("completed_count", 0)
+            self.deleted = False
+            self.save_count = 0
 
-    def test_has_failure_flag_exists(self):
-        """The function must track a has_failure flag."""
-        src = "".join(self._get_source())
-        assert "has_failure" in src, "has_failure tracking variable missing"
+        def save(self):
+            self.save_count += 1
 
-    def test_failure_sets_has_failure_true(self):
-        """On exception or ERROR status, has_failure must be set True."""
-        src = "".join(self._get_source())
-        # Both the except branch and the ERROR-status branch should set has_failure
-        assert src.count("has_failure = True") >= 2, "has_failure should be set True in both exception and ERROR-status branches"
+        def delete(self):
+            self.deleted = True
 
-    def test_task_retained_on_failure(self):
-        """When has_failure is True, KnowledgeTask must NOT be deleted."""
-        src = "".join(self._get_source())
-        # Pattern: if has_failure → log warning (no delete); else → delete
-        assert "if has_failure:" in src, "Missing has_failure check before cleanup"
-        # After "if has_failure:", the next meaningful action should NOT be delete
-        idx_has_failure = src.index("if has_failure:")
-        block_after = src[idx_has_failure : idx_has_failure + 200]
-        # The delete should only appear in the else branch
-        assert "task_obj.delete()" not in block_after.split("else")[0], "task_obj.delete() must not be in the has_failure=True branch"
+    class FakeTaskManager:
+        def __init__(self):
+            self.created = []
 
-    def test_task_deleted_only_on_full_success(self):
-        """KnowledgeTask.delete() should only happen when all docs succeed."""
-        src = "".join(self._get_source())
-        # delete should be in the else branch of has_failure check
-        assert "else:" in src, "Missing else branch for success case"
-        idx_else = src.index("if has_failure:")
-        remainder = src[idx_else:]
-        assert "task_obj.delete()" in remainder, "task_obj.delete() missing in success path"
+        def create(self, **kwargs):
+            task = TestGeneralEmbedByDocumentList.FakeTask(**kwargs)
+            self.created.append(task)
+            return task
 
-    def test_exception_sets_document_error_status(self):
-        """On exception, document.train_status must be set to ERROR."""
-        src = "".join(self._get_source())
-        assert "DocumentStatus.ERROR" in src, "Exception handler must set document status to ERROR"
+    class FakeDocument:
+        def __init__(self, doc_id, name):
+            self.id = doc_id
+            self.name = name
+            self.knowledge_base_id = 42
+            self.train_status = 0
+            self.error_message = None
+            self.save_count = 0
 
-    def test_exception_sets_error_message(self):
-        """On exception, document.error_message must be populated."""
-        src = "".join(self._get_source())
-        assert "error_message" in src, "Exception handler must set document.error_message"
+        def save(self):
+            self.save_count += 1
 
-    def test_completed_count_only_on_success(self):
-        """completed_count should only increment when document succeeds."""
-        src = "".join(self._get_source())
-        # Pattern: if success: completed_count += 1
-        assert re.search(r"if success.*completed_count", src, re.DOTALL), "completed_count must only increment on success"
+    def _run_training(self, documents, invoke_document_to_es):
+        manager = self.FakeTaskManager()
+        func = _load_tasks_function(
+            "general_embed_by_document_list",
+            KnowledgeTask=SimpleNamespace(objects=manager),
+            invoke_document_to_es=invoke_document_to_es,
+        )
+        func(documents, username="alice", domain="example.com", delete_qa_pairs=True)
+        return manager.created[0]
+
+    def test_retains_failed_task_when_document_ingest_returns_error(self):
+        """A document-level ERROR must keep the task visible as failed."""
+        docs = [self.FakeDocument(1, "bad.md"), self.FakeDocument(2, "ok.md")]
+        seen_delete_flags = []
+
+        def invoke_document_to_es(document, delete_qa_pairs=False):
+            seen_delete_flags.append(delete_qa_pairs)
+            document.train_status = 2 if document.id == 1 else 1
+
+        task = self._run_training(docs, invoke_document_to_es)
+
+        assert task.deleted is False
+        assert task.status == "failed"
+        assert task.completed_count == 1
+        assert seen_delete_flags == [True, True]
+
+    def test_retains_failed_task_and_marks_document_error_on_exception(self):
+        """Unexpected ingestion exceptions must set document error state."""
+        docs = [self.FakeDocument(1, "bad.md")]
+
+        def invoke_document_to_es(document, delete_qa_pairs=False):
+            raise RuntimeError("ingest failed")
+
+        task = self._run_training(docs, invoke_document_to_es)
+
+        assert task.deleted is False
+        assert task.status == "failed"
+        assert task.completed_count == 0
+        assert docs[0].train_status == 2
+        assert docs[0].error_message == "训练过程中发生异常"
+        assert docs[0].save_count == 1
+
+    def test_deletes_task_only_when_all_documents_succeed(self):
+        """The tracking row is cleaned only for a full-success training run."""
+        docs = [self.FakeDocument(1, "one.md"), self.FakeDocument(2, "two.md")]
+
+        def invoke_document_to_es(document, delete_qa_pairs=False):
+            document.train_status = 1
+
+        task = self._run_training(docs, invoke_document_to_es)
+
+        assert task.deleted is True
+        assert task.completed_count == 2
 
 
 # ---------------------------------------------------------------------------
@@ -106,7 +180,7 @@ class TestRebuildGraphCommunity:
     """Verify: when rebuild fails (result=false), status must NOT be 'completed'."""
 
     def _get_source(self):
-        return _read_source("tasks.py", 442, 454)
+        return _read_function_source("rebuild_graph_community_by_instance")
 
     def test_status_set_to_rebuilding_initially(self):
         """Status must be set to 'rebuilding' before the operation."""
@@ -163,7 +237,7 @@ class TestCreateGraph:
     """Verify: when graph creation fails, status must be set to 'failed'."""
 
     def _get_source(self):
-        return _read_source("tasks.py", 458, 477)
+        return _read_function_source("create_graph")
 
     def test_status_set_to_training_initially(self):
         """Status must be set to 'training' before the operation."""
@@ -222,7 +296,7 @@ class TestUpdateGraph:
     """Verify update_graph correctly handles failure (reference implementation)."""
 
     def _get_source(self):
-        return _read_source("tasks.py", 477, 494)
+        return _read_function_source("update_graph")
 
     def test_failure_sets_failed_status(self):
         """update_graph correctly sets status='failed' on failure."""
