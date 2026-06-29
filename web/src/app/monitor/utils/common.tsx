@@ -621,6 +621,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /sierra\s*wireless|airlink|\baleos\b/i, label: 'Sierra Wireless', icon: 'mm-sierrawireless_sierrawireless' },
   { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
   { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },
+  { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
   { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
