@@ -23,7 +23,7 @@
     .table {
         position: relative;
         background: #fff;
-        padding: 20px 28px 108px;
+        padding: 20px 28px 120px;
         margin-left: 10px;
         flex: 1;
         min-width: 0;
@@ -213,24 +213,25 @@
 }
 
 .bulkBar {
-    position: sticky;
+    position: fixed;
     left: 50%;
     right: auto;
-    bottom: 12px;
+    bottom: 24px;
+    transform: translateX(-50%);
     display: flex;
     align-items: center;
     justify-content: space-between;
     gap: 16px;
     width: min(820px, calc(100% - 64px));
     min-height: 54px;
-    margin: 28px auto 0;
+    margin: 0;
     padding: 10px 12px 10px 18px;
     border: 1px solid #c8d7ec;
     border-radius: 8px;
     background: rgba(255, 255, 255, .96);
     box-shadow: 0 16px 36px rgba(15, 23, 42, .16);
     backdrop-filter: blur(10px);
-    z-index: 5;
+    z-index: 20;
 }
 
 .bulkSummary {
@@ -252,6 +253,20 @@
     flex-wrap: wrap;
     gap: 4px;
     overflow: hidden;
+}
+
+.bulkTemplateTag {
+    max-width: 132px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.bulkMoreTag {
+    border-color: #d6e4ff;
+    color: #155aef;
+    background: #eef5ff;
+    font-weight: 700;
 }
 
 .bulkActions {
@@ -492,5 +507,6 @@
 
     .bulkBar {
         width: calc(100% - 24px);
+        bottom: 16px;
     }
 }

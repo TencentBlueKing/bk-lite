@@ -103,13 +103,23 @@ const normalizeProgress = (progress?: InstallerProgressMetric) => {
   const percent = normalizeNumber(progress.percent);
   const current = normalizeNumber(progress.current);
   const total = normalizeNumber(progress.total);
+  const unit = normalizeText(progress.unit);
+  const normalizedProgress: InstallerProgressMetric = {};
 
-  return {
-    percent: percent === null ? null : clampNumber(Math.round(percent), 0, 100),
-    current: current === null ? null : Math.max(current, 0),
-    total: total === null ? null : Math.max(total, 0),
-    unit: normalizeText(progress.unit)
-  };
+  if (percent !== null) {
+    normalizedProgress.percent = clampNumber(Math.round(percent), 0, 100);
+  }
+  if (current !== null) {
+    normalizedProgress.current = Math.max(current, 0);
+  }
+  if (total !== null) {
+    normalizedProgress.total = Math.max(total, 0);
+  }
+  if (unit) {
+    normalizedProgress.unit = unit;
+  }
+
+  return Object.keys(normalizedProgress).length ? normalizedProgress : null;
 };
 
 const normalizeStringList = (values?: string[] | null) => {
@@ -663,6 +673,36 @@ const findLatestStepByAction = (steps: LogStep[] | undefined, action: string) =>
   return [...steps].reverse().find((step) => step.action === action) || null;
 };
 
+const CONTROLLER_INSTALL_ACTIONS = new Set([
+  'credential_check',
+  'run',
+  'connectivity_check'
+]);
+
+export const shouldUseControllerInstallPhases = (
+  result?: OperationTaskResult | null,
+  displayMode?: 'controllerInstall' | 'stepList'
+) => {
+  if (displayMode === 'controllerInstall') {
+    return true;
+  }
+  if (displayMode === 'stepList') {
+    return false;
+  }
+
+  const normalizedResult = normalizeInstallerResult(result);
+  const steps = normalizedResult?.steps || [];
+  const summary = normalizedResult?.installer_summary;
+
+  if (summary || normalizedResult?.controller_install_display) {
+    return true;
+  }
+
+  return steps.some((step) =>
+    CONTROLLER_INSTALL_ACTIONS.has(step.action) || !!step.details?.installer_event
+  );
+};
+
 const buildDisplayResult = (
   state: ControllerInstallDisplayState,
   phase: ControllerInstallDisplayPhase,
@@ -742,7 +782,7 @@ export const deriveControllerInstallDisplay = (
     );
   }
 
-  if (commandStep?.status === 'running') {
+  if (commandStep?.status === 'running' && !installerStepsReceived) {
     return buildDisplayResult(
       'command_running',
       'command_dispatch',
@@ -852,12 +892,18 @@ export const deriveControllerInstallPhases = (
   const connectivityStep = findLatestStepByAction(steps, 'connectivity_check');
   const installerStepsReceived = !!summary?.observed_count;
   const showMissingSteps = installerStepsReceived && !!summary?.missing_steps?.length;
-  const installerDetailState: ControllerInstallPhaseDetailState =
-    !installerStepsReceived
-      ? 'no_report'
-      : showMissingSteps || summary?.state === 'incomplete_installer_events'
-        ? 'partial'
-        : 'complete';
+  const commandDispatched = commandStep?.status === 'success' || installerStepsReceived;
+  let installerDetailState: ControllerInstallPhaseDetailState = 'none';
+  if (commandDispatched && !installerStepsReceived) {
+    installerDetailState = 'no_report';
+  } else if (
+    commandDispatched &&
+    (showMissingSteps || summary?.state === 'incomplete_installer_events')
+  ) {
+    installerDetailState = 'partial';
+  } else if (commandDispatched) {
+    installerDetailState = 'complete';
+  }
 
   let installerStatus: ControllerInstallPhaseStatus;
   if (display.phase === 'installer_execution') {
@@ -881,7 +927,9 @@ export const deriveControllerInstallPhases = (
     },
     {
       code: 'command_dispatch',
-      status: stepStatusToPhaseStatus(commandStep?.status),
+      status: installerStepsReceived
+        ? 'success'
+        : stepStatusToPhaseStatus(commandStep?.status),
       detailState: 'none',
       showMissingSteps: false
     },

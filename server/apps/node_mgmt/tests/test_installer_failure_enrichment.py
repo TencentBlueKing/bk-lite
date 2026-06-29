@@ -44,6 +44,34 @@ def test_normalize_failure_classifies_file_busy_and_extracts_target_path():
     assert failure["context"]["target_path"] == "/opt/fusion-collectors/bin/vector"
 
 
+def test_normalize_failure_ignores_successful_status_messages():
+    assert normalize_failure(message="Sidecar acknowledged action", details={}) is None
+    assert normalize_failure(message="Collector action completed", details={}) is None
+
+    failure = normalize_failure(message="Collector action failed", details={})
+    assert failure is not None
+    assert failure["type"] == "unknown"
+
+
+def test_normalize_failure_classifies_ssh_auth_failure_before_connection():
+    failure = normalize_failure(
+        message=(
+            "Step failed: Failed to create SSH client: ssh: handshake failed: "
+            "ssh: unable to authenticate, attempted methods [none password], "
+            "no supported methods remain"
+        ),
+        error=(
+            "Failed to create SSH client: ssh: handshake failed: ssh: unable "
+            "to authenticate, attempted methods [none password], no supported methods remain"
+        ),
+        details={},
+    )
+
+    assert failure is not None
+    assert failure["type"] == "auth"
+    assert failure["summary"] == "Authentication failed while accessing the required resource"
+
+
 def test_build_installer_event_record_attaches_typed_failure_metadata():
     event = build_installer_event_record(
         {
@@ -206,6 +234,33 @@ def test_normalize_task_result_for_read_deduplicates_installer_events_and_flags_
     display = normalized["controller_install_display"]
     assert display["state"] == "connectivity_waiting"
     assert display["phase"] == "node_connectivity"
+    assert display["severity"] == "processing"
+    assert display["installer_steps_received"] is True
+
+
+def test_normalize_task_result_for_read_treats_installer_events_as_command_dispatched():
+    normalized = normalize_task_result_for_read(
+        {
+            "overall_status": "running",
+            "steps": [
+                {"action": "credential_check", "status": "success", "message": "Validate credentials"},
+                {"action": "run", "status": "running", "message": "Run installer"},
+                {
+                    "action": "fetch_session",
+                    "status": "success",
+                    "message": "Installer session fetched",
+                    "details": {
+                        "installer_event": True,
+                        "raw_step": "fetch_session",
+                    },
+                },
+            ],
+        }
+    )
+
+    display = normalized["controller_install_display"]
+    assert display["state"] == "installer_running"
+    assert display["phase"] == "installer_execution"
     assert display["severity"] == "processing"
     assert display["installer_steps_received"] is True
 

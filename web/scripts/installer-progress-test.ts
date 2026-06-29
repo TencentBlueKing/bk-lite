@@ -7,7 +7,8 @@ import {
   getInstallerFailureGuidance,
   getInstallerSummaryProgressInfo,
   getInstallerSummaryGuidance,
-  normalizeInstallerResult
+  normalizeInstallerResult,
+  shouldUseControllerInstallPhases
 } from '../src/app/node-manager/utils/installerProgress.ts';
 
 const translations: Record<string, string> = {
@@ -251,6 +252,125 @@ assert.deepEqual(
 );
 assert.equal(noReportPhases[2].detailState, 'no_report');
 assert.equal(noReportPhases[2].showMissingSteps, false);
+
+assert.equal(
+  shouldUseControllerInstallPhases({
+    steps: [
+      { action: 'dispatch_command', status: 'success', message: 'Submit collector action', timestamp: '' },
+      { action: 'consume_ack', status: 'success', message: 'Sidecar acknowledged action', timestamp: '' },
+      { action: 'execute_command', status: 'running', message: 'Execute collector action', timestamp: '' }
+    ]
+  }),
+  false
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({
+    steps: [
+      { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+      { action: 'run', status: 'success', message: 'Installer bootstrap completed', timestamp: '' }
+    ]
+  }),
+  true
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({
+    steps: [
+      {
+        action: 'run',
+        status: 'success',
+        message: 'Installer bootstrap completed',
+        timestamp: '',
+        details: { installer_event: true, raw_step: 'fetch_session' }
+      }
+    ]
+  }),
+  true
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({ steps: [] }, 'controllerInstall'),
+  true
+);
+
+assert.equal(
+  shouldUseControllerInstallPhases({ steps: [] }, 'stepList'),
+  false
+);
+
+const commandFailedWithoutInstallerEventsPhases = deriveControllerInstallPhases({
+  steps: [
+    { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+    {
+      action: 'run',
+      status: 'error',
+      message: 'Step failed: Failed to create SSH client',
+      timestamp: ''
+    }
+  ],
+  installer_summary: missingSummaryResult?.installer_summary
+});
+
+assert.deepEqual(
+  commandFailedWithoutInstallerEventsPhases.map((phase) => [phase.code, phase.status]),
+  [
+    ['credential_validation', 'success'],
+    ['command_dispatch', 'error'],
+    ['installer_execution', 'waiting'],
+    ['node_connectivity', 'waiting']
+  ]
+);
+assert.equal(commandFailedWithoutInstallerEventsPhases[2].detailState, 'none');
+assert.equal(commandFailedWithoutInstallerEventsPhases[2].showMissingSteps, false);
+
+const runningInstallerEventsDisplay = deriveControllerInstallDisplay({
+  steps: [
+    { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+    { action: 'run', status: 'running', message: 'Run installer', timestamp: '' }
+  ],
+  installer_summary: {
+    state: 'incomplete_installer_events',
+    expected_count: 6,
+    observed_count: 1,
+    completed_count: 1,
+    missing_steps: ['prepare_dirs', 'download', 'extract', 'write_config', 'install'],
+    steps: [
+      { action: 'fetch_session', status: 'success', message: 'Installer session fetched', timestamp: '' }
+    ]
+  }
+});
+
+assert.equal(runningInstallerEventsDisplay.state, 'installer_running');
+assert.equal(runningInstallerEventsDisplay.phase, 'installer_execution');
+assert.equal(runningInstallerEventsDisplay.severity, 'processing');
+
+const runningInstallerEventsPhases = deriveControllerInstallPhases({
+  steps: [
+    { action: 'credential_check', status: 'success', message: 'Validate credentials', timestamp: '' },
+    { action: 'run', status: 'running', message: 'Run installer', timestamp: '' }
+  ],
+  installer_summary: {
+    state: 'incomplete_installer_events',
+    expected_count: 6,
+    observed_count: 1,
+    completed_count: 1,
+    missing_steps: ['prepare_dirs', 'download', 'extract', 'write_config', 'install'],
+    steps: [
+      { action: 'fetch_session', status: 'success', message: 'Installer session fetched', timestamp: '' }
+    ]
+  }
+});
+
+assert.deepEqual(
+  runningInstallerEventsPhases.map((phase) => [phase.code, phase.status]),
+  [
+    ['credential_validation', 'success'],
+    ['command_dispatch', 'success'],
+    ['installer_execution', 'running'],
+    ['node_connectivity', 'waiting']
+  ]
+);
 
 const partialInstallerPhases = deriveControllerInstallPhases({
   steps: [

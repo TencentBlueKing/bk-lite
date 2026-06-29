@@ -28,7 +28,8 @@ import {
   getInstallerStepInfo,
   getInstallerStepLabel,
   normalizeInstallerLogs,
-  normalizeInstallerSummary
+  normalizeInstallerSummary,
+  shouldUseControllerInstallPhases
 } from '@/app/node-manager/utils/installerProgress';
 import { useTranslation } from '@/utils/i18n';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
@@ -36,6 +37,8 @@ import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 interface InstallGuidanceProps {
   onClose?: () => void;
 }
+
+type InstallGuidanceDisplayMode = 'controllerInstall' | 'stepList';
 
 const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
   ({ onClose }, ref) => {
@@ -46,6 +49,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
     const [logs, setLogs] = useState<LogStep[]>([]);
     const [installerSummary, setInstallerSummary] =
       useState<InstallerEventSummary | undefined>();
+    const [displayMode, setDisplayMode] =
+      useState<InstallGuidanceDisplayMode | undefined>();
     const [nodeInfo, setNodeInfo] = useState({ ip: '', nodeName: '' });
 
     useImperativeHandle(ref, () => ({
@@ -54,6 +59,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
         setTitle(title || '');
         setLogs(normalizeInstallerLogs(form?.logs));
         setInstallerSummary(normalizeInstallerSummary(form?.installerSummary));
+        setDisplayMode(form?.displayMode);
         setNodeInfo({
           ip: form?.ip || '',
           nodeName: form?.nodeName || ''
@@ -77,6 +83,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       closeModal: () => {
         setGroupVisible(false);
         setInstallerSummary(undefined);
+        setDisplayMode(undefined);
         onClose?.();
       }
     }));
@@ -84,6 +91,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
     const handleCancel = () => {
       setGroupVisible(false);
       setInstallerSummary(undefined);
+      setDisplayMode(undefined);
       onClose?.();
     };
 
@@ -181,6 +189,10 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
       steps: logs,
       installer_summary: installerSummary
     };
+    const shouldRenderControllerPhases = shouldUseControllerInstallPhases(
+      phaseResult,
+      displayMode
+    );
     const installDisplay = deriveControllerInstallDisplay(phaseResult);
     const installPhases = deriveControllerInstallPhases(phaseResult);
     const summaryGuidance = getInstallerSummaryGuidance(t, installerSummary);
@@ -219,6 +231,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
         >
           <div className="p-[16px]">
             {/* 安装步骤 */}
+            {shouldRenderControllerPhases ? (
             <Steps
               direction="vertical"
               current={installPhases.filter((phase) => phase.status !== 'waiting').length}
@@ -250,18 +263,21 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                 const failureGuidance = getInstallerFailureGuidance(t, {
                   steps: log ? [log] : []
                 });
+                const isFailureLog =
+                  phase.status === 'error' ||
+                  ['error', 'timeout'].includes(log?.status || '');
                 const isInstallerPhase = phase.code === 'installer_execution';
                 const isConnectivityStep = phase.code === 'node_connectivity';
                 return {
                   status: statusConfig.stepStatus,
                   icon: statusConfig.icon,
                   title: (
-                    <div className="flex items-center justify-between">
+                    <div className="flex items-center justify-between gap-[12px]">
                       <span className="text-[14px] font-medium">
                         {getControllerInstallPhaseLabel(t, phase.code)}
                       </span>
                       <Tag
-                        className="ml-[10px]"
+                        className="m-0 shrink-0"
                         color={statusConfig.tagColor}
                         bordered={false}
                       >
@@ -287,11 +303,11 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                             : '--'}
                           ]
                         </div>
-                          <div className="text-[12px] text-[var(--color-text-1)]">
-                            {isInstallerPhase && phase.detailState === 'no_report'
-                              ? t('node-manager.cloudregion.node.installerStepsNotReceived')
-                              : log?.message || phaseDisplayLabel || '--'}
-                          </div>
+                        <div className="text-[12px] text-[var(--color-text-1)]">
+                          {isInstallerPhase && phase.detailState === 'no_report'
+                            ? t('node-manager.cloudregion.node.installerStepsNotReceived')
+                            : log?.message || phaseDisplayLabel || '--'}
+                        </div>
                         {(stepInfo || progressText) && (
                           <div className="mt-[8px] flex flex-wrap items-center gap-[8px] text-[12px] text-[var(--color-text-2)]">
                             {stepInfo && (
@@ -307,19 +323,19 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                             <Progress
                               percent={progressPercent}
                               size="small"
-                              status={log.status === 'error' ? 'exception' : 'active'}
+                              status={log?.status === 'error' ? 'exception' : 'active'}
                               showInfo={false}
                             />
                           </div>
                         )}
-                        {failureGuidance.reason && (
+                        {isFailureLog && failureGuidance.reason && (
                           <div className="mt-[8px] text-[12px] text-[var(--color-error)]">
                             {t('node-manager.cloudregion.node.failureReason')}:
                             {' '}
                             {failureGuidance.reason}
                           </div>
                         )}
-                        {!!failureGuidance.context?.length && (
+                        {isFailureLog && !!failureGuidance.context?.length && (
                           <div className="mt-[4px] text-[12px] text-[var(--color-text-3)]">
                             <div className="mb-[2px]">
                               {t('node-manager.cloudregion.node.failureContext')}:
@@ -338,8 +354,8 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                             {summaryGuidance || failureGuidance.suggestion || failureSuggestion}
                           </div>
                         )}
-                        {isInstallerPhase && installerSummary && (
-                          <div className="mt-[10px] border-t border-[var(--color-border-1)] pt-[10px]">
+                        {isInstallerPhase && phase.detailState !== 'none' && installerSummary && (
+                          <div className="mt-[8px]">
                             <div className="flex flex-wrap items-center gap-[8px] text-[12px] text-[var(--color-text-2)]">
                               <span>
                                 {t('node-manager.cloudregion.node.installerDetailProgress')}:
@@ -358,13 +374,6 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                                   .join(', ')}
                               </div>
                             )}
-                            {summaryGuidance && (
-                              <div className="mt-[6px] text-[12px] text-[var(--color-text-2)]">
-                                {t('node-manager.cloudregion.node.nextAction')}:
-                                {' '}
-                                {summaryGuidance}
-                              </div>
-                            )}
                             {!!installerDetailSteps.length && (
                               <div className="mt-[8px] space-y-[6px]">
                                 {installerDetailSteps.map((step, index) => {
@@ -372,7 +381,7 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                                   return (
                                     <div
                                       key={`${step.action}-${index}`}
-                                      className="flex items-start justify-between gap-[8px] rounded-[4px] bg-[var(--color-fill-2)] px-[10px] py-[8px]"
+                                      className="flex items-start justify-between gap-[8px] rounded-[4px] bg-[var(--color-fill-2)] px-[10px] py-[7px]"
                                     >
                                       <div className="min-w-0">
                                         <div className="text-[12px] font-medium text-[var(--color-text-1)]">
@@ -413,6 +422,124 @@ const InstallGuidance = forwardRef<ModalRef, InstallGuidanceProps>(
                 };
               })}
             />
+            ) : (
+              <Steps
+                direction="vertical"
+                current={logs.filter((log) => log.status !== 'waiting').length}
+                items={(logs.length ? logs : [{
+                  action: 'waiting',
+                  status: 'waiting',
+                  message: '--',
+                  timestamp: ''
+                }]).map((log, index) => {
+                  const statusConfig = getStatusConfig(log.status);
+                  const stepProgress = log.details?.progress;
+                  const progressPercent = getInstallerProgressPercent(stepProgress);
+                  const progressText = getInstallerProgressText(stepProgress);
+                  const stepInfo = getInstallerStepInfo(
+                    log.details?.step_index,
+                    log.details?.step_total
+                  );
+                  const failureGuidance = getInstallerFailureGuidance(t, {
+                    steps: [log]
+                  });
+                  const isFailureLog = ['error', 'timeout'].includes(log.status);
+                  return {
+                    status: statusConfig.stepStatus,
+                    icon: statusConfig.icon,
+                    title: (
+                      <div className="flex items-center justify-between gap-[12px]">
+                        <span className="text-[14px] font-medium">
+                          {getInstallerStepLabel(
+                            t,
+                            log.details?.raw_step || log.action,
+                            log.action
+                          )}
+                        </span>
+                        <Tag
+                          className="m-0 shrink-0"
+                          color={statusConfig.tagColor}
+                          bordered={false}
+                        >
+                          {statusConfig.text}
+                        </Tag>
+                      </div>
+                    ),
+                    description: (
+                      <div className="mt-[8px]">
+                        <div
+                          className="p-[12px] bg-[var(--color-fill-1)] rounded-[4px]"
+                          style={{
+                            borderLeft: `4px solid ${statusConfig.borderColor}`,
+                            border: `1px solid var(--color-border-1)`,
+                            borderLeftWidth: '4px',
+                            borderLeftColor: statusConfig.borderColor
+                          }}
+                        >
+                          <div className="text-[12px] text-[var(--color-text-3)] mb-[4px]">
+                            [
+                            {log.timestamp
+                              ? convertToLocalizedTime(log.timestamp)
+                              : '--'}
+                            ]
+                          </div>
+                          <div className="break-words text-[12px] text-[var(--color-text-1)]">
+                            {log.message || '--'}
+                          </div>
+                          {(stepInfo || progressText) && (
+                            <div className="mt-[8px] flex flex-wrap items-center gap-[8px] text-[12px] text-[var(--color-text-2)]">
+                              {stepInfo && (
+                                <Tag bordered={false} color="default" className="m-0">
+                                  {stepInfo}
+                                </Tag>
+                              )}
+                              {progressText && <span>{progressText}</span>}
+                            </div>
+                          )}
+                          {progressPercent !== null && (
+                            <div className="mt-[8px]">
+                              <Progress
+                                percent={progressPercent}
+                                size="small"
+                                status={isFailureLog ? 'exception' : 'active'}
+                                showInfo={false}
+                              />
+                            </div>
+                          )}
+                          {isFailureLog && failureGuidance.reason && (
+                            <div className="mt-[8px] text-[12px] text-[var(--color-error)]">
+                              {t('node-manager.cloudregion.node.failureReason')}:
+                              {' '}
+                              {failureGuidance.reason}
+                            </div>
+                          )}
+                          {isFailureLog && !!failureGuidance.context?.length && (
+                            <div className="mt-[4px] text-[12px] text-[var(--color-text-3)]">
+                              <div className="mb-[2px]">
+                                {t('node-manager.cloudregion.node.failureContext')}:
+                              </div>
+                              <div className="space-y-[2px]">
+                                {failureGuidance.context.map((entry) => (
+                                  <div key={entry}>{entry}</div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+                          {isFailureLog && (
+                            <div className="mt-[4px] text-[12px] text-[var(--color-text-2)]">
+                              {t('node-manager.cloudregion.node.nextAction')}:
+                              {' '}
+                              {failureGuidance.suggestion}
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ),
+                    key: `${log.action}-${index}`
+                  };
+                })}
+              />
+            )}
           </div>
         </OperateDrawer>
       </div>

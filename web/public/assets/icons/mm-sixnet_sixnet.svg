@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="sixnetRed" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#d83a3a"/>
+      <stop offset="1" stop-color="#a51d1d"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#sixnetRed)"/>
+  <path d="M40 44 H80 V58 H40 z M40 66 H80 V80 H40 z" fill="#ffffff"/>
+  <circle cx="48" cy="51" r="3" fill="#a51d1d"/>
+  <circle cx="48" cy="73" r="3" fill="#a51d1d"/>
+</svg>

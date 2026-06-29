@@ -180,7 +180,7 @@ def _build_controller_install_display(steps, installer_summary, overall_status=N
         display.update({"state": "command_failed", "phase": "command_dispatch", "severity": "error"})
         return display
 
-    if command_step and command_step.get("status") == "running":
+    if command_step and command_step.get("status") == "running" and not installer_steps_received:
         display.update({"state": "command_running", "phase": "command_dispatch", "severity": "processing"})
         return display
 

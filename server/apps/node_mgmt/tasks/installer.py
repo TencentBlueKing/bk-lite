@@ -55,6 +55,7 @@ from apps.node_mgmt.utils.task_result_schema import (
     _extract_latest_failure_from_steps,
     apply_result_envelope,
 )
+from apps.node_mgmt.tasks.version_discovery import discover_node_versions
 from config.components.nats import NATS_NAMESPACE
 from nats_client.clients import subscribe_lines_sync
 
@@ -334,6 +335,7 @@ def _finalize_non_connectivity_running_steps(node_obj, message="Installer bootst
 
 def _dispatch_or_finalize_controller_task(task_id: int):
     dispatch_items = []
+    should_refresh_controller_versions = False
 
     with transaction.atomic(using="default"):
         task_obj = ControllerTask.objects.select_for_update().filter(id=task_id).first()
@@ -364,13 +366,22 @@ def _dispatch_or_finalize_controller_task(task_id: int):
             node_obj.save(update_fields=["status", "result"])
             dispatch_items.append((node_obj.id, attempt))
 
+        previous_task_status = task_obj.status
         task_obj.status = "running" if any(node.status in ["waiting", "running"] for node in task_nodes) else "finished"
+        should_refresh_controller_versions = (
+            previous_task_status != "finished"
+            and task_obj.status == "finished"
+            and any(node.status == InstallerConstants.STEP_STATUS_SUCCESS for node in task_nodes)
+        )
         task_obj.save(update_fields=["status"])
 
         if dispatch_items:
             transaction.on_commit(
                 lambda items=dispatch_items: [install_controller_for_node.delay(task_node_id, attempt) for task_node_id, attempt in items]
             )
+
+    if should_refresh_controller_versions:
+        discover_node_versions.delay()
 
 
 def _parse_exception_details(error_message, exception_obj=None):
@@ -500,7 +511,7 @@ def install_controller_on_nodes(task_obj, nodes, package_obj):
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Validate credentials ({auth_method})",
+                    f"Check credential configuration ({auth_method})",
                 ),
                 _build_step("run", "running", "Run installer"),
             ],
@@ -912,7 +923,7 @@ def uninstall_controller(task_id):
                 _build_step(
                     "credential_check",
                     "success",
-                    f"Validate credentials ({auth_method})",
+                    f"Check credential configuration ({auth_method})",
                 ),
                 _build_step("stop_run", "running", "Stop controller service"),
             ],

@@ -345,6 +345,23 @@
         "discardLayoutConfirm": "当前改动未保存，确认放弃？",
         "fieldUnavailable": "字段不可用",
         "networkTopo": "网络拓扑",
+        "ipView": "IP 视图",
+        "ipViewCapacity": "总量",
+        "ipViewUsed": "已用",
+        "ipViewAvailable": "可用",
+        "ipViewRatio": "使用率",
+        "ipViewFree": "可分配",
+        "ipViewAllocatedOnline": "已分配 - 在线",
+        "ipViewAllocatedOffline": "已分配 - 离线",
+        "ipViewConflict": "冲突",
+        "ipViewReserved": "预留",
+        "ipViewGateway": "网关·保留",
+        "ipViewUnknown": "未知",
+        "ipViewTooltipStatus": "状态",
+        "ipViewTooltipType": "分配状态",
+        "ipViewTooltipUser": "使用者",
+        "ipViewDrillTitle": "子网段",
+        "ipViewBack": "返回",
         "roomLayout": "机房视图",
         "rackElevation": "机柜视图",
         "noRoomLayout": "暂无机房布局数据",
@@ -369,6 +386,9 @@
         "layoutForce": "力导向",
         "layoutCircular": "环形",
         "exportImage": "导出图片",
+        "networkTopoZoomOut": "缩小",
+        "networkTopoZoomIn": "放大",
+        "networkTopoFitView": "适配视图",
         "networkTopoEdit": "编辑",
         "networkTopoExitEdit": "完成",
         "networkTopoEditHint": "拖动可移动设备；右键设备「新增连线」后点击目标设备完成连线；右键连线可删除。",
@@ -695,6 +715,15 @@
         "credentialPoolTip": "最多配置 3 个凭据，系统按顺序试探，命中后优先复用。",
         "configFilePath": "配置文件绝对路径",
         "configFilePathPlaceholder": "/etc/nginx/nginx.conf 或 C:\\Windows\\System32\\drivers\\etc\\hosts",
+        "IPTask": {
+            "chooseSubnet": "选子网",
+            "scanMethod": "采集方式",
+            "tcpPorts": "TCP端口",
+            "tcpPortsInvalid": "端口格式无效，请输入1-65535之间的数字，多个端口用逗号分隔",
+            "securityWarning": "大批量 IP 扫描可能被安全设备识别为端口扫描 / 黑客探测行为，请提前与安全部门报备并合理控制扫描范围与频率。",
+            "rangeGuardTitle": "扫描范围较大，请确认",
+            "rangeGuardContent": "您所选子网的地址总量超过 1024 个（等效于 /22 网段），大范围扫描可能对网络及安全设备造成负载压力。确认继续提交吗？"
+        },
         "CustomReporting": {
             "title": "自定义上报",
             "message": "自定义上报用于承接客户主动推送的资产数据。您可以在这里维护任务、查看接入文档，并对凭据与批次入口进行基础管理。",
@@ -1105,5 +1134,8 @@
             "failed": "失败"
         },
         "noTaskSelected": "请选择任务查看详情"
+    },
+    "IPAM": {
+        "conflictFilter": "冲突 IP"
     }
 }

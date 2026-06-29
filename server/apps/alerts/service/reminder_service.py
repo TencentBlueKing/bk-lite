@@ -287,7 +287,7 @@ class ReminderService:
         except Exception as e:
             logger.error(
                 "[AlertReminder] 更新提醒任务配置失败: reminder_id=%s, error=%s",
-                reminder.id, e, exc_info=True,
+                reminder.pk, e, exc_info=True,
             )
             return False
 
@@ -302,7 +302,7 @@ class ReminderService:
                 AlertReminderTask.objects.filter(
                     is_active=True,
                     next_reminder_time__lte=timezone.now(),
-                ).values_list("id", flat=True)
+                ).values_list("alert_id", flat=True)
             )
 
             select_for_update_kwargs = {}
@@ -317,7 +317,7 @@ class ReminderService:
                                 **select_for_update_kwargs
                             )
                             .select_related("alert", "assignment")
-                            .filter(id=reminder_id, is_active=True)
+                            .filter(pk=reminder_id, is_active=True)
                             .first()
                         )
 
@@ -360,7 +360,7 @@ class ReminderService:
                         if cls._send_reminder_notification(
                             assignment=reminder.assignment,
                             alert=reminder.alert,
-                            reminder_id=reminder.id,
+                            reminder_id=reminder.pk,
                         ):
                             success += 1
 
@@ -473,7 +473,7 @@ class ReminderService:
                 reminder = (
                     AlertReminderTask.objects.select_for_update()
                     .select_related("alert", "assignment")
-                    .filter(id=reminder_id)
+                    .filter(pk=reminder_id)
                     .first()
                 )
 

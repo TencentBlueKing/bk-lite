@@ -31,6 +31,15 @@ from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
 
+def _resolve_agent_execute_timeout() -> int:
+    """整轮 agent 执行预算（秒）：覆盖一次 invoke_chat 内的全部多轮 LLM + 工具调用。
+
+    优先 AGENT_EXECUTE_TIMEOUT；兼容旧的 LLM_INVOKE_TIMEOUT；默认 300。
+    单次 LLM 调用超时仍由 LLM_INVOKE_TIMEOUT 控制（见 llm_client_factory），二者解耦。
+    """
+    return int(os.getenv("AGENT_EXECUTE_TIMEOUT") or os.getenv("LLM_INVOKE_TIMEOUT") or "300")
+
+
 def _is_eventlet_environment() -> bool:
     """检测当前进程是否运行在 eventlet monkey patch 环境中。"""
     try:
@@ -137,10 +146,11 @@ class ChatService:
                         pass
                     loop.close()
 
-            _llm_timeout = int(os.getenv("LLM_INVOKE_TIMEOUT", "60"))
+            # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
+            _agent_timeout = _resolve_agent_execute_timeout()
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(_run_in_new_loop)
-                response = future.result(timeout=_llm_timeout)
+                response = future.result(timeout=_agent_timeout)
 
             # 构建返回结果
             result = {
@@ -160,17 +170,17 @@ class ChatService:
             return result, doc_map, title_map
 
         except concurrent.futures.TimeoutError:
-            # LLM 调用超时：future.result(timeout=...) 触发，worker 线程已放弃等待
-            _llm_timeout = int(os.getenv("LLM_INVOKE_TIMEOUT", "60"))
-            logger.error(f"invoke_chat LLM 调用超时（>{_llm_timeout}s）: skill_type={skill_type}")
+            # 整轮 agent 执行超时，worker 线程已放弃等待
+            _agent_timeout = _resolve_agent_execute_timeout()
+            logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
             loader = LanguageLoader(app="opspilot", default_lang="en")
-            message = loader.get("error.llm_timeout") or f"LLM 调用超时（>{_llm_timeout}s），请稍后重试"
+            message = loader.get("error.llm_timeout") or f"智能体执行超时（>{_agent_timeout}s），请稍后重试"
             return (
                 {
                     "message": message,
                     "success": False,
-                    "error": f"LLM invoke timeout after {_llm_timeout}s",
                     "error_type": "TimeoutError",
+                    "error": f"agent execute timeout after {_agent_timeout}s",
                     "total_tokens": 0,
                     "prompt_tokens": 0,
                     "completion_tokens": 0,
