@@ -164,6 +164,7 @@ export const useSwitchConfig = () => {
       'Switch Edgecore SNMP': 'snmp_edgecore',
       'Switch FS SNMP': 'snmp_fs',
       'Switch Korenix SNMP': 'snmp_korenix',
+      'Switch Phoenix Contact SNMP': 'snmp_phoenixcontact',
       'Switch Maipu SNMP': 'snmp_maipu',
       'Switch Microsens SNMP': 'snmp_microsens',
       'Switch PLANET SNMP': 'snmp_planet',
