@@ -605,10 +605,22 @@ class AlertOperator(object):
         from apps.alerts.common.notify.dispatcher import build_channel_params
 
         if not assignment:
+            logger.info("[AlertNotify] 分派通知: 无有效策略, 不发送, alert_id=%s", alert.alert_id)
             return []
         channels = assignment.notify_channels or []
-        user_list = [i for i in assignee if i != self.user]
-        return build_channel_params(user_list, channels, [alert], alert.alert_id)
+        # 自动分派操作人是系统(SYSTEM_OPERATOR_USER)，按策略配置的全部人员通知，
+        # 不排除操作人——否则与系统同名(如 admin)的收件人会被过滤导致不发。
+        user_list = list(assignee)
+        logger.info(
+            "[AlertNotify] 分派通知构造: alert_id=%s, assignment_id=%s, team=%s, notify_channels=%s, 接收人=%s",
+            alert.alert_id, assignment.id, alert.team, channels, user_list,
+        )
+        params = build_channel_params(user_list, channels, [alert], alert.alert_id)
+        logger.info(
+            "[AlertNotify] 分派通知构造结果: alert_id=%s, 参数数=%s, 渠道=%s",
+            alert.alert_id, len(params), [(p.get("channel_type"), p.get("channel_id")) for p in params],
+        )
+        return params
 
     @staticmethod
     def operator_log(log_data: dict):

@@ -55,6 +55,10 @@ def build_channel_params(
                     channel["id"], object_id,
                 )
                 continue
+            logger.info(
+                "[AlertNotify] 构造 OpsPilot NATS 通知参数: object_id=%s, channel_id=%s, team=%s, user_ids=%s",
+                object_id, channel["id"], nats_team, username_list,
+            )
             params.append(
                 {
                     "username_list": username_list,
@@ -88,16 +92,26 @@ def build_channel_params(
 def enqueue_notifications(params: List[Dict[str, Any]]) -> bool:
     """统一投递出口:事务内则提交后投递,否则立即。空入参 → 不投递,返回 False。"""
     if not params:
+        logger.info("[AlertNotify] enqueue_notifications: 无通知参数，跳过投递")
         return False
 
     # 延迟导入避免循环依赖
     from apps.alerts.tasks import sync_notify
 
+    summary = [(p.get("channel_type"), p.get("channel_id")) for p in params]
+
     def _enqueue():
+        # 事务内时由 on_commit 触发：若未见此日志而上面已记录"将于提交后投递"，说明事务回滚了
+        logger.info("[AlertNotify] enqueue_notifications: 投递 sync_notify, 参数数=%s, 渠道=%s", len(params), summary)
         sync_notify.delay(params)
 
     if transaction.get_connection().in_atomic_block:
+        logger.info(
+            "[AlertNotify] enqueue_notifications: 事务进行中，将于提交后(on_commit)投递, 参数数=%s, 渠道=%s",
+            len(params), summary,
+        )
         transaction.on_commit(_enqueue)
     else:
+        logger.info("[AlertNotify] enqueue_notifications: 立即投递, 参数数=%s, 渠道=%s", len(params), summary)
         _enqueue()
     return True

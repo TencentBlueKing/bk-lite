@@ -17,4 +17,8 @@ CELERY_BEAT_SCHEDULE = {
         "task": "apps.cmdb.tasks.celery_tasks.daily_data_cleanup_task",
         "schedule": crontab(hour="2", minute="0"),
     },
+    "reconcile_ipam_task": {
+        "task": "apps.cmdb.tasks.celery_tasks.reconcile_ipam_task",
+        "schedule": crontab(minute="0"),
+    },
 }
