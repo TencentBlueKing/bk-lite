@@ -58,20 +58,44 @@ class TestUserAPISecretSerializer:
         assert "id" in data
         assert "username" in data
         assert "api_secret_preview" in data
-        assert data["api_secret_preview"] == f"{secret.api_secret[:4]}********"
+        assert data["api_secret_preview"] == "********"
         assert "api_secret" not in data
         assert "team" in data
         assert "team_name" in data
 
-    def test_create_serializer_includes_full_api_secret(self):
+    def test_create_serializer_includes_full_api_secret_once_when_provided(self):
         user = UserFactory(
             username="erin",
             group_list=[{"id": 1, "name": "Team Alpha"}],
         )
-        secret = UserAPISecretFactory(username="erin", domain=user.domain, team=1)
+        raw_secret = UserAPISecret.generate_api_secret()
+        secret = UserAPISecretFactory(
+            username="erin",
+            domain=user.domain,
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(raw_secret),
+        )
+        secret._plain_api_secret = raw_secret
         request = self._make_request(user)
         serializer = UserAPISecretCreateSerializer(secret, context={"request": request})
         data = serializer.data
 
-        assert data["api_secret"] == secret.api_secret
+        assert data["api_secret"] == raw_secret
         assert "api_secret_preview" not in data
+
+    def test_create_serializer_does_not_echo_stored_secret_without_plaintext_context(self):
+        user = UserFactory(
+            username="frank",
+            group_list=[{"id": 1, "name": "Team Alpha"}],
+        )
+        raw_secret = UserAPISecret.generate_api_secret()
+        secret = UserAPISecretFactory(
+            username="frank",
+            domain=user.domain,
+            team=1,
+            api_secret=UserAPISecret.hash_api_secret(raw_secret),
+        )
+        request = self._make_request(user)
+        serializer = UserAPISecretCreateSerializer(secret, context={"request": request})
+
+        assert "api_secret" not in serializer.data
