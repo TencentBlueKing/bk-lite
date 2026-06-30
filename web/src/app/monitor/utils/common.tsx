@@ -615,6 +615,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
   { match: /unisphere|\berx\b/i, label: 'Unisphere', icon: 'mm-unisphere_unisphere' },
   { match: /6wind|\bvsr\b/i, label: '6WIND VSR', icon: 'mm-6wind_6wind' },
+  { match: /robustel|\br3000\b/i, label: 'Robustel', icon: 'mm-robustel_robustel' },
   { match: /sierra\s*wireless|airlink|\baleos\b/i, label: 'Sierra Wireless', icon: 'mm-sierrawireless_sierrawireless' },
   { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
   { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },

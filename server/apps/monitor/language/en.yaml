@@ -5385,6 +5385,9 @@ monitor_object_plugin:
   Router 6WIND VSR SNMP:
     name: 6WIND VSR (Telegraf)
     desc: 6WIND VSR router SNMP collection template (enterprise 7336). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because no cross-version stable row-filter-free vendor scalar device-health gauges are currently confirmed. Supported brands/models — 6WIND Virtual Service Router.
+  Router Robustel SNMP:
+    name: Robustel (Telegraf)
+    desc: Robustel industrial cellular router / gateway SNMP collection template (enterprise 39699). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because no cross-version stable row-filter-free vendor scalar device-health gauges are currently confirmed. Cellular, WAN, VPN, SMS and trap-event tables are also not promoted to shared device-health metrics. Supported brands/models — Robustel R3000 industrial cellular routers and gateways.
   Router MultiTech SNMP:
     name: MultiTech (Telegraf)
     desc: MultiTech Systems cellular router / IoT gateway SNMP collection template
