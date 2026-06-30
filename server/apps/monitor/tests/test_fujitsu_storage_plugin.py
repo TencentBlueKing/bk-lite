@@ -23,7 +23,13 @@ INSTANCE_TYPE = "storage"
 PLUGIN_NAME = "Storage Fujitsu SNMP"
 OBJECT_NAME = "Storage"
 PEN_ROOT = "1.3.6.1.4.1.211.1.21.1.100"
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
+BASELINE_METRICS = (
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+)
 
 
 def _read_json(path):
@@ -85,6 +91,23 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
+def test_v3_passwords_use_env_config_secrets(ui, toml_text):
+    fields = {field["name"]: field for field in ui["form_fields"]}
+    assert "auth_password" not in fields
+    assert "priv_password" not in fields
+    assert fields["ENV_AUTH_PASSWORD"]["transform_on_edit"]["origin_path"] == (
+        "child.env_config.AUTH_PASSWORD__{{config_id}}"
+    )
+    assert fields["ENV_PRIV_PASSWORD"]["transform_on_edit"]["origin_path"] == (
+        "child.env_config.PRIV_PASSWORD__{{config_id}}"
+    )
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'auth_password = "{{ auth_password }}"' not in toml_text
+    assert 'priv_password = "{{ priv_password }}"' not in toml_text
+
+
+@pytest.mark.unit
 def test_uses_fujitsu_private_pen(toml_text):
     assert PEN_ROOT in toml_text
 
@@ -119,14 +142,10 @@ def test_no_cpu_memory_fan_psu_modelled(metrics):
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate_with_ifname(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        metric = by[name]
-        assert metric["unit"] == "byteps"
-        assert metric["metric_group"] == "Traffic"
-        assert metric["query"].startswith("rate(")
-        assert [d["name"] for d in metric.get("dimensions", [])] == ["ifName"]
+def test_metrics_json_contains_only_vendor_delta_child(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    assert names == {"device_temperature_celsius", "device_raid_state"}
+    assert names.isdisjoint(BASELINE_METRICS)
 
 
 @pytest.mark.unit
