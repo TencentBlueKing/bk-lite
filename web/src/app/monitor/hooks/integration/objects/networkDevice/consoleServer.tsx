@@ -53,7 +53,8 @@ export const useConsoleServerConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'ConsoleServer Opengear SNMP': 'snmp_opengear'
+      'ConsoleServer Opengear SNMP': 'snmp_opengear',
+      'ConsoleServer WTI SNMP': 'snmp_wti'
     }
   };
 };

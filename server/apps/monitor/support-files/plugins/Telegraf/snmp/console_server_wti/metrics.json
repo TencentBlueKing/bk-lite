@@ -1,0 +1,47 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_wti",
+  "plugin": "ConsoleServer WTI SNMP",
+  "plugin_desc": "WTI console-server and remote-power SNMP collection for devices under WTI PEN 2634. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified environment-unit temperature and input-power status leaves from the WTI console tree, normalizing input-power states conservatively to 1=healthy and 2=fault. Serial-port rows, outlet power metering, users and trap objects are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='console_server', collect_type='snmp_wti'}) by (instance_id)",
+  "name": "ConsoleServer",
+  "icon": "mm-console_server_控制台服务器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='console_server'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_psu_state",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WTI environment unit temperature in degrees Celsius, read from the verified console environment unit leaf."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='console_server', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "WTI input power state normalized to 1=healthy and 2=fault across input power feeds."
+    }
+  ]
+}

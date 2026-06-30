@@ -211,6 +211,12 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature reading of the console server in degrees Celsius. High values may indicate cooling or ambient-temperature risk.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Input power state of the console server, normalized to 1=healthy and 2=fault. Any unknown or non-normal code should be investigated as a power-path risk.
   NetworkService:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3859,6 +3865,8 @@ monitor_object_metric_group:
   ConsoleServer:
     Base: Base
     Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   NetworkService:
     Base: Base
     Traffic: Traffic
@@ -4377,6 +4385,9 @@ monitor_object_plugin:
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
+  ConsoleServer WTI SNMP:
+    name: WTI Console Server (Telegraf)
+    desc: WTI console-server and remote-power SNMP child template for devices under WTI PEN 2634. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds verified environment-unit temperature and input-power state leaves, normalizing input power to 1=healthy and 2=fault. Serial-port rows, outlet power metering, users and trap objects are not promoted into shared device-health metrics.
   NetworkService Infoblox SNMP:
     name: NetworkService Infoblox SNMP
     desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
