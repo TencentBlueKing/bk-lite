@@ -27,6 +27,13 @@ type MethodKey = 'avg' | 'max' | 'min' | 'sum' | 'count' | 'last';
 type MetricKey = 'disk' | 'interface_status' | 'request_delta' | 'interface_inventory';
 type MetricKind = 'gauge' | 'state' | 'delta' | 'inventory';
 
+const metricKindLabels: Record<MetricKind, string> = {
+  gauge: '瞬时值',
+  state: '状态',
+  delta: '增量',
+  inventory: '清单',
+};
+
 interface MethodDefinition {
   key: MethodKey;
   tag: string;
@@ -54,129 +61,129 @@ const methods: MethodDefinition[] = [
   {
     key: 'avg',
     tag: 'AVG',
-    label: 'Average',
-    summary: 'Typical level across the observation window.',
-    category: 'Numeric trend',
-    fit: 'Usage, latency, load',
+    label: '平均值',
+    summary: '观察窗口内的整体水平。',
+    category: '趋势数值',
+    fit: '适合使用率、延迟、负载',
   },
   {
     key: 'max',
     tag: 'MAX',
-    label: 'Maximum',
-    summary: 'Worst high value across the observation window.',
-    category: 'Numeric trend',
-    fit: 'Disk usage, queues, error rate',
+    label: '最大值',
+    summary: '观察窗口内出现过的最高值。',
+    category: '趋势数值',
+    fit: '适合磁盘使用率、队列、错误率',
   },
   {
     key: 'min',
     tag: 'MIN',
-    label: 'Minimum',
-    summary: 'Worst low value across the observation window.',
-    category: 'Numeric trend',
-    fit: 'Availability, health score, remaining capacity',
+    label: '最小值',
+    summary: '观察窗口内出现过的最低值。',
+    category: '趋势数值',
+    fit: '适合可用率、健康分、剩余容量',
   },
   {
     key: 'sum',
     tag: 'SUM',
-    label: 'Accumulated',
-    summary: 'Adds each grouped sample inside the window.',
-    category: 'Delta amount',
-    fit: 'Per-period increments',
-    caution: 'SUM is usually not appropriate for gauge metrics because the result depends on sampling frequency.',
+    label: '累计值',
+    summary: '把窗口内每个分组采样值累加。',
+    category: '增量累计',
+    fit: '适合每周期增量指标',
+    caution: 'SUM 通常不适合瞬时值指标，因为累计结果会受采样频率影响。',
   },
   {
     key: 'count',
     tag: 'COUNT',
-    label: 'Valid count',
-    summary: 'Counts series that still have data in the window.',
-    category: 'Presence',
-    fit: 'Interface, disk, process inventory',
+    label: '有效数量',
+    summary: '统计窗口内仍有数据的序列数量。',
+    category: '存在性统计',
+    fit: '适合接口、磁盘、进程数量',
   },
   {
     key: 'last',
     tag: 'LAST',
-    label: 'Latest value',
-    summary: 'Uses the latest valid state in the window.',
-    category: 'State snapshot',
-    fit: 'Status, enum, up/down metrics',
+    label: '最近值',
+    summary: '取窗口内最近一次有效状态值。',
+    category: '状态快照',
+    fit: '适合状态、枚举、up/down 指标',
   },
 ];
 
 const metrics: MetricDefinition[] = [
   {
     key: 'disk',
-    name: 'Disk usage',
+    name: '磁盘使用率',
     kind: 'gauge',
     metricName: 'disk_used_percent',
-    description: 'Numeric gauge from multiple disks on the same instance.',
+    description: '同一实例下多块磁盘上报的数值型瞬时值指标。',
     defaultMethod: 'max',
     defaultGroups: ['instance_id'],
     groupOptions: ['instance_id', 'disk', 'mountpoint'],
-    recommendation: 'Recommended: MAX for capacity risk, AVG for overall level.',
+    recommendation: '推荐：容量风险优先用 MAX；观察整体水平可用 AVG。',
     scenario: {
-      avg: 'Instance A has 4 disks. Each moment first averages disks by instance, then averages those instance values across the latest 5 minutes.',
-      max: 'Instance A has 4 disks. Each moment first finds the fullest disk per instance, then keeps the worst value from the latest 5 minutes.',
-      min: 'Instance A has 4 disks. Each moment first finds the lowest disk value per instance, then keeps the lowest value from the latest 5 minutes.',
-      sum: 'Disk usage is a gauge. Accumulating sampled percentages is usually hard to explain, so SUM should be avoided here.',
-      count: 'Counts how many disk series still reported data in the latest 5 minutes for each selected group.',
-      last: 'Shows the latest sampled disk usage in the window. This is less useful than AVG or MAX for capacity alerts.',
+      avg: '实例 A 有 4 块磁盘。每个时刻先按实例求磁盘平均值，再计算最近 5 分钟内这些实例级值的平均值。',
+      max: '实例 A 有 4 块磁盘。每个时刻先找出该实例最满的磁盘，再取最近 5 分钟内最危险的一次。',
+      min: '实例 A 有 4 块磁盘。每个时刻先找出该实例最低的磁盘值，再取最近 5 分钟内最低的一次。',
+      sum: '磁盘使用率是瞬时值指标。把多个采样百分比累加后很难解释，因此这里不建议使用 SUM。',
+      count: '统计最近 5 分钟内每个分组下仍有上报数据的磁盘序列数量。',
+      last: '展示窗口内最近一次磁盘使用率采样值。容量类告警通常不如 AVG 或 MAX 直观。',
     },
   },
   {
     key: 'interface_status',
-    name: 'Interface status',
+    name: '接口状态',
     kind: 'state',
     metricName: 'interface_oper_status',
-    description: 'State metric where 1 means up and 0 means down.',
+    description: '状态型指标，1 表示 up，0 表示 down。',
     defaultMethod: 'last',
     defaultGroups: ['instance_id', 'interface'],
     groupOptions: ['instance_id', 'interface', 'admin_status'],
-    recommendation: 'Recommended: LAST. Group by instance_id and interface to get one status per port.',
+    recommendation: '推荐：使用 LAST，并按 instance_id + interface 分组，得到每个接口一条状态。',
     scenario: {
-      avg: 'Averaging interface status can blur state. A 5 minute average of 0.6 is not a clear operator action.',
-      max: 'MAX can tell whether an interface was ever up in the window, but it hides the latest state.',
-      min: 'MIN can tell whether an interface was ever down in the window, but it does not answer the current state.',
-      sum: 'SUM of states depends on sample count and should not be used as a status result.',
-      count: 'Counts how many interfaces reported any status data in the latest 5 minutes.',
-      last: 'Switch A has 10 interfaces. 3 latest values are down and 7 are up, so the result shows 10 interface-level status series.',
+      avg: '接口状态被平均后会模糊语义，例如 5 分钟平均值 0.6 很难直接指导处置。',
+      max: 'MAX 可以表示窗口内是否曾经 up，但会掩盖最近状态。',
+      min: 'MIN 可以表示窗口内是否曾经 down，但不能回答当前最近状态。',
+      sum: '状态值求和会受采样次数影响，不适合作为最终状态。',
+      count: '统计最近 5 分钟内有状态数据上报的接口数量。',
+      last: '交换机 A 有 10 个接口，最近状态 3 个 down、7 个 up，结果会输出 10 条按接口分组的状态序列。',
     },
   },
   {
     key: 'request_delta',
-    name: 'Request increment',
+    name: '请求增量',
     kind: 'delta',
     metricName: 'request_count_per_minute',
-    description: 'Each sample is already the requests added during its collection interval.',
+    description: '每个采样点已经表示该采集周期内新增的请求数。',
     defaultMethod: 'sum',
     defaultGroups: ['service'],
     groupOptions: ['service', 'instance_id', 'route'],
-    recommendation: 'Recommended: SUM for period totals, MAX for burst detection.',
+    recommendation: '推荐：周期总量用 SUM；突增检测可用 MAX。',
     scenario: {
-      avg: 'Shows the average per-sample request increment inside the latest 5 minutes.',
-      max: 'Shows the largest per-sample request increment inside the latest 5 minutes.',
-      min: 'Shows the lowest per-sample request increment inside the latest 5 minutes.',
-      sum: 'Adds each per-minute request increment inside the latest 5 minutes to produce the period total.',
-      count: 'Counts how many request series still reported data in the latest 5 minutes.',
-      last: 'Shows only the latest per-sample request increment, not the 5 minute total.',
+      avg: '展示最近 5 分钟内每个采样增量的平均水平。',
+      max: '展示最近 5 分钟内最大的单次采样增量。',
+      min: '展示最近 5 分钟内最低的单次采样增量。',
+      sum: '把最近 5 分钟内每分钟请求增量相加，得到周期总请求数。',
+      count: '统计最近 5 分钟内仍有数据上报的请求序列数量。',
+      last: '只展示最近一次采样增量，不代表 5 分钟总量。',
     },
   },
   {
     key: 'interface_inventory',
-    name: 'Interface inventory',
+    name: '接口清单',
     kind: 'inventory',
     metricName: 'interface_info',
-    description: 'Presence metric used to know which interface series still exist.',
+    description: '存在性指标，用于判断哪些接口序列仍然存在。',
     defaultMethod: 'count',
     defaultGroups: ['instance_id'],
     groupOptions: ['instance_id', 'interface', 'vendor'],
-    recommendation: 'Recommended: COUNT to detect missing or changed series inventory.',
+    recommendation: '推荐：使用 COUNT 发现序列缺失或清单变化。',
     scenario: {
-      avg: 'Averaging inventory marker values usually has no business meaning.',
-      max: 'MAX of inventory marker values only says whether at least one marker exists.',
-      min: 'MIN of inventory marker values is rarely useful for inventory checks.',
-      sum: 'SUM can resemble count only when all marker values are exactly 1, but COUNT is clearer.',
-      count: 'Counts interfaces that still had data during the latest 5 minutes for each instance.',
-      last: 'Shows the latest marker value. This is useful only when the marker carries state.',
+      avg: '清单标记值做平均通常没有明确业务含义。',
+      max: '清单标记值取 MAX 只能说明至少存在一个标记。',
+      min: '清单标记值取 MIN 很少适用于清单检查。',
+      sum: '只有所有标记值都严格为 1 时，SUM 才近似数量；但 COUNT 语义更清楚。',
+      count: '统计最近 5 分钟内每个实例仍有数据的接口序列数量。',
+      last: '展示最近一次标记值。只有标记值本身携带状态时才有意义。',
     },
   },
 ];
@@ -245,13 +252,13 @@ const getQuery = (
 
   if (method === 'count') {
     return groups.length
-      ? `count(last_over_time(metric[${period}])) by (group_by)\n\nExample:\ncount(last_over_time(${metricName}[${period}])) by (${groups.join(', ')})`
+      ? `count(last_over_time(metric[${period}])) by (group_by)\n\n示例:\ncount(last_over_time(${metricName}[${period}])) by (${groups.join(', ')})`
       : `count(last_over_time(${metricName}[${period}]))`;
   }
 
   if (method === 'last') {
     return groups.length
-      ? `any(last_over_time(metric[${period}])) by (group_by)\n\nExample:\nany(last_over_time(${metricName}[${period}])) by (${groups.join(', ')})`
+      ? `any(last_over_time(metric[${period}])) by (group_by)\n\n示例:\nany(last_over_time(${metricName}[${period}])) by (${groups.join(', ')})`
       : `last_over_time(${metricName}[${period}])`;
   }
 
@@ -269,13 +276,22 @@ const getQuery = (
   };
   const outer = outerMap[method];
   const inner = innerMap[method];
-  return `${outer}((${inner}(metric) by (${groupToken}))[${period}:${resolution}])\n\nExample:\n${outer}((${inner}(${metricName})${groupClause})[${period}:${resolution}])`;
+  return `${outer}((${inner}(metric) by (${groupToken}))[${period}:${resolution}])\n\n示例:\n${outer}((${inner}(${metricName})${groupClause})[${period}:${resolution}])`;
+};
+
+const getPeriodLabel = (period: string) => {
+  const periodLabels: Record<string, string> = {
+    '5m': '5 分钟',
+    '10m': '10 分钟',
+    '30m': '30 分钟',
+  };
+  return periodLabels[period] || period;
 };
 
 const getSteps = (method: MethodDefinition, metric: MetricDefinition, groups: string[], period: string) => [
-  `Group by ${groups.join(' + ') || 'all series'} to produce alert objects.`,
-  `Aggregation period is the observation window: look back over the latest ${period}.`,
-  `${method.label} calculates the threshold value for each ${metric.kind} result.`,
+  `按 ${groups.join(' + ') || '全部序列'} 分组，确定最终告警对象。`,
+  `汇聚周期是观察窗口：每次判断向前查看最近 ${getPeriodLabel(period)} 的数据。`,
+  `使用${method.label}为每个分组计算阈值判断值。`,
 ];
 
 const MethodSelector = ({
@@ -298,7 +314,7 @@ const MethodSelector = ({
               <Space>
                 <Text strong>{method.label}</Text>
                 <Tag color={active ? 'blue' : 'default'}>{method.tag}</Tag>
-                {recommended && <Badge status="success" text="Recommended" />}
+                {recommended && <Badge status="success" text="推荐" />}
               </Space>
               <Text type="secondary">{method.summary}</Text>
               <Text style={{ fontSize: 12, color: '#536173' }}>{method.fit}</Text>
@@ -321,23 +337,23 @@ const ScenarioPreview = ({
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <Space>
         <DatabaseOutlined style={{ color: '#1677ff' }} />
-        <Text strong>Scenario preview</Text>
+        <Text strong>场景预览</Text>
       </Space>
       <Text>{metric.scenario[method.key]}</Text>
       {method.key === 'sum' && metric.kind === 'gauge' && (
         <Alert
           type="warning"
           showIcon
-          message="Gauge caution"
-          description="SUM is usually not appropriate for gauge metrics because sampling frequency changes the accumulated result."
+          message="瞬时值指标提示"
+          description="SUM 通常不适合瞬时值指标，因为累计结果会随采样频率变化。"
         />
       )}
       {method.key === 'last' && (
         <Alert
           type="info"
           showIcon
-          message="State grouping tip"
-          description="For status metrics, include enough dimensions to identify the state object. Interface status usually needs instance_id and interface."
+          message="状态分组提示"
+          description="状态类指标需要选择足够的分组维度来识别状态对象。接口状态通常需要 instance_id 和 interface。"
         />
       )}
     </Space>
@@ -349,13 +365,13 @@ const RecommendationPanel = ({ metric }: { metric: MetricDefinition }) => (
     <Space direction="vertical" size={12} style={{ width: '100%' }}>
       <Space>
         <BarChartOutlined style={{ color: '#16a34a' }} />
-        <Text strong>Method recommendation</Text>
+        <Text strong>方法推荐</Text>
       </Space>
       <Text>{metric.recommendation}</Text>
       <Space wrap>
-        <Tag color="blue">Metric type: {metric.kind}</Tag>
-        <Tag color="green">Default: {getMethod(metric.defaultMethod).tag}</Tag>
-        <Tag color="orange">Resolution: auto, example 1m</Tag>
+        <Tag color="blue">指标类型: {metricKindLabels[metric.kind]}</Tag>
+        <Tag color="green">默认方法: {getMethod(metric.defaultMethod).tag}</Tag>
+        <Tag color="orange">子查询分辨率: 自动，示例 1m</Tag>
       </Space>
     </Space>
   </div>
@@ -366,7 +382,7 @@ const MethodComparisonPanel = ({ metric }: { metric: MetricDefinition }) => (
     <Space direction="vertical" size={14} style={{ width: '100%' }}>
       <Space>
         <ApartmentOutlined style={{ color: '#7c3aed' }} />
-        <Text strong>Method comparison</Text>
+        <Text strong>方法对比</Text>
       </Space>
       <Row gutter={[12, 12]}>
         {methods.map((method) => (
@@ -447,9 +463,9 @@ const AggregationDesigner = ({
     <div style={pageStyle}>
       <section style={{ ...sectionStyle, marginBottom: 16 }}>
         <Space direction="vertical" size={6}>
-          <Title level={3} style={{ margin: 0 }}>Strategy aggregation designer</Title>
+          <Title level={3} style={{ margin: 0 }}>策略汇聚方式设计器</Title>
           <Text type="secondary">
-            Configure alert object, observation window, and calculation method without forcing users to reason from raw PromQL names.
+            用“告警对象、观察窗口、计算方法”的方式配置策略，不要求用户先理解底层 PromQL 函数名。
           </Text>
         </Space>
       </section>
@@ -460,17 +476,17 @@ const AggregationDesigner = ({
             <Space direction="vertical" size={18} style={{ width: '100%' }}>
               <Space>
                 <ApartmentOutlined style={{ color: '#1677ff' }} />
-                <Text strong>Configuration</Text>
+                <Text strong>配置</Text>
               </Space>
 
               <div>
-                <Text strong>Metric</Text>
+                <Text strong>指标</Text>
                 <Select
                   value={metricKey}
                   onChange={handleMetricChange}
                   style={{ width: '100%', marginTop: 8 }}
                   options={metrics.map((item) => ({
-                    label: `${item.name} (${item.kind})`,
+                    label: `${item.name}（${metricKindLabels[item.kind]}）`,
                     value: item.key,
                   }))}
                 />
@@ -480,7 +496,7 @@ const AggregationDesigner = ({
               </div>
 
               <div>
-                <Text strong>Group dimensions</Text>
+                <Text strong>分组维度</Text>
                 <Select
                   mode="multiple"
                   value={groups}
@@ -489,30 +505,30 @@ const AggregationDesigner = ({
                   options={metric.groupOptions.map((item) => ({ label: item, value: item }))}
                 />
                 <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                  Group dimensions decide which objects are judged and alerted independently.
+                  分组维度决定哪些对象会被独立判断并产生告警。
                 </Text>
               </div>
 
               <div>
-                <Text strong>Aggregation period</Text>
+                <Text strong>汇聚周期</Text>
                 <Radio.Group
                   value={period}
                   onChange={(event) => setPeriod(event.target.value)}
                   style={{ display: 'block', marginTop: 8 }}
                 >
-                  <Radio.Button value="5m">5 min</Radio.Button>
-                  <Radio.Button value="10m">10 min</Radio.Button>
-                  <Radio.Button value="30m">30 min</Radio.Button>
+                  <Radio.Button value="5m">5 分钟</Radio.Button>
+                  <Radio.Button value="10m">10 分钟</Radio.Button>
+                  <Radio.Button value="30m">30 分钟</Radio.Button>
                 </Radio.Group>
                 <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                  Aggregation period is the observation window, not the scan frequency.
+                  汇聚周期是观察窗口，不是策略扫描频率。
                 </Text>
               </div>
 
               <Divider style={{ margin: 0 }} />
 
               <div>
-                <Text strong>Aggregation method</Text>
+                <Text strong>汇聚方法</Text>
                 <div style={{ marginTop: 10 }}>
                   <MethodSelector value={methodKey} metric={metric} onChange={setMethodKey} />
                 </div>
@@ -526,13 +542,13 @@ const AggregationDesigner = ({
             <Space direction="vertical" size={16} style={{ width: '100%' }}>
               <Space>
                 <ClockCircleOutlined style={{ color: '#1677ff' }} />
-                <Text strong>Calculation explanation</Text>
+                <Text strong>计算说明</Text>
               </Space>
               <Row gutter={[12, 12]}>
                 {steps.map((step, index) => (
                   <Col xs={24} md={8} key={step}>
                     <div style={{ border: '1px solid #e1e7f0', borderRadius: 8, padding: 12, minHeight: 104 }}>
-                      <Tag color="blue">Step {index + 1}</Tag>
+                      <Tag color="blue">第 {index + 1} 步</Tag>
                       <div style={{ marginTop: 8 }}>{step}</div>
                     </div>
                   </Col>
@@ -541,11 +557,11 @@ const AggregationDesigner = ({
               <div>
                 <Space style={{ marginBottom: 8 }}>
                   <CodeOutlined style={{ color: '#475569' }} />
-                  <Text strong>Advanced query semantics</Text>
+                  <Text strong>高级查询语义</Text>
                 </Space>
                 <code style={codeStyle}>{query}</code>
                 <Text type="secondary" style={{ display: 'block', marginTop: 8, wordBreak: 'break-word' }}>
-                  Reference forms: {referenceQueries.join(' | ')}
+                  参考形式：{referenceQueries.join(' | ')}
                 </Text>
               </div>
               {method.caution && <Alert type="warning" showIcon message={method.caution} />}
