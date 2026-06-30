@@ -4395,6 +4395,9 @@ monitor_object_plugin:
   Access C-Data SNMP:
     name: Access C-Data SNMP
     desc: C-Data GPON and EPON access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power device-health scalars are not proven from the current CDATA-GPON-MIB signal, so they are not promoted into shared device-health metrics.
+  Access Casa Systems SNMP:
+    name: Access Casa Systems SNMP
+    desc: Casa Systems CMTS and broadband access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public OID facts confirm the Casa enterprise root, casaMgmt subtree and casaModuleCpuMemMib module direction, but stable private CPU, memory, temperature, fan and power device-health leaf OIDs or enum semantics are not proven, so they are not promoted into shared device-health metrics.
   Access Nateks SNMP:
     name: Access Nateks SNMP
     desc: Nateks Megatrans and Orion access-device SNMP child template for devices under enterprise PEN 4249. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds NATEKS-MIB temperature sensor values normalized from 1/1000 degrees Celsius and local power-source availability status. CPU, memory, fan, SFP DDM, digital I/O, alarm, and TLM tables are not promoted into shared device-health metrics.

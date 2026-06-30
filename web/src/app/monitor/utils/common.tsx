@@ -645,6 +645,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /raisecom|roap|iscom/i, label: 'Raisecom', icon: 'mm-raisecom_raisecom' },
   { match: /packetfront|\bdrg\b/i, label: 'PacketFront', icon: 'mm-packetfront_packetfront' },
   { match: /c-?data|cdatatec/i, label: 'C-Data', icon: 'mm-cdata_cdata' },
+  { match: /casa( systems)?/i, label: 'Casa Systems', icon: 'mm-casa_casa' },
   { match: /nateks|megatrans|orion/i, label: 'Nateks', icon: 'mm-nateks_nateks' },
   { match: /harmonic|nsg\s*pro|cableos/i, label: 'Harmonic', icon: 'mm-harmonic_harmonic' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },

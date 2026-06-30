@@ -4029,6 +4029,9 @@ monitor_object_plugin:
   Access C-Data SNMP:
     name: C-Data（Telegraf）
     desc: C-Data GPON/EPON 接入设备 SNMP 基线子模板。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 CDATA-GPON-MIB 线索未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
+  Access Casa Systems SNMP:
+    name: Casa Systems（Telegraf）
+    desc: Casa Systems CMTS 与宽带接入设备 SNMP 基线子模板。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前公开 OID 线索仅确认 Casa 企业根、casaMgmt 子树和 casaModuleCpuMemMib 模块方向，尚未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康叶子 OID 或枚举语义，因此不提升为共享设备健康指标。
   Access Nateks SNMP:
     name: Nateks（Telegraf）
     desc: Nateks Megatrans/Orion 接入设备 SNMP 子模板（企业号 PEN 4249）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 NATEKS-MIB 温度传感器值（1/1000 摄氏度归一为摄氏度）与本地电源可用性状态。CPU、内存、风扇、SFP DDM、数字输入输出、告警与 TLM 表属于未确认共享健康或业务/端口对象，不提升为共享设备健康指标。
