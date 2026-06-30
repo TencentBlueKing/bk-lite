@@ -4480,6 +4480,9 @@ monitor_object_plugin:
   VoiceGateway Patton SNMP:
     name: Patton (Telegraf)
     desc: Patton SmartNode voice gateway and IAD SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. SmartNode enterprise and product subtrees are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Innovaphone SNMP:
+    name: Innovaphone (Telegraf)
+    desc: Innovaphone voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Innovaphone enterprise root and gateway subtree are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
