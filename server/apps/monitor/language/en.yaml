@@ -4260,6 +4260,9 @@ monitor_object_plugin:
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
+  VoiceGateway Ribbon SNMP:
+    name: Ribbon (Telegraf)
+    desc: Ribbon/Sonus voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.

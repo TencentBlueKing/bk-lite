@@ -651,6 +651,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bfs\b|fs\.com/i, label: 'FS', icon: 'mm-fs_fs' },
   { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
   { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
+  { match: /ribbon|sonus|genband/i, label: 'Ribbon', icon: 'mm-ribbon_ribbon' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
   { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
