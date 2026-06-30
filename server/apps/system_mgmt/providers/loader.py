@@ -10,6 +10,7 @@ from .schemas import ProviderManifest
 BUILTIN_PROVIDER_MODULES = (
     "apps.system_mgmt.providers.manifests.feishu",
     "apps.system_mgmt.providers.manifests.wechat",
+    "apps.system_mgmt.providers.manifests.ad",
 )
 
 _providers_loaded = False

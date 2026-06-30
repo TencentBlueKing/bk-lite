@@ -124,6 +124,28 @@ class TestIntegrationInstanceAvailableInstances:
 
         assert response.status_code == 400
 
+    def test_available_instances_includes_ready_ad_for_user_sync(self, api_client, authenticated_user):
+        authenticated_user.is_superuser = True
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.save(update_fields=["is_superuser"])
+
+        IntegrationInstance.objects.create(
+            name="Corporate AD",
+            provider_key="ad",
+            config={},
+            status=IntegrationInstanceStatusChoices.READY,
+            capability_status={"user_sync": IntegrationInstanceStatusChoices.READY},
+            capability_enabled={"user_sync": True},
+            enabled=True,
+        )
+
+        response = api_client.get("/api/v1/system_mgmt/integration_instance/available_instances/?capability=user_sync")
+
+        assert response.status_code == 200
+        assert len(response.data) == 1
+        assert response.data[0]["provider_key"] == "ad"
+        assert response.data[0]["provider_name"] == "Active Directory"
+
 
 @pytest.mark.django_db
 class TestIntegrationInstanceViewSet:

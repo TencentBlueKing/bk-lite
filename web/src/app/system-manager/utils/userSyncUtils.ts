@@ -85,16 +85,64 @@ export function getDefaultDepartmentIdType(template: BusinessTemplate | null): s
   return typeof firstOption === 'string' ? firstOption : '';
 }
 
+export function getRootDepartmentFieldKey(template: BusinessTemplate | null): string {
+  if (!template) return 'root_department_id';
+  for (const group of template.groups) {
+    for (const field of group.fields) {
+      if (field.key.startsWith('root_')) {
+        return field.key;
+      }
+    }
+  }
+  return 'root_department_id';
+}
+
+function hasUsableFieldDefault(defaultValue: unknown): boolean {
+  return defaultValue !== undefined && defaultValue !== null && defaultValue !== '';
+}
+
+export function getUserSyncBusinessConfigDefaults(
+  template: BusinessTemplate | null,
+  options: { excludeRootScope?: boolean } = {},
+): Record<string, unknown> {
+  if (!template) return {};
+
+  const defaults: Record<string, unknown> = {};
+  const rootScopeFieldKey = options.excludeRootScope ? getRootDepartmentFieldKey(template) : '';
+
+  for (const group of template.groups) {
+    for (const field of group.fields) {
+      if (field.key === rootScopeFieldKey) {
+        continue;
+      }
+      if (!hasUsableFieldDefault(field.default)) {
+        continue;
+      }
+      defaults[field.key] = field.default;
+    }
+  }
+
+  return defaults;
+}
+
+export function mergeUserSyncBusinessConfigWithDefaults(
+  currentBusinessConfig: Record<string, unknown> | undefined,
+  template: BusinessTemplate | null,
+  options: { excludeRootScope?: boolean } = {},
+): Record<string, unknown> {
+  return {
+    ...getUserSyncBusinessConfigDefaults(template, options),
+    ...(currentBusinessConfig || {}),
+  };
+}
+
 export function getRootDepartmentInputMode(
   template: BusinessTemplate | null,
 ): 'department_select' | 'manual_input' {
   if (!template) return 'department_select';
-  for (const group of template.groups) {
-    for (const field of group.fields) {
-      if (field.key === 'root_department_id') {
-        return field.input_mode === 'manual_input' ? 'manual_input' : 'department_select';
-      }
-    }
+  const field = getUserSyncTemplateField(template, getRootDepartmentFieldKey(template));
+  if (field) {
+    return field.input_mode === 'manual_input' ? 'manual_input' : 'department_select';
   }
   return 'department_select';
 }
@@ -105,6 +153,16 @@ export function isDepartmentSelectMode(template: BusinessTemplate | null): boole
 
 export function isManualInputMode(template: BusinessTemplate | null): boolean {
   return getRootDepartmentInputMode(template) === 'manual_input';
+}
+
+export function shouldFetchDepartmentOptions(input: {
+  selectedInstanceId: number | undefined;
+  template: BusinessTemplate | null;
+}): boolean {
+  if (!input.selectedInstanceId) {
+    return false;
+  }
+  return getRootDepartmentInputMode(input.template) === 'department_select';
 }
 
 function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSource> {

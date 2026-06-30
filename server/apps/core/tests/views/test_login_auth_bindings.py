@@ -66,7 +66,12 @@ class TestLoginAuthBindingViews:
         response = login(request)
         data = json.loads(response.content)
 
-        mock_system_mgmt.return_value.login_with_binding.assert_called_once_with(5, "auth-code")
+        mock_system_mgmt.return_value.login_with_binding.assert_called_once_with(
+            5,
+            "auth-code",
+            username="",
+            password="",
+        )
         assert response.status_code == 200
         assert data["result"] is True
         assert data["data"]["redirect_url"] == "/console"
@@ -93,6 +98,34 @@ class TestLoginAuthBindingViews:
         assert response.status_code == 200
         assert data["result"] is True
         assert response.cookies["bklite_token"].value == "legacy-token"
+
+    @patch("apps.core.views.index_view.SystemMgmt")
+    def test_login_with_binding_supports_username_password_credentials(self, mock_system_mgmt):
+        from apps.core.views.index_view import login
+
+        mock_system_mgmt.return_value.login_with_binding.return_value = {
+            "result": True,
+            "data": {
+                "username": "ad-user",
+                "token": "ad-token",
+            },
+        }
+
+        request = self._make_post_request(
+            {
+                "binding_id": 8,
+                "username": "alice",
+                "password": "secret",
+                "redirect_url": "/console",
+            }
+        )
+        response = login(request)
+        data = json.loads(response.content)
+
+        mock_system_mgmt.return_value.login_with_binding.assert_called_once_with(8, "", username="alice", password="secret")
+        assert response.status_code == 200
+        assert data["result"] is True
+        assert response.cookies["bklite_token"].value == "ad-token"
 
     @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://10.10.40.91:443"}, clear=False)
     @patch("apps.core.views.index_view.build_login_auth_redirect")
@@ -132,7 +165,7 @@ class TestLoginAuthBindingViews:
 
         mock_build_redirect.assert_called_once_with(
             binding,
-            redirect_uri="http://10.10.40.91:8011/api/v1/core/api/login_auth/callback/",
+            redirect_uri="http://10.10.40.91:443/api/v1/core/api/login_auth/callback/",
             state=mock_build_redirect.call_args.kwargs["state"],
         )
         assert response.status_code == 200
@@ -148,7 +181,7 @@ class TestLoginAuthBindingViews:
     @patch("apps.core.views.index_view.build_login_auth_redirect")
     @patch("apps.core.views.index_view.create_auth_request")
     @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_falls_back_to_request_host_when_env_missing(
+    def test_start_login_auth_uses_request_origin_redirect_uri_when_env_missing(
         self,
         mock_get_binding,
         mock_create_auth_request,
@@ -184,15 +217,26 @@ class TestLoginAuthBindingViews:
         assert response.status_code == 200
         assert mock_build_redirect.call_args.kwargs["redirect_uri"] == "http://testserver/api/v1/core/api/login_auth/callback/"
 
+    @patch.dict(os.environ, {}, clear=False)
+    def test_build_login_auth_callback_uri_falls_back_to_request_origin_when_env_missing(self):
+        from apps.core.views.index_view import _build_login_auth_callback_uri
+
+        os.environ.pop("DEFAULT_ZONE_VAR_NODE_SERVER_URL", None)
+        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
+        request.META["HTTP_HOST"] = "bk.test"
+        request.META["wsgi.url_scheme"] = "https"
+
+        assert _build_login_auth_callback_uri(request) == "https://bk.test/api/v1/core/api/login_auth/callback/"
+
     @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://10.10.40.91:443"}, clear=False)
-    def test_build_login_auth_result_redirect_uses_frontend_dev_port_when_env_configured(self):
+    def test_build_login_auth_result_redirect_keeps_relative_path_when_env_configured(self):
         from apps.core.views.index_view import _build_login_auth_result_redirect
 
         response = _build_login_auth_result_redirect("success", "认证已完成，可返回原页面继续。")
 
         parsed = urlparse(response["Location"])
-        assert parsed.scheme == "http"
-        assert parsed.netloc == "10.10.40.91:3000"
+        assert parsed.scheme == ""
+        assert parsed.netloc == ""
         assert parsed.path == "/auth/signin/login-auth-result"
         query = parse_qs(parsed.query)
         assert query["status"] == ["success"]

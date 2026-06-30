@@ -2,9 +2,11 @@ import type {
   LoginAuthBindingItem,
   LoginAuthBindingsLoadState,
   LoginAuthValidationViewState,
+  SigninSurface,
 } from './types';
 
 const BUILTIN_PROVIDER_KEY = 'bk_lite_builtin';
+const BINDING_PASSWORD_PROVIDER_KEYS = new Set(['ad']);
 
 export function resolveInitialBindingId(bindings: LoginAuthBindingItem[]): number | null {
   return bindings[0]?.id ?? null;
@@ -32,15 +34,34 @@ export function isBuiltinBinding(binding?: LoginAuthBindingItem | null): boolean
   return binding?.provider_key === BUILTIN_PROVIDER_KEY;
 }
 
+export function isBindingPasswordSignin(binding?: LoginAuthBindingItem | null): boolean {
+  return Boolean(binding?.provider_key && BINDING_PASSWORD_PROVIDER_KEYS.has(binding.provider_key));
+}
+
+export function resolveSigninSurface(
+  bindingsLoadState: LoginAuthBindingsLoadState,
+  selectedBinding?: LoginAuthBindingItem | null,
+): SigninSurface {
+  if (
+    bindingsLoadState === 'bindings-error'
+    || bindingsLoadState === 'bindings-empty'
+    || (bindingsLoadState === 'bindings-ready' && isBuiltinBinding(selectedBinding))
+  ) {
+    return 'builtin-password';
+  }
+
+  if (bindingsLoadState === 'bindings-ready' && isBindingPasswordSignin(selectedBinding)) {
+    return 'binding-password';
+  }
+
+  return 'binding-redirect';
+}
+
 export function shouldUseBuiltinSigninForm(
   bindingsLoadState: LoginAuthBindingsLoadState,
   selectedBinding?: LoginAuthBindingItem | null,
 ): boolean {
-  return (
-    bindingsLoadState === 'bindings-error'
-    || bindingsLoadState === 'bindings-empty'
-    || (bindingsLoadState === 'bindings-ready' && isBuiltinBinding(selectedBinding))
-  );
+  return resolveSigninSurface(bindingsLoadState, selectedBinding) === 'builtin-password';
 }
 
 export function resolveInlineValidationError(

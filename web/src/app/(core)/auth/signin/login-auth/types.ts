@@ -6,6 +6,11 @@ export type LoginAuthBindingsLoadState =
   | 'bindings-empty'
   | 'bindings-error';
 
+export type SigninSurface =
+  | 'builtin-password'
+  | 'binding-password'
+  | 'binding-redirect';
+
 export type LoginAuthValidationViewState =
   | 'idle'
   | 'starting'

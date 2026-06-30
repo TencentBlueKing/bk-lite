@@ -231,3 +231,41 @@ def test_template_field_manifest_supports_input_mode():
     public_dict = manifest.to_public_dict()
     root_field = public_dict["business_templates"]["user_sync_form"]["groups"][0]["fields"][0]
     assert root_field["input_mode"] == "manual_input"
+
+
+def test_ad_manifest_declares_login_auth_and_user_sync():
+    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+
+    assert PROVIDER_MANIFEST.key == "ad"
+    assert [cap.key for cap in PROVIDER_MANIFEST.capabilities] == ["login_auth", "user_sync"]
+
+
+def test_ad_user_sync_root_dn_is_manual_input():
+    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+
+    template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
+    root_field = next(field for group in template.groups for field in group.fields if field.key == "root_dn")
+
+    assert root_field.input_mode == "manual_input"
+
+
+def test_ad_base_connection_uses_directory_boundary_wording():
+    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+
+    template = PROVIDER_MANIFEST.instance_templates["base_connection"]
+    base_dn_field = next(field for group in template.groups for field in group.fields if field.key == "base_dn")
+
+    assert base_dn_field.label == "目录访问边界"
+    assert "访问边界" in str(base_dn_field.help_text or "")
+
+
+def test_ad_user_sync_manifest_exposes_directory_query_parameters():
+    from apps.system_mgmt.providers.manifests.ad import PROVIDER_MANIFEST
+
+    template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
+    field_map = {field.key: field for group in template.groups for field in group.fields}
+
+    assert list(field_map) == ["root_dn", "user_object_class", "user_filter", "organization_object_class"]
+    assert field_map["user_object_class"].default == "user"
+    assert field_map["user_filter"].default == "(&(objectCategory=Person)(sAMAccountName=*))"
+    assert field_map["organization_object_class"].default == "organizationalUnit"

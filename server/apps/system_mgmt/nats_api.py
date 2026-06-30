@@ -1369,13 +1369,13 @@ def login(username, password):
 
 
 @nats_client.register
-def login_with_binding(binding_id, auth_code):
-    return login_with_binding_service(binding_id, auth_code)
+def login_with_binding(binding_id, auth_code="", username="", password=""):
+    return login_with_binding_service(binding_id, auth_code, username=username, password=password)
 
 
-def login_with_binding_service(binding_id, auth_code):
+def login_with_binding_service(binding_id, auth_code="", username="", password=""):
     try:
-        return execute_login_with_binding(int(binding_id), auth_code)
+        return execute_login_with_binding(int(binding_id), auth_code, username=username, password=password)
     except (TypeError, ValueError):
         return {"result": False, "message": "Invalid login auth binding id"}
 

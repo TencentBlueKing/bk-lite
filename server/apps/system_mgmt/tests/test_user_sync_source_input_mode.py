@@ -4,7 +4,10 @@ from apps.system_mgmt.models import IntegrationInstance
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
 from apps.system_mgmt.providers.schemas import ProviderManifest
 from apps.system_mgmt.serializers.user_sync_source_serializer import UserSyncSourceSerializer
-from apps.system_mgmt.services.user_sync_service import get_user_sync_root_department_input_mode
+from apps.system_mgmt.services.user_sync_service import (
+    get_user_sync_root_department_input_mode,
+    get_user_sync_root_scope_field,
+)
 
 
 @pytest.fixture
@@ -16,6 +19,25 @@ def ready_integration_instance(db):
         status="ready",
         capability_status={"user_sync": "ready", "login_auth": "pending_verification", "im_notification": "pending_verification"},
         config={"app_id": "cli_xxx", "app_secret": "plain-secret"},
+    )
+
+
+@pytest.fixture
+def ready_ad_integration_instance(db):
+    return IntegrationInstance.objects.create(
+        name="ad-sync",
+        provider_key="ad",
+        enabled=True,
+        status="ready",
+        capability_status={"user_sync": "ready", "login_auth": "ready"},
+        config={
+            "connection_url": "ldap://ad.example.com:389",
+            "ssl_encryption": "none",
+            "timeout": 10,
+            "bind_dn": "CN=svc,OU=Service,DC=corp,DC=example,DC=com",
+            "bind_password": "secret",
+            "base_dn": "DC=corp,DC=example,DC=com",
+        },
     )
 
 
@@ -72,6 +94,14 @@ def test_mode_resolver_reads_manual_input_from_manifest():
     finally:
         registry._providers.pop("demo_manual", None)
         adapter_registry._adapters.pop("demo_manual.user_sync", None)
+
+
+def test_ad_root_scope_field_resolves_to_root_dn():
+    assert get_user_sync_root_scope_field("ad") == "root_dn"
+
+
+def test_ad_root_dn_uses_manual_input_mode():
+    assert get_user_sync_root_department_input_mode("ad") == "manual_input"
 
 
 @pytest.fixture
@@ -187,6 +217,83 @@ def test_manual_input_rejects_empty_root_department(manual_input_instance):
             "root_group_name": "Manual Root",
             "business_config": {
                 "root_department_id": "",
+            },
+            "field_mapping": {},
+            "schedule_config": {},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "business_config" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_accepts_root_dn_and_skips_department_listing(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Root",
+            "business_config": {
+                "root_dn": "OU=PAAS,DC=corp,DC=example,DC=com",
+            },
+            "field_mapping": {},
+            "schedule_config": {},
+        }
+    )
+
+    with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute") as mock_execute:
+        assert serializer.is_valid(), serializer.errors
+
+    mock_execute.assert_not_called()
+    assert serializer.validated_data["business_config"]["root_dn"] == "OU=PAAS,DC=corp,DC=example,DC=com"
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_accepts_root_dn_equal_to_base_dn(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Root",
+            "business_config": {
+                "root_dn": "DC=corp,DC=example,DC=com",
+            },
+            "field_mapping": {},
+            "schedule_config": {},
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_accepts_root_dn_within_base_dn(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Root",
+            "business_config": {
+                "root_dn": "OU=PAAS,DC=corp,DC=example,DC=com",
+            },
+            "field_mapping": {},
+            "schedule_config": {},
+        }
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_ad_manual_input_rejects_root_dn_outside_base_dn(ready_ad_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "ad-source",
+            "integration_instance": ready_ad_integration_instance.id,
+            "root_group_name": "AD Root",
+            "business_config": {
+                "root_dn": "OU=PAAS,DC=other,DC=example,DC=com",
             },
             "field_mapping": {},
             "schedule_config": {},

@@ -52,11 +52,46 @@ def get_user_sync_root_department_input_mode(provider_key: str) -> str:
     if business_template is None:
         return "department_select"
 
+    root_scope_field = get_user_sync_root_scope_field(provider_key)
     for group in business_template.groups:
         for field in group.fields:
-            if field.key == "root_department_id":
+            if field.key == root_scope_field:
                 return field.input_mode or "department_select"
     return "department_select"
+
+
+def get_user_sync_root_scope_field(provider_key: str) -> str:
+    """Resolve the provider-specific root scope field for user sync."""
+    runtime_service = RuntimeApplicationService()
+    try:
+        manifest = runtime_service.get_provider_manifest(provider_key)
+    except ValueError:
+        return "root_department_id"
+
+    capability = manifest.get_capability("user_sync")
+    if capability is None or not capability.business_template:
+        return "root_department_id"
+
+    business_template = manifest.business_templates.get(capability.business_template)
+    if business_template is None:
+        return "root_department_id"
+
+    for group in business_template.groups:
+        for field in group.fields:
+            if str(field.key or "").startswith("root_"):
+                return field.key
+    return "root_department_id"
+
+
+def get_user_sync_root_scope_value(source, default=None):
+    """Read the provider-specific root scope value from business_config."""
+    integration_instance = getattr(source, "integration_instance", None)
+    provider_key = getattr(integration_instance, "provider_key", "")
+    root_scope_field = get_user_sync_root_scope_field(provider_key) if provider_key else "root_department_id"
+    business_config = getattr(source, "business_config", None) or {}
+    if root_scope_field in business_config:
+        return business_config.get(root_scope_field, default)
+    return business_config.get("root_department_id", default)
 
 
 def normalize_root_department_selection(selected_value: str, payload: dict) -> str:
@@ -229,17 +264,17 @@ def _build_run_payload(result, input_summary: dict, sync_summary: dict | None = 
 def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
     group_list = deepcopy(payload.get("group_list") or [])
     user_list = deepcopy(payload.get("user_list") or [])
-    root_department_id = get_user_sync_business_value(source, "root_department_id", "0") or "0"
+    root_scope_value = str(get_user_sync_root_scope_value(source, "0") or "0")
 
     with transaction.atomic():
         root_group = _get_or_create_root_group(source)
-        group_id_mapping, active_group_ids = _sync_groups(source, group_list, root_group, root_department_id)
+        group_id_mapping, active_group_ids = _sync_groups(source, group_list, root_group, root_scope_value)
         synced_usernames, disabled_user_count, conflict_usernames = _sync_users(
             source,
             user_list,
             group_id_mapping,
             root_group.id,
-            root_department_id,
+            root_scope_value,
         )
         stale_group_ids = list(Group.objects.filter(sync_source=source).exclude(id__in=active_group_ids).exclude(id=root_group.id).values_list("id", flat=True))
         if stale_group_ids:
@@ -263,11 +298,11 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
 
 
 def _get_or_create_root_group(source: UserSyncSource):
-    root_department_id = get_user_sync_business_value(source, "root_department_id", "0") or "0"
+    root_scope_value = str(get_user_sync_root_scope_value(source, "0") or "0")
     defaults = {
         "description": f"user_sync_source_{source.id}",
         "sync_source": source,
-        "external_id": _scoped_external_id(source.id, root_department_id),
+        "external_id": _scoped_external_id(source.id, root_scope_value),
     }
     root_group, created = Group.objects.get_or_create(parent_id=0, name=source.root_group_name, defaults=defaults)
     changed = False
@@ -555,5 +590,4 @@ def is_root_group_name_reserved(root_group_name: str, current_source_id: int | N
     if current_source_id is not None:
         queryset = queryset.exclude(id=current_source_id)
     return queryset.exists()
-
 

@@ -10,9 +10,11 @@ from apps.system_mgmt.models import (
     UserSyncRun,
     UserSyncSource,
 )
+from apps.system_mgmt.providers.adapters.common.ldap import is_sub_dn
 from apps.system_mgmt.services import user_sync_service
 from apps.system_mgmt.services.user_sync_service import (
     get_user_sync_root_department_input_mode,
+    get_user_sync_root_scope_field,
     is_root_group_name_reserved,
 )
 
@@ -89,14 +91,19 @@ class UserSyncSourceSerializer(UsernameSerializer):
             if "root_group_name" in attrs and attrs["root_group_name"] != self.instance.root_group_name:
                 raise serializers.ValidationError({"root_group_name": "Root group name cannot be changed"})
 
-        root_department_id = str(business_config.get("root_department_id") or "")
-        if not root_department_id:
+        root_scope_field = get_user_sync_root_scope_field(integration_instance.provider_key)
+        root_scope_value = str(business_config.get(root_scope_field) or "")
+        if not root_scope_value:
             raise serializers.ValidationError({"business_config": "Root department is required"})
 
         input_mode = get_user_sync_root_department_input_mode(integration_instance.provider_key)
         if input_mode == "manual_input":
             business_config.pop("department_id_type", None)
-            business_config["root_department_id"] = root_department_id
+            business_config[root_scope_field] = root_scope_value
+            if integration_instance.provider_key == "ad":
+                base_dn = str((integration_instance.config or {}).get("base_dn") or "").strip()
+                if base_dn and not is_sub_dn(root_scope_value, base_dn):
+                    raise serializers.ValidationError({"business_config": "Sync root must stay within the instance directory boundary"})
         else:
             runtime_service = RuntimeApplicationService()
             department_result = runtime_service.execute(
@@ -111,14 +118,14 @@ class UserSyncSourceSerializer(UsernameSerializer):
                 raise serializers.ValidationError({"business_config": department_result.summary})
 
             normalized_root_department_id = user_sync_service.normalize_root_department_selection(
-                root_department_id,
+                root_scope_value,
                 department_result.payload,
             )
             valid_department_ids = user_sync_service.flatten_department_ids(department_result.payload.get("items") or [])
             valid_department_ids.add(str(department_result.payload.get("all_department_id") or ""))
             if normalized_root_department_id not in valid_department_ids:
                 raise serializers.ValidationError({"business_config": "Selected root department is invalid"})
-            business_config["root_department_id"] = normalized_root_department_id
+            business_config[root_scope_field] = normalized_root_department_id
 
         attrs["business_config"] = business_config
         return attrs

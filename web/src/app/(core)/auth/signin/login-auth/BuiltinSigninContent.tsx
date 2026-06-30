@@ -8,6 +8,13 @@ interface BuiltinSigninContentProps {
   username: string;
   password: string;
   isLoading: boolean;
+  usernameLabel?: string;
+  usernamePlaceholder?: string;
+  passwordLabel?: string;
+  passwordPlaceholder?: string;
+  submitText?: string;
+  loadingText?: string;
+  fieldIdPrefix?: string;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
   onSubmit: (event: FormEvent) => void;
@@ -18,24 +25,33 @@ export default function BuiltinSigninContent({
   username,
   password,
   isLoading,
+  usernameLabel = "Username",
+  usernamePlaceholder = "Enter your username",
+  passwordLabel = "Password",
+  passwordPlaceholder = "Enter your password",
+  submitText = "Sign In",
+  loadingText = "Signing in...",
+  fieldIdPrefix = "builtin",
   onUsernameChange,
   onPasswordChange,
   onSubmit,
 }: BuiltinSigninContentProps) {
   const isModalMode = mode === "modal";
+  const usernameFieldId = `${fieldIdPrefix}-username`;
+  const passwordFieldId = `${fieldIdPrefix}-password`;
 
   return (
     <form onSubmit={onSubmit} className="flex w-full flex-col space-y-5">
       <div className="space-y-1.5">
         <label
-          htmlFor="username"
+          htmlFor={usernameFieldId}
           className={`font-medium text-(--color-text-1) ${isModalMode ? "text-[13px]" : "text-[13px]"}`}
         >
-          Username
+          {usernameLabel}
         </label>
         <Input
-          id="username"
-          placeholder="Enter your username"
+          id={usernameFieldId}
+          placeholder={usernamePlaceholder}
           value={username}
           onChange={(event) => onUsernameChange(event.target.value)}
           size="large"
@@ -46,14 +62,14 @@ export default function BuiltinSigninContent({
 
       <div className="space-y-1.5">
         <label
-          htmlFor="password"
+          htmlFor={passwordFieldId}
           className={`font-medium text-(--color-text-1) ${isModalMode ? "text-[13px]" : "text-[13px]"}`}
         >
-          Password
+          {passwordLabel}
         </label>
         <Input.Password
-          id="password"
-          placeholder="Enter your password"
+          id={passwordFieldId}
+          placeholder={passwordPlaceholder}
           value={password}
           onChange={(event) => onPasswordChange(event.target.value)}
           size="large"
@@ -73,10 +89,10 @@ export default function BuiltinSigninContent({
               <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
               <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 718-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 714 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
             </svg>
-            Signing in...
+            {loadingText}
           </span>
         ) : (
-          "Sign In"
+          submitText
         )}
       </button>
     </form>

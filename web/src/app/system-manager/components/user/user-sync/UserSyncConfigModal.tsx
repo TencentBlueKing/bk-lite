@@ -4,7 +4,11 @@ import { Button, Form } from 'antd';
 import OperateModal from '@/components/operate-modal';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
 import type { AvailableInstance, UserSyncSource, UserSyncSourceConfigFormValues } from '@/app/system-manager/types/user-sync';
-import { getWriteOnlyKeys, resolveUserSyncTemplate } from '@/app/system-manager/utils/userSyncUtils';
+import {
+  getWriteOnlyKeys,
+  mergeUserSyncBusinessConfigWithDefaults,
+  resolveUserSyncTemplate,
+} from '@/app/system-manager/utils/userSyncUtils';
 import { type MappingRow, toMappingRows } from '@/app/system-manager/utils/userSyncPageUtils';
 import UserSyncConfigFields from '@/app/system-manager/components/user/user-sync/UserSyncConfigFields';
 
@@ -38,19 +42,23 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
   const [form] = Form.useForm<UserSyncSourceConfigFormValues>();
   const [mappingRows, setMappingRows] = useState<MappingRow[]>(toMappingRows({}));
 
-  useEffect(() => {
-    if (!open || !source) return;
-    form.resetFields();
-    form.setFieldsValue({
-      business_config: { ...(source.business_config || {}) },
-    });
-    setMappingRows(toMappingRows(source.field_mapping));
-  }, [open, source, form]);
-
   const resolvedTemplate = useMemo(
     () => resolveUserSyncTemplate(source?.integration_instance, availableInstances, providers),
     [source?.integration_instance, availableInstances, providers],
   );
+
+  useEffect(() => {
+    if (!open || !source) return;
+    form.resetFields();
+    form.setFieldsValue({
+      business_config: mergeUserSyncBusinessConfigWithDefaults(
+        source.business_config || {},
+        resolvedTemplate,
+        { excludeRootScope: true },
+      ),
+    });
+    setMappingRows(toMappingRows(source.field_mapping));
+  }, [open, resolvedTemplate, source, form]);
 
   const writeOnlyKeys = useMemo(() => getWriteOnlyKeys(resolvedTemplate), [resolvedTemplate]);
 

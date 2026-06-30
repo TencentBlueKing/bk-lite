@@ -1,0 +1,201 @@
+from apps.system_mgmt.providers.schemas import ProviderManifest
+
+
+PROVIDER_MANIFEST = ProviderManifest.model_validate(
+    {
+        "key": "ad",
+        "name": "Active Directory",
+        "description": "Built-in Active Directory integration provider for login auth and user sync.",
+        "instance_templates": {
+            "base_connection": {
+                "title": "基础连接",
+                "groups": [
+                    {
+                        "key": "connection",
+                        "title": "连接配置",
+                        "fields": [
+                            {
+                                "key": "connection_url",
+                                "label": "服务器 IP",
+                                "field_type": "string",
+                                "required": True,
+                                "placeholder": "127.0.0.1",
+                                "help_text": "仅填写服务器 IP 地址，协议和默认端口由系统按 SSL 配置自动补全。",
+                                "reset_capabilities": ["login_auth", "user_sync"],
+                            },
+                            {
+                                "key": "ssl_encryption",
+                                "label": "SSL加密方式",
+                                "field_type": "select",
+                                "required": True,
+                                "default": "none",
+                                "options": [
+                                    {"value": "none", "label": "None"},
+                                    {"value": "ssl", "label": "SSL"},
+                                ],
+                                "reset_capabilities": ["login_auth", "user_sync"],
+                            },
+                            {
+                                "key": "timeout",
+                                "label": "超时时间",
+                                "field_type": "number",
+                                "required": True,
+                                "default": 10,
+                                "reset_capabilities": ["login_auth", "user_sync"],
+                            },
+                            {
+                                "key": "bind_dn",
+                                "label": "连接账号",
+                                "field_type": "string",
+                                "required": True,
+                                "placeholder": "administrator",
+                                "reset_capabilities": ["login_auth", "user_sync"],
+                            },
+                            {
+                                "key": "bind_password",
+                                "label": "连接密码",
+                                "field_type": "password",
+                                "required": True,
+                                "secret": True,
+                                "mask_strategy": "full",
+                                "reset_capabilities": ["login_auth", "user_sync"],
+                            },
+                            {
+                                "key": "base_dn",
+                                "label": "目录访问边界",
+                                "field_type": "string",
+                                "required": True,
+                                "placeholder": "DC=example,DC=com",
+                                "help_text": "平台只会在该目录访问边界内访问用户和组织；同步起始目录也必须位于该边界之下。",
+                                "reset_capabilities": ["login_auth", "user_sync"],
+                            },
+                        ],
+                    }
+                ],
+            }
+        },
+        "business_templates": {
+            "login_auth_form": {
+                "title": "登录认证配置",
+                "groups": [
+                    {
+                        "key": "mapping",
+                        "title": "字段映射",
+                        "fields": [
+                            {"key": "display_name", "label": "显示名称", "field_type": "string", "required": True},
+                            {"key": "icon", "label": "图标", "field_type": "string", "required": False},
+                            {"key": "description", "label": "描述", "field_type": "string", "required": False},
+                            {"key": "external_field", "label": "外部字段", "field_type": "string", "required": True},
+                            {"key": "platform_field", "label": "平台字段", "field_type": "select", "required": True},
+                            {
+                                "key": "unmatched_user_action",
+                                "label": "未匹配用户处理方式",
+                                "field_type": "select",
+                                "required": True,
+                            },
+                            {
+                                "key": "default_group_name",
+                                "label": "默认用户组名称",
+                                "field_type": "string",
+                                "required": False,
+                            },
+                        ],
+                    }
+                ],
+                "available_external_fields": [
+                    "sAMAccountName",
+                    "userPrincipalName",
+                    "displayName",
+                    "mail",
+                    "telephoneNumber",
+                    "distinguishedName",
+                ],
+                "default_external_match_field": "sAMAccountName",
+            },
+            "user_sync_form": {
+                "title": "用户同步配置",
+                "groups": [
+                    {
+                        "key": "scope",
+                        "title": "同步范围",
+                        "fields": [
+                            {
+                                "key": "root_dn",
+                                "label": "同步起始目录",
+                                "field_type": "string",
+                                "required": True,
+                                "placeholder": "OU=Users,DC=example,DC=com",
+                                "input_mode": "manual_input",
+                            },
+                            {
+                                "key": "user_object_class",
+                                "label": "用户对象类",
+                                "field_type": "string",
+                                "required": True,
+                                "default": "user",
+                                "placeholder": "user",
+                            },
+                            {
+                                "key": "user_filter",
+                                "label": "用户对象过滤",
+                                "field_type": "textarea",
+                                "required": True,
+                                "default": "(&(objectCategory=Person)(sAMAccountName=*))",
+                                "placeholder": "(&(objectCategory=Person)(sAMAccountName=*))",
+                            },
+                            {
+                                "key": "organization_object_class",
+                                "label": "组织架构类",
+                                "field_type": "string",
+                                "required": True,
+                                "default": "organizationalUnit",
+                                "placeholder": "organizationalUnit",
+                            },
+                        ],
+                    }
+                ],
+                "available_external_fields": [
+                    "sAMAccountName",
+                    "userPrincipalName",
+                    "displayName",
+                    "mail",
+                    "telephoneNumber",
+                    "distinguishedName",
+                    "department_ids",
+                ],
+            },
+        },
+        "capabilities": [
+            {
+                "key": "login_auth",
+                "name": "Login Auth",
+                "description": "Active Directory login authentication capability.",
+                "adapter_key": "ad.login_auth",
+                "adapter_path": "apps.system_mgmt.providers.adapters.ad.ADLoginAuthAdapter",
+                "connection_template": [
+                    {
+                        "key": "login_auth_identity_field",
+                        "label": "登录账号类型",
+                        "field_type": "select",
+                        "required": True,
+                        "default": "sAMAccountName",
+                        "options": [
+                            {"value": "sAMAccountName", "label": "用户名（sAMAccountName）"},
+                            {"value": "userPrincipalName", "label": "邮箱账号（userPrincipalName）"},
+                        ],
+                    }
+                ],
+                "business_template": "login_auth_form",
+            },
+            {
+                "key": "user_sync",
+                "name": "User Sync",
+                "description": "Active Directory user synchronization capability.",
+                "adapter_key": "ad.user_sync",
+                "adapter_path": "apps.system_mgmt.providers.adapters.ad.ADUserSyncAdapter",
+                "connection_template": [],
+                "business_template": "user_sync_form",
+            },
+        ],
+    }
+)

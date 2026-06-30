@@ -923,6 +923,7 @@
       },
       "provider": {
         "label": "集成类型",
+        "ad": "Active Directory",
         "feishu": "Feishu",
         "wechat": "Wechat",
         "ldap": "LDAP",

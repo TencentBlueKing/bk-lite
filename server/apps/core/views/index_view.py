@@ -119,7 +119,7 @@ def _get_login_auth_binding_by_id(binding_id: int):
     return None
 
 
-def _get_login_auth_external_base_url(local_port: int | None = None):
+def _get_login_auth_external_base_url():
     base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
     if not base_url:
         return ""
@@ -263,7 +263,7 @@ def login(request):
 
         if login_auth_binding_id:
             client = SystemMgmt()
-            res = client.login_with_binding(login_auth_binding_id, auth_code)
+            res = client.login_with_binding(login_auth_binding_id, auth_code, username=username, password=password)
             log_username = res.get("data", {}).get("username") or username or "unknown"
             if not res.get("result"):
                 logger.warning(f"Binding login failed for binding: {login_auth_binding_id}")

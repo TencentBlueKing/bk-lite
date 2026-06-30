@@ -14,6 +14,7 @@ import type {
 } from '@/app/system-manager/types/user-sync';
 import {
   getDefaultDepartmentIdType,
+  mergeUserSyncBusinessConfigWithDefaults,
   getWriteOnlyKeys,
   isDepartmentSelectMode,
   resolveUserSyncTemplate,
@@ -79,9 +80,11 @@ const UserSyncOperateModal: React.FC<UserSyncOperateModalProps> = ({
     if (previousInstanceIdRef.current === selectedInstanceId) return;
     previousInstanceIdRef.current = selectedInstanceId;
 
-    const nextBusinessConfig: Record<string, unknown> = {
-      ...(form.getFieldValue('business_config') || {}),
-    };
+    const nextBusinessConfig = mergeUserSyncBusinessConfigWithDefaults(
+      form.getFieldValue('business_config') || {},
+      resolvedTemplate,
+      { excludeRootScope: true },
+    );
 
     if (isDepartmentSelectMode(resolvedTemplate)) {
       nextBusinessConfig.root_department_id = '__all__';

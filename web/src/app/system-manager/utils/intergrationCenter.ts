@@ -4,6 +4,7 @@ import type {
   TemplateField,
   ProviderManifest
 } from '@/app/system-manager/types/integration-center';
+import type { Rule } from 'antd/es/form';
 
 export type IntegrationPrimaryStatusKey = 'started' | 'pending' | 'error' | 'inactive';
 export type IntegrationPrimaryStatusTone = 'success' | 'default' | 'error';
@@ -66,6 +67,7 @@ export function getCreateModalFooterMode(input: {
 export function resolveIntegrationProviderIcon(providerKey: string) {
   const providerIconMap: Record<string, string> = {
     feishu: 'feishu',
+    ad: 'ad',
     ldap: 'LDAP',
     oidc: 'OIDC',
     saml: 'SAML',
@@ -292,6 +294,22 @@ export function getIntegrationFieldBuckets(fields: TemplateField[]) {
     credentialFields: fields.filter((field) => field.key === 'app_id' || field.key === 'app_secret'),
     publicInterfaceFields: fields.filter((field) => field.key !== 'app_id' && field.key !== 'app_secret'),
   };
+}
+
+export function buildIntegrationFieldRules(field: TemplateField): Rule[] | undefined {
+  if (!field.required) {
+    return undefined;
+  }
+
+  const rule: Rule = {
+    required: !field.write_only,
+  };
+
+  if (field.field_type === 'string' || field.field_type === 'textarea') {
+    rule.whitespace = true;
+  }
+
+  return [rule];
 }
 
 export function getIntegrationDetailSummaryItems(input: {

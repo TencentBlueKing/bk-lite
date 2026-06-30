@@ -83,6 +83,31 @@ class DemoUserSyncAdapter(BaseUserSyncAdapter):
     pass
 
 
+class ADLoginAdapter:
+    @classmethod
+    def test_connection(cls, config, provider_key, capability_key, **kwargs):
+        return CapabilityExecutionResult.success_result("ad login ok")
+
+    @classmethod
+    def authenticate(cls, config, provider_key, capability_key, **kwargs):
+        username = kwargs.get("username")
+        password = kwargs.get("password")
+        if username == "alice" and password == "secret":
+            return CapabilityExecutionResult.success_result(
+                "ad auth ok",
+                payload={
+                    "external_user": {
+                        "sAMAccountName": "alice",
+                        "displayName": "Alice",
+                        "mail": "alice@example.com",
+                        "telephoneNumber": "13800000000",
+                        "distinguishedName": "CN=Alice,OU=Users,DC=corp,DC=example,DC=com",
+                    }
+                },
+            )
+        return CapabilityExecutionResult.failed_result("bad credentials", code="provider.auth_failed")
+
+
 def test_runtime_application_service_can_test_single_capability():
     manifest = SimpleNamespace(
         key="demo",
@@ -170,6 +195,56 @@ def test_runtime_application_service_can_execute_list_departments():
     assert result.success is True
     assert result.payload["all_department_id"] == "0"
     assert result.payload["items"][0]["id"] == "__all__"
+
+
+def test_runtime_application_service_can_execute_ad_authenticate_with_username_password():
+    manifest = SimpleNamespace(
+        key="ad",
+        capabilities=[SimpleNamespace(key="login_auth", adapter_key="ad.login_auth")],
+        get_capability=lambda capability_key: SimpleNamespace(key="login_auth", adapter_key="ad.login_auth"),
+    )
+    instance = SimpleNamespace(provider_key="ad", get_runtime_config=lambda: {"connection_url": "ldap://ad.example.com"})
+
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry({"ad.login_auth": ADLoginAdapter})
+
+    result = service.execute(
+        provider_key="ad",
+        capability_key="login_auth",
+        operation="authenticate",
+        config=instance.get_runtime_config(),
+        username="alice",
+        password="secret",
+    )
+
+    assert result.success is True
+    assert result.payload["external_user"]["sAMAccountName"] == "alice"
+
+
+def test_runtime_application_service_ad_authenticate_failure_bubbles_up():
+    manifest = SimpleNamespace(
+        key="ad",
+        capabilities=[SimpleNamespace(key="login_auth", adapter_key="ad.login_auth")],
+        get_capability=lambda capability_key: SimpleNamespace(key="login_auth", adapter_key="ad.login_auth"),
+    )
+    instance = SimpleNamespace(provider_key="ad", get_runtime_config=lambda: {"connection_url": "ldap://ad.example.com"})
+
+    service = RuntimeApplicationService()
+    service.provider_registry = FakeProviderRegistry(manifest)
+    service.adapter_registry = FakeAdapterRegistry({"ad.login_auth": ADLoginAdapter})
+
+    result = service.execute(
+        provider_key="ad",
+        capability_key="login_auth",
+        operation="authenticate",
+        config=instance.get_runtime_config(),
+        username="alice",
+        password="wrong",
+    )
+
+    assert result.success is False
+    assert result.errors[0].code == "provider.auth_failed"
 
 
 def test_feishu_build_login_url_returns_authorize_url_payload():

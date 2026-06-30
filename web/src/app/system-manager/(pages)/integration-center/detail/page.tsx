@@ -9,6 +9,7 @@ import { Badge, Button, Form, Input, InputNumber, Modal, Select, Spin, Switch, T
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type { IntegrationInstance, ProviderManifest, TemplateField } from '@/app/system-manager/types/integration-center';
 import {
+  buildIntegrationFieldRules,
   getAvailableIntegrationTabs,
   getIntegrationCapabilityLabel,
   getIntegrationDetailSummaryItems,
@@ -253,9 +254,7 @@ const IntegrationDetailPage: React.FC = () => {
 
   const renderTemplateField = (field: TemplateField) => {
     const fieldName = ['config', field.key] as (string | number)[];
-    const baseRules = field.required
-      ? [{ required: !field.write_only, whitespace: field.field_type === 'string' || field.field_type === 'textarea' }]
-      : undefined;
+    const baseRules = buildIntegrationFieldRules(field);
     const placeholder = field.write_only
       ? t('system.integrationCenter.keepSecretPlaceholder')
       : field.placeholder || undefined;

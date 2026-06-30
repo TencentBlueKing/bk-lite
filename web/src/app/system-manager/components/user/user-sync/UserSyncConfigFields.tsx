@@ -17,7 +17,9 @@ import type {
 } from '@/app/system-manager/types/integration-center';
 import type { UserSyncDepartmentNode } from '@/app/system-manager/types/user-sync';
 import {
+  getRootDepartmentFieldKey,
   getRootDepartmentInputMode,
+  shouldFetchDepartmentOptions,
 } from '@/app/system-manager/utils/userSyncUtils';
 import {
   PLATFORM_FIELD_META,
@@ -96,17 +98,18 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   const { getDepartmentOptions } = useUserSyncApi();
   const externalFieldPlaceholder = t('system.user.userSyncPage.externalFieldPlaceholder');
   const watchedDepartmentIdType = Form.useWatch(['business_config', 'department_id_type'], form);
-  const watchedRootDepartmentId = Form.useWatch(['business_config', 'root_department_id'], form);
   const departmentIdType = typeof watchedDepartmentIdType === 'string' ? watchedDepartmentIdType : '';
-  const currentRootDepartmentId = typeof watchedRootDepartmentId === 'string' ? watchedRootDepartmentId : '';
-  const currentRootDepartmentIdRef = useRef(currentRootDepartmentId);
   const [departmentNodes, setDepartmentNodes] = useState<UserSyncDepartmentNode[]>([]);
   const [departmentSelectionMissing, setDepartmentSelectionMissing] = useState(false);
   const [departmentLoadError, setDepartmentLoadError] = useState('');
   const [departmentLoading, setDepartmentLoading] = useState(false);
 
   const departmentTreeData = useMemo(() => toTreeSelectData(departmentNodes), [departmentNodes]);
+  const rootDepartmentFieldKey = useMemo(() => getRootDepartmentFieldKey(resolvedTemplate), [resolvedTemplate]);
   const inputMode = useMemo(() => getRootDepartmentInputMode(resolvedTemplate), [resolvedTemplate]);
+  const watchedRootDepartmentValue = Form.useWatch(['business_config', rootDepartmentFieldKey], form);
+  const currentRootDepartmentId = typeof watchedRootDepartmentValue === 'string' ? watchedRootDepartmentValue : '';
+  const currentRootDepartmentIdRef = useRef(currentRootDepartmentId);
 
   useEffect(() => {
     currentRootDepartmentIdRef.current = currentRootDepartmentId;
@@ -124,12 +127,12 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
         setDepartmentNodes([]);
         setDepartmentSelectionMissing(false);
         setDepartmentLoadError('');
-        form.setFieldValue(['business_config', 'root_department_id'], undefined);
-        form.setFields([{ name: ['business_config', 'root_department_id'], errors: [] }]);
+        form.setFieldValue(['business_config', rootDepartmentFieldKey], undefined);
+        form.setFields([{ name: ['business_config', rootDepartmentFieldKey], errors: [] }]);
         return;
       }
 
-      if (inputMode !== 'department_select') {
+      if (!shouldFetchDepartmentOptions({ selectedInstanceId, template: resolvedTemplate })) {
         setDepartmentNodes([]);
         setDepartmentSelectionMissing(false);
         setDepartmentLoadError('');
@@ -156,13 +159,13 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
           : (result.selected_id || currentFormValue || ALL_DEPARTMENT_SELECTION_ID);
 
         if (nextValue && nextValue !== currentFormValue) {
-          form.setFieldValue(['business_config', 'root_department_id'], nextValue);
+          form.setFieldValue(['business_config', rootDepartmentFieldKey], nextValue);
         } else if (!nextValue && currentFormValue) {
-          form.setFieldValue(['business_config', 'root_department_id'], undefined);
+          form.setFieldValue(['business_config', rootDepartmentFieldKey], undefined);
         }
 
         form.setFields([{
-          name: ['business_config', 'root_department_id'],
+          name: ['business_config', rootDepartmentFieldKey],
           errors: result.selection_missing ? [t('system.user.userSyncPage.departmentSelectionInvalid')] : [],
         }]);
       } catch {
@@ -171,7 +174,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
         setDepartmentSelectionMissing(false);
         setDepartmentLoadError(t('system.user.userSyncPage.departmentOptionsLoadFailed'));
         form.setFields([{
-          name: ['business_config', 'root_department_id'],
+          name: ['business_config', rootDepartmentFieldKey],
           errors: [t('system.user.userSyncPage.departmentOptionsLoadFailed')],
         }]);
       } finally {
@@ -185,10 +188,10 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
     return () => {
       active = false;
     };
-  }, [departmentIdType, form, inputMode, selectedInstanceId, t]);
+  }, [departmentIdType, form, resolvedTemplate, rootDepartmentFieldKey, selectedInstanceId, t]);
 
   const renderManifestField = (field: TemplateField) => {
-    if (hideRootDepartmentField && (field.key === 'root_department_id' || field.key === 'department_id_type')) {
+    if (hideRootDepartmentField && (field.key === rootDepartmentFieldKey || field.key === 'department_id_type')) {
       return null;
     }
 
@@ -201,7 +204,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
       : field.placeholder || undefined;
     const wrapperClassName = field.field_type === 'textarea' ? 'md:col-span-2' : '';
 
-    if (field.key === 'root_department_id') {
+    if (field.key === rootDepartmentFieldKey) {
       if (inputMode === 'manual_input') {
         return (
           <div key={field.key} className={wrapperClassName}>

@@ -7,11 +7,12 @@ import BuiltinSigninContent from "./login-auth/BuiltinSigninContent";
 import LoginAuthBindingContent from "./login-auth/LoginAuthBindingContent";
 import LoginAuthValidationPanel from "./login-auth/LoginAuthValidationPanel";
 import SigninContentShell from "./login-auth/SigninContentShell";
+import { getBindingPasswordCopy } from "./login-auth/bindingPasswordCopy";
 import { useLoginAuthValidation } from "./login-auth/useLoginAuthValidation";
 import {
   isBindingSelectionLocked,
   resolveInlineValidationError,
-  shouldUseBuiltinSigninForm,
+  resolveSigninSurface,
 } from "./login-auth/orderedBindingState";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
@@ -75,6 +76,7 @@ export default function SigninClient({
   const isPopupWindowMode = popup === 'true' || popup === '1';
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [bindingCredentialMap, setBindingCredentialMap] = useState<Record<number, { username: string; password: string }>>({});
   const [formError, setFormError] = useState("");
   const [isLoading, setIsLoading] = useState(false);
   const [authStep, setAuthStep] = useState<AuthStep>('login');
@@ -156,10 +158,16 @@ export default function SigninClient({
     },
   });
 
-  const handleLoginSubmit = async (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent, bindingId?: number) => {
     e.preventDefault();
     setIsLoading(true);
     setFormError("");
+
+    const selectedBindingCredentials = bindingId
+      ? (bindingCredentialMap[bindingId] || { username: "", password: "" })
+      : { username, password };
+    const requestUsername = selectedBindingCredentials.username;
+    const requestPassword = selectedBindingCredentials.password;
 
     try {
       const response = await fetch('/api/proxy/core/api/login/', {
@@ -168,8 +176,9 @@ export default function SigninClient({
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          username,
-          password,
+          binding_id: bindingId,
+          username: requestUsername,
+          password: requestPassword,
           domain: VALIDATION_MODE_DEFAULT_DOMAIN,
         }),
       });
@@ -334,15 +343,18 @@ export default function SigninClient({
     />
   );
   const selectedBinding = loginAuthValidation.selectedBinding;
+  const signinSurface = resolveSigninSurface(
+    loginAuthValidation.bindingsLoadState,
+    selectedBinding,
+  );
+  const bindingCredentials = selectedBinding
+    ? (bindingCredentialMap[selectedBinding.id] || { username: "", password: "" })
+    : { username: "", password: "" };
   const isValidationSelectionLocked = isBindingSelectionLocked({
     authStep,
     viewState: loginAuthValidation.viewState,
   });
   const showBindingsSelector = authStep === 'login' && loginAuthValidation.bindingsLoadState === 'bindings-ready';
-  const showBuiltinLoginForm = authStep === 'login' && shouldUseBuiltinSigninForm(
-    loginAuthValidation.bindingsLoadState,
-    selectedBinding,
-  );
   const shouldShowValidationFormState = authStep === 'login';
   const validationInlineError = shouldShowValidationFormState
     ? resolveInlineValidationError(
@@ -363,6 +375,38 @@ export default function SigninClient({
       onSubmit={handleLoginSubmit}
     />
   );
+
+  const bindingPasswordContent = selectedBinding ? (
+    <BuiltinSigninContent
+      mode={mode}
+      username={bindingCredentials.username}
+      password={bindingCredentials.password}
+      isLoading={isLoading}
+      {...getBindingPasswordCopy(selectedBinding)}
+      fieldIdPrefix={`binding-${selectedBinding.id}`}
+      onUsernameChange={(value) => {
+        setBindingCredentialMap((current) => ({
+          ...current,
+          [selectedBinding.id]: {
+            username: value,
+            password: current[selectedBinding.id]?.password || "",
+          },
+        }));
+      }}
+      onPasswordChange={(value) => {
+        setBindingCredentialMap((current) => ({
+          ...current,
+          [selectedBinding.id]: {
+            username: current[selectedBinding.id]?.username || "",
+            password: value,
+          },
+        }));
+      }}
+      onSubmit={(event) => {
+        void handleLoginSubmit(event, selectedBinding.id);
+      }}
+    />
+  ) : null;
 
   const bindingContent = (
     <LoginAuthBindingContent
@@ -416,7 +460,13 @@ export default function SigninClient({
       {authStep === 'login' && (
         <SigninContentShell
           mode={mode}
-          mainContent={showBuiltinLoginForm ? builtinContent : bindingContent}
+          mainContent={
+            signinSurface === 'builtin-password'
+              ? builtinContent
+              : signinSurface === 'binding-password'
+                ? bindingPasswordContent
+                : bindingContent
+          }
           methodsContent={bindingsSelector}
           methodsTitle="切换登录方式"
         />

@@ -923,6 +923,7 @@
       },
       "provider": {
         "label": "Integration Type",
+        "ad": "Active Directory",
         "feishu": "Feishu",
         "wechat": "WeChat",
         "ldap": "LDAP",

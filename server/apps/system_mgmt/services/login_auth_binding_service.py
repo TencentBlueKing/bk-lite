@@ -42,7 +42,7 @@ def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, stat
     return result
 
 
-def login_with_binding(binding_id: int, auth_code: str):
+def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = "", password: str = ""):
     from apps.system_mgmt.nats_api import get_user_login_token
 
     binding = (
@@ -65,6 +65,8 @@ def login_with_binding(binding_id: int, auth_code: str):
         config=instance.get_runtime_config(),
         binding=binding,
         auth_code=auth_code,
+        username=username,
+        password=password,
     )
     if not result.success:
         return {"result": False, "message": result.summary, "data": result.to_dict()}
