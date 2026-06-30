@@ -680,6 +680,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /server\s*technology|servertech|sentry3/i, label: 'Server Technology', icon: 'mm-servertech_servertech' },
   { match: /enlogic|en2\.?0/i, label: 'Enlogic', icon: 'mm-enlogic_enlogic' },
   { match: /rittal|cmc\s*iii/i, label: 'Rittal', icon: 'mm-rittal_rittal' },
+  { match: /gude|expert\s*power\s*control/i, label: 'Gude', icon: 'mm-gude_gude' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },
   { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },

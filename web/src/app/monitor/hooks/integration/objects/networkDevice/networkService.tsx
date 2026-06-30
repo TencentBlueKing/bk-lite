@@ -66,7 +66,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',
       'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech',
       'NetworkService Enlogic PDU SNMP': 'snmp_enlogic',
-      'NetworkService Rittal CMC III SNMP': 'snmp_rittal'
+      'NetworkService Rittal CMC III SNMP': 'snmp_rittal',
+      'NetworkService Gude PDU SNMP': 'snmp_gude'
     }
   };
 };

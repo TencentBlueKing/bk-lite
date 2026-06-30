@@ -4035,6 +4035,9 @@ monitor_object_plugin:
   NetworkService Rittal CMC III SNMP:
     name: Rittal CMC III（Telegraf）
     desc: Rittal CMC III 网络服务设备 SNMP 基线子模板，适用于 Rittal 企业号 2606.7 下的机柜、环境、电力与监控单元。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 unit、电力负载、电流消耗、设备状态与变量表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康、环境与 PDU 业务计数提升为共享设备健康指标。
+  NetworkService Gude PDU SNMP:
+    name: Gude PDU（Telegraf）
+    desc: Gude Expert Power Control、PDU、ATS 与 ETS 网络服务设备 SNMP 基线子模板，适用于 Gude 企业号 28507 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 PDU8310 电力、通道状态与 ETS 主备供电可用性表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 PDU 业务计数提升为共享设备健康指标。
   NetworkService Meinberg LANTIME SNMP:
     name: Meinberg LANTIME（Telegraf）
     desc: Meinberg LANTIME 时间服务器 SNMP 采集模板，适用于 Meinberg 企业号 5597 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。公开 LANTIME MIB 已确认 NTP 与 PTP 服务对象，但当前 MIB 事实未证明具备可保守归一的共享 CPU、内存、温度、风扇、电源健康标量，因此不把时间同步服务指标提升为共享设备健康指标。
