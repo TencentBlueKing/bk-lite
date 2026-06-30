@@ -4410,6 +4410,9 @@ monitor_object_plugin:
   NetworkService Socomec iPDU UPS SNMP:
     name: Socomec iPDU UPS (Telegraf)
     desc: Socomec iPDU, UPS and Net Vision SNMP baseline child template for network-service devices under Socomec PEN 4555. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm iPDU identity, inlet, outlet, EMD temperature or humidity, threshold alarm, UPS input, output, bypass, battery, load and device connection tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU business counters are not promoted into shared device-health metrics.
+  NetworkService NTI ENVIROMUX SNMP:
+    name: NTI ENVIROMUX (Telegraf)
+    desc: NTI ENVIROMUX SNMP baseline child template for environmental monitor and remote sensor network-service devices under NTI PEN 3699. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm internal, auxiliary, external and IP sensor tables, ACLM power tables, dry-contact, relay, message and alarm objects, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private environment, sensor and relay business counters are not promoted into shared device-health metrics.
   NetworkService Meinberg LANTIME SNMP:
     name: Meinberg LANTIME (Telegraf)
     desc: Meinberg LANTIME time-server SNMP collection for appliances under Meinberg PEN 5597. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The public LANTIME MIB confirms NTP and PTP service objects, but stable shared CPU, memory, temperature, fan and power health scalars with conservative status semantics are not proven in the current MIB facts, so service indicators are not promoted into shared device-health metrics.

@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_nti",
+  "plugin": "NetworkService NTI ENVIROMUX SNMP",
+  "plugin_desc": "NTI ENVIROMUX environmental monitor and remote sensor network-service SNMP baseline child template for devices under NTI PEN 3699. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm internal, auxiliary, external and IP sensor tables, ACLM power tables, dry-contact, relay, message and alarm objects, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private environment, sensor and relay business counters are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_nti'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

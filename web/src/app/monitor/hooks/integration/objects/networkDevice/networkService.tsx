@@ -69,7 +69,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Rittal CMC III SNMP': 'snmp_rittal',
       'NetworkService Gude PDU SNMP': 'snmp_gude',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
-      'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec'
+      'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec',
+      'NetworkService NTI ENVIROMUX SNMP': 'snmp_nti'
     }
   };
 };
