@@ -4441,6 +4441,9 @@ monitor_object_plugin:
   Storage NetApp SNMP:
     name: NetApp（Telegraf）
     desc: NetApp 存储 SNMP 采集（企业号 PEN 789）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 繁忙时间（cpuBusyTimePerCent，直接百分比）与 RAID 磁盘驱动器状态（raidStatus，active 正常归一为 1=正常 / 2=异常，按实例取最差磁盘行）。环境标量（风扇/电源失效计数、超温）为计数/布尔型，未纳入共享盘 enum 语义，故温度、风扇、电源为 N/A，不伪造，待现网核验后扩展。适用品牌型号——NetApp FAS / AFF 存储系统（Data ONTAP，企业号 PEN 789）。
+  Storage Fujitsu SNMP:
+    name: 富士通 Fujitsu（Telegraf）
+    desc: Fujitsu ETERNUS 存储阵列 SNMP 采集（企业号 PEN 211，fjdary-MIB）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——机箱温度传感器（fjdaryMachineTempInfo，摄氏度直采无缩放）、RAID 组状态（fjdaryMgtRaidGrpStatus）与逻辑卷状态（fjdaryMgtOpVolumeStatus）。RAID/卷原始枚举 ok(2) 归一为 1=正常，其余 unknown/degraded/error/dormant 归一为 2=异常，并按实例取最差阵列或卷。该 MIB 未发布可轮询的控制器 CPU/内存利用率，电源对象为瓦数读数而非状态枚举，且无风扇状态对象，故 CPU、内存、风扇、电源为 N/A，不伪造。适用品牌型号——Fujitsu ETERNUS DX 存储阵列。
   Storage Dell SC8000 SNMP:
     name: Dell SC8000（Telegraf）
     desc: Dell SC8000 / Compellent 存储 SNMP 采集（Dell EMC 企业号 PEN 674）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——物理磁盘状态与健康标志（scDiskStatus / scDiskHealthy）、控制器风扇状态（scCtlrFanStatus）和控制器电源状态（scCtlrPowerStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。该 profile 未暴露可轮询的控制器 CPU、内存或温度 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——Dell SC8000 / Compellent SC Series 存储阵列。

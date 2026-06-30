@@ -52,8 +52,8 @@
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "ifDescr",
-          "description": "ifDescr"
+          "name": "ifName",
+          "description": "ifName"
         }
       ],
       "instance_id_keys": [
@@ -70,8 +70,8 @@
       "unit": "byteps",
       "dimensions": [
         {
-          "name": "ifDescr",
-          "description": "ifDescr"
+          "name": "ifName",
+          "description": "ifName"
         }
       ],
       "instance_id_keys": [
