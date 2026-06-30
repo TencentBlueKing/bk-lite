@@ -4582,7 +4582,7 @@ monitor_object_plugin:
       and ION/IONMM managed media converters.
   Switch Waystream SNMP:
     name: Waystream (Telegraf)
-    desc: Waystream ASR / FTTH switch SNMP collection template (IANA PEN 9303). The verified WAYSTREAM-SMI and WAYSTREAM-RPM-MIB private tree is focused on enterprise identity and RPM/IPTV QoS objects, and no row-filter-free scalar device-health gauges were confirmed in the available state, so this is a clean MIB-II + IF-MIB baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Waystream ASR and FTTH access switches.
+    desc: Waystream ASR / FTTH switch SNMP child template (IANA PEN 9303). The verified WAYSTREAM-SMI and WAYSTREAM-RPM-MIB private tree is focused on enterprise identity and RPM/IPTV QoS objects, and no row-filter-free scalar device-health gauges were confirmed in the available state. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the Waystream collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Waystream ASR and FTTH access switches.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection

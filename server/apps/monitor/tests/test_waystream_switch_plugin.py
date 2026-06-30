@@ -6,19 +6,11 @@ decisions for the SNMP brand-plugin family.
 Waystream FTTH/ASR switches (IANA PEN 9303) have a verified WAYSTREAM-SMI /
 WAYSTREAM-RPM-MIB enterprise tree, but the available state only confirms IPTV
 QoS / RPM objects and does not provide row-filter-free scalar device-health
-gauges. This is therefore a BASELINE plugin: it collects only standard MIB-II
-uptime plus IF-MIB interface metrics (including the 64-bit ifHC counters) and
-the device-aggregated traffic totals.
+gauges. This is therefore a zero-delta child plugin: metrics.json declares no
+vendor-specific metrics. The shared Switch SNMP floor supplies uptime, IF-MIB
+interface metrics, 64-bit ifHC counters and device-aggregated traffic totals.
 CPU, memory, temperature, fan and power are all N/A and must NOT be modelled,
 so there must be NO processors.enum block and NO private PEN 9303 OID.
-
-  - snmp_uptime: baseline uptime (declared as supplementary, re-surfaced here)
-  - interface_ifAdminStatus / ifOperStatus: Enum, group Status
-  - interface_ifSpeed: bitps, group Bandwidth
-  - interface_ifInErrors / ifOutErrors: cps rate, group Packet Error
-  - interface_ifInDiscards / ifOutDiscards: cps rate, group Packet Loss
-  - interface_ifHCInOctets / ifHCOutOctets: byteps rate, 64-bit, group Traffic
-  - device_total_incoming/outgoing_traffic: byteps, group Traffic
 
 Waystream reuses the shared Switch object name and dashboard but has a
 brand-specific common.tsx match and icon, plus the switch.tsx collect-type wire.
@@ -45,15 +37,21 @@ PLUGIN_NAME = "Switch Waystream SNMP"
 OBJECT_NAME = "Switch"
 WAYSTREAM_PEN_ROOT = "1.3.6.1.4.1.9303"
 
-SUPPORTED_SCALAR_UNITS = {
-    "byteps", "bytes", "bitps", "counts", "cps", "percent", "celsius", "s", "short", "none",
-}
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 HEALTH_METRICS = (
     "device_cpu_usage", "device_memory_used", "device_memory_free",
     "device_memory_usage", "device_temperature_celsius",
     "device_fan_state", "device_psu_state",
 )
+BASE_METRICS = {
+    "snmp_uptime",
+    "interface_ifAdminStatus", "interface_ifOperStatus", "interface_ifSpeed",
+    "interface_ifInErrors", "interface_ifOutErrors",
+    "interface_ifInDiscards", "interface_ifOutDiscards",
+    "interface_ifInUcastPkts", "interface_ifOutUcastPkts",
+    "interface_ifInOctets", "interface_ifOutOctets",
+    "interface_ifHCInOctets", "interface_ifHCOutOctets",
+    "device_total_incoming_traffic", "device_total_outgoing_traffic",
+}
 
 
 def _read_json(path):
@@ -132,6 +130,19 @@ def test_ui_is_pure_snmp_form(ui):
 # baseline plugin: NO private health metrics, NO enum, NO private PEN OID
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
+def test_metrics_json_is_zero_delta_child(metrics):
+    assert metrics["metrics"] == []
+    assert metrics["supplementary_indicators"] == []
+
+
+@pytest.mark.unit
+def test_metrics_json_does_not_redeclare_snmp_floor(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    leaked = sorted(names & BASE_METRICS)
+    assert leaked == [], f"SNMP floor metrics must stay in generic snmp/switch only: {leaked}"
+
+
+@pytest.mark.unit
 def test_no_private_health_metrics_modelled(metrics):
     names = {m["name"] for m in metrics["metrics"]}
     present = [h for h in HEALTH_METRICS if h in names]
@@ -152,19 +163,8 @@ def test_no_private_pen_oid_used(toml_text):
 
 
 # --------------------------------------------------------------------------- #
-# 64-bit IF-MIB HC traffic
+# 64-bit IF-MIB HC traffic remains in the Telegraf child template
 # --------------------------------------------------------------------------- #
-@pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        assert name in by, f"{name} must be declared"
-        m = by[name]
-        assert m["unit"] == "byteps", f"{name} must be byteps"
-        assert m["metric_group"] == "Traffic"
-        assert m["query"].startswith("rate("), f"{name} must be a rate()"
-
-
 @pytest.mark.unit
 def test_toml_collects_64bit_ifhc_counters(toml_text):
     assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text  # ifHCInOctets
@@ -179,37 +179,6 @@ def test_toml_collects_iftable_and_uptime(toml_text):
 
 
 # --------------------------------------------------------------------------- #
-# device-aggregated traffic totals
-# --------------------------------------------------------------------------- #
-@pytest.mark.unit
-def test_device_total_traffic_aggregated_by_instance(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in ("device_total_incoming_traffic", "device_total_outgoing_traffic"):
-        assert name in by, f"{name} must be declared"
-        m = by[name]
-        assert m["unit"] == "byteps"
-        assert m["metric_group"] == "Traffic"
-        assert m["dimensions"] == []
-        q = m["query"].replace(" ", "")
-        assert q.startswith("sum(rate(") and "by(instance_id)" in q
-
-
-# --------------------------------------------------------------------------- #
-# interface status enums normalized to up/down/testing
-# --------------------------------------------------------------------------- #
-@pytest.mark.unit
-def test_interface_status_metrics_are_enum(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in ("interface_ifAdminStatus", "interface_ifOperStatus"):
-        assert name in by, f"{name} must be declared"
-        m = by[name]
-        assert m["data_type"] == "Enum"
-        assert m["metric_group"] == "Status"
-        ids = {opt["id"] for opt in json.loads(m["unit"])}
-        assert {1, 2}.issubset(ids), f"{name} must expose up(1)/down(2)"
-
-
-# --------------------------------------------------------------------------- #
 # metrics.json hygiene
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
@@ -219,29 +188,8 @@ def test_supplementary_indicators_have_no_dangling_refs(metrics):
     assert dangling == [], f"supplementary_indicators reference absent metrics: {dangling}"
 
 
-@pytest.mark.unit
-def test_all_scalar_metric_units_supported(metrics):
-    bad = [
-        f'{m["name"]}:{m["unit"]}'
-        for m in metrics["metrics"]
-        if m["data_type"] != "Enum" and m["unit"] not in SUPPORTED_SCALAR_UNITS
-    ]
-    assert bad == [], f"unsupported units: {bad}"
-
-
-@pytest.mark.unit
-def test_dimensions_well_formed(metrics):
-    bad = [
-        m["name"]
-        for m in metrics["metrics"]
-        for d in m.get("dimensions", [])
-        if not d.get("name") or not d.get("description")
-    ]
-    assert bad == [], f"malformed dimensions: {bad}"
-
-
 # --------------------------------------------------------------------------- #
-# policy: error/discard rates only (no health metrics to alert on)
+# policy: no vendor metrics, so no brand-level policy templates
 # --------------------------------------------------------------------------- #
 @pytest.mark.unit
 def test_policy_templates_reference_existing_metrics(metrics, policy):
@@ -251,12 +199,8 @@ def test_policy_templates_reference_existing_metrics(metrics, policy):
 
 
 @pytest.mark.unit
-def test_policy_covers_interface_error_and_discard_rates(policy):
-    names = {t["metric_name"] for t in policy["templates"]}
-    assert names == {
-        "interface_ifInErrors", "interface_ifOutErrors",
-        "interface_ifInDiscards", "interface_ifOutDiscards",
-    }, "Waystream baseline policy must cover interface error/discard rates only"
+def test_policy_has_no_brand_level_templates(policy):
+    assert policy["templates"] == []
 
 
 # --------------------------------------------------------------------------- #
