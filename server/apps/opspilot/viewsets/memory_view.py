@@ -10,6 +10,7 @@ from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import LLMModel
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace
 from apps.opspilot.serializers.memory_serializer import MemorySerializer, MemorySpaceSerializer, WorkflowMemorySpaceOptionSerializer
+from apps.opspilot.utils.prompt_safety import build_user_rule_block
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -106,8 +107,8 @@ class MemorySpaceViewSet(AuthViewSet):
                 temperature=0.3,
             )
             client = LLMClientFactory.create_client(llm_request, disable_stream=True)
-            # write_rule 用 XML 标签包裹为数据段，防止用户可控内容覆盖系统指令（prompt 注入防护）
-            safe_write_rule = f"<user_rule>\n{write_rule}\n</user_rule>"
+            # write_rule 转义后作为数据段，防止用户可控内容闭合标签逃逸
+            safe_write_rule = build_user_rule_block(write_rule)
             messages = [
                 SystemMessage(
                     content=(

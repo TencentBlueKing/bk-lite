@@ -46,6 +46,7 @@ from apps.opspilot.services.workflow_attachment_service import cleanup_expired_w
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
 from apps.opspilot.utils.chunk_helper import ChunkHelper
 from apps.opspilot.utils.graph_utils import GraphUtils
+from apps.opspilot.utils.prompt_safety import build_user_rule_block
 
 MEMORY_WRITE_PROCESSING_TTL_SECONDS = int(os.getenv("MEMORY_WRITE_PROCESSING_TTL_SECONDS", "1800"))
 
@@ -110,11 +111,8 @@ def _summarize_memory_batch_content(memory_space, batch_content: str, model_id=N
     if not client:
         return batch_content
 
-    write_rule = memory_space.write_rule.strip()
-    # 用 XML 标签将 write_rule 包裹为数据段，防止用户可控内容覆盖上层系统指令（prompt 注入防护）
-    safe_write_rule = (
-        f"<user_rule>\n{write_rule}\n</user_rule>" if write_rule else "未配置额外写入规则"
-    )
+    write_rule = memory_space.write_rule
+    safe_write_rule = build_user_rule_block(write_rule)
     summary_prompt = f"""你是一个记忆批处理助手。请将多条工作流输出整理为一份适合写入记忆的汇总内容。
 
 ## 输出要求
@@ -1566,8 +1564,8 @@ def process_memory_write(
         processed_content = content
         if write_rule and not skip_write_rule:
             try:
-                # 固定系统指令作为首段，write_rule 用 XML 标签包裹为数据段，防止 prompt 注入
-                safe_write_rule = f"<user_rule>\n{write_rule}\n</user_rule>"
+                # 固定系统指令作为首段，write_rule 转义后作为数据段，防止闭合标签逃逸
+                safe_write_rule = build_user_rule_block(write_rule)
                 messages = [
                     SystemMessage(
                         content=(
