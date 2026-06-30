@@ -3905,6 +3905,9 @@ monitor_object_plugin:
   Transmission Siklu SNMP:
     name: Siklu（Telegraf）
     desc: Siklu EtherHaul / MultiHaul 毫米波传输设备 SNMP 子模板（企业号 PEN 31926）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 Radio Bridge 系统温度标量 rbSysTemperature，作为 device_temperature_celsius 设备温度。CPU、内存、风扇、电源未暴露稳定共享健康对象，故不采集；RF 信号、CINR、Tx 功率与逐射频状态属于链路遥测，本轮不提升为共享设备健康指标。
+  Transmission 4RF Aprisa SNMP:
+    name: 4RF Aprisa（Telegraf）
+    desc: 4RF AprisaXE 无线传输设备 SNMP 子模板（企业号 PEN 14817）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 AprisaXE 接收机温度与两个风扇状态。温度以摄氏度直采；风扇状态将 notFitted(0) 与 fanOkay(1) 归一为 1=正常，其它和未知状态归一为 2=异常。CPU、内存、电源未暴露稳定共享健康对象，RSSI/SNR/TDM/以太网对象属于链路或业务遥测，故不提升为设备级健康指标。
   Transmission Viavi SNMP:
     name: Viavi（Telegraf）
     desc: Viavi/JDSU 传输与网络可见性设备 SNMP 基线子模板（企业号 PEN 26052）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。

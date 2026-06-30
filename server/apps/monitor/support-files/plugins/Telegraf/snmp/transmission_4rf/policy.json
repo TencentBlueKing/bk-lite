@@ -1,0 +1,44 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission 4RF Aprisa SNMP",
+  "templates": [
+    {
+      "name": "4RF Aprisa传输设备接收机温度过高",
+      "alert_name": "传输设备${resource_name} 接收机温度过高",
+      "description": "监控 4RF AprisaXE 传输设备的接收机温度，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或射频单元负载异常。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "4RF Aprisa传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇异常",
+      "description": "监控 4RF AprisaXE 传输设备的风扇状态，当任一风扇上报异常或未知状态时触发告警。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

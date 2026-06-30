@@ -675,6 +675,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },
   { match: /\bxkl\b|dxmos|dqt400|dqm400/i, label: 'XKL', icon: 'mm-xkl_xkl' },
   { match: /siklu|etherhaul|multihaul/i, label: 'Siklu', icon: 'mm-siklu_siklu' },
+  { match: /4rf|aprisa/i, label: '4RF Aprisa', icon: 'mm-4rf_4rf' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
   { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
   { match: /ekinops/i, label: 'Ekinops', icon: 'mm-ekinops_ekinops' },
