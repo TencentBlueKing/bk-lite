@@ -175,6 +175,12 @@ monitor_object_metric:
     device_cpu_usage:
       name: CPU 使用率
       desc: 接入设备的整机 CPU 使用率（设备私有标量直接上报的百分比）。持续偏高说明 OLT 控制平面或管理平面负载过高。
+    device_memory_total:
+      name: 内存总量
+      desc: 接入设备上报的物理内存总容量，单位为字节。该指标可与空闲内存一起推导整体内存使用率。
+    device_memory_free:
+      name: 空闲内存
+      desc: 接入设备当前可用的物理内存容量，单位为字节。空闲内存持续降低可能表示控制服务或业务表项造成内存压力。
     device_memory_usage:
       name: 内存使用率
       desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
@@ -190,6 +196,9 @@ monitor_object_metric:
     device_psu_state:
       name: 电源状态
       desc: 接入设备电源模块状态。正常值归一为 1，告警或未知状态归一为 2，表示电源输入、模块或告警灯存在异常风险。
+    device_fan_state:
+      name: 风扇状态
+      desc: 接入设备风扇运行状态。正常值归一为 1，异常或未知状态归一为 2，表示散热能力可能下降。
     device_disk_usage:
       name: 磁盘使用率
       desc: 接入设备磁盘卷使用率，按设备取最高卷使用率。持续偏高可能导致日志、配置或运行文件写入风险。
@@ -3960,6 +3969,9 @@ monitor_object_plugin:
   Access ARRIS Cadant SNMP:
     name: ARRIS Cadant（Telegraf）
     desc: ARRIS Cadant E6 CMTS 接入设备 SNMP 子模板（企业号 PEN 4998）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 CADANT-CMTS-EQUIPMENT-MIB 私有设备健康指标：风扇环境温度（摄氏度直采）、板卡相对温度级别、板卡主状态、电源模块 LED 状态、磁盘卷使用率与磁盘卷使用级别。DOCSIS 端口、频道与业务计数属于业务/端口/行级对象，不提升为共享设备健康指标。
+  Access Raisecom SNMP:
+    name: Raisecom（Telegraf）
+    desc: Raisecom ROAP/ROS 接入设备 SNMP 子模板（企业号 PEN 8886）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 Raisecom 私有健康指标：CPU 使用率、内存总量/空闲/使用率、设备温度、风扇状态与电源状态。光模块、PON 与告警表属于业务/端口/行级对象，不提升为共享设备健康指标。
   ConsoleServer Opengear SNMP:
     name: Opengear (Telegraf)
     desc: Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。

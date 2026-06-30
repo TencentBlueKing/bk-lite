@@ -175,6 +175,12 @@ monitor_object_metric:
     device_cpu_usage:
       name: CPU Usage
       desc: Overall CPU utilization of the access device, reported directly as a percentage by a private scalar. Sustained high usage indicates OLT control-plane or management-plane pressure.
+    device_memory_total:
+      name: Memory Total
+      desc: Total physical memory capacity reported by the access device in bytes. This metric can be combined with free memory to derive overall memory utilization.
+    device_memory_free:
+      name: Memory Free
+      desc: Available physical memory currently reported by the access device in bytes. Persistently decreasing free memory can indicate pressure from control services or service tables.
     device_memory_usage:
       name: Memory Usage
       desc: System memory utilization of the access device, reported directly as a percentage by a private scalar. Sustained high memory can indicate forwarding table, ONU management table, or control-service pressure.
@@ -190,6 +196,9 @@ monitor_object_metric:
     device_psu_state:
       name: Power Module State
       desc: Power module status of the access device. Normal state is normalized to 1 and alarm or unknown states are normalized to 2, indicating possible power input, module, or alarm-light risk.
+    device_fan_state:
+      name: Fan State
+      desc: Fan operating state of the access device. Normal state is normalized to 1 and abnormal or unknown states are normalized to 2, indicating possible cooling degradation.
     device_disk_usage:
       name: Disk Usage
       desc: Disk volume usage of the access device, reported as the highest volume usage per device. Sustained high values can risk log, configuration, or runtime-file writes.
@@ -4326,6 +4335,9 @@ monitor_object_plugin:
   Access ARRIS Cadant SNMP:
     name: Access ARRIS Cadant SNMP
     desc: ARRIS Cadant E6 CMTS access-device SNMP child template for devices under enterprise PEN 4998. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds CADANT-CMTS-EQUIPMENT-MIB private equipment health metrics — fan ambient temperature in Celsius, relative card temperature level, card primary state, PEM power LED status, disk-volume usage percentage, and disk-volume usage level. DOCSIS port, channel, and service counters are business or row-level objects and are not promoted into shared device-health metrics.
+  Access Raisecom SNMP:
+    name: Access Raisecom SNMP
+    desc: Raisecom ROAP/ROS access-device SNMP child template for devices under enterprise PEN 8886. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds Raisecom private health metrics — CPU utilization, memory total/free/usage, device temperature, fan state, and power supply state. Optical transceiver, PON, and alarm tables are business, port, or row-level objects and are not promoted into shared device-health metrics.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.

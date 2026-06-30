@@ -55,7 +55,8 @@ export const useAccessConfig = () => {
     collectTypes: {
       'Access BDCOM SNMP': 'snmp_bdcom',
       'Access V-SOL SNMP': 'snmp_vsolution',
-      'Access ARRIS Cadant SNMP': 'snmp_arris'
+      'Access ARRIS Cadant SNMP': 'snmp_arris',
+      'Access Raisecom SNMP': 'snmp_raisecom'
     }
   };
 };
