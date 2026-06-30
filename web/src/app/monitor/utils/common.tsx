@@ -688,6 +688,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /geist|blackbird|watchdog/i, label: 'Geist', icon: 'mm-geist_geist' },
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
   { match: /socomec|net\s*vision/i, label: 'Socomec', icon: 'mm-socomec_socomec' },
+  { match: /liebert|vertiv/i, label: 'Liebert', icon: 'mm-liebert_liebert' },
   { match: /wti|western\s*telematic/i, label: 'WTI', icon: 'mm-wti_wti' },
   { match: /\bnti\b|enviromux/i, label: 'NTI ENVIROMUX', icon: 'mm-nti_nti' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },

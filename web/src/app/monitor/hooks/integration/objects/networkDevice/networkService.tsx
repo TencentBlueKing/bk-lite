@@ -71,6 +71,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Geist PDU Environmental SNMP': 'snmp_geist',
       'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
       'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec',
+      'NetworkService Liebert PDU UPS Environmental SNMP': 'snmp_liebert',
       'NetworkService NTI ENVIROMUX SNMP': 'snmp_nti'
     }
   };

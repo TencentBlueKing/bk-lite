@@ -4066,6 +4066,9 @@ monitor_object_plugin:
   NetworkService Socomec iPDU UPS SNMP:
     name: Socomec iPDU UPS（Telegraf）
     desc: Socomec iPDU、UPS 与 Net Vision 网络服务设备 SNMP 基线子模板，适用于 Socomec 企业号 4555 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 iPDU 标识、输入、插座、EMD 温湿度、阈值告警、UPS 输入、输出、旁路、电池、负载与设备连接表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 UPS/PDU 业务计数提升为共享设备健康指标。
+  NetworkService Liebert PDU UPS Environmental SNMP:
+    name: Liebert PDU UPS Environmental（Telegraf）
+    desc: Liebert 与 Vertiv PDU、UPS 和环境监控网络服务设备 SNMP 基线子模板，适用于 Liebert Global Products 企业号 476.1.42 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在机架 PDU、MPX、MPH、RPC2、电力测量、电力线路、直流电力、阈值、负载回路、温度、湿度与远程传感器表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 UPS/PDU/环境业务计数提升为共享设备健康指标。
   NetworkService NTI ENVIROMUX SNMP:
     name: NTI ENVIROMUX（Telegraf）
     desc: NTI ENVIROMUX 环境监控与远程传感器网络服务设备 SNMP 基线子模板，适用于 NTI 企业号 3699 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在内部、辅助、外部与 IP 传感器表、ACLM 电力表、干接点、继电器、消息与告警对象，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有环境、传感器与继电器业务计数提升为共享设备健康指标。
