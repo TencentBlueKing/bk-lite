@@ -46,7 +46,17 @@ def _register_instant_cache_signals():
         def _invalidate(sender, **kwargs):
             InstantStrategyCache.cache_clear()
 
-        post_save.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_save")
-        post_delete.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_delete")
+        post_save.connect(
+            _invalidate,
+            sender=AlarmStrategy,
+            dispatch_uid="instant_cache_post_save",
+            weak=False,
+        )
+        post_delete.connect(
+            _invalidate,
+            sender=AlarmStrategy,
+            dispatch_uid="instant_cache_post_delete",
+            weak=False,
+        )
     except Exception as e:  # noqa
         logger.error("[AlertInit] 注册即时告警缓存信号失败: %s", e, exc_info=True)
