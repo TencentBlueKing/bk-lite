@@ -28,8 +28,24 @@ OBJECT_NAME = "Transmission"
 SUPPORTED_SCALAR_UNITS = {
     "byteps", "bytes", "bitps", "counts", "cps", "percent", "celsius", "s", "short", "none",
 }
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
-TOTAL_METRICS = ("device_total_incoming_traffic", "device_total_outgoing_traffic")
+BASE_METRICS = {
+    "snmp_uptime",
+    "interface_ifAdminStatus",
+    "interface_ifOperStatus",
+    "interface_ifSpeed",
+    "interface_ifInErrors",
+    "interface_ifOutErrors",
+    "interface_ifInDiscards",
+    "interface_ifOutDiscards",
+    "interface_ifInUcastPkts",
+    "interface_ifOutUcastPkts",
+    "interface_ifInOctets",
+    "interface_ifOutOctets",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+}
 
 
 def _read_json(path):
@@ -101,30 +117,16 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
-def test_uptime_metric_present(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    assert "snmp_uptime" in by
-    assert by["snmp_uptime"]["unit"] == "s"
+def test_metrics_json_is_zero_delta_child(metrics):
+    assert metrics["metrics"] == []
+    assert metrics["supplementary_indicators"] == []
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        assert name in by
-        m = by[name]
-        assert m["unit"] == "byteps"
-        assert m["metric_group"] == "Traffic"
-        assert m["query"].startswith("rate(")
-
-
-@pytest.mark.unit
-def test_device_total_rollups_present(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in TOTAL_METRICS:
-        assert name in by
-        q = by[name]["query"].replace(" ", "")
-        assert q.startswith("sum(rate(") and "by(instance_id)" in q
+def test_metrics_json_does_not_redeclare_snmp_floor(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    leaked = sorted(names & BASE_METRICS)
+    assert leaked == [], f"SNMP floor metrics must stay in generic snmp/transmission: {leaked}"
 
 
 @pytest.mark.unit
@@ -209,5 +211,14 @@ def test_brand_match_present_in_common():
 
 @pytest.mark.unit
 def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+
+
+@pytest.mark.unit
+def test_password_fields_are_sidecar_env_placeholders(ui):
+    field_names = {field["name"] for field in ui["form_fields"]}
+    assert "ENV_AUTH_PASSWORD" in field_names
+    assert "ENV_PRIV_PASSWORD" in field_names
+    assert "auth_password" not in field_names
+    assert "priv_password" not in field_names

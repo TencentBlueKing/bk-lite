@@ -161,7 +161,7 @@
       }
     },
     {
-      "name": "auth_password",
+      "name": "ENV_AUTH_PASSWORD",
       "label": "认证密码",
       "type": "password",
       "required": false,
@@ -198,7 +198,7 @@
       }
     },
     {
-      "name": "priv_password",
+      "name": "ENV_PRIV_PASSWORD",
       "label": "加密密码",
       "type": "password",
       "required": false,

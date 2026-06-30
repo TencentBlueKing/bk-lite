@@ -13,9 +13,9 @@
     sec_name = "{{ sec_name }}"
     sec_level = "{{ sec_level }}"
     auth_protocol = "{{ auth_protocol }}"
-    auth_password = "{{ auth_password }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
     priv_protocol = "{{ priv_protocol }}"
-    priv_password = "{{ priv_password }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
     {% else %}
     {% endif %}
     [inputs.snmp.tags]
