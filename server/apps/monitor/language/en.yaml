@@ -4374,6 +4374,9 @@ monitor_object_plugin:
   NetworkService BlueCat SNMP:
     name: BlueCat (Telegraf)
     desc: BlueCat DDI network-service SNMP collection for appliances under BlueCat PEN 13315. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, and DNS, DHCP and IPAM counters are business or capacity indicators, so they are not promoted into shared device-health metrics.
+  NetworkService Meinberg LANTIME SNMP:
+    name: Meinberg LANTIME (Telegraf)
+    desc: Meinberg LANTIME time-server SNMP collection for appliances under Meinberg PEN 5597. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The public LANTIME MIB confirms NTP and PTP service objects, but stable shared CPU, memory, temperature, fan and power health scalars with conservative status semantics are not proven in the current MIB facts, so service indicators are not promoted into shared device-health metrics.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.

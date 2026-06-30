@@ -57,7 +57,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Gigamon SNMP': 'snmp_gigamon',
       'NetworkService Accedian SNMP': 'snmp_accedian',
       'NetworkService ZDNS SNMP': 'snmp_zdns',
-      'NetworkService BlueCat SNMP': 'snmp_bluecat'
+      'NetworkService BlueCat SNMP': 'snmp_bluecat',
+      'NetworkService Meinberg LANTIME SNMP': 'snmp_meinberg'
     }
   };
 };
