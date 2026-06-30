@@ -5134,6 +5134,9 @@ monitor_object_plugin:
   Router Aethra SNMP:
     name: Aethra Telecommunications (Telegraf)
     desc: Aethra Telecommunications IAD/DSL access router (with VoIP) SNMP collection (AETHRA-MIB, enterprise 7745). Beyond standard IF-MIB interface metrics, it collects Aethra private OIDs for device health including 5-minute average CPU load (cpuLoad5min, reported directly as a percentage) and main memory (total + free in kBytes, usage derived as (total-free)/total). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Aethra Telecommunications IAD/DSL routers (AC2036/Dolcevita series, enterprise 7745).
+  Router Benu SNMP:
+    name: Benu Networks (Telegraf)
+    desc: Benu Networks BNG/CGNAT edge router SNMP collection (BENU-CHASSIS-MIB, enterprise 39406). Beyond standard IF-MIB interface metrics, it collects Benu private chassis health metrics for temperature sensors, fan status and power-supply status. CPU and memory objects in BENU-HOST-MIB are software task tables, so they are not promoted to shared device CPU or memory health metrics here and remain N/A. Supported brands/models — Benu Networks MEG/xMEG router platforms.
   Router VeloCloud SNMP:
     name: VeloCloud/VMware SD-WAN (Telegraf)
     desc: VeloCloud/VMware SD-WAN Edge router SNMP collection (enterprise 45346). Beyond standard IF-MIB interface metrics, it collects VeloCloud private health OIDs for 5-minute average CPU utilisation and used memory, both reported directly as percentages. Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — VeloCloud/VMware SD-WAN Edge routers.
