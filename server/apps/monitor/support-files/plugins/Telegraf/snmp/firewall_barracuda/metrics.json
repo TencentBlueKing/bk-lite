@@ -1,0 +1,47 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_barracuda",
+  "plugin": "Firewall Barracuda SNMP",
+  "plugin_desc": "Barracuda CloudGen Firewall / Web Filter SNMP child template for devices under enterprise PEN 20632. The shared Firewall SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds verified bspyware system leaves for CPU/system temperature and firmware/log storage utilization. CPU, memory and fan/power-supply states are not promoted because stable shared state leaves are not confirmed; fan RPM and trap-only dead-fan signals are kept out of shared device health.",
+  "status_query": "any({instance_type='firewall', collect_type='snmp_barracuda'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_disk_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Barracuda CPU and system temperature readings, reported as the highest temperature per firewall instance."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_disk_usage",
+      "query": "max(device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Barracuda firmware and log storage utilization, reported as the highest utilization per firewall instance."
+    }
+  ]
+}

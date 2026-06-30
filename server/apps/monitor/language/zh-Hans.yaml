@@ -3670,6 +3670,8 @@ monitor_object_metric_group:
     Status: 状态
     Bandwidth: 带宽
     Traffic: 流量
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Firewall: 防火墙
     Traffic Overview: 流量总览
     Sampling: 采样率
@@ -4486,6 +4488,9 @@ monitor_object_plugin:
   Firewall DPtech SNMP:
     name: 迪普（Telegraf）
     desc: 迪普科技（DPtech）防火墙专用 SNMP 采集模板（企业号 PEN 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集 DPtech 私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——迪普科技（DPtech）NGFW / UTM / 网络安全设备（如 FW1000 系列，企业号 PEN 31648）。
+  Firewall Barracuda SNMP:
+    name: Barracuda（Telegraf）
+    desc: Barracuda CloudGen Firewall / Web Filter 防火墙专用 SNMP 子模板（企业号 PEN 20632）。通用 Firewall SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 bspyware system 叶子的 CPU/系统温度与 firmware/log 存储使用率，并按设备取最高值。CPU、内存、风扇状态与电源状态未确认稳定共享状态叶子，风扇转速与 trap-only 告警不提升为共享设备健康指标。
   Firewall Westone SNMP:
     name: 卫士通（Telegraf）
     desc: 卫士通（Westone）防火墙专用 SNMP 采集模板（企业号 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集卫士通私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——卫士通信息安全（Westone）防火墙 / 网络安全设备（企业号 31648）。
