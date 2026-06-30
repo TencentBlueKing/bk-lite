@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_zdns",
   "plugin": "NetworkService ZDNS SNMP",
-  "plugin_desc": "ZDNS DNS/GSLB network-service SNMP collection (local improved-snmp profile, ZDNS private PEN 39810 plus F5 BIG-IP LTM PEN 3375 objects). Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects ZDNS private scalar health — CPU utilization, memory utilization and CPU temperature — plus DNS/DHCP/NTP/ZWP/TFTP service status and F5 LTM virtual-server, node, pool and pool-member availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are business or capacity indicators, so they are not promoted into shared device-health metrics.",
+  "plugin_desc": "ZDNS DNS/GSLB network-service SNMP collection for appliances exposing ZDNS private PEN 39810 and F5 BIG-IP LTM PEN 3375 objects. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects ZDNS private scalar health — CPU utilization, memory utilization and CPU temperature — plus DNS/DHCP/NTP/ZWP/TFTP service status and F5 LTM virtual-server, node, pool and pool-member availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are business or capacity indicators, so they are not promoted into shared device-health metrics.",
   "status_query": "any({instance_type='network_service', collect_type='snmp_zdns'}) by (instance_id)",
   "name": "NetworkService",
   "icon": "mm-network_service_网络服务",
@@ -14,22 +14,9 @@
     "device_cpu_usage",
     "device_memory_usage",
     "device_temperature_celsius",
-    "network_service_dns_service_state",
-    "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
+    "network_service_dns_service_state"
   ],
   "metrics": [
-    {
-      "metric_group": "Base",
-      "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='network_service', __$labels__}/100) by (instance_id)",
-      "display_name": "System Uptime",
-      "data_type": "Number",
-      "unit": "s",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Device uptime from MIB-II sysUpTime."
-    },
     {
       "metric_group": "NetworkService",
       "name": "device_cpu_usage",
@@ -161,50 +148,6 @@
       "dimensions": [],
       "instance_id_keys": ["instance_id"],
       "description": "F5 LTM pool-member availability state from 3375.2.2.5.6.2.1.5, normalized green(1)=healthy and all other values=fault."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
-      "description": "Incoming interface traffic rate from the 64-bit IF-MIB ifHCInOctets counter."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [{"name": "ifDescr", "description": "ifDescr"}],
-      "instance_id_keys": ["instance_id"],
-      "description": "Outgoing interface traffic rate from the 64-bit IF-MIB ifHCOutOctets counter."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='network_service', __$labels__}[5m])) by (instance_id)",
-      "display_name": "Device Total Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Device total incoming traffic rate summed from 64-bit IF-MIB HC counters."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='network_service', __$labels__}[5m])) by (instance_id)",
-      "display_name": "Device Total Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [],
-      "instance_id_keys": ["instance_id"],
-      "description": "Device total outgoing traffic rate summed from 64-bit IF-MIB HC counters."
     }
   ]
 }

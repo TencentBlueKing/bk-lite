@@ -1,11 +1,15 @@
 """Contract tests for the ZDNS network-service SNMP plugin.
 
-ZDNS DNS/GSLB appliances expose two useful trees in the local improved-snmp
-profile: F5 BIG-IP LTM service status under PEN 3375 and ZDNS private scalar
-health under PEN 39810. The NetworkService plugin maps clean device health
+ZDNS DNS/GSLB appliances expose two useful trees: F5 BIG-IP LTM service status
+under PEN 3375 and ZDNS private scalar health under PEN 39810. The
+NetworkService plugin maps clean device health
 signals to shared metrics and normalizes service-state enums to 1=healthy /
 2=fault. Business counters such as query success rate and cache hit rate are
 not treated as device-health metrics.
+
+The brand metrics.json is a child delta: shared SNMP uptime, IF-MIB HC traffic
+and device_total_* rollups are collected in the template / common base, but are
+not redeclared as ZDNS-specific metric metadata.
 """
 import json
 from pathlib import Path
@@ -44,8 +48,13 @@ SERVICE_STATE_METRICS = (
     "network_service_pool_state",
     "network_service_pool_member_state",
 )
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
-TOTAL_METRICS = ("device_total_incoming_traffic", "device_total_outgoing_traffic")
+BASE_METRICS = (
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+)
 UNSUPPORTED_BUSINESS_METRICS = (
     "zdns_query_success_rate",
     "zdns_cache_hit_rate",
@@ -164,26 +173,24 @@ def test_business_counters_not_promoted_to_health_metrics(metrics):
 
 
 @pytest.mark.unit
-def test_uptime_and_hc_traffic_present(metrics, toml_text):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    assert by["snmp_uptime"]["unit"] == "s"
+def test_metrics_json_is_brand_delta_without_base_metrics(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    leaked = [name for name in BASE_METRICS if name in names]
+    assert leaked == [], f"ZDNS child metrics.json must not redeclare base metrics: {leaked}"
+
+
+@pytest.mark.unit
+def test_toml_collects_uptime_and_64bit_ifhc_counters(toml_text):
     assert "1.3.6.1.2.1.1.3.0" in toml_text
-    for name in HC_METRICS:
-        assert by[name]["unit"] == "byteps"
-        assert by[name]["query"].startswith("rate(")
     assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
     assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
     assert "1.3.6.1.2.1.2.2.1.10" not in toml_text
 
 
 @pytest.mark.unit
-def test_device_total_rollups_use_hc(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in TOTAL_METRICS:
-        assert name in by
-        q = by[name]["query"].replace(" ", "")
-        assert q.startswith("sum(rate(") and "by(instance_id)" in q
-        assert "ifHC" in q
+def test_supplementary_indicators_do_not_reference_base_metrics(metrics):
+    leaked = [s for s in metrics.get("supplementary_indicators", []) if s in BASE_METRICS]
+    assert leaked == []
 
 
 @pytest.mark.unit
@@ -202,11 +209,7 @@ def test_policy_templates_reference_existing_metrics(metrics, policy):
 
 @pytest.mark.unit
 def test_plugin_and_metrics_have_bilingual_names(languages):
-    required_metric_names = set(HEALTH_METRICS) | set(SERVICE_STATE_METRICS) | {
-        "snmp_uptime",
-        *HC_METRICS,
-        *TOTAL_METRICS,
-    }
+    required_metric_names = set(HEALTH_METRICS) | set(SERVICE_STATE_METRICS)
     for lang, data in languages.items():
         entry = (data.get("monitor_object_plugin") or {}).get(PLUGIN_NAME) or {}
         assert entry.get("name"), f"{lang}: plugin name missing"
@@ -239,6 +242,11 @@ def test_brand_label_present_in_common():
 
 
 @pytest.mark.unit
-def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+def test_passwords_use_sidecar_env_placeholders_not_plaintext(ui, toml_text):
+    field_names = {field["name"] for field in ui["form_fields"]}
+    assert "ENV_AUTH_PASSWORD" in field_names
+    assert "ENV_PRIV_PASSWORD" in field_names
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'auth_password = "{{ auth_password }}"' not in toml_text
+    assert 'priv_password = "{{ priv_password }}"' not in toml_text

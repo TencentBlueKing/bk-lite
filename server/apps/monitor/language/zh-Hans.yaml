@@ -3871,7 +3871,7 @@ monitor_object_plugin:
     desc: Accedian 城域以太网性能保障设备专用 SNMP 采集模板（ACD-DESC-MIB，企业号 22420）。在标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与运行时长（sysUpTime）之外，额外采集 Accedian 私有标量 OID 的整机 CPU 使用率（acdDescCpuUsageCurrent，设备直接上报的百分比）。设备描述 MIB 中没有内存使用率标量，温度仅在 per-SFP 诊断表（acdSfpDiagTemp，行级索引）中出现，inputs.snmp 无法行级过滤，故内存/温度/风扇/电源均为 N/A。适用品牌型号——Accedian SkyLIGHT 性能模块与 MetroNID / Nano / Plus 城域以太网性能保障节点（企业号 22420）。
   NetworkService ZDNS SNMP:
     name: ZDNS（Telegraf）
-    desc: ZDNS DNS/GSLB 网络服务设备 SNMP 采集模板（本地 improved-snmp 规格，ZDNS 私有 PEN 39810 + F5 BIG-IP LTM PEN 3375 对象）。在标准 MIB-II / IF-MIB 运行时长与 64 位 HC 接口流量之外，采集 CPU 使用率、内存使用率、CPU 温度、服务状态和 LTM 可用性状态，并归一为 1=正常 / 2=异常。查询命中率、缓存命中率、递归数和磁盘使用率属于业务或容量指标，不提升为共享设备健康指标。
+    desc: ZDNS DNS/GSLB 网络服务设备 SNMP 采集模板，适用于暴露 ZDNS 私有 PEN 39810 与 F5 BIG-IP LTM PEN 3375 对象的设备。在标准 MIB-II / IF-MIB 运行时长与 64 位 HC 接口流量之外，采集 CPU 使用率、内存使用率、CPU 温度、服务状态和 LTM 可用性状态，并归一为 1=正常 / 2=异常。查询命中率、缓存命中率、递归数和磁盘使用率属于业务或容量指标，不提升为共享设备健康指标。
   VoiceGateway AudioCodes SNMP:
     name: AudioCodes (Telegraf)
     desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。
