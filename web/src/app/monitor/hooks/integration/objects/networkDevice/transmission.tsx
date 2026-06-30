@@ -59,6 +59,7 @@ export const useTransmissionConfig = () => {
     collectTypes: {
       'Transmission Ciena SNMP': 'snmp_ciena',
       'Transmission SAF Tehnika SNMP': 'snmp_saftehnika',
+      'Transmission MRV SNMP': 'snmp_mrv',
       'Transmission PacketLight SNMP': 'snmp_packetlight',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission Tachyon SNMP': 'snmp_tachyon',

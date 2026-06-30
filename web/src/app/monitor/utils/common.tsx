@@ -665,6 +665,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
   { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
   { match: /saf\s*tehnika|saftehnika|integra-[a-z0-9]+/i, label: 'SAF Tehnika', icon: 'mm-saftehnika_saftehnika' },
+  { match: /\bmrv\b|optidriver|in-?reach/i, label: 'MRV', icon: 'mm-mrv_mrv' },
   { match: /packetlight|packet\s*light|pl-[0-9a-z-]+/i, label: 'PacketLight', icon: 'mm-packetlight_packetlight' },
   { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
   { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },

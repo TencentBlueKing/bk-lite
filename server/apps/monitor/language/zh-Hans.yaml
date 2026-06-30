@@ -4254,6 +4254,9 @@ monitor_object_plugin:
   Loadbalance Superiority SNMP:
     name: 超数（Telegraf）
     desc: 超数（Superiority）负载均衡专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。当前连接数/温度/风扇/电源 1991 私有树未声明，故为 N/A。适用品牌型号——超数（Superiority）负载均衡设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
+  Transmission MRV SNMP:
+    name: MRV（Telegraf）
+    desc: MRV OptiDriver 光传输设备 SNMP 基线采集模板（企业号 33）。采集 IF-MIB 64 位 HC 接口计数器（ifHCInOctets/ifHCOutOctets、ifXTable）速率和设备运行时长（sysUpTime）。当前已知 MRV-IN-REACH-SYSTEM-MIB 事实，但本工作树没有 raw MIB 正文可确认无需行级过滤的 CPU、内存、温度、风扇、电源或光传输健康 OID，因此这些私有健康指标为 N/A 且不臆造。适用于 MRV OptiDriver ROADM 与光传输设备，以及其他兼容 IF-MIB 的传输设备。
   Loadbalance RELIANOID SNMP:
     name: RELIANOID（Telegraf）
     desc: RELIANOID ADC / 负载均衡专用 SNMP child 模板（企业号 61269）。当前确认口径为标准 MIB-II 与 IF-MIB ifXTable 基线；未确认无需行级过滤且跨版本稳定的厂商私有 CPU、内存、温度、风扇、电源或当前连接数标量健康 OID，因此本品牌 metrics.json 不声明厂商增量指标。系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Loadbalance SNMP 底座提供。本模板仅提供 RELIANOID collect_type、表单与 Telegraf child 采集配置。适用品牌型号——RELIANOID ADC 与负载均衡设备。
