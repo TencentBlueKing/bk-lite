@@ -64,3 +64,29 @@ export const parseLegacyParamList = (value?: string | null) => {
     .filter(Boolean);
   return Array.from(new Set(normalized));
 };
+
+export const buildStorageInstanceId = (values: string[]) => {
+  const normalizedValues = values.map((value) => String(value || '').trim()).filter(Boolean);
+  if (normalizedValues.length <= 1) {
+    return normalizedValues[0] || '';
+  }
+  return `(${normalizedValues.map((value) => `'${value}'`).join(', ')})`;
+};
+
+export const resolveDashboardInstanceIdentity = (params: URLSearchParams) => {
+  const rawInstanceId = params.get('instance_id') || '';
+  const rawInstanceIdValues = params.get('instance_id_values') || '';
+  const storageInstanceId = rawInstanceId.trim() === '--' ? '' : rawInstanceId.trim();
+  const parsedLegacyInstanceIds = parseLegacyParamList(rawInstanceId);
+  const explicitValues = parseLegacyParamList(rawInstanceIdValues);
+
+  const idValues = explicitValues.length > 0
+    ? explicitValues
+    : parsedLegacyInstanceIds.length > 0
+      ? parsedLegacyInstanceIds
+      : storageInstanceId ? [storageInstanceId] : [];
+
+  const instanceId = storageInstanceId || buildStorageInstanceId(idValues);
+
+  return { instanceId, idValues };
+};
