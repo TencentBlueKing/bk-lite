@@ -37,6 +37,7 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   '聚合周期',
   '聚合方式',
   '默认：AVG',
+  'COUNT（计数）',
   '默认：AVG_OVER_TIME',
   '30 个计算点',
   'by',
@@ -52,7 +53,7 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   'formLabelStyle',
   'formControlStyle',
   'avg_over_time((avg(metric) by (group_by))[5m:10s])',
-  'count_over_time((sum(metric) by (group_by))[5m:10s])',
+  'last_over_time((count(metric) by (group_by))[5m:10s])',
   'last_over_time((avg(metric) by (group_by))[5m:10s])',
   '汇聚周期是观察窗口',
 ].forEach((expected) => {
@@ -64,6 +65,7 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   '当前语义：分组',
   'MethodSummary',
   'label="分组聚合方式"',
+  '分组聚合 SUM + 聚合方式 COUNT_OVER_TIME',
 ].forEach((removed) => {
   assert(!storySource.includes(removed), `Story should not keep redesign shell text ${removed}`);
 });

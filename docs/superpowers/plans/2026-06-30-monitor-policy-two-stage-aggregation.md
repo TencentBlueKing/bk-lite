@@ -4,7 +4,7 @@
 
 **Goal:** 将监控策略聚合从单一 `algorithm + group_by` 升级为“分组聚合方式 + by 分组维度 + 窗口汇聚方式”，并让策略预览、后台扫描、旧策略、策略模板使用同一语义。
 
-**Architecture:** 后端新增 `group_algorithm` 字段承载 `AVG/MAX/MIN/SUM by (...)` 的左侧聚合方法，保留 `algorithm` 字段承载窗口方法 `*_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME`。查询生成统一走 `build_policy_query(window_algorithm, metric_query, period, group_by, group_algorithm)`，内部生成 `<window>((<group>(metric) by (...))[period:period/30])`；前端把 `group_algorithm` 和 `group_by` 合并成一个组合控件。
+**Architecture:** 后端新增 `group_algorithm` 字段承载 `AVG/MAX/MIN/SUM/COUNT by (...)` 的左侧聚合方法，保留 `algorithm` 字段承载窗口方法 `*_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME`。查询生成统一走 `build_policy_query(window_algorithm, metric_query, period, group_by, group_algorithm)`，内部生成 `<window>((<group>(metric) by (...))[period:period/30])`；前端把 `group_algorithm` 和 `group_by` 合并成一个组合控件。
 
 **Tech Stack:** Django 4.2 + DRF + Celery + VictoriaMetrics/MetricsQL；Next.js 16 + React 19 + Ant Design；测试使用现有 `pytest` 和 `tsx` 脚本。
 
@@ -58,7 +58,7 @@
 | `min_over_time` | `min` | `min_over_time` |
 | `sum` | `sum` | `sum_over_time` |
 | `sum_over_time` | `sum` | `sum_over_time` |
-| `count` | `sum` | `count_over_time` |
+| `count` | `count` | `last_over_time` |
 | `last_over_time` | `avg` | `last_over_time` |
 
 ---
@@ -88,7 +88,7 @@ def test_build_two_stage_avg_query_uses_group_then_window(monkeypatch):
     assert query == "avg_over_time((avg(disk_used_percent) by (instance_id))[5m:10s])"
 
 
-def test_build_two_stage_count_query_uses_sum_grouping(monkeypatch):
+def test_build_two_stage_count_query_uses_count_grouping(monkeypatch):
     module = _load_policy_methods(monkeypatch, "monitor_two_stage_count_query_builder_test_module")
 
     query = module.build_policy_query(
@@ -99,7 +99,7 @@ def test_build_two_stage_count_query_uses_sum_grouping(monkeypatch):
         "sum",
     )
 
-    assert query == "count_over_time((sum(interface_info) by (instance_id))[5m:10s])"
+    assert query == "count_over_time((count(interface_info) by (instance_id))[5m:10s])"
 
 
 def test_build_two_stage_last_query_uses_avg_grouping(monkeypatch):
@@ -131,7 +131,7 @@ Expected: FAIL because `build_policy_query()` currently takes 4 arguments and do
 Replace the algorithm constants and query-builder section in `server/apps/monitor/tasks/utils/policy_methods.py` with:
 
 ```python
-GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min"}
+GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
 WINDOW_AGGREGATION_ALGORITHMS = {
     "max_over_time",
     "min_over_time",
@@ -150,7 +150,7 @@ LEGACY_ALGORITHM_MAPPING = {
     "min_over_time": ("min", "min_over_time"),
     "sum": ("sum", "sum_over_time"),
     "sum_over_time": ("sum", "sum_over_time"),
-    "count": ("sum", "count_over_time"),
+    "count": ("count", "last_over_time"),
     "last_over_time": ("avg", "last_over_time"),
 }
 
@@ -191,6 +191,14 @@ def build_policy_query(algorithm, metric_query, period, group_by, group_algorith
     return f"{algorithm}(({group_algorithm}({metric_query}) by ({group_by}))[{period}:{resolution}])"
 ```
 
+Then add a compatibility wrapper for legacy `algorithm=count`:
+
+```python
+def _legacy_count(metric_query, start, end, step, group_by):
+    query = build_policy_query("last_over_time", metric_query, step, group_by, "count")
+    return VictoriaMetricsAPI().query_range(query, start, end, step)
+```
+
 Then update `METHOD` keys to include only window methods plus legacy keys during transition:
 
 ```python
@@ -199,7 +207,7 @@ METHOD = {
     "avg": avg_over_time,
     "max": max_over_time,
     "min": min_over_time,
-    "count": count_over_time,
+    "count": _legacy_count,
     "max_over_time": max_over_time,
     "min_over_time": min_over_time,
     "avg_over_time": avg_over_time,
@@ -450,7 +458,7 @@ MAPPING = {
     "min_over_time": ("min", "min_over_time"),
     "sum": ("sum", "sum_over_time"),
     "sum_over_time": ("sum", "sum_over_time"),
-    "count": ("sum", "count_over_time"),
+    "count": ("count", "last_over_time"),
     "last_over_time": ("avg", "last_over_time"),
 }
 
@@ -488,7 +496,7 @@ class Migration(migrations.Migration):
 In `server/apps/monitor/serializers/monitor_policy.py`, replace `_VALID_AGGREGATION_ALGORITHMS` with:
 
 ```python
-_VALID_GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min"}
+_VALID_GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
 _VALID_WINDOW_AGGREGATION_ALGORITHMS = {
     "max_over_time",
     "min_over_time",
@@ -556,16 +564,16 @@ def test_build_bulk_policy_payloads_includes_group_algorithm_from_template():
                 "name": "接口数量变化",
                 "metric_id": 101,
                 "collect_type": 9,
-                "group_algorithm": "sum",
-                "algorithm": "count_over_time",
+                "group_algorithm": "count",
+                "algorithm": "last_over_time",
             }
         ],
         assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
         config={"group_by": ["instance_id"]},
     )
 
-    assert payloads[0]["group_algorithm"] == "sum"
-    assert payloads[0]["algorithm"] == "count_over_time"
+    assert payloads[0]["group_algorithm"] == "count"
+    assert payloads[0]["algorithm"] == "last_over_time"
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -608,7 +616,7 @@ LEGACY_TEMPLATE_ALGORITHM_MAPPING = {
     "min_over_time": ("min", "min_over_time"),
     "sum": ("sum", "sum_over_time"),
     "sum_over_time": ("sum", "sum_over_time"),
-    "count": ("sum", "count_over_time"),
+    "count": ("count", "last_over_time"),
     "last_over_time": ("avg", "last_over_time"),
 }
 
@@ -654,7 +662,7 @@ mapping = {
     "min_over_time": ("min", "min_over_time"),
     "sum": ("sum", "sum_over_time"),
     "sum_over_time": ("sum", "sum_over_time"),
-    "count": ("sum", "count_over_time"),
+    "count": ("count", "last_over_time"),
     "last_over_time": ("avg", "last_over_time"),
 }
 
@@ -780,6 +788,7 @@ const useGroupAlgorithmList = (): ListItem[] => {
       { label: 'MAX（最大值）', value: 'max' },
       { label: 'MIN（最小值）', value: 'min' },
       { label: 'SUM（求和）', value: 'sum' },
+      { label: 'COUNT（计数）', value: 'count' },
     ],
     []
   );

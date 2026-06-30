@@ -5,7 +5,7 @@ import { PlusOutlined } from '@ant-design/icons';
 
 const { Text } = Typography;
 
-type GroupMethod = 'avg' | 'max' | 'min' | 'sum';
+type GroupMethod = 'avg' | 'max' | 'min' | 'sum' | 'count';
 type WindowMethod =
   | 'avg_over_time'
   | 'max_over_time'
@@ -37,6 +37,7 @@ const groupMethods: Array<{ value: GroupMethod; label: string; help: string }> =
   { value: 'max', label: 'MAX（最大值）', help: '同一分组下多条序列先取最大值。' },
   { value: 'min', label: 'MIN（最小值）', help: '同一分组下多条序列先取最小值。' },
   { value: 'sum', label: 'SUM（求和）', help: '同一分组下多条序列先求和。' },
+  { value: 'count', label: 'COUNT（计数）', help: '同一分组下先统计有效序列数量。' },
 ];
 
 const windowMethods: Array<{ value: WindowMethod; label: string; help: string }> = [
@@ -94,12 +95,12 @@ const metrics: MetricDefinition[] = [
     kind: '清单',
     metricName: 'interface_info',
     description: '存在性指标，用于判断哪些接口序列仍然存在。',
-    defaultGroupMethod: 'sum',
-    defaultWindowMethod: 'count_over_time',
+    defaultGroupMethod: 'count',
+    defaultWindowMethod: 'last_over_time',
     defaultGroups: ['instance_id'],
     groupOptions: ['instance_id', 'interface', 'vendor'],
-    recommendation: '清单类推荐分组 SUM + COUNT_OVER_TIME，用于统计窗口内有效接口序列数量。',
-    scenario: '实例 A 下有多个接口序列。COUNT_OVER_TIME 统计窗口内仍然有效的数据点/序列，用于发现清单变化。',
+    recommendation: '清单类推荐 COUNT + LAST_OVER_TIME：先统计每个时刻的有效序列数量，再取最近窗口内的最后一次数量。',
+    scenario: '实例 A 下有多个接口序列。COUNT by instance_id 先得到每个时刻的接口数量，LAST_OVER_TIME 再取最近窗口内的有效数量。',
   },
 ];
 
@@ -108,7 +109,7 @@ const migrationRows = [
   ['MAX / MAX_OVER_TIME', '分组聚合 MAX + 聚合方式 MAX_OVER_TIME，简称双 MAX'],
   ['MIN / MIN_OVER_TIME', '分组聚合 MIN + 聚合方式 MIN_OVER_TIME，简称双 MIN'],
   ['SUM / SUM_OVER_TIME', '分组聚合 SUM + 聚合方式 SUM_OVER_TIME，简称双 SUM'],
-  ['COUNT', '分组聚合 SUM + 聚合方式 COUNT_OVER_TIME'],
+  ['COUNT', '分组聚合 COUNT + 聚合方式 LAST_OVER_TIME'],
   ['LAST_OVER_TIME', '分组聚合 AVG + 聚合方式 LAST_OVER_TIME'],
 ];
 
@@ -258,7 +259,7 @@ const getWindowLabel = (method: WindowMethod) =>
 
 // 查询语义锚点，供 Storybook 合约测试锁定双层汇聚结构与 30 点 step 规则：
 // avg_over_time((avg(metric) by (group_by))[5m:10s])
-// count_over_time((sum(metric) by (group_by))[5m:10s])
+// last_over_time((count(metric) by (group_by))[5m:10s])
 // last_over_time((avg(metric) by (group_by))[5m:10s])
 const getQuery = (
   groupMethod: GroupMethod,

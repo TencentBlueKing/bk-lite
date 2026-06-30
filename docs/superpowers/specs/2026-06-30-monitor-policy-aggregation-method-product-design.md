@@ -15,7 +15,7 @@
 | 字段 | 配置项 | 默认值 | 用户理解 |
 | --- | --- | --- | --- |
 | 分组维度 | 维度多选 | 指标模板推荐 | 最终按哪些对象分别判断和产生告警 |
-| 分组聚合方式 | `AVG/MAX/MIN/SUM` | `AVG` | 同一分组下多条序列先怎么合并 |
+| 分组聚合方式 | `AVG/MAX/MIN/SUM/COUNT` | `AVG` | 同一分组下多条序列先怎么合并 |
 | 汇聚周期 | 时间窗口 | 5 分钟 | 每次扫描向前观察多长时间 |
 | 汇聚方式 | `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME` | `AVG_OVER_TIME` | 窗口内如何得到最终判断值 |
 
@@ -42,7 +42,7 @@ LAST_OVER_TIME
 
 1. `AVG/MAX/MIN/SUM` 能按分组维度聚合，但汇聚周期没有稳定参与最终阈值判断。
 2. `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME` 能表达时间窗口，但没有统一做到先按分组维度聚合。
-3. `COUNT` 更接近当前时刻序列数量，不适合表达周期窗口内的有效数量。
+3. 旧 `COUNT` 只表达当前时刻序列数量，但没有和窗口内最近有效数量语义绑定。
 4. `LAST_OVER_TIME` 对接口状态、服务状态、枚举状态有价值，应保留为状态类窗口方法。
 5. 当前 step 按周期生成时，如果 subquery 不显式指定 resolution，窗口函数可能只作用在极少采样点上，和“看一个周期”心智不一致。
 
@@ -51,7 +51,7 @@ LAST_OVER_TIME
 - 让“分组维度、分组聚合方式、汇聚周期、汇聚方式”同时生效。
 - 让策略预览与后台扫描使用同一套查询生成逻辑。
 - 保留 `LAST_OVER_TIME` 支持状态类指标。
-- 将 `COUNT` 迁移为 `COUNT_OVER_TIME` 语义。
+- 将 `COUNT` 迁移为“分组 COUNT + 窗口 LAST_OVER_TIME”语义，用于表达最近窗口内有效序列数量。
 - 为旧策略实例和旧策略模板提供明确迁移规则。
 - step 根据汇聚周期自动计算，固定拆成 30 个计算点。
 
@@ -83,6 +83,7 @@ LAST_OVER_TIME
 | `MAX` | 同一分组下多条序列先取最大 | 磁盘、队列、错误率等保留最危险子序列 |
 | `MIN` | 同一分组下多条序列先取最小 | 可用率、健康分、剩余容量等低值风险 |
 | `SUM` | 同一分组下多条序列先求和 | 数量、容量、增量、清单统计 |
+| `COUNT` | 同一分组下多条序列先计数 | 接口数、磁盘数、进程数、有效序列数量 |
 
 默认值：`AVG`。
 
@@ -111,7 +112,7 @@ LAST_OVER_TIME
 
 其中：
 
-- `group_method` 来自分组聚合方式：`avg/max/min/sum`
+- `group_method` 来自分组聚合方式：`avg/max/min/sum/count`
 - `window_method` 来自汇聚方式：`avg_over_time/max_over_time/min_over_time/sum_over_time/count_over_time/last_over_time`
 - `period` 来自汇聚周期
 - `step = period / 30`
@@ -150,10 +151,10 @@ min_over_time((min(metric) by (instance_id))[5m:10s])
 sum_over_time((sum(metric) by (service))[5m:10s])
 ```
 
-COUNT_OVER_TIME：
+COUNT：
 
 ```promql
-count_over_time((sum(metric) by (instance_id))[5m:10s])
+last_over_time((count(metric) by (instance_id))[5m:10s])
 ```
 
 LAST_OVER_TIME：
@@ -194,7 +195,7 @@ last_over_time((avg(interface_oper_status) by (instance_id, interface))[5m:10s])
 | 容量风险、队列堆积、错误率 | `MAX` | `MAX_OVER_TIME` | 关注周期内峰值风险 |
 | 可用率、剩余容量、健康分 | `MIN` | `MIN_OVER_TIME` | 关注周期内最低点 |
 | 每周期增量、周期内新增量 | `SUM` | `SUM_OVER_TIME` | 关注周期总量 |
-| 序列存在性、接口/磁盘/进程数量 | `SUM` | `COUNT_OVER_TIME` | 关注窗口内有效数量 |
+| 序列存在性、接口/磁盘/进程数量 | `COUNT` | `LAST_OVER_TIME` | 关注最近窗口内有效序列数量 |
 | 状态、枚举、up/down、开关 | `AVG` | `LAST_OVER_TIME` | 关注最近有效状态，分组维度要保留状态对象 |
 
 ## 8. 旧策略迁移规则
@@ -213,7 +214,7 @@ last_over_time((avg(interface_oper_status) by (instance_id, interface))[5m:10s])
 | `MIN_OVER_TIME` | `MIN` | `MIN_OVER_TIME` | 原 MIN、MIN_OVER_TIME 统一迁移为双 MIN |
 | `SUM` | `SUM` | `SUM_OVER_TIME` | 原 SUM、SUM_OVER_TIME 统一迁移为双 SUM |
 | `SUM_OVER_TIME` | `SUM` | `SUM_OVER_TIME` | 原 SUM、SUM_OVER_TIME 统一迁移为双 SUM |
-| `COUNT` | `SUM` | `COUNT_OVER_TIME` | COUNT 迁移为分组 SUM + 汇聚 COUNT_OVER_TIME |
+| `COUNT` | `COUNT` | `LAST_OVER_TIME` | COUNT 迁移为分组 COUNT + 汇聚 LAST_OVER_TIME |
 | `LAST_OVER_TIME` | `AVG` | `LAST_OVER_TIME` | LAST_OVER_TIME 迁移为分组 AVG + 汇聚 LAST_OVER_TIME |
 
 ### 8.2 监控策略模板
@@ -262,7 +263,7 @@ Storybook 原型：
 
 ### 产品验收
 
-- 页面存在“分组聚合方式”，可选 `AVG/MAX/MIN/SUM`，默认 `AVG`。
+- 页面存在“分组聚合方式”，可选 `AVG/MAX/MIN/SUM/COUNT`，默认 `AVG`。
 - 页面存在“汇聚方式”，可选 `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME`，默认 `AVG_OVER_TIME`。
 - 用户能从文案理解：
   - 分组维度决定告警对象。
@@ -278,7 +279,7 @@ Storybook 原型：
 - `MAX + MAX_OVER_TIME` 生成先分组最大、再周期最大值的查询。
 - `MIN + MIN_OVER_TIME` 生成先分组最小、再周期最小值的查询。
 - `SUM + SUM_OVER_TIME` 生成先分组求和、再周期累计的查询。
-- `SUM + COUNT_OVER_TIME` 表达窗口内有效数量统计。
+- `COUNT + LAST_OVER_TIME` 表达最近窗口内有效序列数量。
 - `AVG + LAST_OVER_TIME` 表达窗口内最近有效状态。
 - 所有窗口查询显式带 subquery step，且 step = period / 30。
 
@@ -291,6 +292,6 @@ Storybook 原型：
 
 ## 11. 实现确认点
 
-1. `COUNT_OVER_TIME` 在 VictoriaMetrics/MetricsQL 中最终是否使用当前原型表达式，还是需要继续沿用 `count(last_over_time(metric[period])) by (group_by)` 的有效序列语义。
+1. `COUNT_OVER_TIME` 是否仍作为高级窗口方法保留给“窗口内采样点数量”场景；清单类默认不使用它，而使用 `COUNT + LAST_OVER_TIME`。
 2. `LAST_OVER_TIME` 是否使用 `last_over_time((avg(metric) by (...))[period:step])`，还是为了兼容旧状态语义继续使用 `any(last_over_time(metric[period])) by (...)`。
 3. 30 个计算点是否需要设置最小 step，例如低于采集间隔时按采集间隔兜底。
