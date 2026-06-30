@@ -4461,6 +4461,9 @@ monitor_object_plugin:
   NetworkService Tripp Lite UPS PDU Environmental SNMP:
     name: Tripp Lite UPS PDU Environmental (Telegraf)
     desc: Tripp Lite UPS, PDU and environmental sensor SNMP baseline child template for network-service devices under Tripp Lite PEN 3417. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm PowerAlert-managed UPS, PDU and environmental sensor SNMP capability plus official MIB file names, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private UPS/PDU/environmental business counters are not promoted into shared device-health metrics.
+  NetworkService Allot SNMP:
+    name: Allot (Telegraf)
+    desc: Allot enterprise service gateway SNMP baseline child template for network-service devices under Allot PEN 2603. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm enterprise gateway monitoring and private SNMP MIB identity, but do not prove stable shared CPU, memory, temperature, fan or power-health scalar semantics, so private service, traffic and policy tables are not promoted into shared device-health metrics.
   NetworkService Socomec iPDU UPS SNMP:
     name: Socomec iPDU UPS (Telegraf)
     desc: Socomec iPDU, UPS and Net Vision SNMP baseline child template for network-service devices under Socomec PEN 4555. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm iPDU identity, inlet, outlet, EMD temperature or humidity, threshold alarm, UPS input, output, bypass, battery, load and device connection tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU business counters are not promoted into shared device-health metrics.
