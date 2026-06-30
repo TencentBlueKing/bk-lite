@@ -14,7 +14,8 @@
           "value": 1,
           "method": "!="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Kafka Broker 数量异常",
@@ -38,7 +39,8 @@
           "value": 4,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Kafka 分区不同步副本",
@@ -52,14 +54,15 @@
           "value": 0,
           "method": "!="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Kafka 消费者组延迟过高",
       "alert_name": "Kafka ${resource_name} 消费延迟严重",
       "description": "监控消费者组延迟消息数，过高可能导致数据延迟处理。",
       "metric_name": "kafka_consumergroup_lag",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -76,7 +79,8 @@
           "value": 1000,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "Kafka 分区偏移量停滞",
@@ -100,14 +104,15 @@
           "value": 10,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Kafka 虚拟内存过大",
       "alert_name": "Kafka ${resource_name} 虚拟内存异常",
       "description": "检测进程虚拟内存，过大可能发生内存交换。",
       "metric_name": "process_virtual_memory_bytes_gauge",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -124,7 +129,8 @@
           "value": 8,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     }
   ]
 }
