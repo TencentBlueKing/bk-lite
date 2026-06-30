@@ -172,6 +172,15 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the access device, reported directly as a percentage by a private scalar. Sustained high usage indicates OLT control-plane or management-plane pressure.
+    device_memory_usage:
+      name: Memory Usage
+      desc: System memory utilization of the access device, reported directly as a percentage by a private scalar. Sustained high memory can indicate forwarding table, ONU management table, or control-service pressure.
+    device_temperature_celsius:
+      name: System Temperature
+      desc: System temperature of the access device in degrees Celsius. Persistently high values may indicate cooling problems, high ambient temperature, or excessive device load.
   ConsoleServer:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3802,6 +3811,8 @@ monitor_object_metric_group:
   Access:
     Base: Base
     Traffic: Traffic
+    Access: Access
+    Temperature: Temperature
   ConsoleServer:
     Base: Base
     Traffic: Traffic
@@ -4242,6 +4253,9 @@ monitor_object_plugin:
   Access BDCOM SNMP:
     name: Access BDCOM SNMP
     desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
+  Access V-SOL SNMP:
+    name: Access V-SOL SNMP
+    desc: V-SOL / V-SOLUTION V1600D EPON OLT access-device SNMP child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds confirmed V1600D private scalar health metrics — CPU utilization (cpuLoad, direct percent), memory utilization (memoryLoad, direct percent), and system temperature (sysTemperature, direct Celsius). PON, ONU, optical transceiver and alarm tables are business, port, or row-level objects and are not promoted to shared device-health metrics. Power-module state is not collected until the normal-state enum is reliably verified.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.

@@ -53,7 +53,8 @@ export const useAccessConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Access BDCOM SNMP': 'snmp_bdcom'
+      'Access BDCOM SNMP': 'snmp_bdcom',
+      'Access V-SOL SNMP': 'snmp_vsolution'
     }
   };
 };

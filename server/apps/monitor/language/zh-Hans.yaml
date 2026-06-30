@@ -172,6 +172,15 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 接入设备的整机 CPU 使用率（设备私有标量直接上报的百分比）。持续偏高说明 OLT 控制平面或管理平面负载过高。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 接入设备的系统内存使用率（设备私有标量直接上报的百分比）。持续偏高可能表示转发表、ONU 管理表或控制服务存在内存压力。
+    device_temperature_celsius:
+      name: 系统温度
+      desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
   ConsoleServer:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3460,6 +3469,8 @@ monitor_object_metric_group:
   Access:
     Base: 基础
     Traffic: 流量
+    Access: 接入设备
+    Temperature: 温度
   ConsoleServer:
     Base: 基础
     Traffic: 流量
@@ -3891,6 +3902,9 @@ monitor_object_plugin:
   Access BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。
+  Access V-SOL SNMP:
+    name: V-SOL（Telegraf）
+    desc: V-SOL / V-SOLUTION V1600D EPON OLT 接入设备 SNMP 子模板。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 V1600D 私有标量健康指标：CPU 使用率（cpuLoad，直接百分比）、内存使用率（memoryLoad，直接百分比）与系统温度（sysTemperature，摄氏度直采）。PON、ONU、光模块与告警表属于业务/端口/行级对象，不提升为共享设备健康指标；电源模块状态表在正常码未可靠确认前暂不采集，避免误报。
   ConsoleServer Opengear SNMP:
     name: Opengear (Telegraf)
     desc: Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。
