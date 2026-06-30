@@ -187,11 +187,15 @@ class TestQueries:
         out = nats_api.job_detail_query({"task_id": ex.id, "team": [1]})
         assert out["result"] is True and out["data"]["task_id"] == ex.id
 
-    def test_detail_query_requires_team(self):
-        ex = _exec()
+    def test_detail_query_without_team_returns_limited_safe_metadata(self):
+        ex = _exec(script_content="echo secret", execution_results=[{"stdout": "secret"}])
         out = nats_api.job_detail_query({"task_id": ex.id})
-        assert out["result"] is False
-        assert "team" in out["message"]
+        assert out["result"] is True
+        assert out["data"]["task_id"] == ex.id
+        assert out["data"]["detail_limited"] is True
+        assert out["data"]["requires_team"] is True
+        assert "script_content" not in out["data"]
+        assert "execution_results" not in out["data"]
 
     def test_detail_query_rejects_cross_team(self):
         ex = _exec(team=[2])

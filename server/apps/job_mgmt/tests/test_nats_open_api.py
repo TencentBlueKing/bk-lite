@@ -200,12 +200,17 @@ class TestJobDetailQuery:
         result = job_detail_query({"team": [1]})
         assert result["result"] is False
 
-    def test_missing_team(self):
+    def test_without_team_returns_limited_safe_metadata(self):
         from apps.job_mgmt.nats_api import job_detail_query
+        from apps.job_mgmt.models import JobExecution
 
-        result = job_detail_query({"task_id": 1})
-        assert result["result"] is False
-        assert "team" in result["message"]
+        execution = JobExecution.objects.create(name="legacy", script_content="echo secret", execution_results=[{"stdout": "secret"}], team=[1])
+        result = job_detail_query({"task_id": execution.id})
+        assert result["result"] is True
+        assert result["data"]["detail_limited"] is True
+        assert result["data"]["requires_team"] is True
+        assert "script_content" not in result["data"]
+        assert "execution_results" not in result["data"]
 
 
 @pytest.mark.unit
