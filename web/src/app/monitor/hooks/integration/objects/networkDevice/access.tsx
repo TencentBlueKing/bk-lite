@@ -59,7 +59,8 @@ export const useAccessConfig = () => {
       'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
       'Access Zhone DZS SNMP': 'snmp_zhone',
       'Access UTStarcom SNMP': 'snmp_utstarcom',
-      'Access Raisecom SNMP': 'snmp_raisecom'
+      'Access Raisecom SNMP': 'snmp_raisecom',
+      'Access PacketFront SNMP': 'snmp_packetfront'
     }
   };
 };
