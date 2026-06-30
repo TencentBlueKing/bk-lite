@@ -620,6 +620,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /albentia|aerdocsis|wimax/i, label: 'Albentia', icon: 'mm-albentia_albentia' },
   { match: /ligowave|ligo\s*wave|infinity/i, label: 'LigoWave', icon: 'mm-ligowave_ligowave' },
   { match: /radwin|winlink/i, label: 'Radwin', icon: 'mm-radwin_radwin' },
+  { match: /mimosa|\bbfive\b|\bptmp\b/i, label: 'Mimosa', icon: 'mm-mimosa_mimosa' },
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
   { match: /synology|diskstation|rackstation|\bdsm\b/i, label: 'Synology', icon: 'mm-synology_synology' },
   { match: /macrosan|\bms[0-9]{3,4}\b/i, label: 'MacroSAN', icon: 'mm-macrosan_macrosan' },
