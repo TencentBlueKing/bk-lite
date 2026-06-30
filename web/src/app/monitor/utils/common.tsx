@@ -682,6 +682,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /avocent|cyclades|\bacs[0-9]{3,4}\b/i, label: 'Avocent ACS', icon: 'mm-avocent_avocent' },
   { match: /perle|iolan|\bscg[0-9]*\b/i, label: 'Perle IOLAN', icon: 'mm-perle_perle' },
   { match: /raritan|dominion\s*sx|\bsx\s*ii\b/i, label: 'Raritan SX', icon: 'mm-raritan_raritan' },
+  { match: /lantronix|\bslc\s*8000\b|\bemg\s*(?:7500|8500)\b/i, label: 'Lantronix SLC', icon: 'mm-lantronix_lantronix' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
   { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
   { match: /meinberg|lantime/i, label: 'Meinberg', icon: 'mm-meinberg_meinberg' },

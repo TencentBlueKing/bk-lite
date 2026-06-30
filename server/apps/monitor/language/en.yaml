@@ -4410,6 +4410,9 @@ monitor_object_plugin:
   ConsoleServer Raritan SX SNMP:
     name: Raritan SX ConsoleServer SNMP
     desc: Raritan Dominion SX console-server SNMP baseline child template for devices under Raritan PEN 13742. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current public MIB facts confirm the SX product subtree but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
+  ConsoleServer Lantronix SLC SNMP:
+    name: Lantronix SLC ConsoleServer SNMP
+    desc: Lantronix SLC and EMG console-server SNMP baseline child template for devices under Lantronix PEN 244. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current public facts confirm SLC 8000 SNMP MIB-II compatibility, SNMPv1/v2/v3 support, custom-MIB capability and environmental-sensor support, but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
   NetworkService Infoblox SNMP:
     name: NetworkService Infoblox SNMP
     desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
