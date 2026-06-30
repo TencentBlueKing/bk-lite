@@ -671,6 +671,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /acme\s*packet|acmepacket/i, label: 'Acme Packet', icon: 'mm-acmepacket_acmepacket' },
   { match: /patton|smartnode/i, label: 'Patton', icon: 'mm-patton_patton' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
+  { match: /avocent|cyclades|\bacs[0-9]{3,4}\b/i, label: 'Avocent ACS', icon: 'mm-avocent_avocent' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
   { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
   { match: /meinberg|lantime/i, label: 'Meinberg', icon: 'mm-meinberg_meinberg' },

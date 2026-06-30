@@ -4391,6 +4391,9 @@ monitor_object_plugin:
   ConsoleServer WTI SNMP:
     name: WTI Console Server (Telegraf)
     desc: WTI console-server and remote-power SNMP child template for devices under WTI PEN 2634. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds verified environment-unit temperature and input-power state leaves, normalizing input power to 1=healthy and 2=fault. Serial-port rows, outlet power metering, users and trap objects are not promoted into shared device-health metrics.
+  ConsoleServer Avocent ACS SNMP:
+    name: Avocent ACS ConsoleServer SNMP
+    desc: Avocent ACS console-server SNMP baseline child template for devices under Avocent PEN 10418. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current MIB facts confirm the ACS product subtree but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
   NetworkService Infoblox SNMP:
     name: NetworkService Infoblox SNMP
     desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
