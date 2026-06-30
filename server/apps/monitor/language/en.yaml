@@ -4274,6 +4274,9 @@ monitor_object_plugin:
   Transmission BridgeWave SNMP:
     name: BridgeWave (Telegraf)
     desc: BridgeWave millimeter-wave wireless transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Fibrolan SNMP:
+    name: Fibrolan (Telegraf)
+    desc: Fibrolan Falcon carrier Ethernet and IEEE 1588 transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   Transmission Exalt SNMP:
     name: Exalt (Telegraf)
     desc: Exalt EX-i digital microwave backhaul SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
