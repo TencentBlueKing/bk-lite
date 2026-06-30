@@ -1,0 +1,21 @@
+name: network_config_file
+version: "1.0.0"
+category: network
+
+metadata:
+  display_name: "网络设备配置文件"
+  description: "通过 Netmiko 采集网络设备配置命令输出"
+  author: "WeOps"
+  tags: [network, config-file, netmiko]
+  cloud_protocol: false
+  model_id: network_config_file
+
+executors:
+  protocol:
+    type: protocol
+    timeout: 60
+    collector:
+      module: plugins.inputs.network_config_file.network_config_file_info
+      class: NetworkConfigFileInfo
+
+default_executor: protocol
