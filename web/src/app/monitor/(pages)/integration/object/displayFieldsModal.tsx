@@ -8,7 +8,7 @@ import React, {
   useEffect,
   useCallback
 } from 'react';
-import { Input, Button, Select, message, Spin, Tag } from 'antd';
+import { Input, Button, Select, message, Spin, Tag, Modal, Radio } from 'antd';
 import { PlusOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ModalConfig } from '@/app/monitor/types';
@@ -40,6 +40,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       getObjectChildrenRaw,
       getObjectPlugins,
       getObjectMetrics,
+      getMetricVmFields,
       saveDisplayFields
     } = useObjectApi();
 
@@ -53,6 +54,21 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const dirtyRef = useRef<Set<number>>(new Set());
     const [pluginsMap, setPluginsMap] = useState<Record<number, PluginOption[]>>({});
     const [metricsMap, setMetricsMap] = useState<Record<string, MetricOption[]>>({});
+    const [fieldPicker, setFieldPicker] = useState<{
+      visible: boolean;
+      loading: boolean;
+      fields: string[];
+      value: string;
+      colIdx: number;
+      bindIdx: number;
+    }>({
+      visible: false,
+      loading: false,
+      fields: [],
+      value: '',
+      colIdx: -1,
+      bindIdx: -1
+    });
     const dragIndexRef = useRef<number | null>(null);
     // 镜像 pluginsMap，供 loadNodeOptions 同步读取已加载状态（避免在 setState updater 内做副作用）
     const pluginsMapRef = useRef<Record<number, PluginOption[]>>({});
@@ -87,6 +103,14 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         setColumnsMap({});
         setPluginsMap({});
         setMetricsMap({});
+        setFieldPicker({
+          visible: false,
+          loading: false,
+          fields: [],
+          value: '',
+          colIdx: -1,
+          bindIdx: -1
+        });
         setTitle(
           `${t('monitor.object.displayFieldsConfig')} - ${obj.display_name || obj.name}`
         );
@@ -144,11 +168,15 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       setColumnsMap((prev) => ({ ...prev, [activeId]: cols }));
     };
 
-    const addColumn = () => {
+    const addColumn = (type: DisplayColumn['type'] = 'metric') => {
       setCurrentColumns([
         ...currentColumns,
         {
-          name: t('monitor.object.newDisplayColumn'),
+          name:
+            type === 'field'
+              ? t('monitor.object.newFieldDisplayColumn')
+              : t('monitor.object.newDisplayColumn'),
+          ...(type === 'field' ? { type: 'field' } : {}),
           sort_order: currentColumns.length,
           metrics: []
         }
@@ -173,7 +201,15 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       setCurrentColumns(
         currentColumns.map((c, i) =>
           i === colIdx
-            ? { ...c, metrics: [...c.metrics, { plugin: '', metric: '' }] }
+            ? {
+              ...c,
+              metrics: [
+                ...c.metrics,
+                c.type === 'field'
+                  ? { plugin: '', metric: '', field: '' }
+                  : { plugin: '', metric: '' }
+              ]
+            }
             : c
         )
       );
@@ -192,17 +228,20 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
     const metricsKey = (objId: number, plugin: string) => `${objId}|${plugin}`;
 
     const ensureMetrics = async (plugin: string) => {
-      if (activeId == null || !plugin) return;
+      if (activeId == null || !plugin) return [];
       const key = metricsKey(activeId, plugin);
-      if (metricsMap[key] || inflightMetricsRef.current.has(key)) return;
+      if (metricsMap[key]) return metricsMap[key];
+      if (inflightMetricsRef.current.has(key)) return [];
       const pluginOpt = currentPlugins.find((p) => p.name === plugin);
-      if (!pluginOpt) return;
+      if (!pluginOpt) return [];
       inflightMetricsRef.current.add(key);
       try {
         const metrics = await getObjectMetrics(activeId, pluginOpt.id);
         setMetricsMap((prev) => ({ ...prev, [key]: metrics || [] }));
+        return metrics || [];
       } catch {
         message.error(t('common.operationFailed'));
+        return [];
       } finally {
         inflightMetricsRef.current.delete(key);
       }
@@ -234,7 +273,11 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             ? {
               ...c,
               metrics: c.metrics.map((b, j) =>
-                j === bindIdx ? { plugin, metric: '' } : b
+                j === bindIdx
+                  ? c.type === 'field'
+                    ? { plugin, metric: '', field: '' }
+                    : { plugin, metric: '' }
+                  : b
               )
             }
             : c
@@ -254,12 +297,83 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             ? {
               ...c,
               metrics: c.metrics.map((b, j) =>
-                j === bindIdx ? { ...b, metric } : b
+                j === bindIdx
+                  ? { ...b, metric, ...(c.type === 'field' ? { field: '' } : {}) }
+                  : b
               )
             }
             : c
         )
       );
+    };
+
+    const updateBindingField = (
+      colIdx: number,
+      bindIdx: number,
+      field: string
+    ) => {
+      setCurrentColumns(
+        currentColumns.map((c, i) =>
+          i === colIdx
+            ? {
+              ...c,
+              metrics: c.metrics.map((b, j) =>
+                j === bindIdx ? { ...b, field } : b
+              )
+            }
+            : c
+        )
+      );
+    };
+
+    const findMetricOption = (plugin: string, metric: string) =>
+      metricsOptions(plugin).find((m) => m.name === metric);
+
+    const openFieldPicker = async (colIdx: number, bindIdx: number) => {
+      const binding = currentColumns[colIdx]?.metrics[bindIdx];
+      if (!binding?.plugin || !binding.metric) {
+        message.warning(t('monitor.object.selectMetricFirst'));
+        return;
+      }
+      const metrics = await ensureMetrics(binding.plugin);
+      const metricOpt =
+        metrics.find((m) => m.name === binding.metric) ||
+        findMetricOption(binding.plugin, binding.metric);
+      if (!metricOpt) {
+        message.warning(t('monitor.object.selectMetricFirst'));
+        return;
+      }
+      setFieldPicker({
+        visible: true,
+        loading: true,
+        fields: [],
+        value: binding.field || '',
+        colIdx,
+        bindIdx
+      });
+      try {
+        const fields = await getMetricVmFields(metricOpt.id);
+        setFieldPicker((prev) => ({
+          ...prev,
+          loading: false,
+          fields,
+          value: prev.value || fields[0] || ''
+        }));
+      } catch {
+        message.error(t('common.operationFailed'));
+        setFieldPicker((prev) => ({ ...prev, loading: false }));
+      }
+    };
+
+    const confirmFieldPicker = () => {
+      if (fieldPicker.colIdx >= 0 && fieldPicker.bindIdx >= 0) {
+        updateBindingField(
+          fieldPicker.colIdx,
+          fieldPicker.bindIdx,
+          fieldPicker.value
+        );
+      }
+      setFieldPicker((prev) => ({ ...prev, visible: false }));
     };
 
     const onDragStart = (idx: number) => {
@@ -354,8 +468,11 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
               </div>
             )}
             <div className="flex-1">
-              <div className="flex justify-end mb-3">
-                <Button icon={<PlusOutlined />} onClick={addColumn}>
+              <div className="flex justify-end gap-2 mb-3">
+                <Button icon={<PlusOutlined />} onClick={() => addColumn('metric')}>
+                  {t('monitor.object.addMetricColumn')}
+                </Button>
+                <Button icon={<PlusOutlined />} onClick={() => addColumn('field')}>
                   {t('monitor.object.addDisplayColumn')}
                 </Button>
               </div>
@@ -422,6 +539,26 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                           updateBindingMetric(colIdx, bindIdx, v)
                         }
                       />
+                      {col.type === 'field' && (
+                        <Input
+                          className="flex-1"
+                          value={binding.field}
+                          placeholder={t('monitor.object.fieldKeyPlaceholder')}
+                          onChange={(e) =>
+                            updateBindingField(colIdx, bindIdx, e.target.value)
+                          }
+                          addonAfter={
+                            <Button
+                              type="link"
+                              size="small"
+                              className="px-0"
+                              onClick={() => openFieldPicker(colIdx, bindIdx)}
+                            >
+                              {t('monitor.object.selectField')}
+                            </Button>
+                          }
+                        />
+                      )}
                       <Button
                         type="text"
                         danger
@@ -444,6 +581,29 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             </div>
           </div>
         </Spin>
+        <Modal
+          title={t('monitor.object.selectField')}
+          open={fieldPicker.visible}
+          confirmLoading={fieldPicker.loading}
+          onOk={confirmFieldPicker}
+          onCancel={() => setFieldPicker((prev) => ({ ...prev, visible: false }))}
+        >
+          <Spin spinning={fieldPicker.loading}>
+            <Radio.Group
+              className="flex flex-col gap-2"
+              value={fieldPicker.value}
+              onChange={(e) =>
+                setFieldPicker((prev) => ({ ...prev, value: e.target.value }))
+              }
+            >
+              {fieldPicker.fields.map((field) => (
+                <Radio key={field} value={field}>
+                  {field}
+                </Radio>
+              ))}
+            </Radio.Group>
+          </Spin>
+        </Modal>
       </OperateModal>
     );
   }

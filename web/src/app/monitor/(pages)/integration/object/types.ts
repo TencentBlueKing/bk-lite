@@ -75,11 +75,13 @@ export interface OrderUpdateItem {
 export interface DisplayMetricBinding {
   plugin: string; // 插件名
   metric: string; // 指标名
+  field?: string; // 字段展示列读取的 VM label key
 }
 
 // 展示列
 export interface DisplayColumn {
   name: string;
+  type?: 'metric' | 'field';
   sort_order: number;
   metrics: DisplayMetricBinding[];
 }
