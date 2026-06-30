@@ -1,26 +1,9 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
 import { useMemo, useState } from 'react';
-import {
-  Alert,
-  Col,
-  Divider,
-  Radio,
-  Row,
-  Select,
-  Space,
-  Tag,
-  Typography,
-} from 'antd';
-import {
-  ApartmentOutlined,
-  BarChartOutlined,
-  ClockCircleOutlined,
-  CodeOutlined,
-  DatabaseOutlined,
-  SwapOutlined,
-} from '@ant-design/icons';
+import { Alert, Button, Divider, InputNumber, Select, Space, Tag, Typography } from 'antd';
+import { PlusOutlined } from '@ant-design/icons';
 
-const { Text, Title } = Typography;
+const { Text } = Typography;
 
 type GroupMethod = 'avg' | 'max' | 'min' | 'sum';
 type WindowMethod =
@@ -47,20 +30,22 @@ interface MetricDefinition {
   scenario: string;
 }
 
+const collectTabs = ['主机（Telegraf）', '主机远程采集（Telegraf）', 'Windows WMI', 'rex-test'];
+
 const groupMethods: Array<{ value: GroupMethod; label: string; help: string }> = [
-  { value: 'avg', label: 'AVG', help: '先把同一分组下的多条序列求平均，默认：AVG' },
-  { value: 'max', label: 'MAX', help: '先取同一分组下的最大值，适合先保留最危险子序列' },
-  { value: 'min', label: 'MIN', help: '先取同一分组下的最小值，适合先保留最低健康值' },
-  { value: 'sum', label: 'SUM', help: '先把同一分组下的序列求和，适合数量/容量叠加' },
+  { value: 'avg', label: 'AVG', help: '默认：AVG。同一分组下多条序列先求平均。' },
+  { value: 'max', label: 'MAX', help: '同一分组下多条序列先取最大值。' },
+  { value: 'min', label: 'MIN', help: '同一分组下多条序列先取最小值。' },
+  { value: 'sum', label: 'SUM', help: '同一分组下多条序列先求和。' },
 ];
 
 const windowMethods: Array<{ value: WindowMethod; label: string; help: string }> = [
-  { value: 'avg_over_time', label: 'AVG_OVER_TIME', help: '窗口内求平均，默认：AVG_OVER_TIME' },
-  { value: 'max_over_time', label: 'MAX_OVER_TIME', help: '窗口内取最大值，适合峰值风险' },
-  { value: 'min_over_time', label: 'MIN_OVER_TIME', help: '窗口内取最小值，适合低值风险' },
-  { value: 'sum_over_time', label: 'SUM_OVER_TIME', help: '窗口内累加，适合增量总量' },
-  { value: 'count_over_time', label: 'COUNT_OVER_TIME', help: '窗口内统计有效点/有效序列数量' },
-  { value: 'last_over_time', label: 'LAST_OVER_TIME', help: '窗口内取最近有效值，适合状态类指标' },
+  { value: 'avg_over_time', label: 'AVG_OVER_TIME', help: '默认：AVG_OVER_TIME。窗口内求平均。' },
+  { value: 'max_over_time', label: 'MAX_OVER_TIME', help: '窗口内取最大值。' },
+  { value: 'min_over_time', label: 'MIN_OVER_TIME', help: '窗口内取最小值。' },
+  { value: 'sum_over_time', label: 'SUM_OVER_TIME', help: '窗口内累加。' },
+  { value: 'count_over_time', label: 'COUNT_OVER_TIME', help: '窗口内统计有效数量。' },
+  { value: 'last_over_time', label: 'LAST_OVER_TIME', help: '窗口内取最近有效值。' },
 ];
 
 const metrics: MetricDefinition[] = [
@@ -74,8 +59,8 @@ const metrics: MetricDefinition[] = [
     defaultWindowMethod: 'avg_over_time',
     defaultGroups: ['instance_id'],
     groupOptions: ['instance_id', 'disk', 'mountpoint'],
-    recommendation: '默认双 AVG：先得到实例级平均磁盘使用率，再看最近一个汇聚周期内的平均水平。',
-    scenario: '实例 A 有 4 块磁盘。分组聚合方式 AVG 会先把 4 块磁盘合成实例级序列；汇聚方式 AVG_OVER_TIME 再计算最近窗口内的平均值。',
+    recommendation: '默认双 AVG：先得到实例级平均磁盘使用率，再看最近一个聚合周期内的平均水平。',
+    scenario: '实例 A 有 4 块磁盘。分组聚合方式 AVG 会先把 4 块磁盘合成实例级序列；聚合方式 AVG_OVER_TIME 再计算最近窗口内的平均值。',
   },
   {
     key: 'interface_status',
@@ -101,7 +86,7 @@ const metrics: MetricDefinition[] = [
     defaultGroups: ['service'],
     groupOptions: ['service', 'instance_id', 'route'],
     recommendation: '增量类推荐双 SUM：先按服务汇总各实例增量，再统计窗口内总量。',
-    scenario: '服务 A 有多个实例。分组聚合方式 SUM 先合并实例增量；汇聚方式 SUM_OVER_TIME 再得到最近窗口内请求总量。',
+    scenario: '服务 A 有多个实例。分组聚合方式 SUM 先合并实例增量；聚合方式 SUM_OVER_TIME 再得到最近窗口内请求总量。',
   },
   {
     key: 'interface_inventory',
@@ -119,70 +104,109 @@ const metrics: MetricDefinition[] = [
 ];
 
 const migrationRows = [
-  ['AVG / AVG_OVER_TIME', '分组聚合 AVG + 汇聚方式 AVG_OVER_TIME，简称双 AVG'],
-  ['MAX / MAX_OVER_TIME', '分组聚合 MAX + 汇聚方式 MAX_OVER_TIME，简称双 MAX'],
-  ['MIN / MIN_OVER_TIME', '分组聚合 MIN + 汇聚方式 MIN_OVER_TIME，简称双 MIN'],
-  ['SUM / SUM_OVER_TIME', '分组聚合 SUM + 汇聚方式 SUM_OVER_TIME，简称双 SUM'],
-  ['COUNT', '分组聚合 SUM + 汇聚方式 COUNT_OVER_TIME'],
-  ['LAST_OVER_TIME', '分组聚合 AVG + 汇聚方式 LAST_OVER_TIME'],
+  ['AVG / AVG_OVER_TIME', '分组聚合 AVG + 聚合方式 AVG_OVER_TIME，简称双 AVG'],
+  ['MAX / MAX_OVER_TIME', '分组聚合 MAX + 聚合方式 MAX_OVER_TIME，简称双 MAX'],
+  ['MIN / MIN_OVER_TIME', '分组聚合 MIN + 聚合方式 MIN_OVER_TIME，简称双 MIN'],
+  ['SUM / SUM_OVER_TIME', '分组聚合 SUM + 聚合方式 SUM_OVER_TIME，简称双 SUM'],
+  ['COUNT', '分组聚合 SUM + 聚合方式 COUNT_OVER_TIME'],
+  ['LAST_OVER_TIME', '分组聚合 AVG + 聚合方式 LAST_OVER_TIME'],
 ];
 
 const pageStyle = {
-  minHeight: 760,
+  minHeight: 720,
   width: '100vw',
   maxWidth: '100%',
   boxSizing: 'border-box' as const,
   overflowX: 'hidden' as const,
-  background: '#f5f7fb',
-  padding: 24,
+  background:
+    'linear-gradient(135deg, rgba(239,247,255,0.95) 0%, rgba(255,255,255,0.95) 48%, rgba(244,250,255,0.95) 100%)',
+  padding: '34px 24px',
 };
 
-const sectionStyle = {
-  border: '1px solid #dde3ee',
-  borderRadius: 8,
-  background: '#fff',
-  padding: 18,
+const shellStyle = {
+  position: 'relative' as const,
+  maxWidth: 980,
+  margin: '0 auto',
+  paddingLeft: 48,
+};
+
+const stepBadgeStyle = {
+  position: 'absolute' as const,
+  left: 0,
+  top: 0,
+  width: 32,
+  height: 32,
+  borderRadius: '50%',
+  background: '#0f5bff',
+  color: '#fff',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  fontWeight: 600,
+};
+
+const sectionTitleStyle = {
+  fontSize: 18,
+  fontWeight: 600,
+  lineHeight: '32px',
+  marginBottom: 18,
+};
+
+const formRowStyle = {
+  display: 'grid',
+  gridTemplateColumns: '124px minmax(0, 1fr)',
+  columnGap: 12,
+  alignItems: 'start',
+  marginBottom: 18,
+};
+
+const formLabelStyle = {
+  lineHeight: '32px',
+  textAlign: 'right' as const,
+  color: '#1f2937',
+};
+
+const formControlStyle = {
+  width: '100%',
+};
+
+const helperStyle = {
+  display: 'block',
+  marginTop: 8,
+  color: '#5b789b',
+  fontSize: 13,
+};
+
+const inlinePanelStyle = {
+  marginLeft: 136,
+  marginTop: 8,
+  border: '1px solid #dbe7f3',
+  borderRadius: 4,
+  background: 'rgba(255,255,255,0.78)',
+  padding: 12,
 };
 
 const codeStyle = {
   display: 'block',
   whiteSpace: 'pre-wrap' as const,
   wordBreak: 'break-word' as const,
-  border: '1px solid #d8dee9',
-  borderRadius: 6,
-  background: '#111827',
-  color: '#e5eefb',
-  padding: 12,
+  borderRadius: 4,
+  background: '#f7f9fc',
+  border: '1px solid #d8e2ef',
+  color: '#26364a',
+  padding: 10,
   fontSize: 12,
   lineHeight: 1.6,
 };
 
 const getMetric = (key: MetricKey) => metrics.find((metric) => metric.key === key) || metrics[0];
 
-const getPeriodSeconds = (period: string) => {
-  const matched = period.match(/^(\d+)(m|h|d)$/);
-  if (!matched) return 300;
-  const value = Number(matched[1]);
-  const unit = matched[2];
-  if (unit === 'h') return value * 3600;
-  if (unit === 'd') return value * 86400;
-  return value * 60;
-};
+const getPeriodSeconds = (periodMinutes: number) => periodMinutes * 60;
 
-const getStep = (period: string) => {
-  const seconds = Math.max(1, Math.floor(getPeriodSeconds(period) / 30));
-  if (seconds % 3600 === 0) return `${seconds / 3600}h`;
+const getStep = (periodMinutes: number) => {
+  const seconds = Math.max(1, Math.floor(getPeriodSeconds(periodMinutes) / 30));
   if (seconds % 60 === 0) return `${seconds / 60}m`;
   return `${seconds}s`;
-};
-
-const getPeriodLabel = (period: string) => {
-  const labels: Record<string, string> = {
-    '5m': '5 分钟',
-    '10m': '10 分钟',
-    '30m': '30 分钟',
-  };
-  return labels[period] || period;
 };
 
 const getGroupLabel = (method: GroupMethod) =>
@@ -200,111 +224,69 @@ const getQuery = (
   windowMethod: WindowMethod,
   metricName: string,
   groups: string[],
-  period: string
+  periodMinutes: number
 ) => {
+  const period = `${periodMinutes}m`;
   const groupToken = groups.length ? 'group_by' : 'all_series';
   const groupClause = groups.length ? ` by (${groups.join(', ')})` : '';
-  const step = getStep(period);
-
-  if (windowMethod === 'count_over_time') {
-    return `count_over_time((${groupMethod}(metric) by (${groupToken}))[${period}:${step}])
-
-示例:
-count_over_time((${groupMethod}(${metricName})${groupClause})[${period}:${step}])`;
-  }
-
-  if (windowMethod === 'last_over_time') {
-    return `last_over_time((${groupMethod}(metric) by (${groupToken}))[${period}:${step}])
-
-示例:
-last_over_time((${groupMethod}(${metricName})${groupClause})[${period}:${step}])`;
-  }
+  const step = getStep(periodMinutes);
 
   return `${windowMethod}((${groupMethod}(metric) by (${groupToken}))[${period}:${step}])
 
-示例:
+示例：
 ${windowMethod}((${groupMethod}(${metricName})${groupClause})[${period}:${step}])`;
 };
 
-const getSteps = (
-  groupMethod: GroupMethod,
-  windowMethod: WindowMethod,
-  groups: string[],
-  period: string
-) => [
-  `按 ${groups.join(' + ') || '全部序列'} 分组，确定最终告警对象。`,
-  `先使用分组聚合方式 ${getGroupLabel(groupMethod)} 合并同一分组下未指定维度的数据。`,
-  `再使用汇聚方式 ${getWindowLabel(windowMethod)} 分析最近 ${getPeriodLabel(period)} 的数据，step 自动按 30 个计算点生成。`,
-];
+const getOptions = <T extends string>(items: Array<{ value: T; label: string; help: string }>) =>
+  items.map((item) => ({
+    value: item.value,
+    label: `${item.label} - ${item.help}`,
+  }));
 
-const MethodSummary = ({
-  groupMethod,
-  windowMethod,
-  period,
+const RequiredLabel = ({ children }: { children: string }) => (
+  <span>
+    {children}
+    <Text type="danger"> *</Text>
+  </span>
+);
+
+const FormRow = ({
+  label,
+  required,
+  children,
+  helper,
 }: {
-  groupMethod: GroupMethod;
-  windowMethod: WindowMethod;
-  period: string;
+  label: string;
+  required?: boolean;
+  children: React.ReactNode;
+  helper?: string;
 }) => (
-  <Alert
-    type="info"
-    showIcon
-    message={`当前语义：分组 ${getGroupLabel(groupMethod)} + 窗口 ${getWindowLabel(windowMethod)}`}
-    description={`汇聚周期 ${getPeriodLabel(period)} 会自动拆成 30 个计算点，当前 step = ${getStep(period)}。`}
-  />
+  <div style={formRowStyle}>
+    <div style={formLabelStyle}>{required ? <RequiredLabel>{label}</RequiredLabel> : label}</div>
+    <div>
+      {children}
+      {helper && <Text style={helperStyle}>{helper}</Text>}
+    </div>
+  </div>
 );
 
 const MigrationPanel = () => (
-  <div style={sectionStyle}>
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Space>
-        <SwapOutlined style={{ color: '#7c3aed' }} />
-        <Text strong>旧策略迁移规则</Text>
-      </Space>
-      <Row gutter={[10, 10]}>
+  <div style={inlinePanelStyle}>
+    <Space direction="vertical" size={8} style={{ width: '100%' }}>
+      <Text strong>旧策略迁移规则</Text>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, minmax(0, 1fr))', gap: 8 }}>
         {migrationRows.map(([source, target]) => (
-          <Col xs={24} md={12} key={source}>
-            <div style={{ border: '1px solid #e1e7f0', borderRadius: 8, padding: 12, minHeight: 88 }}>
-              <Tag color="default">{source}</Tag>
-              <div style={{ marginTop: 8 }}>{target}</div>
-            </div>
-          </Col>
+          <div key={source} style={{ border: '1px solid #e1e7f0', borderRadius: 4, padding: 8 }}>
+            <Tag color="default">{source}</Tag>
+            <Text style={{ display: 'block', marginTop: 6 }}>{target}</Text>
+          </div>
         ))}
-      </Row>
+      </div>
     </Space>
   </div>
 );
 
-const RecommendationPanel = ({ metric }: { metric: MetricDefinition }) => (
-  <div style={sectionStyle}>
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Space>
-        <BarChartOutlined style={{ color: '#16a34a' }} />
-        <Text strong>模板推荐</Text>
-      </Space>
-      <Text>{metric.recommendation}</Text>
-      <Space wrap>
-        <Tag color="blue">指标类型：{metric.kind}</Tag>
-        <Tag color="green">推荐分组聚合：{getGroupLabel(metric.defaultGroupMethod)}</Tag>
-        <Tag color="green">推荐汇聚方式：{getWindowLabel(metric.defaultWindowMethod)}</Tag>
-      </Space>
-    </Space>
-  </div>
-);
-
-const ScenarioPanel = ({ metric }: { metric: MetricDefinition }) => (
-  <div style={sectionStyle}>
-    <Space direction="vertical" size={12} style={{ width: '100%' }}>
-      <Space>
-        <DatabaseOutlined style={{ color: '#1677ff' }} />
-        <Text strong>场景预览</Text>
-      </Space>
-      <Text>{metric.scenario}</Text>
-    </Space>
-  </div>
-);
-
-const AggregationDesigner = ({
+const AggregationForm = ({
   initialMetric = 'disk',
   initialGroupMethod,
   initialWindowMethod,
@@ -319,7 +301,7 @@ const AggregationDesigner = ({
   const [metricKey, setMetricKey] = useState<MetricKey>(initialMetric);
   const metric = getMetric(metricKey);
   const [groups, setGroups] = useState<string[]>(initialMetricDefinition.defaultGroups);
-  const [period, setPeriod] = useState('5m');
+  const [periodMinutes, setPeriodMinutes] = useState(5);
   const [groupMethod, setGroupMethod] = useState<GroupMethod>(
     initialGroupMethod || initialMetricDefinition.defaultGroupMethod
   );
@@ -328,12 +310,8 @@ const AggregationDesigner = ({
   );
 
   const query = useMemo(
-    () => getQuery(groupMethod, windowMethod, metric.metricName, groups, period),
-    [groupMethod, groups, metric.metricName, period, windowMethod]
-  );
-  const steps = useMemo(
-    () => getSteps(groupMethod, windowMethod, groups, period),
-    [groupMethod, groups, period, windowMethod]
+    () => getQuery(groupMethod, windowMethod, metric.metricName, groups, periodMinutes),
+    [groupMethod, groups, metric.metricName, periodMinutes, windowMethod]
   );
 
   const handleMetricChange = (next: MetricKey) => {
@@ -363,159 +341,118 @@ const AggregationDesigner = ({
         `}
       </style>
       <div style={pageStyle}>
-        <section style={{ ...sectionStyle, marginBottom: 16 }}>
-          <Space direction="vertical" size={6}>
-            <Title level={3} style={{ margin: 0 }}>策略双层汇聚设计器</Title>
-            <Text type="secondary">
-              将“分组维度内先怎么聚合”和“汇聚周期内再怎么计算”拆成两个配置项，避免一个方法同时承担两层语义。
-            </Text>
-          </Space>
-        </section>
+        <div style={shellStyle}>
+          <div style={stepBadgeStyle}>2</div>
+          <div style={sectionTitleStyle}>定义指标</div>
 
-        <Row gutter={[16, 16]}>
-          <Col xs={24} xl={10}>
-            <section style={sectionStyle}>
-              <Space direction="vertical" size={18} style={{ width: '100%' }}>
-                <Space>
-                  <ApartmentOutlined style={{ color: '#1677ff' }} />
-                  <Text strong>定义指标</Text>
-                </Space>
+          <FormRow label="采集模板" required>
+            <Space wrap>
+              {collectTabs.map((tab, index) => (
+                <Button key={tab} type={index === 0 ? 'primary' : 'text'}>
+                  {tab}
+                </Button>
+              ))}
+            </Space>
+          </FormRow>
 
-                <div>
-                  <Text strong>指标</Text>
-                  <Select
-                    value={metricKey}
-                    onChange={handleMetricChange}
-                    style={{ width: '100%', marginTop: 8 }}
-                    options={metrics.map((item) => ({
-                      label: `${item.name}（${item.kind}）`,
-                      value: item.key,
-                    }))}
-                  />
-                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                    {metric.description}
-                  </Text>
-                </div>
+          <FormRow label="指标" required helper={metric.description}>
+            <Select
+              value={metricKey}
+              onChange={handleMetricChange}
+              style={formControlStyle}
+              options={metrics.map((item) => ({
+                label: `${item.name}（${item.kind}）`,
+                value: item.key,
+              }))}
+            />
+          </FormRow>
 
-                <div>
-                  <Text strong>分组维度</Text>
-                  <Select
-                    mode="multiple"
-                    value={groups}
-                    onChange={setGroups}
-                    style={{ width: '100%', marginTop: 8 }}
-                    options={metric.groupOptions.map((item) => ({ label: item, value: item }))}
-                  />
-                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                    监控策略根据所选分组维度分析指标，未指定的维度数据将统一聚合处理。
-                  </Text>
-                </div>
+          <FormRow
+            label="分组维度"
+            required
+            helper="监控策略根据所选分组维度分析指标，未指定的维度数据将统一聚合处理。"
+          >
+            <Select
+              mode="multiple"
+              value={groups}
+              onChange={setGroups}
+              style={formControlStyle}
+              options={metric.groupOptions.map((item) => ({ label: item, value: item }))}
+            />
+          </FormRow>
 
-                <div>
-                  <Text strong>分组聚合方式</Text>
-                  <Select
-                    value={groupMethod}
-                    onChange={setGroupMethod}
-                    style={{ width: '100%', marginTop: 8 }}
-                    options={groupMethods.map((item) => ({
-                      label: `${item.label} - ${item.help}`,
-                      value: item.value,
-                    }))}
-                  />
-                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                    默认：AVG。用于决定同一分组下未入选维度的多条序列如何先合并。
-                  </Text>
-                </div>
+          <FormRow
+            label="分组聚合方式"
+            required
+            helper="默认：AVG。用于决定同一分组下未入选维度的多条序列如何先合并。"
+          >
+            <Select
+              value={groupMethod}
+              onChange={setGroupMethod}
+              style={formControlStyle}
+              options={getOptions(groupMethods)}
+            />
+          </FormRow>
 
-                <div>
-                  <Text strong>汇聚周期</Text>
-                  <Radio.Group
-                    value={period}
-                    onChange={(event) => setPeriod(event.target.value)}
-                    style={{ display: 'block', marginTop: 8 }}
-                  >
-                    <Radio.Button value="5m">5 分钟</Radio.Button>
-                    <Radio.Button value="10m">10 分钟</Radio.Button>
-                    <Radio.Button value="30m">30 分钟</Radio.Button>
-                  </Radio.Group>
-                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                    汇聚周期是观察窗口，step 根据汇聚周期自动计算为 30 个计算点。
-                  </Text>
-                </div>
+          <FormRow label="条件维度" helper="配置维度过滤条件，多个条件之间为 AND 关系。">
+            <Button icon={<PlusOutlined />} />
+          </FormRow>
 
-                <div>
-                  <Text strong>汇聚方式</Text>
-                  <Select
-                    value={windowMethod}
-                    onChange={setWindowMethod}
-                    style={{ width: '100%', marginTop: 8 }}
-                    options={windowMethods.map((item) => ({
-                      label: `${item.label} - ${item.help}`,
-                      value: item.value,
-                    }))}
-                  />
-                  <Text type="secondary" style={{ display: 'block', marginTop: 6 }}>
-                    默认：AVG_OVER_TIME。用于决定观察窗口内如何得到最终阈值判断值。
-                  </Text>
-                </div>
+          <FormRow
+            label="聚合周期"
+            required
+            helper="汇聚周期是观察窗口，step 根据聚合周期自动计算为 30 个计算点。"
+          >
+            <InputNumber
+              min={1}
+              value={periodMinutes}
+              onChange={(value) => setPeriodMinutes(value || 5)}
+              addonAfter="分钟"
+              style={formControlStyle}
+            />
+          </FormRow>
 
-                <Divider style={{ margin: 0 }} />
-                <MethodSummary groupMethod={groupMethod} windowMethod={windowMethod} period={period} />
+          <FormRow
+            label="聚合方式"
+            required
+            helper="默认：AVG_OVER_TIME。用于决定观察窗口内如何得到最终阈值判断值。"
+          >
+            <Select
+              value={windowMethod}
+              onChange={setWindowMethod}
+              style={formControlStyle}
+              options={getOptions(windowMethods)}
+            />
+          </FormRow>
+
+          <div style={inlinePanelStyle}>
+            <Space direction="vertical" size={10} style={{ width: '100%' }}>
+              <Space wrap>
+                <Tag color="blue">分组聚合：{getGroupLabel(groupMethod)}</Tag>
+                <Tag color="blue">汇聚方式：{getWindowLabel(windowMethod)}</Tag>
+                <Tag color="green">step：{getStep(periodMinutes)}</Tag>
+                <Tag>30 个计算点</Tag>
               </Space>
-            </section>
-          </Col>
+              <Text type="secondary">{metric.recommendation}</Text>
+              <Text type="secondary">{metric.scenario}</Text>
+              <Divider style={{ margin: '4px 0' }} />
+              <code style={codeStyle}>{query}</code>
+              <Alert
+                type="warning"
+                showIcon
+                message="COUNT_OVER_TIME 与 LAST_OVER_TIME 的最终 MetricsQL 表达式需要后端实现时再校准"
+              />
+            </Space>
+          </div>
 
-          <Col xs={24} xl={14}>
-            <section style={sectionStyle}>
-              <Space direction="vertical" size={16} style={{ width: '100%' }}>
-                <Space>
-                  <ClockCircleOutlined style={{ color: '#1677ff' }} />
-                  <Text strong>计算说明</Text>
-                </Space>
-                <Row gutter={[12, 12]}>
-                  {steps.map((step, index) => (
-                    <Col xs={24} md={8} key={step}>
-                      <div style={{ border: '1px solid #e1e7f0', borderRadius: 8, padding: 12, minHeight: 116 }}>
-                        <Tag color="blue">第 {index + 1} 步</Tag>
-                        <div style={{ marginTop: 8 }}>{step}</div>
-                      </div>
-                    </Col>
-                  ))}
-                </Row>
-                <div>
-                  <Space style={{ marginBottom: 8 }}>
-                    <CodeOutlined style={{ color: '#475569' }} />
-                    <Text strong>高级查询语义</Text>
-                  </Space>
-                  <code style={codeStyle}>{query}</code>
-                </div>
-                <Alert
-                  type="warning"
-                  showIcon
-                  message="COUNT_OVER_TIME 与 LAST_OVER_TIME 仍需按产品语义确认最终 MetricsQL 表达式"
-                  description="原型先表达双层配置模型：先按分组聚合方式得到分组序列，再按汇聚方式在窗口内计算。后台实现时需结合 VictoriaMetrics 语法和实际数据类型落地。"
-                />
-              </Space>
-            </section>
-          </Col>
-        </Row>
-
-        <Row gutter={[16, 16]} style={{ marginTop: 16 }}>
-          <Col xs={24} xl={showMigration ? 24 : 12}>
-            {showMigration ? <MigrationPanel /> : <ScenarioPanel metric={metric} />}
-          </Col>
-          {!showMigration && (
-            <Col xs={24} xl={12}>
-              <RecommendationPanel metric={metric} />
-            </Col>
-          )}
-        </Row>
+          {showMigration && <MigrationPanel />}
+        </div>
       </div>
     </>
   );
 };
 
-export const AggregationDesignerFrame = () => <AggregationDesigner />;
+export const AggregationDesignerFrame = () => <AggregationForm />;
 
 const meta: Meta<typeof AggregationDesignerFrame> = {
   title: 'Monitor/StrategyAggregationDesigner',
@@ -527,24 +464,24 @@ const meta: Meta<typeof AggregationDesignerFrame> = {
 
 export default meta;
 
-type Story = StoryObj<typeof AggregationDesigner>;
+type Story = StoryObj<typeof AggregationForm>;
 
 export const DefaultNumericMetric: Story = {
-  render: () => <AggregationDesigner initialMetric="disk" initialGroupMethod="avg" initialWindowMethod="avg_over_time" />,
+  render: () => <AggregationForm initialMetric="disk" initialGroupMethod="avg" initialWindowMethod="avg_over_time" />,
 };
 
 export const InterfaceStatusLast: Story = {
   render: () => (
-    <AggregationDesigner initialMetric="interface_status" initialGroupMethod="avg" initialWindowMethod="last_over_time" />
+    <AggregationForm initialMetric="interface_status" initialGroupMethod="avg" initialWindowMethod="last_over_time" />
   ),
 };
 
 export const DeltaCounterSum: Story = {
   render: () => (
-    <AggregationDesigner initialMetric="request_delta" initialGroupMethod="sum" initialWindowMethod="sum_over_time" />
+    <AggregationForm initialMetric="request_delta" initialGroupMethod="sum" initialWindowMethod="sum_over_time" />
   ),
 };
 
 export const MethodComparison: Story = {
-  render: () => <AggregationDesigner initialMetric="interface_inventory" showMigration />,
+  render: () => <AggregationForm initialMetric="interface_inventory" showMigration />,
 };
