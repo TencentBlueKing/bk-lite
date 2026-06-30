@@ -4041,6 +4041,9 @@ monitor_object_plugin:
   NetworkService Spectracom SNMP:
     name: Spectracom（Telegraf）
     desc: Spectracom SecureSync 与 NetClock 时间服务器 SNMP 采集模板，适用于 Spectracom 企业号 18837 下的设备。通用 NetworkService SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 xSync 与 NTP 状态标量：同步状态、DC 电源、主/次告警、NTP 当前模式与 stratum。温度与热插拔对象本轮未完整核验数值叶子 OID，因此暂不采集。
+  NetworkService Asentria SiteBoss SNMP:
+    name: Asentria SiteBoss（Telegraf）
+    desc: Asentria SiteBoss 远程站点监控设备 SNMP 采集模板，适用于 Asentria 企业号 3052 下的设备。该 child 模板依赖通用 NetworkService SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。SiteBoss EventSensor 点位按现场配置变化，温度、湿度、接点、继电器或电源输出点位在提升为共享设备健康指标前需要行级语义确认，因此本轮不采集这些私有点位。
   VoiceGateway AudioCodes SNMP:
     name: AudioCodes (Telegraf)
     desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。

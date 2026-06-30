@@ -4407,6 +4407,9 @@ monitor_object_plugin:
   NetworkService Spectracom SNMP:
     name: Spectracom (Telegraf)
     desc: Spectracom SecureSync and NetClock time-server SNMP collection for appliances under Spectracom PEN 18837. The shared NetworkService SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds xSync and NTP status scalars for synchronization, DC power, major and minor alarms, NTP current mode and stratum. Temperature and hot-swap objects are not collected in this pass because their numeric leaf OIDs were not fully verified.
+  NetworkService Asentria SiteBoss SNMP:
+    name: Asentria SiteBoss (Telegraf)
+    desc: Asentria SiteBoss remote-site monitoring SNMP collection for devices under Asentria PEN 3052. This child template relies on the shared NetworkService SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. SiteBoss EventSensor points are configurable per installation and need row-level interpretation before temperature, humidity, contact, relay or power-output points can be normalized, so they are not promoted into shared device-health metrics in this pass.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
