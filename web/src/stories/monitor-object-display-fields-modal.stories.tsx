@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { Button, Input, Modal, Radio, Select, Space, Tag } from 'antd';
+import { Button, Input, Radio, Select, Tag } from 'antd';
 import {
   CloseOutlined,
   HolderOutlined,
@@ -101,17 +101,31 @@ function DisplayFieldsModalPreview() {
           <Button type="primary">确认</Button>
         </div>
       </div>
-      <Modal title="选择字段" open footer={null} width={420}>
-        <Radio.Group value="collector_ip">
-          <Space direction="vertical">
-            {fieldOptions.map((field) => (
-              <Radio key={field} value={field}>
-                {field}
-              </Radio>
-            ))}
-          </Space>
-        </Radio.Group>
-      </Modal>
+      <div className="fixed inset-0 flex items-center justify-center bg-black/45">
+        <div className="w-[520px] rounded bg-white shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
+          <div className="flex h-14 items-center justify-between border-b border-[#edf0f5] px-5">
+            <strong>选择字段</strong>
+            <CloseOutlined className="text-[#8c8c8c]" />
+          </div>
+          <div className="p-5">
+            <Radio.Group className="flex max-h-[320px] flex-col" value="collector_ip">
+              {fieldOptions.map((field) => (
+                <Radio
+                  key={field}
+                  value={field}
+                  className="mx-0 flex min-h-9 items-center rounded px-2"
+                >
+                  {field}
+                </Radio>
+              ))}
+            </Radio.Group>
+          </div>
+          <div className="flex justify-end gap-2 border-t border-[#edf0f5] px-5 py-4">
+            <Button>取消</Button>
+            <Button type="primary">确认</Button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }

@@ -8,7 +8,7 @@ import React, {
   useEffect,
   useCallback
 } from 'react';
-import { Input, Button, Select, message, Spin, Tag, Modal, Radio } from 'antd';
+import { Input, Button, Select, message, Spin, Tag, Radio, Empty } from 'antd';
 import { PlusOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ModalConfig } from '@/app/monitor/types';
@@ -581,29 +581,54 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             </div>
           </div>
         </Spin>
-        <Modal
+        <OperateModal
+          width={520}
           title={t('monitor.object.selectField')}
-          open={fieldPicker.visible}
-          confirmLoading={fieldPicker.loading}
-          onOk={confirmFieldPicker}
+          visible={fieldPicker.visible}
           onCancel={() => setFieldPicker((prev) => ({ ...prev, visible: false }))}
+          footer={
+            <div>
+              <Button
+                className="mr-2"
+                onClick={() => setFieldPicker((prev) => ({ ...prev, visible: false }))}
+              >
+                {t('common.cancel')}
+              </Button>
+              <Button
+                type="primary"
+                loading={fieldPicker.loading}
+                disabled={!fieldPicker.value}
+                onClick={confirmFieldPicker}
+              >
+                {t('common.confirm')}
+              </Button>
+            </div>
+          }
         >
           <Spin spinning={fieldPicker.loading}>
-            <Radio.Group
-              className="flex flex-col gap-2"
-              value={fieldPicker.value}
-              onChange={(e) =>
-                setFieldPicker((prev) => ({ ...prev, value: e.target.value }))
-              }
-            >
-              {fieldPicker.fields.map((field) => (
-                <Radio key={field} value={field}>
-                  {field}
-                </Radio>
-              ))}
-            </Radio.Group>
+            {fieldPicker.fields.length ? (
+              <Radio.Group
+                className="flex max-h-[320px] flex-col overflow-y-auto"
+                value={fieldPicker.value}
+                onChange={(e) =>
+                  setFieldPicker((prev) => ({ ...prev, value: e.target.value }))
+                }
+              >
+                {fieldPicker.fields.map((field) => (
+                  <Radio
+                    key={field}
+                    value={field}
+                    className="mx-0 flex min-h-9 items-center rounded px-2 hover:bg-[var(--color-fill-1)]"
+                  >
+                    {field}
+                  </Radio>
+                ))}
+              </Radio.Group>
+            ) : (
+              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+            )}
           </Spin>
-        </Modal>
+        </OperateModal>
       </OperateModal>
     );
   }
