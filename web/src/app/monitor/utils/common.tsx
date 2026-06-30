@@ -678,6 +678,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /spectracom|orolia|securesync|netclock/i, label: 'Spectracom', icon: 'mm-spectracom_spectracom' },
   { match: /asentria|siteboss/i, label: 'Asentria', icon: 'mm-asentria_asentria' },
   { match: /server\s*technology|servertech|sentry3/i, label: 'Server Technology', icon: 'mm-servertech_servertech' },
+  { match: /enlogic|en2\.?0/i, label: 'Enlogic', icon: 'mm-enlogic_enlogic' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },
   { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },

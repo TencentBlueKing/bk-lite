@@ -64,7 +64,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
       'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',
-      'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech'
+      'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech',
+      'NetworkService Enlogic PDU SNMP': 'snmp_enlogic'
     }
   };
 };
