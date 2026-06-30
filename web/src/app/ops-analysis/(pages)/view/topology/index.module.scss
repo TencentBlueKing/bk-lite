@@ -10,21 +10,19 @@
 .topologyContainer {
   :global(.x6-graph-svg) {
     background:
-      radial-gradient(circle at 16% 14%, rgba(74, 144, 226, 0.12) 0%, transparent 30%),
-      radial-gradient(circle at 84% 18%, rgba(18, 190, 190, 0.08) 0%, transparent 26%),
-      linear-gradient(90deg, rgba(142, 166, 196, 0.035) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(142, 166, 196, 0.035) 1px, transparent 1px),
+      radial-gradient(circle at 18% 16%, rgba(76, 142, 214, 0.1) 0%, transparent 34%),
+      radial-gradient(circle at 82% 18%, rgba(42, 179, 173, 0.07) 0%, transparent 30%),
       linear-gradient(
         135deg,
-        #f5faff 0%,
-        #fbfdff 48%,
-        #f4f8fd 100%
+        #f7fbff 0%,
+        #fcfdff 48%,
+        #f5f8fc 100%
       ) !important;
-    background-size: 100% 100%, 100% 100%, 28px 28px, 28px 28px, 100% 100% !important;
+    background-size: 100% 100%, 100% 100%, 100% 100% !important;
   }
 
   :global(.x6-graph-grid line) {
-    stroke: rgba(117, 142, 172, 0.1) !important;
+    stroke: transparent !important;
   }
 
   :global(.x6-node foreignObject) {
@@ -84,15 +82,14 @@
     border-radius: 0 0 8px 8px !important;
     overflow: hidden !important;
     
-    // 背景网格优化
+    // 背景优化
     :global(.x6-graph-svg) {
-      background: linear-gradient(90deg, 
-        rgba(0, 0, 0, 0.02) 1px, 
-        transparent 1px),
-      linear-gradient(180deg, 
-        rgba(0, 0, 0, 0.02) 1px, 
-        transparent 1px) !important;
-      background-size: 20px 20px !important;
+      background: linear-gradient(
+        135deg,
+        rgba(248, 250, 252, 0.98) 0%,
+        rgba(241, 246, 251, 0.96) 100%
+      ) !important;
+      background-size: 100% 100% !important;
     }
   }
 }

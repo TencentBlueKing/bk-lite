@@ -523,7 +523,10 @@ export const useGraphInitializer = ({
       container: containerRef.current,
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
-      grid: true,
+      grid: {
+        size: 20,
+        visible: false,
+      },
       panning: true,
       autoResize: true,
       mousewheel: {
