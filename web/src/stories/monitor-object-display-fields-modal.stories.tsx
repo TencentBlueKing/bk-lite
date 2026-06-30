@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import { Button, Input, Radio, Select, Tag } from 'antd';
+import { Button, Input, Select, Tag } from 'antd';
 import {
   CloseOutlined,
   HolderOutlined,
@@ -79,7 +79,7 @@ function ColumnBlock({
 
 function DisplayFieldsModalPreview() {
   return (
-    <div className="min-h-[760px] bg-[#eef2f6] p-8">
+    <div className="relative min-h-[760px] bg-[#eef2f6] p-8">
       <div className="mx-auto w-[900px] rounded bg-white shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
         <div className="flex h-14 items-center justify-between border-b border-[#edf0f5] px-5">
           <strong>展示指标配置 - 主机</strong>
@@ -101,29 +101,21 @@ function DisplayFieldsModalPreview() {
           <Button type="primary">确认</Button>
         </div>
       </div>
-      <div className="fixed inset-0 flex items-center justify-center bg-black/45">
-        <div className="w-[520px] rounded bg-white shadow-[0_12px_32px_rgba(0,0,0,0.18)]">
-          <div className="flex h-14 items-center justify-between border-b border-[#edf0f5] px-5">
-            <strong>选择字段</strong>
-            <CloseOutlined className="text-[#8c8c8c]" />
-          </div>
-          <div className="p-5">
-            <Radio.Group className="flex max-h-[320px] flex-col" value="collector_ip">
-              {fieldOptions.map((field) => (
-                <Radio
-                  key={field}
-                  value={field}
-                  className="mx-0 flex min-h-9 items-center rounded px-2"
-                >
-                  {field}
-                </Radio>
-              ))}
-            </Radio.Group>
-          </div>
-          <div className="flex justify-end gap-2 border-t border-[#edf0f5] px-5 py-4">
-            <Button>取消</Button>
-            <Button type="primary">确认</Button>
-          </div>
+      <div className="absolute left-[610px] top-[545px] w-[260px] rounded border border-[#edf0f5] bg-white p-1 shadow-[0_8px_24px_rgba(0,0,0,0.12)]">
+        <div className="max-h-[240px] overflow-y-auto">
+          {fieldOptions.map((field) => (
+            <button
+              key={field}
+              type="button"
+              className={`block min-h-8 w-full rounded px-3 text-left text-sm leading-8 ${
+                field === 'collector_ip'
+                  ? 'bg-[#e6f4ff] text-[#1677ff]'
+                  : 'text-[#262626]'
+              }`}
+            >
+              {field}
+            </button>
+          ))}
         </div>
       </div>
     </div>

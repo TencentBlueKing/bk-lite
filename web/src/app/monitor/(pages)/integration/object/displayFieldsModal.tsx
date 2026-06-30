@@ -8,7 +8,7 @@ import React, {
   useEffect,
   useCallback
 } from 'react';
-import { Input, Button, Select, message, Spin, Tag, Radio, Empty } from 'antd';
+import { Input, Button, Select, message, Spin, Tag, Popover, Empty } from 'antd';
 import { PlusOutlined, CloseOutlined, HolderOutlined } from '@ant-design/icons';
 import OperateModal from '@/components/operate-modal';
 import { ModalRef, ModalConfig } from '@/app/monitor/types';
@@ -58,14 +58,12 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       visible: boolean;
       loading: boolean;
       fields: string[];
-      value: string;
       colIdx: number;
       bindIdx: number;
     }>({
       visible: false,
       loading: false,
       fields: [],
-      value: '',
       colIdx: -1,
       bindIdx: -1
     });
@@ -107,7 +105,6 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
           visible: false,
           loading: false,
           fields: [],
-          value: '',
           colIdx: -1,
           bindIdx: -1
         });
@@ -347,7 +344,6 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         visible: true,
         loading: true,
         fields: [],
-        value: binding.field || '',
         colIdx,
         bindIdx
       });
@@ -356,8 +352,7 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
         setFieldPicker((prev) => ({
           ...prev,
           loading: false,
-          fields,
-          value: prev.value || fields[0] || ''
+          fields
         }));
       } catch {
         message.error(t('common.operationFailed'));
@@ -365,16 +360,37 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
       }
     };
 
-    const confirmFieldPicker = () => {
-      if (fieldPicker.colIdx >= 0 && fieldPicker.bindIdx >= 0) {
-        updateBindingField(
-          fieldPicker.colIdx,
-          fieldPicker.bindIdx,
-          fieldPicker.value
-        );
-      }
+    const selectField = (field: string) => {
+      updateBindingField(fieldPicker.colIdx, fieldPicker.bindIdx, field);
       setFieldPicker((prev) => ({ ...prev, visible: false }));
     };
+
+    const renderFieldPicker = (selectedField?: string) => (
+      <div className="w-[260px]">
+        <Spin spinning={fieldPicker.loading}>
+          {fieldPicker.fields.length ? (
+            <div className="max-h-[240px] overflow-y-auto py-1">
+              {fieldPicker.fields.map((field) => (
+                <button
+                  key={field}
+                  type="button"
+                  className={`block min-h-8 w-full rounded px-3 text-left text-sm leading-8 hover:bg-[var(--color-fill-1)] ${
+                    selectedField === field
+                      ? 'bg-[#e6f4ff] text-[#1677ff]'
+                      : 'text-[var(--color-text-1)]'
+                  }`}
+                  onClick={() => selectField(field)}
+                >
+                  {field}
+                </button>
+              ))}
+            </div>
+          ) : (
+            <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
+          )}
+        </Spin>
+      </div>
+    );
 
     const onDragStart = (idx: number) => {
       dragIndexRef.current = idx;
@@ -548,14 +564,27 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
                             updateBindingField(colIdx, bindIdx, e.target.value)
                           }
                           addonAfter={
-                            <Button
-                              type="link"
-                              size="small"
-                              className="px-0"
-                              onClick={() => openFieldPicker(colIdx, bindIdx)}
+                            <Popover
+                              trigger="click"
+                              placement="bottomRight"
+                              content={renderFieldPicker(binding.field)}
+                              open={
+                                fieldPicker.visible &&
+                                fieldPicker.colIdx === colIdx &&
+                                fieldPicker.bindIdx === bindIdx
+                              }
+                              onOpenChange={(open) => {
+                                if (open) {
+                                  openFieldPicker(colIdx, bindIdx);
+                                  return;
+                                }
+                                setFieldPicker((prev) => ({ ...prev, visible: false }));
+                              }}
                             >
-                              {t('monitor.object.selectField')}
-                            </Button>
+                              <Button type="link" size="small" className="px-0">
+                                {t('monitor.object.selectField')}
+                              </Button>
+                            </Popover>
                           }
                         />
                       )}
@@ -581,54 +610,6 @@ const DisplayFieldsModal = forwardRef<ModalRef, DisplayFieldsModalProps>(
             </div>
           </div>
         </Spin>
-        <OperateModal
-          width={520}
-          title={t('monitor.object.selectField')}
-          visible={fieldPicker.visible}
-          onCancel={() => setFieldPicker((prev) => ({ ...prev, visible: false }))}
-          footer={
-            <div>
-              <Button
-                className="mr-2"
-                onClick={() => setFieldPicker((prev) => ({ ...prev, visible: false }))}
-              >
-                {t('common.cancel')}
-              </Button>
-              <Button
-                type="primary"
-                loading={fieldPicker.loading}
-                disabled={!fieldPicker.value}
-                onClick={confirmFieldPicker}
-              >
-                {t('common.confirm')}
-              </Button>
-            </div>
-          }
-        >
-          <Spin spinning={fieldPicker.loading}>
-            {fieldPicker.fields.length ? (
-              <Radio.Group
-                className="flex max-h-[320px] flex-col overflow-y-auto"
-                value={fieldPicker.value}
-                onChange={(e) =>
-                  setFieldPicker((prev) => ({ ...prev, value: e.target.value }))
-                }
-              >
-                {fieldPicker.fields.map((field) => (
-                  <Radio
-                    key={field}
-                    value={field}
-                    className="mx-0 flex min-h-9 items-center rounded px-2 hover:bg-[var(--color-fill-1)]"
-                  >
-                    {field}
-                  </Radio>
-                ))}
-              </Radio.Group>
-            ) : (
-              <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} />
-            )}
-          </Spin>
-        </OperateModal>
       </OperateModal>
     );
   }
