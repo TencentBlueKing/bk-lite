@@ -3869,6 +3869,9 @@ monitor_object_plugin:
   Wireless LigoWave SNMP:
     name: LigoWave（Telegraf）
     desc: LigoWave 无线 AP 与无线回传设备 SNMP 子模板（企业号 PEN 32750）。已确认 LigoWave MIB 暴露无线接口、远端节点、signal/noise/SNR、TxPower 与字节计数等私有无线遥测对象，但当前未确认稳定且无需行级过滤的 CPU、内存、温度、风扇或电源设备健康 OID；因此这些设备健康指标暂为 N/A，不把无线业务链路计数伪造成共享健康指标。本子模板不在 metrics.json 声明厂商增量指标；通用 Wireless SNMP 底座提供运行时长、IF-MIB 接口指标与汇总流量，LigoWave 插件提供 collect_type、UI 与 Telegraf 子模板。适用品牌型号——LigoWave 无线 AP、无线网桥、无线回传设备及其他遵循 IF-MIB 标准的无线设备。
+  Wireless Radwin SNMP:
+    name: Radwin（Telegraf）
+    desc: Radwin 无线宽带 PtP/PtMP 设备 SNMP 子模板（企业号 PEN 4458）。当前状态事实确认 RADWIN-MIB-WINLINK1000 与 Radwin 企业号，但未确认稳定且无需行级过滤的 CPU、内存、温度、风扇或电源设备健康 OID；因此这些设备健康指标暂为 N/A，不把无线业务链路计数伪造成共享健康指标。本子模板不在 metrics.json 声明厂商增量指标；通用 Wireless SNMP 底座提供运行时长、IF-MIB 接口指标与汇总流量，Radwin 插件提供 collect_type、UI 与 Telegraf 子模板。适用品牌型号——Radwin 5000 等无线宽带 PtP/PtMP 设备及其他遵循 IF-MIB 标准的无线设备。
   Wireless Grandstream SNMP:
     name: Grandstream（Telegraf）
     desc: Grandstream GWN 无线设备 SNMP 采集基线模板（接口流量 + 运行时长，企业号 PEN 42397）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。GRANDSTREAM-GWN-MIB 以无线射频统计与连接客户端信息为主，仅暴露 gwnDeviceUptime 这一标量系统量，无 CPU/内存/温度对象；关联客户端数仅以按 MAC 索引的 gwnClientTable 逐行呈现，无标量计数对象，telegraf inputs.snmp 无法行级聚合。故 CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。适用品牌型号——Grandstream GWN76xx/GWN78xx Wi-Fi 接入点与控制器（企业号 PEN 42397）及其他遵循 IF-MIB 标准的无线 AP 设备。
