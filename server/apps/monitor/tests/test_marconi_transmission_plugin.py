@@ -234,6 +234,13 @@ def test_brand_match_present_in_common():
 
 
 @pytest.mark.unit
+def test_brand_match_does_not_claim_generic_transport_terms():
+    common = WEB_ROOT / "src" / "app" / "monitor" / "utils" / "common.tsx"
+    text = common.read_text(encoding="utf-8")
+    assert "/marconi|oms|sdh/i" not in text
+
+
+@pytest.mark.unit
 def test_brand_svg_exists_and_metrics_icon_uses_it(metrics):
     assert metrics["icon"] == ICON_NAME
     icon = WEB_ROOT / "public" / "assets" / "icons" / f"{ICON_NAME}.svg"
