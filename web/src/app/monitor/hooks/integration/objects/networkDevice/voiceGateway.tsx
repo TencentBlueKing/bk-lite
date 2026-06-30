@@ -61,7 +61,8 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Mitel SNMP': 'snmp_mitel',
       'VoiceGateway Polycom SNMP': 'snmp_polycom',
       'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
-      'VoiceGateway Zenitel SNMP': 'snmp_zenitel'
+      'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
+      'VoiceGateway Sangoma Vega SNMP': 'snmp_sangoma'
     }
   };
 };

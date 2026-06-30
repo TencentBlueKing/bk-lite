@@ -676,6 +676,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /polycom|\bpoly\s*(phone|lens)\b/i, label: 'Polycom', icon: 'mm-polycom_polycom' },
   { match: /yeastar/i, label: 'Yeastar', icon: 'mm-yeastar_yeastar' },
   { match: /zenitel|vingtor|stentofon/i, label: 'Zenitel', icon: 'mm-zenitel_zenitel' },
+  { match: /sangoma|vega/i, label: 'Sangoma Vega', icon: 'mm-sangoma_sangoma' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /avocent|cyclades|\bacs[0-9]{3,4}\b/i, label: 'Avocent ACS', icon: 'mm-avocent_avocent' },
   { match: /perle|iolan|\bscg[0-9]*\b/i, label: 'Perle IOLAN', icon: 'mm-perle_perle' },
