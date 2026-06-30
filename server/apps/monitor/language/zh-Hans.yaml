@@ -151,6 +151,15 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    device_temperature_celsius:
+      name: 温度
+      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
   Access:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3438,6 +3447,9 @@ monitor_object_metric_group:
   Transmission:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
   Access:
     Base: 基础
     Traffic: 流量
@@ -3854,6 +3866,9 @@ monitor_object_plugin:
   Transmission Pan Dacom SNMP:
     name: Pan Dacom（Telegraf）
     desc: Pan Dacom 光传输/CWDM 设备 SNMP 采集基线模板（PAN-DACOM-MIB）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 Pan Dacom 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此链路状态、温度、光功率等私有光传输健康指标暂为 N/A，不伪造。适用品牌型号——Pan Dacom 光传输/CWDM 设备及其他遵循 IF-MIB 标准的传输设备。
+  Transmission Tachyon SNMP:
+    name: Tachyon（Telegraf）
+    desc: Tachyon Networks TNA 300 系列传输设备 SNMP 子模板。通用 Transmission SNMP 底座提供运行时长与 IF-MIB 接口流量，本插件额外采集 Tachyon 私有健康标量：CPU 使用率、内存使用率与 CPU 温度。CPU/内存以百分比直接上报，CPU 温度以摄氏度直采无缩放。未发现稳定归一的风扇/电源状态对象，故风扇与电源为 N/A。
   Access BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。
