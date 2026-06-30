@@ -1,0 +1,97 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_dellsc8000",
+  "plugin": "Storage Dell SC8000 SNMP",
+  "plugin_desc": "Dell SC8000 storage-specific SNMP collection for Dell Compellent / SC Series storage arrays (Dell EMC enterprise PEN 674). In addition to standard IF-MIB interface metrics, it collects Dell SC private OIDs for device health — physical disk status and healthy flag (scDiskStatus / scDiskHealthy), controller fan status (scCtlrFanStatus), and controller power-supply status (scCtlrPowerStatus). The raw status codes are normalized via telegraf processors.enum to 1=healthy / 2=fault, and the worst component is taken per device with max(). This profile does not expose pollable controller CPU, memory, or temperature gauges, so CPU, memory, and temperature are not collected (N/A). Supported brands/models — Dell SC8000 / Compellent SC Series storage arrays with SNMP enabled.",
+  "status_query": "any({instance_type='storage', collect_type='snmp_dellsc8000'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_disk_state",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_disk_state",
+      "query": "max(device_disk_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Disk Health State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the physical disk health of the Dell SC8000 storage array, derived from the Dell SC disk status and healthy flag tables (scDiskStatus and scDiskHealthy, one row per disk). The raw codes are normalized via telegraf processors.enum so that up/true (1) is healthy and any other code is treated as a fault, and the worst disk is taken per device with max(). A value greater than 1 indicates a degraded, down, or unhealthy disk that carries a risk of data loss and should be investigated immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the controller fan health of the Dell SC8000 storage array, derived from the Dell SC controller fan status table (scCtlrFanStatus, one row per controller fan). The raw codes are normalized via telegraf processors.enum so that up (1) is healthy and any other code is treated as a fault, and the worst fan is taken per device with max(). A value greater than 1 indicates a cooling fault that can overheat the controller enclosure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the controller power-supply health of the Dell SC8000 storage array, derived from the Dell SC controller power status table (scCtlrPowerStatus, one row per controller power supply). The raw codes are normalized via telegraf processors.enum so that up (1) is healthy and any other code is treated as a fault, and the worst supply is taken per device with max(). A value greater than 1 indicates a power-supply fault or loss of power redundancy."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
+    }
+  ]
+}

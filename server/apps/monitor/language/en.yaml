@@ -5154,6 +5154,9 @@ monitor_object_plugin:
   Storage NetApp SNMP:
     name: NetApp (Telegraf)
     desc: NetApp storage SNMP collection (enterprise PEN 789). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — controller CPU busy time (cpuBusyTimePerCent, direct percent) and RAID disk-drive state (raidStatus, active=normal normalized to 1=healthy / 2=fault, worst disk per instance). The environment scalars (failed fan / power-supply counts, over-temperature) are count/boolean types not mapped into the shared-disk enum semantics, so temperature, fan and power are N/A and not faked pending field verification. Supported brands/models — NetApp FAS / AFF storage systems running Data ONTAP (enterprise PEN 789).
+  Storage Dell SC8000 SNMP:
+    name: Dell SC8000 (Telegraf)
+    desc: Dell SC8000 / Compellent storage SNMP collection (Dell EMC enterprise PEN 674). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — physical disk status and healthy flag (scDiskStatus / scDiskHealthy), controller fan status (scCtlrFanStatus), and controller power-supply status (scCtlrPowerStatus), normalized to 1=healthy / 2=fault with the worst component taken per instance. This profile exposes no pollable controller CPU, memory, or temperature gauge, so CPU, memory, and temperature are N/A and not faked. Supported brands/models — Dell SC8000 / Compellent SC Series storage arrays.
   Oracle:
     desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
       uptime, operation counts, transaction commits and rollbacks, as well as various

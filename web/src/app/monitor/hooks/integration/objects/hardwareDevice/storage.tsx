@@ -136,6 +136,7 @@ export const useStorageConfig = () => {
       'Storage Fujitsu SNMP': 'snmp_fujitsu',
       'Storage Inspur SNMP': 'snmp_inspur',
       'Storage CeresData SNMP': 'snmp_ceresdata',
+      'Storage Dell SC8000 SNMP': 'snmp_dellsc8000',
     },
   };
 };
