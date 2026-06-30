@@ -14,6 +14,11 @@ const sidebarScss = fs.readFileSync(
 
 assert.match(sidebarTsx, /components\/treeSelector/);
 assert.match(sidebarTsx, /<TreeSelector\b/);
+assert.match(sidebarTsx, /getMonitorObject/);
+assert.match(sidebarTsx, /add_instance_count:\s*true/);
+assert.match(sidebarTsx, /instance_count/);
+assert.match(sidebarTsx, /monitorObjId/);
+assert.doesNotMatch(sidebarTsx, /PROFESSIONAL_DASHBOARD_GROUPS/);
 assert.doesNotMatch(sidebarTsx, /styles\.groupHeader/);
 assert.doesNotMatch(sidebarTsx, /styles\.item\b/);
 

@@ -1,81 +1,118 @@
 'use client';
 
-import React, { useMemo } from 'react';
-import { useRouter } from 'next/navigation';
-import { PROFESSIONAL_DASHBOARDS, PROFESSIONAL_DASHBOARD_GROUPS } from '../registry';
+import React, { useEffect, useMemo, useState } from 'react';
+import { useRouter, useSearchParams } from 'next/navigation';
+import useApiClient from '@/utils/request';
+import useMonitorApi from '@/app/monitor/api';
+import { getProfessionalDashboardKey, getProfessionalDashboardUrl } from '../registry';
 import { normalizeDashboardKey } from '../shared/utils';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
-import { TreeItem } from '@/app/monitor/types';
+import { ObjectItem, TreeItem } from '@/app/monitor/types';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
   currentObjectKey: string;
 }
 
-const ICON_MAP: Record<string, string> = {
-  mysql: 'mm-mysql_Mysql',
-  redis: 'mm-redis_Redis',
-  mongodb: 'mm-mongodb_Mongodb',
-  mssql: 'mm-mssql_Mssql',
-  nginx: 'mm-nginx_Nginx',
-  docker: 'mm-docker_Docker',
-  activemq: 'mm-activemq_ActiveMQ',
-  apache: 'mm-apache_Apache',
-  rabbitmq: 'mm-rabbitmq_Rabbitmq',
-  tomcat: 'mm-tomcat_Tomcat',
-  zookeeper: 'mm-zookeeper_Zookeeper',
-  postgres: 'mm-postgresql_Postgresql',
-  postgresql: 'mm-postgresql_Postgresql',
-  elasticsearch: 'mm-elasticsearch_Elasticsearch',
-  host: 'mm-host_主机',
-  website: 'mm-website_网站',
-  ping: 'mm-router_路由器'
-};
+const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
+  const groupedData = objects.reduce((acc, item) => {
+    if (!acc[item.type]) {
+      acc[item.type] = {
+        title: item.display_type || '--',
+        key: item.type,
+        children: []
+      };
+    }
+    acc[item.type].children.push({
+      title: item.display_name || '--',
+      label: item.name || '--',
+      key: item.id,
+      icon: item.icon,
+      count: item.instance_count || 0,
+      children: []
+    });
+    return acc;
+  }, {} as Record<string, TreeItem>);
 
-const DEFAULT_ICON = 'mm-middleware_中间件';
+  if (groupedData.Other) {
+    groupedData.Other.children = groupedData.Other.children?.filter(
+      (item) => item.label !== 'SNMP Trap'
+    );
+  }
+
+  return Object.values(groupedData);
+};
 
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
   const router = useRouter();
+  const searchParams = useSearchParams();
+  const { isLoading } = useApiClient();
+  const { getMonitorObject } = useMonitorApi();
   const normalizedCurrent = normalizeDashboardKey(currentObjectKey);
+  const [objects, setObjects] = useState<ObjectItem[]>([]);
+  const [treeData, setTreeData] = useState<TreeItem[]>([]);
+  const [treeLoading, setTreeLoading] = useState(false);
 
-  const groups = useMemo(() => {
-    return Object.entries(PROFESSIONAL_DASHBOARD_GROUPS)
-      .map(([groupKey, meta]) => {
-        const items = PROFESSIONAL_DASHBOARDS.filter((item) => item.groupKey === groupKey);
+  useEffect(() => {
+    if (isLoading) return;
+    const loadObjects = async () => {
+      try {
+        setTreeLoading(true);
+        const data: ObjectItem[] = await getMonitorObject({
+          add_instance_count: true
+        });
+        setObjects(data);
+        setTreeData(buildMonitorObjectTree(data));
+      } finally {
+        setTreeLoading(false);
+      }
+    };
 
-        return {
-          key: groupKey,
-          title: meta.label,
-          order: meta.order,
-          children: items.map((item) => ({
-            key: item.key,
-            title: item.objectDisplayName || item.objectName,
-            label: item.objectName,
-            icon: ICON_MAP[item.key] || DEFAULT_ICON,
-            children: []
-          }))
-        };
-      })
-      .filter((group) => group.children.length > 0)
-      .sort((a, b) => a.order - b.order)
-      .map((group) => ({
-        key: group.key,
-        title: group.title,
-        children: group.children
-      })) as TreeItem[];
-  }, []);
+    loadObjects();
+  }, [isLoading]);
+
+  const selectedObjectId = useMemo(() => {
+    const monitorObjId = searchParams.get('monitorObjId');
+    if (monitorObjId) return monitorObjId;
+
+    const matched = objects.find(
+      (item) =>
+        getProfessionalDashboardKey(item.name, item.display_name) ===
+        normalizedCurrent
+    );
+    return matched?.id;
+  }, [normalizedCurrent, objects, searchParams]);
 
   const handleSelect = (key: string) => {
-    router.push(`/monitor/view/dashboard/${key}`);
+    if (String(key) === String(selectedObjectId || '')) return;
+
+    const monitorItem = objects.find((item) => String(item.id) === String(key));
+    const params = new URLSearchParams({
+      monitorObjId: String(monitorItem?.id || key),
+      name: monitorItem?.name || '',
+      monitorObjDisplayName: monitorItem?.display_name || '',
+      icon: monitorItem?.icon || '',
+      instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
+        ? monitorItem.instance_id_keys.join(',')
+        : 'instance_id'
+    });
+    const dashboardUrl = getProfessionalDashboardUrl(
+      monitorItem?.name,
+      monitorItem?.display_name,
+      params.toString()
+    );
+
+    router.push(dashboardUrl || '/monitor/view');
   };
 
   return (
     <ResizableSidebar collapseStorageKey="monitor.dashboard.sidebarCollapsed">
       <div className={styles.sidebarInner}>
         <TreeSelector
-          data={groups}
-          defaultSelectedKey={normalizedCurrent}
+          data={treeData}
+          defaultSelectedKey={selectedObjectId}
+          loading={treeLoading}
           onNodeSelect={handleSelect}
         />
       </div>
