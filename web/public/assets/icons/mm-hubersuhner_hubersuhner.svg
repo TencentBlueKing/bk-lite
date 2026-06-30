@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Huber Suhner Cubo">
+  <rect width="64" height="64" rx="12" fill="#0f5f8f"/>
+  <path d="M14 17h10v12h16V17h10v30H40V35H24v12H14z" fill="#fff"/>
+  <path d="M47 15h6v6h-6zM11 43h6v6h-6z" fill="#ffcf32"/>
+</svg>

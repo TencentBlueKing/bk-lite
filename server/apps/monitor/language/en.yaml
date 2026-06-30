@@ -4286,6 +4286,9 @@ monitor_object_plugin:
   Transmission BridgeWave SNMP:
     name: BridgeWave (Telegraf)
     desc: BridgeWave millimeter-wave wireless transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Huber+Suhner Cubo SNMP:
+    name: Huber+Suhner Cubo (Telegraf)
+    desc: Huber+Suhner Cubo Mini optical transmission SNMP child template for devices under PEN 27894. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds Cubo Mini fan-card status and transceiver temperature from CUBO-MINI-MIB. Temperature is normalized from tenths of degrees Celsius. CPU, memory and power health objects are N/A until stable shared OIDs are confirmed.
   Transmission Fibrolan SNMP:
     name: Fibrolan (Telegraf)
     desc: Fibrolan Falcon carrier Ethernet and IEEE 1588 transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.

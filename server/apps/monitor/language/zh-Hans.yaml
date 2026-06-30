@@ -4290,6 +4290,9 @@ monitor_object_plugin:
   Transmission Alcoma SNMP:
     name: Alcoma（Telegraf）
     desc: Alcoma 微波无线传输设备 SNMP 基线采集模板（企业号 12140）。采集 IF-MIB 64 位 HC 接口计数器（ifHCInOctets/ifHCOutOctets、ifXTable）速率和设备运行时长（sysUpTime）。当前已知 ALCOMA-MIB 事实，但本工作树没有 raw MIB 正文可确认无需行级过滤的 CPU、内存、温度、风扇、电源、射频或链路健康 OID，因此这些私有健康指标为 N/A 且不臆造。适用于 Alcoma 微波传输设备，以及其他兼容 IF-MIB 的传输设备。
+  Transmission Huber+Suhner Cubo SNMP:
+    name: Huber+Suhner Cubo（Telegraf）
+    desc: Huber+Suhner Cubo Mini 光传输设备 SNMP 子模板（企业号 27894）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 CUBO-MINI-MIB 的风扇卡状态与光模块温度。温度由十分之一摄氏度归一为摄氏度；风扇 ok(3) 归一为正常，其它状态归一为异常。CPU、内存与电源健康对象未确认稳定共享 OID，因此为 N/A。
   Transmission SIAE Microelettronica SNMP:
     name: SIAE Microelettronica（Telegraf）
     desc: SIAE Microelettronica 微波传输设备 SNMP 子模板（企业号 3373）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 SIAE-SENSOR-TEMP-MIB 的 sensorTempValue 温度表，作为 device_temperature_celsius 设备温度，单位为摄氏度直采。CPU、内存、风扇与电源未确认稳定共享健康对象，温度 monitor up/down 状态保留为告警上下文，不提升为通用硬件状态指标。
