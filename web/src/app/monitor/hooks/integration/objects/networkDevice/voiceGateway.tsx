@@ -54,7 +54,8 @@ export const useVoiceGatewayConfig = () => {
     },
     collectTypes: {
       'VoiceGateway AudioCodes SNMP': 'snmp_audiocodes',
-      'VoiceGateway Ribbon SNMP': 'snmp_ribbon'
+      'VoiceGateway Ribbon SNMP': 'snmp_ribbon',
+      'VoiceGateway Acme Packet SNMP': 'snmp_acmepacket'
     }
   };
 };
