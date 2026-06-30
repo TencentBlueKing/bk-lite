@@ -60,7 +60,8 @@ export const useAccessConfig = () => {
       'Access Zhone DZS SNMP': 'snmp_zhone',
       'Access UTStarcom SNMP': 'snmp_utstarcom',
       'Access Raisecom SNMP': 'snmp_raisecom',
-      'Access PacketFront SNMP': 'snmp_packetfront'
+      'Access PacketFront SNMP': 'snmp_packetfront',
+      'Access C-Data SNMP': 'snmp_cdata'
     }
   };
 };

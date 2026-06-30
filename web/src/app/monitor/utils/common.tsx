@@ -639,6 +639,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /utstarcom|utstar\s*com|\butstar\b/i, label: 'UTStarcom', icon: 'mm-utstarcom_utstarcom' },
   { match: /raisecom|roap|iscom/i, label: 'Raisecom', icon: 'mm-raisecom_raisecom' },
   { match: /packetfront|\bdrg\b/i, label: 'PacketFront', icon: 'mm-packetfront_packetfront' },
+  { match: /c-?data|cdatatec/i, label: 'C-Data', icon: 'mm-cdata_cdata' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },

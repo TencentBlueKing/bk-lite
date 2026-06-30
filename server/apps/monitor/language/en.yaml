@@ -4350,6 +4350,9 @@ monitor_object_plugin:
   Access PacketFront SNMP:
     name: Access PacketFront SNMP
     desc: PacketFront DRG and CPE access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power device-health scalars are not proven from the current PACKETFRONT-DRG-MIB and PACKETFRONT-SMI signal, so they are not promoted into shared device-health metrics.
+  Access C-Data SNMP:
+    name: Access C-Data SNMP
+    desc: C-Data GPON and EPON access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power device-health scalars are not proven from the current CDATA-GPON-MIB signal, so they are not promoted into shared device-health metrics.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
