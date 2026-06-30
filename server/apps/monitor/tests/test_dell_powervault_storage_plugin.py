@@ -34,8 +34,31 @@ TEMP_OIDS = (
     "1.3.6.1.4.1.12740.4.1.1.1.7",
     "1.3.6.1.4.1.12740.4.1.1.1.8",
 )
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 STATE_METRICS = ("device_disk_state", "device_raid_state")
+BASE_METRICS = {
+    "snmp_uptime",
+    "interface_ifAdminStatus",
+    "interface_ifOperStatus",
+    "interface_ifSpeed",
+    "interface_ifInErrors",
+    "interface_ifOutErrors",
+    "interface_ifInDiscards",
+    "interface_ifOutDiscards",
+    "interface_ifInUcastPkts",
+    "interface_ifOutUcastPkts",
+    "interface_ifInOctets",
+    "interface_ifOutOctets",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+}
+VENDOR_METRICS = {
+    "device_cpu_usage",
+    "device_temperature_celsius",
+    "device_disk_state",
+    "device_raid_state",
+}
 
 
 def _read_json(path):
@@ -95,6 +118,14 @@ def test_config_type_consistent(ui, toml_text):
 @pytest.mark.unit
 def test_ui_is_pure_snmp_form(ui):
     assert not any(f["name"] == "brand" for f in ui["form_fields"])
+
+
+@pytest.mark.unit
+def test_metrics_json_declares_only_vendor_delta_child(metrics):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    assert names == VENDOR_METRICS
+    assert names & BASE_METRICS == set()
+    assert sorted(metrics["supplementary_indicators"]) == sorted(VENDOR_METRICS)
 
 
 @pytest.mark.unit
@@ -163,23 +194,16 @@ def test_static_capacity_and_inventory_metrics_not_modelled(metrics):
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate_with_ifdescr(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        metric = by[name]
-        assert metric["unit"] == "byteps"
-        assert metric["metric_group"] == "Traffic"
-        assert metric["query"].startswith("rate(")
-        assert [d["name"] for d in metric.get("dimensions", [])] == ["ifDescr"]
-
-
-@pytest.mark.unit
 def test_toml_collects_ifxtable_and_64bit_hc(toml_text):
     assert 'oid = "1.3.6.1.2.1.2.2"' in toml_text
     assert 'oid = "1.3.6.1.2.1.2.2.1.2"' in toml_text
     assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
     assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
     assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text
+    assert 'name = "ifInOctets"' not in toml_text
+    assert 'name = "ifOutOctets"' not in toml_text
+    assert 'oid = "1.3.6.1.2.1.2.2.1.10"' not in toml_text
+    assert 'oid = "1.3.6.1.2.1.2.2.1.16"' not in toml_text
 
 
 @pytest.mark.unit
@@ -220,6 +244,36 @@ def test_brand_match_present_in_common():
 
 
 @pytest.mark.unit
-def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+def test_passwords_use_sidecar_env_placeholders_not_plaintext(ui, toml_text):
+    field_names = {field["name"] for field in ui["form_fields"]}
+    assert "ENV_AUTH_PASSWORD" in field_names
+    assert "ENV_PRIV_PASSWORD" in field_names
+    assert "auth_password" not in field_names
+    assert "priv_password" not in field_names
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert "{{ auth_password }}" not in toml_text
+    assert "{{ priv_password }}" not in toml_text
+
+
+@pytest.mark.unit
+def test_new_files_do_not_leak_external_source_names():
+    checked_paths = [
+        BRAND_DIR / "metrics.json",
+        BRAND_DIR / "policy.json",
+        BRAND_DIR / "UI.json",
+        BRAND_DIR / f"{CONFIG_TYPE}.child.toml.j2",
+        Path(__file__),
+        WEB_ROOT / "public" / "assets" / "icons" / "mm-dellpowervault_dellpowervault.svg",
+    ]
+    checked_text = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths)
+    forbidden_terms = (
+        "Data" + "dog",
+        "Libre" + "NMS",
+        "Zab" + "bix",
+        "Check" + "mk",
+        "Open" + "NMS",
+        "snmp_" + "exporter",
+    )
+    leaked = [term for term in forbidden_terms if term in checked_text]
+    assert leaked == []
