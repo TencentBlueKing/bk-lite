@@ -162,6 +162,7 @@ windows_drive_range: ""
 tags: ["cloud:$ZoneId", "group:$GroupId", "install_method:manual", "node_type:container"]
 collector_binaries_accesslist:
 - "${INSTALL_PATH}bin\*"
+- "${INSTALL_PATH}bin\*\*"
 "@
     
     try {
