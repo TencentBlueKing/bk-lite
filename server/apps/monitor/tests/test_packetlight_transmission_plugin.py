@@ -26,6 +26,22 @@ CONFIG_TYPE = "packetlight"
 INSTANCE_TYPE = "transmission"
 PLUGIN_NAME = "Transmission PacketLight SNMP"
 OBJECT_NAME = "Transmission"
+FILES_UNDER_REVIEW = (
+    BRAND_DIR / "metrics.json",
+    BRAND_DIR / "UI.json",
+    BRAND_DIR / "packetlight.child.toml.j2",
+    BRAND_DIR / "policy.json",
+    WEB_ROOT / "public" / "assets" / "icons" / "mm-packetlight_packetlight.svg",
+    Path(__file__),
+)
+FORBIDDEN_SOURCE_TERMS = (
+    "Data" + "dog",
+    "Libre" + "NMS",
+    "Zab" + "bix",
+    "Check" + "mk",
+    "Open" + "NMS",
+    "snmp" + "_exporter",
+)
 
 PRIVATE_PEN_ROOT = "1.3.6.1.4.1.4515"
 HEALTH_METRICS = (
@@ -168,6 +184,14 @@ def test_toml_collects_64bit_ifx_table_and_uptime(toml_text):
 
 
 @pytest.mark.unit
+def test_toml_does_not_collect_32bit_interface_octets(toml_text):
+    assert "1.3.6.1.2.1.2.2.1.10" not in toml_text
+    assert "1.3.6.1.2.1.2.2.1.16" not in toml_text
+    assert 'name = "ifInOctets"' not in toml_text
+    assert 'name = "ifOutOctets"' not in toml_text
+
+
+@pytest.mark.unit
 def test_supplementary_indicators_have_no_dangling_refs(metrics):
     names = {m["name"] for m in metrics["metrics"]}
     dangling = [s for s in metrics.get("supplementary_indicators", []) if s not in names]
@@ -220,6 +244,8 @@ def test_brand_match_present_in_common():
 def test_passwords_use_template_vars_not_plaintext(toml_text):
     assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
     assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert "{{ auth_password }}" not in toml_text
+    assert "{{ priv_password }}" not in toml_text
 
 
 @pytest.mark.unit
@@ -229,3 +255,12 @@ def test_ui_password_fields_use_secret_env_names(ui):
     assert "ENV_PRIV_PASSWORD" in field_names
     assert "auth_password" not in field_names
     assert "priv_password" not in field_names
+
+
+@pytest.mark.unit
+def test_reviewed_files_do_not_name_external_source_projects():
+    leaks = []
+    for path in FILES_UNDER_REVIEW:
+        text = path.read_text(encoding="utf-8")
+        leaks.extend(f"{path.name}:{term}" for term in FORBIDDEN_SOURCE_TERMS if term in text)
+    assert leaks == []
