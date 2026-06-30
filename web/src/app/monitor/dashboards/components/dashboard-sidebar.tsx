@@ -6,6 +6,7 @@ import useApiClient from '@/utils/request';
 import useMonitorApi from '@/app/monitor/api';
 import { getProfessionalDashboardKey, getProfessionalDashboardUrl } from '../registry';
 import { normalizeDashboardKey } from '../shared/utils';
+import { preserveDashboardDisplayMode } from '../shared/utils/display-mode-route';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
 import TreeSelector from '@/app/monitor/components/treeSelector';
 import { ObjectItem, TreeItem } from '@/app/monitor/types';
@@ -88,7 +89,7 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
     if (String(key) === String(selectedObjectId || '')) return;
 
     const monitorItem = objects.find((item) => String(item.id) === String(key));
-    const params = new URLSearchParams({
+    const params = preserveDashboardDisplayMode(new URLSearchParams({
       monitorObjId: String(monitorItem?.id || key),
       name: monitorItem?.name || '',
       monitorObjDisplayName: monitorItem?.display_name || '',
@@ -96,7 +97,7 @@ export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) =>
       instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
         ? monitorItem.instance_id_keys.join(',')
         : 'instance_id'
-    });
+    }), new URLSearchParams(searchParams.toString()));
     const dashboardUrl = getProfessionalDashboardUrl(
       monitorItem?.name,
       monitorItem?.display_name,

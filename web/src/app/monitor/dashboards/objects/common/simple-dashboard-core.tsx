@@ -8,7 +8,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import {
   normalizeDisplayText,
-  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   formatEnumValue,
@@ -33,6 +33,11 @@ import {
   MetricUnit,
   TrendLegendItem
 } from '../../shared/types';
+import {
+  DashboardDisplayMode,
+  getDashboardDisplayModeFromParams,
+  setDashboardDisplayModeInParams
+} from '../../shared/utils/display-mode-route';
 
 export type SimpleMetricUnit = MetricUnit;
 
@@ -319,7 +324,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
+  const [displayMode, setDisplayModeState] = useState<DashboardDisplayMode>(() =>
+    getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString()))
+  );
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({ timeRange: [], originValue: 15 });
   const [timeDefaultValue, setTimeDefaultValue] = useState<TimeSelectorDefaultValue>({ selectValue: 15, rangePickerVaule: null });
   const [frequence, setFrequence] = useState<number>(0);
@@ -337,21 +344,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || config.objectFallbackName;
   const monitorObjDisplayName = searchParams.get('monitorObjDisplayName') || config.objectFallbackName;
-  const rawInstanceId = searchParams.get('instance_id') || '';
-  const rawInstanceIdValues = searchParams.get('instance_id_values') || '';
   const rawInstanceIdKeys = searchParams.get('instance_id_keys') || 'instance_id';
   const instanceName = searchParams.get('instance_name') || '--';
 
   // Stable memoized values - avoids new array references on every render
-  const parsedLegacyInstanceIds = useMemo(() => parseLegacyParamList(rawInstanceId), [rawInstanceId]);
-  const instanceId: React.Key = parsedLegacyInstanceIds[0] || rawInstanceId || '';
-  const idValues = useMemo(() => {
-    const explicitValues = parseLegacyParamList(rawInstanceIdValues);
-    if (explicitValues.length > 0) return explicitValues;
-    if (parsedLegacyInstanceIds.length > 0) return parsedLegacyInstanceIds;
-    const normalizedInstanceId = normalizeDisplayText(rawInstanceId);
-    return normalizedInstanceId ? [normalizedInstanceId] : [];
-  }, [rawInstanceIdValues, parsedLegacyInstanceIds, rawInstanceId]);
+  const instanceIdentity = useMemo(
+    () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
+  const instanceId: React.Key = instanceIdentity.instanceId;
+  const idValues = instanceIdentity.idValues;
   const instanceIdKeys = useMemo(
     () => rawInstanceIdKeys.split(',').filter(Boolean),
     [rawInstanceIdKeys]
@@ -359,6 +361,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || config.objectFallbackName;
   const normalizedInstanceName = normalizeDisplayText(instanceName);
   const isDashboardMode = displayMode === 'dashboard';
+
+  useEffect(() => {
+    setDisplayModeState(getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString())));
+  }, [searchParams]);
+
+  const setDisplayMode = useCallback((mode: DashboardDisplayMode) => {
+    setDisplayModeState(mode);
+    const params = setDashboardDisplayModeInParams(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (!monitorObjectId) {
