@@ -36,7 +36,7 @@ assert.match(apiSource, /deleteSkillPackage/, 'frontend should delete skill pack
 assert.match(apiSource, /model_provider_mgmt\/skill_packages/, 'skill package API should use the backend viewset route');
 assert.match(apiSource, /FormData/, 'ZIP upload should be sent as multipart form data');
 
-assert.match(toolPageSource, /label: '内置'[\s\S]*label: 'MCP'[\s\S]*label: '技能'/, 'tool page should expose built-in, MCP, and skill package tabs');
+assert.match(toolPageSource, /label: '技能'[\s\S]*label: '内置'[\s\S]*label: 'MCP'/, 'tool page should expose skill package, built-in, and MCP tabs in priority order');
 assert.match(toolPageSource, /fetchSkillPackages/, 'tool page should load real packages from the backend');
 assert.match(toolPageSource, /Upload\.Dragger/, 'tool page should import ZIP packages from a modal uploader');
 assert.match(toolPageSource, /importSkillPackageZip/, 'tool page should call the ZIP import API');
@@ -85,6 +85,7 @@ assert.match(skillSettingsSource, /skill_packages:/, 'saving or testing an agent
 assert.match(skillSettingsSource, /openSkillPicker/, 'agent settings should use a searchable package picker');
 assert.match(skillSettingsSource, /handleConfirmSkillPicker/, 'agent settings should confirm multiple selected packages from the picker');
 assert.match(skillSettingsSource, /handleRemoveSkillAsset/, 'agent settings should remove selected packages');
+assert.match(skillSettingsSource, /type="jinengpeixun"/, 'agent settings should use the same skill package icon as the tool skill tab');
 assert.match(skillSettingsSource, /未选择/, 'agent settings should make an empty skill selection explicit');
 assert.doesNotMatch(skillSettingsSource, /missingDependencyCount|依赖工具未绑定|运行时注入预览|能力边界/, 'agent settings should keep skill package selection lightweight');
 assert.doesNotMatch(skillSettingsSource, /getSkillCapabilityProfile|recommended \? \[recommended\]/, 'agent settings should not auto-inject an unselected recommended package');
