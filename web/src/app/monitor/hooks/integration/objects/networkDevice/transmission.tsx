@@ -72,7 +72,8 @@ export const useTransmissionConfig = () => {
       'Transmission BridgeWave SNMP': 'snmp_bridgewave',
       'Transmission Fibrolan SNMP': 'snmp_fibrolan',
       'Transmission Exalt SNMP': 'snmp_exalt',
-      'Transmission Smartoptics SNMP': 'snmp_smartoptics'
+      'Transmission Smartoptics SNMP': 'snmp_smartoptics',
+      'Transmission RACOM SNMP': 'snmp_racom'
     }
   };
 };
