@@ -4398,6 +4398,9 @@ monitor_object_plugin:
   Access Nateks SNMP:
     name: Access Nateks SNMP
     desc: Nateks Megatrans and Orion access-device SNMP child template for devices under enterprise PEN 4249. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds NATEKS-MIB temperature sensor values normalized from 1/1000 degrees Celsius and local power-source availability status. CPU, memory, fan, SFP DDM, digital I/O, alarm, and TLM tables are not promoted into shared device-health metrics.
+  Access Harmonic SNMP:
+    name: Access Harmonic SNMP
+    desc: Harmonic NSG Pro access-platform SNMP baseline child template for devices under enterprise PEN 1563. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts prove only the private enterprise root and access-platform identity; stable private CPU, memory, temperature, fan and power device-health scalars are not proven, so they are not promoted into shared device-health metrics.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.

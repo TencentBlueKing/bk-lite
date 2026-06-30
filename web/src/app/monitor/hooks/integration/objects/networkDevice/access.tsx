@@ -62,7 +62,8 @@ export const useAccessConfig = () => {
       'Access Raisecom SNMP': 'snmp_raisecom',
       'Access PacketFront SNMP': 'snmp_packetfront',
       'Access C-Data SNMP': 'snmp_cdata',
-      'Access Nateks SNMP': 'snmp_nateks'
+      'Access Nateks SNMP': 'snmp_nateks',
+      'Access Harmonic SNMP': 'snmp_harmonic'
     }
   };
 };
