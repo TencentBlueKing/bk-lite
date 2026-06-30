@@ -205,7 +205,7 @@ class InstanceSearch:
             results = items[start:end]
 
         if self.query_data.get("add_metrics", False) and page_size != -1:
-            results = self.add_other_metrics(results)
+            MonitorObjectService._fill_display_metrics(self.monitor_obj.id, self.obj_metric_map, results)
 
         MonitorObjectService.add_attr(results)
 
