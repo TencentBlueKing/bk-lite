@@ -67,7 +67,8 @@ export const useTransmissionConfig = () => {
       'Transmission Siklu SNMP': 'snmp_siklu',
       'Transmission Viavi SNMP': 'snmp_viavi',
       'Transmission Sycamore SNMP': 'snmp_sycamore',
-      'Transmission Infinera SNMP': 'snmp_infinera'
+      'Transmission Infinera SNMP': 'snmp_infinera',
+      'Transmission BridgeWave SNMP': 'snmp_bridgewave'
     }
   };
 };
