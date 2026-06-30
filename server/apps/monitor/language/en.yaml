@@ -4248,6 +4248,9 @@ monitor_object_plugin:
   NetworkService ZDNS SNMP:
     name: ZDNS (Telegraf)
     desc: ZDNS DNS/GSLB network-service SNMP collection for appliances exposing ZDNS private PEN 39810 and F5 BIG-IP LTM PEN 3375 objects. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects CPU utilization, memory utilization, CPU temperature, service status and LTM availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are not promoted into shared device-health metrics.
+  NetworkService BlueCat SNMP:
+    name: BlueCat (Telegraf)
+    desc: BlueCat DDI network-service SNMP collection for appliances under BlueCat PEN 13315. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, and DNS, DHCP and IPAM counters are business or capacity indicators, so they are not promoted into shared device-health metrics.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.

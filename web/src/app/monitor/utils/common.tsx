@@ -653,6 +653,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
+  { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },
   { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
