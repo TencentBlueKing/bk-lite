@@ -4068,6 +4068,9 @@ monitor_object_plugin:
   VoiceGateway Acme Packet SNMP:
     name: Acme Packet（Telegraf）
     desc: Acme Packet 语音网关与 SBC SNMP 基线子模板。通用 VoiceGateway SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；公开系统管理 MIB 事实可证明存在 SBC 管理对象，但本轮未完整核验稳定的 CPU、内存、温度、风扇、电源健康叶子 OID 与枚举语义，因此不提升为共享设备健康指标。
+  VoiceGateway Patton SNMP:
+    name: Patton（Telegraf）
+    desc: Patton SmartNode 语音网关与 IAD SNMP 基线子模板。通用 VoiceGateway SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；SmartNode 企业根与产品子树已确认，但本轮未完整核验稳定的 CPU、内存、温度、风扇、电源健康叶子 OID 与枚举语义，因此不提升为共享设备健康指标。
   DM-Exporter:
     name: 达梦数据库监控探针
     desc: 通过 DM-Exporter 下发达梦数据库监控探针，采集会话、锁、表空间、内存、慢查询等核心监控指标，帮助快速掌握数据库运行状态与性能变化。

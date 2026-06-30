@@ -4434,6 +4434,9 @@ monitor_object_plugin:
   VoiceGateway Acme Packet SNMP:
     name: Acme Packet (Telegraf)
     desc: Acme Packet voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Public system-management MIB facts prove SBC management objects exist, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Patton SNMP:
+    name: Patton (Telegraf)
+    desc: Patton SmartNode voice gateway and IAD SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. SmartNode enterprise and product subtrees are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.

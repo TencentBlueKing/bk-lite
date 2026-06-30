@@ -668,6 +668,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
   { match: /ribbon|sonus|genband/i, label: 'Ribbon', icon: 'mm-ribbon_ribbon' },
   { match: /acme\s*packet|acmepacket/i, label: 'Acme Packet', icon: 'mm-acmepacket_acmepacket' },
+  { match: /patton|smartnode/i, label: 'Patton', icon: 'mm-patton_patton' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
   { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
