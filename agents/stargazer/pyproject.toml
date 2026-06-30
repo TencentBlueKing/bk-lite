@@ -133,4 +133,5 @@ snmp = [
 [dependency-groups]
 dev = [
     "pytest>=9.1.1",
+    "pytest-asyncio>=0.26.0",
 ]
