@@ -56,42 +56,6 @@
         "instance_id"
       ],
       "description": "This metric reports the controller power-supply health of the Dell SC8000 storage array, derived from the Dell SC controller power status table (scCtlrPowerStatus, one row per controller power supply). The raw codes are normalized via telegraf processors.enum so that up (1) is healthy and any other code is treated as a fault, and the worst supply is taken per device with max(). A value greater than 1 indicates a power-supply fault or loss of power redundancy."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
     }
   ]
 }

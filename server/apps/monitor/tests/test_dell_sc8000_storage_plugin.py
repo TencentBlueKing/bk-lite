@@ -34,8 +34,20 @@ PEN_ROOT = "1.3.6.1.4.1.674.11000.2000.500"
 SUPPORTED_SCALAR_UNITS = {
     "byteps", "bytes", "bitps", "counts", "cps", "percent", "celsius", "s", "short", "none",
 }
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 STATE_METRICS = ("device_disk_state", "device_fan_state", "device_psu_state")
+BASELINE_METRICS = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_in_speed",
+    "device_total_out_speed",
+    "device_total_in_error",
+    "device_total_out_error",
+    "device_total_in_discard",
+    "device_total_out_discard",
+    "device_total_in_packets",
+    "device_total_out_packets",
+}
 
 
 def _read_json(path):
@@ -108,6 +120,25 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
+def test_v3_passwords_use_env_config_secrets(ui, toml_text):
+    fields = {f["name"]: f for f in ui["form_fields"]}
+    assert "auth_password" not in fields
+    assert "priv_password" not in fields
+    assert fields["ENV_AUTH_PASSWORD"]["encrypted"] is True
+    assert fields["ENV_PRIV_PASSWORD"]["encrypted"] is True
+    assert fields["ENV_AUTH_PASSWORD"]["transform_on_edit"]["origin_path"] == (
+        "child.env_config.AUTH_PASSWORD__{{config_id}}"
+    )
+    assert fields["ENV_PRIV_PASSWORD"]["transform_on_edit"]["origin_path"] == (
+        "child.env_config.PRIV_PASSWORD__{{config_id}}"
+    )
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'auth_password = "{{ auth_password }}"' not in toml_text
+    assert 'priv_password = "{{ priv_password }}"' not in toml_text
+
+
+@pytest.mark.unit
 def test_uses_private_dell_sc8000_pen(toml_text):
     assert PEN_ROOT in toml_text, "Dell SC8000 health lives under Dell EMC PEN 674"
 
@@ -142,22 +173,10 @@ def test_no_cpu_memory_temperature_modelled(metrics):
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        assert name in by
-        m = by[name]
-        assert m["unit"] == "byteps"
-        assert m["metric_group"] == "Traffic"
-        assert m["query"].startswith("rate(")
-
-
-@pytest.mark.unit
-def test_hc_metrics_carry_ifdescr_dimension(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        dims = [d["name"] for d in by[name].get("dimensions", [])]
-        assert dims == ["ifDescr"], f"{name} must carry the ifDescr dimension"
+def test_metrics_json_contains_only_vendor_delta_child(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    assert names == set(STATE_METRICS)
+    assert names.isdisjoint(BASELINE_METRICS)
 
 
 @pytest.mark.unit
@@ -245,5 +264,5 @@ def test_brand_match_present_in_common():
 
 @pytest.mark.unit
 def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
