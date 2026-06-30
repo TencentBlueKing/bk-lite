@@ -1,159 +1,120 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import { Input } from 'antd';
-import { DownOutlined } from '@ant-design/icons';
-import { useRouter } from 'next/navigation';
-import { PROFESSIONAL_DASHBOARDS, PROFESSIONAL_DASHBOARD_GROUPS } from '../registry';
+import { useRouter, useSearchParams } from 'next/navigation';
+import useApiClient from '@/utils/request';
+import useMonitorApi from '@/app/monitor/api';
+import { getProfessionalDashboardKey, getProfessionalDashboardUrl } from '../registry';
 import { normalizeDashboardKey } from '../shared/utils';
-import ObjectIcon from '@/app/monitor/components/objectIcon';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
+import TreeSelector from '@/app/monitor/components/treeSelector';
+import { ObjectItem, TreeItem } from '@/app/monitor/types';
 import styles from './dashboard-sidebar.module.scss';
 
 interface DashboardSidebarProps {
   currentObjectKey: string;
 }
 
-const ICON_MAP: Record<string, string> = {
-  mysql: 'mm-mysql_Mysql',
-  redis: 'mm-redis_Redis',
-  mongodb: 'mm-mongodb_Mongodb',
-  mssql: 'mm-mssql_Mssql',
-  nginx: 'mm-nginx_Nginx',
-  docker: 'mm-docker_Docker',
-  activemq: 'mm-activemq_ActiveMQ',
-  apache: 'mm-apache_Apache',
-  rabbitmq: 'mm-rabbitmq_Rabbitmq',
-  tomcat: 'mm-tomcat_Tomcat',
-  zookeeper: 'mm-zookeeper_Zookeeper',
-  postgres: 'mm-postgresql_Postgresql',
-  postgresql: 'mm-postgresql_Postgresql',
-  elasticsearch: 'mm-elasticsearch_Elasticsearch',
-  host: 'mm-host_主机',
-  website: 'mm-website_网站',
-  ping: 'mm-router_路由器'
+const buildMonitorObjectTree = (objects: ObjectItem[]): TreeItem[] => {
+  const groupedData = objects.reduce((acc, item) => {
+    if (!acc[item.type]) {
+      acc[item.type] = {
+        title: item.display_type || '--',
+        key: item.type,
+        children: []
+      };
+    }
+    acc[item.type].children.push({
+      title: item.display_name || '--',
+      label: item.name || '--',
+      key: item.id,
+      icon: item.icon,
+      count: item.instance_count || 0,
+      children: []
+    });
+    return acc;
+  }, {} as Record<string, TreeItem>);
+
+  if (groupedData.Other) {
+    groupedData.Other.children = groupedData.Other.children?.filter(
+      (item) => item.label !== 'SNMP Trap'
+    );
+  }
+
+  return Object.values(groupedData);
 };
 
-const DEFAULT_ICON = 'mm-middleware_中间件';
-
 export const DashboardSidebar = ({ currentObjectKey }: DashboardSidebarProps) => {
-  const [searchValue, setSearchValue] = useState('');
-  const [expandedGroups, setExpandedGroups] = useState<Record<string, boolean>>({});
   const router = useRouter();
-
-  const normalizedSearch = searchValue.trim().toLowerCase();
-
-  const groups = useMemo(() => {
-    const grouped = Object.entries(PROFESSIONAL_DASHBOARD_GROUPS)
-      .map(([groupKey, meta]) => {
-        const items = PROFESSIONAL_DASHBOARDS.filter((item) => item.groupKey === groupKey);
-        const groupMatched = meta.label.toLowerCase().includes(normalizedSearch);
-        const filteredItems = !normalizedSearch
-          ? items
-          : items.filter((item) => {
-            const searchableText = [
-              item.key,
-              item.objectName,
-              item.objectDisplayName,
-              ...(item.aliases || [])
-            ]
-              .filter(Boolean)
-              .join(' ')
-              .toLowerCase();
-            return groupMatched || searchableText.includes(normalizedSearch);
-          });
-
-        return {
-          key: groupKey,
-          label: meta.label,
-          order: meta.order,
-          items: filteredItems.map((item) => ({
-            key: item.key,
-            label: item.objectDisplayName || item.objectName,
-            iconKey: ICON_MAP[item.key] || DEFAULT_ICON
-          }))
-        };
-      })
-      .filter((group) => group.items.length > 0)
-      .sort((a, b) => a.order - b.order);
-
-    return grouped;
-  }, [normalizedSearch]);
+  const searchParams = useSearchParams();
+  const { isLoading } = useApiClient();
+  const { getMonitorObject } = useMonitorApi();
+  const normalizedCurrent = normalizeDashboardKey(currentObjectKey);
+  const [objects, setObjects] = useState<ObjectItem[]>([]);
+  const [treeData, setTreeData] = useState<TreeItem[]>([]);
+  const [treeLoading, setTreeLoading] = useState(false);
 
   useEffect(() => {
-    setExpandedGroups((prev) => {
-      const next = { ...prev };
-      groups.forEach((group) => {
-        if (!(group.key in next)) {
-          next[group.key] = true;
-        }
-      });
-      return next;
-    });
-  }, [groups]);
+    if (isLoading) return;
+    const loadObjects = async () => {
+      try {
+        setTreeLoading(true);
+        const data: ObjectItem[] = await getMonitorObject({
+          add_instance_count: true
+        });
+        setObjects(data);
+        setTreeData(buildMonitorObjectTree(data));
+      } finally {
+        setTreeLoading(false);
+      }
+    };
+
+    loadObjects();
+  }, [isLoading]);
+
+  const selectedObjectId = useMemo(() => {
+    const monitorObjId = searchParams.get('monitorObjId');
+    if (monitorObjId) return monitorObjId;
+
+    const matched = objects.find(
+      (item) =>
+        getProfessionalDashboardKey(item.name, item.display_name) ===
+        normalizedCurrent
+    );
+    return matched?.id;
+  }, [normalizedCurrent, objects, searchParams]);
 
   const handleSelect = (key: string) => {
-    router.push(`/monitor/view/dashboard/${key}`);
-  };
+    if (String(key) === String(selectedObjectId || '')) return;
 
-  const toggleGroup = (groupKey: string) => {
-    setExpandedGroups((prev) => ({
-      ...prev,
-      [groupKey]: !prev[groupKey]
-    }));
-  };
+    const monitorItem = objects.find((item) => String(item.id) === String(key));
+    const params = new URLSearchParams({
+      monitorObjId: String(monitorItem?.id || key),
+      name: monitorItem?.name || '',
+      monitorObjDisplayName: monitorItem?.display_name || '',
+      icon: monitorItem?.icon || '',
+      instance_id_keys: Array.isArray(monitorItem?.instance_id_keys)
+        ? monitorItem.instance_id_keys.join(',')
+        : 'instance_id'
+    });
+    const dashboardUrl = getProfessionalDashboardUrl(
+      monitorItem?.name,
+      monitorItem?.display_name,
+      params.toString()
+    );
 
-  const normalizedCurrent = normalizeDashboardKey(currentObjectKey);
+    router.push(dashboardUrl || '/monitor/view');
+  };
 
   return (
     <ResizableSidebar collapseStorageKey="monitor.dashboard.sidebarCollapsed">
       <div className={styles.sidebarInner}>
-        <div className={styles.searchBox}>
-          <Input.Search
-            placeholder="搜索..."
-            className={styles.searchInput}
-            value={searchValue}
-            onChange={(e) => setSearchValue(e.target.value)}
-            allowClear
-          />
-        </div>
-        <div className={styles.list}>
-          {groups.map((group) => {
-            const expanded = normalizedSearch ? true : expandedGroups[group.key];
-            return (
-              <div key={group.key} className={styles.group}>
-                <button
-                  type="button"
-                  className={styles.groupHeader}
-                  onClick={() => toggleGroup(group.key)}
-                >
-                  <span className={`${styles.groupArrow} ${expanded ? styles.groupArrowExpanded : ''}`}>
-                    <DownOutlined />
-                  </span>
-                  <span className={styles.groupLabel}>{group.label}</span>
-                </button>
-                {expanded ? (
-                  <div className={styles.groupItems}>
-                    {group.items.map((item) => (
-                      <button
-                        key={item.key}
-                        type="button"
-                        className={`${styles.item} ${normalizeDashboardKey(item.key) === normalizedCurrent ? styles.active : ''}`}
-                        onClick={() => handleSelect(item.key)}
-                      >
-                        <span className={styles.itemBranch} />
-                        <span className={styles.itemIcon}>
-                          <ObjectIcon icon={item.iconKey} fallback={DEFAULT_ICON} />
-                        </span>
-                        <span className={styles.itemLabel}>{item.label}</span>
-                      </button>
-                    ))}
-                  </div>
-                ) : null}
-              </div>
-            );
-          })}
-        </div>
+        <TreeSelector
+          data={treeData}
+          defaultSelectedKey={selectedObjectId}
+          loading={treeLoading}
+          onNodeSelect={handleSelect}
+        />
       </div>
     </ResizableSidebar>
   );
