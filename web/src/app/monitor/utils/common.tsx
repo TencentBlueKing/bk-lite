@@ -633,6 +633,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /powervault|equallogic|dell\s*ps|dell\s*md/i, label: 'Dell PowerVault', icon: 'mm-dellpowervault_dellpowervault' },
   { match: /hikvision|brainware|海康/i, label: 'Hikvision', icon: 'mm-hikvision_hikvision' },
   { match: /zdns|zddi|中国互联网研究院/i, label: 'ZDNS', icon: 'mm-zdns_zdns' },
+  { match: /arris|cadant|e6\s*cmts/i, label: 'ARRIS Cadant', icon: 'mm-arris_arris' },
   { match: /vsolution|v-?sol|v1600d/i, label: 'V-SOL', icon: 'mm-vsolution_vsolution' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },

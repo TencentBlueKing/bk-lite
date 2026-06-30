@@ -181,6 +181,21 @@ monitor_object_metric:
     device_temperature_celsius:
       name: 系统温度
       desc: 接入设备系统温度读数，单位摄氏度。温度持续升高可能表示散热异常、环境温度过高或设备负载过高。
+    device_card_temperature_level:
+      name: 板卡温度级别
+      desc: 接入设备板卡相对温度级别。数值 1-10 表示从低温到高温，999 表示未上报；该指标用于发现板卡温度趋势，不等同于摄氏度读数。
+    device_card_state:
+      name: 板卡状态
+      desc: 接入设备板卡主状态。正常值归一为 1，非在服、未知或其它状态归一为 2，表示板卡可能不可用或需要检查。
+    device_psu_state:
+      name: 电源状态
+      desc: 接入设备电源模块状态。正常值归一为 1，告警或未知状态归一为 2，表示电源输入、模块或告警灯存在异常风险。
+    device_disk_usage:
+      name: 磁盘使用率
+      desc: 接入设备磁盘卷使用率，按设备取最高卷使用率。持续偏高可能导致日志、配置或运行文件写入风险。
+    device_disk_state:
+      name: 磁盘状态
+      desc: 接入设备磁盘卷使用级别。正常值归一为 1，minor、major、critical 或未知状态归一为 2，表示磁盘空间需要关注。
   ConsoleServer:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3471,6 +3486,7 @@ monitor_object_metric_group:
     Traffic: 流量
     Access: 接入设备
     Temperature: 温度
+    Hardware Status: 硬件状态
   ConsoleServer:
     Base: 基础
     Traffic: 流量
@@ -3941,6 +3957,9 @@ monitor_object_plugin:
   Access V-SOL SNMP:
     name: V-SOL（Telegraf）
     desc: V-SOL / V-SOLUTION V1600D EPON OLT 接入设备 SNMP 子模板。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 V1600D 私有标量健康指标：CPU 使用率（cpuLoad，直接百分比）、内存使用率（memoryLoad，直接百分比）与系统温度（sysTemperature，摄氏度直采）。PON、ONU、光模块与告警表属于业务/端口/行级对象，不提升为共享设备健康指标；电源模块状态表在正常码未可靠确认前暂不采集，避免误报。
+  Access ARRIS Cadant SNMP:
+    name: ARRIS Cadant（Telegraf）
+    desc: ARRIS Cadant E6 CMTS 接入设备 SNMP 子模板（企业号 PEN 4998）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 CADANT-CMTS-EQUIPMENT-MIB 私有设备健康指标：风扇环境温度（摄氏度直采）、板卡相对温度级别、板卡主状态、电源模块 LED 状态、磁盘卷使用率与磁盘卷使用级别。DOCSIS 端口、频道与业务计数属于业务/端口/行级对象，不提升为共享设备健康指标。
   ConsoleServer Opengear SNMP:
     name: Opengear (Telegraf)
     desc: Opengear 控制台服务器专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该控制台服务器对象的基础监控能力。Opengear 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——Opengear 控制台服务器系列。

@@ -181,6 +181,21 @@ monitor_object_metric:
     device_temperature_celsius:
       name: System Temperature
       desc: System temperature of the access device in degrees Celsius. Persistently high values may indicate cooling problems, high ambient temperature, or excessive device load.
+    device_card_temperature_level:
+      name: Card Temperature Level
+      desc: Relative card temperature level of the access device. Values 1-10 indicate coolest to hottest and 999 means no report; this is useful for card temperature trend detection and is not a Celsius reading.
+    device_card_state:
+      name: Card State
+      desc: Primary state of each access-device card. The in-service state is normalized to 1 and every other or unknown state is normalized to 2, indicating that the card may be unavailable or should be checked.
+    device_psu_state:
+      name: Power Module State
+      desc: Power module status of the access device. Normal state is normalized to 1 and alarm or unknown states are normalized to 2, indicating possible power input, module, or alarm-light risk.
+    device_disk_usage:
+      name: Disk Usage
+      desc: Disk volume usage of the access device, reported as the highest volume usage per device. Sustained high values can risk log, configuration, or runtime-file writes.
+    device_disk_state:
+      name: Disk State
+      desc: Disk volume usage level of the access device. Normal is normalized to 1 and minor, major, critical, or unknown states are normalized to 2, indicating disk-space attention is needed.
   ConsoleServer:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3813,6 +3828,7 @@ monitor_object_metric_group:
     Traffic: Traffic
     Access: Access
     Temperature: Temperature
+    Hardware Status: Hardware Status
   ConsoleServer:
     Base: Base
     Traffic: Traffic
@@ -4307,6 +4323,9 @@ monitor_object_plugin:
   Access V-SOL SNMP:
     name: Access V-SOL SNMP
     desc: V-SOL / V-SOLUTION V1600D EPON OLT access-device SNMP child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds confirmed V1600D private scalar health metrics — CPU utilization (cpuLoad, direct percent), memory utilization (memoryLoad, direct percent), and system temperature (sysTemperature, direct Celsius). PON, ONU, optical transceiver and alarm tables are business, port, or row-level objects and are not promoted to shared device-health metrics. Power-module state is not collected until the normal-state enum is reliably verified.
+  Access ARRIS Cadant SNMP:
+    name: Access ARRIS Cadant SNMP
+    desc: ARRIS Cadant E6 CMTS access-device SNMP child template for devices under enterprise PEN 4998. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds CADANT-CMTS-EQUIPMENT-MIB private equipment health metrics — fan ambient temperature in Celsius, relative card temperature level, card primary state, PEM power LED status, disk-volume usage percentage, and disk-volume usage level. DOCSIS port, channel, and service counters are business or row-level objects and are not promoted into shared device-health metrics.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
