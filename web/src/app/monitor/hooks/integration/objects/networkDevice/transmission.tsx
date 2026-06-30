@@ -71,7 +71,8 @@ export const useTransmissionConfig = () => {
       'Transmission Infinera SNMP': 'snmp_infinera',
       'Transmission BridgeWave SNMP': 'snmp_bridgewave',
       'Transmission Fibrolan SNMP': 'snmp_fibrolan',
-      'Transmission Exalt SNMP': 'snmp_exalt'
+      'Transmission Exalt SNMP': 'snmp_exalt',
+      'Transmission Smartoptics SNMP': 'snmp_smartoptics'
     }
   };
 };
