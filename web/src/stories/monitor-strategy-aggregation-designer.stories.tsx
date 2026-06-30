@@ -33,10 +33,10 @@ interface MetricDefinition {
 const collectTabs = ['主机（Telegraf）', '主机远程采集（Telegraf）', 'Windows WMI', 'rex-test'];
 
 const groupMethods: Array<{ value: GroupMethod; label: string; help: string }> = [
-  { value: 'avg', label: 'AVG', help: '默认：AVG。同一分组下多条序列先求平均。' },
-  { value: 'max', label: 'MAX', help: '同一分组下多条序列先取最大值。' },
-  { value: 'min', label: 'MIN', help: '同一分组下多条序列先取最小值。' },
-  { value: 'sum', label: 'SUM', help: '同一分组下多条序列先求和。' },
+  { value: 'avg', label: 'AVG（平均值）', help: '默认：AVG。同一分组下多条序列先求平均。' },
+  { value: 'max', label: 'MAX（最大值）', help: '同一分组下多条序列先取最大值。' },
+  { value: 'min', label: 'MIN（最小值）', help: '同一分组下多条序列先取最小值。' },
+  { value: 'sum', label: 'SUM（求和）', help: '同一分组下多条序列先求和。' },
 ];
 
 const windowMethods: Array<{ value: WindowMethod; label: string; help: string }> = [
@@ -170,6 +170,31 @@ const formControlStyle = {
   width: '100%',
 };
 
+const groupByControlStyle = {
+  display: 'grid',
+  gridTemplateColumns: '190px 32px minmax(0, 1fr)',
+  alignItems: 'center',
+  border: '1px solid #1677ff',
+  borderRadius: 6,
+  background: '#fff',
+  padding: 3,
+  boxShadow: '0 0 0 1px rgba(22, 119, 255, 0.12)',
+};
+
+const groupMethodSelectStyle = {
+  width: '100%',
+};
+
+const groupDimensionSelectStyle = {
+  width: '100%',
+};
+
+const byTextStyle = {
+  textAlign: 'center' as const,
+  color: '#6b7280',
+  fontSize: 13,
+};
+
 const helperStyle = {
   display: 'block',
   marginTop: 8,
@@ -241,6 +266,12 @@ const getOptions = <T extends string>(items: Array<{ value: T; label: string; he
   items.map((item) => ({
     value: item.value,
     label: `${item.label} - ${item.help}`,
+  }));
+
+const getCompactOptions = <T extends string>(items: Array<{ value: T; label: string }>) =>
+  items.map((item) => ({
+    value: item.value,
+    label: item.label,
   }));
 
 const RequiredLabel = ({ children }: { children: string }) => (
@@ -370,28 +401,26 @@ const AggregationForm = ({
           <FormRow
             label="分组维度"
             required
-            helper="监控策略根据所选分组维度分析指标，未指定的维度数据将统一聚合处理。"
+            helper="左侧选择未指定维度的聚合算法，右侧选择最终告警对象维度。未指定的维度数据将统一聚合处理。"
           >
-            <Select
-              mode="multiple"
-              value={groups}
-              onChange={setGroups}
-              style={formControlStyle}
-              options={metric.groupOptions.map((item) => ({ label: item, value: item }))}
-            />
-          </FormRow>
-
-          <FormRow
-            label="分组聚合方式"
-            required
-            helper="默认：AVG。用于决定同一分组下未入选维度的多条序列如何先合并。"
-          >
-            <Select
-              value={groupMethod}
-              onChange={setGroupMethod}
-              style={formControlStyle}
-              options={getOptions(groupMethods)}
-            />
+            <div style={groupByControlStyle}>
+              <Select
+                value={groupMethod}
+                onChange={setGroupMethod}
+                variant="borderless"
+                style={groupMethodSelectStyle}
+                options={getCompactOptions(groupMethods)}
+              />
+              <Text style={byTextStyle}>by</Text>
+              <Select
+                mode="multiple"
+                value={groups}
+                onChange={setGroups}
+                variant="borderless"
+                style={groupDimensionSelectStyle}
+                options={metric.groupOptions.map((item) => ({ label: item, value: item }))}
+              />
+            </div>
           </FormRow>
 
           <FormRow label="条件维度" helper="配置维度过滤条件，多个条件之间为 AND 关系。">

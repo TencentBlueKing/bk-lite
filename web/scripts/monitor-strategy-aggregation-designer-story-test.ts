@@ -23,7 +23,6 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   'InterfaceStatusLast',
   'DeltaCounterSum',
   'MethodComparison',
-  '分组聚合方式',
   '汇聚方式',
   'AVG_OVER_TIME',
   'MAX_OVER_TIME',
@@ -40,6 +39,10 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   '默认：AVG',
   '默认：AVG_OVER_TIME',
   '30 个计算点',
+  'by',
+  'groupByControlStyle',
+  'groupMethodSelectStyle',
+  'groupDimensionSelectStyle',
   'formRowStyle',
   'formLabelStyle',
   'formControlStyle',
@@ -55,6 +58,7 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   '策略双层汇聚设计器',
   '当前语义：分组',
   'MethodSummary',
+  'label="分组聚合方式"',
 ].forEach((removed) => {
   assert(!storySource.includes(removed), `Story should not keep redesign shell text ${removed}`);
 });
