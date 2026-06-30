@@ -635,6 +635,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /zdns|zddi|中国互联网研究院/i, label: 'ZDNS', icon: 'mm-zdns_zdns' },
   { match: /arris|cadant|e6\s*cmts/i, label: 'ARRIS Cadant', icon: 'mm-arris_arris' },
   { match: /vsolution|v-?sol|v1600d/i, label: 'V-SOL', icon: 'mm-vsolution_vsolution' },
+  { match: /zhone|\bdzs\b|dasan/i, label: 'Zhone DZS', icon: 'mm-zhone_zhone' },
   { match: /raisecom|roap|iscom/i, label: 'Raisecom', icon: 'mm-raisecom_raisecom' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },

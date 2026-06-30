@@ -4335,6 +4335,9 @@ monitor_object_plugin:
   Access ARRIS Cadant SNMP:
     name: Access ARRIS Cadant SNMP
     desc: ARRIS Cadant E6 CMTS access-device SNMP child template for devices under enterprise PEN 4998. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds CADANT-CMTS-EQUIPMENT-MIB private equipment health metrics — fan ambient temperature in Celsius, relative card temperature level, card primary state, PEM power LED status, disk-volume usage percentage, and disk-volume usage level. DOCSIS port, channel, and service counters are business or row-level objects and are not promoted into shared device-health metrics.
+  Access Zhone DZS SNMP:
+    name: Access Zhone DZS SNMP
+    desc: Zhone/DZS GPON access-device SNMP baseline child template for devices under enterprise PEN 6296. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   Access Raisecom SNMP:
     name: Access Raisecom SNMP
     desc: Raisecom ROAP/ROS access-device SNMP child template for devices under enterprise PEN 8886. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds Raisecom private health metrics — CPU utilization, memory total/free/usage, device temperature, fan state, and power supply state. Optical transceiver, PON, and alarm tables are business, port, or row-level objects and are not promoted into shared device-health metrics.
