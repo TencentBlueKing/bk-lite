@@ -668,6 +668,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
   { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },
   { match: /\bxkl\b|dxmos|dqt400|dqm400/i, label: 'XKL', icon: 'mm-xkl_xkl' },
+  { match: /siklu|etherhaul|multihaul/i, label: 'Siklu', icon: 'mm-siklu_siklu' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
   { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },

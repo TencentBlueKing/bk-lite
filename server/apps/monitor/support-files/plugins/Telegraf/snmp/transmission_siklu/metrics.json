@@ -1,0 +1,33 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_siklu",
+  "plugin": "Transmission Siklu SNMP",
+  "plugin_desc": "Siklu EtherHaul and MultiHaul millimeter-wave transmission SNMP child template for devices under enterprise PEN 31926. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds the confirmed Radio Bridge system temperature scalar rbSysTemperature as device_temperature_celsius. CPU, memory, fan and power-supply health are N/A because RADIO-BRIDGE-MIB does not expose stable shared device-health objects for them; RF signal, CINR, Tx power and per-radio state are link telemetry and are not promoted into shared device health in this pass.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_siklu'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-siklu_siklu",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Siklu Radio Bridge system temperature in degrees Celsius, read from rbSysTemperature under enterprise PEN 31926."
+    }
+  ]
+}

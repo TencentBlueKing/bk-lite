@@ -4244,6 +4244,9 @@ monitor_object_plugin:
   Transmission XKL SNMP:
     name: XKL (Telegraf)
     desc: XKL DXMOS optical transport SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects XKL private hardware health tables for sensor temperature, fan controller state and power-supply state. Temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply normal(2) states are normalized to 1 healthy, and all other states are normalized to 2 fault. CPU and memory are N/A because XKL-MIB does not expose stable shared health objects for them.
+  Transmission Siklu SNMP:
+    name: Siklu (Telegraf)
+    desc: Siklu EtherHaul and MultiHaul millimeter-wave transmission SNMP child template for enterprise PEN 31926. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds the Radio Bridge system temperature scalar rbSysTemperature as device_temperature_celsius. CPU, memory, fan and power-supply health are N/A because stable shared health objects are not exposed. RF signal, CINR, Tx power and per-radio state are link telemetry and are not promoted into shared device health in this pass.
   Transmission Viavi SNMP:
     name: Viavi (Telegraf)
     desc: Viavi/JDSU transmission and network-visibility SNMP baseline child template for devices under Viavi PEN 26052. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
