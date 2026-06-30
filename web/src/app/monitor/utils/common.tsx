@@ -610,6 +610,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },
   { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },
   { match: /grandstream|\bgwn\d/i, label: 'Grandstream', icon: 'mm-grandstream_grandstream' },
+  { match: /albentia|aerdocsis|wimax/i, label: 'Albentia', icon: 'mm-albentia_albentia' },
   { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
   { match: /synology|diskstation|rackstation|\bdsm\b/i, label: 'Synology', icon: 'mm-synology_synology' },
   { match: /macrosan|\bms[0-9]{3,4}\b/i, label: 'MacroSAN', icon: 'mm-macrosan_macrosan' },
