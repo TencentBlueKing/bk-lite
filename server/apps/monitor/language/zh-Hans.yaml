@@ -4399,6 +4399,9 @@ monitor_object_plugin:
   Storage Dell SC8000 SNMP:
     name: Dell SC8000（Telegraf）
     desc: Dell SC8000 / Compellent 存储 SNMP 采集（Dell EMC 企业号 PEN 674）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——物理磁盘状态与健康标志（scDiskStatus / scDiskHealthy）、控制器风扇状态（scCtlrFanStatus）和控制器电源状态（scCtlrPowerStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。该 profile 未暴露可轮询的控制器 CPU、内存或温度 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——Dell SC8000 / Compellent SC Series 存储阵列。
+  Storage Dell PowerVault SNMP:
+    name: Dell PowerVault（Telegraf）
+    desc: Dell PowerVault / EqualLogic 存储 SNMP 采集（EqualLogic 企业号 PEN 12740）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 使用率（cpmCPUTotal5min，直接百分比）、控制器处理器/芯片温度、物理磁盘状态（eqlDiskStatus）和 iSCSI 卷管理状态（eqliscsiVolumeAdminStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。容量、磁盘转速、CPU 频率和物理内存大小属于规格/容量信息，不作为健康指标采集。适用品牌型号——Dell PowerVault / EqualLogic PS 与 MD 系列存储。
   Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）

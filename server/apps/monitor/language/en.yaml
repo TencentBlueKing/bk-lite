@@ -5157,6 +5157,9 @@ monitor_object_plugin:
   Storage Dell SC8000 SNMP:
     name: Dell SC8000 (Telegraf)
     desc: Dell SC8000 / Compellent storage SNMP collection (Dell EMC enterprise PEN 674). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — physical disk status and healthy flag (scDiskStatus / scDiskHealthy), controller fan status (scCtlrFanStatus), and controller power-supply status (scCtlrPowerStatus), normalized to 1=healthy / 2=fault with the worst component taken per instance. This profile exposes no pollable controller CPU, memory, or temperature gauge, so CPU, memory, and temperature are N/A and not faked. Supported brands/models — Dell SC8000 / Compellent SC Series storage arrays.
+  Storage Dell PowerVault SNMP:
+    name: Dell PowerVault (Telegraf)
+    desc: Dell PowerVault / EqualLogic storage SNMP collection (EqualLogic enterprise PEN 12740). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — controller CPU utilization (cpmCPUTotal5min, direct percent), controller processor and chipset temperatures, physical disk status (eqlDiskStatus), and iSCSI volume administrative status (eqliscsiVolumeAdminStatus), normalized to 1=healthy / 2=fault with the worst component taken per instance. Capacity, disk RPM, CPU frequency and physical RAM are specification/capacity values, so they are not collected as health metrics. Supported brands/models — Dell PowerVault / EqualLogic PS and MD-family storage arrays.
   Oracle:
     desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
       uptime, operation counts, transaction commits and rollbacks, as well as various

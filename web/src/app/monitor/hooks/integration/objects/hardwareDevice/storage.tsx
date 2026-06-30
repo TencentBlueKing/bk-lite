@@ -137,6 +137,7 @@ export const useStorageConfig = () => {
       'Storage Inspur SNMP': 'snmp_inspur',
       'Storage CeresData SNMP': 'snmp_ceresdata',
       'Storage Dell SC8000 SNMP': 'snmp_dellsc8000',
+      'Storage Dell PowerVault SNMP': 'snmp_dellpowervault',
     },
   };
 };

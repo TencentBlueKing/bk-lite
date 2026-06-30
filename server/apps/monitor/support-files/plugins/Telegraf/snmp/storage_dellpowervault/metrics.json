@@ -1,0 +1,111 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_dellpowervault",
+  "plugin": "Storage Dell PowerVault SNMP",
+  "plugin_desc": "Dell PowerVault / EqualLogic storage-specific SNMP collection for Dell storage arrays using the EqualLogic enterprise MIB (IANA PEN 12740). In addition to standard IF-MIB interface metrics, it collects vendor private health — controller CPU utilization via cpmCPUTotal5min, controller processor and chipset temperatures, physical disk status (eqlDiskStatus), and iSCSI volume administrative status (eqliscsiVolumeAdminStatus). Online(1) is normalized to 1=healthy and every other enum code is treated as 2=fault, with the worst component taken per device by max(). Capacity, disk RPM, controller CPU frequency and physical RAM are static inventory/specification values, so they are not modeled as health metrics. Supported brands/models — Dell PowerVault / EqualLogic PS and MD-family storage systems with SNMP enabled.",
+  "status_query": "any({instance_type='storage', collect_type='snmp_dellpowervault'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_temperature_celsius",
+    "device_disk_state",
+    "device_raid_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dell PowerVault / EqualLogic controller CPU utilization from cpmCPUTotal5min, expressed directly as a 0-100 percentage. Sustained high CPU usage can indicate heavy host IO, replication or controller pressure and may slow storage response."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dell PowerVault / EqualLogic controller temperature in degrees Celsius, derived from the controller processor and chipset temperature tables. The hottest controller sensor is taken per device. High temperature can indicate cooling failure, blocked airflow or an overheated enclosure."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_disk_state",
+      "query": "max(device_disk_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Disk Health State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dell PowerVault / EqualLogic disk health from eqlDiskStatus, one row per disk. The raw enum code online(1) is normalized to healthy and spare/failed/offline/unhealthy and every other non-online code are treated as faults, with the worst disk taken per device. A value greater than 1 indicates degraded storage media or a failed disk that should be investigated promptly."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_raid_state",
+      "query": "max(device_raid_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "RAID State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Dell PowerVault / EqualLogic volume availability from eqliscsiVolumeAdminStatus. Online(1) is normalized to healthy, while offline/control/lost-cached-blocks states are treated as faults. The worst volume status is taken per device, so a value greater than 1 indicates an unavailable or administratively abnormal volume."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
+    }
+  ]
+}
