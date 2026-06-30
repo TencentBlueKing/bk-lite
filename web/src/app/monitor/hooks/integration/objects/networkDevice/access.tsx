@@ -61,7 +61,8 @@ export const useAccessConfig = () => {
       'Access UTStarcom SNMP': 'snmp_utstarcom',
       'Access Raisecom SNMP': 'snmp_raisecom',
       'Access PacketFront SNMP': 'snmp_packetfront',
-      'Access C-Data SNMP': 'snmp_cdata'
+      'Access C-Data SNMP': 'snmp_cdata',
+      'Access Nateks SNMP': 'snmp_nateks'
     }
   };
 };
