@@ -60,7 +60,8 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Innovaphone SNMP': 'snmp_innovaphone',
       'VoiceGateway Mitel SNMP': 'snmp_mitel',
       'VoiceGateway Polycom SNMP': 'snmp_polycom',
-      'VoiceGateway Yeastar SNMP': 'snmp_yeastar'
+      'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
+      'VoiceGateway Zenitel SNMP': 'snmp_zenitel'
     }
   };
 };

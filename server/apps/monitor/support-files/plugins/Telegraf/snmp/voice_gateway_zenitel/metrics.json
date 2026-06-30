@@ -1,0 +1,45 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_zenitel",
+  "plugin": "VoiceGateway Zenitel SNMP",
+  "plugin_desc": "Zenitel Vingtor-Stentofon Exigo and Turbine voice devices SNMP child template. In addition to the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects VS-DEVICE-MIB temperature sensors and power-source status from the Zenitel enterprise tree. Fan speed is exposed as RPM and voltage as mV, so they are not promoted into shared fan-state or PSU-voltage health metrics in this pass.",
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_zenitel'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-zenitel_zenitel",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the current temperature in degrees Celsius from Zenitel VS-DEVICE-MIB tempCurrentValue, aggregated as the maximum across device sensors. High temperature can indicate cooling or airflow problems in Exigo and Turbine voice devices."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='voice_gateway', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Zenitel power-source status from VS-DEVICE-MIB powerStatus, normalized so connected(3) is 1 = healthy and every other or unknown value is 2 = fault. It is aggregated as the maximum across power sources so any abnormal source is visible."
+    }
+  ]
+}

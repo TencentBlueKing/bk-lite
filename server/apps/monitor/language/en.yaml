@@ -283,6 +283,12 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Voice gateway device temperature in degrees Celsius, used to detect cooling problems, blocked airflow, or overheating risk.
+    device_psu_state:
+      name: PSU State
+      desc: Voice gateway power-source state normalized so 1 means healthy and 2 means fault.
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
@@ -3874,6 +3880,8 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   Dameng:
     Base: Base
     Session: Session
@@ -4492,6 +4500,9 @@ monitor_object_plugin:
   VoiceGateway Yeastar SNMP:
     name: Yeastar (Telegraf)
     desc: Yeastar IP PBX and VoIP gateway SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Yeastar enterprise root and gateway product family are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Zenitel SNMP:
+    name: Zenitel (Telegraf)
+    desc: Zenitel Vingtor-Stentofon Exigo and Turbine voice device SNMP child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Zenitel VS-DEVICE-MIB temperature sensors and power-source status tables are verified, so this child collects temperature and normalized power state. Fan speed is RPM-only and voltage is mV-only, so they are not promoted into shared fan-state or voltage health metrics in this pass.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
