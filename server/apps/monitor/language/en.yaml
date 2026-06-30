@@ -4643,6 +4643,9 @@ monitor_object_plugin:
   Switch TsnTec SNMP:
     name: TsnTec (Telegraf)
     desc: TsnTec 8148SC switch-specific SNMP collection template (IANA PEN 65531). Beyond the shared Switch SNMP floor, it collects TsnTec private OIDs for device health including control-plane CPU utilization, memory utilization, CPU temperature, fan state and power-supply state. CPU and memory are direct 0-100 percentages, and temperature is read directly in degrees Celsius. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. System uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. Supported brands/models — TsnTec 8148SC ultra-low-latency switches.
+  Switch Wi-Tek SNMP:
+    name: Wi-Tek (Telegraf)
+    desc: Wi-Tek managed switch-specific SNMP collection template (IANA PEN 12284). Beyond the shared Switch SNMP floor, it collects Wi-Tek private OIDs from SYSINFO-MIB and IMIMGMT-MIB for device health including control-plane CPU utilization, memory used/free/usage, system temperature, fan state and power-supply state. CPU is read from taskInformation.total as a direct percentage. Memory usage is derived from allocated and free bytes. Temperature is read directly in degrees Celsius from systemTemperature. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. System uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. Industry temperature/power and SFP DDM objects are DisplayString or port-level diagnostics, so they are not collected as device-level health metrics.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection

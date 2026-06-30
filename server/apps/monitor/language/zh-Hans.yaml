@@ -4076,6 +4076,9 @@ monitor_object_plugin:
   Switch TsnTec SNMP:
     name: TsnTec（Telegraf）
     desc: TsnTec 8148SC 交换机专用 SNMP 采集模板（IANA PEN 65531）。在通用 Switch SNMP 底座之外，额外采集 TsnTec 私有 OID 的设备健康指标：控制平面 CPU 使用率、内存使用率、CPU 温度、风扇状态与电源状态。CPU 与内存为 0-100 直接百分比，温度为摄氏度直采；风扇/电源原始状态经 telegraf processors.enum 归一为 1=正常/2=异常。系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Switch SNMP 底座提供。适用品牌型号——TsnTec 8148SC 超低时延交换机。
+  Switch Wi-Tek SNMP:
+    name: Wi-Tek（Telegraf）
+    desc: Wi-Tek 网管交换机专用 SNMP 采集模板（IANA PEN 12284）。在通用 Switch SNMP 底座之外，额外采集 Wi-Tek SYSINFO-MIB 与 IMIMGMT-MIB 私有 OID 的设备健康指标：控制平面 CPU 使用率、内存已用/空闲/使用率、系统温度、风扇状态与电源状态。CPU 为 taskInformation.total 直接百分比；内存使用率由 allocated/free bytes 推导；温度为 systemTemperature 摄氏度直采；风扇和电源原始状态经 telegraf processors.enum 归一为 1=正常/2=异常。系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Switch SNMP 底座提供。工业温度/电源与 SFP DDM 对象多为 DisplayString 或端口级诊断，暂不作为设备级健康指标采集。
   Switch BDCOM SNMP:
     name: BDCOM（Telegraf）
     desc: BDCOM（上海博达数据通信）交换机专用 SNMP 采集模板（BDCOM 私有 MIB，IANA PEN 3320）。在标准 IF-MIB 接口指标之外，额外采集 BDCOM 私有 OID 的设备健康指标：最近 5 分钟控制平面 CPU 使用率（NMS-PROCESS-MIB cpmCPUTotal5min）、系统内存池已用/空闲字节（NMS-MEMORY-POOL-MIB，镜像 Cisco 风格内存池表）与各板卡温度（BDCOM-SYS nmscardTemperature 专用温度列）。内存使用率按 used/(used+free) 计算。BDCOM 交换机 MIB 无独立风扇/电源（PSU）状态对象，故风扇与电源不采集（N/A）。
