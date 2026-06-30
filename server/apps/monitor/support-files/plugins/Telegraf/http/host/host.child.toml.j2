@@ -15,7 +15,7 @@
         credential_encoding = "{{ credential_encoding | default('url', true) }}"
         auth_type = "{{ auth_type | default('password', true) }}"
         port = "{{ port | default('', true) }}"
-        metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,net', true) }}"
+        metrics_modules = "{{ metrics_modules | default('cpu,mem,disk,diskio,net,processes,system', true) }}"
         winrm_scheme = "{{ winrm_scheme | default('https', true) }}"
         winrm_transport = "{{ winrm_transport | default('ntlm', true) }}"
         winrm_cert_validation = "{{ winrm_cert_validation | default('false', true) }}"

@@ -436,7 +436,7 @@ async def host_metrics(request):
     username = request.headers.get("username")
     password = request.headers.get("password")
     port = request.headers.get("port", "22" if os_type == "linux" else "5986")
-    metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,net")
+    metrics_modules = request.headers.get("metrics_modules", "cpu,mem,disk,diskio,net,processes,system")
     ansible_node_id = request.headers.get("ansible_node_id", "")
 
     agent_id = request.headers.get("agent_id", "")
