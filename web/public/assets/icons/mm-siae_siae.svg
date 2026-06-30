@@ -1,0 +1,14 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="siaeBlue" x1="16" y1="14" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#38BDF8"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="22" fill="url(#siaeBlue)"/>
+  <path d="M32 80C43 66 54 59 64 59C74 59 85 66 96 80" stroke="white" stroke-width="8" stroke-linecap="round"/>
+  <path d="M41 61C49 52 57 48 64 48C71 48 79 52 87 61" stroke="white" stroke-width="7" stroke-linecap="round" opacity="0.78"/>
+  <path d="M52 44C56 40 60 38 64 38C68 38 72 40 76 44" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.58"/>
+  <circle cx="64" cy="83" r="12" fill="white"/>
+  <path d="M36 98H92" stroke="white" stroke-width="7" stroke-linecap="round" opacity="0.65"/>
+</svg>

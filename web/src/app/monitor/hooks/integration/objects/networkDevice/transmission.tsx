@@ -76,7 +76,8 @@ export const useTransmissionConfig = () => {
       'Transmission Fibrolan SNMP': 'snmp_fibrolan',
       'Transmission Exalt SNMP': 'snmp_exalt',
       'Transmission Smartoptics SNMP': 'snmp_smartoptics',
-      'Transmission RACOM SNMP': 'snmp_racom'
+      'Transmission RACOM SNMP': 'snmp_racom',
+      'Transmission SIAE Microelettronica SNMP': 'snmp_siae'
     }
   };
 };

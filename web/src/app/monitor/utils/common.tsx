@@ -670,6 +670,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bmrv\b|optidriver|in-?reach/i, label: 'MRV', icon: 'mm-mrv_mrv' },
   { match: /marconi/i, label: 'Marconi', icon: 'mm-marconi_marconi' },
   { match: /alcoma/i, label: 'Alcoma', icon: 'mm-alcoma_alcoma' },
+  { match: /\bsiae\b|microelettronica/i, label: 'SIAE Microelettronica', icon: 'mm-siae_siae' },
   { match: /packetlight|packet\s*light|pl-[0-9a-z-]+/i, label: 'PacketLight', icon: 'mm-packetlight_packetlight' },
   { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
   { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },
