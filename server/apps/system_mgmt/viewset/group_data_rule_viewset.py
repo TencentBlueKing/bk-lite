@@ -4,7 +4,9 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.permission_cache import clear_users_permission_cache
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.job_mgmt import JobMgmt
@@ -18,6 +20,28 @@ from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import GroupDataRule, UserRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def _build_actor_context(request, loader=None):
+    current_team = get_current_team(request)
+    if current_team in (None, ""):
+        message = loader.get("error.current_team_required") if loader else "缺少 current_team 参数"
+        return None, JsonResponse({"result": False, "message": message}, status=400)
+
+    try:
+        current_team = int(current_team)
+    except (TypeError, ValueError):
+        message = loader.get("error.invalid_current_team") if loader else "current_team 参数非法"
+        return None, JsonResponse({"result": False, "message": message}, status=400)
+
+    return {
+        "username": request.user.username,
+        "domain": request.user.domain,
+        "current_team": current_team,
+        "include_children": request.COOKIES.get("include_children", "0") == "1",
+        "is_superuser": request.user.is_superuser,
+        "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+    }, None
 
 
 class GroupDataRuleFilter(FilterSet):
@@ -184,6 +208,21 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_data(self, request):
         params = request.GET.dict()
+        if params.get("app") == "mlops":
+            try:
+                group_id = int(params.get("group_id"))
+            except (TypeError, ValueError):
+                return JsonResponse({"result": False, "message": "group_id 参数非法"}, status=400)
+
+            is_valid, error_response = self._validate_group_permission(request, group_id)
+            if not is_valid:
+                return error_response
+
+            actor_context, error_response = _build_actor_context(request, self.loader)
+            if error_response:
+                return error_response
+            params["actor_context"] = actor_context
+
         client = self.get_client(params)
         fun = getattr(client, "get_module_data", None)
         if fun is None:
