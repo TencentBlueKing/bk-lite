@@ -230,6 +230,7 @@ class MonitorObjectService:
         else:
             query = metric_obj.query.replace("__$labels__", labels_str)
         metrics = VictoriaMetricsAPI().query(query)
+        target_instance_ids = {inst["instance_id"] for inst in target_instances}
         value_map = {}
         time_map = {}
         for metric in metrics.get("data", {}).get("result", []):
@@ -237,7 +238,18 @@ class MonitorObjectService:
             field_value = labels.get(field)
             if field_value in (None, ""):
                 continue
-            instance_id = str(tuple([labels.get(i) for i in metric_obj.instance_id_keys]))
+            label_values = tuple([labels.get(i) for i in metric_obj.instance_id_keys])
+            instance_id = str(label_values)
+            if instance_id not in target_instance_ids:
+                for value in label_values:
+                    value_str = str(value)
+                    if value_str in target_instance_ids:
+                        instance_id = value_str
+                        break
+                    parsed_key = str(parse_instance_id(value_str))
+                    if parsed_key in target_instance_ids:
+                        instance_id = parsed_key
+                        break
             timestamp = metric.get("value", [0])[0]
             if instance_id not in value_map or timestamp >= time_map.get(instance_id, 0):
                 value_map[instance_id] = field_value

@@ -179,6 +179,30 @@ def test_query_metric_field_values_reads_vm_label(monkeypatch):
     assert result == {"('i1',)": "10.0.0.1"}
 
 
+def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
+    class FakeVM:
+        def query(self, query):
+            assert query == 'node_info{instance_id=~"i1"}'
+            return {"data": {"result": [
+                {"metric": {"instance_id": "('i1',)", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        name="node_info",
+        query="node_info{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_field_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+        "collector_ip",
+    )
+
+    assert result == {"('i1',)": "10.0.0.1"}
+
+
 def test_collect_vm_field_names_queries_vm_without_dimensions(monkeypatch):
     class FakeVM:
         def labels(self, match=None):
