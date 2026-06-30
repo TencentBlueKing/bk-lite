@@ -61,7 +61,8 @@ export const useTransmissionConfig = () => {
       'Transmission SAF Tehnika SNMP': 'snmp_saftehnika',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission Tachyon SNMP': 'snmp_tachyon',
-      'Transmission XKL SNMP': 'snmp_xkl'
+      'Transmission XKL SNMP': 'snmp_xkl',
+      'Transmission Viavi SNMP': 'snmp_viavi'
     }
   };
 };

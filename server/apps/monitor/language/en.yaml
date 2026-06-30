@@ -4230,6 +4230,9 @@ monitor_object_plugin:
   Transmission XKL SNMP:
     name: XKL (Telegraf)
     desc: XKL DXMOS optical transport SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects XKL private hardware health tables for sensor temperature, fan controller state and power-supply state. Temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply normal(2) states are normalized to 1 healthy, and all other states are normalized to 2 fault. CPU and memory are N/A because XKL-MIB does not expose stable shared health objects for them.
+  Transmission Viavi SNMP:
+    name: Viavi (Telegraf)
+    desc: Viavi/JDSU transmission and network-visibility SNMP baseline child template for devices under Viavi PEN 26052. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   Access BDCOM SNMP:
     name: Access BDCOM SNMP
     desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
