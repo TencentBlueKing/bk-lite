@@ -153,7 +153,14 @@ class MetricQueryService:
         if not method:
             raise BaseAppException(f"invalid algorithm method: {self.policy.algorithm}")
 
-        return method(query, start_timestamp, end_timestamp, step, group_by)
+        return method(
+            query,
+            start_timestamp,
+            end_timestamp,
+            step,
+            group_by,
+            getattr(self.policy, "group_algorithm", None),
+        )
 
     def query_raw_metrics(self, period, points=1):
         """查询原始指标数据(不进行聚合)
