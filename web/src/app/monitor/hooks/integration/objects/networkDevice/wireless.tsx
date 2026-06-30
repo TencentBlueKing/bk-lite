@@ -59,6 +59,8 @@ export const useWirelessConfig = () => {
       'Wireless Aerohive SNMP': 'snmp_aerohive',
       'Wireless Grandstream SNMP': 'snmp_grandstream',
       'Wireless ASCOM SNMP': 'snmp_ascom'
+      'Wireless ASCOM SNMP': 'snmp_ascom',
+      'Wireless Albentia SNMP': 'snmp_albentia'
     }
   };
 };

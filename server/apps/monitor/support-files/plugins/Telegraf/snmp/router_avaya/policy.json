@@ -1,0 +1,54 @@
+{
+  "object": "Router",
+  "plugin": "Router Avaya SNMP",
+  "templates": [
+    {
+      "name": "Avaya路由器CPU使用率过高",
+      "alert_name": "路由器${resource_name} CPU 使用率过高",
+      "description": "监控 Avaya 路由器的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在转发过载、路由计算频繁或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Avaya路由器内存使用率过高",
+      "alert_name": "路由器${resource_name} 内存使用率过高",
+      "description": "监控 Avaya 路由器的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张，避免设备稳定性下降。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

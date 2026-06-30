@@ -1,0 +1,83 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ceresdata",
+  "plugin": "Storage CeresData SNMP",
+  "plugin_desc": "CeresData storage-specific SNMP collection for CeresData all-flash storage arrays (CeresData private MIB, IANA PEN 25359). In addition to standard IF-MIB interface metrics, it collects the CeresData private OIDs for device health — the system-disk status (CeresDataStorageDiskInfoStatus, one row per system disk), the per-disk status (CeresDataStorageDiskState, one row per disk) and the storage-pool health (CeresDataPoolHealth, one row per pool). The disk and system-disk raw codes are folded into the shared disk-health metric and the storage-pool health (treated as aggregate array health) into the RAID metric, normalized via telegraf processors.enum to 1=healthy / 2=fault, with the worst component taken per device with max(). The vendor enum value codes have not been verified on a live device, so conservatively only 1 is treated as healthy and any other code as a fault. This profile does not publish a pollable controller CPU/memory utilization gauge, chassis temperature, fan or power-supply status, so CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — CeresData all-flash storage arrays with SNMP enabled.",
+  "status_query": "any({instance_type='storage', collect_type='snmp_ceresdata'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_disk_state",
+    "device_raid_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_disk_state",
+      "query": "max(device_disk_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Disk Health State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the physical disk health of the CeresData storage device, derived from the system-disk status (CeresDataStorageDiskInfoStatus) and per-disk status (CeresDataStorageDiskState) tables. The raw codes are normalized via telegraf processors.enum so that 1 = healthy and any other code = fault (the vendor enum value codes are not yet field-verified), and the worst disk is taken per device with max(). A value greater than 1 indicates a degraded or failed disk that carries a risk of data loss and should be replaced immediately."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_raid_state",
+      "query": "max(device_raid_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "RAID State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the storage-pool (aggregate array) health of the CeresData storage device, derived from the pool health table (CeresDataPoolHealth, one row per storage pool). The raw codes are normalized via telegraf processors.enum so that 1 = healthy and any other code = fault (the vendor enum value codes are not yet field-verified), and the worst pool is taken per device with max(). A value greater than 1 indicates a degraded or failed storage pool that risks data loss and warrants immediate investigation."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
+    }
+  ]
+}

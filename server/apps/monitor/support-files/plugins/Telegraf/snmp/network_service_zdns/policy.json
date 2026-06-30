@@ -1,0 +1,52 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService ZDNS SNMP",
+  "templates": [
+    {
+      "name": "ZDNS网络服务CPU使用率过高",
+      "alert_name": "网络服务${resource_name} CPU 使用率过高",
+      "description": "监控 ZDNS DNS/GSLB 设备的整机 CPU 使用率，当持续高于阈值时触发告警。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 90, "method": ">"},
+        {"level": "error", "value": 80, "method": ">"},
+        {"level": "warning", "value": 70, "method": ">"}
+      ]
+    },
+    {
+      "name": "ZDNS网络服务内存使用率过高",
+      "alert_name": "网络服务${resource_name} 内存使用率过高",
+      "description": "监控 ZDNS DNS/GSLB 设备的内存使用率，当持续高于阈值时触发告警。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 90, "method": ">"},
+        {"level": "error", "value": 80, "method": ">"},
+        {"level": "warning", "value": 70, "method": ">"}
+      ]
+    },
+    {
+      "name": "ZDNS网络服务温度过高",
+      "alert_name": "网络服务${resource_name} CPU 温度过高",
+      "description": "监控 ZDNS DNS/GSLB 设备的 CPU 温度，当温度持续偏高时触发告警。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 80, "method": ">"},
+        {"level": "error", "value": 70, "method": ">"},
+        {"level": "warning", "value": 60, "method": ">"}
+      ]
+    },
+    {
+      "name": "ZDNS DNS服务异常",
+      "alert_name": "网络服务${resource_name} DNS 服务异常",
+      "description": "监控 ZDNS DNS 服务状态，非正常状态时触发告警。",
+      "metric_name": "network_service_dns_service_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ]
+    }
+  ]
+}

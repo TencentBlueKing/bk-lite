@@ -57,7 +57,13 @@ export const useTransmissionConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Transmission Ciena SNMP': 'snmp_ciena'
+      'Transmission Ciena SNMP': 'snmp_ciena',
+      'Transmission SAF Tehnika SNMP': 'snmp_saftehnika',
+      'Transmission Pan Dacom SNMP': 'snmp_pandacom',
+      'Transmission Tachyon SNMP': 'snmp_tachyon',
+      'Transmission XKL SNMP': 'snmp_xkl',
+      'Transmission Viavi SNMP': 'snmp_viavi',
+      'Transmission Sycamore SNMP': 'snmp_sycamore'
     }
   };
 };
