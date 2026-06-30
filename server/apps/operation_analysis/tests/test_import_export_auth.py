@@ -229,6 +229,7 @@ def test_backend_precheck_returns_structured_error_for_invalid_yaml(authenticate
     assert payload["result"] is True
     assert data["valid"] is False
     assert data["errors"]
+    assert "_doc" not in data
 
 
 @pytest.mark.django_db
@@ -251,6 +252,7 @@ def test_openapi_submit_returns_structured_error_for_invalid_yaml(authenticated_
     assert payload["result"] is False
     assert response_data["success"] is False
     assert response_data["errors"]
+    assert "_doc" not in response_data
 
 
 def test_precheck_result_includes_doc_key():
@@ -510,6 +512,7 @@ def test_openapi_precheck_limits_existing_dashboard_to_rename_when_rpc_scope_den
     assert payload["result"] is True
     assert data["valid"] is True
     assert data["conflicts"][0]["suggested_actions"] == ["rename"]
+    assert "_doc" not in data
 
 
 @pytest.mark.django_db

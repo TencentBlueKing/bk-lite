@@ -63,11 +63,11 @@ class ImportExportViewSet(ViewSet):
             target_directory_id=target_directory_id,
             current_team=current_team,
         )
+        doc = result.pop("_doc")
 
         if not result["valid"]:
             return Response(result, status=status.HTTP_200_OK)
 
-        doc = result["_doc"]
         result = ImportExportAuthorizationService.apply_precheck_permissions(
             request,
             doc,
@@ -95,6 +95,7 @@ class ImportExportViewSet(ViewSet):
             target_directory_id=target_directory_id,
             current_team=current_team,
         )
+        doc = precheck_result.pop("_doc")
 
         if not precheck_result["valid"]:
             return Response(
@@ -106,7 +107,6 @@ class ImportExportViewSet(ViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        doc = precheck_result["_doc"]
         precheck_result = ImportExportAuthorizationService.apply_precheck_permissions(
             request,
             doc,
@@ -182,5 +182,3 @@ class ImportExportViewSet(ViewSet):
             except (ValueError, TypeError):
                 pass
         return None
-
-
