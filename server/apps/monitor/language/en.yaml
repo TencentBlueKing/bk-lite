@@ -5160,6 +5160,9 @@ monitor_object_plugin:
   Storage Dell PowerVault SNMP:
     name: Dell PowerVault (Telegraf)
     desc: Dell PowerVault / EqualLogic storage SNMP collection (EqualLogic enterprise PEN 12740). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — controller CPU utilization (cpmCPUTotal5min, direct percent), controller processor and chipset temperatures, physical disk status (eqlDiskStatus), and iSCSI volume administrative status (eqliscsiVolumeAdminStatus), normalized to 1=healthy / 2=fault with the worst component taken per instance. Capacity, disk RPM, CPU frequency and physical RAM are specification/capacity values, so they are not collected as health metrics. Supported brands/models — Dell PowerVault / EqualLogic PS and MD-family storage arrays.
+  Storage Hikvision SNMP:
+    name: Hikvision (Telegraf)
+    desc: Hikvision Brainware storage SNMP collection (local private MIB tree PEN 99999). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — CPU, memory, CPU temperature, disk, RAID, power-supply and CPU fan status. Raw status value 1 is normalized to healthy and every other value is treated as fault, with the worst component taken per instance. Capacity and IO-rate metrics are not collected as shared health metrics.
   Oracle:
     desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
       uptime, operation counts, transaction commits and rollbacks, as well as various

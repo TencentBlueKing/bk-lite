@@ -619,6 +619,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /ceresdata|ceres\s*data|希磁/i, label: 'CeresData', icon: 'mm-ceresdata_ceresdata' },
   { match: /dell\s*sc|sc8000|compellent/i, label: 'Dell SC8000', icon: 'mm-dellsc8000_dellsc8000' },
   { match: /powervault|equallogic|dell\s*ps|dell\s*md/i, label: 'Dell PowerVault', icon: 'mm-dellpowervault_dellpowervault' },
+  { match: /hikvision|brainware|海康/i, label: 'Hikvision', icon: 'mm-hikvision_hikvision' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },

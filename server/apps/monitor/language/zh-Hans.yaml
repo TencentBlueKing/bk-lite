@@ -4402,6 +4402,9 @@ monitor_object_plugin:
   Storage Dell PowerVault SNMP:
     name: Dell PowerVault（Telegraf）
     desc: Dell PowerVault / EqualLogic 存储 SNMP 采集（EqualLogic 企业号 PEN 12740）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 使用率（cpmCPUTotal5min，直接百分比）、控制器处理器/芯片温度、物理磁盘状态（eqlDiskStatus）和 iSCSI 卷管理状态（eqliscsiVolumeAdminStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。容量、磁盘转速、CPU 频率和物理内存大小属于规格/容量信息，不作为健康指标采集。适用品牌型号——Dell PowerVault / EqualLogic PS 与 MD 系列存储。
+  Storage Hikvision SNMP:
+    name: 海康 Hikvision（Telegraf）
+    desc: 海康 Hikvision Brainware 存储 SNMP 采集（本地私有 MIB 树 PEN 99999）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——CPU、内存、CPU 温度、磁盘、RAID、电源和 CPU 风扇状态；状态值 1 归一为正常，其余归一为异常，并按实例取最差组件。容量与 IO 速率为规格/性能项，不作为共享健康指标采集。
   Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）
