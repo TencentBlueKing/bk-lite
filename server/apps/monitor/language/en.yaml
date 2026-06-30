@@ -4404,6 +4404,9 @@ monitor_object_plugin:
   Access Harmonic SNMP:
     name: Access Harmonic SNMP
     desc: Harmonic NSG Pro access-platform SNMP baseline child template for devices under enterprise PEN 1563. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts prove only the private enterprise root and access-platform identity; stable private CPU, memory, temperature, fan and power device-health scalars are not proven, so they are not promoted into shared device-health metrics.
+  Access RAD SNMP:
+    name: Access RAD SNMP
+    desc: RAD Data Communications access, CPE, industrial-router and broadband-wireless SNMP baseline child template for devices under enterprise PEN 164. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts prove only the RAD enterprise root and access-device scope; stable private CPU, memory, temperature, fan and power device-health leaf OIDs are not proven, so they are not promoted into shared device-health metrics.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
