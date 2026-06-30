@@ -235,5 +235,14 @@ def test_brand_icon_asset_present():
 
 @pytest.mark.unit
 def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+
+
+@pytest.mark.unit
+def test_ui_password_fields_use_secret_env_names(ui):
+    field_names = {field["name"] for field in ui["form_fields"]}
+    assert "ENV_AUTH_PASSWORD" in field_names
+    assert "ENV_PRIV_PASSWORD" in field_names
+    assert "auth_password" not in field_names
+    assert "priv_password" not in field_names
