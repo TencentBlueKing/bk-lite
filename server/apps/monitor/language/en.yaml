@@ -4380,6 +4380,9 @@ monitor_object_plugin:
   NetworkService Endace SNMP:
     name: Endace (Telegraf)
     desc: Endace network visibility and traffic capture appliance SNMP collection for devices under Endace PEN 18418. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so capture and visibility indicators are not promoted into shared device-health metrics.
+  NetworkService EndRun SNMP:
+    name: EndRun (Telegraf)
+    desc: EndRun time-server SNMP collection for devices under EndRun PEN 13827. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so NTP, PTP and GPS service indicators are not promoted into shared device-health metrics.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.

@@ -59,7 +59,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService ZDNS SNMP': 'snmp_zdns',
       'NetworkService BlueCat SNMP': 'snmp_bluecat',
       'NetworkService Meinberg LANTIME SNMP': 'snmp_meinberg',
-      'NetworkService Endace SNMP': 'snmp_endace'
+      'NetworkService Endace SNMP': 'snmp_endace',
+      'NetworkService EndRun SNMP': 'snmp_endrun'
     }
   };
 };
