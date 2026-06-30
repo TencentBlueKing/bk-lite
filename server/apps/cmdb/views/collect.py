@@ -10,10 +10,12 @@ from django.shortcuts import get_object_or_404
 from django.http import JsonResponse
 from rest_framework import status
 from rest_framework.decorators import action
+from rest_framework.response import Response
 
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 from apps.cmdb.permissions.inst_task_permission import InstanceTaskPermission
 from apps.cmdb.services.collect_object_tree import get_collect_obj_tree
+from apps.cmdb.services.network_config_file_policy import get_supported_brand_options
 from apps.cmdb.utils.base import get_current_team_from_request
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.system_mgmt.utils.group_utils import GroupUtils
@@ -60,6 +62,10 @@ class CollectModelViewSet(AuthViewSet):
     @staticmethod
     def apply_visibility_filter(queryset):
         return queryset.filter(is_visible=True)
+
+    @action(methods=["get"], detail=False, url_path="network_config_file_supported_brands")
+    def network_config_file_supported_brands(self, request):
+        return Response({"items": get_supported_brand_options()})
 
     @staticmethod
     def _parse_positive_int(value, field_name, default):
