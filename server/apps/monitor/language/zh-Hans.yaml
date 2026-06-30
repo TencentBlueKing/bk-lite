@@ -4197,6 +4197,9 @@ monitor_object_plugin:
   Loadbalance Superiority SNMP:
     name: 超数（Telegraf）
     desc: 超数（Superiority）负载均衡专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。当前连接数/温度/风扇/电源 1991 私有树未声明，故为 N/A。适用品牌型号——超数（Superiority）负载均衡设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
+  Loadbalance RELIANOID SNMP:
+    name: RELIANOID（Telegraf）
+    desc: RELIANOID ADC / 负载均衡专用 SNMP child 模板（企业号 61269）。当前确认口径为标准 MIB-II 与 IF-MIB ifXTable 基线；未确认无需行级过滤且跨版本稳定的厂商私有 CPU、内存、温度、风扇、电源或当前连接数标量健康 OID，因此本品牌 metrics.json 不声明厂商增量指标。系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Loadbalance SNMP 底座提供。本模板仅提供 RELIANOID collect_type、表单与 Telegraf child 采集配置。适用品牌型号——RELIANOID ADC 与负载均衡设备。
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon（Telegraf）
     desc: Radware Alteon 应用交换机/负载均衡器专用 SNMP 采集模板（ALTEON-CHEETAH-SWITCH-MIB，企业号 1872）。除标准 IF-MIB 接口指标外，额外采集 Alteon 私有 OID 的设备健康指标：管理处理器 CPU 使用率（mpCpuStatsUtil1Second，直接以百分比上报）与主内存（mpMemStatsTotal/mpMemStatsFree，字节，用量按 (总量-空闲)/总量 推导）。CHEETAH MIB 未暴露标量连接/会话数与温度/风扇/电源，故为 N/A。适用品牌型号——运行 AlteonOS 的 Radware Alteon ADC/应用交换机（Alteon 4408/5208/6420/8420/9800 及 VA 虚拟设备，企业号 1872）。

@@ -576,6 +576,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /amaranten|安然/i, label: 'Amaranten', icon: 'mm-amaranten_amaranten' },
   { match: /secworld|安世/i, label: 'Secworld', icon: 'mm-secworld_secworld' },
   { match: /superiority|超数/i, label: 'Superiority', icon: 'mm-superiority_superiority' },
+  { match: /relianoid|\bzva\b/i, label: 'RELIANOID', icon: 'mm-relianoid_relianoid' },
   { match: /harbour|港湾/i, label: 'Harbour Networks', icon: 'mm-harbour_harbour' },
   { match: /aethra|dolcevita/i, label: 'Aethra', icon: 'mm-aethra_aethra' },
   { match: /velocloud|vmware\s*sd-?wan|\bvce\b/i, label: 'VeloCloud', icon: 'mm-velocloud_velocloud' },
