@@ -11,7 +11,7 @@ INSTALL_APPS=$(echo "$INSTALL_APPS" | tr -d ' ')
 # 使用统一的批量初始化命令，在单个 Python 进程中完成所有初始化
 # 大幅减少启动时间（从原来的多次 Python 进程启动优化为单次启动）
 echo "开始批量初始化..."
-python3 manage.py batch_init --apps="$INSTALL_APPS" || true
+python3 manage.py batch_init --apps="$INSTALL_APPS"
 
 # 检查是否包含 opspilot 模块
 opspilot_installed=false
