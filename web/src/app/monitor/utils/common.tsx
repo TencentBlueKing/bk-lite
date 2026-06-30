@@ -672,6 +672,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /acme\s*packet|acmepacket/i, label: 'Acme Packet', icon: 'mm-acmepacket_acmepacket' },
   { match: /patton|smartnode/i, label: 'Patton', icon: 'mm-patton_patton' },
   { match: /innovaphone/i, label: 'Innovaphone', icon: 'mm-innovaphone_innovaphone' },
+  { match: /mitel|mivoice|3300\s*icp/i, label: 'Mitel', icon: 'mm-mitel_mitel' },
   { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
   { match: /avocent|cyclades|\bacs[0-9]{3,4}\b/i, label: 'Avocent ACS', icon: 'mm-avocent_avocent' },
   { match: /perle|iolan|\bscg[0-9]*\b/i, label: 'Perle IOLAN', icon: 'mm-perle_perle' },
