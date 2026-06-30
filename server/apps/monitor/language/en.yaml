@@ -4489,6 +4489,9 @@ monitor_object_plugin:
   VoiceGateway Polycom SNMP:
     name: Polycom (Telegraf)
     desc: Polycom voice endpoint and conference phone SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Polycom enterprise root and endpoint MIB subtree are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Yeastar SNMP:
+    name: Yeastar (Telegraf)
+    desc: Yeastar IP PBX and VoIP gateway SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Yeastar enterprise root and gateway product family are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
