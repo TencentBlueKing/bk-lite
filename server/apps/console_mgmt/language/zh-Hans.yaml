@@ -10,6 +10,7 @@ error:
   group_name_required: group_name 不能为空
   password_required: 密码不能为空
   invalid_json_format: 请求体格式错误，请发送合法的 JSON
+  email_change_verification_required: 修改邮箱需要先完成验证码校验
 email:
   verification_code_validity: 验证码有效期为10分钟,请及时使用。
   verification_code_body: 您的验证码是
