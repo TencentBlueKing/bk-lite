@@ -172,21 +172,37 @@ const formControlStyle = {
 
 const groupByControlStyle = {
   display: 'grid',
-  gridTemplateColumns: '190px 32px minmax(0, 1fr)',
+  gridTemplateColumns: '184px 42px minmax(0, 1fr)',
   alignItems: 'center',
   border: '1px solid #1677ff',
-  borderRadius: 6,
+  borderRadius: 5,
   background: '#fff',
-  padding: 3,
-  boxShadow: '0 0 0 1px rgba(22, 119, 255, 0.12)',
+  height: 36,
+  overflow: 'hidden',
+  boxShadow: '0 0 0 2px rgba(22, 119, 255, 0.08)',
 };
 
 const groupMethodSelectStyle = {
   width: '100%',
+  height: 34,
 };
 
 const groupDimensionSelectStyle = {
   width: '100%',
+  minWidth: 0,
+  height: 34,
+};
+
+const groupBySelectClassName = 'aggregation-group-by-select';
+
+const groupByDividerStyle = {
+  height: '100%',
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  borderRight: '1px solid #edf1f6',
+  borderLeft: '1px solid #edf1f6',
+  background: '#fbfcff',
 };
 
 const byTextStyle = {
@@ -369,6 +385,31 @@ const AggregationForm = ({
           #storybook-root * {
             box-sizing: border-box;
           }
+
+          .${groupBySelectClassName}.ant-select-single .ant-select-selector {
+            height: 34px !important;
+            padding-inline: 10px !important;
+          }
+
+          .${groupBySelectClassName}.ant-select-single .ant-select-selection-item,
+          .${groupBySelectClassName}.ant-select-single .ant-select-selection-placeholder {
+            line-height: 34px !important;
+          }
+
+          .${groupBySelectClassName}.ant-select-multiple .ant-select-selector {
+            min-height: 34px !important;
+            padding-inline: 8px !important;
+          }
+
+          .${groupBySelectClassName}.ant-select-multiple .ant-select-selection-overflow {
+            align-items: center;
+            min-height: 34px;
+          }
+
+          .${groupBySelectClassName}.ant-select-multiple .ant-select-selection-item {
+            margin-top: 0;
+            margin-bottom: 0;
+          }
         `}
       </style>
       <div style={pageStyle}>
@@ -408,15 +449,19 @@ const AggregationForm = ({
                 value={groupMethod}
                 onChange={setGroupMethod}
                 variant="borderless"
+                className={groupBySelectClassName}
                 style={groupMethodSelectStyle}
                 options={getCompactOptions(groupMethods)}
               />
-              <Text style={byTextStyle}>by</Text>
+              <div style={groupByDividerStyle}>
+                <Text style={byTextStyle}>by</Text>
+              </div>
               <Select
                 mode="multiple"
                 value={groups}
                 onChange={setGroups}
                 variant="borderless"
+                className={groupBySelectClassName}
                 style={groupDimensionSelectStyle}
                 options={metric.groupOptions.map((item) => ({ label: item, value: item }))}
               />
