@@ -253,6 +253,24 @@ monitor_object_metric:
     network_service_pool_member_state:
       name: Pool Member Status
       desc: Availability state of the service pool member, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_sync_state:
+      name: Spectracom Sync Status
+      desc: Spectracom xSync system synchronization state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_dc_power_state:
+      name: Spectracom DC Power Status
+      desc: Spectracom DC power input state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_minor_alarm_state:
+      name: Spectracom Minor Alarm Status
+      desc: Spectracom minor alarm state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_major_alarm_state:
+      name: Spectracom Major Alarm Status
+      desc: Spectracom major alarm state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_ntp_state:
+      name: Spectracom NTP Status
+      desc: Spectracom NTP current mode, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_ntp_stratum:
+      name: Spectracom NTP Stratum
+      desc: Current Spectracom NTP stratum level.
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -4383,6 +4401,9 @@ monitor_object_plugin:
   NetworkService EndRun SNMP:
     name: EndRun (Telegraf)
     desc: EndRun time-server SNMP collection for devices under EndRun PEN 13827. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so NTP, PTP and GPS service indicators are not promoted into shared device-health metrics.
+  NetworkService Spectracom SNMP:
+    name: Spectracom (Telegraf)
+    desc: Spectracom SecureSync and NetClock time-server SNMP collection for appliances under Spectracom PEN 18837. The shared NetworkService SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds xSync and NTP status scalars for synchronization, DC power, major and minor alarms, NTP current mode and stratum. Temperature and hot-swap objects are not collected in this pass because their numeric leaf OIDs were not fully verified.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.

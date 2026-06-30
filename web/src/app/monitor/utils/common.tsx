@@ -673,6 +673,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /meinberg|lantime/i, label: 'Meinberg', icon: 'mm-meinberg_meinberg' },
   { match: /endace/i, label: 'Endace', icon: 'mm-endace_endace' },
   { match: /endrun|sonoma|tempus/i, label: 'EndRun', icon: 'mm-endrun_endrun' },
+  { match: /spectracom|orolia|securesync|netclock/i, label: 'Spectracom', icon: 'mm-spectracom_spectracom' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },
   { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
