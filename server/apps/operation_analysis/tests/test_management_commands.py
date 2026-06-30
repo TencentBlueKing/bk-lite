@@ -9,7 +9,6 @@ from django.core.management import call_command
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Directory
 
-
 # --------------------------------------------------------------------------
 # init_default_namespace
 # --------------------------------------------------------------------------
@@ -90,12 +89,16 @@ def test_init_default_namespace_rerun_no_change(settings):
 
 @pytest.mark.django_db
 def test_init_source_api_data_creates_tags_and_sources(settings):
+    from apps.system_mgmt.models.user import Group
+
     settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    default_group, _ = Group.objects.get_or_create(name="Default")
     call_command("init_default_namespace")
     call_command("init_source_api_data")
 
     assert DataSourceTag.objects.exists()
     assert DataSourceAPIModel.objects.exists()
+    assert DataSourceAPIModel.objects.filter(groups=[default_group.id]).exists()
 
 
 @pytest.mark.django_db
@@ -114,6 +117,44 @@ def test_init_source_api_data_force_update_is_idempotent(settings):
     # 强制更新模式再次运行 → 覆盖 force_update 分支，不应新增
     call_command("init_source_api_data", "--force-update")
     assert DataSourceAPIModel.objects.count() == count_before
+
+
+@pytest.mark.django_db
+def test_init_source_api_data_backfills_empty_groups_on_existing_sources(settings):
+    from apps.system_mgmt.models.user import Group
+
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    default_group, _ = Group.objects.get_or_create(name="Default")
+    call_command("init_default_namespace")
+    call_command("init_source_api_data")
+
+    source = DataSourceAPIModel.objects.get(name="今日告警状态总览")
+    source.groups = []
+    source.save(update_fields=["groups"])
+
+    call_command("init_source_api_data", "--force-update")
+
+    source.refresh_from_db()
+    assert source.groups == [default_group.id]
+
+
+@pytest.mark.django_db
+def test_init_source_api_data_keeps_existing_non_empty_groups(settings):
+    from apps.system_mgmt.models.user import Group
+
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    Group.objects.get_or_create(name="Default")
+    call_command("init_default_namespace")
+    call_command("init_source_api_data")
+
+    source = DataSourceAPIModel.objects.get(name="今日告警状态总览")
+    source.groups = [99]
+    source.save(update_fields=["groups"])
+
+    call_command("init_source_api_data", "--force-update")
+
+    source.refresh_from_db()
+    assert source.groups == [99]
 
 
 # --------------------------------------------------------------------------
