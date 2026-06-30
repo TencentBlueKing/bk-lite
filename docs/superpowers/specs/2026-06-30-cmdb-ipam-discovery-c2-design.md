@@ -112,6 +112,41 @@ IP 发现任务继续使用 `CollectModels`：
 - `scan_method` 支持 `icmp` 和 `tcp`，默认 `icmp`。
 - `tcp` 默认端口为 `22/80/443/3389`，可配置。
 
+## 采集对象树入口
+
+`server/apps/cmdb/constants/constants.py` 的 `COLLECT_OBJ_TREE` 是自动发现采集对象树的社区版基线。IP 发现需要在该树中显式登记，否则 `CollectModelViewSet.tree` 返回给前端的 `collect_model_tree` 不会包含 IP 发现入口，前端也无法进入现有 `IpTask` 表单。
+
+新增一个 IPAM/IP 发现采集节点：
+
+```python
+{
+    "id": "ipam",
+    "name": "IP 地址管理",
+    "children": [
+        {
+            "id": "ip_discovery",
+            "model_id": "ip",
+            "name": "IP 发现",
+            "task_type": CollectPluginTypes.IP,
+            "type": CollectDriverTypes.PROTOCOL,
+            "tag": ["Agentless", "ICMP", "TCP"],
+            "desc": "按子网执行 IP 探活，发现现网已使用 IP 并写回 IPAM 台账",
+            "encrypted_fields": [],
+        }
+    ],
+}
+```
+
+说明：
+
+- `id="ip_discovery"` 是采集对象树中的插件入口 ID。
+- `model_id="ip"` 表示结果写回 IP 模型。
+- `task_type=CollectPluginTypes.IP` 用于前端选择 `IpTask` 表单，也用于后端选择 `IPCollectMetrics`。
+- `type=CollectDriverTypes.PROTOCOL` 表示接入点通过标准 Stargazer HTTP 采集接口执行，不需要 SSH 凭据。
+- `encrypted_fields=[]`，本期 ICMP/TCP 探活不需要凭据；字段保留为后续 SNMP/ARP 增强预留入口。
+
+`apps.cmdb.views.collect.CollectModelViewSet.tree` 不需要新增独立接口逻辑，它已经通过 `get_collect_obj_tree()` 返回 `COLLECT_OBJ_TREE` 与企业扩展合并后的结果。验收时需要确认 `/cmdb/api/collect/collect_model_tree/` 返回的树中包含 `ipam -> ip_discovery`，且前端自动发现页面点击该节点后进入 `IpTask`。
+
 ## NodeParams 下发
 
 新增 `IPDiscoveryNodeParams` 并注册到 `NodeParamsFactory`：
