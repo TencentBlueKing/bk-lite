@@ -63,7 +63,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService DEVA Broadcast SNMP': 'snmp_deva',
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService Spectracom SNMP': 'snmp_spectracom',
-      'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria'
+      'NetworkService Asentria SiteBoss SNMP': 'snmp_asentria',
+      'NetworkService Server Technology Sentry3 SNMP': 'snmp_servertech'
     }
   };
 };

@@ -4026,6 +4026,9 @@ monitor_object_plugin:
   NetworkService BlueCat SNMP:
     name: BlueCat（Telegraf）
     desc: BlueCat DDI 网络服务设备 SNMP 采集模板，适用于 BlueCat 企业号 13315 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源健康标量，DNS、DHCP、IPAM 计数属于业务或容量指标，因此不提升为共享设备健康指标。
+  NetworkService Server Technology Sentry3 SNMP:
+    name: Server Technology Sentry3（Telegraf）
+    desc: Server Technology Sentry3 远程电源、PDU 与环境监控设备 SNMP 基线子模板，适用于 Server Technology 企业号 1718.3 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 tower、infeed、outlet、温湿度传感器、接点与分支电力表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 PDU 业务计数提升为共享设备健康指标。
   NetworkService Meinberg LANTIME SNMP:
     name: Meinberg LANTIME（Telegraf）
     desc: Meinberg LANTIME 时间服务器 SNMP 采集模板，适用于 Meinberg 企业号 5597 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。公开 LANTIME MIB 已确认 NTP 与 PTP 服务对象，但当前 MIB 事实未证明具备可保守归一的共享 CPU、内存、温度、风扇、电源健康标量，因此不把时间同步服务指标提升为共享设备健康指标。

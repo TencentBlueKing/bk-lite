@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Server Technology">
+  <rect width="1024" height="1024" rx="160" fill="#F6F9FF"/>
+  <path d="M248 280h528c44 0 80 36 80 80v304c0 44-36 80-80 80H248c-44 0-80-36-80-80V360c0-44 36-80 80-80Z" fill="#FFFFFF" stroke="#1272FF" stroke-width="40"/>
+  <path d="M256 400h512M256 512h512M256 624h512" stroke="#1272FF" stroke-width="36" stroke-linecap="round"/>
+  <circle cx="336" cy="400" r="22" fill="#00CBA6"/>
+  <circle cx="336" cy="512" r="22" fill="#00CBA6"/>
+  <circle cx="336" cy="624" r="22" fill="#00CBA6"/>
+  <path d="M620 368h96v288h-96z" fill="#E7F0FF" stroke="#1272FF" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M652 432h32M652 512h32M652 592h32" stroke="#1272FF" stroke-width="24" stroke-linecap="round"/>
+</svg>
