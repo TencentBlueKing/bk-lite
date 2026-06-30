@@ -161,10 +161,11 @@
       }
     },
     {
-      "name": "auth_password",
+      "name": "ENV_AUTH_PASSWORD",
       "label": "认证密码",
       "type": "password",
       "required": false,
+      "encrypted": true,
       "description": "用于认证的密码，与选择的认证协议对应",
       "widget_props": {
         "placeholder": "认证密码"
@@ -174,8 +175,7 @@
         "value": 3
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.auth_password",
-        "to_api": {}
+        "origin_path": "child.env_config.AUTH_PASSWORD__{{config_id}}"
       }
     },
     {
@@ -198,10 +198,11 @@
       }
     },
     {
-      "name": "priv_password",
+      "name": "ENV_PRIV_PASSWORD",
       "label": "加密密码",
       "type": "password",
       "required": false,
+      "encrypted": true,
       "description": "用于加密的密码，与选择的加密协议对应",
       "widget_props": {
         "placeholder": "加密密码"
@@ -211,8 +212,7 @@
         "value": 3
       },
       "transform_on_edit": {
-        "origin_path": "child.content.config.priv_password",
-        "to_api": {}
+        "origin_path": "child.env_config.PRIV_PASSWORD__{{config_id}}"
       }
     },
     {
