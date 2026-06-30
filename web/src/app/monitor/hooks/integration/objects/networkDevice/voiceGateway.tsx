@@ -58,7 +58,8 @@ export const useVoiceGatewayConfig = () => {
       'VoiceGateway Acme Packet SNMP': 'snmp_acmepacket',
       'VoiceGateway Patton SNMP': 'snmp_patton',
       'VoiceGateway Innovaphone SNMP': 'snmp_innovaphone',
-      'VoiceGateway Mitel SNMP': 'snmp_mitel'
+      'VoiceGateway Mitel SNMP': 'snmp_mitel',
+      'VoiceGateway Polycom SNMP': 'snmp_polycom'
     }
   };
 };
