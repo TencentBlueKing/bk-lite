@@ -636,6 +636,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /arris|cadant|e6\s*cmts/i, label: 'ARRIS Cadant', icon: 'mm-arris_arris' },
   { match: /vsolution|v-?sol|v1600d/i, label: 'V-SOL', icon: 'mm-vsolution_vsolution' },
   { match: /zhone|\bdzs\b|dasan/i, label: 'Zhone DZS', icon: 'mm-zhone_zhone' },
+  { match: /utstarcom|utstar\s*com|\butstar\b/i, label: 'UTStarcom', icon: 'mm-utstarcom_utstarcom' },
   { match: /raisecom|roap|iscom/i, label: 'Raisecom', icon: 'mm-raisecom_raisecom' },
   { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
   { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },

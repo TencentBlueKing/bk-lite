@@ -3972,6 +3972,9 @@ monitor_object_plugin:
   Access Zhone DZS SNMP:
     name: Zhone DZS（Telegraf）
     desc: Zhone/DZS GPON 接入设备 SNMP 基线子模板（企业号 PEN 6296）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
+  Access UTStarcom SNMP:
+    name: UTStarcom（Telegraf）
+    desc: UTStarcom DSLAM/宽带接入设备 SNMP 基线子模板（企业号 PEN 4666）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
   Access Raisecom SNMP:
     name: Raisecom（Telegraf）
     desc: Raisecom ROAP/ROS 接入设备 SNMP 子模板（企业号 PEN 8886）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 Raisecom 私有健康指标：CPU 使用率、内存总量/空闲/使用率、设备温度、风扇状态与电源状态。光模块、PON 与告警表属于业务/端口/行级对象，不提升为共享设备健康指标。

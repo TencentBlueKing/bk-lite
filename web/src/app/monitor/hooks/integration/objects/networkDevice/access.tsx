@@ -57,6 +57,7 @@ export const useAccessConfig = () => {
       'Access V-SOL SNMP': 'snmp_vsolution',
       'Access ARRIS Cadant SNMP': 'snmp_arris',
       'Access Zhone DZS SNMP': 'snmp_zhone',
+      'Access UTStarcom SNMP': 'snmp_utstarcom',
       'Access Raisecom SNMP': 'snmp_raisecom'
     }
   };
