@@ -160,6 +160,12 @@ monitor_object_metric:
     device_temperature_celsius:
       name: Temperature
       desc: CPU or chassis temperature of the transmission device in degrees Celsius. High values may indicate cooling problems, high ambient temperature or overloaded hardware.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each transmission device fan or fan controller. A non-normal state indicates a cooling module fault, offline module, or communication failure and may lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each transmission device power supply. A non-normal state indicates offline power, missing input, over-temperature, hardware fault, or alert condition that should be investigated.
   Access:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -3792,6 +3798,7 @@ monitor_object_metric_group:
     CPU: CPU
     Memory: Memory
     Temperature: Temperature
+    Hardware Status: Hardware Status
   Access:
     Base: Base
     Traffic: Traffic
@@ -4220,6 +4227,9 @@ monitor_object_plugin:
   Transmission Tachyon SNMP:
     name: Tachyon (Telegraf)
     desc: Tachyon Networks TNA 300 series transmission SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects Tachyon private health scalars for CPU usage, memory usage and CPU temperature. CPU and memory are reported directly as percentages, and CPU temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply states are N/A because stable normalized state objects are not exposed.
+  Transmission XKL SNMP:
+    name: XKL (Telegraf)
+    desc: XKL DXMOS optical transport SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects XKL private hardware health tables for sensor temperature, fan controller state and power-supply state. Temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply normal(2) states are normalized to 1 healthy, and all other states are normalized to 2 fault. CPU and memory are N/A because XKL-MIB does not expose stable shared health objects for them.
   Access BDCOM SNMP:
     name: Access BDCOM SNMP
     desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
