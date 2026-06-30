@@ -58,7 +58,6 @@ export default function AccountDetailsPage() {
         const locale = newLocale ?? currentLocale;
         const hasChanges =
             currentValues.display_name !== originalData.display_name ||
-            currentValues.email !== originalData.email ||
             tz !== originalData.timezone ||
             locale !== originalData.locale;
         setIsModified(hasChanges);
@@ -71,7 +70,6 @@ export default function AccountDetailsPage() {
             const formValues = form.getFieldsValue();
             const saveData = {
                 display_name: formValues.display_name,
-                email: formValues.email,
                 timezone: currentTimezone,
                 locale: currentLocale,
             };
@@ -182,7 +180,7 @@ export default function AccountDetailsPage() {
                             />
                         </Form.Item>
 
-                        {/* 邮箱 - 可编辑必填 */}
+                        {/* 邮箱 - 移动端暂不提供验证码闭环，避免直接提交后端被拒绝 */}
                         <Form.Item
                             name="email"
                             label={
@@ -199,6 +197,8 @@ export default function AccountDetailsPage() {
                             <Input
                                 placeholder={t('account.enterEmail')}
                                 type="email"
+                                disabled
+                                readOnly
                                 style={{
                                     '--font-size': '14px',
                                     '--text-align': 'right',
