@@ -4382,6 +4382,9 @@ monitor_object_plugin:
   Router Aethra SNMP:
     name: Aethra（Telegraf）
     desc: Aethra Telecommunications IAD/DSL 接入路由器（含 VoIP）专用 SNMP 采集模板（AETHRA-MIB，企业号 7745）。除标准 IF-MIB 接口指标外，额外采集 Aethra 私有 OID 的设备健康指标：CPU 5 分钟平均负载（cpuLoad5min，直接 %）与主内存（总内存 + 空闲内存，KBytes，用量按 (总量-空闲)/总量 推导）。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——Aethra Telecommunications IAD/DSL 路由器（AC2036/Dolcevita 系列，企业号 7745）。
+  Router Benu SNMP:
+    name: Benu Networks（Telegraf）
+    desc: Benu Networks BNG/CGNAT 边缘路由器专用 SNMP 采集模板（BENU-CHASSIS-MIB，企业号 39406）。除标准 IF-MIB 接口指标外，额外采集 Benu 私有机箱健康指标：温度传感器、风扇状态与电源模块状态。BENU-HOST-MIB 中的 CPU 与内存对象属于软件进程级任务表，本模板不提升为设备级 CPU/内存健康指标，故 CPU/内存为 N/A。适用品牌型号——Benu Networks MEG/xMEG 路由平台。
   Router VeloCloud SNMP:
     name: VeloCloud/VMware SD-WAN（Telegraf）
     desc: VeloCloud/VMware SD-WAN Edge 路由器专用 SNMP 采集模板（企业号 45346）。除标准 IF-MIB 接口指标外，额外采集 VeloCloud 私有 OID 的设备健康指标：CPU 5 分钟平均使用率与内存使用率，均为设备直接上报的百分比。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——VeloCloud/VMware SD-WAN Edge 路由器。

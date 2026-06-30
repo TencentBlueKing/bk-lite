@@ -80,6 +80,7 @@ export const useRouterConfig = () => {
       'Router Harbour SNMP': 'snmp_harbour',
       'Router Aethra SNMP': 'snmp_aethra',
       'Router VeloCloud SNMP': 'snmp_velocloud',
+      'Router Benu SNMP': 'snmp_benu',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
