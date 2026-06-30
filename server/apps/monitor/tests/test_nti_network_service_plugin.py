@@ -209,7 +209,8 @@ def test_brand_label_present_in_common_without_generic_terms():
     text = common.read_text(encoding="utf-8")
     assert "NTI ENVIROMUX" in text
     assert "mm-nti_nti" in text
-    assert r"nti|enviromux" in text
+    assert r"\bnti\b|enviromux" in text
+    assert r"/nti|enviromux/i" not in text
     assert "nti|environment|sensor|pdu|network.?service" not in text
 
 
