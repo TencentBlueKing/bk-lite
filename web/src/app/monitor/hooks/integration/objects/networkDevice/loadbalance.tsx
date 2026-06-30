@@ -75,6 +75,7 @@ export const useLoadbalanceConfig = () => {
       'Loadbalance FortiADC SNMP': 'snmp_fortiadc',
       'Loadbalance Kemp LoadMaster SNMP': 'snmp_kemp',
       'Loadbalance Superiority SNMP': 'snmp_superiority',
+      'Loadbalance RELIANOID SNMP': 'snmp_relianoid',
       'Loadbalance Radware Alteon SNMP': 'snmp_alteon',
       'Loadbalance Flow NetFlow': 'netflow',
       'Loadbalance Flow sFlow': 'sflow'

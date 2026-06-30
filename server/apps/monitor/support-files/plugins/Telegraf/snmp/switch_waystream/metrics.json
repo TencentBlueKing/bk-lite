@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_waystream",
+  "plugin": "Switch Waystream SNMP",
+  "plugin_desc": "Waystream ASR / FTTH switch SNMP child template (IANA PEN 9303). The verified WAYSTREAM-SMI and WAYSTREAM-RPM-MIB private tree is focused on enterprise identity and RPM/IPTV QoS objects, and no row-filter-free scalar device-health gauges were confirmed in the available state. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Switch SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/switch metric model while this plugin provides the Waystream collect_type, UI and Telegraf child template. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Waystream ASR and FTTH access switches.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_waystream'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

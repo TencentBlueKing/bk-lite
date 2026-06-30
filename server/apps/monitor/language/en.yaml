@@ -151,6 +151,21 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU Usage
+      desc: CPU utilization of the transmission device reported directly as a 0-100 percentage. Sustained high CPU usage can indicate wireless backhaul traffic pressure, control-plane load or abnormal traffic.
+    device_memory_usage:
+      name: Memory Usage
+      desc: Memory utilization of the transmission device reported directly as a 0-100 percentage. Sustained high memory usage may indicate control-plane resource pressure or unstable device services.
+    device_temperature_celsius:
+      name: Temperature
+      desc: CPU or chassis temperature of the transmission device in degrees Celsius. High values may indicate cooling problems, high ambient temperature or overloaded hardware.
+    device_fan_state:
+      name: Fan Status
+      desc: Operational state of each transmission device fan or fan controller. A non-normal state indicates a cooling module fault, offline module, or communication failure and may lead to overheating.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Operational state of each transmission device power supply. A non-normal state indicates offline power, missing input, over-temperature, hardware fault, or alert condition that should be investigated.
   Access:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -175,6 +190,36 @@ monitor_object_metric:
     device_memory_usage:
       name: Memory Usage
       desc: System memory utilization of the network-service appliance, reported directly as a percentage. Sustained high memory may indicate map/flow-table pressure on the device.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature reading of the network-service appliance in degrees Celsius. High values may indicate cooling or ambient-temperature risk.
+    network_service_dns_service_state:
+      name: DNS Service Status
+      desc: Operational state of the DNS service, normalized to 1=healthy and 2=fault.
+    network_service_dhcp_service_state:
+      name: DHCP Service Status
+      desc: Operational state of the DHCP service, normalized to 1=healthy and 2=fault.
+    network_service_ntp_service_state:
+      name: NTP Service Status
+      desc: Operational state of the NTP service, normalized to 1=healthy and 2=fault.
+    network_service_zwp_service_state:
+      name: ZWP Service Status
+      desc: Operational state of the ZWP service, normalized to 1=healthy and 2=fault.
+    network_service_tftp_service_state:
+      name: TFTP Service Status
+      desc: Operational state of the TFTP service, normalized to 1=healthy and 2=fault.
+    network_service_virtual_server_state:
+      name: Virtual Server Status
+      desc: Availability state of the virtual server, normalized to 1=healthy and 2=fault.
+    network_service_node_state:
+      name: Node Status
+      desc: Availability state of the service node, normalized to 1=healthy and 2=fault.
+    network_service_pool_state:
+      name: Pool Status
+      desc: Availability state of the service pool, normalized to 1=healthy and 2=fault.
+    network_service_pool_member_state:
+      name: Pool Member Status
+      desc: Availability state of the service pool member, normalized to 1=healthy and 2=fault.
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -1529,6 +1574,33 @@ monitor_object_metric:
         minutes, measured in megabytes (MB). Monitoring outgoing traffic is crucial
         for ensuring data transmission quality and optimizing network performance.
   Storage:
+    device_cpu_usage:
+      name: CPU Utilization
+      desc: This metric reports the controller CPU utilization of the storage device as a percentage, sourced from the vendor private SNMP OID and normalized to 0-100. Sustained high CPU usage can indicate controller overload, heavy IO processing, or a background array rebuild and may slow down host IO response.
+    device_memory_usage:
+      name: Memory Utilization
+      desc: This metric reports the controller memory utilization of the storage device as a percentage, sourced from the vendor private SNMP OID and normalized to 0-100. Sustained high memory usage can indicate cache pressure or a memory leak and may degrade IO performance or trigger controller failover.
+    device_disk_state:
+      name: Disk Health State
+      desc: This metric reports the physical disk health of the storage device, normalized by the worst disk to 1=healthy and 2=fault. A degraded or failed disk carries a risk of data loss and should be replaced immediately.
+    device_temperature_celsius:
+      name: Temperature
+      desc: This metric reports the chassis temperature sensor reading of the storage device in degrees Celsius, sourced from the vendor private SNMP OID (read directly, no scaling). An abnormal temperature rise can indicate fan failure, blocked airflow, or an overheating environment and, if left unaddressed, may trigger thermal protection or damage the disks and hardware.
+    device_fan_state:
+      name: Fan State
+      desc: This metric reports the operational state of the storage device cooling fan, normalized to 1=healthy and 2=fault. A non-healthy state indicates a cooling failure that can rapidly overheat the device and should be investigated immediately.
+    device_psu_state:
+      name: Power Supply State
+      desc: This metric reports the operational state of the storage device power supply, normalized to 1=healthy and 2=fault. A non-healthy state indicates loss of power redundancy or a hardware fault and should be repaired as soon as possible.
+    device_raid_state:
+      name: RAID State
+      desc: This metric reports the operational state of the storage device RAID/volume array, normalized by the worst array to 1=healthy and 2=fault. A degraded or crashed array carries a risk of data loss and should be investigated immediately.
+    interface_ifHCInOctets:
+      name: Interface Incoming Traffic Rate
+      desc: This metric indicates the average rate of bytes received over the past 5 minutes (from the 64-bit IF-MIB ifHCInOctets counter), measured in bytes per second. The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate.
+    interface_ifHCOutOctets:
+      name: Interface Outgoing Traffic Rate
+      desc: This metric calculates the average rate of bytes sent over the past 5 minutes (from the 64-bit IF-MIB ifHCOutOctets counter), measured in bytes per second. The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate.
     ipmi_power_watts:
       name: Power Consumption
       desc: The power indicator is measured in watts and reflects the current power
@@ -3760,6 +3832,10 @@ monitor_object_metric_group:
   Transmission:
     Base: Base
     Traffic: Traffic
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   Access:
     Base: Base
     Traffic: Traffic
@@ -3951,6 +4027,10 @@ monitor_object_metric_group:
     Packet: Packet
     Environment: Environment
     Power: Power
+    CPU: CPU
+    Memory: Memory
+    Temperature: Temperature
+    Hardware Status: Hardware Status
     Traffic: Traffic
     Packet Loss: Packet Loss
     Status: Status
@@ -4153,6 +4233,9 @@ monitor_object_plugin:
   Wireless ASCOM SNMP:
     name: Ascom (Telegraf)
     desc: Baseline SNMP collection template for Ascom IP-DECT wireless communication systems (enterprise PEN 27614). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates on the base-station Ethernet uplink and device uptime (sysUpTime). The ASCOM-IPDECT-MIB exposes only fault-log and alarm-log entry tables (ipDectFaultLogTable / ipDectActiveAlarmsTable) and per-entry error codes, with no CPU/memory/temperature scalar objects, and active-call/handset counts are not published as pollable scalars. CPU/memory/temperature/fan/power/call-count are therefore N/A and not faked. Applicable to Ascom IP-DECT base stations and IP-DECT gateways managed over SNMP (enterprise PEN 27614) and other IF-MIB compliant wireless devices.
+  Wireless Albentia SNMP:
+    name: Albentia (Telegraf)
+    desc: Albentia Systems WiMAX / AerDOCSIS wireless SNMP child template (ALBENTIA-AS-MIB, enterprise PEN 28087). The source queue confirms private Albentia telemetry for sector temperature, clients, frequency, distance and power, but the exact raw MIB object list is not present in this worktree; without row-filter-free OIDs, those private temperature/client/radio/link health metrics are N/A and not faked. This child declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the Albentia collect_type, UI and Telegraf child template. Applicable to Albentia wireless base stations / access devices and other IF-MIB compliant wireless devices.
   Wireless Grandstream SNMP:
     name: Grandstream (Telegraf)
     desc: Baseline SNMP collection template for Grandstream GWN wireless devices (interface traffic + uptime, enterprise PEN 42397). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The GRANDSTREAM-GWN-MIB is oriented to wireless radio statistics and per-client information, exposing only gwnDeviceUptime as a scalar system object with no CPU/memory/temperature objects, while associated clients appear only as the per-MAC gwnClientTable with no scalar count that telegraf inputs.snmp cannot aggregate row-wise. CPU/memory/temperature/client-count/channel-utilization are therefore N/A and not faked. Applicable to Grandstream GWN76xx/GWN78xx Wi-Fi access points and controllers (enterprise PEN 42397) and other IF-MIB compliant wireless AP devices.
@@ -4176,6 +4259,24 @@ monitor_object_plugin:
   Transmission Ciena SNMP:
     name: Transmission Ciena SNMP
     desc: Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets) plus uptime. Health metrics of Ciena SAOS transmission devices (temperature/optical module power/laser bias current) use per-row indexed MIB tables with row-level filtering (skip_values); telegraf inputs.snmp cannot do row-level filtering, so they are N/A. Applicable to Ciena SAOS transmission/packet-optical devices.
+  Transmission SAF Tehnika SNMP:
+    name: SAF Tehnika (Telegraf)
+    desc: Baseline SNMP collection template for SAF Tehnika microwave transmission devices (enterprise PEN 19011). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms SAF Tehnika public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private microwave health metrics such as radio signal, link state, temperature and optical/radio power are N/A and not faked. Applicable to SAF Tehnika microwave / packet radio transmission devices and other IF-MIB compliant transmission devices.
+  Transmission Pan Dacom SNMP:
+    name: Pan Dacom (Telegraf)
+    desc: Baseline SNMP collection template for Pan Dacom CWDM/optical transmission devices (PAN-DACOM-MIB). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms Pan Dacom public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private optical/CWDM health metrics such as link state, temperature and optical power are N/A and not faked. Applicable to Pan Dacom optical/CWDM transmission devices and other IF-MIB compliant transmission devices.
+  Transmission Tachyon SNMP:
+    name: Tachyon (Telegraf)
+    desc: Tachyon Networks TNA 300 series transmission SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects Tachyon private health scalars for CPU usage, memory usage and CPU temperature. CPU and memory are reported directly as percentages, and CPU temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply states are N/A because stable normalized state objects are not exposed.
+  Transmission XKL SNMP:
+    name: XKL (Telegraf)
+    desc: XKL DXMOS optical transport SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects XKL private hardware health tables for sensor temperature, fan controller state and power-supply state. Temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply normal(2) states are normalized to 1 healthy, and all other states are normalized to 2 fault. CPU and memory are N/A because XKL-MIB does not expose stable shared health objects for them.
+  Transmission Viavi SNMP:
+    name: Viavi (Telegraf)
+    desc: Viavi/JDSU transmission and network-visibility SNMP baseline child template for devices under Viavi PEN 26052. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Sycamore SNMP:
+    name: Sycamore (Telegraf)
+    desc: Sycamore optical switching transmission SNMP baseline child template for devices under Sycamore PEN 2411. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   Access BDCOM SNMP:
     name: Access BDCOM SNMP
     desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
@@ -4191,9 +4292,18 @@ monitor_object_plugin:
   NetworkService Accedian SNMP:
     name: Accedian (Telegraf)
     desc: Accedian metro-Ethernet performance-assurance SNMP collection (ACD-DESC-MIB, IANA PEN 22420). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects the Accedian private scalar OID for chassis CPU utilization (acdDescCpuUsageCurrent, reported directly as a percentage). Memory utilization has no scalar object in the device-description MIB and the only temperature reading is a per-SFP diagnostics table requiring row-level filtering that the SNMP input cannot normalize, so memory/temperature/fan/power are N/A. Supported brands/models — Accedian SkyLIGHT performance modules and MetroNID / Nano / Plus metro-Ethernet performance-assurance nodes (enterprise 22420).
+  NetworkService ZDNS SNMP:
+    name: ZDNS (Telegraf)
+    desc: ZDNS DNS/GSLB network-service SNMP collection for appliances exposing ZDNS private PEN 39810 and F5 BIG-IP LTM PEN 3375 objects. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects CPU utilization, memory utilization, CPU temperature, service status and LTM availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are not promoted into shared device-health metrics.
+  NetworkService BlueCat SNMP:
+    name: BlueCat (Telegraf)
+    desc: BlueCat DDI network-service SNMP collection for appliances under BlueCat PEN 13315. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, and DNS, DHCP and IPAM counters are business or capacity indicators, so they are not promoted into shared device-health metrics.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
+  VoiceGateway Ribbon SNMP:
+    name: Ribbon (Telegraf)
+    desc: Ribbon/Sonus voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
@@ -4548,6 +4658,15 @@ monitor_object_plugin:
       not exposed as pollable scalar OIDs across the product line.
       Supported brands/models — Transition Networks SISPM/SM hardened managed switches
       and ION/IONMM managed media converters.
+  Switch Waystream SNMP:
+    name: Waystream (Telegraf)
+    desc: Waystream ASR / FTTH switch SNMP child template (IANA PEN 9303). The verified WAYSTREAM-SMI and WAYSTREAM-RPM-MIB private tree is focused on enterprise identity and RPM/IPTV QoS objects, and no row-filter-free scalar device-health gauges were confirmed in the available state. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the Waystream collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Waystream ASR and FTTH access switches.
+  Switch Antaira SNMP:
+    name: Antaira (Telegraf)
+    desc: Baseline SNMP child template for Antaira industrial managed Ethernet switches (enterprise PEN 38477). The available state confirms Antaira managed switch SNMP v1/v2c/v3 support and enterprise identity, but no verified public vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power-supply health OIDs. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the Antaira collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Antaira industrial managed Ethernet switches such as LMX series.
+  Switch TsnTec SNMP:
+    name: TsnTec (Telegraf)
+    desc: TsnTec 8148SC switch-specific SNMP collection template (IANA PEN 65531). Beyond the shared Switch SNMP floor, it collects TsnTec private OIDs for device health including control-plane CPU utilization, memory utilization, CPU temperature, fan state and power-supply state. CPU and memory are direct 0-100 percentages, and temperature is read directly in degrees Celsius. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. System uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. Supported brands/models — TsnTec 8148SC ultra-low-latency switches.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
@@ -4640,6 +4759,9 @@ monitor_object_plugin:
   Switch Microsens SNMP:
     name: Microsens (Telegraf)
     desc: MICROSENS (Germany) industrial fibre Ethernet switch SNMP collection (MICROSENS-G6-MIB, IANA PEN 3181). Beyond standard IF-MIB 64-bit HC interface traffic, it collects MICROSENS G6 private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in bytes, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and redundant power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). MICROSENS Profi Line compact industrial fibre switches use fanless conduction-cooled passive cooling, so fan is N/A. Supported brands/models — MICROSENS G6 / Profi Line industrial fibre managed switches (enterprise 3181).
+  Switch Maipu SNMP:
+    name: Maipu (Telegraf)
+    desc: Maipu (China) enterprise Ethernet switch SNMP collection (MAIPU-SMI, IANA PEN 5651). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Maipu private OIDs for device health including CPU utilisation (reported directly as a percentage), main memory (used + free in bytes, usage derived as used/(used+free)), chassis temperature (in degrees Celsius) and power-supply state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). Maipu compact enterprise access switches use fanless passive cooling, so fan is N/A. Supported brands/models — Maipu MyPower S series enterprise switches (enterprise 5651).
   Switch Moxa SNMP:
     name: Moxa (Telegraf)
     desc: Moxa industrial Ethernet switch SNMP collection (MOXA-MIB, IANA PEN 8691). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Moxa private OIDs for device health including chassis temperature (in degrees Celsius) and dual power-input state (normalised by telegraf processors.enum to 1=normal / 2=abnormal). Moxa industrial switches are commonly fanless passively cooled and the private MIB does not expose CPU/memory load in a row-filter-free scalar form, so CPU/memory/fan are N/A. Supported brands/models — Moxa industrial managed switches (EDS / IKS / ICS / SDS series; enterprise 8691).
@@ -4712,6 +4834,9 @@ monitor_object_plugin:
   Switch Netonix SNMP:
     name: Netonix (Telegraf)
     desc: Netonix WISP switch-specific SNMP collection (NETONIX-SWITCH-MIB, IANA PEN 46242). Beyond standard IF-MIB interface metrics, it collects the Netonix private OID for chassis temperature (a dedicated temperature table, °C). NETONIX-SWITCH-MIB does not provide CPU/memory OIDs; fan is reported as speed (RPM) rather than a state enum and PoE is per-port status, neither of which is a device-level health state, so this plugin collects temperature only (other dimensions N/A). Supported brands/models — Netonix WISP Switch series PoE switches (enterprise 46242).
+  Switch Nokia SNMP:
+    name: Nokia (Telegraf)
+    desc: Nokia (formerly Alcatel-Lucent Enterprise) OmniSwitch switch-specific SNMP collection (ALCATEL-IND1-HEALTH-MIB / ALCATEL-IND1-CHASSIS-MIB, IANA PEN 6486). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Nokia private OIDs for device health — CPU and memory utilisation (healthModuleTable, both reported directly as percentages), chassis temperature (chasChassisTemp, °C), and fan and power-supply state (chasEntPhysOperStatus) normalised via telegraf processors.enum to 1=normal / 2=abnormal. Supported brands/models — Nokia/ALE OmniSwitch 6/9 series campus and data-center switches (enterprise 6486).
   Switch Flow NetFlow:
     name: Switch Flow Analysis (NetFlow)
     desc: Use NetFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
@@ -4770,6 +4895,9 @@ monitor_object_plugin:
   Loadbalance Superiority SNMP:
     name: Superiority (Telegraf)
     desc: Superiority (超数) load balancer SNMP collection (Foundry/Brocade-compatible private MIB, enterprise 1991). Beyond standard IF-MIB interface metrics, it collects the 1991 private OIDs for device health including average CPU utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.50, snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.53, snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Current connections / temperature / fan / power are not declared by the 1991 private tree, so they are N/A. Supported brands/models — Superiority load balancers reusing the Foundry/Brocade 1991 MIB tree.
+  Loadbalance RELIANOID SNMP:
+    name: RELIANOID (Telegraf)
+    desc: RELIANOID ADC and load balancer SNMP child template (enterprise 61269). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable. No stable vendor-specific scalar health gauges are confirmed for CPU, memory, temperature, fan, power state or current connections, so metrics.json declares no vendor-specific metric deltas. System uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Loadbalance SNMP floor. This template only provides the RELIANOID collect_type, UI form and Telegraf child collection config. Supported brands/models — RELIANOID ADC and load-balancing appliances.
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon (Telegraf)
     desc: Radware Alteon application switch / load balancer SNMP collection (ALTEON-CHEETAH-SWITCH-MIB, IANA PEN 1872). Beyond standard IF-MIB interface metrics, it collects Alteon private OIDs for device health including management-processor CPU utilization (mpCpuStatsUtil1Second, reported directly as a percentage) and main memory (mpMemStatsTotal/mpMemStatsFree in bytes, usage derived as (total-free)/total). The CHEETAH MIB does not expose a scalar connection/session count or temperature/fan/power, so those are N/A. Supported brands/models — Radware Alteon ADC / application switches running AlteonOS (Alteon 4408 / 5208 / 6420 / 8420 / 9800 and VA virtual appliances; enterprise 1872).
@@ -4997,6 +5125,9 @@ monitor_object_plugin:
   Router Teldat SNMP:
     name: Teldat (Telegraf)
     desc: Teldat enterprise router / SD-WAN CPE SNMP collection (TELDAT-MIB, IANA PEN 2007). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Teldat private OIDs for device health including CPU utilisation (reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). Teldat compact enterprise routers are fanless fixed-configuration designs whose private MIB does not expose temperature/fan/power sensors as row-filter-free scalars, so temperature/fan/power are N/A. Supported brands/models — Teldat routers / SD-WAN CPE (Atlas / Regesta / iMxx series; enterprise 2007; shares the MIB family with bintec-elmeg).
+  Router Avaya SNMP:
+    name: Avaya (Telegraf)
+    desc: Avaya (including legacy Nortel / Bay Networks assets) enterprise router / layer-3 routing switch SNMP collection (RAPID-CITY/AVAYA private MIB, IANA PEN 6889). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Avaya private OIDs for device health including CPU utilisation (reported directly as a percentage) and main memory (used + free in bytes, usage derived as used/(used+free)). Avaya enterprise routing platforms are fixed-configuration compact units whose private MIB does not expose temperature/fan/power sensors as row-filter-free scalars, so temperature/fan/power are N/A. Supported brands/models — Avaya ERS / VSP series routing platforms (enterprise 6889; includes legacy Nortel / Bay Networks assets).
   Router Viprinet SNMP:
     name: Viprinet (Telegraf)
     desc: Viprinet multi-WAN bonding / SD-WAN router SNMP collection (VIPRINET-MIB, IANA PEN 35424). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Viprinet private OIDs for device health including CPU utilisation (reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). Viprinet compact multi-WAN routers are fanless fixed-configuration designs whose private MIB does not expose temperature/fan/power sensors as row-filter-free scalars, so temperature/fan/power are N/A. Supported brands/models — Viprinet multi-WAN bonding routers (Multichannel VPN Router series; enterprise 35424).
@@ -5006,6 +5137,12 @@ monitor_object_plugin:
   Router Aethra SNMP:
     name: Aethra Telecommunications (Telegraf)
     desc: Aethra Telecommunications IAD/DSL access router (with VoIP) SNMP collection (AETHRA-MIB, enterprise 7745). Beyond standard IF-MIB interface metrics, it collects Aethra private OIDs for device health including 5-minute average CPU load (cpuLoad5min, reported directly as a percentage) and main memory (total + free in kBytes, usage derived as (total-free)/total). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Aethra Telecommunications IAD/DSL routers (AC2036/Dolcevita series, enterprise 7745).
+  Router Benu SNMP:
+    name: Benu Networks (Telegraf)
+    desc: Benu Networks BNG/CGNAT edge router SNMP collection (BENU-CHASSIS-MIB, enterprise 39406). Beyond standard IF-MIB interface metrics, it collects Benu private chassis health metrics for temperature sensors, fan status and power-supply status. CPU and memory objects in BENU-HOST-MIB are software task tables, so they are not promoted to shared device CPU or memory health metrics here and remain N/A. Supported brands/models — Benu Networks MEG/xMEG router platforms.
+  Router VeloCloud SNMP:
+    name: VeloCloud/VMware SD-WAN (Telegraf)
+    desc: VeloCloud/VMware SD-WAN Edge router SNMP collection (enterprise 45346). Beyond standard IF-MIB interface metrics, it collects VeloCloud private health OIDs for 5-minute average CPU utilisation and used memory, both reported directly as percentages. Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — VeloCloud/VMware SD-WAN Edge routers.
   Router Harbour SNMP:
     name: Harbour Networks (Telegraf)
     desc: Harbour Networks (港湾网络) router SNMP collection (enterprise 8212 private MIB). Beyond standard IF-MIB 64-bit HC interface traffic, it collects Harbour Networks private OIDs for device health including average CPU utilisation (snAgGblCpuUtil1SecAvg, reported directly as a percentage) and main memory (total + free in bytes, usage derived as (total-free)/total). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models — Harbour Networks routers (enterprise 8212).
@@ -5037,6 +5174,9 @@ monitor_object_plugin:
   Router Avici SNMP:
     name: Avici (Telegraf)
     desc: Avici Systems core router SNMP collection template (TSR / SSR series, IANA PEN 2474). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because the Avici private MIB (enterprise 2474) does not publish stable row-filter-free scalar device-health gauges that can be reliably polled on these legacy high-speed core routers. Supported brands/models — Avici Systems TSR / SSR core routers (enterprise 2474).
+  Router 6WIND VSR SNMP:
+    name: 6WIND VSR (Telegraf)
+    desc: 6WIND VSR router SNMP collection template (enterprise 7336). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because no cross-version stable row-filter-free vendor scalar device-health gauges are currently confirmed. Supported brands/models — 6WIND Virtual Service Router.
   Router MultiTech SNMP:
     name: MultiTech (Telegraf)
     desc: MultiTech Systems cellular router / IoT gateway SNMP collection template
@@ -5149,6 +5289,36 @@ monitor_object_plugin:
       key IF-MIB metrics from storage device interfaces, including traffic volume,
       packet loss, and error counts.
     name: Storage SNMP General (Telegraf)
+  Storage Synology SNMP:
+    name: Synology (Telegraf)
+    desc: Synology NAS storage SNMP collection (enterprise PEN 6574). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — chassis temperature (synologyTemperature, read directly in degrees Celsius with no scaling), system fan and power-supply operational state (synologySystemFanStatus / synologyPowerStatus, natively 1=normal / 2=fault), and RAID/volume array state (synologyRaidStatus, normalized by the worst array to 1=healthy / 2=fault). The private tree exposes only a coarse normal/failed system-status code with no pollable system-level CPU or memory gauge, so CPU and memory are N/A and not faked. Supported brands/models — Synology DiskStation / RackStation NAS running DSM (DS / RS / FS / SA series).
+  Storage MacroSAN SNMP:
+    name: MacroSAN (Telegraf)
+    desc: MacroSAN storage-array SNMP collection (enterprise PEN 35904). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects full vendor private health — controller CPU utilization (cpuRate, direct percent), controller memory utilization (vmRate, direct percent usage with no used/free split), and fan, power-supply and disk health state (fanState / powerState / diskHealthState, normalized to 1=normal / 2=fault, worst row per instance). Temperature is N/A. Supported brands/models — MacroSAN MS series SAN/NAS storage arrays (enterprise PEN 35904).
+  Storage Sugon SNMP:
+    name: Sugon (Telegraf)
+    desc: Sugon ParaStor storage SNMP collection (enterprise PEN 35904; ParaStor reuses the MacroSAN private tree). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private hardware health — fan, power-supply and disk operational state (fanState / powerState / diskState, normalized to 1=normal / 2=fault, worst row per instance). This profile exposes no controller-level CPU or memory gauge, so CPU, memory and temperature are N/A and not faked. Supported brands/models — Sugon ParaStor distributed storage arrays (enterprise PEN 35904).
+  Storage NetApp SNMP:
+    name: NetApp (Telegraf)
+    desc: NetApp storage SNMP collection (enterprise PEN 789). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — controller CPU busy time (cpuBusyTimePerCent, direct percent) and RAID disk-drive state (raidStatus, active=normal normalized to 1=healthy / 2=fault, worst disk per instance). The environment scalars (failed fan / power-supply counts, over-temperature) are count/boolean types not mapped into the shared-disk enum semantics, so temperature, fan and power are N/A and not faked pending field verification. Supported brands/models — NetApp FAS / AFF storage systems running Data ONTAP (enterprise PEN 789).
+  Storage Fujitsu SNMP:
+    name: Fujitsu (Telegraf)
+    desc: Fujitsu ETERNUS storage-array SNMP collection (enterprise PEN 211, fjdary-MIB). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — chassis temperature sensors (fjdaryMachineTempInfo, read directly in degrees Celsius with no scaling), RAID group state (fjdaryMgtRaidGrpStatus), and logical volume state (fjdaryMgtOpVolumeStatus). The raw RAID and volume enum ok(2) is normalized to 1=healthy while unknown/degraded/error/dormant are normalized to 2=fault, with the worst array or volume taken per instance. This MIB does not publish pollable controller CPU or memory utilization, the power object is a wattage reading rather than a state enum, and no fan-state object is available, so CPU, memory, fan, and power are N/A and not faked. Supported brands/models — Fujitsu ETERNUS DX storage arrays.
+  Storage Dell SC8000 SNMP:
+    name: Dell SC8000 (Telegraf)
+    desc: Dell SC8000 / Compellent storage SNMP collection (Dell EMC enterprise PEN 674). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — physical disk status and healthy flag (scDiskStatus / scDiskHealthy), controller fan status (scCtlrFanStatus), and controller power-supply status (scCtlrPowerStatus), normalized to 1=healthy / 2=fault with the worst component taken per instance. This profile exposes no pollable controller CPU, memory, or temperature gauge, so CPU, memory, and temperature are N/A and not faked. Supported brands/models — Dell SC8000 / Compellent SC Series storage arrays.
+  Storage Dell PowerVault SNMP:
+    name: Dell PowerVault (Telegraf)
+    desc: Dell PowerVault / EqualLogic storage SNMP collection (EqualLogic enterprise PEN 12740). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — controller CPU utilization (cpmCPUTotal5min, direct percent), controller processor and chipset temperatures, physical disk status (eqlDiskStatus), and iSCSI volume administrative status (eqliscsiVolumeAdminStatus), normalized to 1=healthy / 2=fault with the worst component taken per instance. Capacity, disk RPM, CPU frequency and physical RAM are specification/capacity values, so they are not collected as health metrics. Supported brands/models — Dell PowerVault / EqualLogic PS and MD-family storage arrays.
+  Storage Inspur SNMP:
+    name: Inspur (Telegraf)
+    desc: Inspur AS5500 storage SNMP collection (enterprise PEN 48512). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private hardware health — managed-disk status, physical-drive availability and power-supply state. Raw value 1 is conservatively normalized to healthy while every other value is treated as fault, with the worst component taken per instance. Controller CPU, memory, temperature and fan health gauges are not exposed by the current profile, so they are N/A and not faked.
+  Storage CeresData SNMP:
+    name: CeresData (Telegraf)
+    desc: CeresData all-flash storage SNMP collection (enterprise PEN 25359). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — system-disk status, physical-disk status and storage-pool health. Raw value 1 is conservatively normalized to healthy while every other value is treated as fault, with the worst disk or storage pool taken per instance. Controller CPU, memory, temperature, fan and power-supply health gauges are not exposed by the current profile, so they are N/A and not faked.
+  Storage Hikvision SNMP:
+    name: Hikvision (Telegraf)
+    desc: Hikvision Brainware storage SNMP collection (local private MIB tree PEN 99999). Beyond standard MIB-II / IF-MIB device uptime and 64-bit HC interface traffic, it collects vendor private health — CPU, memory, CPU temperature, disk, RAID, power-supply and CPU fan status. Raw status value 1 is normalized to healthy and every other value is treated as fault, with the worst component taken per instance. Capacity and IO-rate metrics are not collected as shared health metrics.
   Oracle:
     desc: The Oracle Exporter collector regularly gathers metrics from Oracle, including
       uptime, operation counts, transaction commits and rollbacks, as well as various

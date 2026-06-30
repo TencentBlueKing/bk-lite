@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ribbon",
+  "plugin": "VoiceGateway Ribbon SNMP",
+  "plugin_desc": "Ribbon/Sonus voice gateway and SBC SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_ribbon'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-ribbon_ribbon",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

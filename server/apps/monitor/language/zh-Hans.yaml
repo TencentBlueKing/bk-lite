@@ -151,6 +151,21 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 传输设备的整体 CPU 使用率，以 0-100 百分比直接上报。持续偏高可能表示无线回传业务压力、控制平面负载或异常流量。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 传输设备的整体内存使用率，以 0-100 百分比直接上报。持续偏高可能表示控制面资源压力或设备服务不稳定。
+    device_temperature_celsius:
+      name: 温度
+      desc: 传输设备的 CPU 或机箱温度，单位为摄氏度。温度偏高可能表示散热异常、环境温度过高或硬件过载。
+    device_fan_state:
+      name: 风扇状态
+      desc: 传输设备各散热风扇或风扇控制器的运行状态。非正常状态表示散热模块异常、离线或通信故障，可能导致设备过热。
+    device_psu_state:
+      name: 电源状态
+      desc: 传输设备各电源模块的运行状态。非正常状态表示电源离线、无输入、过温、硬件故障或告警，需及时排查。
   Access:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -175,6 +190,36 @@ monitor_object_metric:
     device_memory_usage:
       name: 内存使用率
       desc: 网络服务设备的系统内存使用率（设备直接上报的百分比）。持续偏高可能表示设备上的映射/流表存在内存压力。
+    device_temperature_celsius:
+      name: 温度
+      desc: 网络服务设备的温度读数，单位为摄氏度。温度偏高可能表示散热或环境温度风险。
+    network_service_dns_service_state:
+      name: DNS 服务状态
+      desc: DNS 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_dhcp_service_state:
+      name: DHCP 服务状态
+      desc: DHCP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_ntp_service_state:
+      name: NTP 服务状态
+      desc: NTP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_zwp_service_state:
+      name: ZWP 服务状态
+      desc: ZWP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_tftp_service_state:
+      name: TFTP 服务状态
+      desc: TFTP 服务运行状态，统一归一为 1=正常、2=异常。
+    network_service_virtual_server_state:
+      name: 虚拟服务状态
+      desc: 虚拟服务可用性状态，统一归一为 1=正常、2=异常。
+    network_service_node_state:
+      name: 节点状态
+      desc: 服务节点可用性状态，统一归一为 1=正常、2=异常。
+    network_service_pool_state:
+      name: 池状态
+      desc: 服务池可用性状态，统一归一为 1=正常、2=异常。
+    network_service_pool_member_state:
+      name: 池成员状态
+      desc: 服务池成员可用性状态，统一归一为 1=正常、2=异常。
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -1409,6 +1454,33 @@ monitor_object_metric:
       name: 接口每秒发送流量
       desc: 该指标计算过去5分钟内发送的字节数的平均速率，单位为兆字节（MB）。监测发送流量对于确保数据传输质量和优化网络性能非常重要。
   Storage:
+    device_cpu_usage:
+      name: CPU 使用率
+      desc: 该指标表示存储设备控制器的 CPU 使用率，单位为百分比，数据来源于厂商私有 SNMP OID 并归一化为 0-100。CPU 持续偏高可能意味着控制器过载、IO 处理繁重或后台阵列重建，可能导致主机 IO 响应变慢。
+    device_memory_usage:
+      name: 内存使用率
+      desc: 该指标表示存储设备控制器的内存使用率，单位为百分比，数据来源于厂商私有 SNMP OID 并归一化为 0-100。内存持续偏高可能意味着缓存压力或内存泄漏，可能降低 IO 性能或触发控制器切换。
+    device_disk_state:
+      name: 磁盘健康状态
+      desc: 该指标表示存储设备物理磁盘的健康状态，按最差磁盘归一化为 1=正常/2=异常。磁盘降级或损坏会带来数据丢失风险，应立即更换。
+    device_temperature_celsius:
+      name: 温度
+      desc: 该指标表示存储设备机箱温度传感器的读数，单位为摄氏度，数据来源于厂商私有 SNMP OID（直采，无缩放）。温度异常升高可能意味着风扇故障、散热受阻或环境过热，若不处理可能触发热保护或损坏磁盘和硬件。
+    device_fan_state:
+      name: 风扇状态
+      desc: 该指标表示存储设备散热风扇的运行状态，归一化为 1=正常/2=异常。非正常状态表示散热故障，可能迅速导致设备过热，应立即排查。
+    device_psu_state:
+      name: 电源状态
+      desc: 该指标表示存储设备电源模块的运行状态，归一化为 1=正常/2=异常。非正常状态表示电源冗余缺失或硬件故障，需尽快修复。
+    device_raid_state:
+      name: RAID 状态
+      desc: 该指标表示存储设备 RAID/卷阵列的运行状态，按最差阵列归一化为 1=正常/2=异常。阵列降级或损坏会带来数据丢失风险，应立即排查。
+    interface_ifHCInOctets:
+      name: 接口接收流量速率
+      desc: 此指标表示过去5分钟内接收到的字节数的平均速率（来自 64 位 IF-MIB ifHCInOctets 计数器），单位为字节每秒。64 位计数器可避免 32 位 ifInOctets 在高速口上快速回绕，使流量速率更准确。
+    interface_ifHCOutOctets:
+      name: 接口发送流量速率
+      desc: 此指标表示过去5分钟内发送的字节数的平均速率（来自 64 位 IF-MIB ifHCOutOctets 计数器），单位为字节每秒。64 位计数器可避免 32 位 ifOutOctets 在高速口上快速回绕，使流量速率更准确。
     ipmi_power_watts:
       name: 功率
       desc: 功率指标以瓦特 (watts) 为单位，反映设备当前功耗。通过此指标可以评估设备能效和功耗趋势。便于设置节能政策和资源优化。
@@ -3418,6 +3490,10 @@ monitor_object_metric_group:
   Transmission:
     Base: 基础
     Traffic: 流量
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
   Access:
     Base: 基础
     Traffic: 流量
@@ -3609,6 +3685,10 @@ monitor_object_metric_group:
     Packet: 数据包
     Environment: 环境
     Power: 功率
+    CPU: CPU
+    Memory: 内存
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Traffic: 流量
     Packet Loss: 数据包丢失
     Status: 状态
@@ -3813,6 +3893,9 @@ monitor_object_plugin:
   Wireless ASCOM SNMP:
     name: Ascom（Telegraf）
     desc: Ascom IP-DECT 无线通信系统 SNMP 采集基线模板（企业号 PEN 27614）。采集 IP-DECT 基站以太网上联的 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。ASCOM-IPDECT-MIB 仅暴露故障日志/告警日志条目表（ipDectFaultLogTable / ipDectActiveAlarmsTable）与逐条错误码，无 CPU/内存/温度标量对象，活动呼叫数/注册话机数亦未以可轮询标量公开。故 CPU/内存/温度/风扇/电源/呼叫数为 N/A，不伪造。适用品牌型号——通过 SNMP 纳管的 Ascom IP-DECT 基站与 IP-DECT 网关（企业号 PEN 27614）及其他遵循 IF-MIB 标准的无线设备。
+  Wireless Albentia SNMP:
+    name: Albentia（Telegraf）
+    desc: Albentia Systems WiMAX / AerDOCSIS 无线接入与回传设备 SNMP 子模板（ALBENTIA-AS-MIB，企业号 PEN 28087）。来源队列确认 Albentia 私有 MIB 存在 sectorTemp、clients、frequency、distance、power 等无线遥测，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此私有温度/用户数/射频/链路健康指标暂为 N/A，不伪造。本子模板不在 metrics.json 声明厂商增量指标；通用 Wireless SNMP 底座提供运行时长、IF-MIB 接口指标与汇总流量，Albentia 插件提供 collect_type、UI 与 Telegraf 子模板。适用品牌型号——Albentia 无线基站/接入设备及其他遵循 IF-MIB 标准的无线设备。
   Wireless Grandstream SNMP:
     name: Grandstream（Telegraf）
     desc: Grandstream GWN 无线设备 SNMP 采集基线模板（接口流量 + 运行时长，企业号 PEN 42397）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。GRANDSTREAM-GWN-MIB 以无线射频统计与连接客户端信息为主，仅暴露 gwnDeviceUptime 这一标量系统量，无 CPU/内存/温度对象；关联客户端数仅以按 MAC 索引的 gwnClientTable 逐行呈现，无标量计数对象，telegraf inputs.snmp 无法行级聚合。故 CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。适用品牌型号——Grandstream GWN76xx/GWN78xx Wi-Fi 接入点与控制器（企业号 PEN 42397）及其他遵循 IF-MIB 标准的无线 AP 设备。
@@ -3825,6 +3908,24 @@ monitor_object_plugin:
   Transmission Ciena SNMP:
     name: Ciena (Telegraf)
     desc: 采 IF-MIB 64位 HC 接口流量（ifHCInOctets/ifHCOutOctets）+ 运行时长；Ciena SAOS 传输设备的温度/光模块光功率/激光偏置电流等健康指标因 MIB 为 per-row 索引表带行级过滤（skip_values），telegraf inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Ciena SAOS 传输/分组光设备（3000/5000/6500 系列，企业号 1271）及其他 IF-MIB 标准传输设备。
+  Transmission SAF Tehnika SNMP:
+    name: SAF Tehnika（Telegraf）
+    desc: SAF Tehnika 微波传输设备 SNMP 采集基线模板（企业号 PEN 19011）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 SAF Tehnika 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此射频信号、链路状态、温度、光/射频功率等私有微波健康指标暂为 N/A，不伪造。适用品牌型号——SAF Tehnika 微波/分组无线传输设备及其他遵循 IF-MIB 标准的传输设备。
+  Transmission Pan Dacom SNMP:
+    name: Pan Dacom（Telegraf）
+    desc: Pan Dacom 光传输/CWDM 设备 SNMP 采集基线模板（PAN-DACOM-MIB）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 Pan Dacom 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此链路状态、温度、光功率等私有光传输健康指标暂为 N/A，不伪造。适用品牌型号——Pan Dacom 光传输/CWDM 设备及其他遵循 IF-MIB 标准的传输设备。
+  Transmission Tachyon SNMP:
+    name: Tachyon（Telegraf）
+    desc: Tachyon Networks TNA 300 系列传输设备 SNMP 子模板。通用 Transmission SNMP 底座提供运行时长与 IF-MIB 接口流量，本插件额外采集 Tachyon 私有健康标量：CPU 使用率、内存使用率与 CPU 温度。CPU/内存以百分比直接上报，CPU 温度以摄氏度直采无缩放。未发现稳定归一的风扇/电源状态对象，故风扇与电源为 N/A。
+  Transmission XKL SNMP:
+    name: XKL（Telegraf）
+    desc: XKL DXMOS 光传输设备 SNMP 子模板。通用 Transmission SNMP 底座提供运行时长与 IF-MIB 接口流量，本插件额外采集 XKL 私有硬件健康表：传感器温度、风扇控制器状态与电源模块状态。温度以摄氏度直采无缩放；风扇和电源的 normal(2) 归一为 1=正常，其余状态归一为 2=异常。XKL-MIB 未暴露稳定的 CPU/内存共享健康对象，故 CPU 与内存为 N/A。
+  Transmission Viavi SNMP:
+    name: Viavi（Telegraf）
+    desc: Viavi/JDSU 传输与网络可见性设备 SNMP 基线子模板（企业号 PEN 26052）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
+  Transmission Sycamore SNMP:
+    name: Sycamore（Telegraf）
+    desc: Sycamore 光交换传输设备 SNMP 基线子模板（企业号 PEN 2411）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
   Access BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。
@@ -3840,9 +3941,18 @@ monitor_object_plugin:
   NetworkService Accedian SNMP:
     name: Accedian（Telegraf）
     desc: Accedian 城域以太网性能保障设备专用 SNMP 采集模板（ACD-DESC-MIB，企业号 22420）。在标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与运行时长（sysUpTime）之外，额外采集 Accedian 私有标量 OID 的整机 CPU 使用率（acdDescCpuUsageCurrent，设备直接上报的百分比）。设备描述 MIB 中没有内存使用率标量，温度仅在 per-SFP 诊断表（acdSfpDiagTemp，行级索引）中出现，inputs.snmp 无法行级过滤，故内存/温度/风扇/电源均为 N/A。适用品牌型号——Accedian SkyLIGHT 性能模块与 MetroNID / Nano / Plus 城域以太网性能保障节点（企业号 22420）。
+  NetworkService ZDNS SNMP:
+    name: ZDNS（Telegraf）
+    desc: ZDNS DNS/GSLB 网络服务设备 SNMP 采集模板，适用于暴露 ZDNS 私有 PEN 39810 与 F5 BIG-IP LTM PEN 3375 对象的设备。在标准 MIB-II / IF-MIB 运行时长与 64 位 HC 接口流量之外，采集 CPU 使用率、内存使用率、CPU 温度、服务状态和 LTM 可用性状态，并归一为 1=正常 / 2=异常。查询命中率、缓存命中率、递归数和磁盘使用率属于业务或容量指标，不提升为共享设备健康指标。
+  NetworkService BlueCat SNMP:
+    name: BlueCat（Telegraf）
+    desc: BlueCat DDI 网络服务设备 SNMP 采集模板，适用于 BlueCat 企业号 13315 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源健康标量，DNS、DHCP、IPAM 计数属于业务或容量指标，因此不提升为共享设备健康指标。
   VoiceGateway AudioCodes SNMP:
     name: AudioCodes (Telegraf)
     desc: AudioCodes 语音网关SBC专用 SNMP 采集模板。采集标准 IF-MIB 接口流量(64 位 ifHCInOctets/ifHCOutOctets,自动展开各接口)与设备运行时长(uptime),作为该语音网关SBC对象的基础监控能力。AudioCodes 私有健康指标多为 per-row 索引表(行级过滤),telegraf 采集端暂不支持,后续按官方 MIB 补充。适用品牌型号——AudioCodes 语音网关SBC系列。
+  VoiceGateway Ribbon SNMP:
+    name: Ribbon（Telegraf）
+    desc: Ribbon/Sonus 语音网关与 SBC SNMP 基线子模板。通用 VoiceGateway SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
   DM-Exporter:
     name: 达梦数据库监控探针
     desc: 通过 DM-Exporter 下发达梦数据库监控探针，采集会话、锁、表空间、内存、慢查询等核心监控指标，帮助快速掌握数据库运行状态与性能变化。
@@ -3981,6 +4091,15 @@ monitor_object_plugin:
     name: Transition Networks（Telegraf）
     desc: Transition Networks（现 Lantronix）托管交换机/媒体转换器专用 SNMP 采集模板（IANA PEN 868）。其 TRANSITION-SMI 私有树（机箱/卡/槽位模块表）以库存与端口模块对象为主，非无需行级过滤的标量设备健康量；ION/SISPM 平台主要走标准公有 MIB，故本模板为干净的 MIB-II + IF-MIB 基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因全产品线未以可轮询标量 OID 暴露，故不采集（N/A）。
       适用品牌型号——Transition Networks SISPM/SM 加固型托管交换机与 ION/IONMM 托管媒体转换器。
+  Switch Waystream SNMP:
+    name: Waystream（Telegraf）
+    desc: Waystream ASR / FTTH 交换设备 SNMP child 模板（IANA PEN 9303）。已确认的 WAYSTREAM-SMI 与 WAYSTREAM-RPM-MIB 私有树聚焦企业身份与 RPM/IPTV QoS 对象，当前状态未确认无需行级过滤的标量设备健康 OID，因此本品牌 metrics.json 不声明厂商增量指标；系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Switch SNMP 底座提供。本模板仅提供 Waystream collect_type、表单与 Telegraf child 采集配置。CPU、内存、温度、风扇与电源状态不采集（N/A）。适用品牌型号——Waystream ASR 与 FTTH 接入交换设备。
+  Switch Antaira SNMP:
+    name: Antaira（Telegraf）
+    desc: Antaira 工业网管交换机 SNMP 基线 child 模板（企业号 PEN 38477）。当前状态确认 Antaira 网管交换机支持 SNMP v1/v2c/v3 与企业号身份，但未取得可验证的公开厂商 MIB 包或设备 walk，未确认无需行级过滤的 CPU、内存、温度、风扇、电源稳定私有健康标量 OID，因此本品牌 metrics.json 不声明厂商增量指标；系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Switch SNMP 底座提供。本模板仅提供 Antaira collect_type、表单与 Telegraf child 采集配置。CPU、内存、温度、风扇与电源状态不采集（N/A）。适用品牌型号——Antaira LMX 等工业网管以太网交换机。
+  Switch TsnTec SNMP:
+    name: TsnTec（Telegraf）
+    desc: TsnTec 8148SC 交换机专用 SNMP 采集模板（IANA PEN 65531）。在通用 Switch SNMP 底座之外，额外采集 TsnTec 私有 OID 的设备健康指标：控制平面 CPU 使用率、内存使用率、CPU 温度、风扇状态与电源状态。CPU 与内存为 0-100 直接百分比，温度为摄氏度直采；风扇/电源原始状态经 telegraf processors.enum 归一为 1=正常/2=异常。系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Switch SNMP 底座提供。适用品牌型号——TsnTec 8148SC 超低时延交换机。
   Switch BDCOM SNMP:
     name: BDCOM（Telegraf）
     desc: BDCOM（上海博达数据通信）交换机专用 SNMP 采集模板（BDCOM 私有 MIB，IANA PEN 3320）。在标准 IF-MIB 接口指标之外，额外采集 BDCOM 私有 OID 的设备健康指标：最近 5 分钟控制平面 CPU 使用率（NMS-PROCESS-MIB cpmCPUTotal5min）、系统内存池已用/空闲字节（NMS-MEMORY-POOL-MIB，镜像 Cisco 风格内存池表）与各板卡温度（BDCOM-SYS nmscardTemperature 专用温度列）。内存使用率按 used/(used+free) 计算。BDCOM 交换机 MIB 无独立风扇/电源（PSU）状态对象，故风扇与电源不采集（N/A）。
@@ -4034,6 +4153,9 @@ monitor_object_plugin:
   Switch Microsens SNMP:
     name: Microsens（Telegraf）
     desc: MICROSENS（德国）工业光纤以太网交换机专用 SNMP 采集模板（MICROSENS-G6-MIB，企业号 3181）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 MICROSENS G6 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与冗余电源状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。MICROSENS Profi Line 紧凑工业光纤交换机为无风扇导热式被动散热设计，故风扇为 N/A。适用品牌型号——MICROSENS G6 / Profi Line 工业光纤网管交换机（企业号 3181）。
+  Switch Maipu SNMP:
+    name: Maipu（Telegraf）
+    desc: Maipu（迈普通信，国产）企业级以太网交换机专用 SNMP 采集模板（MAIPU-SMI，企业号 5651）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Maipu 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）、主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）、机箱温度（℃）与电源模块状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Maipu 紧凑型企业接入交换机多为无风扇被动散热设计，故风扇为 N/A。适用品牌型号——Maipu MyPower S 系列企业交换机（企业号 5651）。
   Switch Moxa SNMP:
     name: Moxa（Telegraf）
     desc: Moxa 工业以太网交换机专用 SNMP 采集模板（MOXA-MIB，企业号 8691）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Moxa 私有 OID 的设备健康指标：机箱温度（℃）以及双路电源输入状态（经 telegraf processors.enum 归一为 1=正常/2=异常）。Moxa 工业交换机多为无风扇被动散热设计且私有 MIB 未以无需行级过滤的标量形式暴露 CPU/内存负载，故 CPU/内存/风扇为 N/A。适用品牌型号——Moxa 工业网管交换机（EDS/IKS/ICS/SDS 系列，企业号 8691）。
@@ -4098,6 +4220,9 @@ monitor_object_plugin:
   Switch Netonix SNMP:
     name: Netonix（Telegraf）
     desc: Netonix WISP 交换机专用 SNMP 采集模板（NETONIX-SWITCH-MIB，企业号 46242）。除标准 IF-MIB 接口指标外，额外采集 Netonix 私有 OID 的机箱温度（temp，专用温度表，℃）。NETONIX-SWITCH-MIB 不提供 CPU/内存 OID；风扇为转速（RPM）而非状态枚举、PoE 为端口级状态，均非设备级健康状态，故仅采集温度（其余 N/A）。适用品牌型号——Netonix WISP Switch 系列 PoE 交换机（企业号 46242）。
+  Switch Nokia SNMP:
+    name: Nokia（Telegraf）
+    desc: Nokia（原 Alcatel-Lucent Enterprise）OmniSwitch 系列以太网交换机专用 SNMP 采集模板（ALCATEL-IND1-HEALTH-MIB / ALCATEL-IND1-CHASSIS-MIB，企业号 6486）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Nokia 私有 OID 的设备健康指标——CPU 使用率与内存使用率（healthModuleTable，均以百分比直接上报）、机箱温度（chasChassisTemp，℃）、风扇状态与电源状态（chasEntPhysOperStatus，经 telegraf processors.enum 归一为 1=正常/2=异常）。适用品牌型号——Nokia/ALE OmniSwitch 6/9 系列园区与数据中心交换机（企业号 6486）。
   Switch Flow NetFlow:
     name: 交换机流量分析（NetFlow）
     desc: 使用 NetFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
@@ -4141,6 +4266,9 @@ monitor_object_plugin:
   Loadbalance Superiority SNMP:
     name: 超数（Telegraf）
     desc: 超数（Superiority）负载均衡专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。当前连接数/温度/风扇/电源 1991 私有树未声明，故为 N/A。适用品牌型号——超数（Superiority）负载均衡设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
+  Loadbalance RELIANOID SNMP:
+    name: RELIANOID（Telegraf）
+    desc: RELIANOID ADC / 负载均衡专用 SNMP child 模板（企业号 61269）。当前确认口径为标准 MIB-II 与 IF-MIB ifXTable 基线；未确认无需行级过滤且跨版本稳定的厂商私有 CPU、内存、温度、风扇、电源或当前连接数标量健康 OID，因此本品牌 metrics.json 不声明厂商增量指标。系统运行时长、IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets）与整机汇总流量由通用 Loadbalance SNMP 底座提供。本模板仅提供 RELIANOID collect_type、表单与 Telegraf child 采集配置。适用品牌型号——RELIANOID ADC 与负载均衡设备。
   Loadbalance Radware Alteon SNMP:
     name: Radware Alteon（Telegraf）
     desc: Radware Alteon 应用交换机/负载均衡器专用 SNMP 采集模板（ALTEON-CHEETAH-SWITCH-MIB，企业号 1872）。除标准 IF-MIB 接口指标外，额外采集 Alteon 私有 OID 的设备健康指标：管理处理器 CPU 使用率（mpCpuStatsUtil1Second，直接以百分比上报）与主内存（mpMemStatsTotal/mpMemStatsFree，字节，用量按 (总量-空闲)/总量 推导）。CHEETAH MIB 未暴露标量连接/会话数与温度/风扇/电源，故为 N/A。适用品牌型号——运行 AlteonOS 的 Radware Alteon ADC/应用交换机（Alteon 4408/5208/6420/8420/9800 及 VA 虚拟设备，企业号 1872）。
@@ -4289,6 +4417,9 @@ monitor_object_plugin:
   Router Teldat SNMP:
     name: Teldat（Telegraf）
     desc: Teldat 企业级路由器/SD-WAN CPE 专用 SNMP 采集模板（TELDAT-MIB，企业号 2007）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Teldat 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Teldat 紧凑型企业路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Teldat 路由器/SD-WAN CPE（Atlas/Regesta/iMxx 系列，企业号 2007；与 bintec-elmeg 同源 MIB）。
+  Router Avaya SNMP:
+    name: Avaya（Telegraf）
+    desc: Avaya（含原 Nortel/Bay Networks 资产）企业级路由器/三层路由交换机专用 SNMP 采集模板（RAPID-CITY/AVAYA 私有 MIB，企业号 6889）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Avaya 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（已用 + 空闲，字节，用量按 已用/（已用+空闲）推导）。Avaya 企业路由平台多为固定配置紧凑机型，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Avaya ERS / VSP 系列路由平台（企业号 6889；含原 Nortel/Bay Networks 资产）。
   Router Viprinet SNMP:
     name: Viprinet（Telegraf）
     desc: Viprinet 多 WAN 绑定/SD-WAN 路由器专用 SNMP 采集模板（VIPRINET-MIB，企业号 35424）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Viprinet 私有 OID 的设备健康指标：CPU 使用率（直接以百分比上报）与主内存（总量 + 空闲，字节，用量按 (总量-空闲)/总量 推导）。Viprinet 紧凑型多 WAN 路由器多为无风扇固定配置设计，其私有 MIB 未以无需行级过滤的标量形式暴露独立温度/风扇/电源传感器，故温度、风扇与电源为 N/A。适用品牌型号——Viprinet 多 WAN 绑定路由器（Multichannel VPN Router 系列，企业号 35424）。
@@ -4298,6 +4429,12 @@ monitor_object_plugin:
   Router Aethra SNMP:
     name: Aethra（Telegraf）
     desc: Aethra Telecommunications IAD/DSL 接入路由器（含 VoIP）专用 SNMP 采集模板（AETHRA-MIB，企业号 7745）。除标准 IF-MIB 接口指标外，额外采集 Aethra 私有 OID 的设备健康指标：CPU 5 分钟平均负载（cpuLoad5min，直接 %）与主内存（总内存 + 空闲内存，KBytes，用量按 (总量-空闲)/总量 推导）。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——Aethra Telecommunications IAD/DSL 路由器（AC2036/Dolcevita 系列，企业号 7745）。
+  Router Benu SNMP:
+    name: Benu Networks（Telegraf）
+    desc: Benu Networks BNG/CGNAT 边缘路由器专用 SNMP 采集模板（BENU-CHASSIS-MIB，企业号 39406）。除标准 IF-MIB 接口指标外，额外采集 Benu 私有机箱健康指标：温度传感器、风扇状态与电源模块状态。BENU-HOST-MIB 中的 CPU 与内存对象属于软件进程级任务表，本模板不提升为设备级 CPU/内存健康指标，故 CPU/内存为 N/A。适用品牌型号——Benu Networks MEG/xMEG 路由平台。
+  Router VeloCloud SNMP:
+    name: VeloCloud/VMware SD-WAN（Telegraf）
+    desc: VeloCloud/VMware SD-WAN Edge 路由器专用 SNMP 采集模板（企业号 45346）。除标准 IF-MIB 接口指标外，额外采集 VeloCloud 私有 OID 的设备健康指标：CPU 5 分钟平均使用率与内存使用率，均为设备直接上报的百分比。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——VeloCloud/VMware SD-WAN Edge 路由器。
   Router Harbour SNMP:
     name: 港湾网络（Telegraf）
     desc: 港湾网络（Harbour Networks）路由器专用 SNMP 采集模板（企业号 8212 私有 MIB）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集港湾网络私有 OID 的设备健康指标：CPU 平均使用率（snAgGblCpuUtil1SecAvg，直接 %）与主内存（总内存 + 空闲内存，字节，用量按 (总量-空闲)/总量 推导）。温度/风扇/电源本模板未采集，故为 N/A。适用品牌型号——港湾网络（Harbour Networks）路由器（企业号 8212）。
@@ -4320,6 +4457,9 @@ monitor_object_plugin:
   Router Avici SNMP:
     name: Avici（Telegraf）
     desc: Avici Systems 高速核心路由器专用 SNMP 采集模板（TSR / SSR 系列，IANA PEN 2474）。本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 Avici 私有 MIB（企业号 2474）未以无需行级过滤的稳定标量形式公开可靠轮询的设备健康量，故不采集（N/A）。适用品牌型号——Avici Systems TSR / SSR 核心路由器（企业号 2474）。
+  Router 6WIND VSR SNMP:
+    name: 6WIND VSR（Telegraf）
+    desc: 6WIND VSR 虚拟路由器专用 SNMP 采集模板（企业号 7336）。本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。当前未确认跨版本稳定、无需行级过滤的厂商私有 CPU、内存、温度、风扇或电源状态标量，故这些设备健康指标不采集（N/A）。适用品牌型号——6WIND Virtual Service Router。
   Router MultiTech SNMP:
     name: MultiTech（Telegraf）
     desc: MultiTech Systems 蜂窝路由器/IoT 网关专用 SNMP 采集模板（MultiConnect rCell 系列，IANA PEN 995）。rCell 平台 SNMP agent 为 RFC1213 兼容（标准 MIB-II + IF-MIB），故本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 rCell agent 未以可轮询标量暴露设备健康量，故不采集（N/A）；蜂窝 RSSI/信号对象跨固件未统一以可轮询标量暴露，留待后续增量。
@@ -4391,6 +4531,36 @@ monitor_object_plugin:
   Storage SNMP General:
     desc: 通过Telegraf采集器利用SNMP协议定期收集存储设备各接口的流量、丢包数、错包数等IF-MIB关键指标。
     name: 存储设备SNMP通用（Telegraf）
+  Storage Synology SNMP:
+    name: 群晖 Synology（Telegraf）
+    desc: 群晖 Synology NAS 存储 SNMP 采集（企业号 PEN 6574）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——机箱温度（synologyTemperature，直采摄氏度无缩放）、系统风扇与电源运行状态（synologySystemFanStatus / synologyPowerStatus，原生 1=正常 / 2=异常）、RAID/卷阵列状态（synologyRaidStatus，按最差阵列归一为 1=正常 / 2=异常）。私有树仅暴露粗粒度 normal/failed 系统状态码，无可轮询的系统级 CPU / 内存 gauge，故 CPU、内存为 N/A，不伪造。适用品牌型号——群晖 DiskStation / RackStation NAS（DSM 系统，DS / RS / FS / SA 系列）。
+  Storage MacroSAN SNMP:
+    name: 宏杉 MacroSAN（Telegraf）
+    desc: 宏杉 MacroSAN 存储阵列 SNMP 采集（企业号 PEN 35904）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集完整厂商私有健康量——控制器 CPU 利用率（cpuRate，直接百分比）、控制器内存利用率（vmRate，直接百分比，无 used/free 拆分）、风扇/电源/磁盘健康状态（fanState / powerState / diskHealthState，归一为 1=正常 / 2=异常，按实例取最差行）。温度为 N/A。适用品牌型号——宏杉 MS 系列 SAN/NAS 存储阵列（企业号 PEN 35904）。
+  Storage Sugon SNMP:
+    name: 曙光 Sugon（Telegraf）
+    desc: 曙光 Sugon ParaStor 存储 SNMP 采集（企业号 PEN 35904；ParaStor 复用宏杉私有树）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有硬件健康量——风扇/电源/磁盘运行状态（fanState / powerState / diskState，归一为 1=正常 / 2=异常，按实例取最差行）。本 profile 未暴露控制器级 CPU / 内存 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——曙光 ParaStor 分布式存储阵列（企业号 PEN 35904）。
+  Storage NetApp SNMP:
+    name: NetApp（Telegraf）
+    desc: NetApp 存储 SNMP 采集（企业号 PEN 789）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 繁忙时间（cpuBusyTimePerCent，直接百分比）与 RAID 磁盘驱动器状态（raidStatus，active 正常归一为 1=正常 / 2=异常，按实例取最差磁盘行）。环境标量（风扇/电源失效计数、超温）为计数/布尔型，未纳入共享盘 enum 语义，故温度、风扇、电源为 N/A，不伪造，待现网核验后扩展。适用品牌型号——NetApp FAS / AFF 存储系统（Data ONTAP，企业号 PEN 789）。
+  Storage Fujitsu SNMP:
+    name: 富士通 Fujitsu（Telegraf）
+    desc: Fujitsu ETERNUS 存储阵列 SNMP 采集（企业号 PEN 211，fjdary-MIB）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——机箱温度传感器（fjdaryMachineTempInfo，摄氏度直采无缩放）、RAID 组状态（fjdaryMgtRaidGrpStatus）与逻辑卷状态（fjdaryMgtOpVolumeStatus）。RAID/卷原始枚举 ok(2) 归一为 1=正常，其余 unknown/degraded/error/dormant 归一为 2=异常，并按实例取最差阵列或卷。该 MIB 未发布可轮询的控制器 CPU/内存利用率，电源对象为瓦数读数而非状态枚举，且无风扇状态对象，故 CPU、内存、风扇、电源为 N/A，不伪造。适用品牌型号——Fujitsu ETERNUS DX 存储阵列。
+  Storage Dell SC8000 SNMP:
+    name: Dell SC8000（Telegraf）
+    desc: Dell SC8000 / Compellent 存储 SNMP 采集（Dell EMC 企业号 PEN 674）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——物理磁盘状态与健康标志（scDiskStatus / scDiskHealthy）、控制器风扇状态（scCtlrFanStatus）和控制器电源状态（scCtlrPowerStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。该 profile 未暴露可轮询的控制器 CPU、内存或温度 gauge，故 CPU、内存、温度为 N/A，不伪造。适用品牌型号——Dell SC8000 / Compellent SC Series 存储阵列。
+  Storage Dell PowerVault SNMP:
+    name: Dell PowerVault（Telegraf）
+    desc: Dell PowerVault / EqualLogic 存储 SNMP 采集（EqualLogic 企业号 PEN 12740）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——控制器 CPU 使用率（cpmCPUTotal5min，直接百分比）、控制器处理器/芯片温度、物理磁盘状态（eqlDiskStatus）和 iSCSI 卷管理状态（eqliscsiVolumeAdminStatus），统一归一为 1=正常 / 2=异常，并按实例取最差组件。容量、磁盘转速、CPU 频率和物理内存大小属于规格/容量信息，不作为健康指标采集。适用品牌型号——Dell PowerVault / EqualLogic PS 与 MD 系列存储。
+  Storage Inspur SNMP:
+    name: 浪潮 Inspur（Telegraf）
+    desc: Inspur AS5500 存储 SNMP 采集（企业号 PEN 48512）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有硬件健康量——受管磁盘状态、物理盘可用性与电源状态。状态值 1 保守归一为正常，其余均归一为异常，并按实例取最差组件。当前 profile 未暴露控制器 CPU、内存、温度和风扇健康 gauge，故这些指标为 N/A，不伪造。
+  Storage CeresData SNMP:
+    name: 希磁 CeresData（Telegraf）
+    desc: CeresData 全闪存储 SNMP 采集（企业号 PEN 25359）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——系统磁盘状态、物理磁盘状态与存储池健康度。状态值 1 保守归一为正常，其余均归一为异常，并按实例取最差磁盘或存储池。当前 profile 未暴露控制器 CPU、内存、温度、风扇和电源健康 gauge，故这些指标为 N/A，不伪造。
+  Storage Hikvision SNMP:
+    name: 海康 Hikvision（Telegraf）
+    desc: 海康 Hikvision Brainware 存储 SNMP 采集（本地私有 MIB 树 PEN 99999）。在标准 MIB-II / IF-MIB 设备运行时长与 64 位 HC 接口流量之外，采集厂商私有健康量——CPU、内存、CPU 温度、磁盘、RAID、电源和 CPU 风扇状态；状态值 1 归一为正常，其余归一为异常，并按实例取最差组件。容量与 IO 速率为规格/性能项，不作为共享健康指标采集。
   Oracle:
     desc: 通过Oracle Exporter采集器定期采集Oracle运行时长、操作次数、事务提交回滚及各类等待时间等指标。
     name: Oracle（Exporter）

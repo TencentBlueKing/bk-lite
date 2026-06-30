@@ -1,0 +1,47 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_fujitsu",
+  "plugin": "Storage Fujitsu SNMP",
+  "plugin_desc": "Fujitsu ETERNUS storage-specific SNMP collection for Fujitsu ETERNUS DX disk-array storage devices (fjdary-MIB, IANA PEN 211). In addition to standard IF-MIB interface metrics, it collects the fjdary-MIB private OIDs for device health — the chassis temperature sensors (fjdaryMachineTempInfo, one row per temperature sensor, read directly in degrees Celsius with no scaling, worst sensor taken with max()), the RAID group array status (fjdaryMgtRaidGrpStatus, one row per RAID group) and the logical volume array status (fjdaryMgtOpVolumeStatus, one row per volume). The RAID-group and volume raw enum codes (unknown(1), ok(2), degraded(3), error(6), dormant(15)) are normalized via telegraf processors.enum to 1=healthy (ok) / 2=fault (everything else) and the worst array/volume is taken per device with max(), so device_raid_state reflects the overall array and volume health. The fjdary-MIB does not publish a pollable controller CPU or memory utilization gauge, the power object (fjdaryMachinePowerInfo) is a wattage reading rather than an up/down state, and there is no fan status object, so CPU, memory, fan and power-supply state are not collected (N/A). Supported brands/models — Fujitsu ETERNUS DX disk-array storage systems with SNMP enabled.",
+  "status_query": "any({instance_type='storage', collect_type='snmp_fujitsu'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_raid_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature of the Fujitsu ETERNUS storage device in degrees Celsius, sourced from the fjdary-MIB temperature sensor table (fjdaryMachineTempInfo, one row per sensor, read directly with no scaling), with the hottest sensor taken per device. An abnormal temperature rise can indicate fan failure, blocked airflow, or an overheating environment and, if left unaddressed, may trigger thermal protection or damage the disks and hardware."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_raid_state",
+      "query": "max(device_raid_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "RAID State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the RAID/volume array health of the Fujitsu ETERNUS storage device, derived from the RAID group status (fjdaryMgtRaidGrpStatus) and logical volume status (fjdaryMgtOpVolumeStatus) tables. The raw enum codes (ok(2) is healthy; unknown/degraded/error/dormant are faults) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst array/volume is taken per device with max(). A value greater than 1 indicates a degraded or failed array that risks data loss and warrants immediate investigation."
+    }
+  ]
+}

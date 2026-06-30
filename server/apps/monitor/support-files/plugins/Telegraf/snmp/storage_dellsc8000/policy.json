@@ -1,0 +1,36 @@
+{
+  "object": "Storage",
+  "plugin": "Storage Dell SC8000 SNMP",
+  "templates": [
+  {
+    "name": "Dell SC8000存储磁盘健康异常",
+    "alert_name": "存储${resource_name} 磁盘健康状态异常",
+    "description": "监控 Dell SC8000/Compellent 存储设备物理磁盘状态（scDiskStatus/scDiskHealthy，归一为 1=正常/2=异常），当磁盘降级、离线或不健康时触发告警，存在数据丢失风险，需立即排查。",
+    "metric_name": "device_disk_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  },
+  {
+    "name": "Dell SC8000存储风扇异常",
+    "alert_name": "存储${resource_name} 风扇状态异常",
+    "description": "监控 Dell SC8000/Compellent 存储设备控制器风扇状态（scCtlrFanStatus，归一为 1=正常/2=异常），当风扇降级或停止时触发告警，可能导致控制器过热。",
+    "metric_name": "device_fan_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  },
+  {
+    "name": "Dell SC8000存储电源异常",
+    "alert_name": "存储${resource_name} 电源状态异常",
+    "description": "监控 Dell SC8000/Compellent 存储设备控制器电源状态（scCtlrPowerStatus，归一为 1=正常/2=异常），当电源降级或故障时触发告警，提示电源冗余缺失或硬件故障。",
+    "metric_name": "device_psu_state",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 1, "method": ">" }
+    ]
+  }
+  ]
+}

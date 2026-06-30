@@ -71,6 +71,9 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Infoblox SNMP': 'snmp_infoblox',
       'NetworkService Gigamon SNMP': 'snmp_gigamon',
       'NetworkService Accedian SNMP': 'snmp_accedian'
+      'NetworkService Accedian SNMP': 'snmp_accedian',
+      'NetworkService ZDNS SNMP': 'snmp_zdns',
+      'NetworkService BlueCat SNMP': 'snmp_bluecat'
     }
   };
 };
