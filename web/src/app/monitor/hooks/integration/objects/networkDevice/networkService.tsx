@@ -68,7 +68,8 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Enlogic PDU SNMP': 'snmp_enlogic',
       'NetworkService Rittal CMC III SNMP': 'snmp_rittal',
       'NetworkService Gude PDU SNMP': 'snmp_gude',
-      'NetworkService Panduit iPDU SNMP': 'snmp_panduit'
+      'NetworkService Panduit iPDU SNMP': 'snmp_panduit',
+      'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec'
     }
   };
 };
