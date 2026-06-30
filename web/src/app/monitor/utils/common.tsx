@@ -671,6 +671,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /siklu|etherhaul|multihaul/i, label: 'Siklu', icon: 'mm-siklu_siklu' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
   { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
+  { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
   { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
