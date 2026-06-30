@@ -376,6 +376,22 @@ COLLECT_OBJ_TREE = [
         ],
     },
     {
+        "id": "ipam",
+        "name": "IP 地址管理",
+        "children": [
+            {
+                "id": "ip_discovery",
+                "model_id": "ip",
+                "name": "IP 发现",
+                "task_type": CollectPluginTypes.IP,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "ICMP", "TCP"],
+                "desc": "选择子网后由接入点执行 IP 探活，回写 IPAM 台账与利用率",
+                "encrypted_fields": [],
+            }
+        ],
+    },
+    {
         "id": "databases",
         "name": "数据库",
         "children": [

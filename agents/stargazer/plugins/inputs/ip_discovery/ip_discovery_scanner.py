@@ -1,6 +1,8 @@
 # -- coding: utf-8 --
-"""IP 发现 collector：按 scan_method 对 targets 并发探活，返回活跃 IP（含 best-effort MAC）。规格 §13.2/§13.3。"""
+"""IP 发现 collector：按子网范围 ICMP/TCP 探活，返回活跃 IP（含 best-effort MAC）。"""
 import asyncio
+import ipaddress
+import json
 
 DEFAULT_PORTS = [22, 80, 443, 3389]
 CONCURRENCY = 50
@@ -10,9 +12,67 @@ class IPDiscoveryScanner:
     def __init__(self, kwargs: dict):
         self.model_id = kwargs.get("model_id", "ip")
         self.scan_method = (kwargs.get("scan_method") or "icmp").lower()
-        self.ports = kwargs.get("ports") or DEFAULT_PORTS
-        self.targets = kwargs.get("targets") or []
+        self.ports = self._normalize_ports(kwargs.get("ports") or DEFAULT_PORTS)
+        self.subnets = self._normalize_json_list(kwargs.get("subnets") or [])
+        self.targets = self._build_targets(kwargs.get("targets") or [])
         self.timeout = float(kwargs.get("timeout", 2))
+
+    @staticmethod
+    def _normalize_json_list(value):
+        if isinstance(value, str):
+            try:
+                parsed = json.loads(value)
+            except (TypeError, ValueError):
+                return []
+            return parsed if isinstance(parsed, list) else []
+        return value if isinstance(value, list) else []
+
+    @classmethod
+    def _normalize_ports(cls, value):
+        ports = cls._normalize_json_list(value) if isinstance(value, str) else value
+        if not isinstance(ports, list):
+            return DEFAULT_PORTS
+        normalized = []
+        for port in ports:
+            try:
+                normalized.append(int(port))
+            except (TypeError, ValueError):
+                continue
+        return normalized or DEFAULT_PORTS
+
+    def _build_targets(self, explicit_targets) -> list[dict]:
+        targets = []
+        for ip in self._normalize_json_list(explicit_targets) if isinstance(explicit_targets, str) else explicit_targets:
+            targets.append({"ip": str(ip), "subnet_id": "", "subnet_cidr": ""})
+
+        for subnet in self.subnets:
+            if not isinstance(subnet, dict):
+                continue
+            cidr = str(subnet.get("cidr") or "").strip()
+            try:
+                network = ipaddress.ip_network(cidr, strict=False)
+            except ValueError:
+                continue
+            reserved = {
+                str(item).strip()
+                for item in subnet.get("reserved_addresses", [])
+                if str(item).strip()
+            }
+            gateway = str(subnet.get("gateway") or "").strip()
+            if gateway:
+                reserved.add(gateway)
+            for ip in network.hosts():
+                ip_text = str(ip)
+                if ip_text in reserved:
+                    continue
+                targets.append(
+                    {
+                        "ip": ip_text,
+                        "subnet_id": str(subnet.get("subnet_id") or ""),
+                        "subnet_cidr": str(network),
+                    }
+                )
+        return targets
 
     async def _tcp_probe(self, ip: str, port: int, timeout: float) -> bool:
         try:
@@ -53,15 +113,26 @@ class IPDiscoveryScanner:
             pass
         return ""
 
-    async def _probe_one(self, ip: str, sem: asyncio.Semaphore):
+    async def _probe_one(self, target: dict, sem: asyncio.Semaphore):
+        ip = target["ip"]
         async with sem:
             alive = (await self._tcp_alive(ip)) if self.scan_method == "tcp" else (await self._icmp_probe(ip, self.timeout))
         if not alive:
             return None
-        return {"ip": ip, "mac": self._read_mac(ip)}
+        if not target.get("subnet_id"):
+            return {"ip": ip, "mac": self._read_mac(ip)}
+        return {
+            "ip_addr": ip,
+            "ip_status": "online",
+            "subnet_id": target["subnet_id"],
+            "subnet_cidr": target["subnet_cidr"],
+            "scan_method": self.scan_method,
+            "auto_collect": "true",
+            "mac": self._read_mac(ip),
+        }
 
     async def list_all_resources(self) -> dict:
         sem = asyncio.Semaphore(CONCURRENCY)
-        results = await asyncio.gather(*[self._probe_one(ip, sem) for ip in self.targets])
+        results = await asyncio.gather(*[self._probe_one(target, sem) for target in self.targets])
         alive = [r for r in results if r]
         return {"success": True, "result": {self.model_id: alive}}
