@@ -4281,6 +4281,9 @@ monitor_object_plugin:
   Transmission MRV SNMP:
     name: MRV（Telegraf）
     desc: MRV OptiDriver 光传输设备 SNMP 基线采集模板（企业号 33）。采集 IF-MIB 64 位 HC 接口计数器（ifHCInOctets/ifHCOutOctets、ifXTable）速率和设备运行时长（sysUpTime）。当前已知 MRV-IN-REACH-SYSTEM-MIB 事实，但本工作树没有 raw MIB 正文可确认无需行级过滤的 CPU、内存、温度、风扇、电源或光传输健康 OID，因此这些私有健康指标为 N/A 且不臆造。适用于 MRV OptiDriver ROADM 与光传输设备，以及其他兼容 IF-MIB 的传输设备。
+  Transmission Marconi SNMP:
+    name: Marconi（Telegraf）
+    desc: Marconi Communications ATM/SDH 传输设备 SNMP 基线采集模板（企业号 7262）。采集 IF-MIB 64 位 HC 接口计数器（ifHCInOctets/ifHCOutOctets、ifXTable）速率和设备运行时长（sysUpTime）。当前已知 MARCONI-MIB 事实，但本工作树没有 raw MIB 正文可确认无需行级过滤的 CPU、内存、温度、风扇、电源或光传输健康 OID，因此这些私有健康指标为 N/A 且不臆造。适用于 Marconi ATM、SDH 与光传输设备，以及其他兼容 IF-MIB 的传输设备。
   Transmission Alcoma SNMP:
     name: Alcoma（Telegraf）
     desc: Alcoma 微波无线传输设备 SNMP 基线采集模板（企业号 12140）。采集 IF-MIB 64 位 HC 接口计数器（ifHCInOctets/ifHCOutOctets、ifXTable）速率和设备运行时长（sysUpTime）。当前已知 ALCOMA-MIB 事实，但本工作树没有 raw MIB 正文可确认无需行级过滤的 CPU、内存、温度、风扇、电源、射频或链路健康 OID，因此这些私有健康指标为 N/A 且不臆造。适用于 Alcoma 微波传输设备，以及其他兼容 IF-MIB 的传输设备。
