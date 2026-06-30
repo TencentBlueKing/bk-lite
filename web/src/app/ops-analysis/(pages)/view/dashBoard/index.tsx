@@ -8,8 +8,8 @@ import React, {
   useCallback,
 } from 'react';
 import { v4 as uuidv4 } from 'uuid';
-import ViewSelector from './components/viewSelector';
-import ViewConfig from './components/viewConfig';
+import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
+import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
 import DashboardCanvas from './components/dashboardCanvas';
 import DashboardToolbar from './components/dashboardToolbar';
 import { Input, Modal, message, Select } from 'antd';

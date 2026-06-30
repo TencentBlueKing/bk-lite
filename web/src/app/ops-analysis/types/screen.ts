@@ -1,4 +1,16 @@
 import type { DirItem } from './index';
+import type { ValueConfig } from './dashBoard';
+
+export type ScreenWidgetChartType =
+  | 'single'
+  | 'gauge'
+  | 'line'
+  | 'bar'
+  | 'pie'
+  | 'table'
+  | 'topN'
+  | 'eventTable'
+  | 'networkStatusTopology';
 
 export interface ScreenViewportConfig {
   width: number;
@@ -7,16 +19,29 @@ export interface ScreenViewportConfig {
     type?: string;
     key?: string;
   };
-  theme?: string;
+  theme?: 'screen-tech-blue';
 }
-
-export type ScreenItem = Record<string, unknown>;
 
 export interface ScreenDecorationsConfig {
   showTitle?: boolean;
   showClock?: boolean;
   title?: string;
 }
+
+export interface ScreenWidgetItem {
+  id: string;
+  type: 'widget';
+  chartType: ScreenWidgetChartType;
+  title: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+  zIndex: number;
+  config: ValueConfig;
+}
+
+export type ScreenItem = ScreenWidgetItem;
 
 export interface ScreenViewSets {
   viewport: ScreenViewportConfig;

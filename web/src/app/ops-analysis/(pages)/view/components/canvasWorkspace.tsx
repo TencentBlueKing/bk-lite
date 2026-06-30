@@ -4,13 +4,13 @@ import React from 'react';
 import { Empty, Spin, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
+import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
 
 interface CanvasWorkspaceProps {
   selectedItem?: DirItem | null;
   loading?: boolean;
   titleFallback: string;
   emptyDescription: string;
-  description?: string;
   toolbar?: React.ReactNode;
   children?: React.ReactNode;
 }
@@ -20,7 +20,6 @@ const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
   loading = false,
   titleFallback,
   emptyDescription,
-  description,
   toolbar,
   children,
 }) => {
@@ -31,6 +30,8 @@ const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
       <Empty className="w-full mt-[20vh]" description={emptyDescription} />
     );
   }
+
+  const resolvedDescription = resolveCanvasDescription(selectedItem.desc);
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-2)] p-2 pb-0">
@@ -49,9 +50,9 @@ const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
               </Tag>
             )}
           </div>
-          {(description || selectedItem.desc) && (
+          {resolvedDescription && (
             <p className="mt-0.5 mb-0 truncate text-xs leading-4 text-[var(--color-text-3)]">
-              {description || selectedItem.desc}
+              {resolvedDescription}
             </p>
           )}
         </div>

@@ -255,8 +255,39 @@
       "saveSuccess": "大屏配置已保存",
       "saveFailed": "大屏配置保存失败",
       "currentResolution": "当前画布尺寸",
-      "canvasEmpty": "组件编排能力后续补充",
-      "builderPending": "大屏编辑能力将在后续迭代完善"
+      "canvasEmpty": "进入编辑态添加组件",
+      "builderPending": "大屏编辑能力将在后续迭代完善",
+      "defaultTitle": "网络运行态势大屏",
+      "addWidget": "添加组件",
+      "addThisWidget": "添加组件",
+      "screenTitle": "大屏标题",
+      "showTitle": "显示标题",
+      "showClock": "显示时钟",
+      "viewportContainsOverflow": "当前分辨率无法容纳已有组件，请先调整组件位置或尺寸",
+      "deleteWidget": "删除组件",
+      "editWidget": "配置组件",
+      "unsupportedWidgetType": "当前大屏暂不支持该组件类型",
+      "widgets": {
+        "single": "单值卡",
+        "gauge": "仪表盘",
+        "line": "折线图",
+        "bar": "柱状图",
+        "pie": "饼图",
+        "topN": "排行榜",
+        "eventTable": "事件/告警流",
+        "networkStatusTopology": "网络状态拓扑"
+      },
+      "widgetDescriptions": {
+        "single": "展示核心 KPI、告警总数、在线率等关键数值",
+        "gauge": "展示健康度、利用率、达成率等单指标状态",
+        "line": "展示总体趋势和关键时间序列",
+        "bar": "展示分类统计和对比分析",
+        "pie": "展示占比和分布结构",
+        "table": "展示结构化明细数据",
+        "topN": "展示热点对象、异常对象和重点对象排行",
+        "eventTable": "展示动态事件、告警流和最新状态",
+        "networkStatusTopology": "展示只读网络关系和健康态"
+      }
     },
     "report": {
       "title": "报表",

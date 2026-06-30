@@ -34,8 +34,8 @@ import EdgeConfigPanel from './components/edgeConfPanel';
 import NodeSidebar from './components/nodeSidebar';
 import ShapeNodePanel from './components/shapeNodePanel';
 import SingleValueNodePanel from './components/singleValueNodePanel';
-import ViewConfig from '../dashBoard/components/viewConfig';
-import ViewSelector from '../dashBoard/components/viewSelector';
+import ViewConfig from '@/app/ops-analysis/components/widgetConfig';
+import ViewSelector from '@/app/ops-analysis/components/widgetSelector';
 import {
   UnifiedFilterBar,
   UnifiedFilterConfigModal,

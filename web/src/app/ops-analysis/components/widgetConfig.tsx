@@ -53,22 +53,22 @@ import type {
 } from '@/app/ops-analysis/types/dataSource';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 import { initThresholdColors } from '@/app/ops-analysis/utils/thresholdUtils';
-import ComponentSelector from './viewSelector';
+import ComponentSelector from './widgetSelector';
 import type { NetworkStatusTopologyConfig } from '@/app/ops-analysis/types/sceneWidget';
 
-import { useTableConfig } from './viewConfig/hooks/useTableConfig';
-import { TableSettingsSection } from './viewConfig/sections/tableSettingsSection';
-import { TopNSettingsSection } from './viewConfig/sections/topNSettingsSection';
-import { GaugeSettingsSection } from './viewConfig/sections/gaugeSettingsSection';
+import { useTableConfig } from './widgetConfig/hooks/useTableConfig';
+import { TableSettingsSection } from './widgetConfig/sections/tableSettingsSection';
+import { TopNSettingsSection } from './widgetConfig/sections/topNSettingsSection';
+import { GaugeSettingsSection } from './widgetConfig/sections/gaugeSettingsSection';
 import {
   buildDisplayColumnsFromSchema,
   isDisplayableDefaultField,
-} from './viewConfig/utils/columnProbing';
+} from './widgetConfig/utils/columnProbing';
 import {
   buildDisplayColumnFieldOptions,
   resolveDatasourceChartTypes,
   shouldShowTableFilterFields,
-} from './viewConfig/utils/tableSettingsBehavior';
+} from './widgetConfig/utils/tableSettingsBehavior';
 
 interface FormValues {
   name: string;
@@ -238,6 +238,13 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const shouldShowUnifiedFilterSection =
     previewFilterDefinitions.length > 0 && Boolean(selectedDataSource?.params);
   const hasUnifiedFilterBindings = bindableFilterParams.length > 0;
+  const effectiveNamespaceId = useMemo(() => {
+    if (builtinNamespaceId !== undefined) {
+      return builtinNamespaceId;
+    }
+
+    return selectedDataSource?.namespaces?.[0];
+  }, [builtinNamespaceId, selectedDataSource?.namespaces]);
 
   const tableConfig = useTableConfig({
     form,
@@ -249,7 +256,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     unifiedFilterValues,
     filterBindings,
     filterDefinitions: previewFilterDefinitions,
-    builtinNamespaceId,
+    builtinNamespaceId: effectiveNamespaceId,
     t,
   });
   const isTableLikeChartType =
@@ -262,7 +269,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     form,
     selectedDataSource,
     getSourceDataByApiId,
-    builtinNamespaceId,
+    builtinNamespaceId: effectiveNamespaceId,
     open,
   });
 

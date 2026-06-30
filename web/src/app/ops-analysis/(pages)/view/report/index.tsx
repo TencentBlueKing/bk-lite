@@ -100,7 +100,6 @@ const Report = forwardRef<ReportRef, ReportProps>(({ selectedReport }, ref) => {
       loading={loading}
       titleFallback={t('opsAnalysis.report.title')}
       emptyDescription={t('opsAnalysis.report.selectFirst')}
-      description={t('opsAnalysis.report.basicShellDesc')}
       stats={stats}
     >
       <div className="flex h-full min-h-[360px] items-center justify-center rounded-md border border-dashed border-[var(--color-border-2)] bg-[var(--color-bg-2)]">

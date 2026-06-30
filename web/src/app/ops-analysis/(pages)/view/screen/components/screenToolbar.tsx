@@ -2,18 +2,40 @@
 
 import React from 'react';
 import { Button, Space, Tooltip } from 'antd';
-import { FullscreenOutlined, SettingOutlined } from '@ant-design/icons';
+import {
+  EditOutlined,
+  FullscreenOutlined,
+  PlusOutlined,
+  ReloadOutlined,
+  SettingOutlined,
+} from '@ant-design/icons';
+import PermissionWrapper from '@/components/permission';
 import { useTranslation } from '@/utils/i18n';
+import type { DirItem } from '@/app/ops-analysis/types';
 
 interface ScreenToolbarProps {
+  selectedScreen?: DirItem | null;
+  editMode: boolean;
   onOpenSettings: () => void;
+  onOpenWidgetSelector: () => void;
   onPreview: () => void;
+  onRefresh: () => void;
+  onEdit: () => void;
+  onCancel: () => void;
+  onSave: () => void;
   saving?: boolean;
 }
 
 const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
+  selectedScreen,
+  editMode,
   onOpenSettings,
+  onOpenWidgetSelector,
   onPreview,
+  onRefresh,
+  onEdit,
+  onCancel,
+  onSave,
   saving = false,
 }) => {
   const { t } = useTranslation();
@@ -22,14 +44,13 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
 
   return (
     <Space>
-      <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
+      <Tooltip title={t('common.refresh')}>
         <Button
           type="text"
-          icon={<SettingOutlined />}
-          loading={saving}
-          aria-label={t('opsAnalysis.screen.canvasSettings')}
+          icon={<ReloadOutlined />}
+          aria-label={t('common.refresh')}
           className={iconButtonClassName}
-          onClick={onOpenSettings}
+          onClick={onRefresh}
         />
       </Tooltip>
       <Tooltip title={t('opsAnalysis.screen.fullscreenPreview')}>
@@ -41,6 +62,54 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           onClick={onPreview}
         />
       </Tooltip>
+      <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
+        <Button
+          type="text"
+          icon={<SettingOutlined />}
+          loading={saving}
+          aria-label={t('opsAnalysis.screen.canvasSettings')}
+          className={iconButtonClassName}
+          onClick={onOpenSettings}
+        />
+      </Tooltip>
+      {editMode && (
+        <Button
+          type="default"
+          icon={<PlusOutlined />}
+          className="rounded-full!"
+          onClick={onOpenWidgetSelector}
+        >
+          {t('opsAnalysis.screen.addWidget')}
+        </Button>
+      )}
+      <PermissionWrapper requiredPermissions={['EditChart']}>
+        {!editMode ? (
+          <Tooltip title={t('common.edit')}>
+            <Button
+              type="text"
+              icon={<EditOutlined />}
+              aria-label={t('common.edit')}
+              disabled={!selectedScreen?.data_id || selectedScreen?.is_build_in}
+              className={iconButtonClassName}
+              onClick={onEdit}
+            />
+          </Tooltip>
+        ) : (
+          <div className="ml-2 flex items-center gap-2">
+            <Button className="rounded-full!" onClick={onCancel}>
+              {t('common.cancel')}
+            </Button>
+            <Button
+              type="primary"
+              loading={saving}
+              className="rounded-full!"
+              onClick={onSave}
+            >
+              {t('common.save')}
+            </Button>
+          </div>
+        )}
+      </PermissionWrapper>
     </Space>
   );
 };

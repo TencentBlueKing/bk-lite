@@ -8,7 +8,7 @@ import {
   getOpsChartThemeByMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
-import ChartLegend from '../components/chartLegend';
+import ChartLegend from '@/app/ops-analysis/components/chartLegend';
 import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 
 interface OsPieProps {

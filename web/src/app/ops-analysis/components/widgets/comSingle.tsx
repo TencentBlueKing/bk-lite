@@ -85,13 +85,29 @@ const limitSparklinePoints = (
   return sampled;
 };
 
-const getBaseFontSizeByWidth = (width: number) => {
+const getBaseFontSizeByWidth = (
+  width: number,
+  screenDark = false,
+) => {
   const safeWidth = Math.max(width, 120);
-  return Math.max(24, Math.min(52, safeWidth / 4.75));
+  return screenDark
+    ? Math.max(42, Math.min(104, safeWidth / 3.35))
+    : Math.max(24, Math.min(52, safeWidth / 4.75));
 };
 
-const getBaseFontSizeByHeight = (height: number, hasCompare: boolean) => {
+const getBaseFontSizeByHeight = (
+  height: number,
+  hasCompare: boolean,
+  screenDark = false,
+) => {
   const safeHeight = Math.max(height, 120);
+  if (screenDark) {
+    return Math.max(
+      34,
+      Math.min(112, safeHeight * (hasCompare ? 0.42 : 0.54)),
+    );
+  }
+
   return Math.max(
     MIN_VALUE_FONT_SIZE,
     Math.min(58, safeHeight * (hasCompare ? 0.29 : 0.36)),
@@ -172,6 +188,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
 }) => {
   const { t } = useTranslation();
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const valueAreaRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -264,8 +281,12 @@ const ComSingle: React.FC<ComSingleProps> = ({
 
       const availableHeight = contentAreaRef.current?.clientHeight ?? 0;
       let nextFontSize = Math.min(
-        getBaseFontSizeByWidth(availableWidth),
-        getBaseFontSizeByHeight(availableHeight, Boolean(config?.compare)),
+        getBaseFontSizeByWidth(availableWidth, usesScreenDarkTheme),
+        getBaseFontSizeByHeight(
+          availableHeight,
+          Boolean(config?.compare),
+          usesScreenDarkTheme,
+        ),
       );
       measureElement.style.fontSize = `${nextFontSize}px`;
 
@@ -295,7 +316,14 @@ const ComSingle: React.FC<ComSingleProps> = ({
       cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [config?.compare, displayMainValue, displayUnit, showSparkline, unitText]);
+  }, [
+    config?.compare,
+    displayMainValue,
+    displayUnit,
+    showSparkline,
+    unitText,
+    usesScreenDarkTheme,
+  ]);
 
   useLayoutEffect(() => {
     const contentArea = contentAreaRef.current;
@@ -458,7 +486,11 @@ const ComSingle: React.FC<ComSingleProps> = ({
   }
 
   return (
-    <div className="flex h-full w-full flex-col overflow-hidden px-2">
+    <div
+      className={`flex h-full w-full flex-col overflow-hidden ${
+        usesScreenDarkTheme ? 'px-7 py-4' : 'px-2'
+      }`}
+    >
       <div
         ref={contentAreaRef}
         className="flex min-h-0 flex-1 flex-col justify-center"

@@ -7,7 +7,7 @@ import { TagItem } from '@/app/ops-analysis/types/namespace';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
 import { SCENE_WIDGETS } from '@/app/ops-analysis/constants/sceneWidgets';
-import styles from './viewSelector.module.scss';
+import styles from './widgetSelector.module.scss';
 import type {
   DatasourceItem,
   ChartType,

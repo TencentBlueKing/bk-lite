@@ -80,6 +80,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
   const safeMax = Number.isFinite(max) && max > safeMin ? max : safeMin + 100;
   const thresholds = config?.thresholdColors || [];
   const hasData = numericValue !== null;
+  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
 
   // 值映射：命中颜色覆盖阈值色；命中文本替换中心展示
   const valueMapping = applyValueMapping(numericValue, config?.valueMappings);
@@ -116,47 +117,57 @@ const ComGauge: React.FC<ComGaugeProps> = ({
           max: safeMax,
           startAngle: isCircle ? 225 : 180,
           endAngle: isCircle ? -45 : 0,
-          center: ['50%', isCircle ? '56%' : '72%'],
-          radius: isCircle ? '90%' : '108%',
+          center: ['50%', isCircle ? '52%' : '74%'],
+          radius: usesScreenDarkTheme
+            ? isCircle ? '82%' : '118%'
+            : isCircle ? '90%' : '108%',
           progress: {
             show: true,
             roundCap: true,
-            width: 14,
+            width: usesScreenDarkTheme ? 24 : 14,
             itemStyle: {
               color,
+              shadowBlur: usesScreenDarkTheme ? 18 : 0,
+              shadowColor: color,
             },
           },
           axisLine: {
             roundCap: true,
             lineStyle: {
-              width: 14,
-              color: buildAxisLineColor(safeMin, safeMax, thresholds),
+              width: usesScreenDarkTheme ? 24 : 14,
+              color: usesScreenDarkTheme
+                ? [[1, 'rgba(56, 189, 248, 0.16)']]
+                : buildAxisLineColor(safeMin, safeMax, thresholds),
             },
           },
           axisTick: {
             show: false,
           },
           splitLine: {
-            length: 10,
-            distance: -16,
+            length: usesScreenDarkTheme ? 14 : 10,
+            distance: usesScreenDarkTheme ? -24 : -16,
             lineStyle: {
-              width: 2,
-              color: '#FFFFFF',
+              width: usesScreenDarkTheme ? 3 : 2,
+              color: usesScreenDarkTheme
+                ? 'rgba(186, 230, 253, 0.28)'
+                : '#FFFFFF',
             },
           },
           axisLabel: {
-            distance: 18,
-            color: '#7A869A',
-            fontSize: 11,
+            distance: usesScreenDarkTheme ? 24 : 18,
+            color: usesScreenDarkTheme
+              ? 'rgba(186, 230, 253, 0.64)'
+              : '#7A869A',
+            fontSize: usesScreenDarkTheme ? 22 : 11,
           },
           pointer: {
-            show: true,
+            show: !usesScreenDarkTheme,
             length: '68%',
             width: 4,
           },
           anchor: {
-            show: true,
-            size: 9,
+            show: !usesScreenDarkTheme,
+            size: usesScreenDarkTheme ? 0 : 9,
             itemStyle: {
               color,
             },
@@ -164,8 +175,8 @@ const ComGauge: React.FC<ComGaugeProps> = ({
           detail: {
             valueAnimation: true,
             offsetCenter: [0, isCircle ? '66%' : '38%'],
-            fontSize: 26,
-            fontWeight: 600,
+            fontSize: usesScreenDarkTheme ? 52 : 26,
+            fontWeight: usesScreenDarkTheme ? 800 : 600,
             color,
             formatter: () => displayValue,
           },
@@ -181,6 +192,7 @@ const ComGauge: React.FC<ComGaugeProps> = ({
     safeMax,
     safeMin,
     thresholds,
+    usesScreenDarkTheme,
   ]);
 
   if (loading) {

@@ -4,6 +4,7 @@ import React from 'react';
 import { Empty, Spin, Tag } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
+import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
 
 interface StatItem {
   label: string;
@@ -15,7 +16,6 @@ interface BasicCanvasPageProps {
   loading?: boolean;
   titleFallback: string;
   emptyDescription: string;
-  description?: string;
   stats?: StatItem[];
   children?: React.ReactNode;
   extra?: React.ReactNode;
@@ -26,7 +26,6 @@ const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
   loading = false,
   titleFallback,
   emptyDescription,
-  description,
   stats = [],
   children,
   extra,
@@ -38,6 +37,8 @@ const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
       <Empty className="w-full mt-[20vh]" description={emptyDescription} />
     );
   }
+
+  const resolvedDescription = resolveCanvasDescription(selectedItem.desc);
 
   return (
     <div className="flex h-full w-full flex-col bg-[var(--color-bg-1)]">
@@ -54,9 +55,11 @@ const BasicCanvasPage: React.FC<BasicCanvasPageProps> = ({
                 </Tag>
               )}
             </div>
-            <p className="mt-1 mb-0 text-sm text-[var(--color-text-2)]">
-              {description || selectedItem.desc || '--'}
-            </p>
+            {resolvedDescription && (
+              <p className="mt-1 mb-0 text-sm text-[var(--color-text-2)]">
+                {resolvedDescription}
+              </p>
+            )}
           </div>
           {extra && <div className="flex shrink-0 items-center gap-2">{extra}</div>}
         </div>

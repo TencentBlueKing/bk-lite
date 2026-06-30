@@ -255,8 +255,39 @@
       "saveSuccess": "Screen settings saved",
       "saveFailed": "Failed to save screen settings",
       "currentResolution": "Current Canvas Size",
-      "canvasEmpty": "Widget composition will be added in a future iteration",
-      "builderPending": "Screen editing will be completed in a later iteration"
+      "canvasEmpty": "Enter edit mode to add widgets",
+      "builderPending": "Screen editing will be completed in a later iteration",
+      "defaultTitle": "Network Operations Screen",
+      "addWidget": "Add Widget",
+      "addThisWidget": "Add widget",
+      "screenTitle": "Screen Title",
+      "showTitle": "Show title",
+      "showClock": "Show clock",
+      "viewportContainsOverflow": "The selected resolution cannot contain existing widgets. Adjust widget positions or sizes first.",
+      "deleteWidget": "Delete widget",
+      "editWidget": "Configure widget",
+      "unsupportedWidgetType": "This widget type is not supported on screens yet",
+      "widgets": {
+        "single": "KPI Card",
+        "gauge": "Gauge",
+        "line": "Line Chart",
+        "bar": "Bar Chart",
+        "pie": "Pie Chart",
+        "topN": "Top N",
+        "eventTable": "Event / Alert Stream",
+        "networkStatusTopology": "Network Status Topology"
+      },
+      "widgetDescriptions": {
+        "single": "Show key KPIs, alert totals, availability, and summary values",
+        "gauge": "Show health, utilization, and target status",
+        "line": "Show overall trends and time series",
+        "bar": "Show category statistics and comparisons",
+        "pie": "Show proportions and distribution",
+        "table": "Show structured detail data",
+        "topN": "Show hot, abnormal, or important ranked objects",
+        "eventTable": "Show dynamic events, alert streams, and latest status",
+        "networkStatusTopology": "Show read-only network relationships and health"
+      }
     },
     "report": {
       "title": "Report",

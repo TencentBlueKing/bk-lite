@@ -14,8 +14,8 @@ export interface ScreenViewportPreset {
 export const DEFAULT_SCREEN_VIEWPORT: ScreenViewportConfig = {
   width: 1920,
   height: 1080,
-  background: { type: 'preset', key: 'screen-dark' },
-  theme: 'screen-dark',
+  background: { type: 'builtIn', key: 'tech-grid' },
+  theme: 'screen-tech-blue',
 };
 
 export const DEFAULT_SCREEN_DECORATIONS: ScreenDecorationsConfig = {
@@ -24,15 +24,15 @@ export const DEFAULT_SCREEN_DECORATIONS: ScreenDecorationsConfig = {
   title: '',
 };
 
-const buildDefaultScreenViewport = (): ScreenViewportConfig => ({
-  ...DEFAULT_SCREEN_VIEWPORT,
-  background: DEFAULT_SCREEN_VIEWPORT.background
-    ? { ...DEFAULT_SCREEN_VIEWPORT.background }
-    : undefined,
+const cloneViewport = (
+  viewport: ScreenViewportConfig,
+): ScreenViewportConfig => ({
+  ...viewport,
+  background: viewport.background ? { ...viewport.background } : undefined,
 });
 
 export const DEFAULT_SCREEN_VIEW_SETS: ScreenViewSets = {
-  viewport: buildDefaultScreenViewport(),
+  viewport: cloneViewport(DEFAULT_SCREEN_VIEWPORT),
   items: [],
   decorations: { ...DEFAULT_SCREEN_DECORATIONS },
 };
@@ -50,7 +50,7 @@ export const isValidViewportSize = (value: unknown): value is number =>
   value > 0;
 
 export const buildDefaultScreenViewSets = (): ScreenViewSets => ({
-  viewport: buildDefaultScreenViewport(),
+  viewport: cloneViewport(DEFAULT_SCREEN_VIEWPORT),
   items: [],
   decorations: { ...DEFAULT_SCREEN_DECORATIONS },
 });
@@ -73,16 +73,6 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
   const height = isValidViewportSize(viewport.height)
     ? viewport.height
     : DEFAULT_SCREEN_VIEWPORT.height;
-  const background =
-    viewport.background &&
-    typeof viewport.background === 'object' &&
-    !Array.isArray(viewport.background)
-      ? viewport.background
-      : DEFAULT_SCREEN_VIEWPORT.background;
-  const theme =
-    typeof viewport.theme === 'string'
-      ? viewport.theme
-      : DEFAULT_SCREEN_VIEWPORT.theme;
   const decorations =
     source.decorations &&
     typeof source.decorations === 'object' &&
@@ -94,7 +84,14 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
       : { ...DEFAULT_SCREEN_DECORATIONS };
 
   return {
-    viewport: { width, height, background, theme },
+    viewport: {
+      width,
+      height,
+      background: DEFAULT_SCREEN_VIEWPORT.background
+        ? { ...DEFAULT_SCREEN_VIEWPORT.background }
+        : undefined,
+      theme: DEFAULT_SCREEN_VIEWPORT.theme,
+    },
     items: Array.isArray(source.items) ? source.items : [],
     decorations,
   };

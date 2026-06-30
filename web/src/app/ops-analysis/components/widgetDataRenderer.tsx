@@ -10,7 +10,7 @@ import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import {
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
-} from '../../../../utils/widgetDataTransform';
+} from '@/app/ops-analysis/utils/widgetDataTransform';
 import { fetchCompareData } from '@/app/ops-analysis/utils/compareQuery';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
@@ -183,7 +183,7 @@ const getOrCreateInflightRequest = async <T,>(
   return requestPromise;
 };
 
-interface WidgetWrapperProps {
+export interface WidgetWrapperProps {
   dashboardId?: number | string;
   widgetId: string;
   chartType?: string;
@@ -244,11 +244,18 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       Array.isArray(dataSource?.namespaces) && dataSource.namespaces.length > 0,
     [dataSource?.namespaces],
   );
+  const effectiveNamespaceId = useMemo(() => {
+    if (builtinNamespaceId !== undefined) {
+      return builtinNamespaceId;
+    }
+
+    return dataSource?.namespaces?.[0];
+  }, [builtinNamespaceId, dataSource?.namespaces]);
   const requestEnabled =
     Boolean(normalizedDataSourceId) &&
     Boolean(dataSource) &&
     dataSource?.hasAuth !== false &&
-    (!widgetUsesNamespace || builtinNamespaceId !== undefined);
+    (!widgetUsesNamespace || effectiveNamespaceId !== undefined);
 
   const requestParams = useMemo(() => {
     if (!requestEnabled) {
@@ -259,8 +266,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       config,
       dataSource,
       extraParams: {
-        ...(widgetUsesNamespace && builtinNamespaceId !== undefined
-          ? { namespace_id: builtinNamespaceId }
+        ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
+          ? { namespace_id: effectiveNamespaceId }
           : {}),
         ...(isTableLikeChart ? tableQueryParams : {}),
       },
@@ -273,7 +280,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     config,
     dataSource,
     widgetUsesNamespace,
-    builtinNamespaceId,
+    effectiveNamespaceId,
     isTableLikeChart,
     tableQueryParams,
     unifiedFilterValues,
@@ -289,8 +296,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       config,
       dataSource,
       extraParams: {
-        ...(widgetUsesNamespace && builtinNamespaceId !== undefined
-          ? { namespace_id: builtinNamespaceId }
+        ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
+          ? { namespace_id: effectiveNamespaceId }
           : {}),
         ...(isTableLikeChart ? tableQueryParams : {}),
       },
@@ -303,7 +310,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     config,
     dataSource,
     widgetUsesNamespace,
-    builtinNamespaceId,
+    effectiveNamespaceId,
     isTableLikeChart,
     tableQueryParams,
     unifiedFilterValues,
@@ -410,8 +417,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           config,
           dataSource,
           extraParams: {
-            ...(widgetUsesNamespace && builtinNamespaceId !== undefined
-              ? { namespace_id: builtinNamespaceId }
+            ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
+              ? { namespace_id: effectiveNamespaceId }
               : {}),
             ...(chartType === 'table' ? tableQueryParams : {}),
           },

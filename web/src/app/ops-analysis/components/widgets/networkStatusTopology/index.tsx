@@ -325,9 +325,14 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
 
   const hoverCanvasNode = canvasNodes.find((node) => node.id === hoverNodeId);
   const contextCanvasNode = canvasNodes.find((node) => node.id === contextNodeId);
+  const isMissingConfig = !topoConfig?.modelId || !topoConfig?.instId;
+  const usesScreenDark = config?.chartThemeMode === 'screen-dark';
 
   return (
-    <div ref={canvasRef} className={styles.canvas}>
+    <div
+      ref={canvasRef}
+      className={`${styles.canvas} ${usesScreenDark ? styles.screenCanvas : ''}`}
+    >
       {data?.truncated && (
         <div className={styles.truncated}>{t('dashboard.networkTopoTruncated')}</div>
       )}
@@ -391,7 +396,15 @@ const NetworkStatusTopology: React.FC<NetworkStatusTopologyProps> = ({
       ) : (
         !loading && (
           <div className={styles.state}>
-            {error ? (
+            {error && isMissingConfig ? (
+              <div className={styles.pendingState}>
+                <div className={styles.pendingIcon} aria-hidden="true" />
+                <div className={styles.pendingTitle}>
+                  {t('dashboard.networkStatusTopology')}
+                </div>
+                <div className={styles.pendingDesc}>{error}</div>
+              </div>
+            ) : error ? (
               <Alert
                 type="error"
                 showIcon
