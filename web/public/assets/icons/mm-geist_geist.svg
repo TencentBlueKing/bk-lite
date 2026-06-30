@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Geist">
+  <rect width="1024" height="1024" rx="160" fill="#F8FAFC"/>
+  <path d="M224 232h576c36 0 64 28 64 64v432c0 36-28 64-64 64H224c-36 0-64-28-64-64V296c0-36 28-64 64-64Z" fill="#FFFFFF" stroke="#0F766E" stroke-width="40"/>
+  <path d="M284 348h456M284 484h456M284 620h456" stroke="#0F766E" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="340" cy="348" r="24" fill="#22C55E"/>
+  <circle cx="340" cy="484" r="24" fill="#FACC15"/>
+  <circle cx="340" cy="620" r="24" fill="#22C55E"/>
+  <path d="M620 316h112v392H620z" fill="#CCFBF1" stroke="#0F766E" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M656 396h40M656 484h40M656 572h40M656 660h40" stroke="#0F766E" stroke-width="22" stroke-linecap="round"/>
+  <path d="M420 742c24-44 52-76 92-100 40 24 68 56 92 100" fill="none" stroke="#0F766E" stroke-width="30" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

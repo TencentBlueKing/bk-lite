@@ -4052,6 +4052,9 @@ monitor_object_plugin:
   NetworkService Gude PDU SNMP:
     name: Gude PDU（Telegraf）
     desc: Gude Expert Power Control、PDU、ATS 与 ETS 网络服务设备 SNMP 基线子模板，适用于 Gude 企业号 28507 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 PDU8310 电力、通道状态与 ETS 主备供电可用性表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 PDU 业务计数提升为共享设备健康指标。
+  NetworkService Geist PDU Environmental SNMP:
+    name: Geist PDU Environmental（Telegraf）
+    desc: Geist 与 Vertiv PDU、环境监控和远程电源网络服务设备 SNMP 基线子模板，适用于 Geist 企业号 21239 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在内部、温度传感器、气流、继电器、RPM、模拟量、插座、设备可用性与远程电源表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 PDU 业务计数提升为共享设备健康指标。
   NetworkService Panduit iPDU SNMP:
     name: Panduit iPDU（Telegraf）
     desc: Panduit G5 iPDU 与智能 PDU 网络服务设备 SNMP 基线子模板，适用于 Panduit 企业号 19536 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 PDU 标识、输入相位或线路、插座、温湿度探针、机柜门禁、HID 与告警表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 PDU 业务计数提升为共享设备健康指标。

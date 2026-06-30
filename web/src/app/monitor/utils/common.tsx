@@ -683,6 +683,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /enlogic|en2\.?0/i, label: 'Enlogic', icon: 'mm-enlogic_enlogic' },
   { match: /rittal|cmc\s*iii/i, label: 'Rittal', icon: 'mm-rittal_rittal' },
   { match: /gude|expert\s*power\s*control/i, label: 'Gude', icon: 'mm-gude_gude' },
+  { match: /geist|blackbird|watchdog/i, label: 'Geist', icon: 'mm-geist_geist' },
   { match: /panduit/i, label: 'Panduit', icon: 'mm-panduit_panduit' },
   { match: /socomec|net\s*vision/i, label: 'Socomec', icon: 'mm-socomec_socomec' },
   { match: /wti|western\s*telematic/i, label: 'WTI', icon: 'mm-wti_wti' },
