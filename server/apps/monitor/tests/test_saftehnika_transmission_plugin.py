@@ -3,8 +3,10 @@
 SAF Tehnika microwave transmission devices (PEN 19011) are modelled as the
 Transmission object. The state queue names public SAF MIB availability, but this
 worktree does not contain the raw MIB body needed to pin exact row-filter-free
-health OIDs. Keep the plugin conservative: sysUpTime + IF-MIB ifXTable 64-bit
-traffic + device_total_* roll-ups, with private microwave health metrics N/A.
+health OIDs. Keep the plugin conservative: Telegraf collects sysUpTime + IF-MIB
+ifXTable 64-bit traffic, while metrics.json stays a zero-delta child because the
+shared Transmission SNMP floor owns uptime, interface and aggregate traffic
+metadata. Private microwave health metrics are N/A.
 """
 import json
 from pathlib import Path
@@ -25,11 +27,37 @@ INSTANCE_TYPE = "transmission"
 PLUGIN_NAME = "Transmission SAF Tehnika SNMP"
 OBJECT_NAME = "Transmission"
 
-SUPPORTED_SCALAR_UNITS = {
-    "byteps", "bytes", "bitps", "counts", "cps", "percent", "celsius", "s", "short", "none",
+PRIVATE_PEN_ROOT = "1.3.6.1.4.1.19011"
+HEALTH_METRICS = (
+    "device_cpu_usage",
+    "device_memory_used",
+    "device_memory_free",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "transmission_optical_power",
+    "transmission_link_status",
+    "wireless_signal_strength",
+    "device_fan_state",
+    "device_psu_state",
+)
+BASE_METRICS = {
+    "snmp_uptime",
+    "interface_ifAdminStatus",
+    "interface_ifOperStatus",
+    "interface_ifSpeed",
+    "interface_ifInErrors",
+    "interface_ifOutErrors",
+    "interface_ifInDiscards",
+    "interface_ifOutDiscards",
+    "interface_ifInUcastPkts",
+    "interface_ifOutUcastPkts",
+    "interface_ifInOctets",
+    "interface_ifOutOctets",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
 }
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
-TOTAL_METRICS = ("device_total_incoming_traffic", "device_total_outgoing_traffic")
 
 
 def _read_json(path):
@@ -101,47 +129,33 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
-def test_uptime_metric_present(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    assert "snmp_uptime" in by
-    assert by["snmp_uptime"]["unit"] == "s"
+def test_metrics_json_is_zero_delta_child(metrics):
+    assert metrics["metrics"] == []
+    assert metrics["supplementary_indicators"] == []
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        assert name in by
-        m = by[name]
-        assert m["unit"] == "byteps"
-        assert m["metric_group"] == "Traffic"
-        assert m["query"].startswith("rate(")
-
-
-@pytest.mark.unit
-def test_device_total_rollups_present(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in TOTAL_METRICS:
-        assert name in by
-        q = by[name]["query"].replace(" ", "")
-        assert q.startswith("sum(rate(") and "by(instance_id)" in q
+def test_metrics_json_does_not_redeclare_snmp_floor(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    leaked = sorted(names & BASE_METRICS)
+    assert leaked == [], f"SNMP floor metrics must stay in generic snmp/transmission only: {leaked}"
 
 
 @pytest.mark.unit
 def test_no_private_health_metrics_without_exact_oid_source(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    for absent in (
-        "device_cpu_usage",
-        "device_memory_usage",
-        "device_memory_used",
-        "device_temperature_celsius",
-        "transmission_optical_power",
-        "transmission_link_status",
-        "wireless_signal_strength",
-        "device_fan_state",
-        "device_psu_state",
-    ):
+    for absent in HEALTH_METRICS:
         assert absent not in names, f"{absent} needs verified SAF Tehnika OID source -> N/A"
+
+
+@pytest.mark.unit
+def test_no_enum_processor_block(toml_text):
+    assert "[[processors.enum]]" not in toml_text
+
+
+@pytest.mark.unit
+def test_no_private_pen_oid_used(toml_text):
+    assert PRIVATE_PEN_ROOT not in toml_text
 
 
 @pytest.mark.unit
@@ -161,20 +175,15 @@ def test_supplementary_indicators_have_no_dangling_refs(metrics):
 
 
 @pytest.mark.unit
-def test_all_scalar_metric_units_supported(metrics):
-    bad = [
-        f'{m["name"]}:{m["unit"]}'
-        for m in metrics["metrics"]
-        if m["data_type"] != "Enum" and m["unit"] not in SUPPORTED_SCALAR_UNITS
-    ]
-    assert bad == []
-
-
-@pytest.mark.unit
 def test_policy_templates_reference_existing_metrics(metrics, policy):
     known = {m["name"] for m in metrics["metrics"]}
     bad = [t["metric_name"] for t in policy.get("templates", []) if t["metric_name"] not in known]
     assert bad == []
+
+
+@pytest.mark.unit
+def test_policy_has_no_brand_level_templates(policy):
+    assert policy["templates"] == []
 
 
 @pytest.mark.unit
@@ -209,5 +218,14 @@ def test_brand_match_present_in_common():
 
 @pytest.mark.unit
 def test_passwords_use_template_vars_not_plaintext(toml_text):
-    for field in ("auth_password", "priv_password"):
-        assert f'{field} = "{{{{ {field} }}}}"' in toml_text
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+
+
+@pytest.mark.unit
+def test_ui_password_fields_use_secret_env_names(ui):
+    field_names = {field["name"] for field in ui["form_fields"]}
+    assert "ENV_AUTH_PASSWORD" in field_names
+    assert "ENV_PRIV_PASSWORD" in field_names
+    assert "auth_password" not in field_names
+    assert "priv_password" not in field_names

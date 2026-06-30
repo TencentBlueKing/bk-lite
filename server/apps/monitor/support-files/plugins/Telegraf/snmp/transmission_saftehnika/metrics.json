@@ -2,7 +2,7 @@
   "collector": "Telegraf",
   "collect_type": "snmp_saftehnika",
   "plugin": "Transmission SAF Tehnika SNMP",
-  "plugin_desc": "Baseline SNMP collection template for SAF Tehnika microwave transmission devices (enterprise PEN 19011). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms SAF Tehnika public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private microwave health metrics such as radio signal, link state, temperature and optical/radio power are N/A and not faked. Applicable to SAF Tehnika microwave / packet radio transmission devices and other IF-MIB compliant transmission devices.",
+  "plugin_desc": "SAF Tehnika microwave transmission SNMP child template (enterprise PEN 19011). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free device-health gauges are confirmed for radio signal, link state, temperature, optical or radio power. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate traffic while this plugin provides the SAF Tehnika collect_type, UI and Telegraf child template. Supported brands/models — SAF Tehnika microwave and packet radio transmission devices.",
   "status_query": "any({instance_type='transmission', collect_type='snmp_saftehnika'}) by (instance_id)",
   "name": "Transmission",
   "icon": "mm-saftehnika_saftehnika",
@@ -12,85 +12,6 @@
   "instance_id_keys": [
     "instance_id"
   ],
-  "supplementary_indicators": [
-    "device_total_incoming_traffic",
-    "device_total_outgoing_traffic"
-  ],
-  "metrics": [
-    {
-      "metric_group": "Base",
-      "name": "snmp_uptime",
-      "query": "sum(snmp_uptime{instance_type='transmission', __$labels__}/100) by (instance_id)",
-      "display_name": "System Uptime",
-      "data_type": "Number",
-      "unit": "s",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the uptime of the device since the last restart. By monitoring uptime, network administrators can understand the stability and reliability of the SAF Tehnika transmission device and identify potential reboot or failure issues."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCInOctets",
-      "query": "rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])",
-      "display_name": "Interface Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "interface_ifHCOutOctets",
-      "query": "rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])",
-      "display_name": "Interface Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [
-        {
-          "name": "ifDescr",
-          "description": "ifDescr"
-        }
-      ],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable)."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "device_total_incoming_traffic",
-      "query": "sum(rate(interface_ifHCInOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
-      "display_name": "Device Total Incoming Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCInOctets counters."
-    },
-    {
-      "metric_group": "Traffic",
-      "name": "device_total_outgoing_traffic",
-      "query": "sum(rate(interface_ifHCOutOctets{instance_type='transmission', __$labels__}[5m])) by (instance_id)",
-      "display_name": "Device Total Outgoing Traffic Rate",
-      "data_type": "Number",
-      "unit": "byteps",
-      "dimensions": [],
-      "instance_id_keys": [
-        "instance_id"
-      ],
-      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, summed from the 64-bit IF-MIB ifHCOutOctets counters."
-    }
-  ]
+  "supplementary_indicators": [],
+  "metrics": []
 }
