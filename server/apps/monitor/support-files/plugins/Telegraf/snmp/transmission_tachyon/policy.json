@@ -1,0 +1,78 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Tachyon SNMP",
+  "templates": [
+    {
+      "name": "Tachyon传输设备CPU使用率过高",
+      "alert_name": "传输设备${resource_name} CPU 使用率过高",
+      "description": "监控 Tachyon TNA 300 系列传输设备的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在无线回传业务处理繁忙、控制平面压力或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Tachyon传输设备内存使用率过高",
+      "alert_name": "传输设备${resource_name} 内存使用率过高",
+      "description": "监控 Tachyon TNA 300 系列传输设备的内存使用率，当持续高于阈值时触发告警，提示可能存在控制面资源紧张或服务异常。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Tachyon传输设备CPU温度过高",
+      "alert_name": "传输设备${resource_name} CPU 温度过高",
+      "description": "监控 Tachyon TNA 300 系列传输设备的 CPU 温度，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

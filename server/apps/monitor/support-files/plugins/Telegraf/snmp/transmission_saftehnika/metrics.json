@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_saftehnika",
+  "plugin": "Transmission SAF Tehnika SNMP",
+  "plugin_desc": "SAF Tehnika microwave transmission SNMP child template (enterprise PEN 19011). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free device-health gauges are confirmed for radio signal, link state, temperature, optical or radio power. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate traffic while this plugin provides the SAF Tehnika collect_type, UI and Telegraf child template. Supported brands/models — SAF Tehnika microwave and packet radio transmission devices.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_saftehnika'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-saftehnika_saftehnika",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

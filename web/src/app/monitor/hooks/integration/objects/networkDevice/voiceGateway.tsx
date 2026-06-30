@@ -53,7 +53,8 @@ export const useVoiceGatewayConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'VoiceGateway AudioCodes SNMP': 'snmp_audiocodes'
+      'VoiceGateway AudioCodes SNMP': 'snmp_audiocodes',
+      'VoiceGateway Ribbon SNMP': 'snmp_ribbon'
     }
   };
 };
