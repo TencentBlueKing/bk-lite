@@ -67,6 +67,7 @@ export const useTransmissionConfig = () => {
       'Transmission Siklu SNMP': 'snmp_siklu',
       'Transmission Viavi SNMP': 'snmp_viavi',
       'Transmission Sycamore SNMP': 'snmp_sycamore',
+      'Transmission Ekinops SNMP': 'snmp_ekinops',
       'Transmission Infinera SNMP': 'snmp_infinera',
       'Transmission BridgeWave SNMP': 'snmp_bridgewave',
       'Transmission Exalt SNMP': 'snmp_exalt'

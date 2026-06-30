@@ -673,6 +673,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /siklu|etherhaul|multihaul/i, label: 'Siklu', icon: 'mm-siklu_siklu' },
   { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
   { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
+  { match: /ekinops/i, label: 'Ekinops', icon: 'mm-ekinops_ekinops' },
   { match: /infinera|coriant|groove/i, label: 'Infinera', icon: 'mm-infinera_infinera' },
   { match: /bridgewave|flexport|fe80/i, label: 'BridgeWave', icon: 'mm-bridgewave_bridgewave' },
   { match: /exalt|ex-i|exaltcom/i, label: 'Exalt', icon: 'mm-exalt_exalt' },
