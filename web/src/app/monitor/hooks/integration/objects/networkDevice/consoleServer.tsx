@@ -55,7 +55,8 @@ export const useConsoleServerConfig = () => {
     collectTypes: {
       'ConsoleServer Opengear SNMP': 'snmp_opengear',
       'ConsoleServer WTI SNMP': 'snmp_wti',
-      'ConsoleServer Avocent ACS SNMP': 'snmp_avocent'
+      'ConsoleServer Avocent ACS SNMP': 'snmp_avocent',
+      'ConsoleServer Perle IOLAN SNMP': 'snmp_perle'
     }
   };
 };

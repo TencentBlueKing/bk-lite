@@ -4030,6 +4030,9 @@ monitor_object_plugin:
   ConsoleServer Avocent ACS SNMP:
     name: Avocent ACS 控制台服务器（Telegraf）
     desc: Avocent ACS 控制台服务器 SNMP 基线子模板，适用于 Avocent 企业号 10418 下的设备。通用 ConsoleServer SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实仅确认 ACS 产品子树，未证明稳定共享 CPU、内存、温度、风扇、电源设备级健康标量，因此不提升私有对象为共享健康指标。
+  ConsoleServer Perle IOLAN SNMP:
+    name: Perle IOLAN 控制台服务器（Telegraf）
+    desc: Perle IOLAN 控制台服务器 SNMP 基线子模板，适用于 Perle 控制台与串口服务器。通用 ConsoleServer SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前公开 MIB 事实仅确认官方 IOLAN MIB 包，未证明稳定共享 CPU、内存、温度、风扇、电源设备级健康标量，因此不提升私有对象为共享健康指标。
   NetworkService Infoblox SNMP:
     name: Infoblox (Telegraf)
     desc: Infoblox NIOS 网络服务设备专用 SNMP 采集模板。采 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）+ 运行时长（sysUpTime）。Infoblox NIOS 的 DNS/DHCP 服务统计、节点 CPU/内存为 per-row 索引表 / 服务计数带行级过滤（skip_values），inputs.snmp 不能行级过滤，故为 N/A。适用品牌型号——Infoblox NIOS 网络服务设备 (DNS/DHCP/IPAM 一体机，企业号 7779) 及其他 IF-MIB 标准网络服务设备。
