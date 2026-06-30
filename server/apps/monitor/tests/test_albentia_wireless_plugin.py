@@ -4,9 +4,11 @@ Albentia Systems WiMAX / AerDOCSIS devices (PEN 28087, ALBENTIA-AS-MIB)
 are wireless access / backhaul devices. The state source confirms private
 wireless telemetry exists, but this worktree does not carry the raw MIB body
 needed to pin exact row-filter-free OIDs for temperature, clients, RF power or
-radio distance. The plugin is therefore a conservative Wireless baseline:
-sysUpTime + 64-bit IF-MIB HC traffic + device_total_* roll-ups. Private health
-metrics stay N/A until the exact MIB objects are verified from source.
+radio distance. The plugin is therefore a zero-delta Wireless child:
+metrics.json declares no vendor-specific metrics, while the Telegraf child
+keeps sysUpTime and 64-bit IF-MIB HC collection for the shared Wireless SNMP
+floor. Private health metrics stay N/A until the exact MIB objects are
+verified from source.
 """
 import json
 from pathlib import Path
@@ -27,11 +29,35 @@ INSTANCE_TYPE = "wireless"
 PLUGIN_NAME = "Wireless Albentia SNMP"
 OBJECT_NAME = "Wireless"
 
-SUPPORTED_SCALAR_UNITS = {
-    "byteps", "bytes", "bitps", "counts", "cps", "percent", "celsius", "s", "short", "none",
+HEALTH_METRICS = (
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_memory_used",
+    "device_temperature_celsius",
+    "wireless_client_count",
+    "wireless_channel_utilization",
+    "wireless_signal_strength",
+    "device_fan_state",
+    "device_psu_state",
+)
+BASE_METRICS = {
+    "snmp_uptime",
+    "interface_ifAdminStatus",
+    "interface_ifOperStatus",
+    "interface_ifSpeed",
+    "interface_ifInErrors",
+    "interface_ifOutErrors",
+    "interface_ifInDiscards",
+    "interface_ifOutDiscards",
+    "interface_ifInUcastPkts",
+    "interface_ifOutUcastPkts",
+    "interface_ifInOctets",
+    "interface_ifOutOctets",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
 }
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
-TOTAL_METRICS = ("device_total_incoming_traffic", "device_total_outgoing_traffic")
 
 
 def _read_json(path):
@@ -103,47 +129,23 @@ def test_ui_is_pure_snmp_form(ui):
 
 
 @pytest.mark.unit
-def test_uptime_metric_present(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    assert "snmp_uptime" in by
-    assert by["snmp_uptime"]["unit"] == "s"
+def test_metrics_json_is_zero_delta_child(metrics):
+    assert metrics["metrics"] == []
+    assert metrics["supplementary_indicators"] == []
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        assert name in by
-        m = by[name]
-        assert m["unit"] == "byteps"
-        assert m["metric_group"] == "Traffic"
-        assert m["query"].startswith("rate(")
-
-
-@pytest.mark.unit
-def test_device_total_rollups_present(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in TOTAL_METRICS:
-        assert name in by
-        q = by[name]["query"].replace(" ", "")
-        assert q.startswith("sum(rate(") and "by(instance_id)" in q
+def test_metrics_json_does_not_redeclare_snmp_floor(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    leaked = sorted(names & BASE_METRICS)
+    assert leaked == [], f"SNMP floor metrics must stay in generic snmp/wireless only: {leaked}"
 
 
 @pytest.mark.unit
 def test_no_private_health_metrics_without_exact_oid_source(metrics):
     names = {m["name"] for m in metrics["metrics"]}
-    for absent in (
-        "device_cpu_usage",
-        "device_memory_usage",
-        "device_memory_used",
-        "device_temperature_celsius",
-        "wireless_client_count",
-        "wireless_channel_utilization",
-        "wireless_signal_strength",
-        "device_fan_state",
-        "device_psu_state",
-    ):
-        assert absent not in names, f"{absent} needs verified Albentia OID source -> N/A"
+    present = [h for h in HEALTH_METRICS if h in names]
+    assert present == [], f"Albentia private health metrics need verified OID source -> N/A: {present}"
 
 
 @pytest.mark.unit
@@ -166,20 +168,15 @@ def test_supplementary_indicators_have_no_dangling_refs(metrics):
 
 
 @pytest.mark.unit
-def test_all_scalar_metric_units_supported(metrics):
-    bad = [
-        f'{m["name"]}:{m["unit"]}'
-        for m in metrics["metrics"]
-        if m["data_type"] != "Enum" and m["unit"] not in SUPPORTED_SCALAR_UNITS
-    ]
-    assert bad == []
-
-
-@pytest.mark.unit
 def test_policy_templates_reference_existing_metrics(metrics, policy):
     known = {m["name"] for m in metrics["metrics"]}
     bad = [t["metric_name"] for t in policy.get("templates", []) if t["metric_name"] not in known]
     assert bad == []
+
+
+@pytest.mark.unit
+def test_policy_has_no_brand_level_templates(policy):
+    assert policy["templates"] == []
 
 
 @pytest.mark.unit
