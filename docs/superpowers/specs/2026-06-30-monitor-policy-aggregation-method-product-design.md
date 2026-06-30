@@ -2,297 +2,233 @@
 
 ## 1. 产品判断
 
-监控策略的“分组维度、汇聚周期、汇聚方法”应被设计成一个完整的阈值计算模型，而不是让用户直接选择 PromQL 函数。
-
-推荐产品心智：
+本次调整后，监控策略不再把“分组维度怎么合并”和“汇聚周期内怎么计算”混在同一个字段里，而是拆成两个明确配置：
 
 ```text
-先确定告警对象是谁：分组维度
-再确定看多长时间：汇聚周期
-最后确定如何得到判断值：汇聚方法
+先按分组维度确定告警对象
+再用分组聚合方式合并未入选维度的多条序列
+最后用汇聚方式在汇聚周期内计算阈值判断值
 ```
 
-本次设计建议将页面汇聚方法收敛为 6 个业务方法：
+页面字段建议为：
 
-- 平均值 `AVG`
-- 最大值 `MAX`
-- 最小值 `MIN`
-- 累计值 `SUM`
-- 有效数量 `COUNT`
-- 最近值 `LAST`
+| 字段 | 配置项 | 默认值 | 用户理解 |
+| --- | --- | --- | --- |
+| 分组维度 | 维度多选 | 指标模板推荐 | 最终按哪些对象分别判断和产生告警 |
+| 分组聚合方式 | `AVG/MAX/MIN/SUM` | `AVG` | 同一分组下多条序列先怎么合并 |
+| 汇聚周期 | 时间窗口 | 5 分钟 | 每次扫描向前观察多长时间 |
+| 汇聚方式 | `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME` | `AVG_OVER_TIME` | 窗口内如何得到最终判断值 |
 
-其中 `AVG/MAX/MIN/SUM/COUNT` 都应明确使用汇聚周期；`LAST` 作为状态类指标的特殊方法保留。
+这套模型比“只保留 AVG/MAX/MIN/SUM/COUNT/LAST 六个业务方法”更贴近产品最新结论：保留 over_time 方法作为窗口语义，同时新增分组聚合方式承接 by 前的聚合语义。
 
 ## 2. 背景与问题
 
-### 仓库事实
-
-当前后端查询生成在 `server/apps/monitor/tasks/utils/policy_methods.py` 中维护 `METHOD` 和 `build_policy_query`。
-
-当前页面方法列表在 `web/src/app/monitor/hooks/event.tsx` 中包含：
+当前旧方法列表同时包含：
 
 ```text
-SUM
-SUM_OVER_TIME
-MAX
-MAX_OVER_TIME
-MIN
-MIN_OVER_TIME
 AVG
-AVG_OVER_TIME
+MAX
+MIN
+SUM
 COUNT
+AVG_OVER_TIME
+MAX_OVER_TIME
+MIN_OVER_TIME
+SUM_OVER_TIME
 LAST_OVER_TIME
 ```
 
-当前策略预览已迁移到后端服务 `server/apps/monitor/services/policy_preview.py`，但仍依赖同一类聚合查询生成能力。
+存在的问题：
 
-策略模板来源包括：
-
-- 文件模板：`server/apps/monitor/support-files/plugins/**/policy.json`
-- 数据库模板：`PolicyTemplate.templates`
-
-### 当前问题
-
-1. `AVG/MAX/MIN/SUM` 可以按分组维度聚合，但最终更接近只取扫描点附近的瞬时结果，用户配置的汇聚周期没有稳定参与最终阈值判断。
-2. `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME` 带有时间窗口，但没有统一做到“先按分组维度聚合，再计算周期结果”。
-3. `COUNT` 更接近当前时刻序列数量，不适合表达“汇聚周期内仍有数据的有效序列数量”。
-4. `LAST_OVER_TIME` 对接口状态、服务状态、枚举状态有实际价值，但它是状态快照类方法，不应和数值趋势聚合混在同一类心智中。
-5. 页面暴露过多底层函数名，用户需要理解 PromQL 函数差异才能正确配置策略。
+1. `AVG/MAX/MIN/SUM` 能按分组维度聚合，但汇聚周期没有稳定参与最终阈值判断。
+2. `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME` 能表达时间窗口，但没有统一做到先按分组维度聚合。
+3. `COUNT` 更接近当前时刻序列数量，不适合表达周期窗口内的有效数量。
+4. `LAST_OVER_TIME` 对接口状态、服务状态、枚举状态有价值，应保留为状态类窗口方法。
+5. 当前 step 按周期生成时，如果 subquery 不显式指定 resolution，窗口函数可能只作用在极少采样点上，和“看一个周期”心智不一致。
 
 ## 3. 设计目标
 
-- 让用户按业务意图选择汇聚方法，而不是按底层函数名选择。
-- 让“分组维度、汇聚周期、汇聚方法”同时生效。
-- 策略预览与后台扫描使用同一查询生成逻辑。
-- 保留 `LAST` 以支持状态类指标。
-- 为旧策略实例与旧策略模板提供明确迁移规则。
-- 为指标模板提供推荐汇聚方法，降低新建策略误配概率。
+- 让“分组维度、分组聚合方式、汇聚周期、汇聚方式”同时生效。
+- 让策略预览与后台扫描使用同一套查询生成逻辑。
+- 保留 `LAST_OVER_TIME` 支持状态类指标。
+- 将 `COUNT` 迁移为 `COUNT_OVER_TIME` 语义。
+- 为旧策略实例和旧策略模板提供明确迁移规则。
+- step 根据汇聚周期自动计算，固定拆成 30 个计算点。
 
 ## 4. 非目标
 
-- 本设计不引入完整 PromQL 编辑器。
-- 本设计不要求用户手动配置 subquery resolution。
-- 本设计不改变阈值比较符、触发次数、恢复条件等策略生命周期逻辑。
-- 本设计不处理日志告警策略聚合逻辑。
+- 不引入完整 PromQL/MetricsQL 编辑器。
+- 不要求用户手动配置 subquery resolution。
+- 不改变阈值比较符、触发次数、恢复条件等策略生命周期逻辑。
+- 不处理日志告警策略聚合逻辑。
 
-## 5. 用户侧功能设计
+## 5. 页面功能设计
 
-### 5.1 字段心智
+### 5.1 字段说明
 
-页面应将聚合配置解释为：
+建议页面在现有“分组维度”下方新增“分组聚合方式”：
 
-| 字段 | 用户理解 | 示例 |
+| 字段 | 文案建议 |
+| --- | --- |
+| 分组维度 | 监控策略根据所选分组维度分析指标，未指定的维度数据将统一聚合处理。 |
+| 分组聚合方式 | 默认 AVG。用于决定同一分组下未入选维度的多条序列如何先合并。 |
+| 汇聚周期 | 汇聚周期是观察窗口，step 根据汇聚周期自动计算为 30 个计算点。 |
+| 汇聚方式 | 默认 AVG_OVER_TIME。用于决定观察窗口内如何得到最终阈值判断值。 |
+
+### 5.2 分组聚合方式
+
+| 配置值 | 语义 | 适用场景 |
 | --- | --- | --- |
-| 分组维度 | 最终按哪些对象分别判断和产生告警 | `instance_id`、`interface` |
-| 汇聚周期 | 每次扫描向前查看多长时间的数据 | 5 分钟 |
-| 汇聚方法 | 在这个时间窗口里如何算出阈值判断值 | 最大值、平均值、最近值 |
+| `AVG` | 同一分组下多条序列先求平均 | 使用率、延迟、负载等整体水平 |
+| `MAX` | 同一分组下多条序列先取最大 | 磁盘、队列、错误率等保留最危险子序列 |
+| `MIN` | 同一分组下多条序列先取最小 | 可用率、健康分、剩余容量等低值风险 |
+| `SUM` | 同一分组下多条序列先求和 | 数量、容量、增量、清单统计 |
 
-建议文案：
+默认值：`AVG`。
 
-```text
-分组维度决定哪些对象会被独立判断并产生告警。
-汇聚周期是观察窗口，不是策略扫描频率。
-汇聚方法决定窗口内如何计算阈值判断值。
-```
+### 5.3 汇聚方式
 
-### 5.2 页面方法列表
-
-页面展示 6 个方法：
-
-| 展示名称 | 标签 | 适用场景 |
+| 配置值 | 语义 | 适用场景 |
 | --- | --- | --- |
-| 平均值 | `AVG` | 使用率、延迟、负载等整体水平 |
-| 最大值 | `MAX` | 磁盘使用率、队列堆积、错误率、连接数等峰值风险 |
-| 最小值 | `MIN` | 可用率、健康分、剩余容量、最小副本数等低值风险 |
-| 累计值 | `SUM` | 每周期增量、周期内新增数量 |
-| 有效数量 | `COUNT` | 接口数、磁盘数、进程数、有效序列数量 |
-| 最近值 | `LAST` | 接口 up/down、服务状态、枚举状态、开关状态 |
+| `AVG_OVER_TIME` | 窗口内求平均 | 周期内整体水平 |
+| `MAX_OVER_TIME` | 窗口内取最大 | 周期内峰值风险 |
+| `MIN_OVER_TIME` | 窗口内取最小 | 周期内最低健康值 |
+| `SUM_OVER_TIME` | 窗口内累加 | 每个采样点是增量时统计周期总量 |
+| `COUNT_OVER_TIME` | 窗口内统计有效数量 | 清单、接口数、磁盘数、有效序列/有效点 |
+| `LAST_OVER_TIME` | 窗口内取最近有效值 | 状态、枚举、up/down、开关 |
 
-页面不再展示：
+默认值：`AVG_OVER_TIME`。
 
-```text
-AVG_OVER_TIME
-MAX_OVER_TIME
-MIN_OVER_TIME
-SUM_OVER_TIME
-```
+## 6. 底层查询语义
 
-### 5.3 方法提示
+### 6.1 通用结构
 
-`SUM` 需要提示：
-
-```text
-累计值适合每个采样点本身就是增量的指标。
-对于 CPU 使用率、内存使用率、磁盘使用率等瞬时值指标，累计值通常不适合，因为结果会受采样频率影响。
-```
-
-`LAST` 需要提示：
-
-```text
-最近值适合状态、枚举、开关类指标。
-如果同一分组下存在多条状态序列，请把能区分状态对象的维度加入分组。
-例如接口状态通常应按 instance_id + interface 分组。
-```
-
-## 6. 底层语义设计
-
-### 6.1 数值趋势类
-
-数值类方法统一为“先按分组维度聚合，再按汇聚周期计算”。
-
-`AVG`：
+数值趋势类统一为：
 
 ```promql
-avg_over_time((avg(metric) by (group_by))[period:resolution])
+<window_method>((<group_method>(metric) by (group_by))[period:step])
 ```
 
-`MAX`：
+其中：
+
+- `group_method` 来自分组聚合方式：`avg/max/min/sum`
+- `window_method` 来自汇聚方式：`avg_over_time/max_over_time/min_over_time/sum_over_time/count_over_time/last_over_time`
+- `period` 来自汇聚周期
+- `step = period / 30`
+
+step 示例：
+
+| 汇聚周期 | step | 说明 |
+| --- | --- | --- |
+| `5m` | `10s` | 300 秒 / 30 |
+| `10m` | `20s` | 600 秒 / 30 |
+| `30m` | `1m` | 1800 秒 / 30 |
+
+### 6.2 常用示例
+
+双 AVG：
 
 ```promql
-max_over_time((max(metric) by (group_by))[period:resolution])
+avg_over_time((avg(metric) by (instance_id))[5m:10s])
 ```
 
-`MIN`：
+双 MAX：
 
 ```promql
-min_over_time((min(metric) by (group_by))[period:resolution])
+max_over_time((max(metric) by (instance_id))[5m:10s])
 ```
 
-`SUM`：
+双 MIN：
 
 ```promql
-sum_over_time((sum(metric) by (group_by))[period:resolution])
+min_over_time((min(metric) by (instance_id))[5m:10s])
 ```
 
-示例：
+双 SUM：
 
 ```promql
-avg_over_time((avg(disk_used_percent) by (instance_id))[5m:1m])
+sum_over_time((sum(metric) by (service))[5m:10s])
 ```
 
-该查询表示：
+COUNT_OVER_TIME：
+
+```promql
+count_over_time((sum(metric) by (instance_id))[5m:10s])
+```
+
+LAST_OVER_TIME：
+
+```promql
+last_over_time((avg(metric) by (instance_id, interface))[5m:10s])
+```
+
+### 6.3 场景解释
+
+磁盘使用率按 `instance_id` 分组、分组聚合方式 `AVG`、汇聚方式 `AVG_OVER_TIME`：
+
+```promql
+avg_over_time((avg(disk_used_percent) by (instance_id))[5m:10s])
+```
+
+表示：
 
 1. 每个采样点先按 `instance_id` 聚合同一实例下的磁盘序列。
-2. 再取最近 5 分钟内多个实例级采样点。
-3. 最后计算平均值作为阈值判断值。
+2. 汇聚周期内用 30 个计算点观察实例级序列。
+3. 最后计算最近 5 分钟平均值作为阈值判断值。
 
-### 6.2 有效数量
-
-`COUNT` 表示“汇聚周期内仍有数据的有效序列数量”：
+接口状态按 `instance_id + interface` 分组、分组聚合方式 `AVG`、汇聚方式 `LAST_OVER_TIME`：
 
 ```promql
-count(last_over_time(metric[period])) by (group_by)
+last_over_time((avg(interface_oper_status) by (instance_id, interface))[5m:10s])
 ```
 
-示例：
+如果一个设备有 10 个接口，且分组维度包含 `interface`，最近 5 分钟内 10 个接口都有数据，则最终会输出 10 条接口状态序列。
 
-```promql
-count(last_over_time(interface_info[5m])) by (instance_id)
-```
+## 7. 指标模板推荐
 
-该查询表示：统计每个实例最近 5 分钟内仍有数据的接口序列数量。
+策略模板或指标元数据应同时给出“分组聚合方式”和“汇聚方式”的推荐值。推荐不作为强制限制，只作为默认值和提示。
 
-### 6.3 最近值
+| 指标类型 | 推荐分组聚合方式 | 推荐汇聚方式 | 说明 |
+| --- | --- | --- | --- |
+| 使用率、延迟、负载 | `AVG` | `AVG_OVER_TIME` | 关注周期内整体水平 |
+| 容量风险、队列堆积、错误率 | `MAX` | `MAX_OVER_TIME` | 关注周期内峰值风险 |
+| 可用率、剩余容量、健康分 | `MIN` | `MIN_OVER_TIME` | 关注周期内最低点 |
+| 每周期增量、周期内新增量 | `SUM` | `SUM_OVER_TIME` | 关注周期总量 |
+| 序列存在性、接口/磁盘/进程数量 | `SUM` | `COUNT_OVER_TIME` | 关注窗口内有效数量 |
+| 状态、枚举、up/down、开关 | `AVG` | `LAST_OVER_TIME` | 关注最近有效状态，分组维度要保留状态对象 |
 
-`LAST` 保留状态快照语义：
-
-```promql
-any(last_over_time(metric[period])) by (group_by)
-```
-
-示例：
-
-```promql
-any(last_over_time(interface_oper_status[5m])) by (instance_id, interface)
-```
-
-该查询表示：每个接口输出最近 5 分钟内最后一次有效状态。
-
-如果一个设备有 10 个接口，按 `instance_id + interface` 分组，且 10 个接口最近 5 分钟都有数据，则会输出 10 条接口状态序列。
-
-### 6.4 Subquery resolution
-
-数值趋势类不建议生成裸 subquery：
-
-```promql
-[5m:]
-```
-
-原因：当前策略查询的外层 step 通常按汇聚周期生成。如果 subquery 不显式指定 resolution，可能退化为窗口内采样点过少，导致 `avg_over_time/max_over_time/min_over_time/sum_over_time` 没有真正覆盖周期内多点。
-
-建议底层生成：
-
-```promql
-[5m:1m]
-```
-
-或根据采集间隔和汇聚周期动态计算 resolution。第一阶段可采用保守默认值，例如 `1m`，后续再结合采集频率优化。
-
-## 7. 指标推荐方法
-
-策略模板或指标元数据可提供推荐汇聚方法。推荐不应作为强制限制，只作为默认值和提示。
-
-建议规则：
-
-| 指标类型 | 推荐方法 | 说明 |
-| --- | --- | --- |
-| 使用率、延迟、负载 | `AVG` | 关注周期内整体水平，减少单点抖动 |
-| 容量风险、队列堆积、错误率、连接数上限 | `MAX` | 关注周期内峰值风险 |
-| 可用率、剩余容量、健康分 | `MIN` | 关注周期内最低点 |
-| 每周期增量、周期内新增量 | `SUM` | 关注周期总量 |
-| 序列存在性、接口/磁盘/进程数量 | `COUNT` | 关注有效序列数量 |
-| 状态、枚举、up/down、开关 | `LAST` | 关注最近有效状态 |
-
-示例：
-
-- 磁盘使用率：默认 `MAX`，可选 `AVG`。
-- 接口状态：默认 `LAST`，建议分组 `instance_id + interface`。
-- 请求增量：默认 `SUM`。
-- 接口清单：默认 `COUNT`。
-
-## 8. 旧方法迁移规则
+## 8. 旧策略迁移规则
 
 ### 8.1 用户已创建策略
 
-需要迁移 `MonitorPolicy.algorithm`：
+旧策略需要迁移为两个字段：`group_aggregation_method` 和 `window_aggregation_method`。
 
-| 旧值 | 新值 | 说明 |
-| --- | --- | --- |
-| `avg_over_time` | `avg` | 以后由 `AVG` 的新周期语义承载 |
-| `max_over_time` | `max` | 以后由 `MAX` 的新周期语义承载 |
-| `min_over_time` | `min` | 以后由 `MIN` 的新周期语义承载 |
-| `sum_over_time` | `sum` | 以后由 `SUM` 的新周期语义承载 |
-| `last_over_time` | `last_over_time` | 保留，页面展示为 `LAST` |
-| `avg/max/min/sum/count` | 保持 | 底层语义升级为周期窗口计算 |
+| 旧方法 | 新分组聚合方式 | 新汇聚方式 | 说明 |
+| --- | --- | --- | --- |
+| `AVG` | `AVG` | `AVG_OVER_TIME` | 原 AVG、AVG_OVER_TIME 统一迁移为双 AVG |
+| `AVG_OVER_TIME` | `AVG` | `AVG_OVER_TIME` | 原 AVG、AVG_OVER_TIME 统一迁移为双 AVG |
+| `MAX` | `MAX` | `MAX_OVER_TIME` | 原 MAX、MAX_OVER_TIME 统一迁移为双 MAX |
+| `MAX_OVER_TIME` | `MAX` | `MAX_OVER_TIME` | 原 MAX、MAX_OVER_TIME 统一迁移为双 MAX |
+| `MIN` | `MIN` | `MIN_OVER_TIME` | 原 MIN、MIN_OVER_TIME 统一迁移为双 MIN |
+| `MIN_OVER_TIME` | `MIN` | `MIN_OVER_TIME` | 原 MIN、MIN_OVER_TIME 统一迁移为双 MIN |
+| `SUM` | `SUM` | `SUM_OVER_TIME` | 原 SUM、SUM_OVER_TIME 统一迁移为双 SUM |
+| `SUM_OVER_TIME` | `SUM` | `SUM_OVER_TIME` | 原 SUM、SUM_OVER_TIME 统一迁移为双 SUM |
+| `COUNT` | `SUM` | `COUNT_OVER_TIME` | COUNT 迁移为分组 SUM + 汇聚 COUNT_OVER_TIME |
+| `LAST_OVER_TIME` | `AVG` | `LAST_OVER_TIME` | LAST_OVER_TIME 迁移为分组 AVG + 汇聚 LAST_OVER_TIME |
 
 ### 8.2 监控策略模板
 
-需要同步处理：
+已有策略模板需要全部调整为新方案：
 
-- `server/apps/monitor/support-files/plugins/**/policy.json`
-- `PolicyTemplate.templates`
+- 模板字段补齐分组聚合方式，默认按迁移规则生成。
+- 模板字段补齐汇聚方式，旧 `algorithm` 按迁移规则转换。
+- 新模板不再只写单一 `algorithm` 表达双层语义。
+- 模板导入或初始化逻辑应做归一化保护，避免旧模板再次写入旧方法。
 
-模板中的迁移规则与策略实例一致：
+需要检查的模板来源：
 
-```text
-avg_over_time -> avg
-max_over_time -> max
-min_over_time -> min
-sum_over_time -> sum
-last_over_time -> last_over_time
-```
-
-新导入模板时也应做归一化保护，避免旧模板文件再次写入旧方法。
-
-### 8.3 API 兼容
-
-短期内后端可继续接受旧四类数值 `*_over_time`，但保存或执行前应归一化为新值。
-
-这样可以兼容：
-
-- 旧页面缓存
-- 外部 API 调用
-- 未及时更新的模板数据
+- 文件模板：`server/apps/monitor/support-files/plugins/**/policy.json`
+- 数据库模板：`PolicyTemplate.templates`
 
 ## 9. 前后端影响范围
 
@@ -300,10 +236,11 @@ last_over_time -> last_over_time
 
 需要调整：
 
-- 策略表单方法列表：`web/src/app/monitor/hooks/event.tsx`
-- 方法 tooltip 文案
-- 策略详情/编辑页旧值展示归一
-- 策略模板批量创建页的默认方法展示
+- 策略表单新增“分组聚合方式”。
+- 汇聚方式列表调整为 `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME`。
+- 默认值：分组聚合方式 `AVG`，汇聚方式 `AVG_OVER_TIME`。
+- 策略详情、编辑页、模板页展示两个字段。
+- 指标模板推荐值需要展示两个维度。
 
 Storybook 原型：
 
@@ -313,49 +250,47 @@ Storybook 原型：
 
 需要调整：
 
-- 聚合方法归一化函数
-- `server/apps/monitor/tasks/utils/policy_methods.py`
-- 策略扫描查询生成
-- 策略预览查询生成
-- `MonitorPolicySerializer` 的合法方法校验与保存归一
-- `PolicyTemplate.templates` 数据迁移或导入归一
-- `MonitorPolicy.algorithm` 数据迁移
+- 策略模型或配置结构新增分组聚合方式字段。
+- 聚合方法合法值校验拆成两组。
+- 策略扫描查询生成逻辑。
+- 策略预览查询生成逻辑。
+- `MonitorPolicy` 已有数据迁移。
+- `PolicyTemplate.templates` 数据迁移或导入归一。
+- 文件模板批量整改。
 
 ## 10. 验收标准
 
 ### 产品验收
 
-- 页面只展示 `AVG/MAX/MIN/SUM/COUNT/LAST` 六个方法。
-- 页面不再展示 `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME`。
+- 页面存在“分组聚合方式”，可选 `AVG/MAX/MIN/SUM`，默认 `AVG`。
+- 页面存在“汇聚方式”，可选 `AVG_OVER_TIME/MAX_OVER_TIME/MIN_OVER_TIME/SUM_OVER_TIME/COUNT_OVER_TIME/LAST_OVER_TIME`，默认 `AVG_OVER_TIME`。
 - 用户能从文案理解：
   - 分组维度决定告警对象。
+  - 分组聚合方式决定未入选维度如何先合并。
   - 汇聚周期是观察窗口。
-  - 汇聚方法决定窗口内如何得到阈值判断值。
-- `LAST` 明确定位为状态类方法。
-- `SUM` 对瞬时值指标有风险提示。
-- 指标模板可提供推荐汇聚方法。
+  - 汇聚方式决定窗口内如何得到阈值判断值。
+- step 根据汇聚周期自动计算为 30 个计算点。
+- 指标模板可同时推荐分组聚合方式和汇聚方式。
 
 ### 查询语义验收
 
-- `AVG` 生成先分组、再周期平均的查询。
-- `MAX` 生成先分组、再周期最大值的查询。
-- `MIN` 生成先分组、再周期最小值的查询。
-- `SUM` 生成先分组、再周期累计的查询。
-- `COUNT` 统计周期内仍有数据的有效序列数量。
-- `LAST` 保留周期内最近有效状态语义。
-- 数值趋势类查询显式带 subquery resolution。
+- `AVG + AVG_OVER_TIME` 生成先分组平均、再周期平均的查询。
+- `MAX + MAX_OVER_TIME` 生成先分组最大、再周期最大值的查询。
+- `MIN + MIN_OVER_TIME` 生成先分组最小、再周期最小值的查询。
+- `SUM + SUM_OVER_TIME` 生成先分组求和、再周期累计的查询。
+- `SUM + COUNT_OVER_TIME` 表达窗口内有效数量统计。
+- `AVG + LAST_OVER_TIME` 表达窗口内最近有效状态。
+- 所有窗口查询显式带 subquery step，且 step = period / 30。
 
 ### 迁移验收
 
-- 已创建策略中的旧四类数值 `*_over_time` 被迁移为新方法。
-- 已创建策略中的 `last_over_time` 保留。
-- 策略模板文件与数据库模板完成同样转换。
-- 新建或批量创建策略不会再写入旧四类数值 `*_over_time`。
+- 已创建策略按迁移表补齐两个字段。
+- 已有策略模板按迁移表补齐两个字段。
+- 策略预览和后台扫描生成完全一致的查询结构。
+- 新建策略不再只依赖旧单字段表达双层语义。
 
-## 11. 待产品确认点
+## 11. 实现确认点
 
-1. `SUM` 是否继续作为通用可选项展示，还是仅在增量类指标中推荐但仍允许用户手动选择。
-2. 数值趋势类 subquery resolution 第一阶段是否统一默认 `1m`，还是必须读取采集间隔动态生成。
-3. 指标推荐方法的数据来源：先写入策略模板，还是扩展指标元数据。
-4. `LAST` 页面展示名称使用“最近值 LAST”，还是继续使用“LAST_OVER_TIME”作为技术标签。
-
+1. `COUNT_OVER_TIME` 在 VictoriaMetrics/MetricsQL 中最终是否使用当前原型表达式，还是需要继续沿用 `count(last_over_time(metric[period])) by (group_by)` 的有效序列语义。
+2. `LAST_OVER_TIME` 是否使用 `last_over_time((avg(metric) by (...))[period:step])`，还是为了兼容旧状态语义继续使用 `any(last_over_time(metric[period])) by (...)`。
+3. 30 个计算点是否需要设置最小 step，例如低于采集间隔时按采集间隔兜底。

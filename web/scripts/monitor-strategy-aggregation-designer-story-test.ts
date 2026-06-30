@@ -23,28 +23,23 @@ const storySource = fs.readFileSync(storyPath, 'utf8');
   'InterfaceStatusLast',
   'DeltaCounterSum',
   'MethodComparison',
-  '平均值',
-  '最大值',
-  '最小值',
-  '累计值',
-  '有效数量',
-  '最近值',
-  'avg_over_time((avg(metric) by (group_by))[5m:1m])',
-  'count(last_over_time(metric[5m])) by (group_by)',
-  'any(last_over_time(metric[5m])) by (group_by)',
-  '汇聚周期是观察窗口',
-  'SUM 通常不适合瞬时值指标',
-].forEach((expected) => {
-  assert(storySource.includes(expected), `Story should include ${expected}`);
-});
-
-[
+  '分组聚合方式',
+  '汇聚方式',
   'AVG_OVER_TIME',
   'MAX_OVER_TIME',
   'MIN_OVER_TIME',
   'SUM_OVER_TIME',
-].forEach((legacyMethod) => {
-  assert(!storySource.includes(`label: '${legacyMethod}'`), `${legacyMethod} should not be a visible method label`);
+  'COUNT_OVER_TIME',
+  'LAST_OVER_TIME',
+  '默认：AVG',
+  '默认：AVG_OVER_TIME',
+  '30 个计算点',
+  'avg_over_time((avg(metric) by (group_by))[5m:10s])',
+  'count_over_time((sum(metric) by (group_by))[5m:10s])',
+  'last_over_time((avg(metric) by (group_by))[5m:10s])',
+  '汇聚周期是观察窗口',
+].forEach((expected) => {
+  assert(storySource.includes(expected), `Story should include ${expected}`);
 });
 
 console.log('monitor strategy aggregation designer story contract OK');
