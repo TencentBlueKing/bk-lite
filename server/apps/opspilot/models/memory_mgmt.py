@@ -155,6 +155,7 @@ class MemoryWriteCache(models.Model):
         db_index=True,
         verbose_name=_("状态"),
     )
+    processing_started_at = models.DateTimeField(null=True, blank=True, db_index=True, verbose_name=_("处理开始时间"))
     created_at = models.DateTimeField(auto_now_add=True, verbose_name=_("创建时间"), db_index=True)
 
     class Meta:

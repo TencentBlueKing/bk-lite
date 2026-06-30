@@ -339,13 +339,18 @@ def test_chatflow_engine_records_execution_summary_with_final_and_failed_nodes(m
     mocker.patch.object(ChatFlowEngine, "_parse_edges", return_value=[])
     mocker.patch.object(ChatFlowEngine, "_identify_entry_nodes", return_value=[])
     mocker.patch.object(ChatFlowEngine, "_build_topology", return_value=mocker.Mock())
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.filter")
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.create", return_value=task_result)
-    node_update = mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult.objects.filter")
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.filter")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
+        return_value=task_result,
+    )
+    node_update = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
+    )
 
-    from apps.opspilot.utils.chat_flow_utils.engine import engine as engine_module
+    from apps.opspilot.utils.chat_flow_utils.engine import execution_repository
 
-    engine_module.WorkFlowTaskResult.objects.filter.return_value.order_by.return_value.first.return_value = None
+    execution_repository.WorkFlowTaskResult.objects.filter.return_value.order_by.return_value.first.return_value = None
     node_update.return_value.update.return_value = 1
 
     engine = ChatFlowEngine(workflow, execution_id="exec-summary-1")
@@ -405,12 +410,14 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
     mocker.patch.object(ChatFlowEngine, "_parse_edges", return_value=[])
     mocker.patch.object(ChatFlowEngine, "_identify_entry_nodes", return_value=["node_collector"])
     mocker.patch.object(ChatFlowEngine, "_build_topology", return_value=mocker.Mock())
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.filter")
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.filter")
     mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.create",
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
         return_value=mocker.Mock(),
     )
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult.objects.filter")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
+    )
 
     engine = ChatFlowEngine(workflow, execution_id="exec-sse-params-1")
     evidence_package = '{"alert_id":"alert-001","ready_for_analysis":true}'
