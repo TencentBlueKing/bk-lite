@@ -3884,6 +3884,9 @@ monitor_object_plugin:
   Transmission SAF Tehnika SNMP:
     name: SAF Tehnika（Telegraf）
     desc: SAF Tehnika 微波传输设备 SNMP 采集基线模板（企业号 PEN 19011）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 SAF Tehnika 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此射频信号、链路状态、温度、光/射频功率等私有微波健康指标暂为 N/A，不伪造。适用品牌型号——SAF Tehnika 微波/分组无线传输设备及其他遵循 IF-MIB 标准的传输设备。
+  Transmission PacketLight SNMP:
+    name: PacketLight（Telegraf）
+    desc: PacketLight DWDM/OTN 光传输设备 SNMP 采集基线模板（企业号 PEN 4515）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。队列确认 PacketLight SL-NE-MIB/SL-SFP-MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此光链路、转发器、放大器、温度与光功率等私有光传输健康指标暂为 N/A，不伪造。适用品牌型号——PacketLight DWDM、OTN 与光传输设备及其他遵循 IF-MIB 标准的传输设备。
   Transmission Pan Dacom SNMP:
     name: Pan Dacom（Telegraf）
     desc: Pan Dacom 光传输/CWDM 设备 SNMP 采集基线模板（PAN-DACOM-MIB）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 Pan Dacom 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此链路状态、温度、光功率等私有光传输健康指标暂为 N/A，不伪造。适用品牌型号——Pan Dacom 光传输/CWDM 设备及其他遵循 IF-MIB 标准的传输设备。
