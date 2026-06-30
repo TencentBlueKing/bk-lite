@@ -175,6 +175,36 @@ monitor_object_metric:
     device_memory_usage:
       name: Memory Usage
       desc: System memory utilization of the network-service appliance, reported directly as a percentage. Sustained high memory may indicate map/flow-table pressure on the device.
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature reading of the network-service appliance in degrees Celsius. High values may indicate cooling or ambient-temperature risk.
+    network_service_dns_service_state:
+      name: DNS Service Status
+      desc: Operational state of the DNS service, normalized to 1=healthy and 2=fault.
+    network_service_dhcp_service_state:
+      name: DHCP Service Status
+      desc: Operational state of the DHCP service, normalized to 1=healthy and 2=fault.
+    network_service_ntp_service_state:
+      name: NTP Service Status
+      desc: Operational state of the NTP service, normalized to 1=healthy and 2=fault.
+    network_service_zwp_service_state:
+      name: ZWP Service Status
+      desc: Operational state of the ZWP service, normalized to 1=healthy and 2=fault.
+    network_service_tftp_service_state:
+      name: TFTP Service Status
+      desc: Operational state of the TFTP service, normalized to 1=healthy and 2=fault.
+    network_service_virtual_server_state:
+      name: Virtual Server Status
+      desc: Availability state of the virtual server, normalized to 1=healthy and 2=fault.
+    network_service_node_state:
+      name: Node Status
+      desc: Availability state of the service node, normalized to 1=healthy and 2=fault.
+    network_service_pool_state:
+      name: Pool Status
+      desc: Availability state of the service pool, normalized to 1=healthy and 2=fault.
+    network_service_pool_member_state:
+      name: Pool Member Status
+      desc: Availability state of the service pool member, normalized to 1=healthy and 2=fault.
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -4181,6 +4211,9 @@ monitor_object_plugin:
   NetworkService Accedian SNMP:
     name: Accedian (Telegraf)
     desc: Accedian metro-Ethernet performance-assurance SNMP collection (ACD-DESC-MIB, IANA PEN 22420). Beyond standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and system uptime (sysUpTime), it collects the Accedian private scalar OID for chassis CPU utilization (acdDescCpuUsageCurrent, reported directly as a percentage). Memory utilization has no scalar object in the device-description MIB and the only temperature reading is a per-SFP diagnostics table requiring row-level filtering that the SNMP input cannot normalize, so memory/temperature/fan/power are N/A. Supported brands/models — Accedian SkyLIGHT performance modules and MetroNID / Nano / Plus metro-Ethernet performance-assurance nodes (enterprise 22420).
+  NetworkService ZDNS SNMP:
+    name: ZDNS (Telegraf)
+    desc: ZDNS DNS/GSLB network-service SNMP collection using the local improved-snmp profile, ZDNS private PEN 39810 plus F5 BIG-IP LTM PEN 3375 objects. Beyond standard MIB-II / IF-MIB uptime and 64-bit HC interface traffic, it collects CPU utilization, memory utilization, CPU temperature, service status and LTM availability states, normalized to 1=healthy / 2=fault. Query success rate, cache hit rate, recursion count and disk usage are not promoted into shared device-health metrics.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
