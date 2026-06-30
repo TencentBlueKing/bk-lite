@@ -2,17 +2,30 @@
   "object": "Switch",
   "plugin": "Switch Netonix SNMP",
   "templates": [
-  {
-    "name": "Netonix交换机温度过高",
-    "alert_name": "交换机${resource_name} 温度过高",
-    "description": "监控 Netonix 交换机机箱温度，当超过阈值时触发告警，提示散热故障或风道堵塞，防止热保护停机。",
-    "metric_name": "device_temperature_celsius",
-    "algorithm": "last_over_time",
-    "threshold": [
-        { "level": "critical", "value": 70, "method": ">" },
-        { "level": "error", "value": 60, "method": ">" },
-        { "level": "warning", "value": 50, "method": ">" }
-    ]
-  }
+    {
+      "name": "Netonix交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 Netonix 交换机机箱温度，当超过阈值时触发告警，提示散热故障或风道堵塞，防止热保护停机。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
   ]
 }

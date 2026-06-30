@@ -24,7 +24,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Westermo交换机内存使用率过高",
@@ -48,7 +49,8 @@
           "value": 80,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Westermo交换机温度过高",
@@ -72,7 +74,8 @@
           "value": 55,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Westermo交换机电源异常",
@@ -86,7 +89,8 @@
           "value": 1,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }
