@@ -672,6 +672,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
   { match: /meinberg|lantime/i, label: 'Meinberg', icon: 'mm-meinberg_meinberg' },
   { match: /endace/i, label: 'Endace', icon: 'mm-endace_endace' },
+  { match: /deva\s*broadcast|\bdeva\b/i, label: 'DEVA Broadcast', icon: 'mm-deva_deva' },
   { match: /endrun|sonoma|tempus/i, label: 'EndRun', icon: 'mm-endrun_endrun' },
   { match: /spectracom|orolia|securesync|netclock/i, label: 'Spectracom', icon: 'mm-spectracom_spectracom' },
   { match: /gigamon|gigavue/i, label: 'Gigamon' },

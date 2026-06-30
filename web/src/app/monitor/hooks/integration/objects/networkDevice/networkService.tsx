@@ -60,6 +60,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService BlueCat SNMP': 'snmp_bluecat',
       'NetworkService Meinberg LANTIME SNMP': 'snmp_meinberg',
       'NetworkService Endace SNMP': 'snmp_endace',
+      'NetworkService DEVA Broadcast SNMP': 'snmp_deva',
       'NetworkService EndRun SNMP': 'snmp_endrun',
       'NetworkService Spectracom SNMP': 'snmp_spectracom'
     }
