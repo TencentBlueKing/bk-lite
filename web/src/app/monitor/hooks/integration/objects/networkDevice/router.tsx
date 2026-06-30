@@ -78,6 +78,7 @@ export const useRouterConfig = () => {
       'Router OneAccess SNMP': 'snmp_oneaccess',
       'Router Harbour SNMP': 'snmp_harbour',
       'Router Aethra SNMP': 'snmp_aethra',
+      'Router VeloCloud SNMP': 'snmp_velocloud',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }
