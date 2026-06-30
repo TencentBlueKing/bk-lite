@@ -11,6 +11,7 @@ import CloudTask from './components/cloudTask';
 import HostTask from './components/hostTask';
 import IPMITask from './components/ipmiTask';
 import ConfigFileTask from './components/configFileTask';
+import NetworkConfigFileTask from './components/networkConfigFileTask';
 import IpTask from './components/ipTask';
 import PluginCard from './components/pluginCard';
 import TaskDetail from './components/taskDetail';
@@ -605,6 +606,10 @@ const ProfessionalCollection: React.FC = () => {
 
     if (currentPlugin.id === 'physcial_server_ipmi') {
       return <IPMITask {...taskProps} />;
+    }
+
+    if (currentPlugin.model_id === 'network_config_file') {
+      return <NetworkConfigFileTask {...taskProps} />;
     }
 
     const taskTypeKey = currentPlugin.task_type || currentPlugin.type || actualCategory.id;
