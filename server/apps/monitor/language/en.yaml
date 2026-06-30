@@ -4202,6 +4202,9 @@ monitor_object_plugin:
   Transmission SAF Tehnika SNMP:
     name: SAF Tehnika (Telegraf)
     desc: Baseline SNMP collection template for SAF Tehnika microwave transmission devices (enterprise PEN 19011). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms SAF Tehnika public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private microwave health metrics such as radio signal, link state, temperature and optical/radio power are N/A and not faked. Applicable to SAF Tehnika microwave / packet radio transmission devices and other IF-MIB compliant transmission devices.
+  Transmission Pan Dacom SNMP:
+    name: Pan Dacom (Telegraf)
+    desc: Baseline SNMP collection template for Pan Dacom CWDM/optical transmission devices (PAN-DACOM-MIB). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms Pan Dacom public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private optical/CWDM health metrics such as link state, temperature and optical power are N/A and not faked. Applicable to Pan Dacom optical/CWDM transmission devices and other IF-MIB compliant transmission devices.
   Access BDCOM SNMP:
     name: Access BDCOM SNMP
     desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.

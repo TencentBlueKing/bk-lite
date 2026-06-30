@@ -3851,6 +3851,9 @@ monitor_object_plugin:
   Transmission SAF Tehnika SNMP:
     name: SAF Tehnika（Telegraf）
     desc: SAF Tehnika 微波传输设备 SNMP 采集基线模板（企业号 PEN 19011）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 SAF Tehnika 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此射频信号、链路状态、温度、光/射频功率等私有微波健康指标暂为 N/A，不伪造。适用品牌型号——SAF Tehnika 微波/分组无线传输设备及其他遵循 IF-MIB 标准的传输设备。
+  Transmission Pan Dacom SNMP:
+    name: Pan Dacom（Telegraf）
+    desc: Pan Dacom 光传输/CWDM 设备 SNMP 采集基线模板（PAN-DACOM-MIB）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。来源队列确认 Pan Dacom 公开 MIB 可用，但当前工作树缺少原始 MIB 正文，无法核对具体 OID 以及是否无需行级过滤；因此链路状态、温度、光功率等私有光传输健康指标暂为 N/A，不伪造。适用品牌型号——Pan Dacom 光传输/CWDM 设备及其他遵循 IF-MIB 标准的传输设备。
   Access BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM 接入设备专用 SNMP 采集模板。仅采集标准 IF-MIB 64 位 HC 接口流量（ifHCInOctets/ifHCOutOctets，ifXTable）与设备运行时长（sysUpTime），并据此汇总设备入向/出向总流量速率。BDCOM 接入设备（OLT/交换机）的光功率、PON 口、温度等健康指标因其 MIB 为 per-row 索引表并带行级过滤（skip_values），而 inputs.snmp 不支持行级过滤，故为 N/A。适用品牌型号——BDCOM 接入设备/OLT（GP/EP 系列，企业号 3320）及其他 IF-MIB 标准接入交换机/OLT。

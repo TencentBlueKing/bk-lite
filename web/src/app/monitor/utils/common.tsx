@@ -654,6 +654,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
   { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
   { match: /saf\s*tehnika|saftehnika|integra-[a-z0-9]+/i, label: 'SAF Tehnika', icon: 'mm-saftehnika_saftehnika' },
+  { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
   { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
   { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
   { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
