@@ -607,6 +607,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /waystream|asr[0-9]+|ftth/i, label: 'Waystream', icon: 'mm-waystream_waystream' },
   { match: /tsntec|8148sc/i, label: 'TsnTec', icon: 'mm-tsntec_tsntec' },
   { match: /antaira|aaxeon|\blmx\b/i, label: 'Antaira', icon: 'mm-antaira_antaira' },
+  { match: /asterfusion|asternos/i, label: 'AsterFusion', icon: 'mm-asterfusion_asterfusion' },
   { match: /wi-?tek|wireless-tek/i, label: 'Wi-Tek', icon: 'mm-witek_witek' },
   { match: /multitech|multiconnect|\brcell\b/i, label: 'MultiTech', icon: 'mm-multitech_multitech' },
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
