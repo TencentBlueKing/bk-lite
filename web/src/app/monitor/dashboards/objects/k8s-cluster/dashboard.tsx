@@ -59,6 +59,7 @@ import {
   coresDisplay,
   bytesDisplay
 } from './parse';
+import { resolveK8sCurrentInstanceOption } from './instance';
 import styles from './index.module.scss';
 
 interface InstanceOption {
@@ -177,7 +178,7 @@ export default function K8sClusterDashboardPage() {
     };
   }, [monitorObjectId]);
 
-  const currentOption = instanceOptions.find((o) => o.value === String(instanceId));
+  const currentOption = resolveK8sCurrentInstanceOption(instanceOptions, String(instanceId), idValues, resolvedInstanceName);
   const currentInstanceInterval = currentOption?.interval;
 
   // 数据加载:hero 先到,面板后到

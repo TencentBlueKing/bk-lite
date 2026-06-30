@@ -4,6 +4,7 @@ from apps.core.utils.loader import LanguageLoader
 from apps.monitor.constants.language import LanguageConstants
 from apps.monitor.constants.plugin import PluginConstants
 from apps.monitor.models import CollectConfig, MonitorObject, MonitorPlugin
+from apps.monitor.utils.dimension import labels_match_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 
 
@@ -82,8 +83,10 @@ class MonitorEffectivePluginService:
 
             for metric in response.get("data", {}).get("result", []):
                 labels = metric.get("metric", {})
-                metric_instance_id = str(tuple(labels.get(key) for key in instance_id_keys))
-                if metric_instance_id == instance_id:
+                # 全键精确匹配;若插件 status_query 只按主键 instance_id 分组(K8s 多键对象 Pod/Node
+                # 的 K8S 插件状态查询即 `... by (instance_id)`,标签里没有 pod/node),退化为按主键匹配
+                # —— 同集群下的派生 Pod/Node 视为上报该插件,否则其生效插件/全量指标会一律为空。
+                if labels_match_instance_id(labels, instance_id, instance_id_keys):
                     reported_plugin_ids.add(plugin.id)
                     break
         return reported_plugin_ids

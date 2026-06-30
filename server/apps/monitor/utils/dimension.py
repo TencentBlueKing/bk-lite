@@ -125,6 +125,32 @@ def parse_instance_id(instance_id: Any) -> tuple:
     return (instance_id,)
 
 
+def labels_match_instance_id(labels: dict, instance_id: Any, instance_id_keys: list[str]) -> bool:
+    """判断 VM 标签是否匹配实例 ID。
+
+    多维实例优先全键精确匹配；仅当上报标签缺少副维度时，才退化为首维 instance_id 匹配。
+    """
+    keys = [str(key) for key in (instance_id_keys or ["instance_id"]) if key not in (None, "")]
+    if not keys:
+        keys = ["instance_id"]
+
+    parsed = parse_instance_id(instance_id)
+    metric_instance_id = str(tuple(labels.get(key) for key in keys))
+    if metric_instance_id == str(parsed):
+        return True
+
+    if not parsed:
+        return False
+
+    primary_value = labels.get(keys[0])
+    if primary_value is None or str(primary_value) != str(parsed[0]):
+        return False
+
+    secondary_keys = keys[1:]
+    has_secondary_labels = any(labels.get(key) not in (None, "") for key in secondary_keys)
+    return not has_secondary_labels
+
+
 def normalize_instance_identity(instance_id: Any) -> dict:
     """统一解析实例ID，兼容原始值与遗留的tuple字符串格式。
 

@@ -4,6 +4,7 @@ import uuid
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_metrics import Metric
@@ -15,7 +16,7 @@ from apps.monitor.models.monitor_object import (
 )
 from apps.monitor.models.collect_config import CollectConfig
 from apps.monitor.models.plugin import MonitorPlugin
-from apps.monitor.utils.dimension import parse_instance_id
+from apps.monitor.utils.dimension import labels_match_instance_id, parse_instance_id
 from apps.monitor.utils.display_fields_metrics import (
     display_field_key,
     extract_metric_bindings,
@@ -240,6 +241,51 @@ class MonitorObjectService:
         ).values_list("monitor_instance_id", "monitor_plugin__name")
         for inst_id, plugin_name in cc_qs:
             instance_plugin_map.setdefault(inst_id, set()).add(plugin_name)
+
+        # 派生/上报型实例(如 K8s 集群/Pod/Node 经集群内采集器上报,但 bk-lite 侧无 CollectConfig)
+        # 也应纳入其「上报插件」的展示列取数;否则插件隔离会把它们一律判为 --。
+        # 与 effective_plugins 的 reported 逻辑一致:按对象各插件 status_query 反查上报实例,
+        # 以实例主键(instance_id)前缀匹配,使集群及其下 Pod/Node 都能命中所属插件。
+        #
+        # 门控:仅当存在未被 CollectConfig 覆盖的实例(即派生/上报型)时才反查。常规对象实例全有
+        # CollectConfig,反查纯属浪费——本函数在实例列表热路径被调用,Switch(65)/Firewall(28) 等
+        # 多插件对象若无条件反查会每次分页串行发数十次 VM status_query。
+        uncovered = [inst for inst in result if inst["instance_id"] not in instance_plugin_map]
+        if uncovered:
+            instance_id_keys = obj_metric_map.get("instance_id_keys")
+            if not instance_id_keys:
+                instance_id_keys = (
+                    MonitorObject.objects.filter(id=monitor_object_id)
+                    .values_list("instance_id_keys", flat=True)
+                    .first()
+                ) or ["instance_id"]
+            plugin_status_qs = (
+                MonitorPlugin.objects.filter(monitor_object=monitor_object_id)
+                .exclude(status_query="")
+                .values_list("name", "status_query")
+                .distinct()
+            )
+            for plugin_name, status_query in plugin_status_qs:
+                query = (status_query or "").strip()
+                if not query:
+                    continue
+                try:
+                    resp = VictoriaMetricsAPI().query(query)
+                except Exception:
+                    logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+                    continue
+                reported_labels = [
+                    metric.get("metric", {})
+                    for metric in resp.get("data", {}).get("result", [])
+                ]
+                if not reported_labels:
+                    continue
+                for inst in uncovered:
+                    if any(
+                        labels_match_instance_id(labels, inst["instance_id"], instance_id_keys)
+                        for labels in reported_labels
+                    ):
+                        instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
 
         # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
         metric_by_plugin = {}
