@@ -1,6 +1,6 @@
 # tech-debt-audit
 
-A Claude Code skill that produces a thorough, citable tech debt audit of your entire codebase — not a generic best-practices checklist.
+A Codex skill that produces a thorough, citable tech debt audit of your entire codebase — not a generic best-practices checklist.
 
 ```
 /tech-debt-audit
@@ -22,9 +22,9 @@ This skill is opinionated about avoiding that failure mode. Three design choices
 
 The skill also explicitly forbids recommending rewrites, forbids padding categories with filler, and produces a persistent artifact (`TECH_DEBT_AUDIT.md`) you can commit and track over time.
 
-## Why not the built-in Claude Code skills?
+## Why not the built-in agent skills?
 
-Claude Code ships several skills that touch this space. None of them do what a debt audit needs to do.
+Several generic skills touch this space. None of them do what a debt audit needs to do.
 
 | Built-in | What it does | Why it's not a debt audit |
 |----------|--------------|----------------------------|
@@ -46,17 +46,17 @@ What this skill adds:
 Personal install (available across all your projects):
 
 ```bash
-mkdir -p ~/.claude/skills/tech-debt-audit
+mkdir -p ~/.codex/skills/tech-debt-audit
 ```
 
 ```bash
-curl -o ~/.claude/skills/tech-debt-audit/SKILL.md https://raw.githubusercontent.com/ksimback/tech-debt-skill/main/SKILL.md
+curl -o ~/.codex/skills/tech-debt-audit/SKILL.md https://raw.githubusercontent.com/ksimback/tech-debt-skill/main/SKILL.md
 ```
 
 Project-only install (just this repo):
 
 ```bash
-mkdir -p .claude/skills/tech-debt-audit && curl -o .claude/skills/tech-debt-audit/SKILL.md https://raw.githubusercontent.com/ksimback/tech-debt-skill/main/SKILL.md
+mkdir -p .agents/skills/tech-debt-audit && curl -o .agents/skills/tech-debt-audit/SKILL.md https://raw.githubusercontent.com/ksimback/tech-debt-skill/main/SKILL.md
 ```
 
 Verify it's available:
@@ -67,7 +67,7 @@ claude --print "/skills" | grep tech-debt-audit
 
 ## Usage
 
-In Claude Code, in the repo you want audited:
+In Codex, in the repo you want audited:
 
 ```
 /tech-debt-audit
@@ -134,8 +134,8 @@ The skill is designed to be forked and adapted. Common modifications:
 
 - **Add domain-specific dimensions.** The nine in Phase 2 are a starting point. Frontend repos can add accessibility; ML repos can add eval drift; LLM apps can add prompt versioning and tool-call cost; infra can add IaC drift.
 - **Tune severity thresholds.** If your codebase has a higher baseline (e.g., god files defined as >800 LOC instead of >500), edit the dimension definitions directly.
-- **Override per project.** A `.claude/skills/tech-debt-audit/SKILL.md` in a specific repo overrides the global one. Useful when one project needs custom dimensions the others don't.
-- **Split into supporting files.** As `SKILL.md` grows, extract sections into sibling files (`severity-rubric.md`, `stack-tooling.md`) and reference them. Claude Code lazy-loads supporting files, keeping the main protocol tight.
+- **Override per project.** A `.agents/skills/tech-debt-audit/SKILL.md` in a specific repo overrides the global one. Useful when one project needs custom dimensions the others don't.
+- **Split into supporting files.** As `SKILL.md` grows, extract sections into sibling files (`severity-rubric.md`, `stack-tooling.md`) and reference them. Codex loads relevant supporting files on demand, keeping the main protocol tight.
 
 ## Limitations
 
@@ -163,7 +163,6 @@ MIT. Use it, fork it, ship it. Attribution appreciated but not required.
 
 ## Credits
 
-Built on the [Claude Code Agent Skills](https://code.claude.com/docs/en/skills) standard.
+Built on the Agent Skills pattern and adapted for Codex workspaces.
 
-Inspired by the experience of working with Claude Code on codebases that got really messy over time.
-
+Inspired by the experience of auditing codebases that got really messy over time.

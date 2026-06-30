@@ -6,7 +6,7 @@ disable-model-invocation: true
 
 # Tech Debt Audit
 
-A Claude Code skill that conducts a deliberate, opinionated audit of an entire codebase and produces `TECH_DEBT_AUDIT.md` with cited findings.
+A Codex skill that conducts a deliberate, opinionated audit of an entire codebase and produces `TECH_DEBT_AUDIT.md` with cited findings.
 
 When invoked via `/tech-debt-audit`, follow the protocol below. Everything from here through the `---` divider is the protocol Claude executes. The section after the divider is documentation for humans installing or maintaining this skill.
 
@@ -105,17 +105,17 @@ Everything below is for humans installing, using, or contributing to this skill.
 Personal install (available across all your projects):
 
 ```bash
-mkdir -p ~/.claude/skills/tech-debt-audit
+mkdir -p ~/.codex/skills/tech-debt-audit
 ```
 
 ```bash
-curl -o ~/.claude/skills/tech-debt-audit/SKILL.md https://raw.githubusercontent.com/ksimback/tech-debt-skill/main/SKILL.md
+curl -o ~/.codex/skills/tech-debt-audit/SKILL.md https://raw.githubusercontent.com/ksimback/tech-debt-skill/main/SKILL.md
 ```
 
 Or for a project-only install (just this repo):
 
 ```bash
-mkdir -p .claude/skills/tech-debt-audit && cp /path/to/SKILL.md .claude/skills/tech-debt-audit/SKILL.md
+mkdir -p .agents/skills/tech-debt-audit && cp /path/to/SKILL.md .agents/skills/tech-debt-audit/SKILL.md
 ```
 
 Verify it loaded:
@@ -126,7 +126,7 @@ echo "/skills" | claude
 
 ## Usage
 
-In Claude Code, in the repo you want audited:
+In Codex, in the repo you want audited:
 
 ```
 /tech-debt-audit
@@ -186,7 +186,7 @@ The system is a [...]
 
 ## Adaptation notes
 
-**Project-level overrides.** A `.claude/skills/tech-debt-audit/SKILL.md` in a specific repo overrides the global one. Useful when a project needs custom dimensions — e.g., an agent codebase might add "prompt injection surface area" or "tool-call cost per turn" as audit categories.
+**Project-level overrides.** A `.agents/skills/tech-debt-audit/SKILL.md` in a specific repo overrides the global one. Useful when a project needs custom dimensions, e.g. an agent codebase might add "prompt injection surface area" or "tool-call cost per turn" as audit categories.
 
 **Mid-audit course correction.** After Phase 1 completes, you can interrupt with: *"Before Phase 2, tell me what surprised you in Phase 1 and what you want to investigate that isn't in the dimensions list."* The best findings often come from things the prompt didn't anticipate. Worth doing on first run for any new codebase.
 
@@ -194,7 +194,7 @@ The system is a [...]
 
 **Adding categories.** The 9 dimensions in Phase 2 are a starting point. Add domain-specific ones for your stack — accessibility for frontend, IaC drift for infra, model evals for ML, prompt versioning for LLM apps.
 
-**Splitting into supporting files.** As this SKILL.md grows, you can extract sections into sibling files (`severity-rubric.md`, `stack-tooling.md`) and reference them from the protocol. Claude Code lazy-loads them only when needed.
+**Splitting into supporting files.** As this SKILL.md grows, you can extract sections into sibling files (`severity-rubric.md`, `stack-tooling.md`) and reference them from the protocol. Codex loads relevant supporting files on demand.
 
 ## Limitations
 
@@ -222,4 +222,4 @@ MIT. Use it, fork it, ship it. Attribution appreciated but not required.
 
 ## Credits
 
-Built on the Claude Code Agent Skills standard. Inspired by the experience of working with Claude Code on codebases that got really messy over time.
+Built on the Agent Skills pattern and adapted for Codex workspaces.

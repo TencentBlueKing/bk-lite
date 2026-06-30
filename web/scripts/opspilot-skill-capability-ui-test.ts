@@ -45,7 +45,7 @@ assert.doesNotMatch(toolPageSource, /新增技能包/, 'tool page should not exp
 assert.match(toolPageSource, /deleteSkillPackage/, 'tool page should support package deletion');
 assert.match(toolPageSource, /handleDeleteSkillAsset/, 'tool page should keep a delete action for skill packages');
 assert.doesNotMatch(toolPageSource, /updateSkillPackage|handleEditSkillAsset|editingSkillAsset|isAddSkillModalVisible|编辑技能包|保存修改/, 'tool page should not expose skill package editing for now');
-assert.match(toolPageSource, /必须包含 <code>SKILL\.md<\/code>[\s\S]*可选 <code>skill\.yaml<\/code>/, 'import UI should explain the Claude-style SKILL.md-first package format');
+assert.match(toolPageSource, /必须包含 <code>SKILL\.md<\/code>[\s\S]*可选 <code>skill\.yaml<\/code>/, 'import UI should explain the Codex skill package format');
 assert.doesNotMatch(toolPageSource, /loadToolSkillAssets|saveToolSkillAssets|buildSkillPromptAttachments/, 'tool page should not rely on browser-only mock skill storage');
 assert.doesNotMatch(toolPageSource, /审批|需审批/, 'skill package UI should not expose approval language');
 assert.match(toolPageSource, /assetView === 'builtin'[\s\S]*toolData\.filter\(\(tool\) => tool\.is_build_in\)/, 'built-in tab should show built-in tools');

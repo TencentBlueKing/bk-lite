@@ -12,7 +12,7 @@
 ## 2. 认证与会话
 
 - 自定义用户模型 `base.User`,多后端(Session / API Secret / 标准)。
-- Web → 后端经 `/api/proxy/core/api/login/`,统一由 `_set_auth_cookie_on_response()` 设置 `bklite_token` cookie(登录入口必须复用此辅助函数,见 [CLAUDE.md](CLAUDE.md) 学习项)。
+- Web → 后端经 `/api/proxy/core/api/login/`,统一由 `_set_auth_cookie_on_response()` 设置 `bklite_token` cookie(登录入口必须复用此辅助函数,见 [AGENTS.md](AGENTS.md) 与 `server/apps/core/views.py`)。
 - `bk_lite_login` 是内部函数,**不暴露为 URL 路由**。
 - 认证源 / SSO 经 NATS 接入,接口规范见 [docs/readme.md](docs/readme.md)。
 

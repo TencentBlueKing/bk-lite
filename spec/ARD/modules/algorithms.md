@@ -27,7 +27,7 @@
 - `serving/metrics.py`：Prometheus 指标（加载/预测/耗时）。
 - 端口 :3000（`make serving` → `bentoml serve ...`，BentoML 默认端口，Makefile 未显式绑定）。
 - **打包配置不一致**：仅 `classify_object_detection_server/bentofile.yaml` 存在，其余 5 个服务无 `bentofile.yaml`（均有 `pyproject.toml`）【已实现，技术债】。
-- 训练数据策略（见 `CLAUDE.md`）：传统 ML 合并 train+val 再训练；深度学习（图像/目标检测）保持 train/val 分离（YOLO 要求）。
+- 训练数据策略：传统 ML 合并 train+val 再训练；深度学习（图像/目标检测）保持 train/val 分离（YOLO 要求）。确认位置：`algorithms/classify_*_server/` 训练入口与各服务配置。
 
 ## 4. 集成关系【已实现/已存在 / 推断】
 - 后端 `apps/mlops` 通过 MLflow + AlgorithmConfig（Docker 镜像）管理训练；推理 serving_url 指向本服务【推断】。

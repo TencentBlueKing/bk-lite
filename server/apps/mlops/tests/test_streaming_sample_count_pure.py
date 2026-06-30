@@ -2,7 +2,7 @@
 纯函数测试：验证 count_csv_samples / count_txt_samples 流式实现的正确性。
 
 这些测试不依赖 Django ORM / settings，通过 importlib 直接加载被测模块，
-使用轻量 harness 注入最小依赖桩（参考 CLAUDE.md Phase 5.4 Django-free 模式）。
+使用轻量 harness 注入最小依赖桩，保持 Django-free 的纯函数测试模式。
 
 回归标准（revert-fail 准则）：
   - 将 count_csv_samples / count_txt_samples 改回接收 bytes 的旧实现，
