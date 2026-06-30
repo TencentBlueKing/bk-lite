@@ -55,7 +55,10 @@ export const useWirelessConfig = () => {
     collectTypes: {
       'Wireless Cambium SNMP': 'snmp_cambium',
       'Wireless Proxim SNMP': 'snmp_proxim',
-      'Wireless EnGenius SNMP': 'snmp_engenius'
+      'Wireless EnGenius SNMP': 'snmp_engenius',
+      'Wireless Aerohive SNMP': 'snmp_aerohive',
+      'Wireless Grandstream SNMP': 'snmp_grandstream',
+      'Wireless ASCOM SNMP': 'snmp_ascom'
     }
   };
 };

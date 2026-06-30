@@ -12,6 +12,7 @@ import inspect
 import json
 import sys
 import types
+from datetime import timedelta
 from types import SimpleNamespace
 
 # ---------------------------------------------------------------------------
@@ -31,6 +32,7 @@ sys.modules.setdefault("falkordb.asyncio", _falkordb_asyncio)
 from unittest.mock import MagicMock, patch  # noqa: E402
 
 import pytest  # noqa: E402
+from django.utils import timezone  # noqa: E402
 
 from apps.opspilot.models.memory_mgmt import Memory, MemorySpace, MemoryWriteCache  # noqa: E402
 from apps.opspilot.utils.chat_flow_utils.nodes.memory.memory_read import MemoryReadNode  # noqa: E402
@@ -1601,6 +1603,103 @@ class TestProcessMemoryWriteCacheBatching:
 
         mock_write.assert_called_once()
         assert MemoryWriteCache.objects.count() == 0
+
+    def test_flush_recovers_stale_legacy_processing_cache_without_timestamp(self, memory_space_team):
+        from apps.opspilot.tasks import MEMORY_WRITE_PROCESSING_TTL_SECONDS, flush_memory_write_cache_for_node
+
+        cache = MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="event-1",
+            status=MemoryWriteCache.STATUS_PROCESSING,
+        )
+        MemoryWriteCache.objects.filter(id=cache.id).update(
+            created_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1)
+        )
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                flush_memory_write_cache_for_node(
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    memory_space_id=memory_space_team.id,
+                    title="Flush Memory",
+                )
+
+        mock_write.assert_called_once()
+        assert MemoryWriteCache.objects.count() == 0
+
+    def test_flush_keeps_active_legacy_processing_cache_without_timestamp(self, memory_space_team):
+        from apps.opspilot.tasks import flush_memory_write_cache_for_node
+
+        MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="event-1",
+            status=MemoryWriteCache.STATUS_PROCESSING,
+        )
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                flush_memory_write_cache_for_node(
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    memory_space_id=memory_space_team.id,
+                    title="Flush Memory",
+                )
+
+        mock_write.assert_not_called()
+        assert MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PROCESSING).count() == 1
+
+    def test_flush_recovers_stale_processing_cache(self, memory_space_team):
+        from apps.opspilot.tasks import MEMORY_WRITE_PROCESSING_TTL_SECONDS, flush_memory_write_cache_for_node
+
+        MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="event-1",
+            status=MemoryWriteCache.STATUS_PROCESSING,
+            processing_started_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1),
+        )
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                flush_memory_write_cache_for_node(
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    memory_space_id=memory_space_team.id,
+                    title="Flush Memory",
+                )
+
+        mock_write.assert_called_once()
+        assert MemoryWriteCache.objects.count() == 0
+
+    def test_flush_keeps_active_processing_cache(self, memory_space_team):
+        from apps.opspilot.tasks import flush_memory_write_cache_for_node
+
+        MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="event-1",
+            status=MemoryWriteCache.STATUS_PROCESSING,
+            processing_started_at=timezone.now(),
+        )
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+                flush_memory_write_cache_for_node(
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    memory_space_id=memory_space_team.id,
+                    title="Flush Memory",
+                )
+
+        mock_write.assert_not_called()
+        assert MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PROCESSING).count() == 1
 
 
 @pytest.mark.django_db

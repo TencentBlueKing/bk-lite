@@ -2,10 +2,13 @@ import concurrent.futures
 import json
 import os
 import re
+from datetime import timedelta
 
 from celery import shared_task
 from django.core.exceptions import SynchronousOnlyOperation
 from django.db import close_old_connections, transaction
+from django.db.models import Q
+from django.utils import timezone
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from apps.core.logger import opspilot_logger as logger
@@ -21,6 +24,8 @@ from apps.opspilot.services.memory_write_buffer_service import (
 )
 from apps.opspilot.services.workflow_attachment_service import cleanup_expired_workflow_attachments
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+
+MEMORY_WRITE_PROCESSING_TTL_SECONDS = int(os.getenv("MEMORY_WRITE_PROCESSING_TTL_SECONDS", "1800"))
 
 
 def _run_in_native_thread(func, *args, **kwargs):
@@ -131,6 +136,15 @@ def _resolve_org_display_name(organization_id) -> str:
     return display
 
 
+def _recover_stale_memory_write_cache():
+    cutoff = timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS)
+    return (
+        MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PROCESSING)
+        .filter(Q(processing_started_at__lt=cutoff) | Q(processing_started_at__isnull=True, created_at__lt=cutoff))
+        .update(status=MemoryWriteCache.STATUS_PENDING, processing_started_at=None)
+    )
+
+
 def _flush_memory_write_cache_group(
     memory_space_id: int,
     title: str,
@@ -145,6 +159,7 @@ def _flush_memory_write_cache_group(
     normalized_batch_size = normalize_write_batch_size(batch_size)
 
     with transaction.atomic():
+        _recover_stale_memory_write_cache()
         queryset = (
             MemoryWriteCache.objects.select_for_update()
             .filter(
@@ -162,7 +177,10 @@ def _flush_memory_write_cache_group(
             return False
 
         cache_item_ids = [item.id for item in ready_items]
-        MemoryWriteCache.objects.filter(id__in=cache_item_ids).update(status=MemoryWriteCache.STATUS_PROCESSING)
+        MemoryWriteCache.objects.filter(id__in=cache_item_ids).update(
+            status=MemoryWriteCache.STATUS_PROCESSING,
+            processing_started_at=timezone.now(),
+        )
 
     try:
         cache_items = list(MemoryWriteCache.objects.filter(id__in=cache_item_ids).order_by("created_at", "id"))
@@ -178,21 +196,25 @@ def _flush_memory_write_cache_group(
         if organization_id is not None and not owner_username:
             owner_username = _resolve_org_display_name(organization_id)
 
-        process_memory_write(
-            memory_space_id=memory_space_id,
-            title=title,
-            content=summarized_content,
-            owner_username=owner_username,
-            owner_domain=owner_domain,
-            organization_id=organization_id,
-            model_id=model_id,
-            skip_write_rule=True,
-        )
-        MemoryWriteCache.objects.filter(id__in=cache_item_ids).delete()
+        with transaction.atomic():
+            process_memory_write(
+                memory_space_id=memory_space_id,
+                title=title,
+                content=summarized_content,
+                owner_username=owner_username,
+                owner_domain=owner_domain,
+                organization_id=organization_id,
+                model_id=model_id,
+                skip_write_rule=True,
+            )
+            MemoryWriteCache.objects.filter(id__in=cache_item_ids).delete()
         return True
     except Exception:
         if cache_item_ids:
-            MemoryWriteCache.objects.filter(id__in=cache_item_ids).update(status=MemoryWriteCache.STATUS_PENDING)
+            MemoryWriteCache.objects.filter(id__in=cache_item_ids).update(
+                status=MemoryWriteCache.STATUS_PENDING,
+                processing_started_at=None,
+            )
         raise
 
 
@@ -448,6 +470,7 @@ def process_memory_write_cache(
         close_old_connections()
 
         with transaction.atomic():
+            _recover_stale_memory_write_cache()
             MemoryWriteCache.objects.create(
                 workflow_id=workflow_id,
                 node_id=node_id,
@@ -500,6 +523,7 @@ def flush_memory_write_cache_for_node(
     model_id: int = None,
 ):
     close_old_connections()
+    _recover_stale_memory_write_cache()
     target_ids = list(
         MemoryWriteCache.objects.filter(
             workflow_id=workflow_id,
@@ -526,6 +550,7 @@ def flush_memory_write_cache_for_node(
 @shared_task
 def flush_all_pending_memory_write_cache():
     close_old_connections()
+    _recover_stale_memory_write_cache()
     pending_pairs = list(MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PENDING).values("workflow_id", "node_id").distinct())
     if not pending_pairs:
         return

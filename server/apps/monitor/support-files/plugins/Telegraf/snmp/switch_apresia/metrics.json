@@ -1,0 +1,110 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_apresia",
+  "plugin": "Switch APRESIA SNMP",
+  "plugin_desc": "APRESIA managed switch-specific SNMP collection for the APRESIA NP series (AEOS-NP platform, e.g. ApresiaNP3000/NP4000/NP7000, IANA PEN 278). In addition to standard IF-MIB interface metrics, it collects APRESIA-NP-HW private OIDs for device health — control-plane CPU utilization (npCpuUtilizationValue, the master device CPU usage as a 0-100 percentage), chassis temperature in degrees Celsius (npTemperatureCurrent, read directly with no scaling), per-fan status (npFanStatus) and per-power-supply status (npPowerStatus). The CPU utilization table carries three fixed rows for the same master CPU averaged over the past 5 seconds, 1 minute and 5 minutes; since telegraf inputs.snmp cannot filter rows, the metric is aggregated with max() per device to surface a representative reading. Fan and power-supply raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault (power-supply empty(3) means a slot is unpopulated and is treated as healthy), and the worst component is taken per device. The APRESIA-NP-HW private tree only exposes memory through npMemoryUtilizationFailureStatusCode, which is an OCTET STRING valid only when bound to a trap and not a pollable gauge, so memory utilization is not collected (N/A). Supported brands/models — APRESIA NP series (ApresiaNP2000/NP2100/NP2500/NP3000/NP4000/NP5000/NP7000) running the AEOS-NP firmware.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_apresia'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_temperature_celsius",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilization of the APRESIA device control plane (APRESIA-NP-HW npCpuUtilizationValue, the master device CPU), expressed as a percentage from 0 to 100. The npCpuUtilizationTable carries three fixed rows for the same master CPU averaged over the past 5 seconds, 1 minute and 5 minutes; because telegraf inputs.snmp cannot select a single row, the metric is aggregated with max() per device to surface a representative reading. Sustained high CPU usage can indicate control-plane overload, routing instability, or attack traffic, and may lead to slow management response or packet processing delays."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the APRESIA device (APRESIA-NP-HW npTemperatureCurrent). The object value is already in degrees Celsius and is read directly without scaling. The npTemperatureTable is indexed per unit and per sensor; the APRESIA NP4000 series carries one sensor per device, and the value is aggregated with max() per device so multi-sensor models surface the hottest reading. High temperatures can indicate cooling failure or airflow obstruction in the cabinet and risk thermal damage."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the fan health of the APRESIA device, derived from the per-fan status table (APRESIA-NP-HW npFanStatus, one row per fan). The raw codes (normal(1), abnormal(2)) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst fan is taken per device. A value greater than 1 indicates a failed fan that risks thermal damage and warrants investigation."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply health of the APRESIA device, derived from the per-power-supply status table (APRESIA-NP-HW npPowerStatus, one row per power supply). The raw codes (inOperation(1)=OK, failed(2)=fault, empty(3)=slot unpopulated) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, with empty(3) treated as healthy because an unpopulated slot is not a fault, and the worst supply is taken per device. A value greater than 1 indicates a failed power supply that warrants investigation."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    }
+  ]
+}

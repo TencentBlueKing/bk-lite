@@ -1,13 +1,14 @@
 'use client';
 
-import React, { useState, useEffect, useCallback } from 'react';
-import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message } from 'antd';
+import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import { Form, Input, Select, Switch, Button, InputNumber, Slider, Spin, message, Modal, Checkbox, Empty } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import useGroups from '@/app/opspilot/hooks/useGroups';
 import styles from './index.module.scss';
 import { useSearchParams } from 'next/navigation';
 import CustomChatSSE from '@/app/opspilot/components/custom-chat-sse';
 import PermissionWrapper from '@/components/permission';
+import { SkillPackage } from '@/app/opspilot/types/skill';
 import { SelectTool } from '@/app/opspilot/types/tool';
 import ToolSelector from '@/app/opspilot/components/skill/toolSelector';
 import EditablePasswordField from '@/components/dynamic-form/editPasswordField';
@@ -16,15 +17,21 @@ import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { useSkill } from '@/app/opspilot/context/skillContext';
 import { getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
+import { DeleteOutlined } from '@ant-design/icons';
+import Icon from '@/components/icon';
 
 const { Option } = Select;
 const { TextArea } = Input;
+
+const getPackageKey = (pkg: SkillPackage) => String(pkg.id || `${pkg.package_id}:${pkg.version}`);
+
+const getPackageRequiredTools = (pkg: SkillPackage) => pkg.required_tools || [];
 
 const SkillSettingsPage: React.FC = () => {
   const [form] = Form.useForm();
   const { groups, loading: groupsLoading } = useGroups();
   const { t } = useTranslation();
-  const { fetchSkillDetail, fetchLlmModels, saveSkillDetail } = useSkillApi();
+  const { fetchSkillDetail, fetchLlmModels, fetchSkillPackages, saveSkillDetail } = useSkillApi();
   const { fetchKnowledgeBases } = useWikiApi();
   const { refreshSkillInfo } = useSkill();
   const searchParams = useSearchParams();
@@ -48,6 +55,11 @@ const SkillSettingsPage: React.FC = () => {
   const [guideValue, setGuideValue] = useState<string>('');
   const [hasInvalidParamKeys, setHasInvalidParamKeys] = useState(false);
   const [wikiKbs, setWikiKbs] = useState<WikiKnowledgeBase[]>([]);
+  const [availableSkillAssets, setAvailableSkillAssets] = useState<SkillPackage[]>([]);
+  const [selectedSkillAssetKeys, setSelectedSkillAssetKeys] = useState<string[]>([]);
+  const [isSkillPickerOpen, setIsSkillPickerOpen] = useState(false);
+  const [skillPickerKeyword, setSkillPickerKeyword] = useState('');
+  const [draftSkillAssetKeys, setDraftSkillAssetKeys] = useState<string[]>([]);
 
   const syncSkillParamsFromPrompt = useCallback((promptText: string) => {
     const validRegex = /\{\{([a-zA-Z][a-zA-Z0-9_]*)\}\}/g;
@@ -103,6 +115,7 @@ const SkillSettingsPage: React.FC = () => {
 
         setSelectedTools(data.tools as SelectTool[]);
         setToolEnabled(!!data.tools.length);
+        setSelectedSkillAssetKeys((data.skill_packages || []).map((pkg: SkillPackage) => getPackageKey(pkg)));
 
         setSkillType(data.skill_type);
         setSkillPermissions(data.permissions || []);
@@ -116,8 +129,12 @@ const SkillSettingsPage: React.FC = () => {
     const fetchInitialData = async () => {
       if (!id) return;
       try {
-        const llmModelsData = await fetchLlmModels();
+        const [llmModelsData, skillPackageData] = await Promise.all([
+          fetchLlmModels(),
+          fetchSkillPackages({ is_enabled: 1 }),
+        ]);
         setLlmModels(llmModelsData as { id: number; name: string; enabled: boolean; llm_model_type: string; vendor_name?: string; }[]);
+        setAvailableSkillAssets(skillPackageData.items || []);
         fetchKnowledgeBases()
           .then(setWikiKbs)
           .catch(() => undefined);
@@ -162,6 +179,16 @@ const SkillSettingsPage: React.FC = () => {
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
         wiki_knowledge_bases: values.wiki_knowledge_bases || [],
+        skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
+          id: pkg.id,
+          package_id: pkg.package_id,
+          name: pkg.name,
+          version: pkg.version,
+          description: pkg.description,
+          category: pkg.category,
+          required_tools: pkg.required_tools || [],
+          triggers: pkg.triggers || [],
+        })),
       };
       setSaveLoading(true);
       await saveSkillDetail(id, payload);
@@ -237,6 +264,16 @@ const SkillSettingsPage: React.FC = () => {
         enable_suggest: values.enable_suggest,
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
+        skill_packages: effectiveSkillCapabilityProfiles.map((pkg) => ({
+          id: pkg.id,
+          package_id: pkg.package_id,
+          name: pkg.name,
+          version: pkg.version,
+          description: pkg.description,
+          category: pkg.category,
+          required_tools: pkg.required_tools || [],
+          triggers: pkg.triggers || [],
+        })),
       };
 
       return {
@@ -274,8 +311,147 @@ const SkillSettingsPage: React.FC = () => {
     !checked && setSelectedTools([])
   }
 
+  const effectiveSkillCapabilityProfiles = useMemo(() => {
+    return selectedSkillAssetKeys
+      .map((key) => availableSkillAssets.find((pkg) => getPackageKey(pkg) === key))
+      .filter((asset): asset is SkillPackage => !!asset);
+  }, [availableSkillAssets, selectedSkillAssetKeys]);
+  const filteredAvailableSkillAssets = useMemo(() => {
+    const keyword = skillPickerKeyword.trim().toLowerCase();
+    if (!keyword) return availableSkillAssets;
+
+    return availableSkillAssets.filter((asset) => [
+      asset.name,
+      asset.category,
+      asset.description,
+      asset.package_id,
+      ...(asset.triggers || []),
+      ...getPackageRequiredTools(asset),
+    ].join(' ').toLowerCase().includes(keyword));
+  }, [availableSkillAssets, skillPickerKeyword]);
+
+  const openSkillPicker = () => {
+    setDraftSkillAssetKeys(selectedSkillAssetKeys);
+    setSkillPickerKeyword('');
+    setIsSkillPickerOpen(true);
+  };
+
+  const handleConfirmSkillPicker = () => {
+    setSelectedSkillAssetKeys(draftSkillAssetKeys);
+    setIsSkillPickerOpen(false);
+  };
+
+  const handleRemoveSkillAsset = (assetKey: string) => {
+    setSelectedSkillAssetKeys((prev) => prev.filter((key) => key !== assetKey));
+  };
+
+  const toggleDraftSkillAsset = (assetKey: string, checked: boolean) => {
+    setDraftSkillAssetKeys((prev) => {
+      if (checked) {
+        return Array.from(new Set([...prev, assetKey]));
+      }
+      return prev.filter((key) => key !== assetKey);
+    });
+  };
+
+  const renderSkillPackageSelector = () => (
+    <div className={`p-4 rounded-md pb-4 ${styles.contentWrapper}`}>
+      <div className="flex justify-between">
+        <h3 className="font-medium text-sm mb-4">技能包</h3>
+        <Button onClick={openSkillPicker}>+ 添加</Button>
+      </div>
+      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+        {effectiveSkillCapabilityProfiles.length === 0 ? (
+          <span className="col-span-full text-xs text-[var(--color-text-4)]">未选择</span>
+        ) : (
+          effectiveSkillCapabilityProfiles.map((asset) => {
+            const assetKey = getPackageKey(asset);
+            return (
+              <div
+                key={assetKey}
+                className="flex w-full items-center justify-between rounded-md border border-[var(--color-border)] bg-[var(--color-bg-1)] px-4 py-2"
+              >
+                <div className="flex min-w-0 items-center">
+                  <Icon type="jinengpeixun" className="mr-1 shrink-0 text-xl" />
+                  <span className="truncate text-sm font-medium text-[var(--color-text-1)]">{asset.name}</span>
+                </div>
+                <DeleteOutlined
+                  className="ml-3 cursor-pointer text-[var(--color-text-3)] transition-colors hover:text-[var(--color-primary)]"
+                  onClick={() => handleRemoveSkillAsset(assetKey)}
+                />
+              </div>
+            );
+          })
+        )}
+      </div>
+    </div>
+  );
+
+  const renderSkillPickerModal = () => (
+    <Modal
+      title="选择技能包"
+      open={isSkillPickerOpen}
+      onOk={handleConfirmSkillPicker}
+      onCancel={() => setIsSkillPickerOpen(false)}
+      okText="确认选择"
+      cancelText="取消"
+      width={640}
+    >
+      <Input.Search
+        allowClear
+        className="mb-3"
+        placeholder="搜索技能包"
+        value={skillPickerKeyword}
+        onChange={(event) => setSkillPickerKeyword(event.target.value)}
+      />
+      <div className="grid max-h-[420px] grid-cols-1 gap-3 overflow-y-auto pr-1 lg:grid-cols-2">
+        {filteredAvailableSkillAssets.length === 0 ? (
+          <div className="col-span-full">
+            <Empty description="没有匹配的技能包" />
+          </div>
+        ) : (
+          filteredAvailableSkillAssets.map((asset) => {
+            const assetKey = getPackageKey(asset);
+            const checked = draftSkillAssetKeys.includes(assetKey);
+            return (
+              <label
+                key={assetKey}
+                className={`block min-h-[132px] cursor-pointer rounded-lg border p-4 transition ${
+                  checked
+                    ? 'border-[var(--color-primary)] bg-[var(--color-primary-bg)]'
+                    : 'border-[var(--color-border)] bg-[var(--color-bg-1)] hover:border-[var(--color-primary-border)]'
+                }`}
+              >
+                <div className="flex h-full items-start gap-3">
+                  <Checkbox
+                    checked={checked}
+                    className="mt-0.5"
+                    onChange={(event) => toggleDraftSkillAsset(assetKey, event.target.checked)}
+                  />
+                  <Icon type="jinengpeixun" className="shrink-0 text-4xl" />
+                  <div className="flex min-w-0 flex-1 flex-col">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <div className="truncate font-medium text-[var(--color-text-1)]">{asset.name}</div>
+                    </div>
+                    <p className="mt-2 line-clamp-2 min-h-10 text-xs leading-5 text-[var(--color-text-3)]">
+                      {asset.description || '暂无描述'}
+                    </p>
+                    {asset.category && (
+                      <div className="mt-auto pt-2 text-xs text-[var(--color-text-4)]">{asset.category}</div>
+                    )}
+                  </div>
+                </div>
+              </label>
+            );
+          })
+        )}
+      </div>
+    </Modal>
+  );
+
   return (
     <div className="relative">
+      {renderSkillPickerModal()}
       {allLoading && (
         <div className="absolute inset-0 min-h-[500px] bg-opacity-50 z-50 flex items-center justify-center">
           <Spin spinning={allLoading} />
@@ -504,6 +680,9 @@ const SkillSettingsPage: React.FC = () => {
                     )}
                   </Form>
                 </div>
+                {skillType !== 2 && (
+                  renderSkillPackageSelector()
+                )}
                 {skillType !== 2 && (
                   <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
                     <Form labelCol={{flex: '0 0 135px'}} wrapperCol={{flex: '1'}}>
