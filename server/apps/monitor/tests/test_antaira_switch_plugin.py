@@ -203,14 +203,19 @@ def test_frontend_collecttype_wired_to_switch_object():
     )
     text = switch_tsx.read_text(encoding="utf-8")
     assert f"'{PLUGIN_NAME}': '{COLLECT_TYPE}'" in text
+    assert text.count(f"'{PLUGIN_NAME}':") == 1
+    assert text.count(f"'{COLLECT_TYPE}'") == 1
 
 
 @pytest.mark.unit
-def test_brand_match_and_icon_present_in_common():
+def test_brand_match_and_icon_present_once_in_common():
     common = WEB_ROOT / "src" / "app" / "monitor" / "utils" / "common.tsx"
     text = common.read_text(encoding="utf-8")
-    assert BRAND in text
+    assert "label: 'Antaira'" in text
     assert "mm-antaira_antaira" in text
+    assert text.count("label: 'Antaira'") == 1
+    assert text.count("mm-antaira_antaira") == 1
+    assert "antaira|switch" not in text.lower()
     assert (WEB_ROOT / "public" / "assets" / "icons" / "mm-antaira_antaira.svg").exists()
 
 
