@@ -2,6 +2,11 @@ import pytest
 
 from apps.monitor.models import CollectDetectTask, MonitorObject, MonitorPlugin
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.collect_detect_runtime import (
+    build_telegraf_once_command,
+    render_preflight_telegraf_config,
+    sanitize_execution_result,
+)
 
 
 @pytest.mark.django_db
@@ -59,3 +64,54 @@ def test_collect_detect_task_stores_sanitized_execution_message():
     assert task.status == "failed"
     assert task.phase == "execute_once"
     assert task.result["stderr"] == "authentication failed"
+
+
+def test_render_preflight_telegraf_config_replaces_real_outputs():
+    template = """
+[[inputs.mysql]]
+  servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/"]
+
+[[outputs.http]]
+  url = "https://example.com/write"
+"""
+
+    rendered = render_preflight_telegraf_config(
+        template,
+        {
+            "config_id": "detect-1",
+            "username": "root",
+            "host": "127.0.0.1",
+            "port": 3306,
+        },
+    )
+
+    assert "[[inputs.mysql]]" in rendered
+    assert "[[outputs.http]]" not in rendered
+    assert "[[outputs.file]]" in rendered
+    assert 'files = ["stdout"]' in rendered
+
+
+def test_build_telegraf_once_command_uses_temp_config_and_cleanup():
+    command = build_telegraf_once_command("/tmp/bklite-detect.toml")
+
+    assert "telegraf --once --config /tmp/bklite-detect.toml" in command
+    assert "rm -f /tmp/bklite-detect.toml" in command
+
+
+def test_sanitize_execution_result_redacts_and_truncates_output():
+    result = sanitize_execution_result(
+        {
+            "success": False,
+            "result": "password=top-secret\n" + ("x" * 9000),
+            "error": "token=abc123",
+            "code": "execution_failure",
+        },
+        sensitive_values=["top-secret", "abc123"],
+        output_limit=120,
+    )
+
+    assert result["success"] is False
+    assert result["exit_code"] == 1
+    assert "top-secret" not in result["stdout"]
+    assert "abc123" not in result["stderr"]
+    assert result["stdout_truncated"] is True
