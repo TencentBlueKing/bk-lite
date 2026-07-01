@@ -763,6 +763,92 @@ def test_connection_pool_initialize_called_once_under_concurrency(monkeypatch):
     )
 
 
+def test_connection_pool_reinitializes_when_handles_missing(monkeypatch):
+    """_initialized 与连接句柄不一致时，get_connection 应重新初始化。
+
+    若只检查 _initialized，本测试会返回 (None, None)，复现 issue #3672 的状态错乱。
+    """
+    from apps.cmdb.graph import falkordb as falkordb_module
+
+    pool = FalkorDBConnectionPool()
+    original_initialized = pool._initialized
+    original_client = pool._client
+    original_graph = pool._graph
+    pool._initialized = True
+    pool._client = None
+    pool._graph = None
+
+    connection_count = [0]
+
+    class FakeFalkorDB:
+        def __init__(self, host, port, password):
+            connection_count[0] += 1
+
+        def select_graph(self, name):
+            return object()
+
+    monkeypatch.setattr(falkordb_module.falkordb, "FalkorDB", FakeFalkorDB)
+
+    try:
+        client, graph = pool.get_connection()
+    finally:
+        pool._initialized = original_initialized
+        pool._client = original_client
+        pool._graph = original_graph
+
+    assert client is not None
+    assert graph is not None
+    assert connection_count[0] == 1
+
+
+def test_execute_query_invalidates_pool_after_graph_error(monkeypatch):
+    """图查询失败后连接池应失效，下一次 connect 可重新建立连接。
+
+    若失败后仍保留 _initialized=True，后续请求会继续拿到坏连接。
+    """
+    from apps.cmdb.graph import falkordb as falkordb_module
+
+    pool = FalkorDBConnectionPool()
+    original_initialized = pool._initialized
+    original_client = pool._client
+    original_graph = pool._graph
+
+    class BrokenGraph:
+        def query(self, cql, params=None):
+            raise ConnectionError("connection closed")
+
+    class FakeFalkorDB:
+        def select_graph(self, name):
+            return FakeGraph(FakeResultSet([], []))
+
+    pool._initialized = True
+    pool._client = object()
+    pool._graph = BrokenGraph()
+
+    client = FalkorDBClient()
+    client._pool = pool
+    client._client = pool._client
+    client._graph = pool._graph
+    monkeypatch.setattr(falkordb_module.falkordb, "FalkorDB", FakeFalkorDB)
+
+    try:
+        with pytest.raises(ConnectionError):
+            client._execute_query("MATCH (n) RETURN n")
+
+        assert pool._initialized is False
+        assert pool._client is None
+        assert pool._graph is None
+
+        assert client.connect() is True
+        assert pool._initialized is True
+        assert pool._client is not None
+        assert pool._graph is not None
+    finally:
+        pool._initialized = original_initialized
+        pool._client = original_client
+        pool._graph = original_graph
+
+
 # --------------------------------------------------------------------------
 # Issue #3664 - 非参数化路径 key 校验（CQL 注入防护）
 # --------------------------------------------------------------------------
