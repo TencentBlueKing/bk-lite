@@ -76,10 +76,11 @@ class CollectDetectService:
             plugin = cls._get_supported_plugin(task.monitor_plugin_id)
             template = cls._get_child_template(plugin)
             instance = runtime_payload.get("instance") or {}
-            env = runtime_payload.get("env") or {}
+            config_id = instance.get("config_id") or f"detect_{task.id}"
+            env = cls._build_preflight_env(instance, runtime_payload.get("env") or {}, config_id)
             config_context = {
                 **instance,
-                "config_id": instance.get("config_id") or f"detect_{task.id}",
+                "config_id": config_id,
                 "monitor_plugin_id": plugin.id,
                 "collector": plugin.collector,
                 "collect_type": plugin.collect_type,
@@ -154,6 +155,16 @@ class CollectDetectService:
         if isinstance(value, list):
             return [cls._sanitize_mapping(item) for item in value]
         return value
+
+    @classmethod
+    def _build_preflight_env(cls, instance, explicit_env, config_id):
+        env = {}
+        for key, value in (instance or {}).items():
+            if value in (None, "") or not cls._is_sensitive_key(key):
+                continue
+            env[f"{str(key).upper()}__{config_id}"] = str(value)
+        env.update(explicit_env or {})
+        return env
 
     @staticmethod
     def _is_sensitive_key(key):

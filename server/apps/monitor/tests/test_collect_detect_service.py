@@ -239,6 +239,61 @@ def test_run_collect_detect_task_executes_telegraf_once(monkeypatch):
 
 
 @pytest.mark.django_db
+def test_run_collect_detect_task_derives_sensitive_instance_env(monkeypatch):
+    plugin = MonitorPlugin.objects.create(
+        name="MySQL",
+        collector="Telegraf",
+        collect_type="mysql",
+        support_collect_detect=True,
+    )
+    MonitorPluginConfigTemplate.objects.create(
+        plugin=plugin,
+        type="mysql",
+        config_type="mysql",
+        file_type="toml",
+        content='[[inputs.mysql]]\n  servers = ["root:${PASSWORD__{{ config_id }}}@tcp({{ host }}:3306)/"]\n',
+    )
+    task = CollectDetectTask.objects.create(
+        status="pending",
+        phase="validate",
+        monitor_plugin_id=plugin.id,
+        monitor_object_id=1,
+        collector="Telegraf",
+        collect_type="mysql",
+        node_id="node-1",
+        request_fingerprint="fp-1",
+        created_by="admin",
+        organization=3,
+    )
+    executed = {}
+
+    class FakeExecutor:
+        def __init__(self, node_id):
+            executed["node_id"] = node_id
+
+        def execute_local(self, command, timeout=60, shell=None, env=None):
+            executed.update(command=command, env=env)
+            return {"success": True, "result": "mysql_up value=1", "error": ""}
+
+    monkeypatch.setattr("apps.monitor.services.collect_detect.Executor", FakeExecutor)
+
+    CollectDetectService.run_task(
+        task.id,
+        {
+            "instance": {
+                "config_id": "detect",
+                "host": "127.0.0.1",
+                "password": "top-secret",
+            },
+            "env": {},
+        },
+    )
+
+    assert executed["env"] == {"PASSWORD__detect": "top-secret"}
+    assert "top-secret" not in executed["command"]
+
+
+@pytest.mark.django_db
 def test_collect_detect_viewset_create_returns_task(monkeypatch):
     from apps.monitor.views.collect_detect import CollectDetectViewSet
 
