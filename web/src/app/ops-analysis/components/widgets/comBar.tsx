@@ -10,13 +10,22 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
-import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  ScreenRenderContext,
+  ValueConfig,
+} from '@/app/ops-analysis/types/dashBoard';
+import {
+  getScreenWidgetScale,
+  scaleScreenMetric,
+  scaleScreenMetricFloat,
+} from './shared/screenMetrics';
 
 interface BarChartProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  screenRenderContext?: ScreenRenderContext;
 }
 
 const BarChart: React.FC<BarChartProps> = ({
@@ -24,6 +33,7 @@ const BarChart: React.FC<BarChartProps> = ({
   loading = false,
   onReady,
   config,
+  screenRenderContext,
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
@@ -35,6 +45,7 @@ const BarChart: React.FC<BarChartProps> = ({
   const chartColors = usesScreenChartTheme
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
     : randomColorForLegend(themeName);
+  const widgetScale = getScreenWidgetScale(screenRenderContext);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -75,18 +86,23 @@ const BarChart: React.FC<BarChartProps> = ({
       borderColor: chartTheme.tooltipBorderColor,
       extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
       textStyle: {
-        fontSize: 12,
+        fontSize: scaleScreenMetric(12, screenRenderContext),
         color: chartTheme.tooltipTextColor,
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
-        let content = `<div style="padding: 4px 8px;">
-          <div style="margin-bottom: 4px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
+        const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
+        const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
+        const tooltipGap = scaleScreenMetric(4, screenRenderContext);
+        const markerSize = scaleScreenMetric(10, screenRenderContext);
+        const markerGap = scaleScreenMetric(6, screenRenderContext);
+        let content = `<div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
+          <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
 
         params.forEach((param: any) => {
           content += `
-            <div style="display: flex; align-items: center; margin-bottom: 2px;">
-              <span style="display: inline-block; width: 10px; height: 10px; background-color: ${param.color}; border-radius: 2px; margin-right: 6px;"></span>
+            <div style="display: flex; align-items: center; margin-bottom: ${scaleScreenMetric(2, screenRenderContext)}px;">
+              <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${param.color}; border-radius: ${scaleScreenMetric(2, screenRenderContext)}px; margin-right: ${markerGap}px;"></span>
               <span>${param.seriesName}: ${param.value}</span>
             </div>`;
         });
@@ -96,10 +112,10 @@ const BarChart: React.FC<BarChartProps> = ({
       },
     },
     grid: {
-      top: 8,
-      left: 16,
-      right: 16,
-      bottom: 8,
+      top: scaleScreenMetric(8, screenRenderContext),
+      left: scaleScreenMetric(16, screenRenderContext),
+      right: scaleScreenMetric(16, screenRenderContext),
+      bottom: scaleScreenMetric(8, screenRenderContext),
       containLabel: true,
     },
     xAxis: {
@@ -107,10 +123,10 @@ const BarChart: React.FC<BarChartProps> = ({
       data: chartData?.categories || [],
       nameRotate: -90,
       axisLabel: {
-        margin: 15,
+        margin: scaleScreenMetric(15, screenRenderContext),
         textStyle: {
           color: chartTheme.axisLabelColor,
-          fontSize: 11,
+          fontSize: scaleScreenMetric(11, screenRenderContext),
         },
         rotate: 0,
         interval: 'auto',
@@ -151,6 +167,7 @@ const BarChart: React.FC<BarChartProps> = ({
         },
         textStyle: {
           color: chartTheme.axisLabelColor,
+          fontSize: scaleScreenMetric(11, screenRenderContext),
         },
       },
       splitLine: {
@@ -169,11 +186,19 @@ const BarChart: React.FC<BarChartProps> = ({
       name: item.name,
       type: 'bar',
       data: item.data,
-      barMaxWidth: 40,
-      ...(config?.stack ? { stack: 'total' } : {}),
+      barMaxWidth: scaleScreenMetric(40, screenRenderContext),
       itemStyle: {
-        borderRadius: usesScreenChartTheme ? [4, 4, 0, 0] : [2, 2, 0, 0],
-        shadowBlur: usesScreenChartTheme ? chartTheme.barShadowBlur : 0,
+        borderRadius: usesScreenChartTheme
+          ? [
+            scaleScreenMetric(4, screenRenderContext),
+            scaleScreenMetric(4, screenRenderContext),
+            0,
+            0,
+          ]
+          : [2, 2, 0, 0],
+        shadowBlur: usesScreenChartTheme
+          ? scaleScreenMetric(chartTheme.barShadowBlur, screenRenderContext)
+          : 0,
         shadowColor: usesScreenChartTheme
           ? chartTheme.barShadowColor
           : 'transparent',
@@ -188,10 +213,19 @@ const BarChart: React.FC<BarChartProps> = ({
         name: t('topology.treeValueTitle'),
         type: 'bar',
         data: chartData && chartData.values ? chartData.values : [],
-        barMaxWidth: 40,
+        barMaxWidth: scaleScreenMetric(40, screenRenderContext),
         itemStyle: {
-          borderRadius: usesScreenChartTheme ? [4, 4, 0, 0] : [2, 2, 0, 0],
-          shadowBlur: usesScreenChartTheme ? chartTheme.barShadowBlur : 0,
+          borderRadius: usesScreenChartTheme
+            ? [
+              scaleScreenMetric(4, screenRenderContext),
+              scaleScreenMetric(4, screenRenderContext),
+              0,
+              0,
+            ]
+            : [2, 2, 0, 0],
+          shadowBlur: usesScreenChartTheme
+            ? scaleScreenMetric(chartTheme.barShadowBlur, screenRenderContext)
+            : 0,
           shadowColor: usesScreenChartTheme
             ? chartTheme.barShadowColor
             : 'transparent',
@@ -214,13 +248,17 @@ const BarChart: React.FC<BarChartProps> = ({
       silent: true,
       data: thresholdLines.map((th) => ({
         yAxis: th.value,
-        lineStyle: { color: th.color, type: 'dashed', width: 1.5 },
+        lineStyle: {
+          color: th.color,
+          type: 'dashed',
+          width: scaleScreenMetricFloat(1.5, screenRenderContext),
+        },
         label: {
           show: true,
           position: 'insideEndTop',
           formatter: String(th.value),
           color: th.color,
-          fontSize: 10,
+          fontSize: scaleScreenMetric(10, screenRenderContext),
         },
       })),
     };
@@ -264,6 +302,7 @@ const BarChart: React.FC<BarChartProps> = ({
           colors={chartColors}
           layout="vertical"
           textColor={chartTheme.axisLabelColor}
+          scale={widgetScale}
           onSelectionChange={handleLegendChange}
         />
       )}

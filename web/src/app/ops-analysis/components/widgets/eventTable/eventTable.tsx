@@ -9,16 +9,20 @@ import { Empty, Tooltip } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
+  ScreenRenderContext,
   TableColumnConfigItem,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
+import { getOpsChartThemeByMode } from '@/app/ops-analysis/utils/chartTheme';
 import { EventTableDetail } from './eventTableDetail';
 import {
   parseTableLikeData,
   type TableLikePaginationState,
 } from '../shared/tableLikeData';
+import { getScreenWidgetScale } from '../shared/screenMetrics';
+import styles from '../comTable.module.scss';
 const DEFAULT_CELL_MAX_WIDTH = 260;
 
 interface EventTableProps {
@@ -27,6 +31,7 @@ interface EventTableProps {
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
   dataSource?: DatasourceItem;
+  screenRenderContext?: ScreenRenderContext;
   onQueryChange?: (params: Record<string, any>) => void;
 }
 
@@ -40,6 +45,7 @@ const EventTable: React.FC<EventTableProps> = ({
   onReady,
   config,
   dataSource,
+  screenRenderContext,
   onQueryChange,
 }) => {
   const { t } = useTranslation();
@@ -51,6 +57,30 @@ const EventTable: React.FC<EventTableProps> = ({
       pageSize: 20,
     });
   const [tableScrollY, setTableScrollY] = useState<string>();
+  const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const screenTableTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const widgetScale = getScreenWidgetScale(screenRenderContext);
+  const screenTableStyle = useMemo(() => {
+    if (!usesScreenDarkTheme) return undefined;
+
+    return {
+      '--ops-screen-table-bg': screenTableTheme.panelBg,
+      '--ops-screen-table-subtle-bg': screenTableTheme.panelSubtleBg,
+      '--ops-screen-table-border': screenTableTheme.panelBorderColor,
+      '--ops-screen-table-text': screenTableTheme.axisLabelColor,
+      '--ops-screen-table-heading': screenTableTheme.panelTitleColor,
+      '--ops-screen-table-muted': screenTableTheme.singleValueMetaColor,
+      '--ops-screen-table-accent': screenTableTheme.pieValueColor,
+      '--ops-screen-table-header-font-size': `${Math.round(14 * widgetScale)}px`,
+      '--ops-screen-table-body-font-size': `${Math.round(13 * widgetScale)}px`,
+      '--ops-screen-table-line-height': `${Math.round(20 * widgetScale)}px`,
+      '--ops-screen-table-cell-padding-y': `${Math.round(7 * widgetScale)}px`,
+      '--ops-screen-table-cell-padding-x': `${Math.round(10 * widgetScale)}px`,
+      '--ops-screen-table-pagination-font-size': `${Math.round(12 * widgetScale)}px`,
+      '--ops-screen-table-pagination-gap': `${Math.round(6 * widgetScale)}px`,
+      '--ops-screen-table-scrollbar-size': `${Math.round(8 * widgetScale)}px`,
+    } as React.CSSProperties;
+  }, [screenTableTheme, usesScreenDarkTheme, widgetScale]);
 
   const { rows, pagination, isPaginated } = useMemo(
     () => parseTableLikeData<EventTableRow>(rawData, queryPagination),
@@ -79,9 +109,9 @@ const EventTable: React.FC<EventTableProps> = ({
       return;
     }
 
-    const TABLE_HEADER_HEIGHT = 43;
-    const PAGINATION_HEIGHT = isPaginated ? 56 : 0;
-    const MIN_BODY_HEIGHT = 120;
+    const TABLE_HEADER_HEIGHT = Math.round(43 * widgetScale);
+    const PAGINATION_HEIGHT = isPaginated ? Math.round(56 * widgetScale) : 0;
+    const MIN_BODY_HEIGHT = Math.round(120 * widgetScale);
 
     const updateScrollY = () => {
       const nextHeight = Math.max(
@@ -109,7 +139,7 @@ const EventTable: React.FC<EventTableProps> = ({
       resizeObserver.disconnect();
       window.removeEventListener('resize', updateScrollY);
     };
-  }, [isPaginated]);
+  }, [isPaginated, widgetScale]);
 
   useEffect(() => {
     setExpandedRowKeys([]);
@@ -188,10 +218,18 @@ const EventTable: React.FC<EventTableProps> = ({
   return (
     <div
       ref={containerRef}
-      className="ops-analysis-event-table h-full min-h-0 flex flex-col"
+      className={`ops-analysis-event-table h-full min-h-0 flex flex-col ${
+        usesScreenDarkTheme ? styles.screenDarkRoot : ''
+      }`}
+      style={screenTableStyle}
     >
-      <div className="flex-1 min-h-0 overflow-hidden">
+      <div
+        className={`flex-1 min-h-0 overflow-hidden ${
+          usesScreenDarkTheme ? styles.screenDarkTableWrap : ''
+        }`}
+      >
         <CustomTable
+          className={usesScreenDarkTheme ? styles.screenDarkTable : undefined}
           columns={columns}
           dataSource={rows}
           loading={loading}

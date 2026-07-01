@@ -17,6 +17,8 @@ interface ScreenWidgetFrameOptions {
 
 interface ScreenWidgetFrameProps extends ScreenWidgetFrameOptions {
   item: ScreenWidgetItem;
+  screenDensity?: number;
+  screenUiScale?: number;
   onConfigure?: () => void;
   onDelete?: () => void;
   children: React.ReactNode;
@@ -51,6 +53,8 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   item,
   selected = false,
   editMode = false,
+  screenDensity = 1,
+  screenUiScale = 1,
   onConfigure,
   onDelete,
   children,
@@ -81,6 +85,10 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   return (
     <section
       className={getScreenWidgetFrameClassName(item, { selected, editMode })}
+      style={{
+        '--screen-widget-scale': screenDensity,
+        '--screen-widget-ui-scale': screenUiScale,
+      } as React.CSSProperties}
     >
       <div className="screen-widget-frame__corners" aria-hidden="true" />
       <header className="screen-widget-frame__header">
@@ -91,7 +99,11 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
       </header>
       {editMode && (
         <div className="screen-widget-frame__actions">
-          <Dropdown menu={{ items: menuItems }} trigger={['click']}>
+          <Dropdown
+            menu={{ items: menuItems }}
+            overlayClassName="screen-widget-frame-actions-menu"
+            trigger={['click']}
+          >
             <button
               type="button"
               className="screen-widget-frame__action"

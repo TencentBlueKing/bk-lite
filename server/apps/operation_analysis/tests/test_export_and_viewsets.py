@@ -49,19 +49,40 @@ def test_normalize_topology_drops_presentation_fields():
     assert out == {"nodes": [{"id": "n1"}], "edges": [], "filters": []}
 
 
-def test_normalize_screen_fills_viewport_and_items():
-    out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.SCREEN)
+def test_normalize_screen_requires_complete_contract():
+    with pytest.raises(ValueError, match="view_sets.viewport"):
+        vs.normalize_canvas_view_sets_for_storage({}, ObjectType.SCREEN)
+
+
+def test_normalize_screen_keeps_valid_view_sets_without_ui_defaults():
+    out = vs.normalize_canvas_view_sets_for_storage(
+        {
+            "viewport": {"width": 1920, "height": 1080},
+            "items": [],
+            "decorations": {},
+        },
+        ObjectType.SCREEN,
+    )
 
     assert out == {
-        "viewport": {
-            "width": 1920,
-            "height": 1080,
-            "background": {"type": "preset", "key": "screen-dark"},
-            "theme": "screen-dark",
-        },
+        "viewport": {"width": 1920, "height": 1080},
         "items": [],
-        "decorations": {"showTitle": True, "showClock": True, "title": ""},
+        "decorations": {},
     }
+
+
+def test_normalize_screen_keeps_unified_filters():
+    out = vs.normalize_canvas_view_sets_for_storage(
+        {
+            "viewport": {"width": 1920, "height": 1080},
+            "items": [],
+            "decorations": {},
+            "filters": [{"id": "time", "name": "时间范围"}],
+        },
+        ObjectType.SCREEN,
+    )
+
+    assert out["filters"] == [{"id": "time", "name": "时间范围"}]
 
 
 def test_normalize_report_fills_sections():
@@ -190,6 +211,25 @@ def test_extract_canvas_dependencies_collects_datasource_ids():
     ]
     ds_ids, ns_ids = ExportService.extract_canvas_dependencies(view_sets, ObjectType.DASHBOARD)
     assert ds_ids == {1, 2}
+    assert ns_ids == set()
+
+
+def test_extract_screen_dependencies_uses_value_config_contract():
+    view_sets = {
+        "viewport": {"width": 1920, "height": 1080},
+        "items": [
+            {
+                "id": "alert-kpi",
+                "type": "widget",
+                "valueConfig": {"dataSource": 8, "chartType": "single"},
+            }
+        ],
+        "decorations": {},
+    }
+
+    ds_ids, ns_ids = ExportService.extract_canvas_dependencies(view_sets, ObjectType.SCREEN)
+
+    assert ds_ids == {8}
     assert ns_ids == set()
 
 

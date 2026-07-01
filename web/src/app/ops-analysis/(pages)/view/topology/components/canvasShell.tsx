@@ -75,12 +75,12 @@ const TopologyCanvasShell = ({
   return (
     <div
       ref={canvasHostRef}
-      className="relative flex-1 overflow-hidden"
+      className="relative min-h-0 w-full flex-1 overflow-hidden"
     >
-      <div className="h-full w-full">
+      <div className="h-full min-h-0 w-full">
         <div
           ref={canvasContainerRef}
-          className={`relative h-full w-full overflow-hidden ${isFullscreen ? 'rounded-none' : 'rounded-xl'}`}
+          className="relative h-full min-h-0 w-full overflow-hidden"
           style={panelStyle}
         >
           {canvasInnerContent}

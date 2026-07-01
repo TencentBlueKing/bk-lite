@@ -4,7 +4,7 @@ import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
 export const buildScreenWidgetConfig = (
   item: ScreenWidgetItem,
 ): ValueConfig => ({
-  ...item.config,
+  ...item.valueConfig,
   chartType: item.chartType,
   chartThemeMode: 'screen-dark',
   ...(item.chartType === 'networkStatusTopology'

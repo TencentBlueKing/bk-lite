@@ -230,7 +230,7 @@ class ScreenItem(BaseModel):
     name: str
     desc: str = Field(default="")
     other: dict = Field(default_factory=dict)
-    view_sets: dict = Field(default_factory=dict)
+    view_sets: dict
     refs: CanvasRefs = Field(default_factory=CanvasRefs)
 
     @field_validator("key", "name")

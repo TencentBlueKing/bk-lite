@@ -70,9 +70,16 @@ class DictDirectoryService:
         for object_type, instances in canvas_queryset_map.items():
             all_nodes.update(TreeNodeBuilder.get_canvas_nodes(instances, parent_children_map, object_type))
 
+        def sort_node_key(node_key):
+            node = all_nodes[node_key]
+            return (node.get("_sort_created_at"), node.get("_sort_id", 0))
+
+        for parent_key, child_keys in parent_children_map.items():
+            parent_children_map[parent_key] = sorted(child_keys, key=sort_node_key)
+
         def build_tree_recursive(node_key):
             """递归构建子树"""
-            node = all_nodes[node_key]
+            node = dict(all_nodes[node_key])
             child_keys = parent_children_map.get(node_key, [])
 
             if child_keys:
@@ -80,6 +87,8 @@ class DictDirectoryService:
             else:
                 node["children"] = []
 
+            node.pop("_sort_created_at", None)
+            node.pop("_sort_id", None)
             return node
 
         # 构建根节点列表（顶级目录）

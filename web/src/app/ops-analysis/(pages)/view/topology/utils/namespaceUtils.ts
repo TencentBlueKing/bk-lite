@@ -8,8 +8,12 @@ import {
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   buildRelativeTimeRangeFilterValue,
-  normalizeTimeRangeFilterValue,
 } from '@/app/ops-analysis/utils/filterValue';
+import {
+  syncFilterValuesWithDefinitions,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
+
+export { syncFilterValuesWithDefinitions };
 
 export interface NamespaceOption {
   label: string;
@@ -184,34 +188,6 @@ export const buildFiltersFromNodes = (
       options: existing?.options,
     };
   });
-};
-
-/**
- * 同步筛选值与筛选定义：为缺失值的启用定义填充 defaultValue
- * 对于 timeRange 类型，如果 selectValue > 0，重新计算相对时间范围
- */
-export const syncFilterValuesWithDefinitions = (
-  nextDefinitions: UnifiedFilterDefinition[],
-  currentValues: Record<string, FilterValue>,
-): Record<string, FilterValue> => {
-  const updatedValues = { ...currentValues };
-  nextDefinitions.forEach((def) => {
-    if (def.enabled && def.defaultValue !== null && def.defaultValue !== undefined) {
-      if (updatedValues[def.id] === undefined || updatedValues[def.id] === null) {
-        if (def.type === 'timeRange') {
-          const normalizedValue = normalizeTimeRangeFilterValue(
-            def.defaultValue,
-          );
-          if (normalizedValue) {
-            updatedValues[def.id] = normalizedValue;
-          }
-        } else {
-          updatedValues[def.id] = def.defaultValue;
-        }
-      }
-    }
-  });
-  return updatedValues;
 };
 
 /**

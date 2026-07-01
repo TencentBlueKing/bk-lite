@@ -15,85 +15,46 @@ from apps.operation_analysis.models.models import Dashboard, Directory, Screen
 BUILTIN_CANVASES_PATH = Path(__file__).resolve().parents[1] / "support-files" / "builtin_canvases.yaml"
 
 
-def _load_builtin_resource_screen():
-    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
-    return next(screen for screen in payload["screens"] if screen.get("name", "").startswith("基础资源态势大屏"))
-
-
 def _load_builtin_alert_screen():
     payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
     return next(screen for screen in payload["screens"] if screen.get("name", "").startswith("告警运营大屏"))
 
 
-def test_builtin_resource_screen_yaml_uses_clean_real_data_layout():
-    screen = _load_builtin_resource_screen()
-    nodes = screen["view_sets"]["items"]
-    chart_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value"}]
-    node_by_id = {node["id"]: node for node in nodes}
+def _count_nested_key(value, target_key):
+    if isinstance(value, list):
+        return sum(_count_nested_key(item, target_key) for item in value)
+    if isinstance(value, dict):
+        return (1 if target_key in value else 0) + sum(_count_nested_key(item, target_key) for item in value.values())
+    return 0
 
-    assert node_by_id["screen-title"]["type"] == "text"
-    assert node_by_id["screen-title"]["presentationRole"] == "screen-title"
-    assert node_by_id["screen-clock"]["type"] == "text"
-    assert node_by_id["screen-clock"]["presentationRole"] == "screen-clock"
-    assert node_by_id["screen-title-frame"]["type"] == "basic-shape"
-    assert node_by_id["screen-title-left-line"]["type"] == "basic-shape"
-    assert node_by_id["screen-title-right-line"]["type"] == "basic-shape"
-    assert screen["view_sets"]["decorations"]["chrome"] == {
-        "title": "基础资源态势大屏",
-        "showTitle": True,
-        "showClock": True,
-    }
-    assert "edges" not in screen["view_sets"]
-    assert not any(node.get("name") == "活跃告警详情" for node in nodes)
-    assert all(node.get("valueConfig", {}).get("chartType") not in {"list", "presentation-list"} for node in chart_nodes)
-    assert all(
-        "presentationVariant" not in node.get("valueConfig", {}) and "presentationAdapter" not in node.get("valueConfig", {}) for node in chart_nodes
-    )
 
-    assert all("presentationRole" not in node for node in chart_nodes)
+def test_builtin_yaml_contains_only_new_alert_screen():
+    payload = yaml.safe_load(BUILTIN_CANVASES_PATH.read_text(encoding="utf-8"))
 
-    kpi_nodes = [node for node in nodes if node["id"].startswith("kpi-")]
-    kpi_x_positions = sorted(node["position"]["x"] for node in kpi_nodes)
-    assert len(kpi_x_positions) == 8
-    assert kpi_x_positions[0] >= 120
-    assert kpi_x_positions[-1] <= 1580
-    assert max(right - left for left, right in zip(kpi_x_positions, kpi_x_positions[1:])) <= 220
-
-    assert node_by_id["panel-alert-trend"]["styleConfig"]["height"] <= 200
-    assert node_by_id["panel-alert-summary"]["styleConfig"]["height"] <= 150
-    assert node_by_id["panel-monitor-overview"]["styleConfig"]["height"] <= 150
-
-    resource_nodes = [node for node in nodes if node["id"].startswith("resource-")]
-    assert len(resource_nodes) == 12
-    assert all(node["type"] == "icon" for node in resource_nodes)
-    assert all("presentationRole" not in node for node in resource_nodes)
-    assert all({"x", "y"} <= set(node["position"]) for node in resource_nodes)
-
-    trend_params = {item["name"]: item for item in node_by_id["panel-alert-trend"]["valueConfig"]["dataSourceParams"]}
-    assert trend_params["time"]["filterType"] == "fixed"
-    assert trend_params["time"]["value"] == 10080
+    assert payload["meta"]["object_counts"]["screens"] == 1
+    assert [screen["key"] for screen in payload["screens"]] == ["screen::告警运营大屏_内置"]
+    assert [screen["name"] for screen in payload["screens"]] == ["告警运营大屏_内置"]
+    assert "基础资源态势大屏_内置" not in BUILTIN_CANVASES_PATH.read_text(encoding="utf-8")
 
 
 def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     screen = _load_builtin_alert_screen()
     nodes = screen["view_sets"]["items"]
-    ordinary_nodes = [
-        node for node in nodes if node.get("type") in {"chart", "single-value", "icon", "basic-shape"} and not node["id"].startswith("screen-")
-    ]
-    chart_nodes = [node for node in nodes if node.get("type") == "chart"]
-    data_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value"}]
-    chart_types = {node.get("valueConfig", {}).get("chartType") for node in data_nodes}
+    chart_types = {node.get("valueConfig", {}).get("chartType") for node in nodes}
 
-    assert screen["view_sets"]["decorations"]["templateKey"] == "custom-screen"
-    assert screen["view_sets"]["decorations"]["chrome"] == {
-        "title": "告警运营大屏",
-        "showTitle": True,
-        "showClock": True,
+    assert screen["view_sets"]["viewport"] == {
+        "theme": "screen-tech-blue",
+        "width": 3840,
+        "height": 2160,
+        "background": {"key": "tech-grid", "type": "builtIn"},
     }
+    assert screen["view_sets"]["decorations"] == {"title": "告警运营大屏", "showClock": True, "showTitle": True}
     assert "edges" not in screen["view_sets"]
-    assert all("presentationRole" not in node for node in ordinary_nodes)
+    assert len(nodes) == 17
+    assert all(node["type"] == "widget" for node in nodes)
+    assert all("valueConfig" in node for node in nodes)
+    assert _count_nested_key(nodes, "config") == 0
     assert {"single", "bar", "line", "pie", "topN", "table"} <= chart_types
-    assert not any(node.get("valueConfig", {}).get("chartType") in {"list", "presentation-list"} for node in chart_nodes)
 
     datasource_refs = set(screen["refs"]["datasource_keys"])
     assert "今日告警状态总览::alert/get_alert_today_status_summary" in datasource_refs
@@ -102,9 +63,9 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
 
     node_by_id = {node["id"]: node for node in nodes}
     kpi_ids = [
-        "alert-today-created",
-        "alert-today-closed",
-        "alert-today-processing",
+        "alert-kpi-created",
+        "alert-kpi-closed",
+        "alert-kpi-processing",
         "alert-active-total",
         "alert-active-pending",
         "alert-active-processing",
@@ -112,17 +73,14 @@ def test_builtin_alert_screen_yaml_uses_page_configurable_nodes_only():
     ]
     for node_id in kpi_ids:
         node = node_by_id[node_id]
-        assert node["type"] == "single-value"
+        assert node["type"] == "widget"
+        assert node["chartType"] == "single"
         assert node["valueConfig"]["chartType"] == "single"
-        assert node.get("name", "")
-        assert "presentationRole" not in node
-        assert node.get("styleConfig", {}).get("borderColor")
+        assert node.get("title", "")
 
-    frame_nodes = [node for node in nodes if node["id"].startswith("alert-frame-")]
-    assert len(frame_nodes) == 9
-    assert all(node["type"] == "basic-shape" for node in frame_nodes)
-    assert all(node["zIndex"] == 1 for node in frame_nodes)
-    assert all(node.get("styleConfig", {}).get("frameVariant") == "tech" for node in frame_nodes)
+    assert node_by_id["alert-source-event-top"]["valueConfig"]["topNLabelField"] == "source_name"
+    assert node_by_id["alert-source-event-top"]["valueConfig"]["topNValueField"] == "count"
+    assert node_by_id["alert-level-trend"]["valueConfig"]["filterBindings"] == {"time__timeRange": True}
 
 
 def _ensure_default_namespace():
@@ -170,53 +128,6 @@ def test_init_builtin_canvases_rerun_is_idempotent():
 
 
 @pytest.mark.django_db
-def test_init_builtin_canvases_creates_builtin_presentation_screen():
-    from apps.system_mgmt.models.user import Group
-
-    Group.objects.get_or_create(name="Default")
-    _ensure_default_namespace()
-    call_command("init_builtin_canvases")
-
-    screen = Screen.objects.get(name__startswith="基础资源态势大屏", is_build_in=True)
-
-    assert screen.view_sets["decorations"]["templateKey"] == "custom-screen"
-    assert screen.view_sets["decorations"]["chrome"] == {
-        "title": "基础资源态势大屏",
-        "showTitle": True,
-        "showClock": True,
-    }
-    assert screen.view_sets["viewport"]["width"] == 1920
-    assert "edges" not in screen.view_sets
-    node_by_id = {node["id"]: node for node in screen.view_sets["items"]}
-    assert node_by_id["screen-title"]["type"] == "text"
-    assert node_by_id["screen-title"]["presentationRole"] == "screen-title"
-    assert node_by_id["screen-title"]["name"] == "基础资源态势大屏"
-    assert node_by_id["screen-clock"]["type"] == "text"
-    assert node_by_id["screen-clock"]["presentationRole"] == "screen-clock"
-
-    chart_nodes = [node for node in screen.view_sets["items"] if node.get("type") in {"chart", "single-value"}]
-    ordinary_nodes = [node for node in screen.view_sets["items"] if node.get("type") in {"chart", "single-value", "icon"}]
-    allowed_chart_types = {"single", "topN", "line", "pie", "bar", "gauge", "barGauge", "stateTimeline", "text"}
-    assert all("presentationRole" not in node for node in ordinary_nodes)
-    assert all(node.get("valueConfig", {}).get("chartType") in allowed_chart_types for node in chart_nodes)
-    assert all(node.get("valueConfig", {}).get("chartType") != "list" for node in chart_nodes)
-    assert all(node.get("valueConfig", {}).get("chartType") != "presentation-list" for node in chart_nodes)
-    assert all(node.get("valueConfig", {}).get("chartThemeMode") == "screen-dark" for node in chart_nodes)
-    assert all("presentationVariant" not in node.get("valueConfig", {}) for node in chart_nodes)
-    assert all("presentationAdapter" not in node.get("valueConfig", {}) for node in chart_nodes)
-    assert not any(node.get("name") == "活跃告警详情" for node in screen.view_sets["items"])
-
-    datasource_names = [
-        node.get("valueConfig", {}).get("dataSource") for node in screen.view_sets["items"] if node.get("valueConfig", {}).get("dataSource")
-    ]
-    datasource_ids = set(datasource_names)
-    assert DataSourceAPIModel.objects.get(name="活跃告警 TOP N").id not in datasource_ids
-    assert DataSourceAPIModel.objects.get(name="模型/实例/分类总数统计").id in datasource_ids
-    assert DataSourceAPIModel.objects.get(name="监控中心总览统计").id in datasource_ids
-    assert DataSourceAPIModel.objects.get(name="告警统计概览").id in datasource_ids
-
-
-@pytest.mark.django_db
 def test_init_builtin_canvases_creates_builtin_alert_screen():
     from apps.system_mgmt.models.user import Group
 
@@ -224,15 +135,19 @@ def test_init_builtin_canvases_creates_builtin_alert_screen():
     _ensure_default_namespace()
     call_command("init_builtin_canvases")
 
-    screen = Screen.objects.get(name__startswith="告警运营大屏", is_build_in=True)
+    assert not Screen.objects.filter(name__startswith="基础资源态势大屏", is_build_in=True).exists()
+    screen = Screen.objects.get(name="告警运营大屏_内置", is_build_in=True)
     nodes = screen.view_sets["items"]
-    ordinary_nodes = [node for node in nodes if node.get("type") in {"chart", "single-value", "icon"}]
     datasource_names = [node.get("valueConfig", {}).get("dataSource") for node in nodes if node.get("valueConfig", {}).get("dataSource")]
     datasource_ids = set(datasource_names)
 
-    assert screen.view_sets["decorations"]["templateKey"] == "custom-screen"
+    assert screen.view_sets["viewport"]["width"] == 3840
+    assert screen.view_sets["viewport"]["height"] == 2160
+    assert screen.view_sets["decorations"] == {"title": "告警运营大屏", "showClock": True, "showTitle": True}
     assert "edges" not in screen.view_sets
-    assert all("presentationRole" not in node for node in ordinary_nodes)
+    assert len(nodes) == 17
+    assert all(node.get("type") == "widget" for node in nodes)
+    assert _count_nested_key(nodes, "config") == 0
     assert DataSourceAPIModel.objects.get(name="今日告警状态总览").id in datasource_ids
     assert DataSourceAPIModel.objects.get(name="告警状态分布").id in datasource_ids
     assert DataSourceAPIModel.objects.get(name="近7日告警等级趋势").id in datasource_ids

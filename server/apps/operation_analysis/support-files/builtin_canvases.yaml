@@ -13,7 +13,7 @@ meta:
   object_counts:
     dashboards: 3
     topologies: 1
-    screens: 2
+    screens: 1
     reports: 0
     architectures: 0
     datasources: 19
@@ -1708,938 +1708,139 @@ topologies:
     namespace_keys:
     - 默认命名空间
 screens:
-- key: screen::基础资源态势大屏_内置
-  name: 基础资源态势大屏_内置
-  desc: 以基础资源为中心展示 CMDB、监控、采集、策略与告警态势的大屏
-  other: {}
-  view_sets:
-    items:
-    - id: kpi-cmdb-instance-total
-      name: CMDB实例
-      type: single-value
-      zIndex: 3
-      position:
-        x: 630
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - instance_count
-        thresholdColors:
-        - color: '#38BDF8'
-          value: '0'
-    - id: kpi-monitor-instance-total
-      name: 监控实例
-      type: single-value
-      zIndex: 3
-      position:
-        x: 820
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - monitor_instance_total
-        thresholdColors:
-        - color: '#38BDF8'
-          value: '0'
-    - id: kpi-active-instance-total
-      name: 活跃实例
-      type: single-value
-      zIndex: 3
-      position:
-        x: 1010
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - monitor_instance_active
-        thresholdColors:
-        - color: '#22C55E'
-          value: '0'
-    - id: kpi-alert-current
-      name: 当前告警
-      type: single-value
-      zIndex: 3
-      position:
-        x: 1200
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - alert_current
-        thresholdColors:
-        - color: '#EF4444'
-          value: '1'
-        - color: '#38BDF8'
-          value: '0'
-    - id: kpi-alert-total
-      name: 告警总数
-      type: single-value
-      zIndex: 3
-      position:
-        x: 1390
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - total_count
-        thresholdColors:
-        - color: '#F59E0B'
-          value: '0'
-    - id: kpi-model-total
-      name: 模型总数
-      type: single-value
-      zIndex: 3
-      position:
-        x: 250
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - model_count
-        thresholdColors:
-        - color: '#7DD3FC'
-          value: '0'
-    - id: kpi-classification-total
-      name: 分类总数
-      type: single-value
-      zIndex: 3
-      position:
-        x: 440
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - classification_count
-        thresholdColors:
-        - color: '#A78BFA'
-          value: '0'
-    - id: kpi-alert-events
-      name: 告警事件
-      type: single-value
-      zIndex: 3
-      position:
-        x: 1580
-        y: 140
-      description: ''
-      styleConfig:
-        fontSize: 30
-        nameColor: '#8EDBFF'
-        textColor: '#FFFFFF'
-        borderColor: rgba(45, 212, 255, 0.42)
-        nameFontSize: 16
-        backgroundColor: rgba(8, 22, 45, 0.68)
-      valueConfig:
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - event_count
-        thresholdColors:
-        - color: '#FB7185'
-          value: '1'
-        - color: '#38BDF8'
-          value: '0'
-    - id: panel-model-top
-      name: CMDB模型实例 TOP5
-      type: chart
-      zIndex: 2
-      position:
-        x: 70
-        y: 280
-      description: ''
-      styleConfig:
-        width: 360
-        height: 190
-      valueConfig:
-        chartType: topN
-        dataSource: CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
-        chartThemeMode: screen-dark
-        topNLabelField: model
-        topNValueField: count
-        dataSourceParams:
-        - name: limit
-          type: number
-          value: 5
-          alias_name: 返回条数
-          filterType: fixed
-        - name: classification_id
-          type: string
-          value: ''
-          alias_name: 模型分类ID
-          filterType: params
-    - id: panel-os-distribution
-      name: 主机操作系统分布
-      type: chart
-      zIndex: 2
-      position:
-        x: 70
-        y: 500
-      description: ''
-      styleConfig:
-        width: 360
-        height: 210
-      valueConfig:
-        chartType: pie
-        dataSource: 主机操作系统分布::get_instance_group_by
-        chartThemeMode: screen-dark
-        dataSourceParams:
-        - name: model_id
-          type: string
-          value: host
-          alias_name: 模型 ID
-          filterType: params
-        - name: field
-          type: string
-          value: os_type
-          alias_name: 分组字段
-          filterType: fixed
-    - id: panel-alert-trend
-      name: 最近一周告警趋势
-      type: chart
-      zIndex: 2
-      position:
-        x: 1490
-        y: 280
-      description: ''
-      styleConfig:
-        width: 350
-        height: 200
-      valueConfig:
-        chartType: line
-        dataSource: 告警趋势数据::get_alert_trend_data
-        chartThemeMode: screen-dark
-        dataSourceParams:
-        - name: group_by
-          type: string
-          value: day
-          alias_name: group_by
-          filterType: fixed
-        - name: time
-          type: timeRange
-          value: 10080
-          alias_name: time
-          filterType: fixed
-    - id: panel-alert-summary
-      name: 待响应告警
-      type: chart
-      zIndex: 2
-      position:
-        x: 1490
-        y: 510
-      description: ''
-      styleConfig:
-        width: 350
-        height: 145
-      valueConfig:
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - pending_count
-        thresholdColors:
-        - color: '#EF4444'
-          value: '1'
-        - color: '#38BDF8'
-          value: '0'
-    - id: panel-monitor-overview
-      name: 监控指标总数
-      type: chart
-      zIndex: 2
-      position:
-        x: 1490
-        y: 685
-      description: ''
-      styleConfig:
-        width: 350
-        height: 145
-      valueConfig:
-        chartType: single
-        dataSource: 监控中心总览统计::monitor/get_monitor_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - metric_total
-    - id: panel-collect-health
-      name: 采集健康概览
-      type: chart
-      zIndex: 2
-      position:
-        x: 70
-        y: 740
-      description: ''
-      styleConfig:
-        width: 360
-        height: 150
-      valueConfig:
-        chartType: single
-        dataSource: CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
-        chartThemeMode: screen-dark
-        selectedFields:
-        - success_count
-        thresholdColors:
-        - color: '#22C55E'
-          value: '1'
-        - color: '#38BDF8'
-          value: '0'
-    - id: resource-center
-      name: 资源中心
-      type: icon
-      zIndex: 4
-      logoIcon: cc-cloud-plat_云平台
-      logoType: default
-      position:
-        x: 910
-        y: 490
-      description: ''
-      styleConfig:
-        width: 118
-        height: 118
-        fontSize: 16
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.72)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.44)
-    - id: resource-cmdb
-      name: CMDB
-      type: icon
-      zIndex: 4
-      logoIcon: cc-application_子应用
-      logoType: default
-      position:
-        x: 610
-        y: 400
-      description: ''
-      styleConfig:
-        width: 118
-        height: 118
-        fontSize: 16
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.72)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.44)
-    - id: resource-collector
-      name: 采集配置
-      type: icon
-      zIndex: 4
-      logoIcon: ll-file_文件采集
-      logoType: default
-      position:
-        x: 1120
-        y: 470
-      description: ''
-      styleConfig:
-        width: 118
-        height: 118
-        fontSize: 16
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.72)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.44)
-    - id: resource-metric
-      name: 指标
-      type: icon
-      zIndex: 4
-      logoIcon: cc-module_模块
-      logoType: default
-      position:
-        x: 790
-        y: 680
-      description: ''
-      styleConfig:
-        width: 118
-        height: 118
-        fontSize: 16
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.72)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.44)
-    - id: resource-policy
-      name: 策略
-      type: icon
-      zIndex: 4
-      logoIcon: cc-profile_配置文件
-      logoType: default
-      position:
-        x: 1090
-        y: 680
-      description: ''
-      styleConfig:
-        width: 118
-        height: 118
-        fontSize: 16
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.72)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.44)
-    - id: resource-alert
-      name: 告警
-      type: icon
-      zIndex: 4
-      logoIcon: cc-firewall_防火墙
-      logoType: default
-      position:
-        x: 1260
-        y: 590
-      description: ''
-      styleConfig:
-        width: 118
-        height: 118
-        fontSize: 16
-        textColor: '#DDF8FF'
-        borderColor: rgba(248, 113, 113, 0.9)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(127, 29, 29, 0.62)
-    - id: resource-cloud
-      name: 云平台
-      type: icon
-      zIndex: 4
-      logoIcon: cc-cloud_云
-      logoType: default
-      position:
-        x: 610
-        y: 580
-      description: ''
-      styleConfig:
-        width: 110
-        height: 110
-        fontSize: 15
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.68)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.36)
-    - id: resource-business
-      name: 业务系统
-      type: icon
-      zIndex: 4
-      logoIcon: cc-application_子应用
-      logoType: default
-      position:
-        x: 780
-        y: 300
-      description: ''
-      styleConfig:
-        width: 110
-        height: 110
-        fontSize: 15
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.68)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.36)
-    - id: resource-host
-      name: 主机
-      type: icon
-      zIndex: 4
-      logoIcon: cc-host_主机
-      logoType: default
-      position:
-        x: 640
-        y: 780
-      description: ''
-      styleConfig:
-        width: 110
-        height: 110
-        fontSize: 15
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.68)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.36)
-    - id: resource-network
-      name: 网络
-      type: icon
-      zIndex: 4
-      logoIcon: cc-router_路由器
-      logoType: default
-      position:
-        x: 970
-        y: 300
-      description: ''
-      styleConfig:
-        width: 110
-        height: 110
-        fontSize: 15
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.68)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.36)
-    - id: resource-storage
-      name: 存储
-      type: icon
-      zIndex: 4
-      logoIcon: cc-storage_存储
-      logoType: default
-      position:
-        x: 930
-        y: 830
-      description: ''
-      styleConfig:
-        width: 110
-        height: 110
-        fontSize: 15
-        textColor: '#DDF8FF'
-        borderColor: rgba(56, 189, 248, 0.68)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(14, 116, 144, 0.36)
-    - id: resource-database
-      name: 数据库
-      type: icon
-      zIndex: 4
-      logoIcon: cc-db-cluster_数据库集群
-      logoType: default
-      position:
-        x: 1240
-        y: 780
-      description: ''
-      styleConfig:
-        width: 110
-        height: 110
-        fontSize: 15
-        textColor: '#DDF8FF'
-        borderColor: rgba(248, 113, 113, 0.78)
-        iconPadding: 12
-        textDirection: bottom
-        backgroundColor: rgba(127, 29, 29, 0.38)
-    - id: screen-title-frame
-      name: ''
-      type: basic-shape
-      zIndex: 5
-      position:
-        x: 700
-        y: 40
-      description: ''
-      styleConfig:
-        width: 460
-        height: 58
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(125, 211, 252, 0.56)
-        borderWidth: 1
-        renderEffect: glass
-        backgroundColor: rgba(10, 49, 77, 0.72)
-      presentationRole: decorative-frame
-    - id: screen-title-left-line
-      name: ''
-      type: basic-shape
-      zIndex: 4
-      position:
-        x: 560
-        y: 68
-      description: ''
-      styleConfig:
-        width: 140
-        height: 2
-        lineType: solid
-        shapeType: rectangle
-        borderColor: transparent
-        borderWidth: 0
-        renderEffect: normal
-        backgroundColor: rgba(34, 211, 238, 0.6)
-      presentationRole: decorative-frame
-    - id: screen-title-right-line
-      name: ''
-      type: basic-shape
-      zIndex: 4
-      position:
-        x: 1160
-        y: 68
-      description: ''
-      styleConfig:
-        width: 140
-        height: 2
-        lineType: solid
-        shapeType: rectangle
-        borderColor: transparent
-        borderWidth: 0
-        renderEffect: normal
-        backgroundColor: rgba(34, 211, 238, 0.6)
-      presentationRole: decorative-frame
-    - id: screen-title
-      name: 基础资源态势大屏
-      type: text
-      zIndex: 6
-      position:
-        x: 700
-        y: 40
-      description: ''
-      styleConfig:
-        width: 460
-        height: 58
-        fontSize: 34
-        textColor: '#EEFCFF'
-        fontWeight: 800
-        borderColor: transparent
-        backgroundColor: transparent
-      presentationRole: screen-title
-    - id: screen-clock
-      name: 2026/06/23 周二 14:15:40
-      type: text
-      zIndex: 6
-      position:
-        x: 1390
-        y: 60
-      description: ''
-      styleConfig:
-        width: 270
-        height: 34
-        fontSize: 22
-        textColor: '#7DD3FC'
-        fontWeight: 700
-        borderColor: transparent
-        backgroundColor: transparent
-      presentationRole: screen-clock
-    viewport:
-      width: 1920
-      height: 1080
-      letterboxColor: '#000000'
-    decorations:
-      theme: tech-blue
-      chrome:
-        title: 基础资源态势大屏
-        showClock: true
-        showTitle: true
-      background:
-        key: circuit-blue
-        type: preset
-      templateKey: custom-screen
-      viewportPreset: 1920x1080
-      templateVersion: 1
-  refs:
-    datasource_keys:
-    - 模型/实例/分类总数统计::cmdb/get_cmdb_statistics
-    - 主机操作系统分布::get_instance_group_by
-    - CMDB模型实例TOPN::cmdb/get_cmdb_model_instance_top
-    - CMDB采集健康统计::cmdb/get_cmdb_collect_statistics
-    - 告警趋势数据::get_alert_trend_data
-    - 告警统计概览::alert/get_alert_statistics
-    - 监控中心总览统计::monitor/get_monitor_statistics
-    namespace_keys: []
 - key: screen::告警运营大屏_内置
   name: 告警运营大屏_内置
   desc: 告警中心运营态势大屏，使用页面可配置图表节点展示今日、活动、趋势、分布与活跃告警信息
   other: {}
   view_sets:
     items:
-    - id: alert-frame-today-summary
-      name: ''
-      type: basic-shape
+    - h: 232
+      w: 425
+      x: 226
+      y: 241
+      id: alert-kpi-created
+      type: widget
+      title: 今日已产生
       zIndex: 1
-      position:
-        x: 40
-        y: 150
-      description: ''
-      styleConfig:
-        width: 540
-        height: 150
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.32)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.24)
-      valueConfig: {}
-    - id: alert-frame-level-trend
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 50
-        y: 320
-      description: ''
-      styleConfig:
-        width: 520
-        height: 290
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-frame-access-trend
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 50
-        y: 630
-      description: ''
-      styleConfig:
-        width: 520
-        height: 290
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-frame-active-summary
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 615
-        y: 150
-      description: ''
-      styleConfig:
-        width: 690
-        height: 150
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.32)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.24)
-    - id: alert-frame-duration-top
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 620
-        y: 310
-      description: ''
-      styleConfig:
-        width: 670
-        height: 290
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-frame-active-table
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 620
-        y: 605
-      description: ''
-      styleConfig:
-        width: 670
-        height: 390
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-frame-level-distribution
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 1345
-        y: 155
-      description: ''
-      styleConfig:
-        width: 510
-        height: 280
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-frame-status-distribution
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 1345
-        y: 435
-      description: ''
-      styleConfig:
-        width: 510
-        height: 280
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-frame-source-event-top
-      name: ''
-      type: basic-shape
-      zIndex: 1
-      position:
-        x: 1345
-        y: 715
-      description: ''
-      styleConfig:
-        width: 510
-        height: 280
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(34, 211, 238, 0.3)
-        borderWidth: 1
-        frameVariant: tech
-        renderEffect: glow
-        backgroundColor: rgba(2, 12, 31, 0.2)
-    - id: alert-today-created
-      name: 今日已产生
-      type: single-value
-      zIndex: 2
-      position:
-        x: 70
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
+      chartType: single
       valueConfig:
+        unit: 条
         chartType: single
         dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        chartThemeMode: screen-dark
         selectedFields:
         - today_created_count
-    - id: alert-today-closed
-      name: 今日已关闭
-      type: single-value
-      zIndex: 2
-      position:
-        x: 250
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
+    - h: 223
+      w: 445
+      x: 691
+      y: 247
+      id: alert-kpi-closed
+      type: widget
+      title: 今日已关闭
+      zIndex: 1
+      chartType: single
       valueConfig:
+        unit: 条
         chartType: single
         dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        chartThemeMode: screen-dark
         selectedFields:
         - today_closed_count
-    - id: alert-today-processing
-      name: 当前处理中
-      type: single-value
-      zIndex: 2
-      position:
-        x: 420
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
+    - h: 226
+      w: 431
+      x: 1179
+      y: 241
+      id: alert-kpi-processing
+      type: widget
+      title: 当前处理中
+      zIndex: 1
+      chartType: single
       valueConfig:
+        unit: 条
         chartType: single
         dataSource: 今日告警状态总览::alert/get_alert_today_status_summary
+        chartThemeMode: screen-dark
         selectedFields:
         - processing_count
-    - id: alert-level-trend
-      name: 近7日产生告警数量
-      type: chart
-      zIndex: 2
-      position:
-        x: 70
-        y: 340
-      description: 近 7 日按告警等级统计产生数量
-      styleConfig:
-        width: 490
-        height: 260
+    - h: 229
+      w: 443
+      x: 1653
+      y: 238
+      id: alert-active-total
+      type: widget
+      title: 活动告警总数
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - active_count
+    - h: 226
+      w: 440
+      x: 2145
+      y: 238
+      id: alert-active-pending
+      type: widget
+      title: 待响应
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - pending_count
+    - h: 220
+      w: 454
+      x: 2645
+      y: 241
+      id: alert-active-processing
+      type: widget
+      title: 处理中
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - processing_count
+    - h: 229
+      w: 440
+      x: 3153
+      y: 229
+      id: alert-event-total
+      type: widget
+      title: 事件数
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: 条
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        chartThemeMode: screen-dark
+        selectedFields:
+        - event_count
+    - h: 451
+      w: 863
+      x: 220
+      y: 519
+      id: alert-level-trend
+      type: widget
+      title: 近7日产生告警数量
+      zIndex: 1
+      chartType: bar
       valueConfig:
         chartType: bar
         dataSource: 近7日告警等级趋势::alert/get_alert_level_trend
         chartThemeMode: screen-dark
+        filterBindings:
+          time__timeRange: true
         dataSourceParams:
         - name: group_by
           type: string
@@ -2650,18 +1851,16 @@ screens:
           type: timeRange
           value: 10080
           alias_name: time
-          filterType: fixed
-    - id: alert-access-trend
-      name: 近7日告警接入趋势
-      type: chart
-      zIndex: 2
-      position:
-        x: 60
-        y: 640
-      description: 近 7 日告警、事件、恢复趋势
-      styleConfig:
-        width: 490
-        height: 260
+          filterType: filter
+    - h: 463
+      w: 860
+      x: 229
+      y: 1015
+      id: alert-access-trend
+      type: widget
+      title: 近7日告警接入趋势
+      zIndex: 1
+      chartType: line
       valueConfig:
         chartType: line
         dataSource: 告警趋势数据::get_alert_trend_data
@@ -2677,183 +1876,15 @@ screens:
           value: 10080
           alias_name: time
           filterType: fixed
-    - id: alert-active-total
-      name: 活动告警总数
-      type: single-value
-      zIndex: 2
-      position:
-        x: 650
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
-      valueConfig:
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        selectedFields:
-        - active_count
-    - id: alert-active-pending
-      name: 待响应
-      type: single-value
-      zIndex: 2
-      position:
-        x: 810
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
-      valueConfig:
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        selectedFields:
-        - pending_count
-    - id: alert-active-processing
-      name: 处理中
-      type: single-value
-      zIndex: 2
-      position:
-        x: 980
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
-        thresholdColors:
-        - color: '#dc2626'
-          value: '70'
-        - color: '#d97706'
-          value: '30'
-        - color: '#2563eb'
-          value: '0'
-      valueConfig:
-        compare: false
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        selectedFields:
-        - processing_count
-    - id: alert-event-total
-      name: 事件数
-      type: single-value
-      zIndex: 2
-      position:
-        x: 1140
-        y: 180
-      description: ''
-      styleConfig:
-        fontSize: 34
-        nameColor: '#EAFBFF'
-        textColor: '#2F80FF'
-        borderColor: rgba(34, 211, 238, 0.55)
-        nameFontSize: 15
-        renderEffect: glow
-        backgroundColor: rgba(4, 18, 38, 0.78)
-      valueConfig:
-        chartType: single
-        dataSource: 告警统计概览::alert/get_alert_statistics
-        selectedFields:
-        - event_count
-    - id: alert-duration-top
-      name: 活动告警持续时长 TOP10
-      type: chart
-      zIndex: 2
-      position:
-        x: 635
-        y: 325
-      description: 持续时间最长的活跃告警排行
-      styleConfig:
-        width: 640
-        height: 260
-      valueConfig:
-        chartType: topN
-        dataSource: 活跃告警 TOP N::get_active_alert_top
-        chartThemeMode: screen-dark
-        topNLabelField: title
-        topNValueField: duration_seconds
-        dataSourceParams:
-        - name: limit
-          type: string
-          value: '10'
-          alias_name: 返回数量
-          filterType: params
-    - id: alert-active-table
-      name: 实时活跃告警信息
-      type: chart
-      zIndex: 2
-      position:
-        x: 635
-        y: 620
-      description: 当前持续时间最长的活跃告警明细
-      styleConfig:
-        width: 640
-        height: 360
-      valueConfig:
-        chartType: table
-        dataSource: 活跃告警 TOP N::get_active_alert_top
-        tableConfig:
-          columns:
-          - key: alert_id
-            order: 0
-            title: 告警ID
-            visible: true
-          - key: title
-            order: 1
-            title: 告警名称
-            visible: true
-          - key: level
-            order: 2
-            title: 等级
-            visible: true
-          - key: status
-            order: 3
-            title: 状态
-            visible: true
-          - key: duration_seconds
-            order: 4
-            title: 持续秒数
-            visible: true
-          - key: created_at
-            order: 5
-            title: 发生时间
-            visible: true
-          - key: resource_name
-            order: 6
-            title: 资源名称
-            visible: true
-        chartThemeMode: screen-dark
-        dataSourceParams:
-        - name: limit
-          type: string
-          value: '10'
-          alias_name: 返回数量
-          filterType: params
-    - id: alert-level-distribution
-      name: 告警等级分布
-      type: chart
-      zIndex: 2
-      position:
-        x: 1360
-        y: 170
-      description: 活跃告警按等级分布
-      styleConfig:
-        width: 480
-        height: 250
+    - h: 537
+      w: 860
+      x: 226
+      y: 1525
+      id: alert-level-distribution
+      type: widget
+      title: 告警等级分布
+      zIndex: 1
+      chartType: pie
       valueConfig:
         chartType: pie
         dataSource: 告警等级分布::get_alert_level_distribution
@@ -2864,32 +1895,144 @@ screens:
           value: active
           alias_name: 过滤条件
           filterType: params
-    - id: alert-status-distribution
-      name: 活动状态分布
-      type: chart
-      zIndex: 2
-      position:
-        x: 1360
-        y: 450
-      description: 活跃告警按状态分布
-      styleConfig:
-        width: 480
-        height: 250
+    - h: 614
+      w: 1299
+      x: 1151
+      y: 525
+      id: alert-duration-top
+      type: widget
+      title: 活动告警持续时长 TOP10
+      zIndex: 1
+      chartType: topN
+      valueConfig:
+        name: 活动告警持续时长 TOP10
+        chartType: topN
+        dataSource: 活跃告警 TOP N::get_active_alert_top
+        description: ''
+        tableConfig:
+          columns:
+          - key: alert_id
+            order: 0
+            title: 告警ID
+            width: 180
+            visible: true
+          - key: title
+            order: 1
+            title: 告警名称
+            width: 220
+            visible: true
+          - key: level
+            order: 2
+            title: 等级
+            width: 90
+            visible: true
+          - key: status
+            order: 3
+            title: 状态
+            width: 100
+            visible: true
+          - key: duration_seconds
+            order: 4
+            title: 持续秒数
+            width: 130
+            visible: true
+          - key: created_at
+            order: 5
+            title: 发生时间
+            width: 180
+            visible: true
+          - key: resource_name
+            order: 6
+            title: 资源名称
+            width: 180
+            visible: true
+        chartThemeMode: screen-dark
+        topNLabelField: title
+        topNValueField: duration_seconds
+        dataSourceParams:
+        - name: limit
+          type: string
+          value: '10'
+          alias_name: 返回数量
+          filterType: params
+    - h: 526
+      w: 1094
+      x: 2522
+      y: 515
+      id: alert-status-distribution
+      type: widget
+      title: 活动状态分布
+      zIndex: 1
+      chartType: pie
       valueConfig:
         chartType: pie
         dataSource: 告警状态分布::alert/get_alert_status_distribution
         chartThemeMode: screen-dark
-    - id: alert-source-event-top
-      name: 告警源事件 TOP10
-      type: chart
-      zIndex: 2
-      position:
-        x: 1360
-        y: 730
-      description: 事件数最多的告警源排行
-      styleConfig:
-        width: 480
-        height: 250
+    - h: 851
+      w: 1308
+      x: 1139
+      y: 1205
+      id: alert-active-table
+      type: widget
+      title: 实时活跃告警信息
+      zIndex: 1
+      chartType: table
+      valueConfig:
+        chartType: table
+        dataSource: 活跃告警 TOP N::get_active_alert_top
+        tableConfig:
+          columns:
+          - key: alert_id
+            order: 0
+            title: 告警ID
+            width: 180
+            visible: true
+          - key: title
+            order: 1
+            title: 告警名称
+            width: 220
+            visible: true
+          - key: level
+            order: 2
+            title: 等级
+            width: 90
+            visible: true
+          - key: status
+            order: 3
+            title: 状态
+            width: 100
+            visible: true
+          - key: duration_seconds
+            order: 4
+            title: 持续秒数
+            width: 130
+            visible: true
+          - key: created_at
+            order: 5
+            title: 发生时间
+            width: 180
+            visible: true
+          - key: resource_name
+            order: 6
+            title: 资源名称
+            width: 180
+            visible: true
+        chartThemeMode: screen-dark
+        dataSourceParams:
+        - name: limit
+          type: string
+          value: '10'
+          alias_name: 返回数量
+          filterType: params
+    - h: 538
+      w: 1100
+      x: 2531
+      y: 1506
+      id: alert-source-event-top
+      type: widget
+      title: 告警源事件 TOP10
+      zIndex: 1
+      chartType: topN
       valueConfig:
         chartType: topN
         dataSource: 告警源事件数 TOP N::alert/get_alert_source_event_top
@@ -2902,121 +2045,81 @@ screens:
           value: '10'
           alias_name: 限制
           filterType: params
-    - id: screen-title-left-line
-      name: ''
-      type: basic-shape
-      zIndex: 4
-      position:
-        x: 560
-        y: 68
-      description: ''
-      styleConfig:
-        width: 140
-        height: 2
-        lineType: solid
-        shapeType: rectangle
-        borderColor: transparent
-        borderWidth: 0
-        renderEffect: normal
-        backgroundColor: rgba(34, 211, 238, 0.6)
-      presentationRole: decorative-frame
-    - id: screen-title-right-line
-      name: ''
-      type: basic-shape
-      zIndex: 4
-      position:
-        x: 1160
-        y: 68
-      description: ''
-      styleConfig:
-        width: 140
-        height: 2
-        lineType: solid
-        shapeType: rectangle
-        borderColor: transparent
-        borderWidth: 0
-        renderEffect: normal
-        backgroundColor: rgba(34, 211, 238, 0.6)
-      presentationRole: decorative-frame
-    - id: screen-title-frame
-      name: ''
-      type: basic-shape
-      zIndex: 5
-      position:
-        x: 700
-        y: 40
-      description: ''
-      styleConfig:
-        width: 460
-        height: 58
-        lineType: solid
-        shapeType: rectangle
-        borderColor: rgba(125, 211, 252, 0.56)
-        borderWidth: 1
-        renderEffect: glass
-        backgroundColor: rgba(10, 49, 77, 0.72)
-      presentationRole: decorative-frame
-    - id: screen-title
-      name: 告警运营大屏
-      type: text
-      zIndex: 6
-      position:
-        x: 700
-        y: 40
-      description: ''
-      styleConfig:
-        width: 460
-        height: 58
-        fontSize: 34
-        textColor: '#EEFCFF'
-        fontWeight: 800
-        borderColor: transparent
-        backgroundColor: transparent
-      valueConfig: {}
-      presentationRole: screen-title
-    - id: screen-clock
-      name: 2026/06/23 周二 14:15:40
-      type: text
-      zIndex: 6
-      position:
-        x: 1330
-        y: 60
-      description: ''
-      styleConfig:
-        width: 270
-        height: 34
-        fontSize: 22
-        textColor: '#7DD3FC'
-        fontWeight: 700
-        borderColor: transparent
-        backgroundColor: transparent
-      presentationRole: screen-clock
+    - h: 337
+      w: 340
+      x: 2531
+      y: 1093
+      id: alert-aggregation-ratio
+      type: widget
+      title: 告警聚合压缩率
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: '%'
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        decimalPlaces: 2
+        chartThemeMode: screen-dark
+        selectedFields:
+        - aggregation_ratio
+        conversionFactor: 100
+    - h: 325
+      w: 337
+      x: 2915
+      y: 1099
+      id: alert-auto-recovery-rate
+      type: widget
+      title: 自动恢复率
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: '%'
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        decimalPlaces: 2
+        chartThemeMode: screen-dark
+        selectedFields:
+        - auto_recovery_rate
+        conversionFactor: 100
+    - h: 316
+      w: 340
+      x: 3295
+      y: 1107
+      id: alert-session-alert-rate
+      type: widget
+      title: 会话告警率
+      zIndex: 1
+      chartType: single
+      valueConfig:
+        unit: '%'
+        chartType: single
+        dataSource: 告警统计概览::alert/get_alert_statistics
+        decimalPlaces: 2
+        chartThemeMode: screen-dark
+        selectedFields:
+        - session_alert_rate
+        conversionFactor: 100
     viewport:
-      width: 1920
-      height: 1080
-      letterboxColor: '#000000'
-    decorations:
-      theme: tech-blue
-      chrome:
-        title: 告警运营大屏
-        showClock: true
-        showTitle: true
+      theme: screen-tech-blue
+      width: 3840
+      height: 2160
       background:
-        key: circuit-blue
-        type: preset
-      templateKey: custom-screen
-      viewportPreset: 1920x1080
-      templateVersion: 1
+        key: tech-grid
+        type: builtIn
+    decorations:
+      title: 告警运营大屏
+      showClock: true
+      showTitle: true
   refs:
     datasource_keys:
-    - 告警源事件数 TOP N::alert/get_alert_source_event_top
+    - 今日告警状态总览::alert/get_alert_today_status_summary
+    - 告警统计概览::alert/get_alert_statistics
+    - 近7日告警等级趋势::alert/get_alert_level_trend
+    - 告警趋势数据::get_alert_trend_data
     - 告警等级分布::get_alert_level_distribution
     - 活跃告警 TOP N::get_active_alert_top
-    - 告警趋势数据::get_alert_trend_data
-    - 告警统计概览::alert/get_alert_statistics
-    - 今日告警状态总览::alert/get_alert_today_status_summary
     - 告警状态分布::alert/get_alert_status_distribution
-    - 近7日告警等级趋势::alert/get_alert_level_trend
+    - 告警源事件数 TOP N::alert/get_alert_source_event_top
     namespace_keys: []
 reports: []
 architectures: []

@@ -379,7 +379,21 @@ def test_screen_and_report_create_with_directory_succeed(authenticated_user):
     user = _superuser(authenticated_user)
     directory = Directory.objects.create(name="内容目录", groups=[1], created_by="testuser")
 
-    screen_request = _request("post", "/screen/", user, data={"name": "值班大屏", "groups": [1], "directory": directory.id})
+    screen_request = _request(
+        "post",
+        "/screen/",
+        user,
+        data={
+            "name": "值班大屏",
+            "groups": [1],
+            "directory": directory.id,
+            "view_sets": {
+                "viewport": {"width": 1920, "height": 1080},
+                "items": [],
+                "decorations": {},
+            },
+        },
+    )
     screen_response = view_module.ScreenModelViewSet.as_view({"post": "create"})(screen_request)
     screen_payload = _render(screen_response)
 
@@ -396,9 +410,39 @@ def test_screen_and_report_create_with_directory_succeed(authenticated_user):
 
 
 @pytest.mark.django_db
+def test_screen_create_without_view_sets_returns_400(authenticated_user):
+    user = _superuser(authenticated_user)
+    directory = Directory.objects.create(name="内容目录", groups=[1], created_by="testuser")
+    request = _request(
+        "post",
+        "/screen/",
+        user,
+        data={"name": "缺配置大屏", "groups": [1], "directory": directory.id},
+    )
+    response = view_module.ScreenModelViewSet.as_view({"post": "create"})(request)
+    payload = _render(response)
+
+    assert response.status_code == status.HTTP_400_BAD_REQUEST
+    assert "view_sets" in json.dumps(payload, ensure_ascii=False)
+
+
+@pytest.mark.django_db
 def test_screen_create_without_directory_returns_400(authenticated_user):
     user = _superuser(authenticated_user)
-    request = _request("post", "/screen/", user, data={"name": "无目录大屏", "groups": [1]})
+    request = _request(
+        "post",
+        "/screen/",
+        user,
+        data={
+            "name": "无目录大屏",
+            "groups": [1],
+            "view_sets": {
+                "viewport": {"width": 1920, "height": 1080},
+                "items": [],
+                "decorations": {},
+            },
+        },
+    )
     response = view_module.ScreenModelViewSet.as_view({"post": "create"})(request)
     payload = _render(response)
 

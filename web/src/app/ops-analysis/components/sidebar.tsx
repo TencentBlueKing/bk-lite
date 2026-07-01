@@ -13,9 +13,19 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
 import useBtnPermissions from '@/hooks/usePermissions';
 import type { DataNode } from 'antd/lib/tree';
-import { Form } from 'antd';
+import {
+  Button,
+  Dropdown,
+  Empty,
+  Form,
+  Input,
+  Menu,
+  Modal,
+  Radio,
+  Spin,
+  Tree,
+} from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { Input, Button, Modal, Dropdown, Menu, Tree, Empty, Spin } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
@@ -26,6 +36,7 @@ import {
   CANVAS_TYPES,
   getCanvasTypeMeta,
   isCanvasType,
+  type CanvasType,
 } from '@/app/ops-analysis/constants/canvasTypes';
 import {
   SidebarProps,
@@ -49,6 +60,9 @@ import {
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
   ({ onSelect, onDataUpdate }, ref) => {
     const [form] = Form.useForm();
+    const selectedCanvasType = Form.useWatch('canvasType', form) as
+      | CanvasType
+      | undefined;
     const { t } = useTranslation();
     const searchParams = useSearchParams();
     const { selectedGroup } = useUserInfoContext();
@@ -70,6 +84,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
     const [importModalVisible, setImportModalVisible] = useState(false);
     const [importTargetDir, setImportTargetDir] = useState<DirItem | null>(null);
+    const activeCanvasType =
+      selectedCanvasType || (isCanvasType(newItemType) ? newItemType : undefined);
+    const isCreatingCanvas = modalAction !== 'edit' && isCanvasType(newItemType);
 
     useImperativeHandle(
       ref,
@@ -117,6 +134,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         name: defaultValue,
         desc: action === 'edit' && dir ? dir.desc : '',
         groups: initialGroups,
+        canvasType: isCanvasType(itemType) ? itemType : undefined,
       };
 
       form.setFieldsValue(formData);
@@ -134,6 +152,13 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const handleSubmit = async (values: FormValues) => {
       setSubmitLoading(true);
       try {
+        const targetItemType =
+          modalAction === 'edit'
+            ? newItemType
+            : isCanvasType(values.canvasType)
+              ? values.canvasType
+              : newItemType;
+
         if (modalAction === 'edit') {
           if (!currentDir) return;
           const updateData = {
@@ -156,19 +181,19 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             desc: values.desc,
             groups: values.groups,
           };
-          if (newItemType === 'screen') {
+          if (targetItemType === 'screen') {
             itemData.view_sets = buildDefaultScreenViewSets();
           }
           if (modalAction === 'addChild' && currentDir?.data_id) {
-            if (isCanvasType(newItemType)) {
+            if (isCanvasType(targetItemType)) {
               itemData.directory = parseInt(currentDir.data_id, 10);
-            } else if (newItemType === 'directory') {
+            } else if (targetItemType === 'directory') {
               itemData.parent = parseInt(currentDir.data_id, 10);
             }
-          } else if (newItemType === 'directory') {
+          } else if (targetItemType === 'directory') {
             itemData.parent = null;
           }
-          await createItem(newItemType, itemData);
+          await createItem(targetItemType, itemData);
         }
         handleModalCancel();
         await loadDirectories();
@@ -251,6 +276,18 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       return iconMap[meta.icon];
     };
 
+    const renderCanvasTypeIcon = (type: CanvasType) => {
+      const className = 'text-base';
+      const iconMap = {
+        dashboard: <BarChartOutlined className={`${className} text-purple-600`} />,
+        topology: <Icon type="tuoputu" className={`${className} text-blue-600`} />,
+        architecture: <ApartmentOutlined className={`${className} text-green-600`} />,
+        screen: <DesktopOutlined className={`${className} text-cyan-600`} />,
+        report: <FileTextOutlined className={`${className} text-orange-600`} />,
+      };
+      return iconMap[type];
+    };
+
     const hasChildren = (item: DirItem): boolean => {
       if (!item.children || item.children.length === 0) {
         return false;
@@ -307,30 +344,24 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         <Menu selectable={false}>
           {isGroup && (
             <>
-              {CANVAS_TYPES.map((canvasType) => {
-                const meta = getCanvasTypeMeta(canvasType)!;
-                return (
-                  <Menu.Item
-                    key={`add-${canvasType}`}
-                    onClick={(e) => {
-                      stopEventPropagation(e.domEvent);
-                      if (!hasPermission(['AddChart'])) return;
-                      setNewItemType(canvasType);
-                      showModal(
-                        'addChild',
-                        t(meta.addLabelKey),
-                        '',
-                        item,
-                        canvasType,
-                      );
-                    }}
-                  >
-                    <PermissionWrapper requiredPermissions={['AddChart']}>
-                      {t(meta.addLabelKey)}
-                    </PermissionWrapper>
-                  </Menu.Item>
-                );
-              })}
+              <Menu.Item
+                key="add-canvas"
+                onClick={(e) => {
+                  stopEventPropagation(e.domEvent);
+                  if (!hasPermission(['AddChart'])) return;
+                  showModal(
+                    'addChild',
+                    t('opsAnalysisSidebar.addCanvas'),
+                    '',
+                    item,
+                    'dashboard',
+                  );
+                }}
+              >
+                <PermissionWrapper requiredPermissions={['AddChart']}>
+                  {t('opsAnalysisSidebar.addCanvas')}
+                </PermissionWrapper>
+              </Menu.Item>
               <Menu.Item
                 key="import"
                 onClick={(e) => {
@@ -631,14 +662,62 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         <Modal
           title={modalTitle}
           open={modalVisible}
+          centered
+          width={isCreatingCanvas ? 760 : 520}
           okText={t('common.confirm')}
           cancelText={t('common.cancel')}
-          style={{ top: '35%' }}
           onOk={handleModalOk}
           onCancel={handleModalCancel}
           confirmLoading={submitLoading}
         >
-          <Form form={form} className="mt-5" labelCol={{ span: 5 }}>
+          <Form form={form} className="mt-5" labelCol={{ span: 4 }}>
+            {isCreatingCanvas && (
+              <Form.Item
+                name="canvasType"
+                label={t('opsAnalysisSidebar.canvasType')}
+                rules={[{ required: true, message: t('common.selectMsg') }]}
+              >
+                <Radio.Group
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3"
+                  onChange={(event) => setNewItemType(event.target.value)}
+                >
+                  {CANVAS_TYPES.map((canvasType) => {
+                    const meta = getCanvasTypeMeta(canvasType)!;
+                    const selected = activeCanvasType === canvasType;
+
+                    return (
+                      <Radio
+                        key={canvasType}
+                        value={canvasType}
+                        className={`!m-0 flex min-h-[104px] w-full rounded-md border px-3 py-2.5 transition-all ${
+                          selected
+                            ? 'border-blue-500 bg-blue-50 shadow-sm'
+                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-gray-50'
+                        }`}
+                      >
+                        <span className="block min-w-0">
+                          <span className="flex items-center gap-2">
+                            <span
+                              className={`flex h-7 w-7 flex-none items-center justify-center rounded-md ${
+                                selected ? 'bg-white' : 'bg-gray-50'
+                              }`}
+                            >
+                              {renderCanvasTypeIcon(canvasType)}
+                            </span>
+                            <span className="block text-sm font-medium text-gray-900">
+                              {t(meta.nameKey)}
+                            </span>
+                          </span>
+                          <span className="mt-1.5 block text-xs leading-5 text-gray-500">
+                            {t(meta.descriptionKey)}
+                          </span>
+                        </span>
+                      </Radio>
+                    );
+                  })}
+                </Radio.Group>
+              </Form.Item>
+            )}
             <Form.Item
               name="name"
               label={t('opsAnalysisSidebar.nameLabel')}

@@ -29,12 +29,35 @@
   height: 100%;
   min-height: 0;
 
+  > :global([class*="customTable"]) {
+    display: flex;
+    flex-direction: column;
+    height: 100% !important;
+    min-height: 0;
+  }
+
+  > :global([class*="customTable"]) > :global(.ant-table-wrapper) {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  > :global([class*="customTable"]) > :global(.absolute.right-0.bottom-0) {
+    position: static !important;
+    flex: 0 0 auto;
+    width: 100%;
+    justify-content: flex-end;
+    padding-top: var(--ops-screen-table-pagination-gap, 6px);
+  }
+
   :global(.ant-pagination) {
     color: var(--ops-screen-table-muted);
+    font-size: var(--ops-screen-table-pagination-font-size, 12px);
   }
 
   :global(.ant-pagination-total-text) {
     color: var(--ops-screen-table-muted);
+    font-size: var(--ops-screen-table-pagination-font-size, 12px);
   }
 
   :global(.ant-pagination-item),
@@ -77,11 +100,11 @@
   }
 
   :global(.ant-table-thead > tr > th) {
-    padding: 8px 10px;
+    padding: var(--ops-screen-table-cell-padding-y, 8px) var(--ops-screen-table-cell-padding-x, 10px);
     color: var(--ops-screen-table-heading);
-    font-size: 12px;
+    font-size: var(--ops-screen-table-header-font-size, 12px);
     font-weight: 600;
-    line-height: 18px;
+    line-height: var(--ops-screen-table-line-height, 18px);
     background: rgba(10, 39, 78, 0.86) !important;
     border-bottom: 1px solid var(--ops-screen-table-border);
   }
@@ -91,10 +114,10 @@
   }
 
   :global(.ant-table-tbody > tr > td) {
-    padding: 8px 10px;
+    padding: var(--ops-screen-table-cell-padding-y, 8px) var(--ops-screen-table-cell-padding-x, 10px);
     color: var(--ops-screen-table-text);
-    font-size: 12px;
-    line-height: 18px;
+    font-size: var(--ops-screen-table-body-font-size, 12px);
+    line-height: var(--ops-screen-table-line-height, 18px);
     background: rgba(3, 13, 30, 0.36);
     border-bottom: 1px solid rgba(54, 151, 215, 0.18);
   }
@@ -128,8 +151,8 @@
 
   :global(.ant-table-body::-webkit-scrollbar),
   :global(.ant-table-content::-webkit-scrollbar) {
-    width: 8px;
-    height: 8px;
+    width: var(--ops-screen-table-scrollbar-size, 8px);
+    height: var(--ops-screen-table-scrollbar-size, 8px);
   }
 
   :global(.ant-table-body::-webkit-scrollbar-thumb),

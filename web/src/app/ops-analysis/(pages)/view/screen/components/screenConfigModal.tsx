@@ -118,7 +118,7 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
         confirmLoading={saving}
         onCancel={onCancel}
         onOk={handleOk}
-        okText={t("common.save")}
+        okText={t("common.confirm")}
         cancelText={t("common.cancel")}
       >
         <div className="screen-config-modal__stack">
@@ -162,8 +162,8 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
                         isValidViewportSize(value)
                           ? Promise.resolve()
                           : Promise.reject(
-                              new Error(t("opsAnalysis.screen.sizeInvalid")),
-                            ),
+                            new Error(t("opsAnalysis.screen.sizeInvalid")),
+                          ),
                     },
                   ]}
                 >
@@ -185,8 +185,8 @@ const ScreenConfigModal: React.FC<ScreenConfigModalProps> = ({
                         isValidViewportSize(value)
                           ? Promise.resolve()
                           : Promise.reject(
-                              new Error(t("opsAnalysis.screen.sizeInvalid")),
-                            ),
+                            new Error(t("opsAnalysis.screen.sizeInvalid")),
+                          ),
                     },
                   ]}
                 >

@@ -9,13 +9,21 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
-import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  ScreenRenderContext,
+  ValueConfig,
+} from '@/app/ops-analysis/types/dashBoard';
+import {
+  getScreenWidgetScale,
+  scaleScreenMetric,
+} from './shared/screenMetrics';
 
 interface OsPieProps {
   rawData: any;
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  screenRenderContext?: ScreenRenderContext;
 }
 
 const OsPie: React.FC<OsPieProps> = ({
@@ -23,6 +31,7 @@ const OsPie: React.FC<OsPieProps> = ({
   loading = false,
   onReady,
   config,
+  screenRenderContext,
 }) => {
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
@@ -33,6 +42,7 @@ const OsPie: React.FC<OsPieProps> = ({
   const chartColors = usesScreenChartTheme
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
     : randomColorForLegend(themeName);
+  const widgetScale = getScreenWidgetScale(screenRenderContext);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
 
   const handleLegendChange = useCallback((selected: Record<string, boolean>) => {
@@ -68,16 +78,21 @@ const OsPie: React.FC<OsPieProps> = ({
       borderColor: chartTheme.tooltipBorderColor,
       extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
       textStyle: {
-        fontSize: 12,
+        fontSize: scaleScreenMetric(12, screenRenderContext),
         color: chartTheme.tooltipTextColor,
       },
       formatter: function (params: any) {
         const percent = params.percent || 0;
+        const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
+        const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
+        const tooltipGap = scaleScreenMetric(4, screenRenderContext);
+        const markerSize = scaleScreenMetric(10, screenRenderContext);
+        const markerGap = scaleScreenMetric(6, screenRenderContext);
         return `
-          <div style="padding: 4px 8px;">
-            <div style="margin-bottom: 4px; font-weight: bold;">${params.seriesName}</div>
+          <div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
+            <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params.seriesName}</div>
             <div style="display: flex; align-items: center;">
-              <span style="display: inline-block; width: 10px; height: 10px; background-color: ${params.color}; border-radius: 50%; margin-right: 6px;"></span>
+              <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${params.color}; border-radius: 50%; margin-right: ${markerGap}px;"></span>
               <span>${params.name}: ${params.value} (${percent.toFixed(1)}%)</span>
             </div>
           </div>
@@ -108,36 +123,38 @@ const OsPie: React.FC<OsPieProps> = ({
           },
           rich: {
             title: {
-              fontSize: 14,
+              fontSize: scaleScreenMetric(14, screenRenderContext),
               color: chartTheme.pieTitleColor,
-              lineHeight: 20,
+              lineHeight: scaleScreenMetric(20, screenRenderContext),
             },
             value: {
-              fontSize: 24,
+              fontSize: scaleScreenMetric(24, screenRenderContext),
               fontWeight: 'bold',
               color: chartTheme.pieValueColor,
-              lineHeight: 32,
+              lineHeight: scaleScreenMetric(32, screenRenderContext),
             },
           },
         },
         labelLine: {
           show: false,
-          length: 10,
-          length2: 15,
+          length: scaleScreenMetric(10, screenRenderContext),
+          length2: scaleScreenMetric(15, screenRenderContext),
           smooth: true,
         },
         itemStyle: {
-          borderRadius: 2,
+          borderRadius: scaleScreenMetric(2, screenRenderContext),
           borderColor: chartTheme.pieBorderColor,
-          borderWidth: 1,
-          shadowBlur: usesScreenChartTheme ? chartTheme.pieShadowBlur : 0,
+          borderWidth: scaleScreenMetric(1, screenRenderContext),
+          shadowBlur: usesScreenChartTheme
+            ? scaleScreenMetric(chartTheme.pieShadowBlur, screenRenderContext)
+            : 0,
           shadowColor: usesScreenChartTheme
             ? chartTheme.pieShadowColor
             : 'transparent',
         },
         emphasis: {
           focus: 'none',
-          scaleSize: 5,
+          scaleSize: scaleScreenMetric(5, screenRenderContext),
         },
         data: chartData || [],
       },
@@ -180,6 +197,7 @@ const OsPie: React.FC<OsPieProps> = ({
           layout="vertical"
           showPercent={true}
           textColor={usesScreenChartTheme ? chartTheme.axisLabelColor : undefined}
+          scale={widgetScale}
           onSelectionChange={handleLegendChange}
         />
       )}

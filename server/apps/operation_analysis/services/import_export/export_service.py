@@ -176,7 +176,7 @@ class ExportService:
         ds_key_map: {datasource_id: datasource_key} 映射
         ns_key_map: {namespace_id: namespace_key} 映射
         """
-        raw_view_sets = canvas.view_sets or []
+        raw_view_sets = canvas.view_sets if canvas.view_sets is not None else []
         ds_ids, ns_ids = ExportService.extract_canvas_dependencies(raw_view_sets, object_type)
         view_sets = rewrite_canvas_view_sets_refs_for_yaml(
             normalize_canvas_view_sets_for_yaml(raw_view_sets, object_type),

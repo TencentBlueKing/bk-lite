@@ -19,7 +19,6 @@ import {
   Input,
   Radio,
   Select,
-  Switch,
   Tooltip,
   message,
 } from 'antd';
@@ -32,7 +31,6 @@ import {
 } from '@/app/ops-analysis/constants/common';
 import DataSourceParamsConfig from '@/app/ops-analysis/components/paramsConfig';
 import { SingleValueSettingsSection } from '@/app/ops-analysis/components/singleValueSettingsSection';
-import { ValueMappingsConfigSection } from '@/app/ops-analysis/components/valueMappingsConfigSection';
 import { FilterBindingPanel } from '@/app/ops-analysis/components/unifiedFilter';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useInstanceApi, useModelApi } from '@/app/cmdb/api';
@@ -88,8 +86,6 @@ interface FormValues {
   unit?: string;
   unitId?: string;
   valueMappings?: ValueConfig['valueMappings'];
-  stack?: boolean;
-  content?: string;
   conversionFactor?: number;
   decimalPlaces?: number;
   gaugeMin?: number;
@@ -561,10 +557,26 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             : probedColumns,
         );
 
+        const fieldTitleMap = new Map<string, string>();
+        (targetDataSource?.field_schema || []).forEach((field) => {
+          if (field.key) {
+            fieldTitleMap.set(field.key, field.title || field.key);
+          }
+        });
+        probedColumns.forEach((column) => {
+          if (column.key && !fieldTitleMap.has(column.key)) {
+            fieldTitleMap.set(column.key, column.title || column.key);
+          }
+        });
+
         tableConfig.setDisplayColumns(
           valueConfig.tableConfig.columns.map((c, idx) => ({
             ...c,
             id: `column_${idx}_${Date.now()}`,
+            title:
+              !c.title || c.title === c.key
+                ? fieldTitleMap.get(c.key) || c.title || c.key
+                : c.title,
             isDefault:
               schemaDefaultKeys.has(c.key) || probeDefaultKeys.has(c.key),
           })),
@@ -619,12 +631,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
     if ((valueConfig as ValueConfig | undefined)?.valueMappings !== undefined) {
       formValues.valueMappings = (valueConfig as ValueConfig).valueMappings;
-    }
-    if ((valueConfig as ValueConfig | undefined)?.stack !== undefined) {
-      formValues.stack = (valueConfig as ValueConfig).stack;
-    }
-    if ((valueConfig as ValueConfig | undefined)?.content !== undefined) {
-      formValues.content = (valueConfig as ValueConfig).content;
     }
     if (valueConfig?.conversionFactor !== undefined) {
       formValues.conversionFactor = valueConfig.conversionFactor;
@@ -983,7 +989,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           result.decimalPlaces = decimalPlacesValue;
       }
 
-      if (chartType === 'gauge' || chartType === 'barGauge') {
+      if (chartType === 'gauge') {
         result.selectedFields = singleValueConfig.selectedFields;
         result.thresholdColors = singleValueConfig.thresholdColors;
         const unitValue = form.getFieldValue('unit');
@@ -1299,7 +1305,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           />
         )}
 
-        {(chartType === 'gauge' || chartType === 'barGauge') && (
+        {chartType === 'gauge' && (
           <GaugeSettingsSection
             t={t}
             sectionTitle={t('dashboard.gaugeSettings')}
@@ -1331,33 +1337,6 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           />
         )}
 
-        {(chartType === 'line' || chartType === 'bar') && (
-          <Form.Item
-            label={t('dashboard.stackSeries')}
-            name="stack"
-            valuePropName="checked"
-          >
-            <Switch />
-          </Form.Item>
-        )}
-
-        {chartType === 'stateTimeline' && (
-          <Form.Item
-            label={t('topology.nodeConfig.valueMappings')}
-            name="valueMappings"
-          >
-            <ValueMappingsConfigSection t={t} />
-          </Form.Item>
-        )}
-
-        {chartType === 'text' && (
-          <Form.Item label={t('dashboard.textContent')} name="content">
-            <Input.TextArea
-              rows={6}
-              placeholder={t('dashboard.textContentPlaceholder')}
-            />
-          </Form.Item>
-        )}
       </Form>
       <ComponentSelector
         visible={dataSourceSelectorVisible}

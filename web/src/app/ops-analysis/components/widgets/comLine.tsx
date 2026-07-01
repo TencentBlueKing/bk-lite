@@ -10,7 +10,15 @@ import {
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '@/app/ops-analysis/components/chartLegend';
-import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  ScreenRenderContext,
+  ValueConfig,
+} from '@/app/ops-analysis/types/dashBoard';
+import {
+  getScreenWidgetScale,
+  scaleScreenMetric,
+  scaleScreenMetricFloat,
+} from './shared/screenMetrics';
 
 interface EChartsInstance {
   dispatchAction: (payload: Record<string, any>) => void;
@@ -21,6 +29,7 @@ interface TrendLineProps {
   loading?: boolean;
   onReady?: (ready: boolean) => void;
   config?: ValueConfig;
+  screenRenderContext?: ScreenRenderContext;
 }
 
 const LINE_SMOOTHNESS = 0.36;
@@ -47,12 +56,8 @@ const withAlpha = (color: string, alpha: number) => {
   return color;
 };
 
-const getSeriesAreaColor = (color: string, fillOpacity?: number) => {
-  // fillOpacity（0~1，对齐 Grafana Fill opacity）作为顶部填充透明度；未设时用默认 0.12
-  const top =
-    typeof fillOpacity === 'number' && fillOpacity >= 0 && fillOpacity <= 1
-      ? fillOpacity
-      : 0.12;
+const getSeriesAreaColor = (color: string) => {
+  const top = 0.12;
   return {
     type: 'linear' as const,
     x: 0,
@@ -72,6 +77,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   loading = false,
   onReady,
   config,
+  screenRenderContext,
 }) => {
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
@@ -83,6 +89,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const chartColors = usesScreenChartTheme
     ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
     : randomColorForLegend(themeName);
+  const widgetScale = getScreenWidgetScale(screenRenderContext);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
   const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({ start: 0, end: 100 });
 
@@ -183,7 +190,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
           title: { zoom: '', back: '' },
           icon: { zoom: 'none', back: 'none' },
           brushStyle: {
-            borderWidth: 2,
+            borderWidth: scaleScreenMetric(2, screenRenderContext),
             color: chartTheme.zoomBrushColor,
             borderColor: chartTheme.zoomBrushBorderColor,
           },
@@ -210,7 +217,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         lineStyle: {
           color: chartTheme.axisPointerColor,
           type: 'dashed',
-          width: 1,
+          width: scaleScreenMetricFloat(1, screenRenderContext),
         },
       },
       enterable: false,
@@ -219,11 +226,11 @@ const TrendLine: React.FC<TrendLineProps> = ({
         const tooltipWidth = size.contentSize[0];
         const chartWidth = size.viewSize[0];
         // 默认放右上方，离鼠标远一些
-        let x = point[0] + 40;
-        const y = 10;
+        let x = point[0] + scaleScreenMetric(40, screenRenderContext);
+        const y = scaleScreenMetric(10, screenRenderContext);
         // 如果右边放不下，放左边
         if (x + tooltipWidth > chartWidth) {
-          x = point[0] - tooltipWidth - 40;
+          x = point[0] - tooltipWidth - scaleScreenMetric(40, screenRenderContext);
         }
         return [x, y];
       },
@@ -232,18 +239,23 @@ const TrendLine: React.FC<TrendLineProps> = ({
       borderColor: chartTheme.tooltipBorderColor,
       extraCssText: `box-shadow: ${chartTheme.tooltipShadow};`,
       textStyle: {
-        fontSize: 12,
+        fontSize: scaleScreenMetric(12, screenRenderContext),
         color: chartTheme.tooltipTextColor,
       },
       formatter: function (params: any) {
         if (!params || params.length === 0) return '';
-        let content = `<div style="padding: 4px 8px;">
-          <div style="margin-bottom: 4px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
+        const tooltipPaddingY = scaleScreenMetric(4, screenRenderContext);
+        const tooltipPaddingX = scaleScreenMetric(8, screenRenderContext);
+        const tooltipGap = scaleScreenMetric(4, screenRenderContext);
+        const markerSize = scaleScreenMetric(10, screenRenderContext);
+        const markerGap = scaleScreenMetric(6, screenRenderContext);
+        let content = `<div style="padding: ${tooltipPaddingY}px ${tooltipPaddingX}px;">
+          <div style="margin-bottom: ${tooltipGap}px; font-weight: bold;">${params[0].axisValueLabel}</div>`;
 
         params.forEach((param: any) => {
           content += `
-            <div style="display: flex; align-items: center; margin-bottom: 2px;">
-              <span style="display: inline-block; width: 10px; height: 10px; background-color: ${param.color}; border-radius: 50%; margin-right: 6px;"></span>
+            <div style="display: flex; align-items: center; margin-bottom: ${scaleScreenMetric(2, screenRenderContext)}px;">
+              <span style="display: inline-block; width: ${markerSize}px; height: ${markerSize}px; background-color: ${param.color}; border-radius: 50%; margin-right: ${markerGap}px;"></span>
               <span>${param.seriesName}: ${param.value}</span>
             </div>`;
         });
@@ -253,10 +265,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       },
     },
     grid: {
-      top: 18,
-      left: 16,
-      right: 16,
-      bottom: 8,
+      top: scaleScreenMetric(18, screenRenderContext),
+      left: scaleScreenMetric(16, screenRenderContext),
+      right: scaleScreenMetric(16, screenRenderContext),
+      bottom: scaleScreenMetric(8, screenRenderContext),
       containLabel: true,
     },
     xAxis: {
@@ -264,10 +276,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       data: chartData?.categories || [],
       nameRotate: -90,
       axisLabel: {
-        margin: 15,
+        margin: scaleScreenMetric(15, screenRenderContext),
         textStyle: {
           color: chartTheme.axisLabelColor,
-          fontSize: 11,
+          fontSize: scaleScreenMetric(11, screenRenderContext),
         },
         rotate: 0,
         interval: 'auto',
@@ -308,6 +320,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
         },
         textStyle: {
           color: chartTheme.axisLabelColor,
+          fontSize: scaleScreenMetric(11, screenRenderContext),
         },
       },
       splitLine: {
@@ -353,7 +366,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
         axisLine: { show: false },
         axisLabel: {
           formatter: (value: number) => value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toString(),
-          textStyle: { color: chartTheme.axisLabelColor },
+          textStyle: {
+            color: chartTheme.axisLabelColor,
+            fontSize: scaleScreenMetric(11, screenRenderContext),
+          },
         },
         splitLine: {
           show: true,
@@ -367,12 +383,15 @@ const TrendLine: React.FC<TrendLineProps> = ({
         axisLine: { show: false },
         axisLabel: {
           formatter: (value: number) => value >= 1000 ? (value / 1000).toFixed(1) + 'k' : value.toString(),
-          textStyle: { color: chartTheme.axisLabelColor },
+          textStyle: {
+            color: chartTheme.axisLabelColor,
+            fontSize: scaleScreenMetric(11, screenRenderContext),
+          },
         },
         splitLine: { show: false },
       },
     ];
-    option.grid.right = 40;
+    option.grid.right = scaleScreenMetric(40, screenRenderContext);
   }
 
   if (chartData && chartData.series) {
@@ -383,35 +402,38 @@ const TrendLine: React.FC<TrendLineProps> = ({
       smooth: LINE_SMOOTHNESS,
       smoothMonotone: 'x',
       symbol: 'none',
-      ...(config?.stack ? { stack: 'total' } : {}),
       yAxisIndex: useDualAxis
         ? largeSeriesIndices.includes(index)
           ? 0
           : 1
         : 0,
       lineStyle: {
-        width: chartTheme.lineWidth,
+        width: scaleScreenMetricFloat(chartTheme.lineWidth, screenRenderContext),
         opacity: chartTheme.lineOpacity,
-        shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur : 0,
+        shadowBlur: usesScreenChartTheme
+          ? scaleScreenMetric(chartTheme.lineShadowBlur, screenRenderContext)
+          : 0,
         shadowColor: usesScreenChartTheme
           ? chartTheme.lineShadowColor
           : 'transparent',
       },
       itemStyle: {
         borderColor: chartTheme.panelBg,
-        borderWidth: 1,
+        borderWidth: scaleScreenMetricFloat(1, screenRenderContext),
       },
       areaStyle: {
-        color: getSeriesAreaColor(
-          chartColors[index % chartColors.length],
-          config?.fillOpacity,
-        ),
+        color: getSeriesAreaColor(chartColors[index % chartColors.length]),
       },
       emphasis: {
         focus: 'series',
         lineStyle: {
-          width: chartTheme.lineWidth + 0.8,
-          shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur + 4 : 0,
+          width: scaleScreenMetricFloat(
+            chartTheme.lineWidth + 0.8,
+            screenRenderContext,
+          ),
+          shadowBlur: usesScreenChartTheme
+            ? scaleScreenMetric(chartTheme.lineShadowBlur + 4, screenRenderContext)
+            : 0,
           shadowColor: usesScreenChartTheme
             ? chartTheme.lineShadowColor
             : 'transparent',
@@ -428,25 +450,32 @@ const TrendLine: React.FC<TrendLineProps> = ({
         smoothMonotone: 'x',
         symbol: 'none',
         lineStyle: {
-          width: chartTheme.lineWidth,
+          width: scaleScreenMetricFloat(chartTheme.lineWidth, screenRenderContext),
           opacity: chartTheme.lineOpacity,
-          shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur : 0,
+          shadowBlur: usesScreenChartTheme
+            ? scaleScreenMetric(chartTheme.lineShadowBlur, screenRenderContext)
+            : 0,
           shadowColor: usesScreenChartTheme
             ? chartTheme.lineShadowColor
             : 'transparent',
         },
         itemStyle: {
           borderColor: chartTheme.panelBg,
-          borderWidth: 1,
+          borderWidth: scaleScreenMetricFloat(1, screenRenderContext),
         },
         areaStyle: {
-          color: getSeriesAreaColor(chartColors[0], config?.fillOpacity),
+          color: getSeriesAreaColor(chartColors[0]),
         },
         emphasis: {
           focus: 'series',
           lineStyle: {
-            width: chartTheme.lineWidth + 0.8,
-            shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur + 4 : 0,
+            width: scaleScreenMetricFloat(
+              chartTheme.lineWidth + 0.8,
+              screenRenderContext,
+            ),
+            shadowBlur: usesScreenChartTheme
+              ? scaleScreenMetric(chartTheme.lineShadowBlur + 4, screenRenderContext)
+              : 0,
             shadowColor: usesScreenChartTheme
               ? chartTheme.lineShadowColor
               : 'transparent',
@@ -467,13 +496,17 @@ const TrendLine: React.FC<TrendLineProps> = ({
       silent: true,
       data: thresholdLines.map((th) => ({
         yAxis: th.value,
-        lineStyle: { color: th.color, type: 'dashed', width: 1.5 },
+        lineStyle: {
+          color: th.color,
+          type: 'dashed',
+          width: scaleScreenMetricFloat(1.5, screenRenderContext),
+        },
         label: {
           show: true,
           position: 'insideEndTop',
           formatter: String(th.value),
           color: th.color,
-          fontSize: 10,
+          fontSize: scaleScreenMetric(10, screenRenderContext),
         },
       })),
     };
@@ -500,7 +533,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
   }
 
   return (
-    <div className="h-full flex">
+    <div
+      className="h-full flex"
+      style={{ gap: scaleScreenMetric(8, screenRenderContext) }}
+    >
       {/* 图表区域 */}
       <div className="flex-1 min-w-0 relative">
         {isZoomed && (
@@ -543,6 +579,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
           colors={chartColors}
           layout="vertical"
           textColor={chartTheme.axisLabelColor}
+          scale={widgetScale}
           onSelectionChange={handleLegendChange}
         />
       )}

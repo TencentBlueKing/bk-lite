@@ -5,6 +5,7 @@
 """
 
 import pytest
+from pydantic import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION, ConflictAction
@@ -81,6 +82,14 @@ def _screen_section(key="screen::screen-a", name="screen-a", **over):
     }
     base.update(over)
     return base
+
+
+def test_import_screen_requires_view_sets_contract():
+    screen = _screen_section()
+    screen.pop("view_sets")
+
+    with pytest.raises(ValidationError, match="view_sets"):
+        _doc(screens=[screen])
 
 
 def _report_section(key="report::report-a", name="report-a", **over):

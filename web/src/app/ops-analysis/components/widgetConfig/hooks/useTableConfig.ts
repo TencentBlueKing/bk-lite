@@ -164,6 +164,21 @@ export function useTableConfig({
     });
   }, []);
 
+  const getDisplayColumnTitle = useCallback(
+    (key: string) => {
+      const normalizedKey = key.trim();
+      if (!normalizedKey) return '';
+
+      const matchedField =
+        availableFields.find((field) => field.key === normalizedKey) ||
+        detectedDisplayColumns.find((column) => column.key === normalizedKey);
+
+      const matchedTitle = (matchedField?.title || '').trim();
+      return matchedTitle || normalizedKey;
+    },
+    [availableFields, detectedDisplayColumns],
+  );
+
   const handleDisplayColumnChange = useCallback(
     (id: string, fieldName: keyof TableColumnConfigItem, value: string | boolean) => {
       setDisplayColumns((prev) =>
@@ -178,14 +193,16 @@ export function useTableConfig({
             return {
               ...col,
               key: nextKey,
-              title: shouldSyncTitle ? nextKey.trim() : col.title,
+              title: shouldSyncTitle
+                ? getDisplayColumnTitle(nextKey)
+                : col.title,
             };
           }
           return { ...col, [fieldName]: value };
         }),
       );
     },
-    [],
+    [getDisplayColumnTitle],
   );
 
   const handleDisplayColumnKeyBlur = useCallback((id: string) => {
@@ -195,10 +212,10 @@ export function useTableConfig({
         const keyValue = (col.key || '').trim();
         const titleValue = (col.title || '').trim();
         if (!keyValue || titleValue) return col;
-        return { ...col, title: keyValue };
+        return { ...col, title: getDisplayColumnTitle(keyValue) };
       }),
     );
-  }, []);
+  }, [getDisplayColumnTitle]);
 
   const handleDisplayColumnDragEnd = useCallback(
     (targetTableData: DisplayColumnRow[]) => {

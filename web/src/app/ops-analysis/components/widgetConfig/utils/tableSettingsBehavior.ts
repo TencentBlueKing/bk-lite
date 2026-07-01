@@ -37,6 +37,14 @@ export const buildDisplayColumnFieldOptions = ({
   const appendOption = (key: string, title?: string) => {
     const normalizedKey = (key || '').trim();
     if (!normalizedKey || optionMap.has(normalizedKey)) {
+      const current = optionMap.get(normalizedKey);
+      const nextLabel = formatFieldOptionLabel(normalizedKey, title);
+      if (current && current.label === normalizedKey && nextLabel !== normalizedKey) {
+        optionMap.set(normalizedKey, {
+          ...current,
+          label: nextLabel,
+        });
+      }
       return;
     }
 
@@ -46,16 +54,16 @@ export const buildDisplayColumnFieldOptions = ({
     });
   };
 
-  displayColumns.forEach((column) => {
-    appendOption(column.key, column.title);
+  availableFields.forEach((field) => {
+    appendOption(field.key, field.title);
   });
 
   detectedColumns.forEach((column) => {
     appendOption(column.key, column.title);
   });
 
-  availableFields.forEach((field) => {
-    appendOption(field.key, field.title);
+  displayColumns.forEach((column) => {
+    appendOption(column.key, column.title);
   });
 
   return Array.from(optionMap.values());

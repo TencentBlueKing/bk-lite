@@ -23,6 +23,8 @@ class TreeNodeBuilder:
                 "type": "directory",
                 "groups": directory.groups,
                 "is_build_in": directory.is_build_in,
+                "_sort_created_at": directory.created_at,
+                "_sort_id": directory.id,
                 "children": [],
             }
 
@@ -63,6 +65,8 @@ class TreeNodeBuilder:
                 "type": object_type,
                 "groups": instance.groups,
                 "is_build_in": instance.is_build_in,
+                "_sort_created_at": instance.created_at,
+                "_sort_id": instance.id,
                 "children": [],
             }
 

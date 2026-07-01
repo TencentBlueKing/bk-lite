@@ -1,5 +1,13 @@
 import { v4 as uuidv4 } from "uuid";
-import type { WidgetConfig } from "@/app/ops-analysis/types/dashBoard";
+import type {
+  FilterBindings,
+  UnifiedFilterDefinition,
+  WidgetConfig,
+} from "@/app/ops-analysis/types/dashBoard";
+import type {
+  DatasourceItem,
+  ParamItem,
+} from "@/app/ops-analysis/types/dataSource";
 import type {
   ScreenItem,
   ScreenViewSets,
@@ -7,6 +15,12 @@ import type {
   ScreenWidgetChartType,
   ScreenWidgetItem,
 } from "@/app/ops-analysis/types/screen";
+import { buildRelativeTimeRangeFilterValue } from "@/app/ops-analysis/utils/filterValue";
+import {
+  buildDefaultFilterBindings,
+  getBindableFilterParams,
+  getFilterDefinitionId,
+} from "@/app/ops-analysis/utils/widgetDataTransform";
 import { getScreenWidgetDefinition } from "../constants/widgets";
 
 const DEFAULT_INSERT_X = 48;
@@ -51,19 +65,163 @@ export const canViewportContainItems = (
   viewport: ScreenViewportConfig,
 ) => items.every((item) => isScreenItemInsideViewport(item, viewport));
 
-export const collectScreenDataSourceIds = (viewSets: ScreenViewSets) =>
-  Array.from(
-    new Set(
-      viewSets.items
-        .map((item) => item.config?.dataSource)
-        .filter(
-          (id): id is string | number =>
-            typeof id === "string" || typeof id === "number",
-        )
-        .map((id) => (typeof id === "string" ? parseInt(id, 10) : id))
-        .filter((id) => Number.isFinite(id)),
-    ),
+const resolveScreenWidgetParams = (
+  item: ScreenWidgetItem,
+  dataSource?: DatasourceItem,
+) => {
+  const widgetParams = item.valueConfig?.dataSourceParams;
+  return Array.isArray(widgetParams) && widgetParams.length > 0
+    ? widgetParams
+    : dataSource?.params;
+};
+
+const resolveScreenItemDataSource = (
+  item: ScreenWidgetItem,
+  dataSources: DatasourceItem[],
+) => {
+  const dataSourceId = item.valueConfig?.dataSource;
+  const normalizedId =
+    typeof dataSourceId === "string" ? parseInt(dataSourceId, 10) : dataSourceId;
+  return dataSources.find((source) => source.id === normalizedId);
+};
+
+export const buildFiltersFromScreenItems = ({
+  viewSets,
+  previousDefinitions,
+  dataSources,
+}: {
+  viewSets: ScreenViewSets;
+  previousDefinitions: UnifiedFilterDefinition[];
+  dataSources: DatasourceItem[];
+}): UnifiedFilterDefinition[] => {
+  const discoveredParams = new Map<
+    string,
+    ParamItem & { type: "string" | "timeRange" }
+  >();
+
+  viewSets.items.forEach((item) => {
+    const dataSource = resolveScreenItemDataSource(item, dataSources);
+    const params = resolveScreenWidgetParams(item, dataSource);
+    getBindableFilterParams(params).forEach((param) => {
+      const id = getFilterDefinitionId(param.name, param.type);
+      if (!discoveredParams.has(id)) {
+        discoveredParams.set(id, param);
+      }
+    });
+  });
+
+  const existingDefinitions = new Map(
+    previousDefinitions.map((definition) => [definition.id, definition]),
   );
+  const maxExistingOrder = previousDefinitions.reduce(
+    (maxOrder, definition) => Math.max(maxOrder, definition.order ?? -1),
+    -1,
+  );
+  let nextOrder = maxExistingOrder + 1;
+
+  return Array.from(discoveredParams.entries())
+    .map(([id, param]) => {
+      const existing =
+        existingDefinitions.get(id) ||
+        previousDefinitions.find(
+          (definition) =>
+            definition.key === param.name && definition.type === param.type,
+        );
+
+      let defaultValue: UnifiedFilterDefinition["defaultValue"] = null;
+      if (existing?.defaultValue !== undefined) {
+        defaultValue = existing.defaultValue;
+      } else if (param.value !== undefined && param.value !== null) {
+        defaultValue =
+          param.type === "timeRange" && typeof param.value === "number"
+            ? buildRelativeTimeRangeFilterValue(param.value)
+            : (param.value as UnifiedFilterDefinition["defaultValue"]);
+      }
+
+      return {
+        id,
+        key: param.name,
+        name: existing?.name || param.alias_name || param.name,
+        type: param.type,
+        defaultValue,
+        order: existing?.order ?? nextOrder++,
+        enabled: existing?.enabled ?? true,
+        inputMode: existing?.inputMode,
+        options: existing?.options,
+      };
+    })
+    .sort((a, b) => {
+      const orderDiff = (a.order ?? 0) - (b.order ?? 0);
+      if (orderDiff !== 0) return orderDiff;
+      return a.id.localeCompare(b.id);
+    });
+};
+
+const cleanupScreenFilterBindings = (
+  bindings: FilterBindings | undefined,
+  params: ParamItem[] | undefined,
+  definitions: UnifiedFilterDefinition[],
+) => {
+  if (!bindings) return undefined;
+  const bindableParams = getBindableFilterParams(params);
+  const validIds = new Set(
+    definitions
+      .filter((definition) =>
+        bindableParams.some(
+          (param) =>
+            param.name === definition.key && param.type === definition.type,
+        ),
+      )
+      .map((definition) => definition.id),
+  );
+  const cleaned = Object.entries(bindings).reduce<FilterBindings>(
+    (acc, [filterId, enabled]) => {
+      if (validIds.has(filterId)) {
+        acc[filterId] = enabled;
+      }
+      return acc;
+    },
+    {},
+  );
+  return Object.keys(cleaned).length ? cleaned : undefined;
+};
+
+export const syncScreenFilterBindings = (
+  viewSets: ScreenViewSets,
+  definitions: UnifiedFilterDefinition[],
+  dataSources: DatasourceItem[],
+): ScreenViewSets => ({
+  ...viewSets,
+  filters: definitions,
+  items: viewSets.items.map((item) => {
+    const dataSource = resolveScreenItemDataSource(item, dataSources);
+    const params = resolveScreenWidgetParams(item, dataSource);
+    const nextBindings = cleanupScreenFilterBindings(
+      buildDefaultFilterBindings(
+        params,
+        definitions,
+        item.valueConfig?.filterBindings,
+      ),
+      params,
+      definitions,
+    );
+
+    if (
+      JSON.stringify(nextBindings ?? {}) ===
+      JSON.stringify(item.valueConfig?.filterBindings ?? {})
+    ) {
+      return item;
+    }
+
+    return {
+      ...item,
+      valueConfig: {
+        ...item.valueConfig,
+        filterBindings: nextBindings,
+      },
+    };
+  }),
+});
 
 export const createScreenWidgetItem = (
   chartType: ScreenWidgetChartType,
@@ -84,7 +242,7 @@ export const createScreenWidgetItem = (
     w: definition.defaultWidth,
     h: definition.defaultHeight,
     zIndex: getNextZIndex(existingItems),
-    config: {
+    valueConfig: {
       chartType,
       chartThemeMode: "screen-dark",
       ...(chartType === "networkStatusTopology"
@@ -130,8 +288,8 @@ export const addConfiguredScreenWidget = (
       {
         ...item,
         title: values.name || item.title,
-        config: {
-          ...item.config,
+        valueConfig: {
+          ...item.valueConfig,
           ...values,
           chartType,
           chartThemeMode: "screen-dark",
@@ -153,10 +311,10 @@ export const moveScreenItem = (
   items: viewSets.items.map((item) =>
     item.id === itemId
       ? {
-          ...item,
-          x: clamp(position.x, 0, viewSets.viewport.width - item.w),
-          y: clamp(position.y, 0, viewSets.viewport.height - item.h),
-        }
+        ...item,
+        x: clamp(position.x, 0, viewSets.viewport.width - item.w),
+        y: clamp(position.y, 0, viewSets.viewport.height - item.h),
+      }
       : item,
   ),
 });
@@ -170,10 +328,10 @@ export const resizeScreenItem = (
   items: viewSets.items.map((item) =>
     item.id === itemId
       ? {
-          ...item,
-          w: clamp(size.w, 1, viewSets.viewport.width - item.x),
-          h: clamp(size.h, 1, viewSets.viewport.height - item.y),
-        }
+        ...item,
+        w: clamp(size.w, 1, viewSets.viewport.width - item.x),
+        h: clamp(size.h, 1, viewSets.viewport.height - item.y),
+      }
       : item,
   ),
 });

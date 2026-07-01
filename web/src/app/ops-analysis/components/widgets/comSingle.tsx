@@ -14,7 +14,10 @@ import {
 } from '@/app/ops-analysis/utils/thresholdUtils';
 import { applyValueMapping } from '@/app/ops-analysis/utils/valueMapping';
 import { DEFAULT_THRESHOLD_COLORS } from '@/app/ops-analysis/constants/threshold';
-import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import {
+  ScreenRenderContext,
+  ValueConfig,
+} from '@/app/ops-analysis/types/dashBoard';
 import {
   getOpsChartThemeByMode,
 } from '@/app/ops-analysis/utils/chartTheme';
@@ -26,6 +29,11 @@ import {
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import { buildFallbackSparkline } from '@/app/ops-analysis/utils/singleValueSparkline';
 import { useTranslation } from '@/utils/i18n';
+import {
+  getScreenWidgetScale,
+  scaleScreenMetric,
+  scaleScreenMetricFloat,
+} from './shared/screenMetrics';
 
 const MAX_SPARKLINE_POINTS = 24;
 const MIN_VALUE_FONT_SIZE = 18;
@@ -91,7 +99,7 @@ const getBaseFontSizeByWidth = (
 ) => {
   const safeWidth = Math.max(width, 120);
   return screenDark
-    ? Math.max(42, Math.min(104, safeWidth / 3.35))
+    ? Math.max(24, Math.min(54, safeWidth / 4.4))
     : Math.max(24, Math.min(52, safeWidth / 4.75));
 };
 
@@ -103,8 +111,8 @@ const getBaseFontSizeByHeight = (
   const safeHeight = Math.max(height, 120);
   if (screenDark) {
     return Math.max(
-      34,
-      Math.min(112, safeHeight * (hasCompare ? 0.42 : 0.54)),
+      24,
+      Math.min(58, safeHeight * (hasCompare ? 0.28 : 0.34)),
     );
   }
 
@@ -176,6 +184,7 @@ interface ComSingleProps {
   baselineData?: unknown;
   loading?: boolean;
   config?: ValueConfig;
+  screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
 }
 
@@ -184,11 +193,13 @@ const ComSingle: React.FC<ComSingleProps> = ({
   baselineData,
   loading = false,
   config,
+  screenRenderContext,
   onReady,
 }) => {
   const { t } = useTranslation();
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const usesScreenDarkTheme = config?.chartThemeMode === 'screen-dark';
+  const widgetScale = getScreenWidgetScale(screenRenderContext);
   const contentAreaRef = useRef<HTMLDivElement>(null);
   const valueAreaRef = useRef<HTMLDivElement>(null);
   const measureRef = useRef<HTMLDivElement>(null);
@@ -281,13 +292,25 @@ const ComSingle: React.FC<ComSingleProps> = ({
 
       const availableHeight = contentAreaRef.current?.clientHeight ?? 0;
       let nextFontSize = Math.min(
-        getBaseFontSizeByWidth(availableWidth, usesScreenDarkTheme),
+        getBaseFontSizeByWidth(availableWidth, usesScreenDarkTheme) *
+          widgetScale,
         getBaseFontSizeByHeight(
           availableHeight,
           Boolean(config?.compare),
           usesScreenDarkTheme,
-        ),
+        ) * widgetScale,
       );
+      if (usesScreenDarkTheme && screenRenderContext?.enabled) {
+        const minScreenFontSize = scaleScreenMetric(18, screenRenderContext);
+        const maxScreenFontSize = scaleScreenMetric(
+          config?.compare ? 22 : 24,
+          screenRenderContext,
+        );
+        nextFontSize = Math.min(
+          Math.max(nextFontSize, minScreenFontSize),
+          maxScreenFontSize,
+        );
+      }
       measureElement.style.fontSize = `${nextFontSize}px`;
 
       while (
@@ -323,6 +346,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
     showSparkline,
     unitText,
     usesScreenDarkTheme,
+    widgetScale,
   ]);
 
   useLayoutEffect(() => {
@@ -338,8 +362,11 @@ const ComSingle: React.FC<ComSingleProps> = ({
         prev === contentArea.clientHeight ? prev : contentArea.clientHeight,
       );
       const nextSpacing = Math.max(
-        10,
-        Math.min(24, Math.round(contentArea.clientHeight * 0.1)),
+        scaleScreenMetric(10, screenRenderContext),
+        Math.min(
+          scaleScreenMetric(24, screenRenderContext),
+          Math.round(contentArea.clientHeight * 0.1),
+        ),
       );
       setCompareSpacing((prev) => (prev === nextSpacing ? prev : nextSpacing));
     };
@@ -357,7 +384,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
       cancelAnimationFrame(frameId);
       observer.disconnect();
     };
-  }, [showSparkline]);
+  }, [screenRenderContext, showSparkline]);
 
   // 值映射：命中时覆盖展示文本与颜色（优先于数值/阈值色）
   const valueMappingResult = applyValueMapping(rawValue, config?.valueMappings);
@@ -376,20 +403,23 @@ const ComSingle: React.FC<ComSingleProps> = ({
       ? '--'
       : `${changePercent > 0 ? '↑' : changePercent < 0 ? '↓' : ''}${Math.abs(changePercent).toFixed(1)}%`;
   const heightDrivenCompareSize = Math.max(
-    12,
-    Math.min(20, Math.round(contentAreaHeight * 0.1)),
+    scaleScreenMetric(12, screenRenderContext),
+    Math.min(
+      scaleScreenMetric(20, screenRenderContext),
+      Math.round(contentAreaHeight * 0.1),
+    ),
   );
   const compareLabelFontSize = Math.max(
-    11,
+    scaleScreenMetric(11, screenRenderContext),
     Math.min(
-      16,
+      scaleScreenMetric(16, screenRenderContext),
       Math.max(Math.round(valueFontSize * 0.27), heightDrivenCompareSize - 3),
     ),
   );
   const compareValueFontSize = Math.max(
-    13,
+    scaleScreenMetric(13, screenRenderContext),
     Math.min(
-      22,
+      scaleScreenMetric(22, screenRenderContext),
       Math.max(Math.round(valueFontSize * 0.38), heightDrivenCompareSize),
     ),
   );
@@ -403,8 +433,8 @@ const ComSingle: React.FC<ComSingleProps> = ({
     valueMappingResult?.text !== undefined ? '' : displayUnit || unitText;
   const valueGap = unitLabel
     ? Math.min(
-      MAX_UNIT_GAP,
-      Math.max(MIN_UNIT_GAP, Math.round(valueFontSize * 0.14)),
+      MAX_UNIT_GAP * widgetScale,
+      Math.max(MIN_UNIT_GAP * widgetScale, Math.round(valueFontSize * 0.14)),
     )
     : 0;
   const sparklineLineColor = {
@@ -435,7 +465,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
   const sparklineOption = useMemo(
     () => ({
       animation: false,
-      grid: { top: 12, right: 0, bottom: 0, left: 0 },
+      grid: { top: scaleScreenMetric(12, screenRenderContext), right: 0, bottom: 0, left: 0 },
       xAxis: {
         type: 'category' as const,
         show: false,
@@ -453,7 +483,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
           smooth: true,
           symbol: 'none',
           lineStyle: {
-            width: 1.1,
+            width: scaleScreenMetricFloat(1.1, screenRenderContext),
             color: sparklineLineColor,
           },
           areaStyle: {
@@ -462,7 +492,7 @@ const ComSingle: React.FC<ComSingleProps> = ({
         },
       ],
     }),
-    [sparklineAreaColor, sparklineData, sparklineLineColor],
+    [screenRenderContext, sparklineAreaColor, sparklineData, sparklineLineColor],
   );
 
   if (loading) {
@@ -490,6 +520,13 @@ const ComSingle: React.FC<ComSingleProps> = ({
       className={`flex h-full w-full flex-col overflow-hidden ${
         usesScreenDarkTheme ? 'px-7 py-4' : 'px-2'
       }`}
+      style={
+        usesScreenDarkTheme
+          ? {
+            padding: `${scaleScreenMetric(8, screenRenderContext)}px ${scaleScreenMetric(12, screenRenderContext)}px`,
+          }
+          : undefined
+      }
     >
       <div
         ref={contentAreaRef}
@@ -579,7 +616,13 @@ const ComSingle: React.FC<ComSingleProps> = ({
         </div>
 
         {showSparkline ? (
-          <div className="mt-1.5 h-7 w-full shrink-0">
+          <div
+            className="w-full shrink-0"
+            style={{
+              height: scaleScreenMetric(28, screenRenderContext),
+              marginTop: scaleScreenMetric(6, screenRenderContext),
+            }}
+          >
             <ReactEcharts
               option={sparklineOption}
               style={{ height: '100%', width: '100%' }}

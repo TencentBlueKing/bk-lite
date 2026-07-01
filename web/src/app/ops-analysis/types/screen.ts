@@ -1,5 +1,5 @@
 import type { DirItem } from './index';
-import type { ValueConfig } from './dashBoard';
+import type { UnifiedFilterDefinition, ValueConfig } from './dashBoard';
 
 export type ScreenWidgetChartType =
   | 'single'
@@ -38,7 +38,7 @@ export interface ScreenWidgetItem {
   w: number;
   h: number;
   zIndex: number;
-  config: ValueConfig;
+  valueConfig: ValueConfig;
 }
 
 export type ScreenItem = ScreenWidgetItem;
@@ -47,6 +47,7 @@ export interface ScreenViewSets {
   viewport: ScreenViewportConfig;
   items: ScreenItem[];
   decorations: ScreenDecorationsConfig;
+  filters?: UnifiedFilterDefinition[];
 }
 
 export interface ScreenProps {

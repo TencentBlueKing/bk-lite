@@ -5,18 +5,26 @@ import {
   getOpsChartThemeByMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
-import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import {
+  ScreenRenderContext,
+  ValueConfig,
+} from '@/app/ops-analysis/types/dashBoard';
 import type {
   DatasourceItem,
   ResponseFieldDefinition,
 } from '@/app/ops-analysis/types/dataSource';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+import {
+  getScreenWidgetScale,
+  scaleScreenMetric,
+} from './shared/screenMetrics';
 
 interface TopNProps {
   rawData: any;
   loading?: boolean;
   config?: ValueConfig;
   dataSource?: DatasourceItem;
+  screenRenderContext?: ScreenRenderContext;
   onReady?: (ready: boolean) => void;
 }
 
@@ -63,6 +71,7 @@ const TopN: React.FC<TopNProps> = ({
   loading = false,
   config,
   dataSource,
+  screenRenderContext,
   onReady,
 }) => {
   const themeName = resolveOpsChartThemeName();
@@ -72,6 +81,7 @@ const TopN: React.FC<TopNProps> = ({
     config?.chartThemeMode === 'screen-light';
   const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
   const barColors = getOpsChartColorsByMode(config?.chartThemeMode, themeName);
+  const widgetScale = getScreenWidgetScale(screenRenderContext);
   const labelField = config?.topNLabelField;
   const valueField = config?.topNValueField;
   const labelHeader = resolveTopNHeaderLabel(
@@ -168,16 +178,28 @@ const TopN: React.FC<TopNProps> = ({
   }
 
   return (
-    <div className="h-full px-3 pt-2 pb-1 overflow-y-auto">
+    <div
+      className="h-full overflow-y-auto"
+      style={{
+        paddingBottom: scaleScreenMetric(4, screenRenderContext),
+        paddingLeft: scaleScreenMetric(12, screenRenderContext),
+        paddingRight: scaleScreenMetric(12, screenRenderContext),
+        paddingTop: scaleScreenMetric(8, screenRenderContext),
+      }}
+    >
       {(labelHeader || valueHeader) && (
         <div
-          className="grid items-center mb-1.5 rounded-md py-1.5 text-[12px] font-medium"
+          className="grid items-center rounded-md font-medium"
           style={{
             gridTemplateColumns: 'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)',
-            columnGap: 12,
+            columnGap: scaleScreenMetric(12, screenRenderContext),
             color: usesScreenChartTheme
               ? chartTheme.singleValueMetaColor
               : isDark ? 'rgba(255,255,255,0.66)' : '#5f6f89',
+            fontSize: 12 * widgetScale,
+            marginBottom: scaleScreenMetric(6, screenRenderContext),
+            paddingBottom: scaleScreenMetric(6, screenRenderContext),
+            paddingTop: scaleScreenMetric(6, screenRenderContext),
           }}
         >
           <span className="truncate" title={labelHeader}>
@@ -193,8 +215,8 @@ const TopN: React.FC<TopNProps> = ({
         className="grid items-center"
         style={{
           gridTemplateColumns: 'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)',
-          columnGap: 12,
-          rowGap: 2,
+          columnGap: scaleScreenMetric(12, screenRenderContext),
+          rowGap: scaleScreenMetric(2, screenRenderContext),
         }}
       >
         {items.map((item, index) => {
@@ -208,19 +230,27 @@ const TopN: React.FC<TopNProps> = ({
                   color: usesScreenChartTheme
                     ? chartTheme.axisLabelColor
                     : isDark ? 'rgba(255,255,255,0.82)' : '#26364f',
+                  fontSize: 13 * widgetScale,
+                  height: scaleScreenMetric(28, screenRenderContext),
                   minWidth: 0,
+                  paddingLeft: scaleScreenMetric(8, screenRenderContext),
+                  paddingRight: scaleScreenMetric(8, screenRenderContext),
                 }}
                 title={item.name}
               >
                 {item.name}
               </span>
-              <div className="flex h-7 min-w-0 items-center">
+              <div
+                className="flex min-w-0 items-center"
+                style={{ height: scaleScreenMetric(28, screenRenderContext) }}
+              >
                 <div
                   className="h-2.5 w-full overflow-hidden rounded-full"
                   style={{
                     backgroundColor: usesScreenChartTheme
                       ? chartTheme.panelSubtleBg
                       : isDark ? 'rgba(255,255,255,0.09)' : '#e8eef8',
+                    height: scaleScreenMetric(10, screenRenderContext),
                   }}
                 >
                   <div
@@ -233,7 +263,7 @@ const TopN: React.FC<TopNProps> = ({
                           ? 'linear-gradient(90deg, #5b8cff 0%, #2f6bff 100%)'
                           : 'linear-gradient(90deg, #4f7df3 0%, #235ee8 100%)',
                       boxShadow: usesScreenChartTheme
-                        ? `0 0 ${chartTheme.topNBarShadowBlur}px ${chartTheme.topNBarShadowColor}`
+                        ? `0 0 ${scaleScreenMetric(chartTheme.topNBarShadowBlur, screenRenderContext)}px ${chartTheme.topNBarShadowColor}`
                         : 'none',
                     }}
                   />
@@ -245,7 +275,11 @@ const TopN: React.FC<TopNProps> = ({
                   color: usesScreenChartTheme
                     ? chartTheme.pieValueColor
                     : isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
-                  minWidth: 48,
+                  fontSize: 13 * widgetScale,
+                  height: scaleScreenMetric(28, screenRenderContext),
+                  minWidth: scaleScreenMetric(48, screenRenderContext),
+                  paddingLeft: scaleScreenMetric(8, screenRenderContext),
+                  paddingRight: scaleScreenMetric(8, screenRenderContext),
                 }}
               >
                 {item.value.toLocaleString()}

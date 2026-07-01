@@ -29,6 +29,7 @@ import {
 import type { FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import TopologyToolbar from './components/toolbar';
 import TopologyCanvasShell from './components/canvasShell';
+import ViewWorkspace from '../components/viewWorkspace';
 import ContextMenu from './components/contextMenu';
 import EdgeConfigPanel from './components/edgeConfPanel';
 import NodeSidebar from './components/nodeSidebar';
@@ -246,6 +247,26 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       handleCanvasResize();
     }, [state.collapsed]);
 
+    useEffect(() => {
+      const timers = [80, 220, 420].map((delay) =>
+        window.setTimeout(() => {
+          const canvasElement = canvasContainerRef.current;
+
+          if (canvasElement?.clientWidth && canvasElement.clientHeight) {
+            resizeCanvas(canvasElement.clientWidth, canvasElement.clientHeight);
+          }
+
+          if (isFullscreen) {
+            state.graphInstance?.zoomToFit({ padding: 20, maxScale: 1 });
+          }
+        }, delay),
+      );
+
+      return () => {
+        timers.forEach((timer) => window.clearTimeout(timer));
+      };
+    }, [isFullscreen, resizeCanvas, state.graphInstance]);
+
     const {
       addNodeVisible,
       handleChartSelectorCancel,
@@ -357,102 +378,94 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
       zIndex: isFullscreen ? 1100 : undefined,
     };
 
+    const topologyToolbar = (
+      <TopologyToolbar
+        selectedTopology={selectedTopology}
+        onEdit={handleEnterEditMode}
+        onSave={handleSave}
+        onCancel={handleCancelEdit}
+        onFilterConfig={() => setFilterConfigModalVisible(true)}
+        onZoomIn={zoomIn}
+        onZoomOut={zoomOut}
+        onFit={handleFit}
+        onDelete={handleDelete}
+        onSelectMode={handleSelectMode}
+        onUndo={undo}
+        onRedo={redo}
+        canUndo={canUndo}
+        canRedo={canRedo}
+        isSelectMode={state.isSelectMode}
+        isEditMode={state.isEditMode}
+        isFullscreen={isFullscreen}
+        onFullscreenToggle={handleFullscreenToggle}
+        onRefresh={handleRefresh}
+        onFrequencyChange={handleFrequencyChange}
+      />
+    );
+
+    const topologyFilterBar =
+      (definitions.length > 0 || namespaceSelectorElement) && (
+        <UnifiedFilterBar
+          definitions={definitions}
+          values={filterValues}
+          onChange={setFilterValues}
+          onSearch={handleFilterSearch}
+          onReset={handleFilterSearch}
+          prefixContent={namespaceSelectorElement}
+          popupZIndex={isFullscreen ? 1200 : undefined}
+        />
+      );
+
+    const topologyCanvasContent = (
+      <div
+        className={`flex h-full min-h-0 overflow-hidden p-0 ${state.collapsed ? 'gap-0' : 'gap-2'}`}
+      >
+        <div className={isFullscreen ? 'hidden' : 'min-h-0 shrink-0'}>
+          <NodeSidebar
+            collapsed={state.collapsed}
+            isEditMode={state.isEditMode}
+            graphInstance={state.graphInstance ?? undefined}
+            setCollapsed={state.setCollapsed}
+            onShowNodeConfig={handleShowNodeConfig}
+            onShowChartSelector={handleShowChartSelector}
+          />
+        </div>
+
+        <TopologyCanvasShell
+          canvasContainerRef={canvasContainerRef}
+          containerRef={containerRef}
+          minimapContainerRef={minimapContainerRef}
+          canvasHostRef={canvasHostRef}
+          isFullscreen={isFullscreen}
+          loading={loading}
+          minimapVisible={minimapVisible}
+          panelStyle={panelStyle}
+          t={t}
+          setMinimapVisible={setMinimapVisible}
+        />
+      </div>
+    );
+
     return (
       <div
         className={`flex flex-col ${styles.topologyContainer} ${
           isFullscreen
             ? 'fixed inset-0 h-screen w-screen overflow-hidden'
-            : 'flex-1 overflow-auto p-2 pb-0'
+            : 'h-full flex-1 overflow-hidden'
         }`}
         style={topologyContainerStyle}
       >
         <AppViewFullscreenExit visible={isFullscreen} onExit={exitFullscreen} />
-        {/* 工具栏 */}
-        {!isFullscreen && (
-          <TopologyToolbar
-            selectedTopology={selectedTopology}
-            onEdit={handleEnterEditMode}
-            onSave={handleSave}
-            onCancel={handleCancelEdit}
-            onFilterConfig={() => setFilterConfigModalVisible(true)}
-            onZoomIn={zoomIn}
-            onZoomOut={zoomOut}
-            onFit={handleFit}
-            onDelete={handleDelete}
-            onSelectMode={handleSelectMode}
-            onUndo={undo}
-            onRedo={redo}
-            canUndo={canUndo}
-            canRedo={canRedo}
-            isSelectMode={state.isSelectMode}
-            isEditMode={state.isEditMode}
-            isFullscreen={isFullscreen}
-            onFullscreenToggle={handleFullscreenToggle}
-            onRefresh={handleRefresh}
-            onFrequencyChange={handleFrequencyChange}
-          />
-        )}
-
-        <div
-          className={`flex-1 overflow-hidden flex flex-col ${
-            isFullscreen ? 'rounded-none' : 'rounded-2xl'
-          }`}
-          style={{
-            ...panelStyle,
-            boxShadow: isFullscreen
-              ? 'none'
-              : isDarkTheme
-                ? '0 10px 24px rgba(0, 0, 0, 0.18)'
-                : '0 12px 28px rgba(31, 63, 104, 0.06)',
-          }}
+        <ViewWorkspace
+          selectedItem={selectedTopology}
+          titleFallback="拓扑图"
+          emptyDescription="请选择一个拓扑图"
+          toolbar={isFullscreen ? undefined : topologyToolbar}
+          filterBar={topologyFilterBar}
+          headerVisible={!isFullscreen}
         >
-          {(definitions.length > 0 || namespaceSelectorElement) && (
-            <div className="shrink-0">
-              <UnifiedFilterBar
-                definitions={definitions}
-                values={filterValues}
-                onChange={setFilterValues}
-                onSearch={handleFilterSearch}
-                onReset={handleFilterSearch}
-                prefixContent={namespaceSelectorElement}
-                containerClassName="mx-0 mt-0"
-                appearance="embedded"
-                popupZIndex={isFullscreen ? 1200 : undefined}
-              />
-            </div>
-          )}
-
-          <div
-            className={`flex-1 flex overflow-hidden ${
-              isFullscreen ? 'p-0' : 'p-2.5'
-            } ${state.collapsed ? 'gap-0' : 'gap-2'}`}
-          >
-            {/* 侧边栏 */}
-            {!isFullscreen && (
-              <NodeSidebar
-                collapsed={state.collapsed}
-                isEditMode={state.isEditMode}
-                graphInstance={state.graphInstance ?? undefined}
-                setCollapsed={state.setCollapsed}
-                onShowNodeConfig={handleShowNodeConfig}
-                onShowChartSelector={handleShowChartSelector}
-              />
-            )}
-
-            <TopologyCanvasShell
-              canvasContainerRef={canvasContainerRef}
-              containerRef={containerRef}
-              minimapContainerRef={minimapContainerRef}
-              canvasHostRef={canvasHostRef}
-              isFullscreen={isFullscreen}
-              loading={loading}
-              minimapVisible={minimapVisible}
-              panelStyle={panelStyle}
-              t={t}
-              setMinimapVisible={setMinimapVisible}
-            />
-          </div>
-        </div>
+          {topologyCanvasContent}
+        </ViewWorkspace>
 
         <ContextMenu
           visible={state.contextMenuVisible}

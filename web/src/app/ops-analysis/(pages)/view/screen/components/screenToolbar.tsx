@@ -4,6 +4,7 @@ import React from 'react';
 import { Button, Space, Tooltip } from 'antd';
 import {
   EditOutlined,
+  FilterOutlined,
   FullscreenOutlined,
   PlusOutlined,
   ReloadOutlined,
@@ -17,6 +18,7 @@ interface ScreenToolbarProps {
   selectedScreen?: DirItem | null;
   editMode: boolean;
   onOpenSettings: () => void;
+  onOpenFilterConfig: () => void;
   onOpenWidgetSelector: () => void;
   onPreview: () => void;
   onRefresh: () => void;
@@ -30,6 +32,7 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
   selectedScreen,
   editMode,
   onOpenSettings,
+  onOpenFilterConfig,
   onOpenWidgetSelector,
   onPreview,
   onRefresh,
@@ -62,25 +65,34 @@ const ScreenToolbar: React.FC<ScreenToolbarProps> = ({
           onClick={onPreview}
         />
       </Tooltip>
-      <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
-        <Button
-          type="text"
-          icon={<SettingOutlined />}
-          loading={saving}
-          aria-label={t('opsAnalysis.screen.canvasSettings')}
-          className={iconButtonClassName}
-          onClick={onOpenSettings}
-        />
-      </Tooltip>
       {editMode && (
-        <Button
-          type="default"
-          icon={<PlusOutlined />}
-          className="rounded-full!"
-          onClick={onOpenWidgetSelector}
-        >
-          {t('opsAnalysis.screen.addWidget')}
-        </Button>
+        <>
+          <Tooltip title={t('opsAnalysis.screen.canvasSettings')}>
+            <Button
+              type="text"
+              icon={<SettingOutlined />}
+              aria-label={t('opsAnalysis.screen.canvasSettings')}
+              className={iconButtonClassName}
+              onClick={onOpenSettings}
+            />
+          </Tooltip>
+          <Button
+            type="default"
+            icon={<FilterOutlined />}
+            className="rounded-full!"
+            onClick={onOpenFilterConfig}
+          >
+            {t('dashboard.unifiedFilterConfig')}
+          </Button>
+          <Button
+            type="default"
+            icon={<PlusOutlined />}
+            className="rounded-full!"
+            onClick={onOpenWidgetSelector}
+          >
+            {t('opsAnalysis.screen.addWidget')}
+          </Button>
+        </>
       )}
       <PermissionWrapper requiredPermissions={['EditChart']}>
         {!editMode ? (

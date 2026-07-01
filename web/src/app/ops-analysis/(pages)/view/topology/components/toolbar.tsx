@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Tooltip, Tag } from 'antd';
+import { Button, Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { ToolbarProps } from '@/app/ops-analysis/types/topology';
 import TimeSelector from '@/components/time-selector';
@@ -45,34 +45,7 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
     'rounded-full! h-8 w-8 min-w-8 flex items-center justify-center';
 
   return (
-    <div
-      className="w-full mb-2.5 flex items-center justify-between rounded-xl bg-(--color-bg-1) px-3.5 py-2.5 border border-(--color-border-2)"
-      style={{ boxShadow: '0 8px 22px rgba(31, 63, 104, 0.05)' }}
-    >
-      {/* 左侧：拓扑信息 */}
-      <div className="flex-1 mr-6">
-        {selectedTopology && (
-          <div className="pt-0.5">
-            <h2 className="text-xl leading-7 font-semibold mb-1 text-(--color-text-1)">
-              {selectedTopology.name}
-              {selectedTopology.is_build_in && (
-                <Tag
-                  color="blue"
-                  className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
-                >
-                  {t('common.builtIn')}
-                </Tag>
-              )}
-            </h2>
-            <p className="text-sm leading-5 text-(--color-text-2)">
-              {selectedTopology.desc}
-            </p>
-          </div>
-        )}
-      </div>
-
-      {/* 右侧：工具栏 */}
-      <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1.5">
         <div className="flex items-center gap-0.5">
           <Tooltip title={t('topology.zoomIn')}>
             <Button
@@ -222,7 +195,6 @@ const TopologyToolbar: React.FC<ToolbarProps> = ({
             )}
           </PermissionWrapper>
         </div>
-      </div>
     </div>
   );
 };

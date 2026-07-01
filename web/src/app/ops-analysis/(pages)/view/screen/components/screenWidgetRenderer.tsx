@@ -14,6 +14,14 @@ interface ScreenWidgetRendererProps {
   editMode?: boolean;
   refreshVersion: number;
   screenId?: string | number;
+  fitScale: number;
+  screenDensity: number;
+  screenUiScale: number;
+  filterDefinitions?: UnifiedFilterDefinition[];
+  unifiedFilterValues?: Record<string, FilterValue>;
+  filterSearchVersion?: number;
+  namespaceSearchVersion?: number;
+  builtinNamespaceId?: number;
   dataSourceResolver: (
     dataSource?: string | number,
   ) => DatasourceItem | undefined;
@@ -21,20 +29,36 @@ interface ScreenWidgetRendererProps {
   onDelete?: (itemId: string) => void;
 }
 
-const EMPTY_FILTER_VALUES: Record<string, FilterValue> = {};
-const EMPTY_FILTER_DEFINITIONS: UnifiedFilterDefinition[] = [];
-
 const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
   item,
   selected = false,
   editMode = false,
   refreshVersion,
   screenId,
+  fitScale,
+  screenDensity,
+  screenUiScale,
+  filterDefinitions,
+  unifiedFilterValues,
+  filterSearchVersion = 0,
+  namespaceSearchVersion = 0,
+  builtinNamespaceId,
   dataSourceResolver,
   onEditConfig,
   onDelete,
 }) => {
   const widgetConfig = useMemo(() => buildScreenWidgetConfig(item), [item]);
+  const screenRenderContext = useMemo(
+    () => ({
+      enabled: true,
+      fitScale,
+      screenDensity,
+      screenUiScale,
+      widgetDensity: screenDensity,
+      widgetUiScale: screenUiScale,
+    }),
+    [fitScale, screenDensity, screenUiScale],
+  );
   const dataSource = dataSourceResolver(widgetConfig.dataSource);
 
   return (
@@ -42,6 +66,8 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
       item={item}
       selected={selected}
       editMode={editMode}
+      screenDensity={screenDensity}
+      screenUiScale={screenUiScale}
       onConfigure={() => onEditConfig?.(item)}
       onDelete={() => onDelete?.(item.id)}
     >
@@ -51,11 +77,13 @@ const ScreenWidgetRenderer: React.FC<ScreenWidgetRendererProps> = ({
         chartType={item.chartType}
         config={widgetConfig}
         dataSource={dataSource}
-        filterSearchVersion={0}
-        namespaceSearchVersion={0}
+        screenRenderContext={screenRenderContext}
+        filterSearchVersion={filterSearchVersion}
+        namespaceSearchVersion={namespaceSearchVersion}
         reloadVersion={`screen:${refreshVersion}`}
-        unifiedFilterValues={EMPTY_FILTER_VALUES}
-        filterDefinitions={EMPTY_FILTER_DEFINITIONS}
+        unifiedFilterValues={unifiedFilterValues}
+        filterDefinitions={filterDefinitions}
+        builtinNamespaceId={builtinNamespaceId}
       />
     </ScreenWidgetFrame>
   );

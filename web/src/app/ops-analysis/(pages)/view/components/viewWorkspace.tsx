@@ -6,21 +6,29 @@ import { useTranslation } from '@/utils/i18n';
 import type { DirItem } from '@/app/ops-analysis/types';
 import { resolveCanvasDescription } from '@/app/ops-analysis/utils/canvasDescription';
 
-interface CanvasWorkspaceProps {
+interface ViewWorkspaceProps {
   selectedItem?: DirItem | null;
   loading?: boolean;
   titleFallback: string;
   emptyDescription: string;
   toolbar?: React.ReactNode;
+  filterBar?: React.ReactNode;
+  contentRef?: React.Ref<HTMLDivElement>;
+  contentClassName?: string;
+  headerVisible?: boolean;
   children?: React.ReactNode;
 }
 
-const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
+const ViewWorkspace: React.FC<ViewWorkspaceProps> = ({
   selectedItem,
   loading = false,
   titleFallback,
   emptyDescription,
   toolbar,
+  filterBar,
+  contentRef,
+  contentClassName = 'bg-[#f7f8fa]',
+  headerVisible = true,
   children,
 }) => {
   const { t } = useTranslation();
@@ -34,10 +42,9 @@ const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
   const resolvedDescription = resolveCanvasDescription(selectedItem.desc);
 
   return (
-    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-2)] p-2 pb-0">
+    <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--color-bg-2)]">
       <div
-        className="mb-2 flex w-full shrink-0 items-center justify-between rounded-xl border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 py-2.5"
-        style={{ boxShadow: '0 8px 22px rgba(31, 63, 104, 0.05)' }}
+        className={`mb-2 w-full shrink-0 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-4 py-2 ${headerVisible ? 'flex' : 'hidden'}`}
       >
         <div className="mr-6 min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
@@ -61,16 +68,26 @@ const CanvasWorkspace: React.FC<CanvasWorkspaceProps> = ({
         )}
       </div>
 
-      <div className="relative min-h-0 flex-1 overflow-hidden rounded-2xl border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-[0_12px_28px_rgba(31,63,104,0.06)]">
+      <div
+        ref={contentRef}
+        className={`relative min-h-0 flex-1 overflow-hidden ${contentClassName}`}
+      >
         {loading && (
           <div className="absolute inset-0 z-10 flex items-center justify-center bg-[var(--color-bg-1)]/70 backdrop-blur-sm">
             <Spin size="large" />
           </div>
         )}
-        <div className="h-full min-h-0 overflow-hidden">{children}</div>
+        <div className="flex h-full min-h-0 flex-col overflow-hidden">
+          {filterBar && (
+            <div className="shrink-0 bg-[var(--color-bg-1)] px-2.5 pb-2 pt-1">
+              {filterBar}
+            </div>
+          )}
+          <div className="min-h-0 flex-1 overflow-hidden pt-1">{children}</div>
+        </div>
       </div>
     </div>
   );
 };
 
-export default CanvasWorkspace;
+export default ViewWorkspace;

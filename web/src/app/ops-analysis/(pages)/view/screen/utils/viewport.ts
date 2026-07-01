@@ -3,6 +3,7 @@ import type {
   ScreenViewportConfig,
   ScreenViewSets,
 } from '@/app/ops-analysis/types/screen';
+import { normalizeStoredFilterDefinitions } from '@/app/ops-analysis/utils/unifiedFilterState';
 
 export interface ScreenViewportPreset {
   key: string;
@@ -19,8 +20,8 @@ export const DEFAULT_SCREEN_VIEWPORT: ScreenViewportConfig = {
 };
 
 export const DEFAULT_SCREEN_DECORATIONS: ScreenDecorationsConfig = {
-  showTitle: true,
-  showClock: true,
+  showTitle: false,
+  showClock: false,
   title: '',
 };
 
@@ -35,6 +36,7 @@ export const DEFAULT_SCREEN_VIEW_SETS: ScreenViewSets = {
   viewport: cloneViewport(DEFAULT_SCREEN_VIEWPORT),
   items: [],
   decorations: { ...DEFAULT_SCREEN_DECORATIONS },
+  filters: [],
 };
 
 export const SCREEN_VIEWPORT_PRESETS: ScreenViewportPreset[] = [
@@ -53,6 +55,7 @@ export const buildDefaultScreenViewSets = (): ScreenViewSets => ({
   viewport: cloneViewport(DEFAULT_SCREEN_VIEWPORT),
   items: [],
   decorations: { ...DEFAULT_SCREEN_DECORATIONS },
+  filters: [],
 });
 
 export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
@@ -94,6 +97,7 @@ export const normalizeScreenViewSets = (value: unknown): ScreenViewSets => {
     },
     items: Array.isArray(source.items) ? source.items : [],
     decorations,
+    filters: normalizeStoredFilterDefinitions(source.filters),
   };
 };
 
@@ -109,4 +113,5 @@ export const updateScreenViewport = (
   },
   items: [...viewSets.items],
   decorations: { ...viewSets.decorations },
+  filters: [...(viewSets.filters ?? [])],
 });

@@ -3,6 +3,7 @@ import { Spin } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import {
   FilterValue,
+  ScreenRenderContext,
   UnifiedFilterDefinition,
   ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
@@ -21,6 +22,7 @@ import {
   setWidgetRequestFailureCache,
   setWidgetRequestSuccessCache,
 } from '@/app/ops-analysis/utils/widgetRequestCache';
+import { buildWidgetRequestVersionKey } from '@/app/ops-analysis/utils/widgetRequestVersion';
 import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
 import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
 
@@ -196,6 +198,7 @@ export interface WidgetWrapperProps {
   namespaceSearchVersion?: number;
   reloadVersion?: string;
   builtinNamespaceId?: number;
+  screenRenderContext?: ScreenRenderContext;
 }
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
@@ -211,6 +214,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   namespaceSearchVersion = 0,
   reloadVersion = '0:0',
   builtinNamespaceId,
+  screenRenderContext,
 }) => {
   const { t } = useTranslation();
   const [rawData, setRawData] = useState<any>(null);
@@ -328,27 +332,38 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     });
   }, [isSceneWidget, normalizedDataSourceId, requestSignatureParams]);
 
-  const requestKey = useMemo(() => {
-    if (!requestSignature) {
-      return null;
-    }
-
-    return `${dashboardId ?? 'dashboard'}:${widgetId}:${reloadVersion}:${filterSearchVersion}:${namespaceSearchVersion}:${requestSignature}`;
-  }, [
-    dashboardId,
-    filterSearchVersion,
-    namespaceSearchVersion,
-    reloadVersion,
-    requestSignature,
-    widgetId,
-  ]);
-
   const hasEnabledFilterBindings = useMemo(() => {
     const bindings = config?.filterBindings;
     return Boolean(
       bindings && Object.values(bindings).some((enabled) => enabled),
     );
   }, [config?.filterBindings]);
+
+  const requestVersionKey = useMemo(
+    () =>
+      buildWidgetRequestVersionKey({
+        reloadVersion,
+        filterSearchVersion,
+        namespaceSearchVersion,
+        hasEnabledFilterBindings,
+        widgetUsesNamespace,
+      }),
+    [
+      filterSearchVersion,
+      hasEnabledFilterBindings,
+      namespaceSearchVersion,
+      reloadVersion,
+      widgetUsesNamespace,
+    ],
+  );
+
+  const requestKey = useMemo(() => {
+    if (!requestSignature) {
+      return null;
+    }
+
+    return `${dashboardId ?? 'dashboard'}:${widgetId}:${requestVersionKey}:${requestSignature}`;
+  }, [dashboardId, requestSignature, requestVersionKey, widgetId]);
 
   const handleTableQueryChange = useCallback((params: Record<string, any>) => {
     setTableQueryParams((prev) => {
@@ -633,6 +648,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           loading={false}
           config={config}
           refreshKey={reloadVersion}
+          screenRenderContext={screenRenderContext}
           onReady={onReady}
           fallback={renderError(
             `${t('dashboard.unknownComponentType')}: ${chartType}`,
@@ -667,6 +683,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         config={config}
         refreshKey={reloadVersion}
         dataSource={dataSource}
+        screenRenderContext={screenRenderContext}
         onReady={onReady}
         onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
         fallback={renderError(

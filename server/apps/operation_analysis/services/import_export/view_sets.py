@@ -1,4 +1,3 @@
-from copy import deepcopy
 from typing import Any
 
 from apps.operation_analysis.constants.import_export import ObjectType
@@ -23,47 +22,47 @@ def _rewrite_datasource_refs(value: Any, key_map: dict[Any, Any]) -> Any:
     return cloned
 
 
-DEFAULT_SCREEN_VIEW_SETS = {
-    "viewport": {
-        "width": 1920,
-        "height": 1080,
-        "background": {"type": "preset", "key": "screen-dark"},
-        "theme": "screen-dark",
-    },
-    "items": [],
-    "decorations": {"showTitle": True, "showClock": True, "title": ""},
-}
-
-
-def _normalize_dimension(value: Any, default: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        return default
-    return parsed if parsed > 0 else default
+def _require_positive_int(value: Any, path: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"{path} must be a positive integer")
+    return value
 
 
 def _normalize_screen_view_sets(view_sets: Any) -> dict:
     if not isinstance(view_sets, dict):
-        return deepcopy(DEFAULT_SCREEN_VIEW_SETS)
+        raise ValueError("view_sets must be an object")
 
-    viewport = view_sets.get("viewport", {})
-    decorations = view_sets.get("decorations", {})
-    normalized_decorations = dict(DEFAULT_SCREEN_VIEW_SETS["decorations"])
-    if isinstance(decorations, dict):
-        normalized_decorations.update(decorations)
-    return {
-        "viewport": {
-            "width": _normalize_dimension(viewport.get("width") if isinstance(viewport, dict) else None, 1920),
-            "height": _normalize_dimension(viewport.get("height") if isinstance(viewport, dict) else None, 1080),
-            "background": viewport.get("background", {"type": "preset", "key": "screen-dark"})
-            if isinstance(viewport, dict)
-            else {"type": "preset", "key": "screen-dark"},
-            "theme": viewport.get("theme", "screen-dark") if isinstance(viewport, dict) else "screen-dark",
-        },
-        "items": view_sets.get("items", []) if isinstance(view_sets.get("items", []), list) else [],
-        "decorations": normalized_decorations,
+    viewport = view_sets.get("viewport")
+    if not isinstance(viewport, dict):
+        raise ValueError("view_sets.viewport must be an object")
+
+    items = view_sets.get("items")
+    if not isinstance(items, list):
+        raise ValueError("view_sets.items must be a list")
+
+    decorations = view_sets.get("decorations")
+    if not isinstance(decorations, dict):
+        raise ValueError("view_sets.decorations must be an object")
+
+    normalized_viewport = dict(viewport)
+    normalized_viewport["width"] = _require_positive_int(
+        viewport.get("width"),
+        "view_sets.viewport.width",
+    )
+    normalized_viewport["height"] = _require_positive_int(
+        viewport.get("height"),
+        "view_sets.viewport.height",
+    )
+    normalized = {
+        "viewport": normalized_viewport,
+        "items": list(items),
+        "decorations": dict(decorations),
     }
+    if "filters" in view_sets:
+        filters = view_sets.get("filters")
+        normalized["filters"] = filters if isinstance(filters, list) else []
+
+    return normalized
 
 
 def normalize_canvas_view_sets_for_storage(view_sets: Any, object_type: ObjectType) -> list | dict:
@@ -137,11 +136,14 @@ def rewrite_canvas_view_sets_refs_for_yaml(view_sets: list | dict, object_type: 
         }
 
     if object_type == ObjectType.SCREEN:
-        return {
+        result = {
             "viewport": view_sets.get("viewport", {}) if isinstance(view_sets.get("viewport", {}), dict) else {},
             "items": _rewrite_datasource_refs(view_sets.get("items", []), ds_key_map),
             "decorations": view_sets.get("decorations", {}) if isinstance(view_sets.get("decorations", {}), dict) else {},
         }
+        if isinstance(view_sets.get("filters"), list):
+            result["filters"] = view_sets.get("filters", [])
+        return result
 
     if object_type == ObjectType.REPORT:
         return {
@@ -172,11 +174,14 @@ def rewrite_canvas_view_sets_refs_for_storage(view_sets: list | dict, object_typ
         }
 
     if object_type == ObjectType.SCREEN:
-        return {
+        result = {
             "viewport": normalized.get("viewport", {}) if isinstance(normalized.get("viewport", {}), dict) else {},
             "items": _rewrite_datasource_refs(normalized.get("items", []), datasource_key_to_id),
             "decorations": normalized.get("decorations", {}) if isinstance(normalized.get("decorations", {}), dict) else {},
         }
+        if isinstance(normalized.get("filters"), list):
+            result["filters"] = normalized.get("filters", [])
+        return result
 
     if object_type == ObjectType.REPORT:
         return {

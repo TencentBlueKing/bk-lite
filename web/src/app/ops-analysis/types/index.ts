@@ -29,6 +29,7 @@ export interface FormValues {
   name: string;
   desc?: string;
   groups?: number[];
+  canvasType?: CanvasType;
 }
 
 export interface ItemData {
