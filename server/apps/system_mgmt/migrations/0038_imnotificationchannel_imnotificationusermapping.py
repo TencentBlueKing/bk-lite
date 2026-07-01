@@ -8,7 +8,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("system_mgmt", "0036_usersyncsource_usersyncrun_group_sync_source_and_more"),
+        ("system_mgmt", "0037_usersyncsource_usersyncrun_group_sync_source_and_more"),
     ]
 
     operations = [

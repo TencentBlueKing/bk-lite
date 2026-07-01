@@ -4,7 +4,7 @@ export const RUN_STATUS_TEXT_STYLE: Record<RunStatus, string> = {
   running: 'processing',
   success: 'success',
   failed: 'error',
-  partial: 'waiting',
+  partial: 'default',
 };
 
 export interface ProviderMeta {

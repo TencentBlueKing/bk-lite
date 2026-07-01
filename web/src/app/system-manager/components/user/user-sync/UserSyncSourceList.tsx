@@ -118,25 +118,25 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
       ) : filteredItems.length === 0 ? (
         <Empty description={t('common.noData')} />
       ) : (
-        <div className="flex flex-wrap gap-6">
+        <div className="flex flex-wrap gap-5">
           {filteredItems.map((item) => (
             <div
               key={item.id}
-              className={`${styles.card} flex min-h-[210px] w-full max-w-[500px] flex-col gap-2 rounded-2xl p-4`}
+              className={`${styles.card} flex min-h-[168px] w-full max-w-[400px] flex-col gap-1.5 rounded-xl p-3`}
             >
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex min-w-0 items-start gap-3">
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex min-w-0 items-start gap-2">
                   <div className={styles.providerIcon}>
-                    <Icon type={item.providerIcon} className="text-[24px]" />
+                    <Icon type={item.providerIcon} className="text-[19px]" />
                   </div>
                   <div className="min-w-0">
                     <h3
-                      className="truncate text-[15px] font-semibold text-[var(--color-text)]"
+                      className="truncate text-[12px] font-semibold text-[var(--color-text)]"
                       title={item.name}
                     >
                       {item.name}
                     </h3>
-                    <div className="mt-1 flex flex-wrap items-center gap-2 text-xs text-[var(--color-text-3)]">
+                    <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[10px] text-[var(--color-text-3)]">
                       <span className="truncate">{item.integrationSystemName}</span>
                       <span>&middot;</span>
                       <span className="truncate">
@@ -150,47 +150,47 @@ const UserSyncSourceList = <T extends UserSyncSourceCardItem>({
                 <Dropdown overlay={renderMenu(item)} trigger={['click']} placement="bottomRight">
                   <button
                     type="button"
-                    className="cursor-pointer border-none bg-transparent p-1 text-[var(--color-text-3)]"
+                    className="cursor-pointer border-none bg-transparent p-0.5 text-[var(--color-text-3)]"
                   >
-                    <Icon type="sangedian-copy" className="text-lg" />
+                    <Icon type="sangedian-copy" className="text-sm" />
                   </button>
                 </Dropdown>
               </div>
 
-              <p className={styles.description}>{item.description || '--'}</p>
+              <p className={`${styles.description} text-[11px]`}>{item.description || '--'}</p>
 
-              <div className="flex flex-wrap gap-3 pt-1">
-                <div className={`${styles.metricCard} w-[216px] rounded-xl px-4 py-3`}>
-                  <div className="text-[24px] font-semibold leading-none text-[var(--color-text)]">
+              <div className="flex flex-wrap gap-2 pt-0.5">
+                <div className={`${styles.metricCard} w-[172px] rounded-lg px-3 py-2`}>
+                  <div className="text-[19px] font-semibold leading-none text-[var(--color-text)]">
                     {item.syncedUsersText}
                   </div>
-                  <div className="mt-3 text-xs text-[var(--color-text-3)]">
+                  <div className="mt-2 text-[10px] text-[var(--color-text-3)]">
                     {t('system.user.userSyncPage.syncedUsers')}
                   </div>
                 </div>
-                <div className={`${styles.metricCard} w-[216px] rounded-xl px-4 py-3`}>
-                  <div className="text-[24px] font-semibold leading-none text-[var(--color-text)]">
+                <div className={`${styles.metricCard} w-[172px] rounded-lg px-3 py-2`}>
+                  <div className="text-[19px] font-semibold leading-none text-[var(--color-text)]">
                     {item.syncCycleText}
                   </div>
-                  <div className="mt-3 text-xs text-[var(--color-text-3)]">
+                  <div className="mt-2 text-[10px] text-[var(--color-text-3)]">
                     {t('system.user.userSyncPage.syncCycle')}
                   </div>
                 </div>
               </div>
 
-              <div className="mt-auto flex flex-wrap items-center justify-between gap-3 pt-1">
-                <div className="min-w-0 text-sm text-[var(--color-text-3)]">
+              <div className="mt-auto flex flex-wrap items-center justify-between gap-2 pt-0.5">
+                <div className="min-w-0 text-[11px] text-[var(--color-text-3)]">
                   <span>{t('system.user.userSyncPage.latestSyncLabel')}</span>
                   <span>{item.latestSyncTimeText}</span>
-                  <span className="mx-1">&middot;</span>
+                  <span className="mx-0.5">&middot;</span>
                   <span className={statusToneClassName[item.latestStatusTone]}>{item.latestStatusText}</span>
                 </div>
 
-                <Space>
-                  <Button onClick={() => onStrategy(item)}>
+                <Space size={4}>
+                  <Button size="small" className='font-mini' onClick={() => onStrategy(item)}>
                     {t('system.user.userSyncPage.syncStrategy')}
                   </Button>
-                  <Button type="primary" disabled={item.syncDisabled} onClick={() => onSyncNow(item)}>
+                  <Button type="primary" size="small" className='font-mini' disabled={item.syncDisabled} onClick={() => onSyncNow(item)}>
                     {t('system.user.userSyncPage.syncNow')}
                   </Button>
                 </Space>

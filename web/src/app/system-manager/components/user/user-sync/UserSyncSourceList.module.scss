@@ -9,9 +9,9 @@
 }
 
 .providerIcon {
-  width: 44px;
-  height: 44px;
-  border-radius: 14px;
+  width: 35px;
+  height: 35px;
+  border-radius: 11px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -41,7 +41,7 @@
 }
 
 .statusError {
-  color: var(--color-error);
+  color: var(--color-fail);
 }
 
 .statusProcessing {

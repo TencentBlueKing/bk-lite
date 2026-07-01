@@ -7,7 +7,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("system_mgmt", "0033_operationlog_target_detail"),
+        ("system_mgmt", "0034_networkwhitelist"),
     ]
 
     operations = [

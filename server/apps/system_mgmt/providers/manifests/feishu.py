@@ -98,7 +98,7 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "label": "部门 ID 类型",
                                 "field_type": "select",
                                 "required": True,
-                                "default": "open_department_id",
+                                "default": "department_id",
                                 "options": [
                                     {"value": "department_id", "label": "department_id"},
                                     {"value": "open_department_id", "label": "open_department_id"}, 
@@ -109,22 +109,11 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "label": "用户 ID 类型",
                                 "field_type": "select",
                                 "required": True,
-                                "default": "open_id",
+                                "default": "user_id",
                                 "options": [
                                     {"value": "user_id", "label": "user_id"},
                                     {"value": "open_id", "label": "open_id"},
                                     {"value": "union_id", "label": "union_id"},
-                                ],
-                            },
-                            {
-                                "key": "status",
-                                "label": "用户状态筛选",
-                                "field_type": "select",
-                                "required": True,
-                                "default": "active",
-                                "options": [
-                                    {"value": "active", "label": "在职"},
-                                    {"value": "all", "label": "全部"},
                                 ],
                             },
                         ],

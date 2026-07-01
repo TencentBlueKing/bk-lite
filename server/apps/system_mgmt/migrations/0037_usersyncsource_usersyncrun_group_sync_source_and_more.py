@@ -9,7 +9,7 @@ from django.db import migrations, models
 class Migration(migrations.Migration):
 
     dependencies = [
-        ("system_mgmt", "0035_loginauthbinding"),
+        ("system_mgmt", "0036_loginauthbinding"),
     ]
 
     operations = [

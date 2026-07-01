@@ -396,7 +396,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
           />
         )
       ) : null}
-      <div className="mt-6 rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
+      <div className="mt-6 rounded-lg border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
         <div className="mb-4 font-semibold">{t('system.user.userSyncPage.fieldMappingTitle')}</div>
         <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px] text-[var(--color-text-3)]">
           <div>{t('system.user.userSyncPage.platformFieldColumn')}</div>

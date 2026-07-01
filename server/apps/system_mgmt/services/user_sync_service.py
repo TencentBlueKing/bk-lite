@@ -160,7 +160,14 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
         run.save(update_fields=["request_id", "status", "summary", "payload", "finished_at", "updated_at"])
         return {"result": False, "message": str(error)}
 
-    run.status = UserSyncRunStatusChoices.PARTIAL if sync_summary["conflict_usernames"] else UserSyncRunStatusChoices.SUCCESS
+    if sync_summary["conflict_usernames"]:
+        run.status = (
+            UserSyncRunStatusChoices.FAILED
+            if sync_summary["synced_user_count"] == 0
+            else UserSyncRunStatusChoices.PARTIAL
+        )
+    else:
+        run.status = UserSyncRunStatusChoices.SUCCESS
     run.summary = sync_summary["summary"]
     run.synced_user_count = sync_summary["synced_user_count"]
     run.synced_group_count = sync_summary["synced_group_count"]
@@ -289,10 +296,16 @@ def _apply_user_sync_payload(source: UserSyncSource, payload: dict):
 
         synced_group_count = max(len(active_group_ids) - 1, 0)
         if conflict_usernames:
-            summary = (
-                f"User sync partially completed: {len(synced_usernames)} users, "
-                f"{synced_group_count} groups, {len(conflict_usernames)} conflicts"
-            )
+            if not synced_usernames:
+                summary = (
+                    f"User sync failed: all {len(conflict_usernames)} users conflicted, "
+                    f"{synced_group_count} groups"
+                )
+            else:
+                summary = (
+                    f"User sync partially completed: {len(synced_usernames)} users, "
+                    f"{synced_group_count} groups, {len(conflict_usernames)} conflicts"
+                )
         else:
             summary = f"User sync completed: {len(synced_usernames)} users, {synced_group_count} groups"
         return {
@@ -497,7 +510,12 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
 
 def _ensure_user_sync_source_match(user: User, source: UserSyncSource, username: str):
     owner_source = None
-    if user.sync_source_id not in (None, source.id):
+    if user.sync_source_id is None:
+        raise ValueError(
+            f"User '{username}' already exists as an unmanaged platform user "
+            f"and cannot be claimed by '{source.name}'"
+        )
+    if user.sync_source_id != source.id:
         owner_source = user.sync_source
     elif user.group_list:
         owner_source = (
