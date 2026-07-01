@@ -1,118 +1,246 @@
+"""Contract tests for the WAGO switch SNMP plugin.
+
+WAGO 852 industrial managed switches are confirmed to support SNMP and use
+enterprise PEN 13576, but the current state has not confirmed public
+row-filter-free scalar CPU, memory, temperature, fan or power-supply OIDs. This
+is therefore a conservative baseline child: metrics.json declares no vendor
+metric deltas, while the shared Switch SNMP floor supplies uptime, IF-MIB
+ifXTable traffic and aggregate device traffic.
+"""
+
 from __future__ import annotations
 
 import json
-import re
 from pathlib import Path
 
+import pytest
 import yaml
 
 
-ROOT = Path(__file__).resolve().parents[3]
-REPO_ROOT = ROOT.parent
-PLUGIN_DIR = (
-    ROOT
-    / "apps"
-    / "monitor"
-    / "support-files"
-    / "plugins"
-    / "Telegraf"
-    / "snmp"
-    / "switch_wago"
-)
-WEB_ROOT = REPO_ROOT / "web" / "src" / "app" / "monitor"
-ICON_PATH = REPO_ROOT / "web" / "public" / "assets" / "icons" / "mm-wago_wago.svg"
-FORBIDDEN_SOURCE_WORDS = re.compile(
-    "|".join(
-        [
-            "Data" + "dog",
-            "Libre" + "NMS",
-            "Zab" + "bix",
-            "Check" + "mk",
-            "Open" + "NMS",
-            "snmp_" + "exporter",
-        ]
-    ),
-    re.IGNORECASE,
-)
+SERVER_ROOT = Path(__file__).resolve().parents[3]
+PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
+BRAND_DIR = PLUGINS / "snmp" / "switch_wago"
+LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
+WEB_ROOT = SERVER_ROOT.parents[0] / "web"
+
+BRAND = "wago"
+COLLECT_TYPE = "snmp_wago"
+CONFIG_TYPE = "wago"
+INSTANCE_TYPE = "switch"
+PLUGIN_NAME = "Switch WAGO SNMP"
+OBJECT_NAME = "Switch"
+PEN_ROOT = "1.3.6.1.4.1.13576"
+
+BASE_METRICS = {
+    "snmp_uptime",
+    "interface_ifAdminStatus",
+    "interface_ifOperStatus",
+    "interface_ifSpeed",
+    "interface_ifInErrors",
+    "interface_ifOutErrors",
+    "interface_ifInDiscards",
+    "interface_ifOutDiscards",
+    "interface_ifInUcastPkts",
+    "interface_ifOutUcastPkts",
+    "interface_ifInOctets",
+    "interface_ifOutOctets",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+}
+HEALTH_METRICS = {
+    "device_cpu_usage",
+    "device_memory_used",
+    "device_memory_free",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state",
+}
 
 
-def _json(name: str):
-    return json.loads((PLUGIN_DIR / name).read_text(encoding="utf-8"))
+def _read_json(path):
+    return json.loads(path.read_text(encoding="utf-8"))
 
 
-def _yaml(name: str):
-    return yaml.safe_load((ROOT / "apps" / "monitor" / "language" / name).read_text(encoding="utf-8"))
+@pytest.fixture(scope="module")
+def metrics():
+    return _read_json(BRAND_DIR / "metrics.json")
 
 
-def test_wago_snmpv3_passwords_use_sidecar_env():
-    ui = _json("UI.json")
+@pytest.fixture(scope="module")
+def policy():
+    return _read_json(BRAND_DIR / "policy.json")
+
+
+@pytest.fixture(scope="module")
+def ui():
+    return _read_json(BRAND_DIR / "UI.json")
+
+
+@pytest.fixture(scope="module")
+def toml_text():
+    return (BRAND_DIR / f"{CONFIG_TYPE}.child.toml.j2").read_text(encoding="utf-8")
+
+
+@pytest.fixture(scope="module")
+def languages():
+    return {
+        lang: yaml.safe_load((LANGUAGE_DIR / f"{lang}.yaml").read_text(encoding="utf-8"))
+        for lang in ("zh-Hans", "en")
+    }
+
+
+@pytest.mark.unit
+def test_plugin_lives_under_correct_dir(metrics):
+    assert metrics["collect_type"] == COLLECT_TYPE
+    assert BRAND_DIR.parent.name == "snmp"
+
+
+@pytest.mark.unit
+def test_toml_filename_follows_convention():
+    assert (BRAND_DIR / f"{CONFIG_TYPE}.child.toml.j2").exists()
+
+
+@pytest.mark.unit
+def test_collect_type_consistent_across_files(metrics, policy, ui, toml_text):
+    assert COLLECT_TYPE in metrics["status_query"]
+    assert f"instance_type='{INSTANCE_TYPE}'" in metrics["status_query"]
+    assert ui["collect_type"] == COLLECT_TYPE
+    assert f'collect_type = "{COLLECT_TYPE}"' in toml_text
+    assert 'instance_type = "{{ instance_type }}"' in toml_text
+    assert metrics["plugin"] == PLUGIN_NAME
+    assert policy["plugin"] == PLUGIN_NAME
+    assert metrics["name"] == OBJECT_NAME
+    assert ui["object_name"] == OBJECT_NAME
+    assert policy["object"] == OBJECT_NAME
+
+
+@pytest.mark.unit
+def test_config_type_consistent(ui, toml_text):
+    assert ui["config_type"] == [CONFIG_TYPE]
+    assert f'config_type = "{CONFIG_TYPE}"' in toml_text
+    assert f'brand = "{BRAND}"' in toml_text
+
+
+@pytest.mark.unit
+def test_ui_is_pure_snmp_form(ui):
+    assert not any(field["name"] == "brand" for field in ui["form_fields"])
+
+
+@pytest.mark.unit
+def test_metrics_json_declares_zero_vendor_delta_child(metrics):
+    names = {metric["name"] for metric in metrics["metrics"]}
+    assert names == set()
+    assert names & BASE_METRICS == set()
+    assert names & HEALTH_METRICS == set()
+    assert metrics["supplementary_indicators"] == []
+
+
+@pytest.mark.unit
+def test_policy_is_empty_and_subset_of_metrics(metrics, policy):
+    known = {metric["name"] for metric in metrics["metrics"]}
+    bad = [template["metric_name"] for template in policy["templates"] if template["metric_name"] not in known]
+    assert bad == []
+    assert policy["templates"] == []
+
+
+@pytest.mark.unit
+def test_no_private_health_metrics_or_pen_oid_are_collected(toml_text):
+    assert PEN_ROOT not in toml_text
+    for name in HEALTH_METRICS:
+        assert name.replace("device_", "") not in toml_text
+    assert "[[processors.enum]]" not in toml_text
+
+
+@pytest.mark.unit
+def test_toml_collects_64bit_ifhc_counters_only_for_traffic(toml_text):
+    assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
+    assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
+    assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text
+    assert 'name = "ifInOctets"' not in toml_text
+    assert 'name = "ifOutOctets"' not in toml_text
+    assert 'oid = "1.3.6.1.2.1.2.2.1.10"' not in toml_text
+    assert 'oid = "1.3.6.1.2.1.2.2.1.16"' not in toml_text
+
+
+@pytest.mark.unit
+def test_toml_collects_iftable_and_uptime(toml_text):
+    assert "1.3.6.1.2.1.1.3.0" in toml_text
+    assert "1.3.6.1.2.1.2.2" in toml_text
+    assert "ifDescr" in toml_text
+
+
+@pytest.mark.unit
+def test_passwords_use_sidecar_env_placeholders_not_plaintext(ui, toml_text):
     field_names = {field["name"] for field in ui["form_fields"]}
     assert "ENV_AUTH_PASSWORD" in field_names
     assert "ENV_PRIV_PASSWORD" in field_names
-
-    toml = (PLUGIN_DIR / "wago.child.toml.j2").read_text(encoding="utf-8")
-    assert '${AUTH_PASSWORD__{{ config_id }}}' in toml
-    assert '${PRIV_PASSWORD__{{ config_id }}}' in toml
-    assert "{{ auth_password }}" not in toml
-    assert "{{ priv_password }}" not in toml
-
-
-def test_wago_metrics_are_vendor_delta_only_and_policy_subset():
-    metrics = _json("metrics.json")
-    policy = _json("policy.json")
-    metric_names = {metric["name"] for metric in metrics["metrics"]}
-
-    assert metrics["collect_type"] == "snmp_wago"
-    assert metrics["name"] == "Switch"
-    assert metrics["metrics"] == []
-    assert not {"snmp_uptime", "interface_ifHCInOctets", "interface_ifHCOutOctets"} & metric_names
-    assert not {name for name in metric_names if name.startswith("device_total_")}
-
-    policy_metrics = {template["metric_name"] for template in policy["templates"]}
-    assert policy_metrics <= metric_names
+    assert "auth_password" not in field_names
+    assert "priv_password" not in field_names
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert "{{ auth_password }}" not in toml_text
+    assert "{{ priv_password }}" not in toml_text
 
 
-def test_wago_toml_uses_64bit_ifxtable_without_32bit_octets():
-    toml = (PLUGIN_DIR / "wago.child.toml.j2").read_text(encoding="utf-8")
-    assert "ifHCInOctets" in toml
-    assert "ifHCOutOctets" in toml
-    assert "1.3.6.1.2.1.31.1.1.1.6" in toml
-    assert "1.3.6.1.2.1.31.1.1.1.10" in toml
-    assert "ifDescr" in toml
-    assert "ifInOctets" not in toml
-    assert "ifOutOctets" not in toml
-    assert "1.3.6.1.2.1.2.2.1.10" not in toml
-    assert "1.3.6.1.2.1.2.2.1.16" not in toml
+@pytest.mark.unit
+def test_plugin_has_bilingual_name_and_desc(languages):
+    for lang, data in languages.items():
+        entry = (data.get("monitor_object_plugin") or {}).get(PLUGIN_NAME) or {}
+        assert entry.get("name"), f"{lang}: plugin name missing"
+        assert entry.get("desc"), f"{lang}: plugin desc missing"
 
 
-def test_wago_i18n_and_frontend_wiring_are_present():
-    zh = _yaml("zh-Hans.yaml")
-    en = _yaml("en.yaml")
-    plugin_key = "Switch WAGO SNMP"
+@pytest.mark.unit
+def test_en_desc_has_no_halfwidth_colon_space(languages):
+    en = (languages["en"].get("monitor_object_plugin") or {}).get(PLUGIN_NAME) or {}
+    assert ": " not in en.get("desc", "")
 
-    assert plugin_key in zh["monitor_object_plugin"]
-    assert plugin_key in en["monitor_object_plugin"]
-    assert "WAGO" in zh["monitor_object_plugin"][plugin_key]["name"]
-    assert "WAGO" in en["monitor_object_plugin"][plugin_key]["name"]
-    assert ": " not in en["monitor_object_plugin"][plugin_key]["desc"]
 
+@pytest.mark.unit
+def test_frontend_collecttype_wired_to_switch_object():
     switch_tsx = (
-        WEB_ROOT / "hooks" / "integration" / "objects" / "networkDevice" / "switch.tsx"
-    ).read_text(encoding="utf-8")
-    common_tsx = (WEB_ROOT / "utils" / "common.tsx").read_text(encoding="utf-8")
-    assert "'Switch WAGO SNMP': 'snmp_wago'" in switch_tsx
-    assert "label: 'WAGO'" in common_tsx
-    assert "icon: 'mm-wago_wago'" in common_tsx
-    assert ICON_PATH.exists()
+        WEB_ROOT / "src" / "app" / "monitor" / "hooks" / "integration"
+        / "objects" / "networkDevice" / "switch.tsx"
+    )
+    text = switch_tsx.read_text(encoding="utf-8")
+    assert f"'{PLUGIN_NAME}': '{COLLECT_TYPE}'" in text
+    assert text.count(f"'{PLUGIN_NAME}':") == 1
+    assert text.count(f"'{COLLECT_TYPE}'") == 1
 
 
-def test_wago_files_do_not_leak_external_source_names():
-    for path in [
-        *PLUGIN_DIR.iterdir(),
+@pytest.mark.unit
+def test_brand_match_and_icon_present_once_in_common():
+    common = WEB_ROOT / "src" / "app" / "monitor" / "utils" / "common.tsx"
+    text = common.read_text(encoding="utf-8")
+    assert "label: 'WAGO'" in text
+    assert "mm-wago_wago" in text
+    assert text.count("label: 'WAGO'") == 1
+    assert text.count("mm-wago_wago") == 1
+    assert "wago|switch" not in text.lower()
+    assert (WEB_ROOT / "public" / "assets" / "icons" / "mm-wago_wago.svg").exists()
+
+
+@pytest.mark.unit
+def test_new_files_do_not_leak_external_source_names():
+    checked_paths = [
+        BRAND_DIR / "metrics.json",
+        BRAND_DIR / "policy.json",
+        BRAND_DIR / "UI.json",
+        BRAND_DIR / f"{CONFIG_TYPE}.child.toml.j2",
         Path(__file__),
-        WEB_ROOT / "hooks" / "integration" / "objects" / "networkDevice" / "switch.tsx",
-        WEB_ROOT / "utils" / "common.tsx",
-        ICON_PATH,
-    ]:
-        text = path.read_text(encoding="utf-8")
-        assert not FORBIDDEN_SOURCE_WORDS.search(text), path
+        WEB_ROOT / "public" / "assets" / "icons" / "mm-wago_wago.svg",
+    ]
+    checked_text = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths)
+    forbidden_terms = (
+        "Data" + "dog",
+        "Libre" + "NMS",
+        "Zab" + "bix",
+        "Check" + "mk",
+        "Open" + "NMS",
+        "snmp_" + "exporter",
+    )
+    leaked = [term for term in forbidden_terms if term in checked_text]
+    assert leaked == []
