@@ -343,6 +343,66 @@ def test_get_monitor_instance_queries_display_fields_metrics(mock_vm):
 
 @pytest.mark.django_db
 @patch("apps.monitor.services.monitor_object.VictoriaMetricsAPI")
+def test_get_monitor_instance_fills_metric_and_field_columns_with_metric_query(mock_vm):
+    # 回归远程主机采集:展示名(cpu_usage_total)与 VM 真实指标(host_cpu_usage_percent_gauge)不同,
+    # 列表页必须用 metric.query + 20m lookback 同时回填指标值列和字段展示列。
+    def fake_query(query, step="5m", **kwargs):
+        assert step == "20m"
+        if "any({instance_type='UTRemoteHost'})" in query:
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [100, "1"]},
+            ]}}
+        if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}':
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1"}, "value": [100, "8.52"]},
+            ]}}
+        if query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}':
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "host": "remote-host"}, "value": [100, "1.64"]},
+            ]}}
+        raise AssertionError(f"unexpected VM query: {query}")
+
+    mock_vm.return_value.query.side_effect = fake_query
+    obj = MonitorObject.objects.create(
+        name="UTRemoteHost", level="base",
+        default_metric="any({instance_type='UTRemoteHost'}) by (instance_id)",
+        instance_id_keys=["instance_id"], supplementary_indicators=[],
+        display_fields=[
+            {"name": "CPU", "sort_order": 0,
+             "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_total"}]},
+            {"name": "Host", "type": "field", "sort_order": 1,
+             "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_system_total", "field": "host"}]},
+        ],
+    )
+    plugin = MonitorPlugin.objects.create(name="Host Remote")
+    group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="G-Host Remote")
+    Metric.objects.create(
+        monitor_object=obj, monitor_plugin=plugin, metric_group=group,
+        name="cpu_usage_total", display_name="CPU",
+        query='host_cpu_usage_percent_gauge{instance_type="os", __$labels__}',
+        unit="percent", data_type="Number", instance_id_keys=["instance_id"],
+    )
+    Metric.objects.create(
+        monitor_object=obj, monitor_plugin=plugin, metric_group=group,
+        name="cpu_usage_system_total", display_name="CPU System",
+        query='cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
+        unit="percent", data_type="Number", instance_id_keys=["instance_id"],
+    )
+    inst = MonitorInstance.objects.create(id="('i1',)", name="remote-host", monitor_object=obj)
+    _mk_collect_config("cc-i1-host-remote", inst, plugin)
+
+    res = MonitorObjectService.get_monitor_instance(
+        obj.id, page=1, page_size=10, name=None,
+        qs=MonitorInstance.objects.all(), add_metrics=True,
+    )
+
+    row = res["results"][0]
+    assert row["Host Remote::cpu_usage_total"] == "8.52"
+    assert row["field::Host Remote::cpu_usage_system_total::host"] == "remote-host"
+
+
+@pytest.mark.django_db
+@patch("apps.monitor.services.monitor_object.VictoriaMetricsAPI")
 def test_display_fields_isolated_by_plugin(mock_vm):
     # 同名指标(温度)绑了 Huawei + Cisco 两个插件;实例只归属 Huawei →
     # 只在 Huawei 复合 key 上有值,Cisco 复合 key 不应出现(别的品牌不串)。
