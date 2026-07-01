@@ -196,7 +196,7 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         query = metric_obj.query.replace("__$labels__", f"{', '.join(query_parts)}")
-        metrics = VictoriaMetricsAPI().query(query, step="20m")
+        metrics = VictoriaMetricsAPI().query(query)
         value_map = {}
         for metric in metrics.get("data", {}).get("result", []):
             instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
@@ -233,7 +233,7 @@ class MonitorObjectService:
                 query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
             else:
                 query = query_template
-        metrics = VictoriaMetricsAPI().query(query, step="20m")
+        metrics = VictoriaMetricsAPI().query(query)
         target_instance_ids = {inst["instance_id"] for inst in target_instances}
         value_map = {}
         time_map = {}

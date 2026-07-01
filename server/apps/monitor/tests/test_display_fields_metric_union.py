@@ -155,7 +155,7 @@ def test_query_metric_field_values_reads_vm_label(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
             assert query == 'node_info{instance_id=~"i1|i2"}'
-            assert step == "20m"
+            assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
                 {"metric": {"instance_id": "i2"}, "value": [0, "1"]},
@@ -184,7 +184,7 @@ def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
             assert query == 'node_info{instance_id=~"i1"}'
-            assert step == "20m"
+            assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "('i1',)", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
             ]}}
@@ -209,7 +209,7 @@ def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(m
     class FakeVM:
         def query(self, query, step=None):
             assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}'
-            assert step == "20m"
+            assert step is None
             return {"data": {"result": [
                 {
                     "metric": {
@@ -236,11 +236,11 @@ def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(m
     assert result == {"('i1',)": "remote-host"}
 
 
-def test_query_metric_values_uses_display_lookback_step(monkeypatch):
+def test_query_metric_values_uses_default_query_step(monkeypatch):
     class FakeVM:
         def query(self, query, step=None):
             assert query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}'
-            assert step == "20m"
+            assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1"}, "value": [0, "8.52"]},
             ]}}
@@ -345,18 +345,20 @@ def test_get_monitor_instance_queries_display_fields_metrics(mock_vm):
 @patch("apps.monitor.services.monitor_object.VictoriaMetricsAPI")
 def test_get_monitor_instance_fills_metric_and_field_columns_with_metric_query(mock_vm):
     # 回归远程主机采集:展示名(cpu_usage_total)与 VM 真实指标(host_cpu_usage_percent_gauge)不同,
-    # 列表页必须用 metric.query + 20m lookback 同时回填指标值列和字段展示列。
-    def fake_query(query, step="5m", **kwargs):
-        assert step == "20m"
+    # 列表页必须用 metric.query 同时回填指标值列和字段展示列,且展示列不主动放大查询窗口。
+    def fake_query(query, **kwargs):
         if "any({instance_type='UTRemoteHost'})" in query:
+            assert kwargs.get("step") == "20m"
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [100, "1"]},
             ]}}
         if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}':
+            assert "step" not in kwargs
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1"}, "value": [100, "8.52"]},
             ]}}
         if query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}':
+            assert "step" not in kwargs
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "host": "remote-host"}, "value": [100, "1.64"]},
             ]}}
