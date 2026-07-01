@@ -2,8 +2,9 @@ from copy import deepcopy
 from types import SimpleNamespace
 
 from django.contrib.auth.hashers import make_password
-from django.db import transaction
-from django.db.models import Count
+from django.db import IntegrityError, transaction
+from django.db.models import Count, Q
+from django.db.utils import NotSupportedError
 from django.utils import timezone
 
 from apps.core.logger import system_mgmt_logger as logger
@@ -122,7 +123,13 @@ def execute_user_sync(source_id: int, trigger_mode: str = UserSyncTriggerModeCho
     if not instance.enabled or instance.status != "ready" or instance.capability_status.get("user_sync") != "ready":
         return {"result": False, "message": "User sync source is not ready"}
 
-    run = UserSyncRun.objects.create(source=source, trigger_mode=trigger_mode, status=UserSyncRunStatusChoices.RUNNING, summary="User sync started")
+    if UserSyncRun.objects.filter(source=source, status=UserSyncRunStatusChoices.RUNNING).exists():
+        return {"result": False, "message": "User sync is already running"}
+
+    try:
+        run = UserSyncRun.objects.create(source=source, trigger_mode=trigger_mode, status=UserSyncRunStatusChoices.RUNNING, summary="User sync started")
+    except IntegrityError:
+        return {"result": False, "message": "User sync is already running"}
     runtime_service = RuntimeApplicationService()
     result = runtime_service.execute(
         provider_key=instance.provider_key,
@@ -400,7 +407,10 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
         )
 
     usernames = [item["username"] for item in normalized_users]
-    existing_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain="domain.com")
+    # `domain` is a deprecated compatibility field. Synced users intentionally
+    # stay in the legacy default domain until the column is removed.
+    legacy_domain = "domain.com"
+    existing_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain=legacy_domain)
     existing_user_map = {user.username: user for user in existing_users}
     synced_usernames = []
     conflict_usernames = []
@@ -417,7 +427,7 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
                     email=item["email"],
                     phone=item["phone"],
                     password=make_password(""),
-                    domain="domain.com",
+                    domain=legacy_domain,
                     disabled=False,
                     group_list=item["group_list"],
                     sync_source=source,
@@ -433,7 +443,7 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
     if create_users:
         User.objects.bulk_create(create_users, ignore_conflicts=True, batch_size=100)
 
-    synced_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain="domain.com")
+    synced_users = User.objects.select_related("sync_source").filter(username__in=usernames, domain=legacy_domain)
     synced_user_map = {user.username: user for user in synced_users}
 
     for item in normalized_users:
@@ -469,7 +479,7 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
         User.objects.bulk_update(update_users, ["display_name", "email", "phone", "group_list", "disabled", "sync_source"], batch_size=100)
 
     disabled_user_count = 0
-    stale_users = User.objects.filter(sync_source=source, domain="domain.com").exclude(username__in=synced_usernames)
+    stale_users = User.objects.filter(sync_source=source, domain=legacy_domain).exclude(username__in=synced_usernames)
     for user in stale_users:
         if not user.disabled or user.group_list:
             user.disabled = True
@@ -480,7 +490,7 @@ def _sync_users(source: UserSyncSource, user_list: list[dict], group_id_mapping:
     affected_usernames = {user.username for user in create_users + update_users}
     affected_usernames.update(user.username for user in stale_users)
     if affected_usernames:
-        clear_users_permission_cache([{"username": username, "domain": "domain.com"} for username in affected_usernames])
+        clear_users_permission_cache([{"username": username, "domain": legacy_domain} for username in affected_usernames])
 
     return synced_usernames, disabled_user_count, sorted(set(conflict_usernames))
 
@@ -535,17 +545,28 @@ def _collect_group_subtree_ids(root_group_id: int):
     return subtree_ids
 
 
+def _collect_user_ids_for_group_subtree(group_ids: set[int]):
+    if not group_ids:
+        return set()
+
+    query = Q()
+    for group_id in group_ids:
+        query |= Q(group_list__contains=[group_id])
+
+    try:
+        return set(User.objects.filter(query).values_list("id", flat=True))
+    except NotSupportedError:
+        candidate_users = User.objects.exclude(group_list=[]).exclude(group_list__isnull=True).only("id", "group_list")
+        return {user.id for user in candidate_users if set(user.group_list or []).intersection(group_ids)}
+
+
 def delete_user_sync_source(source: UserSyncSource):
     root_group = _get_user_sync_root_group(source)
     subtree_ids = _collect_group_subtree_ids(root_group.id) if root_group else set()
 
-    users_to_delete = []
-    affected_usernames = []
-    for user in User.objects.all():
-        user_group_ids = set(user.group_list or [])
-        if user.sync_source_id == source.id or (subtree_ids and user_group_ids.intersection(subtree_ids)):
-            users_to_delete.append(user.id)
-            affected_usernames.append({"username": user.username, "domain": user.domain})
+    users_to_delete = set(User.objects.filter(sync_source=source).values_list("id", flat=True))
+    users_to_delete.update(_collect_user_ids_for_group_subtree(subtree_ids))
+    affected_usernames = list(User.objects.filter(id__in=users_to_delete).values("username", "domain"))
 
     with transaction.atomic():
         if users_to_delete:
@@ -590,4 +611,3 @@ def is_root_group_name_reserved(root_group_name: str, current_source_id: int | N
     if current_source_id is not None:
         queryset = queryset.exclude(id=current_source_id)
     return queryset.exists()
-

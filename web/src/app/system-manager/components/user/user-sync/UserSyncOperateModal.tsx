@@ -19,7 +19,7 @@ import {
   isDepartmentSelectMode,
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
-import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/integrationCenter';
 import { type MappingRow, toMappingRows } from '@/app/system-manager/utils/userSyncPageUtils';
 import UserSyncConfigFields from '@/app/system-manager/components/user/user-sync/UserSyncConfigFields';
 

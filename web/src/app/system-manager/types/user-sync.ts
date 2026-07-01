@@ -18,6 +18,7 @@ export interface UserSyncSource {
   field_mapping: Record<string, unknown>;
   /** Canonical provider business parameters rendered from manifest */
   business_config?: Record<string, unknown>;
+  root_scope_field?: string;
   schedule_config: ScheduleConfig | null;
   latest_run: UserSyncRun | null;
   created_by?: string;

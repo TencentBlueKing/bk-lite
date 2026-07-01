@@ -1,5 +1,6 @@
 "use client";
 import {signIn} from "next-auth/react";
+import type { SignInResponse } from "next-auth/react";
 import {useState} from "react";
 import PasswordResetForm from "./PasswordResetForm";
 import OtpVerificationForm from "./OtpVerificationForm";
@@ -262,8 +263,6 @@ export default function SigninClient({
         qrcode: userData.qrcode || false,
       };
 
-      console.log('Completing authentication with user data:', userDataForAuth);
-
       if (userData.token) {
         saveAuthToken({
           id: userDataForAuth.id,
@@ -284,9 +283,7 @@ export default function SigninClient({
         skipValidation: 'true',
         userData: JSON.stringify(userDataForAuth),
         callbackUrl: callbackUrl || "/",
-      }) as any;
-
-      console.log('SignIn result:', result);
+      }) as SignInResponse | undefined;
 
       if (result?.error) {
         console.error('SignIn error:', result.error);
@@ -303,7 +300,6 @@ export default function SigninClient({
           thirdLoginFlag,
         );
 
-        console.log('SignIn successful, redirecting to:', targetUrl);
         finishAuthentication(targetUrl);
         return true;
       } else {

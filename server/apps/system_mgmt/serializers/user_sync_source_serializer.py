@@ -3,7 +3,7 @@ from types import SimpleNamespace
 from rest_framework import serializers
 
 from apps.core.utils.serializers import UsernameSerializer
-from apps.system_mgmt.providers import RuntimeApplicationService
+from apps.system_mgmt.providers import RuntimeApplicationService, get_provider_registry
 from apps.system_mgmt.models import (
     Group,
     IntegrationInstanceStatusChoices,
@@ -12,6 +12,7 @@ from apps.system_mgmt.models import (
 )
 from apps.system_mgmt.providers.adapters.common.ldap import is_sub_dn
 from apps.system_mgmt.services import user_sync_service
+from apps.system_mgmt.services.capability_contract_service import CapabilityContractError, validate_user_sync_contract
 from apps.system_mgmt.services.user_sync_service import (
     get_user_sync_root_department_input_mode,
     get_user_sync_root_scope_field,
@@ -30,6 +31,7 @@ class UserSyncRunSerializer(serializers.ModelSerializer):
 class UserSyncSourceSerializer(UsernameSerializer):
     integration_instance_name = serializers.SerializerMethodField()
     latest_run = serializers.SerializerMethodField()
+    root_scope_field = serializers.SerializerMethodField()
 
     class Meta:
         model = UserSyncSource
@@ -40,9 +42,15 @@ class UserSyncSourceSerializer(UsernameSerializer):
 
     def get_latest_run(self, obj):
         latest_run = getattr(obj, "_prefetched_latest_run", None)
+        if isinstance(latest_run, list):
+            latest_run = latest_run[0] if latest_run else None
         if latest_run is None:
             latest_run = obj.runs.order_by("-started_at", "-id").first()
         return UserSyncRunSerializer(latest_run).data if latest_run else None
+
+    def get_root_scope_field(self, obj):
+        provider_key = obj.integration_instance.provider_key if obj.integration_instance_id else ""
+        return get_user_sync_root_scope_field(provider_key)
 
     def validate(self, attrs):
         integration_instance = attrs.get("integration_instance") or getattr(self.instance, "integration_instance", None)
@@ -71,19 +79,29 @@ class UserSyncSourceSerializer(UsernameSerializer):
                 raise serializers.ValidationError({"root_group_name": "Root group name is already used by another sync source"})
 
         raw_business_config = attrs.get("business_config")
-        if raw_business_config is not None and not isinstance(raw_business_config, dict):
-            raise serializers.ValidationError({"business_config": "Business config must be an object"})
         business_config = dict(getattr(self.instance, "business_config", None) or {})
         if raw_business_config:
             business_config.update(raw_business_config)
 
         field_mapping = attrs.get("field_mapping")
-        if field_mapping is not None and not isinstance(field_mapping, dict):
-            raise serializers.ValidationError({"field_mapping": "Field mapping must be an object"})
-
-        schedule_config = attrs.get("schedule_config")
-        if schedule_config is not None and not isinstance(schedule_config, dict):
-            raise serializers.ValidationError({"schedule_config": "Schedule config must be an object"})
+        manifest = get_provider_registry().get(integration_instance.provider_key)
+        if manifest is None:
+            raise serializers.ValidationError({"integration_instance": "Integration instance provider manifest is missing"})
+        input_mode = get_user_sync_root_department_input_mode(integration_instance.provider_key)
+        if input_mode == "manual_input":
+            business_config.pop("department_id_type", None)
+        if integration_instance.provider_key == "feishu":
+            # Feishu fetch_child is now an implementation default, not user configuration.
+            business_config.pop("fetch_child", None)
+        try:
+            validate_user_sync_contract(
+                manifest,
+                business_config=business_config,
+                field_mapping=field_mapping,
+                schedule_config=attrs.get("schedule_config"),
+            )
+        except CapabilityContractError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
 
         if self.instance:
             if "integration_instance" in attrs and attrs["integration_instance"].id != self.instance.integration_instance_id:
@@ -96,7 +114,6 @@ class UserSyncSourceSerializer(UsernameSerializer):
         if not root_scope_value:
             raise serializers.ValidationError({"business_config": "Root department is required"})
 
-        input_mode = get_user_sync_root_department_input_mode(integration_instance.provider_key)
         if input_mode == "manual_input":
             business_config.pop("department_id_type", None)
             business_config[root_scope_field] = root_scope_value
@@ -129,6 +146,32 @@ class UserSyncSourceSerializer(UsernameSerializer):
 
         attrs["business_config"] = business_config
         return attrs
+
+    def _validate_schedule_config(self, schedule_config):
+        if schedule_config is None:
+            return
+        if not isinstance(schedule_config, dict):
+            raise serializers.ValidationError({"schedule_config": "Schedule config must be an object"})
+
+        enabled = schedule_config.get("enabled", False)
+        if not isinstance(enabled, bool):
+            raise serializers.ValidationError({"schedule_config": "Schedule enabled must be a boolean"})
+        if not enabled:
+            return
+
+        sync_time = schedule_config.get("sync_time")
+        if not isinstance(sync_time, str):
+            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"})
+        parts = sync_time.split(":")
+        if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
+            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"})
+        try:
+            hour = int(parts[0])
+            minute = int(parts[1])
+        except ValueError:
+            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"}) from None
+        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"})
 
     def create(self, validated_data):
         instance = super().create(validated_data)

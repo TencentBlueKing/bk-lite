@@ -2,6 +2,7 @@ import json
 from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError
 
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
 from apps.system_mgmt.providers.adapters.feishu import FeishuIMNotificationAdapter
@@ -109,6 +110,64 @@ def test_execute_im_notification_sync_run_marks_partial_when_some_external_users
     assert run.unmatched_count == 1
     assert mapping.external_identity_value == "ou_123"
     assert channel.status == CHANNEL_STATUS_READY
+
+
+@pytest.mark.django_db
+def test_execute_im_notification_sync_run_stores_bounded_redacted_diagnostics(channel, user):
+    run = IMNotificationSyncRun.objects.create(
+        channel=channel,
+        status="running",
+        summary="started",
+        locked_config_snapshot={
+            "integration_instance_id": channel.integration_instance_id,
+            "provider_key": channel.integration_instance.provider_key,
+            "platform_match_field": "email",
+            "external_match_field": "email",
+            "external_receive_field": "user_id",
+        },
+    )
+    payload = CapabilityExecutionResult.success_result(
+        "ok",
+        payload={
+            "external_users": [
+                {
+                    "user_id": "ou_123",
+                    "open_id": "open_123",
+                    "email": "tester@example.com",
+                    "mobile": "13800000000",
+                    "name": "Tester",
+                    "password": "should-not-persist",
+                    "raw_profile": {"large": "payload"},
+                },
+                {
+                    "user_id": "ou_404",
+                    "email": "missing@example.com",
+                    "name": "Missing",
+                    "access_token": "token-should-not-persist",
+                },
+            ],
+            "provider_secret": "should-not-persist",
+        },
+    )
+
+    with patch("apps.system_mgmt.services.im_notification_service.RuntimeApplicationService.execute", return_value=payload):
+        execute_im_notification_sync_run(run.id)
+
+    run.refresh_from_db()
+    mapping = IMNotificationUserMapping.objects.get(channel=channel, user=user)
+
+    assert "external_users" not in run.payload.get("payload", {})
+    assert "provider_secret" not in run.payload.get("payload", {})
+    assert "password" not in mapping.external_snapshot
+    assert "raw_profile" not in mapping.external_snapshot
+    assert mapping.external_snapshot == {
+        "user_id": "ou_123",
+        "open_id": "open_123",
+        "email": "tester@example.com",
+        "mobile": "13800000000",
+        "name": "Tester",
+    }
+    assert "access_token" not in str(run.payload["unmatched_issues"])
 
 
 @pytest.mark.django_db
@@ -232,6 +291,14 @@ def test_schedule_trigger_skips_when_run_is_already_running(channel):
     result = create_im_notification_sync_run(channel.id, trigger_mode="schedule")
 
     assert result["result"] is False
+
+
+@pytest.mark.django_db
+def test_im_notification_sync_run_allows_only_one_running_run_per_channel(channel):
+    IMNotificationSyncRun.objects.create(channel=channel, trigger_mode="manual", status="running")
+
+    with pytest.raises(IntegrityError):
+        IMNotificationSyncRun.objects.create(channel=channel, trigger_mode="schedule", status="running")
 
 
 @pytest.mark.django_db

@@ -1,9 +1,13 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
+from django.utils import timezone
 
 from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncSource
 from apps.system_mgmt.providers.runtime import CapabilityExecutionResult
+from apps.system_mgmt.services.user_sync_service import delete_user_sync_source
 
 
 @pytest.fixture
@@ -98,6 +102,59 @@ def test_destroy_deletes_root_subtree_and_users(api_client, authenticated_user, 
     assert UserSyncSource.objects.filter(id=user_sync_source.id).exists() is False
     assert Group.objects.filter(id__in=[root_group.id, child_group.id]).count() == 0
     assert User.objects.filter(id__in=[synced_user.id, grouped_user.id]).count() == 0
+
+
+@pytest.mark.django_db
+def test_delete_user_sync_source_does_not_scan_all_users(user_sync_source):
+    root_group = Group.objects.create(
+        name="Root A",
+        parent_id=0,
+        sync_source=user_sync_source,
+        external_id=f"user-sync:{user_sync_source.id}:0",
+    )
+    child_group = Group.objects.create(
+        name="Dept A",
+        parent_id=root_group.id,
+        sync_source=user_sync_source,
+        external_id=f"user-sync:{user_sync_source.id}:dept-a",
+    )
+    synced_user = User.objects.create(
+        username="alice-service",
+        display_name="Alice",
+        email="alice-service@example.com",
+        password="",
+        domain="domain.com",
+        group_list=[],
+        sync_source=user_sync_source,
+    )
+    grouped_user = User.objects.create(
+        username="bob-service",
+        display_name="Bob",
+        email="bob-service@example.com",
+        password="",
+        domain="domain.com",
+        group_list=[child_group.id],
+        sync_source=None,
+    )
+
+    with patch("apps.system_mgmt.services.user_sync_service.User.objects.all", side_effect=AssertionError("full user scan")):
+        result = delete_user_sync_source(user_sync_source)
+
+    assert result["result"] is True
+    assert User.objects.filter(id__in=[synced_user.id, grouped_user.id]).count() == 0
+
+
+@pytest.mark.django_db
+def test_list_returns_explicit_root_scope_field(api_client, authenticated_user, user_sync_source):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    response = api_client.get("/api/v1/system_mgmt/user_sync_source/")
+
+    assert response.status_code == 200
+    payload = response.data if isinstance(response.data, list) else response.data.get("items", response.data.get("results"))
+    assert payload[0]["root_scope_field"] == "root_department_id"
 
 
 @pytest.mark.django_db
@@ -265,6 +322,41 @@ def test_detail_records_returns_latest_runs(api_client, authenticated_user, user
     assert response.status_code == 200
     returned_ids = {item["id"] for item in response.data}
     assert {first_run.id, second_run.id}.issubset(returned_ids)
+
+
+@pytest.mark.django_db
+def test_list_prefetches_only_latest_run_per_source(api_client, authenticated_user, ready_integration_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    sources = [
+        UserSyncSource.objects.create(
+            name=f"source-list-{index}",
+            integration_instance=ready_integration_instance,
+            enabled=True,
+            root_group_name=f"Root List {index}",
+            business_config={"root_department_id": "0"},
+            field_mapping={},
+            schedule_config={},
+        )
+        for index in range(3)
+    ]
+    for source in sources:
+        UserSyncRun.objects.create(source=source, status="failed", summary="old", started_at=timezone.now())
+        UserSyncRun.objects.create(source=source, status="success", summary="latest", started_at=timezone.now())
+
+    with CaptureQueriesContext(connection) as context:
+        response = api_client.get("/api/v1/system_mgmt/user_sync_source/", {"page": 1, "page_size": 10})
+
+    assert response.status_code == 200
+    run_table = UserSyncRun._meta.db_table
+    run_selects = [
+        query["sql"]
+        for query in context.captured_queries
+        if query["sql"].lstrip().upper().startswith("SELECT") and run_table in query["sql"]
+    ]
+    assert len(run_selects) == 1
+    assert {item["latest_run"]["summary"] for item in response.data["items"]} == {"latest"}
 
 
 @pytest.mark.django_db

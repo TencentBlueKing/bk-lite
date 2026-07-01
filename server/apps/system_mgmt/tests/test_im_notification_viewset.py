@@ -1,10 +1,14 @@
 from unittest.mock import MagicMock, patch
 
 import pytest
+from django.db import connection
+from django.test.utils import CaptureQueriesContext
 from django.utils import timezone
+from rest_framework.response import Response
 
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstance, User
-from apps.system_mgmt.serializers.im_notification_channel_serializer import IMNotificationChannelSerializer
+from apps.system_mgmt.serializers.im_notification_channel_serializer import IMNotificationChannelSerializer, IMNotificationSyncRunSerializer
+from apps.system_mgmt.viewset.im_notification_channel_viewset import IMNotificationChannelViewSet
 
 
 @pytest.fixture
@@ -53,6 +57,40 @@ def test_channel_rejects_external_match_field_not_declared_by_manifest(ready_im_
 
 
 @pytest.mark.django_db
+def test_channel_rejects_unknown_status(ready_im_instance):
+    serializer = IMNotificationChannelSerializer(
+        data={
+            "name": "invalid-status-channel",
+            "integration_instance": ready_im_instance.id,
+            "enabled": True,
+            "status": "mystery",
+            "platform_match_field": "email",
+            "external_match_field": "email",
+            "external_receive_field": "user_id",
+            "team": [],
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "status" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_sync_run_rejects_unknown_status(channel):
+    serializer = IMNotificationSyncRunSerializer(
+        data={
+            "channel": channel.id,
+            "trigger_mode": "manual",
+            "status": "mystery",
+            "summary": "started",
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "status" in serializer.errors
+
+
+@pytest.mark.django_db
 def test_channel_update_marks_needs_resync_when_critical_config_changes(channel, ready_im_instance):
     serializer = IMNotificationChannelSerializer(
         instance=channel,
@@ -96,6 +134,26 @@ def test_channel_create_syncs_periodic_task_when_schedule_enabled(ready_im_insta
 
     assert instance.schedule_config == {"enabled": True, "sync_time": "02:00"}
     mock_sync.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_channel_rejects_invalid_schedule_sync_time(ready_im_instance):
+    serializer = IMNotificationChannelSerializer(
+        data={
+            "name": "scheduled-channel",
+            "integration_instance": ready_im_instance.id,
+            "enabled": True,
+            "description": "",
+            "platform_match_field": "email",
+            "external_match_field": "email",
+            "external_receive_field": "user_id",
+            "schedule_config": {"enabled": True, "sync_time": "25:00"},
+            "team": [],
+        },
+    )
+
+    assert serializer.is_valid() is False
+    assert "schedule_config" in serializer.errors
 
 
 @pytest.mark.django_db
@@ -206,6 +264,54 @@ def test_records_returns_channel_runs_only(api_client, authenticated_user, chann
 
 
 @pytest.mark.django_db
+def test_list_prefetches_only_latest_sync_run_per_channel(api_client, authenticated_user, ready_im_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    channels = [
+        IMNotificationChannel.objects.create(
+            name=f"channel-list-{index}",
+            integration_instance=ready_im_instance,
+            enabled=True,
+            status="pending_sync",
+            platform_match_field="email",
+            external_match_field="email",
+            external_receive_field="user_id",
+            team=[],
+        )
+        for index in range(3)
+    ]
+    for channel_item in channels:
+        IMNotificationSyncRun.objects.create(
+            channel=channel_item,
+            status="failed",
+            summary="old",
+            started_at=timezone.now(),
+            locked_config_snapshot={},
+        )
+        IMNotificationSyncRun.objects.create(
+            channel=channel_item,
+            status="success",
+            summary="latest",
+            started_at=timezone.now(),
+            locked_config_snapshot={},
+        )
+
+    with CaptureQueriesContext(connection) as context:
+        response = api_client.get("/api/v1/system_mgmt/im_notification_channel/", {"page": 1, "page_size": 10})
+
+    assert response.status_code == 200
+    run_table = IMNotificationSyncRun._meta.db_table
+    run_selects = [
+        query["sql"]
+        for query in context.captured_queries
+        if query["sql"].lstrip().upper().startswith("SELECT") and run_table in query["sql"]
+    ]
+    assert len(run_selects) == 1
+    assert {item["latest_sync_summary"] for item in response.data["items"]} == {"latest"}
+
+
+@pytest.mark.django_db
 def test_destroy_channel_deletes_periodic_task(api_client, authenticated_user, channel):
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"channel_list-Delete"}}
@@ -216,6 +322,28 @@ def test_destroy_channel_deletes_periodic_task(api_client, authenticated_user, c
 
     assert response.status_code == 200
     mock_delete.assert_called_once_with()
+
+
+@pytest.mark.django_db
+def test_destroy_channel_logs_operation_when_destroy_returns_204(authenticated_user, channel):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"channel_list-Delete"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+    request = MagicMock()
+    request.user = authenticated_user
+    viewset = IMNotificationChannelViewSet()
+    viewset.get_object = MagicMock(return_value=channel)
+
+    with patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.MaintainerViewSet.destroy",
+        return_value=Response(status=204),
+    ), patch(
+        "apps.system_mgmt.viewset.im_notification_channel_viewset.IMNotificationChannel.delete_sync_periodic_task"
+    ), patch("apps.system_mgmt.viewset.im_notification_channel_viewset.log_operation") as mock_log:
+        response = IMNotificationChannelViewSet.destroy.__wrapped__(viewset, request)
+
+    assert response.status_code == 204
+    mock_log.assert_called_once()
 
 
 @pytest.mark.django_db

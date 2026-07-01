@@ -47,8 +47,29 @@ class TestLoginAuthBindingViews:
         data = json.loads(response.content)
 
         assert response.status_code == 200
+        assert response["Cache-Control"] == "public, max-age=30"
         assert data["result"] is True
         assert data["data"][0]["provider_key"] == "bk_lite_builtin"
+
+    @patch("apps.core.views.index_view.SystemMgmt")
+    def test_get_login_auth_bindings_is_rate_limited(self, mock_system_mgmt):
+        from apps.core import views
+        from apps.core.views.index_view import get_login_auth_bindings
+
+        fake_cache = FakeCache()
+        mock_system_mgmt.return_value.get_login_auth_bindings.return_value = {"result": True, "data": []}
+
+        with patch.object(views.index_view, "cache", fake_cache), patch.object(
+            views.index_view,
+            "LOGIN_AUTH_BINDINGS_RATE_LIMIT",
+            1,
+        ):
+            first_response = get_login_auth_bindings(RequestFactory().get("/api/v1/core/api/get_login_auth_bindings/"))
+            second_response = get_login_auth_bindings(RequestFactory().get("/api/v1/core/api/get_login_auth_bindings/"))
+
+        assert first_response.status_code == 200
+        assert second_response.status_code == 429
+        mock_system_mgmt.return_value.get_login_auth_bindings.assert_called_once()
 
     @patch("apps.core.views.index_view.SystemMgmt")
     def test_login_with_binding_sets_cookie_and_redirect(self, mock_system_mgmt):
@@ -518,6 +539,19 @@ class FakeCache:
         self.timeouts[key] = timeout
         return True
 
+    def add(self, key, value, timeout=None):
+        if key in self.store:
+            return False
+        self.store[key] = value
+        self.timeouts[key] = timeout
+        return True
+
+    def incr(self, key, delta=1):
+        if key not in self.store:
+            raise ValueError("Key not found")
+        self.store[key] += delta
+        return self.store[key]
+
 
 def _load_login_auth_request_service():
     try:
@@ -615,6 +649,7 @@ class TestLoginAuthRequestService:
                     "require_otp": True,
                     "challenge_id": "challenge-1",
                     "qr_code": "qr-data",
+                    "need_bindng": True,
                     "external_user": {"id": "provider-user"},
                 },
             )
@@ -636,7 +671,9 @@ class TestLoginAuthRequestService:
             "require_otp": True,
             "challenge_id": "challenge-1",
             "qr_code": "qr-data",
+            "need_binding": True,
         }
+        assert "need_bindng" not in updated["login_result"]
         assert failed["status"] == "failed"
         assert failed["error_message"] == "provider failed"
         assert "login_result" not in failed

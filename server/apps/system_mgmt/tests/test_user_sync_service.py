@@ -4,6 +4,7 @@ import time
 from unittest.mock import patch
 
 import pytest
+from django.db import IntegrityError
 from django.utils import timezone
 
 from apps.system_mgmt.models import Group, IntegrationInstance, User, UserSyncRun, UserSyncRunStatusChoices, UserSyncSource, UserSyncTriggerModeChoices
@@ -387,6 +388,76 @@ def test_feishu_user_sync_uses_requested_department_id_type_for_group_ids():
     assert result.payload["group_list"][0]["id"] == "open-dept-a"
 
 
+def test_feishu_user_sync_defaults_to_fetch_child_true():
+    class DummyResponse:
+        def __init__(self, payload, status_code=200, headers=None):
+            self._payload = payload
+            self.status_code = status_code
+            self.headers = headers or {}
+
+        def json(self):
+            return self._payload
+
+    requested_params = []
+
+    def fake_post(*args, **kwargs):
+        return DummyResponse({"code": 0, "tenant_access_token": "tenant-token"})
+
+    def fake_get(url, *args, **kwargs):
+        requested_params.append(kwargs.get("params") or {})
+        return DummyResponse({"code": 0, "data": {"items": [], "has_more": False}})
+
+    source = SimpleNamespace(name="default-fetch-child-source", business_config={"root_department_id": "0"})
+
+    with patch("apps.system_mgmt.providers.adapters.feishu.requests.post", side_effect=fake_post), patch(
+        "apps.system_mgmt.providers.adapters.feishu.requests.get", side_effect=fake_get
+    ):
+        result = FeishuUserSyncAdapter.sync_users(
+            {"app_id": "cli_xxx", "app_secret": "secret"},
+            "feishu",
+            "user_sync",
+            source=source,
+        )
+
+    assert result.success is True
+    assert requested_params[0]["fetch_child"] == "true"
+    assert requested_params[1]["fetch_child"] == "true"
+
+
+@pytest.mark.django_db
+def test_feishu_user_sync_serializer_drops_deprecated_fetch_child_config(ready_integration_instance):
+    payload = CapabilityExecutionResult.success_result(
+        "departments loaded",
+        payload={
+            "items": [{"id": "__all__", "name": "全部部门", "parent_id": None, "children": []}],
+            "all_department_id": "0",
+            "selected_id": "__all__",
+            "selection_missing": False,
+        },
+    )
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "source-with-old-fetch-child",
+            "integration_instance": ready_integration_instance.id,
+            "root_group_name": "Feishu Root",
+            "business_config": {
+                "root_department_id": "0",
+                "department_id_type": "open_department_id",
+                "user_id_type": "open_id",
+                "fetch_child": False,
+                "status": "active",
+            },
+            "field_mapping": {},
+            "schedule_config": {},
+        }
+    )
+
+    with patch("apps.system_mgmt.providers.runtime.RuntimeApplicationService.execute", return_value=payload):
+        assert serializer.is_valid(), serializer.errors
+
+    assert "fetch_child" not in serializer.validated_data["business_config"]
+
+
 def test_feishu_list_departments_marks_missing_selection():
     class DummyResponse:
         def __init__(self, payload, status_code=200, headers=None):
@@ -600,6 +671,65 @@ def test_serializer_accepts_business_config_without_mirroring_legacy_columns(rea
     assert validated["business_config"]["root_department_id"] == "dept-99"
     assert "sync_scope" not in validated
     assert "root_department_id" not in validated
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_invalid_schedule_sync_time(ready_integration_instance):
+    with patch(
+        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+        return_value="manual_input",
+    ):
+        serializer = UserSyncSourceSerializer(
+            data={
+                "name": "source-invalid-schedule",
+                "integration_instance": ready_integration_instance.id,
+                "enabled": True,
+                "root_group_name": "Invalid Schedule Root",
+                "business_config": {"root_department_id": "0"},
+                "field_mapping": {},
+                "schedule_config": {"enabled": True, "sync_time": "25:00"},
+            }
+        )
+
+        assert serializer.is_valid() is False
+
+    assert "schedule_config" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_unknown_user_sync_field_mapping_key(ready_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "source-invalid-field-mapping-key",
+            "integration_instance": ready_integration_instance.id,
+            "enabled": True,
+            "root_group_name": "Invalid Mapping Root",
+            "business_config": {"root_department_id": "0"},
+            "field_mapping": {"nickname": "name"},
+            "schedule_config": {},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "field_mapping" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_user_sync_field_mapping_not_declared_by_manifest(ready_integration_instance):
+    serializer = UserSyncSourceSerializer(
+        data={
+            "name": "source-invalid-field-mapping-value",
+            "integration_instance": ready_integration_instance.id,
+            "enabled": True,
+            "root_group_name": "Invalid Mapping Value Root",
+            "business_config": {"root_department_id": "0"},
+            "field_mapping": {"username": "private_token"},
+            "schedule_config": {},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "field_mapping" in serializer.errors
 
 
 @pytest.mark.django_db
@@ -1197,3 +1327,41 @@ def test_queued_sync_for_disabled_source_creates_failed_run(ready_integration_in
     assert "disabled" in run.summary.lower()
 
 
+@pytest.mark.django_db
+def test_user_sync_run_allows_only_one_running_run_per_source(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="source-running-guard",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Running Guard Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={},
+    )
+    UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
+
+    with pytest.raises(IntegrityError):
+        UserSyncRun.objects.create(source=source, status=UserSyncRunStatusChoices.RUNNING)
+
+
+@pytest.mark.django_db
+def test_user_sync_source_periodic_task_args_are_json_serialized(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="source-periodic-json",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Periodic Json Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"sync_time": "03:30"},
+    )
+
+    with patch.object(source, "create_periodic_task") as mock_create:
+        source.create_sync_periodic_task()
+
+    mock_create.assert_called_once_with(
+        "03:30",
+        source.periodic_task_name(),
+        f'[{source.id},"{UserSyncTriggerModeChoices.SCHEDULE}"]',
+        "apps.system_mgmt.tasks.execute_user_sync_source",
+    )

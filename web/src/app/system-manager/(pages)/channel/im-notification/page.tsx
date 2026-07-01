@@ -2,21 +2,15 @@
 'use client';
 
 import React, { useEffect, useMemo, useState } from 'react';
-import dayjs from 'dayjs';
 import { useRouter } from 'next/navigation';
 import {
-  Alert,
   Button,
-  Drawer,
   Form,
   Input,
   message,
   Popconfirm,
-  Select,
   Space,
   Switch,
-  Tag,
-  TimePicker,
 } from 'antd';
 import type { ColumnItem } from '@/types';
 import {
@@ -24,12 +18,16 @@ import {
   PlusOutlined,
   ReloadOutlined,
 } from '@ant-design/icons';
-import OperateModal from '@/components/operate-modal';
 import PermissionWrapper from '@/components/permission';
 import CustomTable from '@/components/custom-table';
 import PageLayout from '@/components/page-layout';
 import TopSection from '@/components/top-section';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
+import IMNotificationConfigModal, {
+  type IMNotificationChannelFormValues,
+} from '@/app/system-manager/components/channel/im-notification/IMNotificationConfigModal';
+import IMNotificationRecordsDrawer from '@/app/system-manager/components/channel/im-notification/IMNotificationRecordsDrawer';
+import IMNotificationSendModal from '@/app/system-manager/components/channel/im-notification/IMNotificationSendModal';
 import { useImNotificationApi } from '@/app/system-manager/api/im-notification';
 import { useIntegrationCenterApi } from '@/app/system-manager/api/integration-center';
 import type {
@@ -47,25 +45,17 @@ import type {
 import {
   buildSchedulePayload,
   getLatestSyncSummary,
-  getSyncRunStatusColor,
   getSyncRunStatusText,
-  getSyncTriggerModeText,
   isChannelSyncRunning,
   parseScheduleConfig,
   resolveImNotificationFieldPatches,
 } from '@/app/system-manager/utils/imNotificationUtils';
 import { useTranslation } from '@/utils/i18n';
-import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
 
 interface PaginationState {
   current: number;
   total: number;
   pageSize: number;
-}
-
-interface IMNotificationChannelFormValues extends IMNotificationChannelPayload {
-  schedule_enabled?: boolean;
-  sync_time?: string;
 }
 
 const PLATFORM_MATCH_FIELD_OPTIONS: PlatformMatchField[] = ['username', 'email', 'phone'];
@@ -483,69 +473,6 @@ const ImNotificationPage: React.FC = () => {
     [sendMappings],
   );
 
-  const recordColumns: ColumnItem[] = [
-    {
-      key: 'started_at',
-      title: t('system.channel.imNotificationPage.recordColumns.startedAt'),
-      dataIndex: 'started_at',
-      render: (_, record: IMNotificationSyncRun) => <p>{renderTime(record.started_at)}</p>,
-    },
-    {
-      key: 'finished_at',
-      title: t('system.channel.imNotificationPage.recordColumns.finishedAt'),
-      dataIndex: 'finished_at',
-      render: (_, record: IMNotificationSyncRun) => <p>{renderTime(record.finished_at)}</p>,
-    },
-    {
-      key: 'trigger_mode',
-      title: t('system.channel.imNotificationPage.recordColumns.triggerMode'),
-      dataIndex: 'trigger_mode',
-      render: (triggerMode: string) => <span>{getSyncTriggerModeText(triggerMode, t)}</span>,
-      width: 100,
-    },
-    {
-      key: 'status',
-      title: t('system.channel.imNotificationPage.recordColumns.status'),
-      dataIndex: 'status',
-      render: (status: string) => (
-        <Tag color={getSyncRunStatusColor(status)}>
-          {getSyncRunStatusText(status, t)}
-        </Tag>
-      ),
-      width: 100,
-    },
-    {
-      key: 'total_external_user_count',
-      title: t('system.channel.imNotificationPage.recordColumns.totalExternalUsers'),
-      dataIndex: 'total_external_user_count',
-      width: 90,
-    },
-    {
-      key: 'matched_count',
-      title: t('system.channel.imNotificationPage.recordColumns.matchedCount'),
-      dataIndex: 'matched_count',
-      width: 90,
-    },
-    {
-      key: 'unmatched_count',
-      title: t('system.channel.imNotificationPage.recordColumns.unmatchedCount'),
-      dataIndex: 'unmatched_count',
-      width: 100,
-    },
-    {
-      key: 'conflict_count',
-      title: t('system.channel.imNotificationPage.recordColumns.conflictCount'),
-      dataIndex: 'conflict_count',
-      width: 90,
-    },
-    {
-      key: 'summary',
-      title: t('system.channel.imNotificationPage.recordColumns.summary'),
-      dataIndex: 'summary',
-      ellipsis: true,
-    },
-  ];
-
   const columns: ColumnItem[] = [
     {
       key: 'name',
@@ -744,250 +671,52 @@ const ImNotificationPage: React.FC = () => {
             </div>
           </div>
 
-          <OperateModal
-            title={editing ? t('common.edit') : t('common.add')}
+          <IMNotificationConfigModal
             open={modalOpen}
+            editing={editing}
+            loading={modalLoading}
+            form={form}
+            availableInstances={availableInstances}
+            platformMatchOptions={platformMatchOptions}
+            externalMatchOptions={externalMatchOptions}
+            externalReceiveOptions={externalReceiveOptions}
+            manifestHintVisible={manifestHintVisible}
+            showMatchFieldHint={showMatchFieldHint}
+            showReceiveFieldHint={showReceiveFieldHint}
+            t={t}
             onOk={handleModalOk}
             onCancel={() => !modalLoading && setModalOpen(false)}
-            confirmLoading={modalLoading}
-            width={640}
-          >
-            <Form form={form} layout="vertical">
-              <div className="mb-6">
-                <div className="mb-2 text-[16px] font-semibold text-[var(--color-text-1)]">
-                  {t('system.channel.imNotificationPage.basicInfoTitle')}
-                </div>
-                <div className="mb-5 text-[13px] text-[var(--color-text-3)]">
-                  {t('system.channel.imNotificationPage.basicInfoDesc')}
-                </div>
-                <Form.Item
-                  name="name"
-                  label={t('system.channel.imNotificationPage.name')}
-                  rules={[{ required: true, whitespace: true }]}
-                >
-                  <Input placeholder={t('system.channel.imNotificationPage.namePlaceholder')} />
-                </Form.Item>
-                <Form.Item
-                  name="integration_instance"
-                  label={t('system.channel.imNotificationPage.integrationInstance')}
-                  rules={[{ required: true }]}
-                >
-                  <Select
-                    placeholder={t('system.channel.imNotificationPage.integrationInstancePlaceholder')}
-                    options={availableInstances.map((instance) => ({
-                      value: instance.id,
-                      label: formatIntegrationInstanceDisplayName(instance, t),
-                    }))}
-                  />
-                </Form.Item>
-                <Form.Item
-                  name="description"
-                  label={t('system.channel.imNotificationPage.description')}
-                >
-                  <Input.TextArea
-                    rows={3}
-                    placeholder={t('system.channel.imNotificationPage.descriptionPlaceholder')}
-                  />
-                </Form.Item>
-              </div>
+          />
 
-              <div className="border-t border-[var(--color-border-1)] pt-6">
-                <div className="mb-2 text-[16px] font-semibold text-[var(--color-text-1)]">
-                  {t('system.channel.imNotificationPage.fieldMappingTitle')}
-                </div>
-                <div className="mb-5 text-[13px] text-[var(--color-text-3)]">
-                  {t('system.channel.imNotificationPage.fieldMappingDesc')}
-                </div>
-                {manifestHintVisible ? (
-                  <Alert
-                    className="mb-4"
-                    type="warning"
-                    showIcon
-                    message={t('system.channel.imNotificationPage.manifestNotFound')}
-                  />
-                ) : null}
-                <div className="rounded-2xl border border-[var(--color-border)] bg-[var(--color-bg)] px-4 py-4">
-                  <div className="grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3 text-[13px] text-[var(--color-text-3)]">
-                    <div>{t('system.channel.imNotificationPage.platformMatchField')}</div>
-                    <div />
-                    <div>{t('system.channel.imNotificationPage.externalMatchField')}</div>
-                  </div>
-                  <div className="mt-3 grid grid-cols-[minmax(0,1fr)_24px_minmax(0,1fr)] gap-x-4 gap-y-3">
-                    <Form.Item
-                      name="platform_match_field"
-                      rules={[{ required: true, message: t(`common.selectMsg`) }]}
-                      className="mb-0"
-                    >
-                      <Select options={platformMatchOptions} />
-                    </Form.Item>
-                    <div className="flex h-10 items-center justify-center text-lg text-[var(--color-primary)]">
-                      =
-                    </div>
-                    <Form.Item
-                      name="external_match_field"
-                      rules={[{ required: true, message: t(`common.selectMsg`) }]}
-                      className="mb-0"
-                    >
-                      <Select
-                        options={externalMatchOptions}
-                        disabled={externalMatchOptions.length === 0}
-                        placeholder={t('system.channel.imNotificationPage.externalMatchFieldPlaceholder')}
-                      />
-                    </Form.Item>
-                  </div>
-                  {showMatchFieldHint ? (
-                    <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
-                      {t('system.channel.imNotificationPage.matchFieldUnavailableHint')}
-                    </div>
-                  ) : null}
-                  <div className="mt-5">
-                    <Form.Item
-                      name="external_receive_field"
-                      label={t('system.channel.imNotificationPage.receiveField')}
-                      rules={[{ required: true, message: t(`common.selectMsg`) }]}
-                      className="mb-0"
-                    >
-                      <Select
-                        options={externalReceiveOptions}
-                        disabled={externalReceiveOptions.length === 0}
-                        placeholder={t('system.channel.imNotificationPage.externalReceiveFieldPlaceholder')}
-                      />
-                    </Form.Item>
-                    <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
-                      {t('system.channel.imNotificationPage.receiveFieldHint')}
-                    </div>
-                    {showReceiveFieldHint ? (
-                      <div className="mt-3 text-[12px] text-[var(--color-text-3)]">
-                        {t('system.channel.imNotificationPage.receiveFieldUnavailableHint')}
-                      </div>
-                    ) : null}
-                  </div>
-                </div>
-              </div>
-
-              <div className="border-t border-[var(--color-border-1)] pt-6">
-                <div className="mb-2 text-[16px] font-semibold text-[var(--color-text-1)]">
-                  {t('system.channel.imNotificationPage.syncOptionsTitle')}
-                </div>
-                <div className="mb-5 text-[13px] text-[var(--color-text-3)]">
-                  {t('system.channel.imNotificationPage.syncOptionsDesc')}
-                </div>
-                <Form.Item
-                  name="schedule_enabled"
-                  label={t('system.channel.imNotificationPage.syncMode')}
-                  className="mb-0"
-                >
-                  <Select
-                    options={[
-                      {
-                        label: t('system.channel.imNotificationPage.syncModeManual'),
-                        value: false,
-                      },
-                      {
-                        label: t('system.channel.imNotificationPage.syncModeAutomatic'),
-                        value: true,
-                      },
-                    ]}
-                  />
-                </Form.Item>
-                <Form.Item noStyle shouldUpdate={(prev, cur) => prev.schedule_enabled !== cur.schedule_enabled}>
-                  {({ getFieldValue }) =>
-                    getFieldValue('schedule_enabled') ? (
-                      <Form.Item
-                        name="sync_time"
-                        label={t('system.channel.imNotificationPage.syncTime')}
-                        required
-                        rules={[{ required: true }]}
-                        className="mb-0 mt-5"
-                        normalize={(value) => (value ? (dayjs.isDayjs(value) ? value.format('HH:mm') : value) : '')}
-                        getValueProps={(value) => ({ value: value ? dayjs(value, 'HH:mm') : null })}
-                      >
-                        <TimePicker format="HH:mm" className="w-full md:w-[220px]" />
-                      </Form.Item>
-                    ) : null
-                  }
-                </Form.Item>
-              </div>
-            </Form>
-          </OperateModal>
-
-          <Drawer
-            title={`${recordsChannel?.name ?? ''} — ${t('system.channel.imNotificationPage.recordsTitle')}`}
+          <IMNotificationRecordsDrawer
             open={recordsOpen}
+            channel={recordsChannel}
+            records={records}
+            loading={recordsLoading}
+            pagination={recordsPagination}
+            t={t}
+            renderTime={renderTime}
             onClose={() => setRecordsOpen(false)}
-            width={980}
-          >
-            {!recordsLoading && records.length === 0 ? (
-              <div className="mb-4 text-[13px] text-[var(--color-text-3)]">
-                {t('system.channel.imNotificationPage.noSyncRecords')}
-              </div>
-            ) : null}
-            <CustomTable
-              rowKey="id"
-              scroll={{ x: '100%', y: 'calc(100vh - 205px)' }}
-              loading={recordsLoading}
-              dataSource={records}
-              columns={recordColumns}
-              pagination={{
-                ...recordsPagination,
-                onChange: (current: number, pageSize: number) => {
-                  if (!recordsChannel) return;
-                  const nextPage = pageSize !== recordsPagination.pageSize ? 1 : current;
-                  fetchRecords(recordsChannel.id, nextPage, pageSize);
-                },
-              }}
-            />
-          </Drawer>
+            onPageChange={(current, pageSize) => {
+              if (!recordsChannel) return;
+              const nextPage = pageSize !== recordsPagination.pageSize ? 1 : current;
+              fetchRecords(recordsChannel.id, nextPage, pageSize);
+            }}
+          />
 
-          <OperateModal
-            title={t('system.channel.imNotificationPage.sendTitle')}
+          <IMNotificationSendModal
             open={sendOpen}
+            loading={sendLoading}
+            form={sendForm}
+            channelOptions={sendChannelOptions}
+            receiverOptions={sendReceiverOptions}
+            receiversLoading={sendMappingsLoading}
+            selectedChannelId={sendChannelId}
+            t={t}
             onOk={handleSendOk}
             onCancel={() => !sendLoading && setSendOpen(false)}
-            confirmLoading={sendLoading}
-            width={520}
-          >
-            <Form form={sendForm} layout="vertical">
-              <Form.Item
-                name="channel_id"
-                label={t('system.channel.imNotificationPage.sendChannel')}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  placeholder={t('system.channel.imNotificationPage.sendChannelPlaceholder')}
-                  options={sendChannelOptions}
-                  onChange={handleSendChannelChange}
-                />
-              </Form.Item>
-              <Form.Item
-                name="user_ids"
-                label={t('system.channel.imNotificationPage.sendReceivers')}
-                rules={[{ required: true }]}
-              >
-                <Select
-                  mode="multiple"
-                  placeholder={t('system.channel.imNotificationPage.sendReceiversPlaceholder')}
-                  options={sendReceiverOptions}
-                  loading={sendMappingsLoading}
-                  disabled={!sendChannelId}
-                />
-              </Form.Item>
-              <Form.Item
-                name="title"
-                label={t('system.channel.imNotificationPage.sendMessageTitle')}
-                rules={[{ required: true }]}
-              >
-                <Input />
-              </Form.Item>
-              <Form.Item
-                name="content"
-                label={t('system.channel.imNotificationPage.sendMessageContent')}
-                rules={[{ required: true }]}
-              >
-                <Input.TextArea rows={4} />
-              </Form.Item>
-            </Form>
-          </OperateModal>
+            onChannelChange={handleSendChannelChange}
+          />
         </div>
       )}
     />

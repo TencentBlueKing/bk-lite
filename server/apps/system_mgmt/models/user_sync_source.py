@@ -1,5 +1,8 @@
+import json
+
 from django.core.exceptions import ValidationError
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 from apps.core.mixinx import PeriodicTaskUtils
@@ -44,7 +47,7 @@ class UserSyncSource(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
 
     def create_sync_periodic_task(self):
         sync_time = (self.schedule_config or {}).get("sync_time", "00:00")
-        task_args = f"[{self.id}, \"{UserSyncTriggerModeChoices.SCHEDULE}\"]"
+        task_args = json.dumps([self.id, UserSyncTriggerModeChoices.SCHEDULE], separators=(",", ":"))
         task_path = "apps.system_mgmt.tasks.execute_user_sync_source"
         self.create_periodic_task(sync_time, self.periodic_task_name(), task_args, task_path)
 
@@ -67,6 +70,13 @@ class UserSyncRun(TimeInfo):
 
     class Meta:
         ordering = ("-started_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["source"],
+                condition=Q(status=UserSyncRunStatusChoices.RUNNING),
+                name="unique_running_user_sync_run_per_source",
+            )
+        ]
 
 
 def instance_id_or_none(instance):

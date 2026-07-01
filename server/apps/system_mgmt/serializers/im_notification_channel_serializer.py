@@ -4,6 +4,7 @@ from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IMNotificationChannel, IMNotificationSyncRun, IMNotificationUserMapping, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import RuntimeApplicationService
 from apps.system_mgmt.services import im_notification_service
+from apps.system_mgmt.services.capability_contract_service import CapabilityContractError, validate_im_notification_contract
 
 
 class IMNotificationSyncRunSerializer(serializers.ModelSerializer):
@@ -111,19 +112,18 @@ class IMNotificationChannelSerializer(UsernameSerializer):
 
         runtime_service = RuntimeApplicationService()
         manifest = runtime_service.get_provider_manifest(integration_instance.provider_key)
-        template = manifest.business_templates.get("im_notification_form")
-        if template is None:
-            raise serializers.ValidationError({"integration_instance": "Integration instance im_notification template is missing"})
-
         external_match_field = attrs.get("external_match_field") or getattr(self.instance, "external_match_field", "")
         external_receive_field = attrs.get("external_receive_field") or getattr(self.instance, "external_receive_field", "")
-        if external_match_field not in template.matchable_fields:
-            raise serializers.ValidationError({"external_match_field": "External match field is not supported by the provider manifest"})
-        if external_receive_field not in template.receivable_fields:
-            raise serializers.ValidationError({"external_receive_field": "External receive field is not supported by the provider manifest"})
         schedule_config = attrs.get("schedule_config")
-        if schedule_config is not None and not isinstance(schedule_config, dict):
-            raise serializers.ValidationError({"schedule_config": "Schedule config must be an object"})
+        try:
+            validate_im_notification_contract(
+                manifest,
+                external_match_field=external_match_field,
+                external_receive_field=external_receive_field,
+                schedule_config=schedule_config,
+            )
+        except CapabilityContractError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
 
         if self.instance and im_notification_service.critical_config_changed(self.instance, attrs):
             attrs["status"] = im_notification_service.CHANNEL_STATUS_NEEDS_RESYNC
@@ -144,6 +144,8 @@ class IMNotificationChannelSerializer(UsernameSerializer):
 
     def _get_latest_run(self, obj):
         latest_run = getattr(obj, "_prefetched_latest_run", None)
+        if isinstance(latest_run, list):
+            latest_run = latest_run[0] if latest_run else None
         if latest_run is None:
             latest_run = obj.sync_runs.order_by("-started_at", "-id").first()
         return latest_run

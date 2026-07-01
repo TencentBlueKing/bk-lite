@@ -1,4 +1,4 @@
-from django.db.models import Q
+from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,7 +22,18 @@ from config.drf.pagination import CustomPageNumberPagination
 
 
 class IMNotificationChannelViewSet(MaintainerViewSet):
-    queryset = IMNotificationChannel.objects.select_related("integration_instance").all().order_by("name", "id")
+    queryset = (
+        IMNotificationChannel.objects.select_related("integration_instance")
+        .prefetch_related(
+            Prefetch(
+                "sync_runs",
+                queryset=IMNotificationSyncRun.objects.order_by("-started_at", "-id")[:1],
+                to_attr="_prefetched_latest_run",
+            )
+        )
+        .all()
+        .order_by("name", "id")
+    )
     serializer_class = IMNotificationChannelSerializer
     pagination_class = CustomPageNumberPagination
     ordering = ("-id",)
@@ -148,7 +159,7 @@ class IMNotificationChannelViewSet(MaintainerViewSet):
         channel_name = obj.name
         obj.delete_sync_periodic_task()
         response = super().destroy(request, *args, **kwargs)
-        if response.status_code == 200:
+        if response.status_code in (200, 204):
             log_operation(request, "delete", "channel", f"删除IM应用通知: {channel_name}")
         return response
 

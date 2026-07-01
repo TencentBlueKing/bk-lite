@@ -97,18 +97,28 @@ export function getRootDepartmentFieldKey(template: BusinessTemplate | null): st
   return 'root_department_id';
 }
 
+export function getEffectiveRootDepartmentFieldKey(
+  source: Pick<UserSyncSource, 'root_scope_field'> | null | undefined,
+  template: BusinessTemplate | null,
+): string {
+  const rootScopeField = source?.root_scope_field?.trim();
+  return rootScopeField || getRootDepartmentFieldKey(template);
+}
+
 function hasUsableFieldDefault(defaultValue: unknown): boolean {
   return defaultValue !== undefined && defaultValue !== null && defaultValue !== '';
 }
 
 export function getUserSyncBusinessConfigDefaults(
   template: BusinessTemplate | null,
-  options: { excludeRootScope?: boolean } = {},
+  options: { excludeRootScope?: boolean; rootScopeFieldKey?: string } = {},
 ): Record<string, unknown> {
   if (!template) return {};
 
   const defaults: Record<string, unknown> = {};
-  const rootScopeFieldKey = options.excludeRootScope ? getRootDepartmentFieldKey(template) : '';
+  const rootScopeFieldKey = options.excludeRootScope
+    ? (options.rootScopeFieldKey || getRootDepartmentFieldKey(template))
+    : '';
 
   for (const group of template.groups) {
     for (const field of group.fields) {
@@ -128,7 +138,7 @@ export function getUserSyncBusinessConfigDefaults(
 export function mergeUserSyncBusinessConfigWithDefaults(
   currentBusinessConfig: Record<string, unknown> | undefined,
   template: BusinessTemplate | null,
-  options: { excludeRootScope?: boolean } = {},
+  options: { excludeRootScope?: boolean; rootScopeFieldKey?: string } = {},
 ): Record<string, unknown> {
   return {
     ...getUserSyncBusinessConfigDefaults(template, options),

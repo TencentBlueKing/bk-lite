@@ -3,7 +3,7 @@ import { Button, Form, Input, Select } from 'antd';
 
 import OperateModal from '@/components/operate-modal';
 import type { AvailableInstance, UserSyncSource, UserSyncSourceBasicFormValues } from '@/app/system-manager/types/user-sync';
-import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/integrationCenter';
 
 interface UserSyncBasicModalProps {
   open: boolean;

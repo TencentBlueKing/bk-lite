@@ -7,7 +7,7 @@ import type {
   BusinessTemplate,
   ProviderManifest,
 } from '@/app/system-manager/types/integration-center';
-import { resolveIntegrationProviderIcon } from '@/app/system-manager/utils/intergrationCenter';
+import { resolveIntegrationProviderIcon } from '@/app/system-manager/utils/integrationCenter';
 
 export function shouldShowLoginAuthUnmatchedUserAction(providerKey?: string | null): boolean {
   return providerKey === 'wechat';

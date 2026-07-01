@@ -4,6 +4,7 @@ from urllib.parse import urlencode, urlparse
 
 import requests
 from django.conf import settings as django_settings
+from django.core.cache import cache
 from django.http import HttpResponseRedirect, JsonResponse
 from django.shortcuts import render
 from rest_framework.decorators import api_view
@@ -28,6 +29,9 @@ from apps.system_mgmt.models.system_settings import SystemSettings
 from apps.system_mgmt.utils.login_log_utils import log_user_login_from_request
 
 PORTAL_BRANDING_KEYS = ("portal_name", "portal_logo_url", "portal_favicon_url", "watermark_enabled", "watermark_text")
+LOGIN_AUTH_BINDINGS_RATE_LIMIT = 60
+LOGIN_AUTH_BINDINGS_RATE_WINDOW_SECONDS = 60
+LOGIN_AUTH_BINDINGS_CACHE_SECONDS = 30
 
 
 def _get_loader(request=None) -> LanguageLoader:
@@ -866,8 +870,30 @@ def get_domain_list(request):
 
 @api_exempt
 def get_login_auth_bindings(request):
+    if _is_login_auth_bindings_rate_limited(request):
+        response = JsonResponse({"result": False, "message": "Too many requests"}, status=429)
+        response["Cache-Control"] = "no-store"
+        return response
+
     client = SystemMgmt()
-    return JsonResponse(client.get_login_auth_bindings())
+    response = JsonResponse(client.get_login_auth_bindings())
+    response["Cache-Control"] = f"public, max-age={LOGIN_AUTH_BINDINGS_CACHE_SECONDS}"
+    return response
+
+
+def _is_login_auth_bindings_rate_limited(request) -> bool:
+    client_ip = request.META.get("HTTP_X_FORWARDED_FOR", "").split(",", 1)[0].strip()
+    if not client_ip:
+        client_ip = request.META.get("REMOTE_ADDR", "unknown")
+    cache_key = f"login_auth_bindings_rate:{client_ip}"
+    if cache.add(cache_key, 1, timeout=LOGIN_AUTH_BINDINGS_RATE_WINDOW_SECONDS):
+        return False
+    try:
+        request_count = cache.incr(cache_key)
+    except ValueError:
+        cache.set(cache_key, 1, timeout=LOGIN_AUTH_BINDINGS_RATE_WINDOW_SECONDS)
+        return False
+    return request_count > LOGIN_AUTH_BINDINGS_RATE_LIMIT
 
 
 @api_exempt

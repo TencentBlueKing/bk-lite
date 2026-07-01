@@ -6,6 +6,7 @@ import type { ProviderManifest } from '@/app/system-manager/types/integration-ce
 import type { AvailableInstance, UserSyncSource, UserSyncSourceConfigFormValues } from '@/app/system-manager/types/user-sync';
 import {
   getWriteOnlyKeys,
+  getEffectiveRootDepartmentFieldKey,
   mergeUserSyncBusinessConfigWithDefaults,
   resolveUserSyncTemplate,
 } from '@/app/system-manager/utils/userSyncUtils';
@@ -46,6 +47,10 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
     () => resolveUserSyncTemplate(source?.integration_instance, availableInstances, providers),
     [source?.integration_instance, availableInstances, providers],
   );
+  const rootScopeFieldKey = useMemo(
+    () => getEffectiveRootDepartmentFieldKey(source, resolvedTemplate),
+    [resolvedTemplate, source],
+  );
 
   useEffect(() => {
     if (!open || !source) return;
@@ -54,11 +59,11 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
       business_config: mergeUserSyncBusinessConfigWithDefaults(
         source.business_config || {},
         resolvedTemplate,
-        { excludeRootScope: true },
+        { excludeRootScope: true, rootScopeFieldKey },
       ),
     });
     setMappingRows(toMappingRows(source.field_mapping));
-  }, [open, resolvedTemplate, source, form]);
+  }, [open, resolvedTemplate, rootScopeFieldKey, source, form]);
 
   const writeOnlyKeys = useMemo(() => getWriteOnlyKeys(resolvedTemplate), [resolvedTemplate]);
 
@@ -110,6 +115,7 @@ const UserSyncConfigModal: React.FC<UserSyncConfigModalProps> = ({
         mappingRows={mappingRows}
         t={t}
         onMappingRowsChange={setMappingRows}
+        rootScopeField={source?.root_scope_field}
       />
     </Form>
   </OperateModal>

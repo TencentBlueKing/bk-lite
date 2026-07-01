@@ -110,7 +110,8 @@ class TestLoginFlowWithOTP:
         assert "token" not in result["data"]
         # QR code should be included for first-time binding
         assert "qr_code" in result["data"]
-        assert result["data"]["need_bindng"] is True
+        assert result["data"]["need_binding"] is True
+        assert "need_bindng" not in result["data"]
         # User should now have otp_secret set
         test_user.refresh_from_db()
         assert test_user.otp_secret is not None and test_user.otp_secret != ""

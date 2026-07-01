@@ -1,5 +1,6 @@
 import * as assert from 'node:assert/strict';
 import {
+  getEffectiveRootDepartmentFieldKey,
   getUserSyncBusinessConfigDefaults,
   getRootDepartmentFieldKey,
   getRootDepartmentInputMode,
@@ -108,6 +109,14 @@ assert.equal(getRootDepartmentInputMode(departmentSelectTemplate), 'department_s
 assert.equal(getRootDepartmentInputMode(manualInputTemplate), 'manual_input');
 assert.equal(getRootDepartmentFieldKey(departmentSelectTemplate), 'root_department_id');
 assert.equal(getRootDepartmentFieldKey(adManualInputTemplate), 'root_dn');
+assert.equal(
+  getEffectiveRootDepartmentFieldKey({ root_scope_field: 'root_dn' }, departmentSelectTemplate),
+  'root_dn',
+);
+assert.equal(
+  getEffectiveRootDepartmentFieldKey({ root_scope_field: '' }, adManualInputTemplate),
+  'root_dn',
+);
 assert.equal(getRootDepartmentInputMode(adManualInputTemplate), 'manual_input');
 assert.equal(isDepartmentSelectMode(departmentSelectTemplate), true);
 assert.equal(isManualInputMode(manualInputTemplate), true);

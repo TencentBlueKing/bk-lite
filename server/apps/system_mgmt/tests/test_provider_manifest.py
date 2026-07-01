@@ -269,3 +269,12 @@ def test_ad_user_sync_manifest_exposes_directory_query_parameters():
     assert field_map["user_object_class"].default == "user"
     assert field_map["user_filter"].default == "(&(objectCategory=Person)(sAMAccountName=*))"
     assert field_map["organization_object_class"].default == "organizationalUnit"
+
+
+def test_feishu_user_sync_manifest_does_not_expose_fetch_child_toggle():
+    from apps.system_mgmt.providers.manifests.feishu import PROVIDER_MANIFEST
+
+    template = PROVIDER_MANIFEST.business_templates["user_sync_form"]
+    field_keys = [field.key for group in template.groups for field in group.fields]
+
+    assert "fetch_child" not in field_keys

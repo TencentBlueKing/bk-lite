@@ -85,6 +85,13 @@ class Migration(migrations.Migration):
             ],
             options={
                 "ordering": ("-started_at", "-id"),
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("status", "running")),
+                        fields=("source",),
+                        name="unique_running_user_sync_run_per_source",
+                    )
+                ],
             },
         ),
         migrations.AddField(

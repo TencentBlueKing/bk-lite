@@ -6,6 +6,7 @@ from apps.core.services.login_auth_request_service import get_login_auth_callbac
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
 from apps.system_mgmt.providers import get_provider_registry
+from apps.system_mgmt.services.capability_contract_service import validate_integration_capability_state
 
 
 class IntegrationInstanceSerializer(UsernameSerializer):
@@ -50,7 +51,21 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         if self.instance and "provider_key" in attrs and attrs["provider_key"] != self.instance.provider_key:
             raise serializers.ValidationError({"provider_key": "provider_key cannot be changed after creation"})
 
+        contract_errors = {}
         incoming_config = attrs.get("config")
+        if incoming_config is not None and not isinstance(incoming_config, dict):
+            contract_errors["config"] = "Config must be an object"
+        contract_errors.update(
+            validate_integration_capability_state(
+                manifest,
+                capability_status=attrs.get("capability_status"),
+                capability_enabled=attrs.get("capability_enabled"),
+            )
+        )
+
+        if contract_errors:
+            raise serializers.ValidationError(contract_errors)
+
         old_runtime_config = self.instance.get_runtime_config() if self.instance else {}
         effective_config = deepcopy(old_runtime_config)
         if incoming_config is not None:
@@ -67,15 +82,6 @@ class IntegrationInstanceSerializer(UsernameSerializer):
 
             if missing_required_fields:
                 raise serializers.ValidationError({"config": f"Missing required config fields: {', '.join(missing_required_fields)}"})
-
-        capability_enabled = attrs.get("capability_enabled")
-        if capability_enabled is not None:
-            allowed_capabilities = {capability.key for capability in manifest.capabilities}
-            invalid_keys = set(capability_enabled.keys()) - allowed_capabilities
-            if invalid_keys:
-                raise serializers.ValidationError(
-                    {"capability_enabled": f"Invalid capability keys: {', '.join(sorted(invalid_keys))}"}
-                )
 
         return attrs
 

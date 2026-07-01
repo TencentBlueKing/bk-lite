@@ -100,8 +100,8 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "default": "open_department_id",
                                 "options": [
-                                    {"value": "open_department_id", "label": "open_department_id"},
                                     {"value": "department_id", "label": "department_id"},
+                                    {"value": "open_department_id", "label": "open_department_id"}, 
                                 ],
                             },
                             {
@@ -111,17 +111,10 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "required": True,
                                 "default": "open_id",
                                 "options": [
+                                    {"value": "user_id", "label": "user_id"},
                                     {"value": "open_id", "label": "open_id"},
                                     {"value": "union_id", "label": "union_id"},
-                                    {"value": "user_id", "label": "user_id"},
                                 ],
-                            },
-                            {
-                                "key": "fetch_child",
-                                "label": "递归拉取子部门",
-                                "field_type": "boolean",
-                                "required": False,
-                                "default": True,
                             },
                             {
                                 "key": "status",

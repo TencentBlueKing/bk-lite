@@ -12,7 +12,7 @@ import {
   canEnterCreateInfoStep,
   getCreateModalFooterMode,
   getIntegrationProviderDisplayName
-} from '@/app/system-manager/utils/intergrationCenter';
+} from '@/app/system-manager/utils/integrationCenter';
 
 interface IntegrationCreateFormValues {
   name: string;

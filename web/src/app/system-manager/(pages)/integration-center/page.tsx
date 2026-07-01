@@ -16,7 +16,7 @@ import { useTranslation } from '@/utils/i18n';
 import commonStyles from '@/app/system-manager/styles/common.module.scss';
 
 import CreateIntegrationInstanceModal from './CreateIntegrationInstanceModal';
-import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/intergrationCenter';
+import { buildIntegrationInstanceCardItem, filterIntegrationInstancesByName, getIntegrationCapabilityTagColor, type IntegrationInstanceCardItem } from '@/app/system-manager/utils/integrationCenter';
 
 const IntegrationCenterPage: React.FC = () => {
   const { t } = useTranslation();

@@ -1,4 +1,5 @@
 from django.db import models
+from django.db.models import Q
 from django.utils import timezone
 from django.utils.translation import gettext_lazy as _
 
@@ -31,12 +32,26 @@ class IMNotificationTriggerModeChoices(models.TextChoices):
     SCHEDULE = "schedule", _("Schedule")
 
 
+class IMNotificationChannelStatusChoices(models.TextChoices):
+    PENDING_SYNC = "pending_sync", _("Pending Sync")
+    READY = "ready", _("Ready")
+    NEEDS_RESYNC = "needs_resync", _("Needs Resync")
+    DISABLED = "disabled", _("Disabled")
+
+
+class IMNotificationSyncRunStatusChoices(models.TextChoices):
+    RUNNING = "running", _("Running")
+    SUCCESS = "success", _("Success")
+    PARTIAL = "partial", _("Partial Success")
+    FAILED = "failed", _("Failed")
+
+
 class IMNotificationChannel(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
     name = models.CharField(max_length=100)
     integration_instance = models.ForeignKey("system_mgmt.IntegrationInstance", on_delete=models.CASCADE, related_name="im_notification_channels")
     enabled = models.BooleanField(default=True)
     description = models.TextField(blank=True, default="")
-    status = models.CharField(max_length=32, default="pending_sync")
+    status = models.CharField(max_length=32, choices=IMNotificationChannelStatusChoices.choices, default=IMNotificationChannelStatusChoices.PENDING_SYNC)
     platform_match_field = models.CharField(max_length=32, choices=IMNotificationMappingStrategyChoices.choices, default=IMNotificationMappingStrategyChoices.EMAIL)
     external_match_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.EMAIL)
     external_receive_field = models.CharField(max_length=64, default=IMNotificationExternalFieldChoices.USER_ID)
@@ -86,7 +101,7 @@ class IMNotificationSyncRun(TimeInfo):
         choices=IMNotificationTriggerModeChoices.choices,
         default=IMNotificationTriggerModeChoices.MANUAL,
     )
-    status = models.CharField(max_length=32, default="running", db_index=True)
+    status = models.CharField(max_length=32, choices=IMNotificationSyncRunStatusChoices.choices, default=IMNotificationSyncRunStatusChoices.RUNNING, db_index=True)
     summary = models.CharField(max_length=255, blank=True, default="")
     total_external_user_count = models.PositiveIntegerField(default=0)
     matched_count = models.PositiveIntegerField(default=0)
@@ -99,3 +114,10 @@ class IMNotificationSyncRun(TimeInfo):
 
     class Meta:
         ordering = ("-started_at", "-id")
+        constraints = [
+            models.UniqueConstraint(
+                fields=["channel"],
+                condition=Q(status=IMNotificationSyncRunStatusChoices.RUNNING),
+                name="unique_running_im_notification_sync_run_per_channel",
+            )
+        ]

@@ -29,7 +29,7 @@ import {
 } from '@/app/system-manager/api/login-auth';
 import type { ProviderManifest } from '@/app/system-manager/types/integration-center';
 import { useTranslation } from '@/utils/i18n';
-import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/intergrationCenter';
+import { formatIntegrationInstanceDisplayName } from '@/app/system-manager/utils/integrationCenter';
 import { ColumnItem } from '@/types';
 import {
   buildLoginAuthBindingPayload,

@@ -25,7 +25,19 @@ class Migration(migrations.Migration):
                 ("name", models.CharField(max_length=100)),
                 ("enabled", models.BooleanField(default=True)),
                 ("description", models.TextField(blank=True, default="")),
-                ("status", models.CharField(default="pending_sync", max_length=32)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("pending_sync", "Pending Sync"),
+                            ("ready", "Ready"),
+                            ("needs_resync", "Needs Resync"),
+                            ("disabled", "Disabled"),
+                        ],
+                        default="pending_sync",
+                        max_length=32,
+                    ),
+                ),
                 (
                     "platform_match_field",
                     models.CharField(
@@ -63,7 +75,20 @@ class Migration(migrations.Migration):
                 ("created_at", models.DateTimeField(auto_now_add=True, db_index=True, verbose_name="Created Time")),
                 ("updated_at", models.DateTimeField(auto_now=True, verbose_name="Updated Time")),
                 ("trigger_mode", models.CharField(choices=[("manual", "Manual"), ("schedule", "Schedule")], default="manual", max_length=16)),
-                ("status", models.CharField(db_index=True, default="running", max_length=32)),
+                (
+                    "status",
+                    models.CharField(
+                        choices=[
+                            ("running", "Running"),
+                            ("success", "Success"),
+                            ("partial", "Partial Success"),
+                            ("failed", "Failed"),
+                        ],
+                        db_index=True,
+                        default="running",
+                        max_length=32,
+                    ),
+                ),
                 ("summary", models.CharField(blank=True, default="", max_length=255)),
                 ("total_external_user_count", models.PositiveIntegerField(default=0)),
                 ("matched_count", models.PositiveIntegerField(default=0)),
@@ -84,6 +109,13 @@ class Migration(migrations.Migration):
             ],
             options={
                 "ordering": ("-started_at", "-id"),
+                "constraints": [
+                    models.UniqueConstraint(
+                        condition=models.Q(("status", "running")),
+                        fields=("channel",),
+                        name="unique_running_im_notification_sync_run_per_channel",
+                    )
+                ],
             },
         ),
         migrations.CreateModel(

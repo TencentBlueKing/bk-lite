@@ -218,6 +218,56 @@ def test_integration_instance_serializer_rejects_invalid_capability_enabled_keys
 
 
 @pytest.mark.django_db
+def test_integration_instance_serializer_rejects_invalid_json_contract_values(monkeypatch):
+    manifest = FakeManifest(
+        instance_template=[FakeField("app_id", required=True)],
+        capabilities=[
+            FakeCapability("login_auth"),
+            FakeCapability("user_sync"),
+        ],
+    )
+    patch_provider_registry(monkeypatch, manifest)
+
+    serializer = IntegrationInstanceSerializer(
+        data={
+            "name": "finance-feishu",
+            "provider_key": "feishu",
+            "team": [],
+            "config": ["not", "an", "object"],
+            "capability_status": {"login_auth": "unknown"},
+            "capability_enabled": {"login_auth": "yes"},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "config" in serializer.errors
+    assert "capability_status" in serializer.errors
+    assert "capability_enabled" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_integration_instance_serializer_rejects_invalid_capability_status_keys(monkeypatch):
+    manifest = FakeManifest(
+        instance_template=[FakeField("app_id", required=True)],
+        capabilities=[FakeCapability("login_auth")],
+    )
+    patch_provider_registry(monkeypatch, manifest)
+
+    serializer = IntegrationInstanceSerializer(
+        data={
+            "name": "finance-feishu",
+            "provider_key": "feishu",
+            "team": [],
+            "config": {"app_id": "cli_xxx"},
+            "capability_status": {"nonexistent": IntegrationInstanceStatusChoices.READY},
+        }
+    )
+
+    assert serializer.is_valid() is False
+    assert "capability_status" in serializer.errors
+
+
+@pytest.mark.django_db
 def test_integration_instance_serializer_display_name(monkeypatch):
     manifest = FakeManifest(
         instance_template=[FakeField("app_id", required=True)],

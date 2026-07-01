@@ -1,5 +1,6 @@
 from copy import copy
 
+from django.db.models import Prefetch
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -22,7 +23,18 @@ from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
 class UserSyncSourceViewSet(MaintainerViewSet):
-    queryset = UserSyncSource.objects.select_related("integration_instance").prefetch_related("runs").all().order_by("name", "id")
+    queryset = (
+        UserSyncSource.objects.select_related("integration_instance")
+        .prefetch_related(
+            Prefetch(
+                "runs",
+                queryset=UserSyncRun.objects.order_by("-started_at", "-id")[:1],
+                to_attr="_prefetched_latest_run",
+            )
+        )
+        .all()
+        .order_by("name", "id")
+    )
     serializer_class = UserSyncSourceSerializer
 
     @HasPermission("user_sync-View")

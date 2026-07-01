@@ -17,7 +17,7 @@ import type {
 } from '@/app/system-manager/types/integration-center';
 import type { UserSyncDepartmentNode } from '@/app/system-manager/types/user-sync';
 import {
-  getRootDepartmentFieldKey,
+  getEffectiveRootDepartmentFieldKey,
   getRootDepartmentInputMode,
   shouldFetchDepartmentOptions,
 } from '@/app/system-manager/utils/userSyncUtils';
@@ -35,6 +35,7 @@ interface UserSyncConfigFieldsProps {
   t: (key: string, fallback?: string) => string;
   onMappingRowsChange: React.Dispatch<React.SetStateAction<MappingRow[]>>;
   hideRootDepartmentField?: boolean;
+  rootScopeField?: string;
 }
 
 interface MappingInputRowProps {
@@ -93,6 +94,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   t,
   onMappingRowsChange,
   hideRootDepartmentField = false,
+  rootScopeField,
 }) => {
   const form = Form.useFormInstance();
   const { getDepartmentOptions } = useUserSyncApi();
@@ -105,7 +107,10 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
   const [departmentLoading, setDepartmentLoading] = useState(false);
 
   const departmentTreeData = useMemo(() => toTreeSelectData(departmentNodes), [departmentNodes]);
-  const rootDepartmentFieldKey = useMemo(() => getRootDepartmentFieldKey(resolvedTemplate), [resolvedTemplate]);
+  const rootDepartmentFieldKey = useMemo(
+    () => getEffectiveRootDepartmentFieldKey({ root_scope_field: rootScopeField }, resolvedTemplate),
+    [resolvedTemplate, rootScopeField],
+  );
   const inputMode = useMemo(() => getRootDepartmentInputMode(resolvedTemplate), [resolvedTemplate]);
   const watchedRootDepartmentValue = Form.useWatch(['business_config', rootDepartmentFieldKey], form);
   const currentRootDepartmentId = typeof watchedRootDepartmentValue === 'string' ? watchedRootDepartmentValue : '';
@@ -153,7 +158,7 @@ const UserSyncConfigFields: React.FC<UserSyncConfigFieldsProps> = ({
         setDepartmentNodes(result.items || []);
         setDepartmentSelectionMissing(result.selection_missing);
 
-        const currentFormValue = String(form.getFieldValue(['business_config', 'root_department_id']) || '');
+        const currentFormValue = String(form.getFieldValue(['business_config', rootDepartmentFieldKey]) || '');
         const nextValue = result.selection_missing
           ? ''
           : (result.selected_id || currentFormValue || ALL_DEPARTMENT_SELECTION_ID);

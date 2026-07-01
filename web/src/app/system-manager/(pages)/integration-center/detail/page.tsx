@@ -18,7 +18,7 @@ import {
   isIntegrationInstanceStarted,
   resolveIntegrationProviderIcon,
   type IntegrationDetailTab,
-} from '@/app/system-manager/utils/intergrationCenter';
+} from '@/app/system-manager/utils/integrationCenter';
 import PermissionWrapper from '@/components/permission';
 import TopSection from '@/components/top-section';
 import { useTranslation } from '@/utils/i18n';

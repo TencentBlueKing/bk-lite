@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 
-import { buildIntegrationFieldRules } from '../src/app/system-manager/utils/intergrationCenter';
+import { buildIntegrationFieldRules } from '../src/app/system-manager/utils/integrationCenter';
 
 const stringRules = buildIntegrationFieldRules({
   key: 'connection_url',

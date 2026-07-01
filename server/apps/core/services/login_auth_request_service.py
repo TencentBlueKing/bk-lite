@@ -31,7 +31,6 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "challenge_id",
     "qr_code",
     "need_binding",
-    "need_bindng",
 }
 
 
@@ -184,7 +183,11 @@ def _get_cache_timeout(auth_request: dict) -> int:
 
 
 def _sanitize_login_result(login_result: dict) -> dict:
-    return {key: value for key, value in login_result.items() if key in LOGIN_RESULT_ALLOWED_KEYS}
+    normalized_login_result = deepcopy(login_result)
+    if "need_binding" not in normalized_login_result and "need_bindng" in normalized_login_result:
+        # Backward-compatible normalization for the historical typo.
+        normalized_login_result["need_binding"] = normalized_login_result["need_bindng"]
+    return {key: value for key, value in normalized_login_result.items() if key in LOGIN_RESULT_ALLOWED_KEYS}
 
 
 def _get_signing_key() -> str:

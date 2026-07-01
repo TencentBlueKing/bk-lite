@@ -475,13 +475,11 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
             return error
 
         root_department_id = get_user_sync_business_value(source, "root_department_id", "0") or "0"
-        fetch_child = get_user_sync_business_value(source, "fetch_child", True)
         department_id_type = get_user_sync_business_value(source, "department_id_type", None)
         user_id_type = get_user_sync_business_value(source, "user_id_type", None)
         status = get_user_sync_business_value(source, "status", None)
 
-        dept_params: dict = {"page_size": 50}
-        dept_params["fetch_child"] = "true" if fetch_child else "false"
+        dept_params: dict = {"page_size": 50, "fetch_child": "true"}
         if department_id_type:
             dept_params["department_id_type"] = department_id_type
 
@@ -496,7 +494,7 @@ class FeishuUserSyncAdapter(BaseUserSyncAdapter):
 
         user_params: dict = {
             "department_id": root_department_id,
-            "fetch_child": "true" if fetch_child else "false",
+            "fetch_child": "true",
             "page_size": 50,
             "fields": "department_ids,user_id,open_id,name,email,mobile",
         }

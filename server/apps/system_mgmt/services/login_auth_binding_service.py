@@ -84,6 +84,8 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
     user.save(update_fields=["last_login", "updated_at"] if hasattr(user, "updated_at") else ["last_login"])
     token_result = get_user_login_token(user, user.username, skip_token_for_otp=True)
     if token_result.get("result"):
+        # `domain` is a deprecated compatibility field. New login-auth users are
+        # intentionally kept in the legacy default domain until the column is removed.
         token_result["data"]["domain"] = "domain.com"
     return token_result
 
@@ -116,6 +118,8 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
         email=email,
         phone=phone,
         password=make_password(""),
+        # `domain` is retained only for compatibility with legacy user identity
+        # code. Do not treat provider integrations as multi-domain sources here.
         domain="domain.com",
         group_list=[default_group.id] if default_group else [],
     )

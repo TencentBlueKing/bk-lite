@@ -1,11 +1,13 @@
 from collections import defaultdict
 
-from django.db import transaction
+from django.db import IntegrityError, transaction
 from django.utils import timezone
 
 from apps.system_mgmt.models import (
     IMNotificationChannel,
+    IMNotificationChannelStatusChoices,
     IMNotificationSyncRun,
+    IMNotificationSyncRunStatusChoices,
     IMNotificationTriggerModeChoices,
     IMNotificationUserMapping,
     IntegrationInstance,
@@ -14,15 +16,15 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.providers import RuntimeApplicationService
 
 
-CHANNEL_STATUS_PENDING_SYNC = "pending_sync"
-CHANNEL_STATUS_READY = "ready"
-CHANNEL_STATUS_NEEDS_RESYNC = "needs_resync"
-CHANNEL_STATUS_DISABLED = "disabled"
+CHANNEL_STATUS_PENDING_SYNC = IMNotificationChannelStatusChoices.PENDING_SYNC
+CHANNEL_STATUS_READY = IMNotificationChannelStatusChoices.READY
+CHANNEL_STATUS_NEEDS_RESYNC = IMNotificationChannelStatusChoices.NEEDS_RESYNC
+CHANNEL_STATUS_DISABLED = IMNotificationChannelStatusChoices.DISABLED
 
-SYNC_RUN_STATUS_RUNNING = "running"
-SYNC_RUN_STATUS_SUCCESS = "success"
-SYNC_RUN_STATUS_PARTIAL = "partial"
-SYNC_RUN_STATUS_FAILED = "failed"
+SYNC_RUN_STATUS_RUNNING = IMNotificationSyncRunStatusChoices.RUNNING
+SYNC_RUN_STATUS_SUCCESS = IMNotificationSyncRunStatusChoices.SUCCESS
+SYNC_RUN_STATUS_PARTIAL = IMNotificationSyncRunStatusChoices.PARTIAL
+SYNC_RUN_STATUS_FAILED = IMNotificationSyncRunStatusChoices.FAILED
 
 CRITICAL_CHANNEL_FIELDS = (
     "integration_instance_id",
@@ -30,27 +32,33 @@ CRITICAL_CHANNEL_FIELDS = (
     "external_match_field",
     "external_receive_field",
 )
+MAX_DIAGNOSTIC_ISSUES = 50
+SENSITIVE_FIELD_TOKENS = ("password", "secret", "token", "credential", "private")
 
 
 def create_im_notification_sync_run(channel_id: int, trigger_mode: str = IMNotificationTriggerModeChoices.MANUAL):
-    channel = IMNotificationChannel.objects.select_related("integration_instance").filter(id=channel_id, enabled=True).first()
-    if not channel:
-        return {"result": False, "message": "IM notification channel not found"}
+    try:
+        with transaction.atomic():
+            channel = IMNotificationChannel.objects.select_related("integration_instance").select_for_update().filter(id=channel_id, enabled=True).first()
+            if not channel:
+                return {"result": False, "message": "IM notification channel not found"}
 
-    instance = channel.integration_instance
-    if not instance.enabled or instance.status != "ready" or instance.capability_status.get("im_notification") != "ready":
-        return {"result": False, "message": "IM notification channel is not ready"}
+            instance = channel.integration_instance
+            if not instance.enabled or instance.status != "ready" or instance.capability_status.get("im_notification") != "ready":
+                return {"result": False, "message": "IM notification channel is not ready"}
 
-    if IMNotificationSyncRun.objects.filter(channel=channel, status=SYNC_RUN_STATUS_RUNNING).exists():
+            if IMNotificationSyncRun.objects.filter(channel=channel, status=SYNC_RUN_STATUS_RUNNING).exists():
+                return {"result": False, "message": "IM notification sync is already running"}
+
+            run = IMNotificationSyncRun.objects.create(
+                channel=channel,
+                trigger_mode=trigger_mode,
+                status=SYNC_RUN_STATUS_RUNNING,
+                summary="IM notification sync started",
+                locked_config_snapshot=_build_locked_config_snapshot(channel),
+            )
+    except IntegrityError:
         return {"result": False, "message": "IM notification sync is already running"}
-
-    run = IMNotificationSyncRun.objects.create(
-        channel=channel,
-        trigger_mode=trigger_mode,
-        status=SYNC_RUN_STATUS_RUNNING,
-        summary="IM notification sync started",
-        locked_config_snapshot=_build_locked_config_snapshot(channel),
-    )
     return {"result": True, "message": "IM notification sync task has been initiated", "data": {"run_id": run.id}}
 
 
@@ -85,6 +93,7 @@ def execute_im_notification_sync_run(run_id: int):
         external_match_field=config_snapshot.get("external_match_field") or run.channel.external_match_field,
         external_receive_field=config_snapshot.get("external_receive_field") or run.channel.external_receive_field,
         identity_fields=(template.identity_fields if template else []) or [],
+        snapshot_fields=_resolve_external_snapshot_fields(template),
     )
 
     matched_count = len(matched_relations)
@@ -108,11 +117,7 @@ def execute_im_notification_sync_run(run_id: int):
         run.matched_count = matched_count
         run.unmatched_count = unmatched_count
         run.conflict_count = conflict_count
-        run.payload = {
-            **result.to_dict(),
-            "unmatched_issues": unmatched_issues,
-            "conflict_issues": conflict_issues,
-        }
+        run.payload = _build_sync_run_payload(result, unmatched_issues, conflict_issues)
         run.finished_at = now
         run.save(
             update_fields=[
@@ -241,7 +246,15 @@ def _fail_sync_run(run: IMNotificationSyncRun, summary: str, payload: dict | Non
     return {"result": False, "message": summary}
 
 
-def _match_external_users(*, external_users, platform_match_field: str, external_match_field: str, external_receive_field: str, identity_fields: list[str]):
+def _match_external_users(
+    *,
+    external_users,
+    platform_match_field: str,
+    external_match_field: str,
+    external_receive_field: str,
+    identity_fields: list[str],
+    snapshot_fields: set[str],
+):
     platform_lookup: dict[str, list[User]] = defaultdict(list)
     for user in User.objects.filter(disabled=False):
         value = str(getattr(user, platform_match_field, "") or "").strip()
@@ -254,8 +267,9 @@ def _match_external_users(*, external_users, platform_match_field: str, external
 
     for external_user in external_users:
         match_value = str(external_user.get(external_match_field, "") or "").strip()
+        safe_external_user = _sanitize_external_snapshot(external_user, snapshot_fields)
         if not match_value:
-            unmatched_issues.append({"reason": "missing_external_match_value", "external_user": external_user})
+            unmatched_issues.append({"reason": "missing_external_match_value", "external_user": safe_external_user})
             continue
 
         matched_users = platform_lookup.get(match_value, [])
@@ -263,7 +277,7 @@ def _match_external_users(*, external_users, platform_match_field: str, external
             unmatched_issues.append(
                 {
                     "reason": "platform_user_not_found",
-                    "external_user": external_user,
+                    "external_user": safe_external_user,
                     "external_match_field": external_match_field,
                     "external_match_value": match_value,
                 }
@@ -273,7 +287,7 @@ def _match_external_users(*, external_users, platform_match_field: str, external
             conflict_issues.append(
                 {
                     "reason": "multiple_platform_users",
-                    "external_user": external_user,
+                    "external_user": safe_external_user,
                     "platform_user_ids": [item.id for item in matched_users],
                     "external_match_field": external_match_field,
                     "external_match_value": match_value,
@@ -281,7 +295,7 @@ def _match_external_users(*, external_users, platform_match_field: str, external
             )
             continue
 
-        external_snapshot = dict(external_user)
+        external_snapshot = _sanitize_external_snapshot(external_user, snapshot_fields)
         identity_key = _resolve_identity_key(external_snapshot, identity_fields, external_receive_field, external_match_field)
         identity_value = str(external_snapshot.get(identity_key, "") or "").strip()
         receive_value = str(external_snapshot.get(external_receive_field, "") or "").strip()
@@ -289,7 +303,7 @@ def _match_external_users(*, external_users, platform_match_field: str, external
             unmatched_issues.append(
                 {
                     "reason": "invalid_external_identity",
-                    "external_user": external_user,
+                    "external_user": safe_external_user,
                     "identity_key": identity_key,
                     "external_receive_field": external_receive_field,
                 }
@@ -324,6 +338,56 @@ def _resolve_identity_key(external_snapshot: dict, identity_fields: list[str], e
         if value:
             return field_name
     return ""
+
+
+def _resolve_external_snapshot_fields(template) -> set[str]:
+    if template is None:
+        return {"user_id", "open_id", "email", "mobile", "name"}
+    return set(template.available_external_fields or []) | set(template.identity_fields or []) | set(
+        template.matchable_fields or []
+    ) | set(template.receivable_fields or []) | {"name"}
+
+
+def _sanitize_external_snapshot(external_user: dict, allowed_fields: set[str]) -> dict:
+    if not isinstance(external_user, dict):
+        return {}
+    return {
+        key: value
+        for key, value in external_user.items()
+        if key in allowed_fields and not _is_sensitive_field(key) and _is_safe_scalar(value)
+    }
+
+
+def _build_sync_run_payload(result, unmatched_issues: list[dict], conflict_issues: list[dict]) -> dict:
+    result_payload = result.to_dict()
+    safe_payload = _sanitize_result_payload(result_payload.get("payload") or {})
+    result_payload["payload"] = safe_payload
+    result_payload["unmatched_issues"] = unmatched_issues[:MAX_DIAGNOSTIC_ISSUES]
+    result_payload["conflict_issues"] = conflict_issues[:MAX_DIAGNOSTIC_ISSUES]
+    result_payload["unmatched_issue_count"] = len(unmatched_issues)
+    result_payload["conflict_issue_count"] = len(conflict_issues)
+    return result_payload
+
+
+def _sanitize_result_payload(payload: dict) -> dict:
+    if not isinstance(payload, dict):
+        return {}
+    safe_payload = {}
+    for key, value in payload.items():
+        if key == "external_users" or _is_sensitive_field(key):
+            continue
+        if _is_safe_scalar(value):
+            safe_payload[key] = value
+    return safe_payload
+
+
+def _is_sensitive_field(field_name: str) -> bool:
+    normalized = str(field_name or "").lower()
+    return any(token in normalized for token in SENSITIVE_FIELD_TOKENS)
+
+
+def _is_safe_scalar(value) -> bool:
+    return value is None or isinstance(value, (str, int, float, bool))
 
 
 def _resolve_users(receivers):
