@@ -153,8 +153,9 @@ def test_validate_display_fields_rejects_field_column_without_field(monkeypatch)
 
 def test_query_metric_field_values_reads_vm_label(monkeypatch):
     class FakeVM:
-        def query(self, query):
+        def query(self, query, step=None):
             assert query == 'node_info{instance_id=~"i1|i2"}'
+            assert step == "20m"
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
                 {"metric": {"instance_id": "i2"}, "value": [0, "1"]},
@@ -181,8 +182,9 @@ def test_query_metric_field_values_reads_vm_label(monkeypatch):
 
 def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
     class FakeVM:
-        def query(self, query):
+        def query(self, query, step=None):
             assert query == 'node_info{instance_id=~"i1"}'
+            assert step == "20m"
             return {"data": {"result": [
                 {"metric": {"instance_id": "('i1',)", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
             ]}}
@@ -205,8 +207,9 @@ def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
 
 def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(monkeypatch):
     class FakeVM:
-        def query(self, query):
+        def query(self, query, step=None):
             assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}'
+            assert step == "20m"
             return {"data": {"result": [
                 {
                     "metric": {
@@ -231,6 +234,29 @@ def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(m
     )
 
     assert result == {"('i1',)": "remote-host"}
+
+
+def test_query_metric_values_uses_display_lookback_step(monkeypatch):
+    class FakeVM:
+        def query(self, query, step=None):
+            assert query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}'
+            assert step == "20m"
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1"}, "value": [0, "8.52"]},
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        query='host_cpu_usage_percent_gauge{instance_type="os", __$labels__}',
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+    )
+
+    assert result == {"('i1',)": "8.52"}
 
 
 def test_collect_vm_field_names_queries_vm_without_dimensions(monkeypatch):
