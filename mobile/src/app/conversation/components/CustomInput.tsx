@@ -53,8 +53,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     const [fileBase64Data, setFileBase64Data] = useState<Record<number, string>>({}); // 存储每个文件的base64数据
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
     const [currentPreviewImage, setCurrentPreviewImage] = useState<string>('');
-    // 持有预览 URL 引用，以便在 ImageViewer 关闭时释放
-    const previewUrlRef = useRef<string>('');
     // 持有每个已选文件的 Blob URL，避免每次渲染重新创建（file 对象引用不变时复用）
     const fileBlobUrlsRef = useRef<Map<File, string>>(new Map());
 
@@ -77,9 +75,6 @@ export const CustomInput: React.FC<CustomInputProps> = ({
         return () => {
             currentMap.forEach((url) => URL.revokeObjectURL(url));
             currentMap.clear();
-            if (previewUrlRef.current) {
-                URL.revokeObjectURL(previewUrlRef.current);
-            }
         };
     }, []);
 
@@ -95,12 +90,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     // 处理图片点击预览
     const handleImagePreview = (file: File, e: React.MouseEvent) => {
         e.stopPropagation();
-        // 释放上一个预览 URL（若与文件缓存不同）
-        if (previewUrlRef.current && previewUrlRef.current !== fileBlobUrlsRef.current.get(file)) {
-            URL.revokeObjectURL(previewUrlRef.current);
-        }
         const imageUrl = getFileBlobUrl(file);
-        previewUrlRef.current = imageUrl;
         setCurrentPreviewImage(imageUrl);
         setImageViewerVisible(true);
     };
@@ -798,11 +788,7 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                 visible={imageViewerVisible}
                 onClose={() => {
                     setImageViewerVisible(false);
-                    // 预览 URL 若不在文件缓存中（例如单独创建的），立即释放
-                    if (previewUrlRef.current && !Array.from(fileBlobUrlsRef.current.values()).includes(previewUrlRef.current)) {
-                        URL.revokeObjectURL(previewUrlRef.current);
-                        previewUrlRef.current = '';
-                    }
+                    setCurrentPreviewImage('');
                 }}
             />
         </div>
