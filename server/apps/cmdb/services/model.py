@@ -942,7 +942,7 @@ class ModelManage(object):
         for attr in attrs:
             if attr["attr_id"] != attr_info["attr_id"]:
                 continue
-            attr = attr
+            break
 
         change_message = f"创建模型属性. 模型名称: {model_info['model_name']}"
         enterprise_message = enterprise_ext.build_attr_change_message({}, attr or attr_info)
