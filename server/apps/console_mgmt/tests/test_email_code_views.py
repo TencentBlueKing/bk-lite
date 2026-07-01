@@ -11,6 +11,7 @@ console_mgmt 邮箱验证码接口安全规格测试。
 """
 
 import json
+from pathlib import Path
 from unittest.mock import MagicMock, patch, call
 
 import pytest
@@ -75,7 +76,7 @@ def _load_views():
 
     spec = importlib.util.spec_from_file_location(
         "console_mgmt_views",
-        "/Users/justin/bklite-loops/wt-issue-scan/server/apps/console_mgmt/views.py",
+        Path(__file__).resolve().parents[1] / "views.py",
     )
     mod = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(mod)

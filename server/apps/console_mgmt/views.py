@@ -28,6 +28,19 @@ def _email_code_cache_key(username: str, email: str) -> str:
     return f"vc:{username}:{email}"
 
 
+def _email_change_verified_cache_key(username: str, email: str) -> str:
+    """生成邮箱变更一次性授权 cache key，按用户+邮箱隔离。"""
+    return f"email_change_verified:{username}:{email}"
+
+
+def _consume_email_change_authorization(username: str, email: str) -> bool:
+    cache_key = _email_change_verified_cache_key(username, email)
+    if cache.get(cache_key) is None:
+        return False
+    cache.delete(cache_key)
+    return True
+
+
 def _format_datetime_for_user(value, timezone_name=None):
     if not value:
         return None
@@ -138,10 +151,22 @@ def update_user_base_info(request):
     try:
         # 通过username和domain获取用户
         user = User.objects.get(username=username, domain=domain)
+        requested_email = params.get("email") or user.email
+        if requested_email != user.email and not _consume_email_change_authorization(username, requested_email):
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": loader.get(
+                        "error.email_change_verification_required",
+                        "Email change requires verification",
+                    ),
+                },
+                status=403,
+            )
 
         with transaction.atomic():
             user.display_name = params.get("display_name") or user.display_name
-            user.email = params.get("email") or user.email
+            user.email = requested_email
             user.locale = params.get("locale") or user.locale
             user.timezone = params.get("timezone") or user.timezone
             user.save()
@@ -212,6 +237,7 @@ def validate_email_code(request):
         if secrets.compare_digest(str(stored_code), str(input_code)):
             # 验证通过：立即删除（一次性使用）
             cache.delete(cache_key)
+            cache.set(_email_change_verified_cache_key(username, email), "1", timeout=_EMAIL_CODE_TTL)
             return JsonResponse({"result": True, "message": loader.get("success.verification_success", "Verification successful")})
 
         return JsonResponse({"result": False, "message": loader.get("error.verification_code_incorrect", "Verification code is incorrect")})
