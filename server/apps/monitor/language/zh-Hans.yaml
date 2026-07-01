@@ -1682,6 +1682,123 @@ monitor_object_metric:
     api_volume_resp_t_w:
       name: LUN卷写响应时间
       desc: 每个LUN卷的平均写响应时间（毫秒）
+    pure_volume_count:
+      name: 卷数量
+      desc: Pure Storage阵列中的卷总数量
+    pure_array_read_iops:
+      name: 阵列读IOPS
+      desc: Pure Storage阵列每秒读I/O操作数
+    pure_array_write_iops:
+      name: 阵列写IOPS
+      desc: Pure Storage阵列每秒写I/O操作数
+    pure_array_read_bandwidth:
+      name: 阵列读吞吐量
+      desc: Pure Storage阵列每秒读取吞吐量（字节/秒）
+    pure_array_write_bandwidth:
+      name: 阵列写吞吐量
+      desc: Pure Storage阵列每秒写入吞吐量（字节/秒）
+    pure_array_read_latency:
+      name: 阵列读时延
+      desc: Pure Storage阵列平均读时延（毫秒）
+    pure_array_write_latency:
+      name: 阵列写时延
+      desc: Pure Storage阵列平均写时延（毫秒）
+    pure_array_queue_depth:
+      name: 阵列队列深度
+      desc: Pure Storage阵列当前队列深度
+    pure_array_capacity_bytes:
+      name: 阵列总容量
+      desc: Pure Storage阵列总物理容量
+    pure_array_used_bytes:
+      name: 阵列已用容量
+      desc: Pure Storage阵列已用物理容量
+    pure_array_volumes_bytes:
+      name: 阵列卷容量
+      desc: Pure Storage阵列中卷占用的容量
+    pure_array_snapshots_bytes:
+      name: 阵列快照容量
+      desc: Pure Storage阵列中快照占用的容量
+    pure_array_shared_space_bytes:
+      name: 阵列共享空间
+      desc: Pure Storage阵列上报的共享容量
+    pure_array_data_reduction:
+      name: 阵列数据缩减比
+      desc: Pure Storage阵列上报的数据缩减比
+    pure_array_total_reduction:
+      name: 阵列总缩减比
+      desc: Pure Storage阵列上报的总缩减比
+    pure_volume_read_iops:
+      name: 卷读IOPS
+      desc: Pure Storage卷每秒读I/O操作数
+    pure_volume_write_iops:
+      name: 卷写IOPS
+      desc: Pure Storage卷每秒写I/O操作数
+    pure_volume_read_bandwidth:
+      name: 卷读吞吐量
+      desc: Pure Storage卷每秒读取吞吐量（字节/秒）
+    pure_volume_write_bandwidth:
+      name: 卷写吞吐量
+      desc: Pure Storage卷每秒写入吞吐量（字节/秒）
+    pure_volume_read_latency:
+      name: 卷读时延
+      desc: Pure Storage卷平均读时延（毫秒）
+    pure_volume_write_latency:
+      name: 卷写时延
+      desc: Pure Storage卷平均写时延（毫秒）
+    pure_volume_size_bytes:
+      name: 卷配置容量
+      desc: Pure Storage卷配置容量
+    pure_volume_used_bytes:
+      name: 卷已用容量
+      desc: Pure Storage卷已用容量
+    infinibox_pool_count:
+      name: 存储池数量
+      desc: InfiniBox系统中的存储池总数量
+    infinibox_volume_count:
+      name: 卷数量
+      desc: InfiniBox系统中的卷总数量
+    infinibox_pool_physical_capacity_bytes:
+      name: 存储池物理容量
+      desc: InfiniBox存储池物理总容量
+    infinibox_pool_allocated_physical_bytes:
+      name: 存储池已分配物理容量
+      desc: InfiniBox存储池已分配物理容量
+    infinibox_pool_free_physical_bytes:
+      name: 存储池可用物理容量
+      desc: InfiniBox存储池可用物理容量
+    infinibox_pool_virtual_capacity_bytes:
+      name: 存储池虚拟容量
+      desc: InfiniBox存储池虚拟总容量
+    infinibox_pool_allocated_virtual_bytes:
+      name: 存储池已分配虚拟容量
+      desc: InfiniBox存储池已分配虚拟容量
+    infinibox_volume_read_iops:
+      name: 卷读IOPS
+      desc: InfiniBox卷每秒读I/O操作数
+    infinibox_volume_write_iops:
+      name: 卷写IOPS
+      desc: InfiniBox卷每秒写I/O操作数
+    infinibox_volume_read_bandwidth:
+      name: 卷读吞吐量
+      desc: InfiniBox卷每秒读取吞吐量（字节/秒）
+    infinibox_volume_write_bandwidth:
+      name: 卷写吞吐量
+      desc: InfiniBox卷每秒写入吞吐量（字节/秒）
+    infinibox_volume_read_latency:
+      name: 卷读时延
+      desc: InfiniBox卷平均读时延（毫秒）
+    infinibox_volume_write_latency:
+      name: 卷写时延
+      desc: InfiniBox卷平均写时延（毫秒）
+    infinibox_volume_latency:
+      name: 卷平均时延
+      desc: InfiniBox卷平均I/O时延（毫秒）
+    infinibox_volume_size_bytes:
+      name: 卷配置容量
+      desc: InfiniBox卷配置容量
+    infinibox_volume_used_bytes:
+      name: 卷已用容量
+      desc: InfiniBox卷已用容量
   Docker Container:
     docker_container_status:
       name: 容器状态
@@ -3771,12 +3888,19 @@ monitor_object_metric_group:
     Pool IOPS: 存储池IOPS
     Pool Throughput: 存储池吞吐量
     Pool Latency: 存储池时延
+    Pool Capacity: 存储池容量
     Drive IOPS: 硬盘IOPS
     Drive Throughput: 硬盘吞吐量
     Drive Latency: 硬盘时延
+    Array IOPS: 阵列IOPS
+    Array Throughput: 阵列吞吐量
+    Array Latency: 阵列时延
+    Array Capacity: 阵列容量
+    Array Reduction: 阵列缩减
     Volume IOPS: LUN卷IOPS
     Volume Throughput: LUN卷吞吐量
     Volume Latency: LUN卷时延
+    Volume Capacity: 卷容量
   WebLogic-JMX:
     Threadpool: 线程池
     Application: 应用
@@ -4220,6 +4344,12 @@ monitor_object_plugin:
   OceanStor:
     name: OceanStor存储（Telegraf）
     desc: 通过Telegraf采集器利用DeviceManager REST API定期收集华为OceanStor存储池、硬盘、LUN卷的IOPS、吞吐量和响应时间等性能指标。
+  Pure:
+    name: Pure Storage（Stargazer）
+    desc: 通过Telegraf定时拉取Stargazer采集入口，由Stargazer调用Pure Storage FlashArray REST API，定期收集阵列与卷的IOPS、吞吐量、时延、容量和数据缩减等指标。
+  InfiniBox:
+    name: InfiniBox存储（Stargazer）
+    desc: 通过Telegraf定时拉取Stargazer采集入口，由Stargazer调用InfiniBox REST API，定期收集存储池容量、卷容量以及基于计数器采样换算的卷IOPS、吞吐量和时延指标。
   Tencent Cloud:
     name: 腾讯云
     desc: 实时采集腾讯云各类监控指标数据，涵盖计算资源、网络性能、存储使用等维度，助力用户深入了解资源状态，精准定位异常，高效完成运维管理与成本优化。
