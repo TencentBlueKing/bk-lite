@@ -1,8 +1,9 @@
 import React from 'react';
+import { MessageContent } from '@webchat/core';
 
 interface MessageActionsProps {
   messageId: string;
-  messageContent: string;
+  messageContent: string | MessageContent[];
   isBot: boolean;
   isLastBotMessage?: boolean;
   showActions: boolean;
@@ -51,8 +52,14 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       )}
       <button
         onClick={() => {
-          navigator.clipboard.writeText(messageContent);
-          onCopy?.(messageContent);
+          const text = Array.isArray(messageContent)
+            ? messageContent
+                .filter((item) => item.type === 'text' && item.text)
+                .map((item) => item.text)
+                .join('\n')
+            : messageContent;
+          navigator.clipboard.writeText(text);
+          onCopy?.(text);
         }}
         className="p-1 hover:bg-gray-100 rounded transition-colors"
         title="复制"

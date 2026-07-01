@@ -2,17 +2,30 @@
   "object": "Switch",
   "plugin": "Switch Pica8 SNMP",
   "templates": [
-  {
-    "name": "Pica8交换机CPU使用率过高",
-    "alert_name": "交换机${resource_name} CPU 使用率过高",
-    "description": "监控 Pica8 PicOS 设备控制平面的 CPU 使用率（cpuUsage），当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
-    "metric_name": "device_cpu_usage",
-    "algorithm": "last_over_time",
-    "threshold": [
-        { "level": "critical", "value": 90, "method": ">" },
-        { "level": "error", "value": 80, "method": ">" },
-        { "level": "warning", "value": 70, "method": ">" }
-    ]
-  }
+    {
+      "name": "Pica8交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 Pica8 PicOS 设备控制平面的 CPU 使用率（cpuUsage），当持续高于阈值时触发告警，提示可能存在控制平面过载、路由震荡或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
   ]
 }

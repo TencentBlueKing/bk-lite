@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_avocent",
+  "plugin": "ConsoleServer Avocent ACS SNMP",
+  "plugin_desc": "Avocent ACS console-server SNMP child template for devices under Avocent enterprise PEN 10418. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public MIB facts confirm the ACS product subtree but do not prove stable shared CPU, memory, temperature, fan or power device-health scalars, so this child template does not promote private objects into shared health metrics.",
+  "status_query": "any({instance_type='console_server', collect_type='snmp_avocent'}) by (instance_id)",
+  "name": "ConsoleServer",
+  "icon": "mm-console_server_控制台服务器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='console_server'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

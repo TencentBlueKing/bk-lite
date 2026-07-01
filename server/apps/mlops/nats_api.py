@@ -168,6 +168,35 @@ def _get_module_registry():
     return registry
 
 
+def _normalize_actor_group_ids(actor_context):
+    group_ids = set()
+    for group in (actor_context or {}).get("group_list") or []:
+        group_id = group.get("id") if isinstance(group, dict) else group
+        try:
+            group_ids.add(int(group_id))
+        except (TypeError, ValueError):
+            continue
+    return group_ids
+
+
+def _validate_actor_group(actor_context, group_id):
+    if not isinstance(actor_context, dict):
+        return False, None, "缺少调用方上下文"
+
+    try:
+        group_id = int(group_id)
+    except (TypeError, ValueError):
+        return False, None, "group_id 参数非法"
+
+    if actor_context.get("is_superuser"):
+        return True, group_id, ""
+
+    if group_id not in _normalize_actor_group_ids(actor_context):
+        return False, group_id, "无权访问该组织"
+
+    return True, group_id, ""
+
+
 @nats_client.register
 def get_mlops_module_list():
     registry = _get_module_registry()
@@ -188,7 +217,7 @@ def get_mlops_module_list():
 
 
 @nats_client.register
-def get_mlops_module_data(module, child_module, page, page_size, group_id):
+def get_mlops_module_data(module, child_module, page, page_size, group_id, actor_context=None):
     registry = _get_module_registry()
 
     module_map = registry.get(module)
@@ -199,10 +228,14 @@ def get_mlops_module_data(module, child_module, page, page_size, group_id):
     if entry is None:
         return {"result": False, "message": f"未知子模块：{module}/{child_module}"}
 
+    is_valid, group_id, message = _validate_actor_group(actor_context, group_id)
+    if not is_valid:
+        return {"result": False, "message": message}
+
     page_size = max(1, min(int(page_size), MAX_PAGE_SIZE))
 
     model, team_lookup = entry
-    queryset = model.objects.filter(**{f"{team_lookup}__contains": int(group_id)})
+    queryset = model.objects.filter(**{f"{team_lookup}__contains": group_id})
 
     total_count = queryset.count()
     start = (page - 1) * page_size

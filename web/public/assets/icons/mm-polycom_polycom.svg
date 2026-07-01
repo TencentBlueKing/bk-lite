@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Polycom">
+  <rect width="64" height="64" rx="12" fill="#ffffff"/>
+  <path d="M14 39c0-9 8-17 18-17s18 8 18 17v7H14z" fill="#2563eb"/>
+  <path d="M22 38c0-5 4-9 10-9s10 4 10 9v2H22z" fill="#ffffff"/>
+  <circle cx="32" cy="24" r="7" fill="#06b6d4"/>
+  <path d="M18 48h28v5H18z" fill="#1f2937"/>
+</svg>

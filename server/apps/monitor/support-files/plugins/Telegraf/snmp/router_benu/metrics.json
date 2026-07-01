@@ -1,0 +1,67 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_benu",
+  "plugin": "Router Benu SNMP",
+  "plugin_desc": "Benu Networks router SNMP child template (enterprise PEN 39406). Beyond the shared Router SNMP baseline for MIB-II uptime and IF-MIB interface traffic, it collects BENU-CHASSIS-MIB sensor temperature, fan status and power-supply status. Host software task CPU and memory tables are process-level metrics and are not promoted to shared device CPU or memory health metrics here.",
+  "status_query": "any({instance_type='router', collect_type='snmp_benu'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-benu_benu",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [
+
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest Benu chassis temperature sensor value in degrees Celsius, using BENU-CHASSIS-MIB sensor rows whose type is temperature."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [
+
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst Benu fan sensor state, normalized from benuSensorState so normal(1) is healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [
+
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst Benu power-supply status, normalized from present and powered states so present and powered supply rows are healthy and every other state is abnormal."
+    }
+  ]
+}

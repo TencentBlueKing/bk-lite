@@ -2,15 +2,20 @@
   "object": "Switch",
   "plugin": "Switch Advantech SNMP",
   "templates": [
-  {
-    "name": "Advantech交换机电源异常",
-    "alert_name": "交换机${resource_name} 电源状态异常",
-    "description": "监控 Advantech EKI 设备冗余电源 LED 派生的电源健康状态（ledPWR1Status，归一后 1=正常，>1=异常），当电源输入丢失时触发告警，提示工业双路供电的冗余失效。",
-    "metric_name": "device_psu_state",
-    "algorithm": "last_over_time",
-    "threshold": [
-        { "level": "critical", "value": 1, "method": ">" }
-    ]
-  }
+    {
+      "name": "Advantech交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 Advantech EKI 设备冗余电源 LED 派生的电源健康状态（ledPWR1Status，归一后 1=正常，>1=异常），当电源输入丢失时触发告警，提示工业双路供电的冗余失效。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
   ]
 }

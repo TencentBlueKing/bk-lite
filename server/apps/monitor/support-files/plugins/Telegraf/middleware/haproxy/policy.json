@@ -7,7 +7,7 @@
       "alert_name": "Haproxy实例 ${resource_name} 后端响应延迟",
       "description": "监控后端平均响应时间，延迟过高会导致用户访问变慢。需检查后端服务性能或网络链路。",
       "metric_name": "haproxy_rtime",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -24,14 +24,15 @@
           "value": 200,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "请求排队积压",
       "alert_name": "Haproxy实例 ${resource_name} 请求排队",
       "description": "检测等待空闲后端的排队请求数，持续积压表明后端处理能力不足。需扩容后端或排查慢请求。",
       "metric_name": "haproxy_qcur",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -48,14 +49,15 @@
           "value": 10,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "会话数突增",
       "alert_name": "Haproxy实例 ${resource_name} 会话过载",
       "description": "监控当前并发会话数，异常增长可能表明流量激增或连接堆积。需关注是否接近会话上限。",
       "metric_name": "haproxy_scur",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -72,14 +74,15 @@
           "value": 1000,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "请求速率突增",
       "alert_name": "Haproxy实例 ${resource_name} 请求过载",
       "description": "检测每秒HTTP请求数，异常增长可能表明流量激增或CC攻击。需结合错误率与延迟综合研判。",
       "metric_name": "haproxy_req_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -96,7 +99,8 @@
           "value": 200,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

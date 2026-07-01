@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import json
 import os
+import threading
 import time
 from typing import List, Union
 
@@ -36,10 +37,13 @@ class FalkorDBConnectionPool:
     _client = None
     _graph = None
     _initialized = False
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(FalkorDBConnectionPool, cls).__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(FalkorDBConnectionPool, cls).__new__(cls)
         return cls._instance
 
     def get_connection(self):
@@ -49,25 +53,29 @@ class FalkorDBConnectionPool:
         return self._client, self._graph
 
     def _initialize(self):
-        """初始化连接"""
+        """初始化连接（双检锁保护，防止多线程并发重复创建连接）"""
         if self._initialized:
             return
 
-        try:
-            password = os.getenv("FALKORDB_REQUIREPASS", "") or None
-            host = os.getenv("FALKORDB_HOST", "127.0.0.1")
-            port = int(os.getenv("FALKORDB_PORT", "6379"))
-            database = os.getenv("FALKORDB_DATABASE", "cmdb_graph")
+        with self.__class__._lock:
+            if self._initialized:
+                return
 
-            self._client = falkordb.FalkorDB(host=host, port=port, password=password)
-            self._graph = self._client.select_graph(database)
-            self._initialized = True
-            logger.info(f"已连接到 FalkorDB，选择Graph: {database}")
-        except Exception:
-            import traceback
+            try:
+                password = os.getenv("FALKORDB_REQUIREPASS", "") or None
+                host = os.getenv("FALKORDB_HOST", "127.0.0.1")
+                port = int(os.getenv("FALKORDB_PORT", "6379"))
+                database = os.getenv("FALKORDB_DATABASE", "cmdb_graph")
 
-            logger.error(f"连接失败: {traceback.format_exc()}")
-            raise
+                self._client = falkordb.FalkorDB(host=host, port=port, password=password)
+                self._graph = self._client.select_graph(database)
+                self._initialized = True
+                logger.info(f"已连接到 FalkorDB，选择Graph: {database}")
+            except Exception:
+                import traceback
+
+                logger.error(f"连接失败: {traceback.format_exc()}")
+                raise
 
 
 class FalkorDBClient:
@@ -205,11 +213,12 @@ class FalkorDBClient:
         """将属性格式化为CQL中的字符串格式，正确处理字符串转义"""
         properties_str = "{"
         for key, value in properties.items():
+            validated_key = CQLValidator.validate_field(key)
             if isinstance(value, str):
                 escaped_value = FalkorDBClient.escape_cql_string(value)
-                properties_str += f"{key}:'{escaped_value}',"
+                properties_str += f"{validated_key}:'{escaped_value}',"
             else:
-                properties_str += f"{key}:{value},"
+                properties_str += f"{validated_key}:{value},"
         properties_str = properties_str[:-1]
         properties_str += "}"
         return properties_str
@@ -881,11 +890,12 @@ class FalkorDBClient:
         """格式化properties的set数据，正确处理字符串转义"""
         properties_str = ""
         for key, value in properties.items():
+            validated_key = CQLValidator.validate_field(key)
             if isinstance(value, str):
                 escaped_value = self.escape_cql_string(value)
-                properties_str += f"n.{key}='{escaped_value}',"
+                properties_str += f"n.{validated_key}='{escaped_value}',"
             else:
-                properties_str += f"n.{key}={value},"
+                properties_str += f"n.{validated_key}={value},"
         return properties_str if properties_str == "" else properties_str[:-1]
 
     def set_entity_properties(

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Infinera">
+  <rect width="64" height="64" rx="12" fill="#0B3D91"/>
+  <path d="M14 18h36v8H14zM14 30h8v16h-8zM28 30h8v16h-8zM42 30h8v16h-8z" fill="#FFFFFF"/>
+  <path d="M18 50h28" stroke="#66D9EF" stroke-width="4" stroke-linecap="round"/>
+</svg>

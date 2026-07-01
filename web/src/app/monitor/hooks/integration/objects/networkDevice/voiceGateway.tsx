@@ -53,7 +53,17 @@ export const useVoiceGatewayConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'VoiceGateway AudioCodes SNMP': 'snmp_audiocodes'
+      'VoiceGateway AudioCodes SNMP': 'snmp_audiocodes',
+      'VoiceGateway Ribbon SNMP': 'snmp_ribbon',
+      'VoiceGateway Acme Packet SNMP': 'snmp_acmepacket',
+      'VoiceGateway Patton SNMP': 'snmp_patton',
+      'VoiceGateway Innovaphone SNMP': 'snmp_innovaphone',
+      'VoiceGateway Mitel SNMP': 'snmp_mitel',
+      'VoiceGateway Polycom SNMP': 'snmp_polycom',
+      'VoiceGateway Yeastar SNMP': 'snmp_yeastar',
+      'VoiceGateway Zenitel SNMP': 'snmp_zenitel',
+      'VoiceGateway Sangoma Vega SNMP': 'snmp_sangoma',
+      'VoiceGateway AddPac SNMP': 'snmp_addpac'
     }
   };
 };

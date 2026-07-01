@@ -1,0 +1,33 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_mimosa",
+  "plugin": "Wireless Mimosa SNMP",
+  "plugin_desc": "Mimosa wireless PtP and PtMP backhaul SNMP child template for devices under enterprise PEN 43356. This child adds the confirmed internal temperature scalar from the Mimosa wireless system tree as device_temperature_celsius, scaled from tenths of a degree Celsius in the query. CPU, memory, fan and power-supply health are N/A because no stable shared device-health objects are confirmed for them; link and subscriber telemetry are wireless service counters and are not promoted into shared device health in this pass.",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_mimosa'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-mimosa_mimosa",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='wireless', __$labels__} / 10) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Mimosa internal device temperature in degrees Celsius. The SNMP scalar reports tenths of a degree, so the query divides the raw value by 10 before display and alert evaluation. High values can indicate poor airflow, enclosure heat buildup, or radio hardware thermal stress."
+    }
+  ]
+}

@@ -458,7 +458,7 @@ def _normalize_permission_user(user):
         username = user.strip()
         if username:
             return SimpleNamespace(username=username, domain="domain.com")
-        return None
+        return user
     return user
 
 

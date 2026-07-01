@@ -245,6 +245,12 @@ const useObjectApi = () => {
     });
   };
 
+  const getMetricVmFields = async (
+    metricId: number | string
+  ): Promise<string[]> => {
+    return await get(`/monitor/api/metrics/${metricId}/vm-fields/`);
+  };
+
   return {
     // 对象类型
     getObjectTypes,
@@ -264,7 +270,8 @@ const useObjectApi = () => {
     updateObjectOrder,
     saveDisplayFields,
     getObjectPlugins,
-    getObjectMetrics
+    getObjectMetrics,
+    getMetricVmFields
   };
 };
 

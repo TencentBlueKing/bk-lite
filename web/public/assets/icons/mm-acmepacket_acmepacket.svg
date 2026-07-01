@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Acme Packet">
+  <rect width="64" height="64" rx="12" fill="#f7f9fc"/>
+  <path d="M12 42 25 14h14l13 28h-9l-2.6-6.2H23.6L21 42h-9Z" fill="#d8292f"/>
+  <path d="M27 28.2h10L32 16.4l-5 11.8Z" fill="#ffffff"/>
+  <path d="M18 48h28" stroke="#2f3a4a" stroke-width="4" stroke-linecap="round"/>
+  <path d="M49 48h3" stroke="#d8292f" stroke-width="4" stroke-linecap="round"/>
+</svg>

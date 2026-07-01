@@ -1,0 +1,193 @@
+{
+  "plugin": "InfiniBox",
+  "plugin_desc": "InfiniBox storage monitoring plugin. Collects pool capacity, volume capacity, and volume performance metrics via the REST API.",
+  "status_query": "any({instance_type='storage', collect_type='infinibox'}) by (instance_id)",
+  "node_selector": {
+    "is_container": true
+  },
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+    {
+      "metric_group": "Quantity",
+      "name": "infinibox_pool_count_gauge",
+      "query": "infinibox_pool_count_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Number of Pools",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total number of storage pools in the InfiniBox system"
+    },
+    {
+      "metric_group": "Quantity",
+      "name": "infinibox_volume_count_gauge",
+      "query": "infinibox_volume_count_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Number of Volumes",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total number of volumes in the InfiniBox system"
+    },
+    {
+      "metric_group": "Pool Capacity",
+      "name": "infinibox_pool_physical_capacity_bytes_gauge",
+      "query": "infinibox_pool_physical_capacity_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Pool Physical Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "pool", "description": "Pool"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Physical capacity of each pool"
+    },
+    {
+      "metric_group": "Pool Capacity",
+      "name": "infinibox_pool_allocated_physical_bytes_gauge",
+      "query": "infinibox_pool_allocated_physical_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Pool Allocated Physical Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "pool", "description": "Pool"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Allocated physical capacity of each pool"
+    },
+    {
+      "metric_group": "Pool Capacity",
+      "name": "infinibox_pool_free_physical_bytes_gauge",
+      "query": "infinibox_pool_free_physical_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Pool Free Physical Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "pool", "description": "Pool"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Free physical capacity of each pool"
+    },
+    {
+      "metric_group": "Pool Capacity",
+      "name": "infinibox_pool_virtual_capacity_bytes_gauge",
+      "query": "infinibox_pool_virtual_capacity_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Pool Virtual Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "pool", "description": "Pool"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Virtual capacity of each pool"
+    },
+    {
+      "metric_group": "Pool Capacity",
+      "name": "infinibox_pool_allocated_virtual_bytes_gauge",
+      "query": "infinibox_pool_allocated_virtual_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Pool Allocated Virtual Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "pool", "description": "Pool"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Allocated virtual capacity of each pool"
+    },
+    {
+      "metric_group": "Volume IOPS",
+      "name": "infinibox_volume_read_iops_gauge",
+      "query": "infinibox_volume_read_iops_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Read IOPS",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Read I/O operations per second of each volume"
+    },
+    {
+      "metric_group": "Volume IOPS",
+      "name": "infinibox_volume_write_iops_gauge",
+      "query": "infinibox_volume_write_iops_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Write IOPS",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Write I/O operations per second of each volume"
+    },
+    {
+      "metric_group": "Volume Throughput",
+      "name": "infinibox_volume_read_bandwidth_gauge",
+      "query": "infinibox_volume_read_bandwidth_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Read Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Read throughput of each volume in bytes per second"
+    },
+    {
+      "metric_group": "Volume Throughput",
+      "name": "infinibox_volume_write_bandwidth_gauge",
+      "query": "infinibox_volume_write_bandwidth_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Write Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Write throughput of each volume in bytes per second"
+    },
+    {
+      "metric_group": "Volume Latency",
+      "name": "infinibox_volume_read_latency_gauge",
+      "query": "infinibox_volume_read_latency_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average read latency of each volume in milliseconds"
+    },
+    {
+      "metric_group": "Volume Latency",
+      "name": "infinibox_volume_write_latency_gauge",
+      "query": "infinibox_volume_write_latency_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average write latency of each volume in milliseconds"
+    },
+    {
+      "metric_group": "Volume Latency",
+      "name": "infinibox_volume_latency_gauge",
+      "query": "infinibox_volume_latency_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Average Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average I/O latency of each volume in milliseconds"
+    },
+    {
+      "metric_group": "Volume Capacity",
+      "name": "infinibox_volume_size_bytes_gauge",
+      "query": "infinibox_volume_size_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Size",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Provisioned size of each volume"
+    },
+    {
+      "metric_group": "Volume Capacity",
+      "name": "infinibox_volume_used_bytes_gauge",
+      "query": "infinibox_volume_used_bytes_gauge{resource_type=\"infinibox\", __$labels__}",
+      "display_name": "Volume Used Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used capacity of each volume"
+    }
+  ]
+}

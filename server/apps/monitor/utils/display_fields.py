@@ -1,6 +1,8 @@
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.models.monitor_metrics import Metric
 
+DISPLAY_FIELD_TYPES = {"metric", "field"}
+
 
 def validate_display_fields(monitor_object, display_fields):
     """校验 display_fields 结构与指标存在性，返回规整后的列表。"""
@@ -19,6 +21,9 @@ def validate_display_fields(monitor_object, display_fields):
         name = (col.get("name") or "").strip()
         if not name:
             raise BaseAppException("display field name is required")
+        col_type = (col.get("type") or "metric").strip()
+        if col_type not in DISPLAY_FIELD_TYPES:
+            raise BaseAppException(f"display field '{name}' has unsupported type: {col_type}")
         metrics = col.get("metrics") or []
         if not isinstance(metrics, list) or not metrics:
             raise BaseAppException(f"display field '{name}' requires at least one metric")
@@ -32,8 +37,17 @@ def validate_display_fields(monitor_object, display_fields):
                 raise BaseAppException(f"display field '{name}' has an incomplete metric binding")
             if (plugin, metric) not in existing:
                 raise BaseAppException(f"metric not found: {plugin}/{metric}")
-            norm_metrics.append({"plugin": plugin, "metric": metric})
-        normalized.append({"name": name, "sort_order": col.get("sort_order", idx), "metrics": norm_metrics})
+            norm_binding = {"plugin": plugin, "metric": metric}
+            if col_type == "field":
+                field = (binding.get("field") or "").strip()
+                if not field:
+                    raise BaseAppException(f"display field '{name}' has an incomplete field binding")
+                norm_binding["field"] = field
+            norm_metrics.append(norm_binding)
+        norm_col = {"name": name, "sort_order": col.get("sort_order", idx), "metrics": norm_metrics}
+        if col_type == "field":
+            norm_col["type"] = "field"
+        normalized.append(norm_col)
 
     sorted_cols = sorted(normalized, key=lambda c: c["sort_order"])
     return [{**col, "sort_order": i} for i, col in enumerate(sorted_cols)]

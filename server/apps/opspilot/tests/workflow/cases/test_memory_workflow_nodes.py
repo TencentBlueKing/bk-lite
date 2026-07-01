@@ -2242,6 +2242,7 @@ def test_memory_write_cache_flush_timing_and_org(mocker):
     )
     bot = Bot.objects.create(name="b-mem", team=[5], created_by="admin")
     wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+    mocker.patch("apps.opspilot.tasks.close_old_connections")
 
     def call(content):
         process_memory_write_cache(

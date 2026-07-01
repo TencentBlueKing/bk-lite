@@ -72,14 +72,30 @@ def _get_object(resp, obj_id):
 
 
 @pytest.mark.django_db
-def test_list_translates_column_to_metric_name(api_client, host_with_metric, monkeypatch):
-    """列名一律取绑定指标的当前语言译名（跟随账号语言）；即使种子名/已 customized 也照译（回归用例）。"""
+def test_list_keeps_customized_column_name(api_client, host_with_metric, monkeypatch):
+    """用户在弹窗里自定义的列名必须原样展示，不能被绑定指标译名覆盖。"""
     obj = host_with_metric
     obj.display_fields = [
-        {"name": "Service Uptime", "sort_order": 0,  # 种子标签，故意 != 指标译名
+        {"name": "新字段列", "sort_order": 0,
          "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
     ]
-    obj.display_fields_customized = True  # 用户在弹窗里编辑过，仍应翻译
+    obj.display_fields_customized = True
+    obj.save(update_fields=["display_fields", "display_fields_customized"])
+
+    _patch_translations(monkeypatch, {_METRIC_KEY: "CPU使用率译"})
+    target = _get_object(api_client.get("/api/v1/monitor/api/monitor_object/"), obj.id)
+    assert target["display_fields"][0]["name"] == "新字段列"
+
+
+@pytest.mark.django_db
+def test_list_translates_default_column_to_metric_name(api_client, host_with_metric, monkeypatch):
+    """未自定义的默认展示列仍跟随账号语言展示指标译名。"""
+    obj = host_with_metric
+    obj.display_fields = [
+        {"name": "Service Uptime", "sort_order": 0,
+         "metrics": [{"plugin": "UTPlugin", "metric": "cpu_usage_total"}]}
+    ]
+    obj.display_fields_customized = False
     obj.save(update_fields=["display_fields", "display_fields_customized"])
 
     _patch_translations(monkeypatch, {_METRIC_KEY: "CPU使用率译"})

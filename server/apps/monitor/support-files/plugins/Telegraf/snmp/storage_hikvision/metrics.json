@@ -1,0 +1,31 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_hikvision",
+  "plugin": "Storage Hikvision SNMP",
+  "plugin_desc": "Hikvision Brainware storage-specific SNMP collection for Hikvision storage devices using the local private MIB tree (enterprise-like PEN 99999). In addition to standard IF-MIB interface metrics, it collects vendor health — device CPU and memory utilization, CPU temperature, total disk status, RAID status, power status, and CPU fan status. Raw health status value 1 is treated as healthy and every other value as fault, with the worst component taken per device by max(). Capacity and IO-rate counters are not modeled as shared health metrics. Supported brands/models — Hikvision Brainware storage systems with SNMP enabled.",
+  "status_query": "any({instance_type='storage', collect_type='snmp_hikvision'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_disk_state",
+    "device_raid_state",
+    "device_psu_state",
+    "device_fan_state"
+  ],
+  "metrics": [
+    {"metric_group": "CPU", "name": "device_cpu_usage", "query": "max(device_cpu_usage{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "CPU Utilization", "data_type": "Number", "unit": "percent", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage device CPU utilization from BnVSCPU, expressed as a direct percentage."},
+    {"metric_group": "Memory", "name": "device_memory_usage", "query": "max(device_memory_usage{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "Memory Utilization", "data_type": "Number", "unit": "percent", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage memory utilization from BnVSMemory, expressed as a direct percentage."},
+    {"metric_group": "Temperature", "name": "device_temperature_celsius", "query": "max(device_temperature_celsius{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "Temperature", "data_type": "Number", "unit": "celsius", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage CPU temperature from BnVSCPUTemp, read directly in degrees Celsius."},
+    {"metric_group": "Hardware Status", "name": "device_disk_state", "query": "max(device_disk_state{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "Disk Health State", "data_type": "Enum", "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage disk health from total disk status and per-disk status values, normalized so that 1 is healthy and every other value is fault."},
+    {"metric_group": "Hardware Status", "name": "device_raid_state", "query": "max(device_raid_state{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "RAID State", "data_type": "Enum", "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage RAID health from total RAID status and per-RAID status values, normalized so that 1 is healthy and every other value is fault."},
+    {"metric_group": "Hardware Status", "name": "device_psu_state", "query": "max(device_psu_state{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "Power Supply State", "data_type": "Enum", "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage power state from BnVSPowerStatus, normalized so that 1 is healthy and every other value is fault."},
+    {"metric_group": "Hardware Status", "name": "device_fan_state", "query": "max(device_fan_state{instance_type='storage', __$labels__}) by (instance_id)", "display_name": "Fan State", "data_type": "Enum", "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]", "dimensions": [], "instance_id_keys": ["instance_id"], "description": "This metric reports Hikvision storage CPU fan state from BnVSCPUFan, normalized so that 1 is healthy and every other value is fault."}
+  ]
+}

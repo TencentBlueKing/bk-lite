@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_zhone",
+  "plugin": "Access Zhone DZS SNMP",
+  "plugin_desc": "Baseline SNMP child template for Zhone/DZS GPON access devices under enterprise PEN 6296. The current MIB facts confirm the enterprise root, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — Zhone, DZS and DASAN GPON access devices that expose standard IF-MIB.",
+  "status_query": "any({instance_type='access', collect_type='snmp_zhone'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

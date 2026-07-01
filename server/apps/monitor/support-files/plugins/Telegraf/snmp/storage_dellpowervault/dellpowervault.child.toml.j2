@@ -1,0 +1,114 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_dellpowervault"
+        config_type = "dellpowervault"
+        brand = "dellpowervault"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Dell PowerVault / EqualLogic controller CPU utilization (Cisco cpmCPUTotal5min, 0..100 %) ----
+    # cpmCPUTotal5min 1.3.6.1.4.1.9.9.109.1.1.1.1.5，控制器 CPU 五分钟平均使用率，直接百分比。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1.1"
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.9.9.109.1.1.1.1.5"
+        name = "usage"
+    # ---- Dell PowerVault / EqualLogic controller temperatures (PEN 12740, Celsius direct) ----
+    # eqlControllerProcessorTemp .12740.4.1.1.1.7，控制器处理器温度，摄氏度直采无缩放。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.12740.4.1.1.1"
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12740.4.1.1.1.7"
+        name = "celsius"
+    # eqlControllerChipsetTemp .12740.4.1.1.1.8，控制器芯片温度，摄氏度直采无缩放。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.12740.4.1.1.1"
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12740.4.1.1.1.8"
+        name = "celsius"
+    # ---- Dell PowerVault / EqualLogic disk status (eqlDiskStatus, 每磁盘一行) ----
+    # eqlDiskStatus 1.3.6.1.4.1.12740.3.1.1.1.8，online(1)→1 正常，其余→2 异常。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.12740.3.1.1.1"
+        name = "device_disk"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12740.3.1.1.1.8"
+        name = "state"
+    # ---- Dell PowerVault / EqualLogic iSCSI volume admin status (eqliscsiVolumeAdminStatus, 每卷一行) ----
+    # eqliscsiVolumeAdminStatus 1.3.6.1.4.1.12740.5.1.7.1.1.9，online(1)→1 正常，其余→2 异常。
+    # 归入共享盘 device_raid_state，表示阵列/卷可用性最差状态。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.12740.5.1.7.1.1"
+        name = "device_raid"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12740.5.1.7.1.1.9"
+        name = "state"
+# ---- 磁盘状态归一：online(1)→1(正常)，其余(spare/failed/offline/unhealthy 等)→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_disk"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 卷/阵列状态归一：online(1)→1(正常)，其余(offline/control/lost-cached-blocks 等)→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_raid"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 内存/风扇/电源 N/A ----
+# 本地 DellStorage profile 暴露物理内存大小、磁盘大小、磁盘转速和卷容量等规格/容量类指标，
+# 这些不是共享盘运行健康指标，不采。未发布控制器内存使用率、风扇状态或电源 up/down 状态 → 不臆造。

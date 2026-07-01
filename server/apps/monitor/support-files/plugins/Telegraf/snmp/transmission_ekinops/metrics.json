@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ekinops",
+  "plugin": "Transmission Ekinops SNMP",
+  "plugin_desc": "Ekinops WDM, CWDM and DWDM transmission SNMP child template for devices under Ekinops PEN 20044. This child template relies on the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_ekinops'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-ekinops_ekinops",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

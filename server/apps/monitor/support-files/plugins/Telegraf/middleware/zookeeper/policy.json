@@ -13,14 +13,15 @@
           "level": "critical",
           "value": 60
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "请求延迟过高",
       "alert_name": "ZooKeeper节点 ${resource_name} 响应延迟",
       "description": "监控平均请求处理延迟，高延迟会影响依赖ZK的协调服务。需检查网络和磁盘IO性能。",
       "metric_name": "zookeeper_avg_latency",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -37,14 +38,15 @@
           "value": 100,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "连接异常断开",
       "alert_name": "ZooKeeper集群 ${resource_name} 连接丢失",
       "description": "检测客户端连接异常断开次数，突增可能表明网络问题或客户端超时。",
       "metric_name": "zookeeper_connection_drop_count",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -61,14 +63,15 @@
           "value": 3,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "数据节点暴增",
       "alert_name": "ZooKeeper集群 ${resource_name} znode过多",
       "description": "监控znode总数，过量znode会导致内存压力和同步延迟。需清理临时节点或扩容集群。",
       "metric_name": "zookeeper_znode_count",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -85,7 +88,8 @@
           "value": 100000,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "读写比例失衡",
@@ -109,7 +113,8 @@
           "value": 80,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "快照积压告警",
@@ -133,7 +138,8 @@
           "value": 150,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "网络包异常",
@@ -157,7 +163,8 @@
           "value": 200,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

@@ -1,0 +1,86 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_spectracom",
+  "plugin": "NetworkService Spectracom SNMP",
+  "plugin_desc": "Spectracom SecureSync and NetClock time-server SNMP collection for appliances under Spectracom PEN 18837. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child template adds confirmed xSync and NTP status scalars for synchronization, DC power, alarm state, NTP mode and stratum. Temperature and hot-swap objects are not collected in this pass because their numeric leaf OIDs were not fully verified.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_spectracom'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "network_service_spectracom_sync_state",
+    "network_service_spectracom_ntp_state",
+    "network_service_spectracom_dc_power_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_spectracom_sync_state",
+      "query": "max(network_service_spectracom_sync_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Spectracom Sync Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Spectracom xSync system synchronization state from OID 18837.3.2.2.1.5, normalized so sync is 1 and nosync or unknown values are 2."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_spectracom_dc_power_state",
+      "query": "max(network_service_spectracom_dc_power_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Spectracom DC Power Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Spectracom DC power input status from OID 18837.3.2.2.1.2, normalized so ok is 1 and alarm, none or unknown values are 2."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_spectracom_minor_alarm_state",
+      "query": "max(network_service_spectracom_minor_alarm_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Spectracom Minor Alarm Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Spectracom minor alarm state from OID 18837.3.2.2.1.13, normalized so clear is 1 and pending or unknown values are 2."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_spectracom_major_alarm_state",
+      "query": "max(network_service_spectracom_major_alarm_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Spectracom Major Alarm Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Spectracom major alarm state from OID 18837.3.2.2.1.14, normalized so clear is 1 and pending or unknown values are 2."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_spectracom_ntp_state",
+      "query": "max(network_service_spectracom_ntp_state{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Spectracom NTP Status",
+      "data_type": "Enum",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Spectracom NTP current mode from OID 18837.3.3.2.1, normalized so synchronized is 1 and unknown, notRunning or notSynchronized values are 2."
+    },
+    {
+      "metric_group": "NetworkService",
+      "name": "network_service_spectracom_ntp_stratum",
+      "query": "max(network_service_spectracom_ntp_stratum{instance_type='network_service', __$labels__}) by (instance_id)",
+      "display_name": "Spectracom NTP Stratum",
+      "data_type": "Number",
+      "unit": "none",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Spectracom NTP current stratum from OID 18837.3.3.2.2."
+    }
+  ]
+}

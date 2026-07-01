@@ -4,15 +4,14 @@ import React, { useCallback } from 'react';
 import { Tag } from 'antd';
 import { DownloadOutlined, FileWordOutlined } from '@ant-design/icons';
 import { ReportFileDownload } from '@/app/opspilot/types/global';
+import { normalizeSafeDownloadUrl } from './downloadUrl';
 
 interface ReportDownloadCardProps {
   download: ReportFileDownload;
 }
 
 const ReportDownloadCard: React.FC<ReportDownloadCardProps> = ({ download }) => {
-  const normalizedFileUrl = download.file_url?.startsWith('/api/v1/')
-    ? download.file_url.replace('/api/v1/', '/api/proxy/')
-    : download.file_url;
+  const normalizedFileUrl = normalizeSafeDownloadUrl(download.file_url);
 
   const handleDownload = useCallback(() => {
     if (normalizedFileUrl) {

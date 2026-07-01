@@ -1,0 +1,33 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_siae",
+  "plugin": "Transmission SIAE Microelettronica SNMP",
+  "plugin_desc": "SIAE Microelettronica microwave transmission SNMP child template for devices under enterprise PEN 3373. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds the confirmed sensorTempValue temperature table from SIAE-SENSOR-TEMP-MIB as device_temperature_celsius. CPU, memory, fan and power-supply health are N/A because stable shared device-health objects are not confirmed in the current MIB facts; temperature monitor up/down state is left as alarm context rather than promoted into a generic hardware-state metric.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_siae'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-siae_siae",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest SIAE Microelettronica equipment temperature in degrees Celsius, read from sensorTempValue in SIAE-SENSOR-TEMP-MIB."
+    }
+  ]
+}

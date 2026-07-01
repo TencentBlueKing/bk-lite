@@ -172,6 +172,8 @@ class ReflectionConfig(BaseModel):
     consecutive_failures_threshold: int = 3  # 连续失败 N 次触发反思
     repetition_window: int = 6  # 检测重复的窗口大小（最近 N 条工具调用）
     repetition_threshold: int = 3  # 窗口内同一工具被调用 N 次以上视为循环
+    duplicate_call_hard_enabled: bool = False  # 是否硬拦截同名同参的重复工具调用
+    duplicate_call_hard_limit: int = 3  # 同名同参工具最多真实执行次数
 
 
 class ToolPoolConfig(BaseModel):

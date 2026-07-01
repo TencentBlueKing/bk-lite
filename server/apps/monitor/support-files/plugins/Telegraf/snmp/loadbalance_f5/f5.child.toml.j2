@@ -78,3 +78,38 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.3375.2.1.1.2.1.8.0"
         name = "current_connections"
+    # ---- F5 BIG-IP environment sensors (temperature / fan / PSU state) ----
+    # 待现网核验：环境状态表按 F5-BIGIP-SYSTEM-MIB 私有 OID 采集，状态码经 enum 归一为 1=正常/2=异常。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.1.1.2.1.43.0"
+        name = "celsius"
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.1.1.2.1.46.0"
+        name = "state"
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.1.1.2.1.47.0"
+        name = "state"
+
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

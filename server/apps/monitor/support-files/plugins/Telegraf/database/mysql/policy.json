@@ -7,7 +7,7 @@
       "alert_name": "MySQL 实例 ${resource_name} 连接池压力过高",
       "description": "监控当前连接数占 max_connections 的比例，持续过高会导致新连接被拒绝。需检查应用连接池、慢 SQL 和 max_connections 配置。",
       "metric_name": "mysql_connection_utilization",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -24,14 +24,15 @@
           "value": 80,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "连接达到上限",
       "alert_name": "MySQL 实例 ${resource_name} 出现连接上限错误",
       "description": "检测因达到 max_connections 导致的连接失败，出现该错误通常表示业务已受到影响。需检查连接池泄漏、长事务和连接上限配置。",
       "metric_name": "mysql_connection_errors_max_connections_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -48,14 +49,15 @@
           "value": 0.02,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "异常连接中断",
       "alert_name": "MySQL 实例 ${resource_name} 客户端异常断开",
       "description": "监控异常终止的客户端连接数，突增可能表明网络问题、客户端超时或连接池配置不合理。需检查 wait_timeout、网络质量和应用侧错误。",
       "metric_name": "mysql_aborted_clients_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -72,14 +74,15 @@
           "value": 0.1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "慢查询速率过高",
       "alert_name": "MySQL 实例 ${resource_name} 慢查询增多",
       "description": "监控慢查询触发速率，持续升高会拖慢业务请求并放大连接压力。需结合慢日志、执行计划和索引情况定位。",
       "metric_name": "mysql_slow_queries_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -96,14 +99,15 @@
           "value": 0.05,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "Buffer Pool 命中率低",
       "alert_name": "MySQL 实例 ${resource_name} Buffer Pool 命中率下降",
       "description": "监控 InnoDB Buffer Pool 命中率，过低表示物理读增多。需检查热点数据、innodb_buffer_pool_size、SQL 扫描和内存容量。",
       "metric_name": "mysql_buffer_pool_hit_ratio",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -120,14 +124,15 @@
           "value": 98,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     },
     {
       "name": "行锁等待过高",
       "alert_name": "MySQL 实例 ${resource_name} 行锁等待异常",
       "description": "监控 InnoDB 平均行锁等待时间，过高通常意味着事务冲突、热点行或慢事务。需定位阻塞会话和长事务。",
       "metric_name": "mysql_innodb_row_lock_time_avg",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -144,14 +149,15 @@
           "value": 50,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "磁盘临时表占比过高",
       "alert_name": "MySQL 实例 ${resource_name} 临时表频繁落盘",
       "description": "监控临时表落盘比例，过高会增加磁盘 I/O 并拖慢复杂查询。需优化排序/分组 SQL，检查 tmp_table_size 和 max_heap_table_size。",
       "metric_name": "mysql_tmp_disk_table_ratio",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -168,14 +174,15 @@
           "value": 15,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "表缓存命中率低",
       "alert_name": "MySQL 实例 ${resource_name} 表缓存效率低",
       "description": "监控表打开缓存命中率，低命中率会增加表句柄开销。需检查 table_open_cache、打开表数量和业务访问模式。",
       "metric_name": "mysql_table_open_cache_hits_rate",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -192,14 +199,15 @@
           "value": 95,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     },
     {
       "name": "文件句柄使用率过高",
       "alert_name": "MySQL 实例 ${resource_name} 文件句柄压力过高",
       "description": "监控 MySQL 打开文件数占 open_files_limit 的比例，持续过高可能导致打开表或日志文件失败。需检查 open_files_limit 与表缓存配置。",
       "metric_name": "mysql_open_files_utilization",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -216,14 +224,15 @@
           "value": 80,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "复制延迟过高",
       "alert_name": "MySQL 实例 ${resource_name} 复制延迟升高",
       "description": "监控从库复制延迟，延迟过高会影响读一致性和故障切换。需检查主从网络、SQL 线程回放、长事务和大事务。",
       "metric_name": "mysql_slave_seconds_behind_master",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -240,35 +249,38 @@
           "value": 30,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "复制 IO 线程停止",
       "alert_name": "MySQL 实例 ${resource_name} 复制 IO 线程异常",
       "description": "监控从库复制 IO 线程状态，停止会导致复制中断。该策略适用于从库实例，主库或单点实例可按需关闭。",
       "metric_name": "mysql_slave_io_running",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
           "value": 0,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     },
     {
       "name": "复制 SQL 线程停止",
       "alert_name": "MySQL 实例 ${resource_name} 复制 SQL 线程异常",
       "description": "监控从库复制 SQL 线程状态，停止会导致 relay log 无法回放。该策略适用于从库实例，主库或单点实例可按需关闭。",
       "metric_name": "mysql_slave_sql_running",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
           "value": 0,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     }
   ]
 }
