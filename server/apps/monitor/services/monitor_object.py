@@ -184,7 +184,7 @@ class MonitorObjectService:
 
     @staticmethod
     def _query_metric_values(metric_obj, target_instances):
-        """对 target_instances 跑该指标的 VM 查询,返回 {instance_id: value}(同实例多值取最大)。"""
+        """对 target_instances 跑该指标的 VM 查询,返回 {instance_id: value}。"""
         target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
         query_parts = []
         for i, key in enumerate(metric_obj.instance_id_keys):
@@ -196,20 +196,66 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         query = metric_obj.query.replace("__$labels__", f"{', '.join(query_parts)}")
-        metrics = VictoriaMetricsAPI().query(query)
-        value_map = {}
-        for metric in metrics.get("data", {}).get("result", []):
+        vm_api = VictoriaMetricsAPI()
+        metrics = vm_api.query(query)
+        metric_results = metrics.get("data", {}).get("result", [])
+        timestamp_map = MonitorObjectService._query_enum_metric_sample_timestamps(
+            vm_api, query, metric_obj, metric_results
+        )
+        selected_map = {}
+        for metric in metric_results:
             instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
             value = metric["value"][1]
-            if instance_id not in value_map:
-                value_map[instance_id] = value
-            else:
-                try:
-                    if float(value) > float(value_map[instance_id]):
-                        value_map[instance_id] = value
-                except (ValueError, TypeError):
-                    pass
-        return value_map
+            sample_time = timestamp_map.get((instance_id, MonitorObjectService._vm_metric_signature(metric)))
+            if MonitorObjectService._should_replace_display_metric_value(
+                selected_map.get(instance_id), value, sample_time
+            ):
+                selected_map[instance_id] = {"value": value, "sample_time": sample_time}
+        return {instance_id: item["value"] for instance_id, item in selected_map.items()}
+
+    @staticmethod
+    def _query_enum_metric_sample_timestamps(vm_api, query, metric_obj, metric_results):
+        if (getattr(metric_obj, "data_type", "") or "").lower() != "enum":
+            return {}
+        instance_counts = {}
+        for metric in metric_results:
+            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            instance_counts[instance_id] = instance_counts.get(instance_id, 0) + 1
+        if not any(count > 1 for count in instance_counts.values()):
+            return {}
+
+        timestamp_metrics = vm_api.query(f"timestamp({query})")
+        timestamp_map = {}
+        for metric in timestamp_metrics.get("data", {}).get("result", []):
+            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            try:
+                timestamp = float(metric["value"][1])
+            except (IndexError, TypeError, ValueError):
+                continue
+            timestamp_map[(instance_id, MonitorObjectService._vm_metric_signature(metric))] = timestamp
+        return timestamp_map
+
+    @staticmethod
+    def _vm_metric_signature(metric):
+        return tuple(sorted((key, value) for key, value in metric.get("metric", {}).items() if key != "__name__"))
+
+    @staticmethod
+    def _should_replace_display_metric_value(current, new_value, new_sample_time):
+        if current is None:
+            return True
+        current_sample_time = current.get("sample_time")
+        if new_sample_time is not None or current_sample_time is not None:
+            if current_sample_time is None:
+                return True
+            if new_sample_time is None:
+                return False
+            if new_sample_time != current_sample_time:
+                return new_sample_time > current_sample_time
+
+        try:
+            return float(new_value) > float(current["value"])
+        except (ValueError, TypeError):
+            return False
 
     @staticmethod
     def _query_metric_field_values(metric_obj, target_instances, field):

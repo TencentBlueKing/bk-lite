@@ -259,6 +259,58 @@ def test_query_metric_values_uses_default_query_step(monkeypatch):
     assert result == {"('i1',)": "8.52"}
 
 
+def test_query_metric_values_enum_prefers_latest_series_by_timestamp(monkeypatch):
+    class FakeVM:
+        def __init__(self):
+            self.queries = []
+
+        def query(self, query, step=None):
+            self.queries.append(query)
+            assert step is None
+            if query == 'http_response_result_code{instance_id=~"i1"}':
+                return {"data": {"result": [
+                    {
+                        "metric": {"instance_id": "i1", "result": "connection_failed"},
+                        "value": [1782888110, "3"],
+                    },
+                    {
+                        "metric": {"instance_id": "i1", "result": "success", "status_code": "200"},
+                        "value": [1782888110, "0"],
+                    },
+                ]}}
+            if query == 'timestamp(http_response_result_code{instance_id=~"i1"})':
+                return {"data": {"result": [
+                    {
+                        "metric": {"instance_id": "i1", "result": "connection_failed"},
+                        "value": [1782888110, "1782887860"],
+                    },
+                    {
+                        "metric": {"instance_id": "i1", "result": "success", "status_code": "200"},
+                        "value": [1782888110, "1782888071"],
+                    },
+                ]}}
+            raise AssertionError(f"unexpected query: {query}")
+
+    fake_vm = FakeVM()
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: fake_vm)
+
+    metric_obj = SimpleNamespace(
+        query='http_response_result_code{__$labels__}',
+        data_type="Enum",
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+    )
+
+    assert result == {"('i1',)": "0"}
+    assert fake_vm.queries == [
+        'http_response_result_code{instance_id=~"i1"}',
+        'timestamp(http_response_result_code{instance_id=~"i1"})',
+    ]
+
+
 def test_collect_vm_field_names_queries_vm_without_dimensions(monkeypatch):
     class FakeVM:
         def labels(self, match=None):
