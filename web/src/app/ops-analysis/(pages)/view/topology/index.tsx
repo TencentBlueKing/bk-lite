@@ -56,9 +56,9 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
     const chartTheme = getOpsChartTheme(themeName);
     const isDarkTheme = themeName === 'dark';
     const containerRef = useRef<HTMLDivElement>(null);
-    const canvasContainerRef = useRef<HTMLDivElement>(null as any);
-    const canvasHostRef = useRef<HTMLDivElement>(null as any);
-    const minimapContainerRef = useRef<HTMLDivElement>(null as any);
+    const canvasContainerRef = useRef<HTMLDivElement>(null);
+    const canvasHostRef = useRef<HTMLDivElement>(null);
+    const minimapContainerRef = useRef<HTMLDivElement>(null);
     const refreshTimerRef = useRef<NodeJS.Timeout | null>(null);
     const resizeTimeoutRef = useRef<NodeJS.Timeout | null>(null);
     const [minimapVisible, setMinimapVisible] = useState(true);
@@ -400,10 +400,10 @@ const Topology = forwardRef<TopologyRef, TopologyProps>(
           style={{
             ...panelStyle,
             boxShadow: isFullscreen
-                ? 'none'
-                : isDarkTheme
-                  ? '0 10px 24px rgba(0, 0, 0, 0.18)'
-                  : '0 12px 28px rgba(31, 63, 104, 0.06)',
+              ? 'none'
+              : isDarkTheme
+                ? '0 10px 24px rgba(0, 0, 0, 0.18)'
+                : '0 12px 28px rgba(31, 63, 104, 0.06)',
           }}
         >
           {(definitions.length > 0 || namespaceSelectorElement) && (

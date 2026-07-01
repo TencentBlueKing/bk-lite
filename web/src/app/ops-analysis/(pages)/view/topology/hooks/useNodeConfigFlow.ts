@@ -5,6 +5,7 @@ import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
   FilterValue,
   UnifiedFilterDefinition,
+  ValueConfig,
 } from '@/app/ops-analysis/types/dashBoard';
 import type {
   DropPosition,
@@ -32,19 +33,17 @@ interface UseTopologyNodeConfigControllerParams {
   definitions: UnifiedFilterDefinition[];
   appliedFilterValues: Record<string, FilterValue>;
   appliedNamespaceId: number | undefined;
-  addNewNode: (nodeConfig: any, isSingleValue?: boolean) => string | null;
+  addNewNode: (
+    nodeConfig: TopologyNodeData,
+    isSingleValue?: boolean,
+  ) => string | null;
   handleAddChartNode: (
     values: ViewConfigFormValues,
     isNewNode?: boolean,
   ) => Promise<
     | {
         nodeId?: string;
-        valueConfig?: {
-          dataSource?: string | number;
-          dataSourceParams?: any[];
-          filterBindings?: Record<string, boolean>;
-          [key: string]: any;
-        };
+        valueConfig?: ValueConfig;
       }
     | null
     | undefined
@@ -64,7 +63,7 @@ interface UseTopologyNodeConfigControllerParams {
   ) => void | Promise<void>;
   loadChartNodeData: (
     nodeId: string,
-    valueConfig: any,
+    valueConfig: ValueConfig,
     filterValues?: Record<string, FilterValue>,
     definitions?: UnifiedFilterDefinition[],
     dataSource?: DatasourceItem,
@@ -250,7 +249,7 @@ export const useNodeConfigFlow = ({
     async (values: NodeConfigFormValues) => {
       if (addNodeVisible) {
         if (!selectedNodeType || !dropPosition) return;
-        const nodeConfig = {
+        const nodeConfig: TopologyNodeData = {
           id: `node_${uuidv4()}`,
           type: selectedNodeType.id,
           name: values.name || selectedNodeType.name,

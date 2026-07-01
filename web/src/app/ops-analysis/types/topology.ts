@@ -7,6 +7,7 @@ import type {
   FilterBindings,
 } from './dashBoard';
 import type { Graph as X6Graph, Cell, Node, Edge } from '@antv/x6';
+import type { Attr } from '@antv/x6/es/registry/attr';
 import type { OpsChartThemeMode } from '@/app/ops-analysis/utils/chartTheme';
 
 // 基础几何类型
@@ -37,9 +38,63 @@ export interface EdgeConfigState {
   data: EdgeData | null;
 }
 
+export type TopologyRawData = unknown;
+export type TopologyRecord = Record<string, unknown>;
+export type EdgeConnectionType = 'none' | 'single' | 'double';
+export type EdgeLineStyle = 'line' | 'dotted' | 'point';
+
+export interface EdgeStyleConfig {
+  lineColor?: string;
+  lineWidth?: number;
+  lineStyle?: EdgeLineStyle;
+  enableAnimation?: boolean;
+}
+
+export interface TopologyPortConfig {
+  groups: Record<string, {
+    position: {
+      name: string;
+      args?: Record<string, string>;
+    };
+    attrs: Attr.CellAttrs;
+  }>;
+  items: Array<{
+    id: string;
+    group: string;
+  }>;
+}
+
+export interface TopologyEdgeVisual {
+  attrs: {
+    line: Attr.ComplexAttrs;
+  };
+  labels: Edge.Label[];
+}
+
+export interface NodeStyleConfig {
+  width?: number;
+  height?: number;
+  backgroundColor?: string;
+  borderColor?: string;
+  borderWidth?: number;
+  iconPadding?: number;
+  lineType?: 'solid' | 'dashed' | 'dotted';
+  shapeType?: 'rectangle' | 'circle';
+  textColor?: string;
+  fontSize?: number;
+  fontWeight?: string | number;
+  nameColor?: string;
+  nameFontSize?: number;
+  textDirection?: 'top' | 'bottom' | 'left' | 'right';
+  thresholdColors?: Array<{
+    value: string;
+    color: string;
+  }>;
+}
+
 export interface NodeEditState {
   visible: boolean;
-  data: any;
+  data: TopologyNodeData | null;
 }
 
 // 节点相关类型扩展
@@ -52,7 +107,7 @@ export interface TopologyNodeData {
   decimalPlaces?: number;
   position?: Point;
   zIndex?: number; 
-  logoType?: string;
+  logoType?: 'default' | 'custom';
   logoIcon?: string;
   logoUrl?: string;
   description?: string;
@@ -60,32 +115,13 @@ export interface TopologyNodeData {
   isLoading?: boolean;
   hasError?: boolean;
   errorMessage?: string;
-  rawData?: any;
+  rawData?: TopologyRawData;
   isPlaceholder?: boolean;
   isNewNode?: boolean; 
   // 值配置 - 包含数据源相关配置
   valueConfig?: ValueConfig;
   // 样式配置
-  styleConfig?: {
-    width?: number;
-    height?: number;
-    backgroundColor?: string;
-    borderColor?: string;
-    borderWidth?: number;
-    iconPadding?: number;
-    lineType?: 'solid' | 'dashed' | 'dotted';
-    shapeType?: 'rectangle' | 'circle';
-    textColor?: string;
-    fontSize?: number;
-    fontWeight?: string | number;
-    nameColor?: string;
-    nameFontSize?: number;
-    textDirection?: 'top' | 'bottom' | 'left' | 'right';
-    thresholdColors?: Array<{
-      value: string;
-      color: string;
-    }>;
-  };
+  styleConfig?: NodeStyleConfig;
 }
 
 // 图形实例操作类型
@@ -95,7 +131,7 @@ export interface GraphOperations {
   getEdges(): Edge[];
   getCellById(id: string): Cell | null;
   clientToLocal(clientX: number, clientY: number): Point;
-  addEdge(edgeConfig: any): Edge;
+  addEdge(edgeConfig: Edge.Metadata | Edge): Edge;
 }
 
 // 状态管理相关类型
@@ -112,7 +148,7 @@ export interface TopologyState {
   setEdgeConfigVisible: (visible: boolean) => void;
 
   // 节点编辑相关状态
-  setEditingNodeData: (data: any) => void;
+  setEditingNodeData: (data: TopologyNodeData | null) => void;
   setNodeEditVisible: (visible: boolean) => void;
 
   // 视图配置相关状态  
@@ -142,12 +178,7 @@ export interface UseContextMenuAndModalReturn {
   handleEdgeConfigConfirm: (values: {
     lineType: 'common_line' | 'network_line';
     lineName?: string;
-    styleConfig?: {
-      lineColor?: string;
-      lineWidth?: number;
-      lineStyle?: 'line' | 'dotted' | 'point';
-      enableAnimation?: boolean;
-    }
+    styleConfig?: EdgeStyleConfig;
   }) => void;
   closeEdgeConfig: () => void;
   handleMenuClick: (event: MenuClickEvent) => void;
@@ -159,13 +190,8 @@ export interface EdgeData {
   lineType: 'common_line' | 'network_line';
   lineName?: string;
   arrowDirection?: 'none' | 'single' | 'double';
-  styleConfig?: {
-    lineColor?: string;
-    lineWidth?: number;
-    lineStyle?: 'line' | 'dotted' | 'point';
-    enableAnimation?: boolean;
-  };
-  config?: any;
+  styleConfig?: EdgeStyleConfig;
+  config?: TopologyRecord;
   sourceNode: { id: string; name: string };
   targetNode: { id: string; name: string };
   sourceInterface?: InterfaceConfig;
@@ -177,7 +203,7 @@ export interface EdgeCreationData {
   lineName?: string;
   sourceInterface?: string;
   targetInterface?: string;
-  config?: any;
+  config?: TopologyRecord;
 }
 
 // 节点类型定义
@@ -192,7 +218,7 @@ export interface NodeConfPanelProps {
   onClose?: () => void;
   onConfirm?: (values: NodeConfigFormValues) => void;
   onCancel?: () => void;
-  editingNodeData?: any;
+  editingNodeData?: TopologyNodeData | null;
 }
 
 export interface ContextMenuProps {
@@ -234,7 +260,7 @@ export interface TreeNode {
   children?: TreeNode[];
 }
 
-interface InterfaceConfig {
+export interface InterfaceConfig {
   type: 'existing' | 'custom';
   value: string;
 }
@@ -244,7 +270,7 @@ export interface EdgeConfigPanelProps {
   readonly?: boolean;
   edgeData: EdgeData | null;
   onClose: () => void;
-  onConfirm?: (values: any) => void;
+  onConfirm?: (values: EdgeData) => void;
 }
 
 export interface NodeSidebarProps {
@@ -327,7 +353,7 @@ export interface NodeConfigFormValues {
   compare?: boolean;
   selectedFields?: string[];
   chartType?: string;
-  dataSource?: number;
+  dataSource?: number | string;
   dataSourceParams?: ParamItem[];
   builtinNamespaceId?: number;
   topNLabelField?: string;
@@ -339,12 +365,13 @@ export interface NodeConfigFormValues {
   borderWidth?: number;
   textColor?: string;
   fontSize?: number;
-  fontWeight?: string;
+  fontWeight?: string | number;
   iconPadding?: number;
   lineType?: 'solid' | 'dashed' | 'dotted';
   shapeType?: 'rectangle' | 'circle';
   nameColor?: string;
   nameFontSize?: number;
+  textDirection?: 'top' | 'bottom' | 'left' | 'right';
   unit?: string;
   unitId?: string;
   valueMappings?: import('@/app/ops-analysis/utils/valueMapping').ValueMapping[];
@@ -382,20 +409,14 @@ export interface BaseNodeData {
 }
 
 // X6 图形属性配置
-interface NodeAttrs {
-  body?: Record<string, any>;
-  image?: Record<string, any>;
-  label?: Record<string, any>;
-  nameLabel?: Record<string, any>;
-}
-
 // 创建节点返回的类型
-export interface CreatedNodeConfig extends BaseNodeData {
+export type CreatedNodeConfig = BaseNodeData &
+  Omit<Node.Metadata, 'attrs' | 'data' | 'ports'> & {
   width?: number;
   height?: number;
-  attrs?: NodeAttrs;
-  ports?: any;
-}
+  attrs?: Attr.CellAttrs;
+  ports?: TopologyPortConfig;
+};
 
 export interface TopologySaveData {
   name: string;

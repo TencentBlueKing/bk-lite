@@ -9,13 +9,18 @@ import React, {
   useCallback,
   useMemo,
 } from 'react';
-import { NodeConfPanelProps } from '@/app/ops-analysis/types/topology';
+import type {
+  NodeConfPanelProps,
+  NodeConfigFormValues,
+  TopologyNodeData,
+} from '@/app/ops-analysis/types/topology';
 import { iconList } from '@/app/cmdb/utils/common';
 import { NODE_DEFAULTS } from '../constants/nodeDefaults';
 import { useTranslation } from '@/utils/i18n';
 import SelectIcon, {
   SelectIconRef,
 } from '@/app/cmdb/(pages)/assetManage/management/list/selectIcon';
+import { normalizeColorFields } from '../utils/formColorUtils';
 import {
   Form,
   Input,
@@ -27,6 +32,7 @@ import {
   Select,
   ColorPicker,
 } from 'antd';
+import type { RadioChangeEvent, UploadProps } from 'antd';
 import {
   UploadOutlined,
   AppstoreOutlined,
@@ -72,7 +78,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, []);
 
   const initializeNewNode = useCallback(() => {
-    const defaultValues: any = {
+    const defaultValues: NodeConfigFormValues = {
       logoType: 'default',
       logoIcon: 'cc-host',
       logoUrl: '',
@@ -117,10 +123,10 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, [form, nodeType, nodeDefaults]);
 
   const initializeEditNode = useCallback(
-    (editingNodeData: any) => {
+    (editingNodeData: TopologyNodeData) => {
       const { styleConfig = {} } = editingNodeData;
 
-      const formValues: any = {
+      const formValues: NodeConfigFormValues = {
         name: editingNodeData.name,
         logoType: editingNodeData.logoType,
         logoIcon:
@@ -178,7 +184,7 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
   }, [visible, editingNodeData, initializeEditNode, initializeNewNode]);
 
   const handleLogoUpload = useCallback(
-    (file: any) => {
+    ((file) => {
       const reader = new FileReader();
       reader.onload = (e) => {
         setLogoPreview(e.target?.result as string);
@@ -186,13 +192,13 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
       };
       reader.readAsDataURL(file);
       return false;
-    },
+    }) satisfies NonNullable<UploadProps['beforeUpload']>,
     [form]
   );
 
   const handleLogoTypeChange = useCallback(
-    (e: any) => {
-      const type = e.target.value;
+    (e: RadioChangeEvent) => {
+      const type = e.target.value === 'custom' ? 'custom' : 'default';
       setLogoType(type);
 
       if (type === 'default') {
@@ -234,29 +240,18 @@ const ShapeNodePanel: React.FC<NodeConfPanelProps> = ({
     [readonly]
   );
 
-  const processColorValue = useCallback((colorValue: any) => {
-    if (!colorValue) return undefined;
-    if (typeof colorValue === 'string') return colorValue;
-    if (colorValue.toHexString) return colorValue.toHexString();
-    if (colorValue.toRgbString) return colorValue.toRgbString();
-    return colorValue;
-  }, []);
-
   const handleConfirm = useCallback(async () => {
     try {
-      const values = await form.validateFields();
-
-      ['textColor', 'backgroundColor', 'borderColor'].forEach((key) => {
-        if (values[key]) {
-          values[key] = processColorValue(values[key]);
-        }
-      });
+      const values = normalizeColorFields(
+        (await form.validateFields()) as NodeConfigFormValues,
+        ['textColor', 'backgroundColor', 'borderColor'],
+      );
 
       onConfirm?.(values);
     } catch (error) {
       console.error('Form validation failed:', error);
     }
-  }, [form, onConfirm, processColorValue]);
+  }, [form, onConfirm]);
 
   const handleCancel = () => {
     if (onCancel) {
