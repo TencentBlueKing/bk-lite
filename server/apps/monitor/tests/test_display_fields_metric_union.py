@@ -153,8 +153,9 @@ def test_validate_display_fields_rejects_field_column_without_field(monkeypatch)
 
 def test_query_metric_field_values_reads_vm_label(monkeypatch):
     class FakeVM:
-        def query(self, query):
+        def query(self, query, step=None):
             assert query == 'node_info{instance_id=~"i1|i2"}'
+            assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "i1", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
                 {"metric": {"instance_id": "i2"}, "value": [0, "1"]},
@@ -181,8 +182,9 @@ def test_query_metric_field_values_reads_vm_label(monkeypatch):
 
 def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
     class FakeVM:
-        def query(self, query):
+        def query(self, query, step=None):
             assert query == 'node_info{instance_id=~"i1"}'
+            assert step is None
             return {"data": {"result": [
                 {"metric": {"instance_id": "('i1',)", "collector_ip": "10.0.0.1"}, "value": [0, "1"]},
             ]}}
@@ -205,8 +207,9 @@ def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
 
 def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(monkeypatch):
     class FakeVM:
-        def query(self, query):
+        def query(self, query, step=None):
             assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}'
+            assert step is None
             return {"data": {"result": [
                 {
                     "metric": {
@@ -231,6 +234,29 @@ def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(m
     )
 
     assert result == {"('i1',)": "remote-host"}
+
+
+def test_query_metric_values_uses_default_query_step(monkeypatch):
+    class FakeVM:
+        def query(self, query, step=None):
+            assert query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}'
+            assert step is None
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1"}, "value": [0, "8.52"]},
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        query='host_cpu_usage_percent_gauge{instance_type="os", __$labels__}',
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+    )
+
+    assert result == {"('i1',)": "8.52"}
 
 
 def test_collect_vm_field_names_queries_vm_without_dimensions(monkeypatch):
@@ -313,6 +339,68 @@ def test_get_monitor_instance_queries_display_fields_metrics(mock_vm):
     Metrics.convert_instance_list_metrics(obj.id, res["results"])
     converted = res["results"][0]["P::cpu_usage_total"]
     assert isinstance(converted, dict) and float(converted["value"]) == 42.0
+
+
+@pytest.mark.django_db
+@patch("apps.monitor.services.monitor_object.VictoriaMetricsAPI")
+def test_get_monitor_instance_fills_metric_and_field_columns_with_metric_query(mock_vm):
+    # 回归远程主机采集:展示名(cpu_usage_total)与 VM 真实指标(host_cpu_usage_percent_gauge)不同,
+    # 列表页必须用 metric.query 同时回填指标值列和字段展示列,且展示列不主动放大查询窗口。
+    def fake_query(query, **kwargs):
+        if "any({instance_type='UTRemoteHost'})" in query:
+            assert kwargs.get("step") == "20m"
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "agent_id": "stargazer-i1"}, "value": [100, "1"]},
+            ]}}
+        if query == 'host_cpu_usage_percent_gauge{instance_type="os", instance_id=~"i1"}':
+            assert "step" not in kwargs
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1"}, "value": [100, "8.52"]},
+            ]}}
+        if query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}':
+            assert "step" not in kwargs
+            return {"data": {"result": [
+                {"metric": {"instance_id": "i1", "host": "remote-host"}, "value": [100, "1.64"]},
+            ]}}
+        raise AssertionError(f"unexpected VM query: {query}")
+
+    mock_vm.return_value.query.side_effect = fake_query
+    obj = MonitorObject.objects.create(
+        name="UTRemoteHost", level="base",
+        default_metric="any({instance_type='UTRemoteHost'}) by (instance_id)",
+        instance_id_keys=["instance_id"], supplementary_indicators=[],
+        display_fields=[
+            {"name": "CPU", "sort_order": 0,
+             "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_total"}]},
+            {"name": "Host", "type": "field", "sort_order": 1,
+             "metrics": [{"plugin": "Host Remote", "metric": "cpu_usage_system_total", "field": "host"}]},
+        ],
+    )
+    plugin = MonitorPlugin.objects.create(name="Host Remote")
+    group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="G-Host Remote")
+    Metric.objects.create(
+        monitor_object=obj, monitor_plugin=plugin, metric_group=group,
+        name="cpu_usage_total", display_name="CPU",
+        query='host_cpu_usage_percent_gauge{instance_type="os", __$labels__}',
+        unit="percent", data_type="Number", instance_id_keys=["instance_id"],
+    )
+    Metric.objects.create(
+        monitor_object=obj, monitor_plugin=plugin, metric_group=group,
+        name="cpu_usage_system_total", display_name="CPU System",
+        query='cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
+        unit="percent", data_type="Number", instance_id_keys=["instance_id"],
+    )
+    inst = MonitorInstance.objects.create(id="('i1',)", name="remote-host", monitor_object=obj)
+    _mk_collect_config("cc-i1-host-remote", inst, plugin)
+
+    res = MonitorObjectService.get_monitor_instance(
+        obj.id, page=1, page_size=10, name=None,
+        qs=MonitorInstance.objects.all(), add_metrics=True,
+    )
+
+    row = res["results"][0]
+    assert row["Host Remote::cpu_usage_total"] == "8.52"
+    assert row["field::Host Remote::cpu_usage_system_total::host"] == "remote-host"
 
 
 @pytest.mark.django_db
