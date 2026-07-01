@@ -89,6 +89,7 @@ export const useFirewallConfig = () => {
       'Firewall Kerio Control SNMP': 'snmp_kerio',
       'Firewall Clavister SNMP': 'snmp_clavister',
       'Firewall Blockbit SNMP': 'snmp_blockbit',
+      'Firewall Barracuda SNMP': 'snmp_barracuda',
       'Firewall Zorp SNMP': 'snmp_zorp',
       'Firewall WatchGuard SNMP': 'snmp_watchguard',
       'Firewall pfSense SNMP': 'snmp_pfsense',

@@ -1,0 +1,53 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_vsolution",
+  "plugin": "Access V-SOL SNMP",
+  "plugin_desc": "V-SOL / V-SOLUTION V1600D EPON OLT SNMP collection. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects confirmed V1600D private scalar health metrics for CPU utilization, memory utilization and system temperature. PON, ONU, optical transceiver and alarm tables are not promoted to device-health metrics in this child template; power-module table state is left out until a reliable normal-state enum is verified.",
+  "status_query": "any({instance_type='access', collect_type='snmp_vsolution'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Device CPU utilization from V1600D cpuLoad, reported directly as a percentage."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Device memory utilization from V1600D memoryLoad, reported directly as a percentage."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "System Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "System temperature from V1600D sysTemperature, reported directly in degrees Celsius."
+    }
+  ]
+}

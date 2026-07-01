@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_deva",
+  "plugin": "NetworkService DEVA Broadcast SNMP",
+  "plugin_desc": "DEVA Broadcast receiver SNMP collection for devices under DEVA PEN 35833. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts expose broadcast receiver alarms and RF/audio service indicators, but do not prove stable shared CPU, memory, temperature, fan or power health scalars, so those business indicators are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_deva'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

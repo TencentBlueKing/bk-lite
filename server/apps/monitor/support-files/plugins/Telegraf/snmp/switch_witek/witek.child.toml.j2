@@ -1,0 +1,126 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_witek"
+        config_type = "witek"
+        brand = "witek"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Wi-Tek CPU usage (SYSINFO-MIB taskInformation.total, direct percent scalar) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.4.2.4"
+        name = "usage"
+    # ---- Wi-Tek memory (SYSINFO-MIB memoryInformation free/allocated bytes) ----
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.4.1.1"
+        name = "free"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.4.1.4"
+        name = "used"
+    # ---- Wi-Tek system temperature (IMIMGMT-MIB solarCfg.systemTemperature, Celsius scalar) ----
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.5.5.5"
+        name = "celsius"
+    # ---- Wi-Tek fan states (IMIMGMT-MIB AC/system fan status, 1=open is normal) ----
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.5.5.8"
+        name = "ac_state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.5.5.9"
+        name = "state"
+    # ---- Wi-Tek power states (IMIMGMT-MIB AC-DC and battery status, 1=normal) ----
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.5.5.22"
+        name = "ac_dc_state"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.12284.5.5.23"
+        name = "state"
+
+# ---- 风扇状态归一：open(1)→1(正常)，close(0)/未知→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "ac_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 电源状态归一：normal(1)→1(正常)，fault(0)/未知→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "ac_dc_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 工业温度/电源与 SFP DDM 对象多为 DisplayString 或端口级诊断，暂不作为设备级健康指标采集。----

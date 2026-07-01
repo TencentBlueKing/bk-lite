@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Smartoptics">
+  <rect width="1024" height="1024" rx="112" fill="#0B1220"/>
+  <path d="M210 316h604" stroke="#E5F2FF" stroke-width="56" stroke-linecap="round"/>
+  <path d="M210 512h604" stroke="#38BDF8" stroke-width="56" stroke-linecap="round"/>
+  <path d="M210 708h604" stroke="#E5F2FF" stroke-width="56" stroke-linecap="round"/>
+  <circle cx="512" cy="512" r="126" fill="none" stroke="#22C55E" stroke-width="52"/>
+  <path d="M428 512h168" stroke="#F8FAFC" stroke-width="48" stroke-linecap="round"/>
+</svg>

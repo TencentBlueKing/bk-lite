@@ -1,0 +1,117 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_witek",
+  "plugin": "Switch Wi-Tek SNMP",
+  "plugin_desc": "Wi-Tek managed switch-specific SNMP collection (enterprise PEN 12284). Beyond the shared Switch SNMP floor, it collects Wi-Tek private OIDs from SYSINFO-MIB and IMIMGMT-MIB for device health including control-plane CPU utilization, memory used/free/usage, system temperature, fan state and power-supply state. CPU is read from taskInformation.total as a direct percentage. Memory usage is derived from allocated and free bytes. Temperature is read as degrees Celsius from the solarCfg system temperature scalar. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. The shared Switch floor supplies uptime, IF-MIB interface metrics, 64-bit ifHCInOctets/ifHCOutOctets and aggregate traffic roll-ups.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_witek'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-witek_witek",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_used",
+    "device_memory_free",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "max(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Wi-Tek switch control-plane CPU utilization from SYSINFO-MIB taskInformation.total as a direct 0-100 percentage. Sustained high CPU usage can indicate management-plane overload or abnormal traffic pressure."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_used",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Used",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports allocated memory bytes from Wi-Tek SYSINFO-MIB memoryInformation.memAllocBytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_free",
+      "query": "sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports free memory bytes from Wi-Tek SYSINFO-MIB memoryInformation.memFreeBytes."
+    },
+    {
+      "metric_group": "Memory",
+      "name": "device_memory_usage",
+      "query": "sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) / (sum(device_memory_used{instance_type='switch', __$labels__}) by (instance_id) + sum(device_memory_free{instance_type='switch', __$labels__}) by (instance_id)) * 100",
+      "display_name": "Memory Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric derives Wi-Tek memory utilization from allocated and free memory bytes. High memory usage may indicate oversized forwarding tables, memory leaks or insufficient capacity."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Wi-Tek system temperature in degrees Celsius from IMIMGMT-MIB solarCfg.systemTemperature. High temperature indicates thermal risk and can precede instability or hardware damage."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Wi-Tek fan health normalized to 1 = healthy and 2 = fault. A value greater than 1 indicates fan failure or an unknown fan condition requiring inspection."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "PSU State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports Wi-Tek power-supply health normalized to 1 = healthy and 2 = fault. A value greater than 1 indicates abnormal AC-DC or battery power state."
+    }
+  ]
+}

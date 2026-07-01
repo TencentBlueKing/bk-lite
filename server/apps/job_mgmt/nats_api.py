@@ -14,6 +14,7 @@ from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.tasks import distribute_files_task, execute_script_task, finalize_cancelling_execution
+from apps.job_mgmt.utils.team_authz import is_team_authorized, normalize_team
 from apps.node_mgmt.utils.s3 import delete_s3_file
 from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callback
 
@@ -560,18 +561,49 @@ def job_status_batch_query(data: dict):
     return {"result": True, "data": results}
 
 
+def _build_job_detail_payload(execution, *, include_sensitive: bool):
+    payload = {
+        "task_id": execution.id,
+        "name": execution.name,
+        "job_type": execution.job_type,
+        "status": execution.status,
+        "timeout": execution.timeout,
+        "started_at": execution.started_at.isoformat() if execution.started_at else None,
+        "finished_at": execution.finished_at.isoformat() if execution.finished_at else None,
+        "total_count": execution.total_count,
+        "success_count": execution.success_count,
+        "failed_count": execution.failed_count,
+    }
+    if not include_sensitive:
+        payload.update({"detail_limited": True, "requires_team": True})
+        return payload
+    payload.update(
+        {
+            "detail_limited": False,
+            "requires_team": False,
+            "script_type": execution.script_type,
+            "script_content": execution.script_content,
+            "target_list": execution.target_list,
+            "execution_results": execution.execution_results,
+        }
+    )
+    return payload
+
+
 @nats_client.register
 def job_detail_query(data: dict):
     """
     查询单个作业详情（NATS 开放接口）
 
     Args:
-        data: {"task_id": 123}
+        data: {"task_id": 123, "team": [1]}。兼容旧调用 {"task_id": 123}，
+              但旧调用只返回不含脚本明文/执行结果的安全元数据。
 
     Returns:
         {"result": True, "data": {...}} 或 {"result": False, "message": "..."}
     """
     task_id = data.get("task_id")
+    team = normalize_team(data.get("team", []))
     if not task_id:
         return {"result": False, "message": "task_id 不能为空"}
 
@@ -580,25 +612,13 @@ def job_detail_query(data: dict):
     except JobExecution.DoesNotExist:
         return {"result": False, "message": "任务不存在"}
 
-    return {
-        "result": True,
-        "data": {
-            "task_id": execution.id,
-            "name": execution.name,
-            "job_type": execution.job_type,
-            "status": execution.status,
-            "script_type": execution.script_type,
-            "script_content": execution.script_content,
-            "timeout": execution.timeout,
-            "started_at": execution.started_at.isoformat() if execution.started_at else None,
-            "finished_at": execution.finished_at.isoformat() if execution.finished_at else None,
-            "total_count": execution.total_count,
-            "success_count": execution.success_count,
-            "failed_count": execution.failed_count,
-            "target_list": execution.target_list,
-            "execution_results": execution.execution_results,
-        },
-    }
+    if not team:
+        return {"result": True, "data": _build_job_detail_payload(execution, include_sensitive=False)}
+
+    if not is_team_authorized(execution.team, team):
+        return {"result": False, "message": "无权查询该任务"}
+
+    return {"result": True, "data": _build_job_detail_payload(execution, include_sensitive=True)}
 
 
 @nats_client.register

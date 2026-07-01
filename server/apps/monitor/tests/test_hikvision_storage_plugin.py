@@ -22,7 +22,22 @@ CPU_OID = "1.3.6.1.4.1.99999.4.1.7"
 MEMORY_OID = "1.3.6.1.4.1.99999.4.1.8"
 TEMP_OID = "1.3.6.1.4.1.99999.4.1.17"
 STATE_METRICS = ("device_disk_state", "device_raid_state", "device_psu_state", "device_fan_state")
-HC_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
+EXPECTED_VENDOR_METRICS = {
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_disk_state",
+    "device_raid_state",
+    "device_psu_state",
+    "device_fan_state",
+}
+BASELINE_METRICS = {
+    "snmp_uptime",
+    "interface_ifHCInOctets",
+    "interface_ifHCOutOctets",
+    "device_total_incoming_traffic",
+    "device_total_outgoing_traffic",
+}
 
 
 def _read_json(path):
@@ -81,6 +96,19 @@ def test_config_type_consistent(ui, toml_text):
 @pytest.mark.unit
 def test_ui_is_pure_snmp_form(ui):
     assert not any(f["name"] == "brand" for f in ui["form_fields"])
+
+
+@pytest.mark.unit
+def test_snmpv3_passwords_use_env_sidecar(ui, toml_text):
+    field_names = {field["name"] for field in ui["form_fields"]}
+    assert "ENV_AUTH_PASSWORD" in field_names
+    assert "ENV_PRIV_PASSWORD" in field_names
+    assert "auth_password" not in field_names
+    assert "priv_password" not in field_names
+    assert 'auth_password = "${AUTH_PASSWORD__{{ config_id }}}"' in toml_text
+    assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
+    assert "{{ auth_password }}" not in toml_text
+    assert "{{ priv_password }}" not in toml_text
 
 
 @pytest.mark.unit
@@ -143,14 +171,10 @@ def test_non_health_inventory_and_io_metrics_not_modelled(metrics):
 
 
 @pytest.mark.unit
-def test_hc_metrics_declared_as_byteps_rate_with_ifdescr(metrics):
-    by = {m["name"]: m for m in metrics["metrics"]}
-    for name in HC_METRICS:
-        metric = by[name]
-        assert metric["unit"] == "byteps"
-        assert metric["metric_group"] == "Traffic"
-        assert metric["query"].startswith("rate(")
-        assert [d["name"] for d in metric.get("dimensions", [])] == ["ifDescr"]
+def test_metrics_json_declares_only_vendor_delta_children(metrics):
+    names = {m["name"] for m in metrics["metrics"]}
+    assert names == EXPECTED_VENDOR_METRICS
+    assert not names.intersection(BASELINE_METRICS)
 
 
 @pytest.mark.unit

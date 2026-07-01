@@ -59,11 +59,26 @@ export const useTransmissionConfig = () => {
     collectTypes: {
       'Transmission Ciena SNMP': 'snmp_ciena',
       'Transmission SAF Tehnika SNMP': 'snmp_saftehnika',
+      'Transmission MRV SNMP': 'snmp_mrv',
+      'Transmission Marconi SNMP': 'snmp_marconi',
+      'Transmission Alcoma SNMP': 'snmp_alcoma',
+      'Transmission PacketLight SNMP': 'snmp_packetlight',
       'Transmission Pan Dacom SNMP': 'snmp_pandacom',
       'Transmission Tachyon SNMP': 'snmp_tachyon',
       'Transmission XKL SNMP': 'snmp_xkl',
+      'Transmission Siklu SNMP': 'snmp_siklu',
+      'Transmission 4RF Aprisa SNMP': 'snmp_4rf',
       'Transmission Viavi SNMP': 'snmp_viavi',
-      'Transmission Sycamore SNMP': 'snmp_sycamore'
+      'Transmission Sycamore SNMP': 'snmp_sycamore',
+      'Transmission Ekinops SNMP': 'snmp_ekinops',
+      'Transmission Infinera SNMP': 'snmp_infinera',
+      'Transmission BridgeWave SNMP': 'snmp_bridgewave',
+      'Transmission Huber+Suhner Cubo SNMP': 'snmp_hubersuhner',
+      'Transmission Fibrolan SNMP': 'snmp_fibrolan',
+      'Transmission Exalt SNMP': 'snmp_exalt',
+      'Transmission Smartoptics SNMP': 'snmp_smartoptics',
+      'Transmission RACOM SNMP': 'snmp_racom',
+      'Transmission SIAE Microelettronica SNMP': 'snmp_siae'
     }
   };
 };

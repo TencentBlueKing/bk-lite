@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Panduit">
+  <rect width="1024" height="1024" rx="160" fill="#F8FAFC"/>
+  <path d="M232 232h560c36 0 64 28 64 64v432c0 36-28 64-64 64H232c-36 0-64-28-64-64V296c0-36 28-64 64-64Z" fill="#FFFFFF" stroke="#0F766E" stroke-width="40"/>
+  <path d="M264 348h496M264 484h496M264 620h496" stroke="#0F766E" stroke-width="34" stroke-linecap="round"/>
+  <circle cx="336" cy="348" r="24" fill="#16A34A"/>
+  <circle cx="336" cy="484" r="24" fill="#16A34A"/>
+  <circle cx="336" cy="620" r="24" fill="#16A34A"/>
+  <path d="M632 316h96v392h-96z" fill="#CCFBF1" stroke="#0F766E" stroke-width="28" stroke-linejoin="round"/>
+  <path d="M664 396h32M664 484h32M664 572h32M664 660h32" stroke="#0F766E" stroke-width="22" stroke-linecap="round"/>
+</svg>

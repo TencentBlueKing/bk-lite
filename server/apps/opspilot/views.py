@@ -144,7 +144,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
     if not token:
         return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
-    user = UserAPISecret.objects.filter(api_secret=token).first()
+    user = UserAPISecret.find_by_api_secret(token)
     if not user:
         if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}

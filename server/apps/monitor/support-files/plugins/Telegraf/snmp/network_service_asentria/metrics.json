@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_asentria",
+  "plugin": "NetworkService Asentria SiteBoss SNMP",
+  "plugin_desc": "Asentria SiteBoss remote-site monitoring SNMP collection for devices under Asentria PEN 3052. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. SiteBoss EventSensor points are configurable per installation and need row-level interpretation before temperature, humidity, contact, relay or power-output points can be normalized, so they are not promoted into shared device-health metrics in this pass.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_asentria'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}
