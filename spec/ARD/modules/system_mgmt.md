@@ -15,6 +15,7 @@
 | Menu / LoginModule / SystemSettings | `models/*.py` | 菜单、登录提供方、系统配置 |
 | NetworkWhiteList | `models/network_white_list.py` | SSRF 内网白名单（CIDR、备注、启停），用于放行特定私网网段 |
 | SensitiveInfoAuthorization | `models/sensitive_info_authorization.py` | 敏感信息脱敏授权白名单（企业版）：`username`+`domain` 唯一，`sensitive_types`（JSON，限 email/phone）记录被授权可见的敏感字段类型 |
+| NetworkWhiteList | `models/network_white_list.py:7` | 网络白名单，CIDR 校验后供权限接口维护并触发缓存失效 |
 | OperationLog / UserLoginLog / ErrorLog | `models/*.py` | 审计追踪 |
 
 ## 3. 接口【已实现/已存在】
@@ -41,10 +42,14 @@ DRF Router 注册 13 个路由组：`group`/`user`/`role`/`channel`/`group_data_
 - domain 多租户隔离在所有 ViewSet 是否强制【待确认】。
 - 外部登录模块（LDAP/WeChat/BK）配置与回退【推断，需确认覆盖范围】。
 
+## 2026-07-01 Code-ARD 校准
+- `[system_mgmt#20260701-022]` 补录 NetworkWhiteList 模型、路由、CIDR 校验、权限动作与缓存失效；Router 路由组从 12 个更新为 13 个。
+- `[system_mgmt#20260701-023]` 认证/权限 NATS API 与 permission cache TTL 证据行号按当前位置更新。
+
 ## 8. 证据来源
-- 路由：`server/apps/system_mgmt/urls.py:19-39`（含 `app` 路由 `urls.py:26`、`network_white_list` 路由 `urls.py:32`、企业版合并 `urls.py:35-39`）。
-- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/network_white_list.py:7-20`、`models/sensitive_info_authorization.py:33-42`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`。
-- 认证/权限：`server/apps/system_mgmt/nats_api.py:1143`（`login`）、`nats_api.py:1551`（`bk_lite_user_login`）、`nats_api.py:1443`（`verify_otp_login`）、`nats_api.py:1249`（`reset_pwd`）；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25`。
+- 路由：`server/apps/system_mgmt/urls.py:11,19-39`（含 `network_white_list` 路由 `urls.py:32`、`app` 路由 `urls.py:25-26`、企业版合并 `urls.py:33-39`）。
+- 模型：`server/apps/system_mgmt/models/user.py:7-62`（User 字段与 `save()` 重写）、`models/sensitive_info_authorization.py:33-42`、`models/network_white_list.py:7-20`、`models/channel.py:7-14`（ChannelChoices 7 类）、`models/role.py`、`models/group_data_rule.py`。
+- 认证/权限：`server/apps/system_mgmt/nats_api.py:498,570,624,1143,1264,1367,1443,1551,1575,1683`（认证/权限相关 NATS API 当前位置，含 `login`/`bk_lite_user_login`/`verify_otp_login`/`reset_pwd` 等）；缓存 TTL `server/apps/core/utils/permission_cache.py:22,25,27,30`。
+- 网络白名单：`viewset/network_white_list_viewset.py:10,24,10-55`、`serializers/network_white_list_serializer.py:11,11-35`、`utils/network_whitelist_cache.py:9-32`。
 - Celery 任务：`server/apps/system_mgmt/tasks.py:14`（write_error_log_async）、`tasks.py:42`（sync_user_and_group_by_login_module）、`tasks.py:251`（check_password_expiry_and_notify）。
-- 白名单与缓存：`server/apps/system_mgmt/{viewset/network_white_list_viewset.py:10-55, serializers/network_white_list_serializer.py:11-35, utils/network_whitelist_cache.py:9-32}`。
 - 其他：`server/apps/system_mgmt/{services/role_manage.py,utils/*}`。
