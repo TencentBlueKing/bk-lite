@@ -583,8 +583,6 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /superiority|超数/i, label: 'Superiority', icon: 'mm-superiority_superiority' },
   { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
   { match: /harbour|港湾/i, label: 'Harbour Networks', icon: 'mm-harbour_harbour' },
-  { match: /\bpure\b|pure\s*storage|flasharray/i, label: 'Pure Storage', icon: 'mm-purestorage_purestorage' },
-  { match: /infinidat|infinibox/i, label: 'INFINIDAT', icon: 'mm-infinidat_infinidat' },
   { match: /aethra|dolcevita/i, label: 'Aethra', icon: 'mm-aethra_aethra' },
   { match: /relianoid|\bzva\b/i, label: 'RELIANOID', icon: 'mm-relianoid_relianoid' },
   { match: /velocloud|vmware\s*sd-?wan|\bvce\b/i, label: 'VeloCloud', icon: 'mm-velocloud_velocloud' },

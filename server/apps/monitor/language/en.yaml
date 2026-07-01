@@ -1855,123 +1855,6 @@ monitor_object_metric:
     api_volume_resp_t_w:
       name: Volume Write Response Time
       desc: Average write response time of each volume in milliseconds
-    pure_volume_count:
-      name: Number of Volumes
-      desc: Total number of volumes in the Pure Storage array
-    pure_array_read_iops:
-      name: Array Read IOPS
-      desc: Read I/O operations per second for the Pure Storage array
-    pure_array_write_iops:
-      name: Array Write IOPS
-      desc: Write I/O operations per second for the Pure Storage array
-    pure_array_read_bandwidth:
-      name: Array Read Throughput
-      desc: Read throughput for the Pure Storage array in bytes per second
-    pure_array_write_bandwidth:
-      name: Array Write Throughput
-      desc: Write throughput for the Pure Storage array in bytes per second
-    pure_array_read_latency:
-      name: Array Read Latency
-      desc: Average read latency for the Pure Storage array in milliseconds
-    pure_array_write_latency:
-      name: Array Write Latency
-      desc: Average write latency for the Pure Storage array in milliseconds
-    pure_array_queue_depth:
-      name: Array Queue Depth
-      desc: Current queue depth reported by the Pure Storage array
-    pure_array_capacity_bytes:
-      name: Array Capacity
-      desc: Total physical capacity of the Pure Storage array
-    pure_array_used_bytes:
-      name: Array Used Capacity
-      desc: Used physical capacity of the Pure Storage array
-    pure_array_volumes_bytes:
-      name: Array Volume Capacity
-      desc: Capacity consumed by volumes on the Pure Storage array
-    pure_array_snapshots_bytes:
-      name: Array Snapshot Capacity
-      desc: Capacity consumed by snapshots on the Pure Storage array
-    pure_array_shared_space_bytes:
-      name: Array Shared Space
-      desc: Shared capacity reported by the Pure Storage array
-    pure_array_data_reduction:
-      name: Array Data Reduction
-      desc: Data reduction ratio reported by the Pure Storage array
-    pure_array_total_reduction:
-      name: Array Total Reduction
-      desc: Total reduction ratio reported by the Pure Storage array
-    pure_volume_read_iops:
-      name: Volume Read IOPS
-      desc: Read I/O operations per second of each Pure Storage volume
-    pure_volume_write_iops:
-      name: Volume Write IOPS
-      desc: Write I/O operations per second of each Pure Storage volume
-    pure_volume_read_bandwidth:
-      name: Volume Read Throughput
-      desc: Read throughput of each Pure Storage volume in bytes per second
-    pure_volume_write_bandwidth:
-      name: Volume Write Throughput
-      desc: Write throughput of each Pure Storage volume in bytes per second
-    pure_volume_read_latency:
-      name: Volume Read Latency
-      desc: Average read latency of each Pure Storage volume in milliseconds
-    pure_volume_write_latency:
-      name: Volume Write Latency
-      desc: Average write latency of each Pure Storage volume in milliseconds
-    pure_volume_size_bytes:
-      name: Volume Size
-      desc: Provisioned size of each Pure Storage volume
-    pure_volume_used_bytes:
-      name: Volume Used Capacity
-      desc: Used capacity of each Pure Storage volume
-    infinibox_pool_count:
-      name: Number of Pools
-      desc: Total number of storage pools in the InfiniBox system
-    infinibox_volume_count:
-      name: Number of Volumes
-      desc: Total number of volumes in the InfiniBox system
-    infinibox_pool_physical_capacity_bytes:
-      name: Pool Physical Capacity
-      desc: Physical capacity of each InfiniBox pool
-    infinibox_pool_allocated_physical_bytes:
-      name: Pool Allocated Physical Capacity
-      desc: Allocated physical capacity of each InfiniBox pool
-    infinibox_pool_free_physical_bytes:
-      name: Pool Free Physical Capacity
-      desc: Free physical capacity of each InfiniBox pool
-    infinibox_pool_virtual_capacity_bytes:
-      name: Pool Virtual Capacity
-      desc: Virtual capacity of each InfiniBox pool
-    infinibox_pool_allocated_virtual_bytes:
-      name: Pool Allocated Virtual Capacity
-      desc: Allocated virtual capacity of each InfiniBox pool
-    infinibox_volume_read_iops:
-      name: Volume Read IOPS
-      desc: Read I/O operations per second of each InfiniBox volume
-    infinibox_volume_write_iops:
-      name: Volume Write IOPS
-      desc: Write I/O operations per second of each InfiniBox volume
-    infinibox_volume_read_bandwidth:
-      name: Volume Read Throughput
-      desc: Read throughput of each InfiniBox volume in bytes per second
-    infinibox_volume_write_bandwidth:
-      name: Volume Write Throughput
-      desc: Write throughput of each InfiniBox volume in bytes per second
-    infinibox_volume_read_latency:
-      name: Volume Read Latency
-      desc: Average read latency of each InfiniBox volume in milliseconds
-    infinibox_volume_write_latency:
-      name: Volume Write Latency
-      desc: Average write latency of each InfiniBox volume in milliseconds
-    infinibox_volume_latency:
-      name: Volume Average Latency
-      desc: Average I/O latency of each InfiniBox volume in milliseconds
-    infinibox_volume_size_bytes:
-      name: Volume Size
-      desc: Provisioned size of each InfiniBox volume
-    infinibox_volume_used_bytes:
-      name: Volume Used Capacity
-      desc: Used capacity of each InfiniBox volume
   Docker Container:
     docker_container_status:
       name: Container Status
@@ -4230,19 +4113,12 @@ monitor_object_metric_group:
     Pool IOPS: Pool IOPS
     Pool Throughput: Pool Throughput
     Pool Latency: Pool Latency
-    Pool Capacity: Pool Capacity
     Drive IOPS: Drive IOPS
     Drive Throughput: Drive Throughput
     Drive Latency: Drive Latency
-    Array IOPS: Array IOPS
-    Array Throughput: Array Throughput
-    Array Latency: Array Latency
-    Array Capacity: Array Capacity
-    Array Reduction: Array Reduction
     Volume IOPS: Volume IOPS
     Volume Throughput: Volume Throughput
     Volume Latency: Volume Latency
-    Volume Capacity: Volume Capacity
   WebLogic-JMX:
     Threadpool: Thread Pool
     Application: Application
@@ -4730,12 +4606,6 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the DeviceManager REST API to regularly
       collect performance metrics from Huawei OceanStor storage pools, drives, and
       LUN volumes, including IOPS, throughput, and response time.
-  Pure:
-    name: Pure Storage (Stargazer)
-    desc: Telegraf periodically scrapes the Stargazer collection endpoint, and Stargazer calls the Pure Storage FlashArray REST API to collect array and volume IOPS, throughput, latency, capacity, and reduction metrics.
-  InfiniBox:
-    name: InfiniBox Storage (Stargazer)
-    desc: Telegraf periodically scrapes the Stargazer collection endpoint, and Stargazer calls the InfiniBox REST API to collect pool capacity, volume capacity, and volume IOPS, throughput, and latency metrics calculated from sampled counters.
   Tencent Cloud:
     name: Tencent Cloud
     desc: Real-time collection of Tencent Cloud monitoring metrics spans dimensions
