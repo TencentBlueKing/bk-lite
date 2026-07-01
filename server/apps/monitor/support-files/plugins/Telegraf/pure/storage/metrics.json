@@ -1,0 +1,270 @@
+{
+  "plugin": "Pure",
+  "plugin_desc": "Pure Storage FlashArray monitoring plugin. Collects array and volume performance and capacity metrics via the REST API.",
+  "status_query": "any({instance_type='storage', collect_type='pure'}) by (instance_id)",
+  "node_selector": {
+    "is_container": true
+  },
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": [
+    {
+      "metric_group": "Quantity",
+      "name": "pure_volume_count_gauge",
+      "query": "pure_volume_count_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Number of Volumes",
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total number of volumes in the Pure Storage array"
+    },
+    {
+      "metric_group": "Array IOPS",
+      "name": "pure_array_read_iops_gauge",
+      "query": "pure_array_read_iops_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Read IOPS",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Read I/O operations per second for the array"
+    },
+    {
+      "metric_group": "Array IOPS",
+      "name": "pure_array_write_iops_gauge",
+      "query": "pure_array_write_iops_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Write IOPS",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Write I/O operations per second for the array"
+    },
+    {
+      "metric_group": "Array Throughput",
+      "name": "pure_array_read_bandwidth_gauge",
+      "query": "pure_array_read_bandwidth_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Read Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Read throughput for the array in bytes per second"
+    },
+    {
+      "metric_group": "Array Throughput",
+      "name": "pure_array_write_bandwidth_gauge",
+      "query": "pure_array_write_bandwidth_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Write Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Write throughput for the array in bytes per second"
+    },
+    {
+      "metric_group": "Array Latency",
+      "name": "pure_array_read_latency_gauge",
+      "query": "pure_array_read_latency_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average read latency for the array in milliseconds"
+    },
+    {
+      "metric_group": "Array Latency",
+      "name": "pure_array_write_latency_gauge",
+      "query": "pure_array_write_latency_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average write latency for the array in milliseconds"
+    },
+    {
+      "metric_group": "Array Latency",
+      "name": "pure_array_queue_depth_gauge",
+      "query": "pure_array_queue_depth_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Queue Depth",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Current queue depth reported by the array"
+    },
+    {
+      "metric_group": "Array Capacity",
+      "name": "pure_array_capacity_bytes_gauge",
+      "query": "pure_array_capacity_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total physical capacity of the array"
+    },
+    {
+      "metric_group": "Array Capacity",
+      "name": "pure_array_used_bytes_gauge",
+      "query": "pure_array_used_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Used Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used physical capacity of the array"
+    },
+    {
+      "metric_group": "Array Capacity",
+      "name": "pure_array_volumes_bytes_gauge",
+      "query": "pure_array_volumes_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Volume Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Capacity consumed by volumes on the array"
+    },
+    {
+      "metric_group": "Array Capacity",
+      "name": "pure_array_snapshots_bytes_gauge",
+      "query": "pure_array_snapshots_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Snapshot Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Capacity consumed by snapshots on the array"
+    },
+    {
+      "metric_group": "Array Capacity",
+      "name": "pure_array_shared_space_bytes_gauge",
+      "query": "pure_array_shared_space_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Shared Space",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Shared capacity reported by the array"
+    },
+    {
+      "metric_group": "Array Reduction",
+      "name": "pure_array_data_reduction_gauge",
+      "query": "pure_array_data_reduction_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Data Reduction",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Data reduction ratio reported by the array"
+    },
+    {
+      "metric_group": "Array Reduction",
+      "name": "pure_array_total_reduction_gauge",
+      "query": "pure_array_total_reduction_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Array Total Reduction",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total reduction ratio reported by the array"
+    },
+    {
+      "metric_group": "Volume IOPS",
+      "name": "pure_volume_read_iops_gauge",
+      "query": "pure_volume_read_iops_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Read IOPS",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Read I/O operations per second of each volume"
+    },
+    {
+      "metric_group": "Volume IOPS",
+      "name": "pure_volume_write_iops_gauge",
+      "query": "pure_volume_write_iops_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Write IOPS",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Write I/O operations per second of each volume"
+    },
+    {
+      "metric_group": "Volume Throughput",
+      "name": "pure_volume_read_bandwidth_gauge",
+      "query": "pure_volume_read_bandwidth_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Read Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Read throughput of each volume in bytes per second"
+    },
+    {
+      "metric_group": "Volume Throughput",
+      "name": "pure_volume_write_bandwidth_gauge",
+      "query": "pure_volume_write_bandwidth_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Write Throughput",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Write throughput of each volume in bytes per second"
+    },
+    {
+      "metric_group": "Volume Latency",
+      "name": "pure_volume_read_latency_gauge",
+      "query": "pure_volume_read_latency_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Read Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average read latency of each volume in milliseconds"
+    },
+    {
+      "metric_group": "Volume Latency",
+      "name": "pure_volume_write_latency_gauge",
+      "query": "pure_volume_write_latency_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Write Latency",
+      "data_type": "Number",
+      "unit": "ms",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Average write latency of each volume in milliseconds"
+    },
+    {
+      "metric_group": "Volume Capacity",
+      "name": "pure_volume_size_bytes_gauge",
+      "query": "pure_volume_size_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Size",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Provisioned size of each volume"
+    },
+    {
+      "metric_group": "Volume Capacity",
+      "name": "pure_volume_used_bytes_gauge",
+      "query": "pure_volume_used_bytes_gauge{resource_type=\"pure\", __$labels__}",
+      "display_name": "Volume Used Capacity",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "volume", "description": "Volume"}],
+      "instance_id_keys": ["instance_id"],
+      "description": "Used capacity of each volume"
+    }
+  ]
+}

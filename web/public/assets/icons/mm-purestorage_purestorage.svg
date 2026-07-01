@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Pure Storage logo">
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="#ffffff"/>
+  <path d="M21 36h18l12 16-12 16H21l12-16-12-16Z" fill="#ff5a1f"/>
+  <path d="M41 36h18l12 16-12 16H41l12-16-12-16Z" fill="#ff5a1f"/>
+  <text x="60" y="89" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="19" font-weight="800" fill="#111111">PURE</text>
+  <text x="60" y="104" text-anchor="middle" font-family="Arial, Helvetica, sans-serif" font-size="12" font-weight="500" fill="#404040" letter-spacing="1">STORAGE</text>
+</svg>

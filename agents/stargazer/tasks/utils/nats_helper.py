@@ -560,6 +560,16 @@ def _decode_prometheus_value(raw_value: str) -> str:
     return decoded.replace("\n", " ").strip()
 
 
+def _clean_common_tag_value(value) -> str:
+    return " ".join(
+        str(value)
+        .replace("\r", " ")
+        .replace("\n", " ")
+        .replace("\t", " ")
+        .split()
+    )
+
+
 def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
     """
     构建通用的 tags（从 API 传递的参数中获取）
@@ -596,4 +606,4 @@ def _build_common_tags(params: Dict[str, Any]) -> Dict[str, str]:
         "config_type": api_tags.get("config_type") or "auto",
     }
 
-    return {key: str(value) for key, value in tags.items() if value}
+    return {key: _clean_common_tag_value(value) for key, value in tags.items() if value}
