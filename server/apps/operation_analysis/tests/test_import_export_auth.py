@@ -41,7 +41,7 @@ def _build_dashboard_yaml(name: str) -> str:
     return yaml.safe_dump(
         {
             "meta": {
-                "schema_version": "1.0.0",
+                "schema_version": "1.1.0",
                 "object_counts": {
                     "dashboards": 1,
                     "topologies": 0,
@@ -548,9 +548,7 @@ def test_get_existing_objects_batch_issues_single_query_for_multiple_dashboards(
         result = ImportExportAuthorizationService.get_existing_objects_batch(ObjectType.DASHBOARD, items)
 
     # 只调用了一次 filter（批量 name__in=...），而非三次逐 item filter
-    assert mock_filter.call_count == 1, (
-        f"预期批量查询只调用 1 次 filter，实际调用了 {mock_filter.call_count} 次（存在 N+1）"
-    )
+    assert mock_filter.call_count == 1, f"预期批量查询只调用 1 次 filter，实际调用了 {mock_filter.call_count} 次（存在 N+1）"
     assert result["batch-dash-a"].id == dashboard_a.id
     assert result["batch-dash-b"].id == dashboard_b.id
     assert "nonexistent-dash" not in result
@@ -569,10 +567,7 @@ def test_apply_precheck_permissions_uses_batch_lookup_not_per_item(authenticated
         authenticated_user,
     )
 
-    items = [
-        SimpleNamespace(key=f"dashboard::dash-{i}", name=f"dash-{i}")
-        for i in range(5)
-    ]
+    items = [SimpleNamespace(key=f"dashboard::dash-{i}", name=f"dash-{i}") for i in range(5)]
     doc = SimpleNamespace(
         namespaces=[],
         datasources=[],
@@ -599,6 +594,4 @@ def test_apply_precheck_permissions_uses_batch_lookup_not_per_item(authenticated
     ImportExportAuthorizationService.apply_precheck_permissions(request, doc, result, current_team=1)
 
     dashboard_calls = [t for t in batch_call_count if t == ObjectType.DASHBOARD]
-    assert len(dashboard_calls) == 1, (
-        f"预期对 DASHBOARD 批量查询 1 次，实际 {len(dashboard_calls)} 次"
-    )
+    assert len(dashboard_calls) == 1, f"预期对 DASHBOARD 批量查询 1 次，实际 {len(dashboard_calls)} 次"

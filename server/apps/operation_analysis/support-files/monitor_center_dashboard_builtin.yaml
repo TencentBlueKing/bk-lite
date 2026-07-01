@@ -1,6 +1,6 @@
 # Extracted from builtin_canvases.yaml for the built-in Operation Analysis monitor center dashboard.
 meta:
-  schema_version: 1.0.0
+  schema_version: 1.1.0
   exported_at: '2026-06-04T00:00:00+08:00'
   source:
     organization_id: 0

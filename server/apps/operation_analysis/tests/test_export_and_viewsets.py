@@ -24,14 +24,14 @@ def test_normalize_dashboard_returns_list():
 
 def test_normalize_topology_fills_keys():
     out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.TOPOLOGY)
-    assert out == {"nodes": [], "edges": [], "filters": [], "viewport": {}, "presentation": {}}
+    assert out == {"nodes": [], "edges": [], "filters": []}
     out2 = vs.normalize_canvas_view_sets_for_storage("bad", ObjectType.TOPOLOGY)
-    assert out2 == {"nodes": [], "edges": [], "filters": [], "viewport": {}, "presentation": {}}
+    assert out2 == {"nodes": [], "edges": [], "filters": []}
 
 
-def test_normalize_topology_keeps_presentation():
+def test_normalize_topology_drops_presentation_fields():
     view_sets = {
-        "nodes": [],
+        "nodes": [{"id": "n1"}],
         "edges": [],
         "filters": [],
         "viewport": {"width": 1920, "height": 1080, "letterboxColor": "#000000"},
@@ -46,7 +46,49 @@ def test_normalize_topology_keeps_presentation():
 
     out = vs.normalize_canvas_view_sets_for_storage(view_sets, ObjectType.TOPOLOGY)
 
-    assert out["presentation"] == view_sets["presentation"]
+    assert out == {"nodes": [{"id": "n1"}], "edges": [], "filters": []}
+
+
+def test_normalize_screen_requires_complete_contract():
+    with pytest.raises(ValueError, match="view_sets.viewport"):
+        vs.normalize_canvas_view_sets_for_storage({}, ObjectType.SCREEN)
+
+
+def test_normalize_screen_keeps_valid_view_sets_without_ui_defaults():
+    out = vs.normalize_canvas_view_sets_for_storage(
+        {
+            "viewport": {"width": 1920, "height": 1080},
+            "items": [],
+            "decorations": {},
+        },
+        ObjectType.SCREEN,
+    )
+
+    assert out == {
+        "viewport": {"width": 1920, "height": 1080},
+        "items": [],
+        "decorations": {},
+    }
+
+
+def test_normalize_screen_keeps_unified_filters():
+    out = vs.normalize_canvas_view_sets_for_storage(
+        {
+            "viewport": {"width": 1920, "height": 1080},
+            "items": [],
+            "decorations": {},
+            "filters": [{"id": "time", "name": "时间范围"}],
+        },
+        ObjectType.SCREEN,
+    )
+
+    assert out["filters"] == [{"id": "time", "name": "时间范围"}]
+
+
+def test_normalize_report_fills_sections():
+    out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.REPORT)
+
+    assert out == {"time_range": None, "sections": []}
 
 
 def test_normalize_architecture_fills_keys():
@@ -62,8 +104,6 @@ def test_normalize_for_yaml_dashboard_and_other():
         "nodes": [],
         "edges": [],
         "filters": [],
-        "viewport": {},
-        "presentation": {},
     }
 
 
@@ -83,10 +123,10 @@ def test_rewrite_datasource_refs_in_topology():
     out = vs.rewrite_canvas_view_sets_refs_for_storage(view_sets, ObjectType.TOPOLOGY, {3: "ds::k"})
     assert out["nodes"][0]["valueConfig"]["dataSource"] == "ds::k"
     assert out["filters"] == [{"x": 1}]
-    assert out["viewport"] == {"width": 1920, "height": 1080, "letterboxColor": "#000000"}
+    assert "viewport" not in out
 
 
-def test_rewrite_topology_refs_keeps_presentation():
+def test_rewrite_topology_refs_drops_presentation():
     view_sets = {
         "nodes": [{"valueConfig": {"dataSource": 3}}],
         "edges": [],
@@ -107,7 +147,28 @@ def test_rewrite_topology_refs_keeps_presentation():
     )
 
     assert out["nodes"][0]["valueConfig"]["dataSource"] == "监控中心总览统计::monitor/get_monitor_statistics"
-    assert out["presentation"] == view_sets["presentation"]
+    assert "presentation" not in out
+
+
+def test_rewrite_datasource_refs_in_screen_items():
+    view_sets = {
+        "viewport": {"width": 1920, "height": 1080, "theme": "screen-dark"},
+        "items": [{"valueConfig": {"dataSource": 8, "chartType": "line"}}],
+        "decorations": {"title": "大屏"},
+    }
+    out = vs.rewrite_canvas_view_sets_refs_for_storage(view_sets, ObjectType.SCREEN, {8: "ds::screen"})
+
+    assert out["items"][0]["valueConfig"]["dataSource"] == "ds::screen"
+
+
+def test_rewrite_datasource_refs_in_report_sections():
+    view_sets = {
+        "time_range": None,
+        "sections": [{"valueConfig": {"dataSource": 6, "chartType": "table"}}],
+    }
+    out = vs.rewrite_canvas_view_sets_refs_for_storage(view_sets, ObjectType.REPORT, {6: "ds::report"})
+
+    assert out["sections"][0]["valueConfig"]["dataSource"] == "ds::report"
 
 
 def test_rewrite_datasource_refs_for_yaml_architecture():
@@ -150,6 +211,25 @@ def test_extract_canvas_dependencies_collects_datasource_ids():
     ]
     ds_ids, ns_ids = ExportService.extract_canvas_dependencies(view_sets, ObjectType.DASHBOARD)
     assert ds_ids == {1, 2}
+    assert ns_ids == set()
+
+
+def test_extract_screen_dependencies_uses_value_config_contract():
+    view_sets = {
+        "viewport": {"width": 1920, "height": 1080},
+        "items": [
+            {
+                "id": "alert-kpi",
+                "type": "widget",
+                "valueConfig": {"dataSource": 8, "chartType": "single"},
+            }
+        ],
+        "decorations": {},
+    }
+
+    ds_ids, ns_ids = ExportService.extract_canvas_dependencies(view_sets, ObjectType.SCREEN)
+
+    assert ds_ids == {8}
     assert ns_ids == set()
 
 
@@ -209,3 +289,31 @@ def test_export_canvas_dashboard_with_datasource_dependency():
     # view_sets 中的 dataSource 被改写为业务键
     assert db_yaml["view_sets"][0]["valueConfig"]["dataSource"] == "ds-a::monitor/q"
     assert "ds-a::monitor/q" in db_yaml["refs"]["datasource_keys"]
+
+
+@pytest.mark.django_db
+def test_export_canvas_screen_and_report_sections():
+    from apps.operation_analysis.models.models import Report, Screen
+
+    screen = Screen.objects.create(
+        name="screen-a",
+        groups=[1],
+        created_by="s",
+        view_sets={"viewport": {"width": 1920, "height": 1080}, "items": [], "decorations": {"title": "大屏"}},
+    )
+    report = Report.objects.create(
+        name="report-a",
+        groups=[1],
+        created_by="s",
+        view_sets={"time_range": None, "sections": []},
+    )
+
+    screen_result = ExportService.export_objects(ScopeType.CANVAS.value, ObjectType.SCREEN.value, [screen.id])
+    report_result = ExportService.export_objects(ScopeType.CANVAS.value, ObjectType.REPORT.value, [report.id])
+
+    screen_yaml = yaml.safe_load(screen_result["yaml_content"])
+    report_yaml = yaml.safe_load(report_result["yaml_content"])
+    assert screen_yaml["meta"]["object_counts"]["screens"] == 1
+    assert screen_yaml["screens"][0]["key"] == "screen::screen-a"
+    assert report_yaml["meta"]["object_counts"]["reports"] == 1
+    assert report_yaml["reports"][0]["key"] == "report::report-a"

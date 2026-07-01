@@ -6,16 +6,21 @@ import {
   AppstoreOutlined,
   CheckCircleOutlined,
   ClockCircleOutlined,
+  DownOutlined,
+  DoubleRightOutlined,
   ExclamationCircleOutlined,
   ProfileOutlined,
   WarningOutlined,
 } from '@ant-design/icons';
+import { Tooltip } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import { useCollectApi } from '@/app/cmdb/api';
 
 const AppstoreIcon = AppstoreOutlined as any;
 const CheckCircleIcon = CheckCircleOutlined as any;
 const ClockCircleIcon = ClockCircleOutlined as any;
+const DownIcon = DownOutlined as any;
+const DoubleRightIcon = DoubleRightOutlined as any;
 const ExclamationCircleIcon = ExclamationCircleOutlined as any;
 const ProfileIcon = ProfileOutlined as any;
 const WarningIcon = WarningOutlined as any;
@@ -163,50 +168,65 @@ const CollectionStats: React.FC = () => {
     },
   ];
 
+  const toggleLabel = expanded
+    ? t('Collection.stats.collapse')
+    : t('Collection.stats.expand');
+
   return (
     <div className="shrink-0 px-2">
       {expanded && (
-        <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
-          {cards.map((c) => (
-            <div
-              key={c.key}
-              className="flex min-h-[78px] items-center gap-2.5 rounded-md border border-[#d6deea] bg-white px-3 py-3 transition-colors hover:border-[#c5d0df] xl:gap-3.5 xl:px-4"
-            >
+        <div className="relative pb-4">
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-3 lg:grid-cols-6">
+            {cards.map((c) => (
               <div
-                className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[16px] xl:h-10 xl:w-10 xl:text-[18px]"
-                style={{ background: c.iconBg, color: c.iconColor }}
+                key={c.key}
+                className="flex min-h-[78px] items-center gap-2.5 rounded-md border border-[#d6deea] bg-white px-3 py-3 transition-colors hover:border-[#c5d0df] xl:gap-3.5 xl:px-4"
               >
-                {c.icon}
-              </div>
-              <div className="min-w-0">
-                <div className="truncate text-xs font-medium text-[#5f6f86]">{c.label}</div>
-                <div className={`mt-1 whitespace-nowrap font-bold leading-none tracking-tight tabular-nums text-[#0f172a] ${c.valueClassName || 'text-[26px]'}`}>
-                  {c.value}
+                <div
+                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-[10px] text-[16px] xl:h-10 xl:w-10 xl:text-[18px]"
+                  style={{ background: c.iconBg, color: c.iconColor }}
+                >
+                  {c.icon}
+                </div>
+                <div className="min-w-0">
+                  <div className="truncate text-xs font-medium text-[#5f6f86]">{c.label}</div>
+                  <div className={`mt-1 whitespace-nowrap font-bold leading-none tracking-tight tabular-nums text-[#0f172a] ${c.valueClassName || 'text-[26px]'}`}>
+                    {c.value}
+                  </div>
                 </div>
               </div>
-            </div>
-          ))}
+            ))}
+          </div>
+          <Tooltip title={toggleLabel}>
+            <button
+              type="button"
+              aria-expanded={expanded}
+              aria-label={toggleLabel}
+              onClick={toggleExpanded}
+              className="absolute bottom-[-6px] left-1/2 flex h-5 w-8 -translate-x-1/2 cursor-pointer items-center justify-center rounded-md bg-white/60 text-blue-400 transition-colors hover:bg-blue-50/70 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+            >
+              <DoubleRightIcon aria-hidden="true" className="-rotate-90 text-xs" />
+            </button>
+          </Tooltip>
         </div>
       )}
-
-      <div
-        onClick={toggleExpanded}
-        className="flex cursor-pointer items-center justify-center gap-1 rounded text-xs text-slate-400 transition-colors hover:text-blue-500"
-        style={{ padding: '5px 0', marginTop: expanded ? 8 : 0 }}
-      >
-        {expanded ? t('Collection.stats.collapse') : t('Collection.stats.expand')}
-        <svg
-          width="12"
-          height="12"
-          viewBox="0 0 12 12"
-          style={{
-            transform: expanded ? 'rotate(180deg)' : 'rotate(0deg)',
-            transition: 'transform .2s',
-          }}
-        >
-          <path d="M3 4.5L6 7.5L9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" fill="none" />
-        </svg>
-      </div>
+      {!expanded && (
+        <div className="flex items-center pb-0 pt-1">
+          <div className="h-px flex-1 bg-slate-200/50" />
+          <button
+            type="button"
+            aria-expanded={expanded}
+            aria-label={toggleLabel}
+            onClick={toggleExpanded}
+            className="mx-3 flex h-6 cursor-pointer items-center gap-1.5 rounded-full border border-slate-200/60 bg-white/75 px-2.5 text-[11px] font-normal text-slate-400 transition-colors hover:border-blue-200 hover:bg-blue-50/80 hover:text-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-100"
+          >
+            <AppstoreIcon aria-hidden="true" className="text-xs" />
+            <span>{toggleLabel}</span>
+            <DownIcon aria-hidden="true" className="text-[9px]" />
+          </button>
+          <div className="h-px flex-1 bg-slate-200/50" />
+        </div>
+      )}
     </div>
   );
 };

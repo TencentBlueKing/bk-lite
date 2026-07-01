@@ -6,9 +6,9 @@ from django.db import models
 from django.db.models import JSONField
 from rest_framework.exceptions import ValidationError
 
+from apps.core.models.group_info import Groups
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.core.models.group_info import Groups
 
 
 class Directory(MaintainerInfo, TimeInfo, Groups):
@@ -100,6 +100,46 @@ class Architecture(MaintainerInfo, TimeInfo, Groups):
     class Meta:
         db_table = "operation_analysis_architecture"
         verbose_name = "架构图"
+
+    def __str__(self):
+        return self.name
+
+    def has_directory(self):
+        return self.directory is not None
+
+
+class Screen(MaintainerInfo, TimeInfo, Groups):
+    name = models.CharField(max_length=128, verbose_name="大屏名称", unique=True)
+    desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="screen", verbose_name="所属目录", null=True, blank=True)
+    other = JSONField(help_text="大屏其他配置", blank=True, null=True)
+    view_sets = JSONField(help_text="大屏视图集配置", default=dict)
+    is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
+
+    class Meta:
+        db_table = "operation_analysis_screen"
+        verbose_name = "大屏"
+
+    def __str__(self):
+        return self.name
+
+    def has_directory(self):
+        return self.directory is not None
+
+
+class Report(MaintainerInfo, TimeInfo, Groups):
+    name = models.CharField(max_length=128, verbose_name="报表名称", unique=True)
+    desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    directory = models.ForeignKey(Directory, on_delete=models.CASCADE, related_name="report", verbose_name="所属目录", null=True, blank=True)
+    other = JSONField(help_text="报表其他配置", blank=True, null=True)
+    view_sets = JSONField(help_text="报表视图集配置", default=dict)
+    is_build_in = models.BooleanField(default=False, verbose_name="是否内置")
+    build_in_key = models.CharField(max_length=255, null=True, blank=True, unique=True, verbose_name="内置标识键")
+
+    class Meta:
+        db_table = "operation_analysis_report"
+        verbose_name = "报表"
 
     def __str__(self):
         return self.name

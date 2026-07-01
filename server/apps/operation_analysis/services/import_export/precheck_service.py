@@ -12,31 +12,24 @@ YAML导入预检服务
 """
 
 import yaml
-from typing import Any
-
 from pydantic import ValidationError
 
 from apps.operation_analysis.constants.import_export import (
-    ObjectType,
+    CANVAS_TYPES,
+    IMPORT_OBJECT_LIMIT,
+    OBJECT_TYPE_TO_SECTION,
+    SENSITIVE_FIELDS,
+    SENSITIVE_PLACEHOLDER,
+    YAML_MAX_SIZE_BYTES,
     ConflictAction,
     ConflictReason,
-    YAML_MAX_SIZE_BYTES,
-    IMPORT_OBJECT_LIMIT,
-    SENSITIVE_PLACEHOLDER,
-    SENSITIVE_FIELDS,
-    OBJECT_TYPE_TO_SECTION,
-    CANVAS_TYPES,
     ImportExportErrorCode,
     ImportExportWarningCode,
+    ObjectType,
 )
-from apps.operation_analysis.schemas.import_export_schema import (
-    YAMLDocument,
-    ImportExportValidationError,
-    detect_db_id_references,
-    count_objects,
-)
-from apps.operation_analysis.models.models import Dashboard, Topology, Architecture
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
+from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
+from apps.operation_analysis.schemas.import_export_schema import ImportExportValidationError, YAMLDocument, count_objects, detect_db_id_references
 
 
 class PrecheckService:
@@ -58,6 +51,8 @@ class PrecheckService:
         ObjectType.DASHBOARD: Dashboard,
         ObjectType.TOPOLOGY: Topology,
         ObjectType.ARCHITECTURE: Architecture,
+        ObjectType.SCREEN: Screen,
+        ObjectType.REPORT: Report,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -175,13 +170,7 @@ class PrecheckService:
         actual_counts = count_objects(doc)["by_type"]
         declared_counts = doc.meta.object_counts or {}
 
-        for object_type in [
-            ObjectType.DASHBOARD.value,
-            ObjectType.TOPOLOGY.value,
-            ObjectType.ARCHITECTURE.value,
-            ObjectType.DATASOURCE.value,
-            ObjectType.NAMESPACE.value,
-        ]:
+        for object_type in [item.value for item in (*CANVAS_TYPES, ObjectType.DATASOURCE, ObjectType.NAMESPACE)]:
             section_name = OBJECT_TYPE_TO_SECTION[ObjectType(object_type)]
             declared = declared_counts.get(section_name, declared_counts.get(object_type, 0))
             actual = actual_counts.get(object_type, 0)
@@ -270,6 +259,8 @@ class PrecheckService:
             (doc.dashboards, ObjectType.DASHBOARD),
             (doc.topologies, ObjectType.TOPOLOGY),
             (doc.architectures, ObjectType.ARCHITECTURE),
+            (doc.screens, ObjectType.SCREEN),
+            (doc.reports, ObjectType.REPORT),
         ]
 
         for canvas_list, obj_type in all_canvases:
@@ -339,6 +330,8 @@ class PrecheckService:
             (doc.dashboards, ObjectType.DASHBOARD, Dashboard),
             (doc.topologies, ObjectType.TOPOLOGY, Topology),
             (doc.architectures, ObjectType.ARCHITECTURE, Architecture),
+            (doc.screens, ObjectType.SCREEN, Screen),
+            (doc.reports, ObjectType.REPORT, Report),
         ]
 
         for canvas_list, obj_type, model in canvas_checks:
@@ -370,7 +363,7 @@ class PrecheckService:
     @classmethod
     def has_canvas_objects(cls, doc: YAMLDocument) -> bool:
         """检查YAML是否包含画布对象"""
-        return bool(doc.dashboards or doc.topologies or doc.architectures)
+        return bool(doc.dashboards or doc.topologies or doc.architectures or doc.screens or doc.reports)
 
     @classmethod
     def precheck(

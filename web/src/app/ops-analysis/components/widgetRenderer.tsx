@@ -1,6 +1,9 @@
 import React from 'react';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
-import type { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
+import type {
+  ScreenRenderContext,
+  ValueConfig,
+} from '@/app/ops-analysis/types/dashBoard';
 import { getWidgetComponent } from './widgetRegistry';
 
 interface WidgetRendererProps {
@@ -11,6 +14,7 @@ interface WidgetRendererProps {
   config?: ValueConfig;
   refreshKey?: string | number;
   dataSource?: DatasourceItem;
+  screenRenderContext?: ScreenRenderContext;
   onReady?: (ready?: boolean) => void;
   onQueryChange?: (params: Record<string, any>) => void;
   fallback?: React.ReactNode;
@@ -24,6 +28,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
   config,
   refreshKey,
   dataSource,
+  screenRenderContext,
   onReady,
   onQueryChange,
   fallback = null,
@@ -41,6 +46,7 @@ const WidgetRenderer: React.FC<WidgetRendererProps> = ({
       config={config}
       refreshKey={refreshKey}
       dataSource={dataSource}
+      screenRenderContext={screenRenderContext}
       onReady={onReady}
       onQueryChange={onQueryChange}
     />
