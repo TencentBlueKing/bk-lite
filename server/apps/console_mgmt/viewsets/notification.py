@@ -8,7 +8,7 @@ from rest_framework.decorators import action
 from rest_framework.response import Response
 
 from apps.console_mgmt.models import Notification, NotificationRead
-from apps.console_mgmt.serializers import NotificationSerializer
+from apps.console_mgmt.serializers import MarkBatchAsReadSerializer, NotificationSerializer
 
 MARK_ALL_READ_BATCH_SIZE = int(os.getenv("MARK_ALL_READ_BATCH_SIZE", 2000))
 
@@ -136,28 +136,41 @@ class NotificationViewSet(viewsets.ModelViewSet):
     @action(methods=["post"], detail=False)
     def mark_batch_as_read(self, request):
         """批量标记指定通知为已读（当前用户）"""
-        ids = request.data.get("ids", [])
-        if not ids:
-            return JsonResponse({"result": False, "message": "请提供通知ID列表"}, status=status.HTTP_400_BAD_REQUEST)
+        serializer = MarkBatchAsReadSerializer(data=request.data)
+        if not serializer.is_valid():
+            return JsonResponse(
+                {"result": False, "message": "通知ID列表格式不正确", "errors": serializer.errors},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
 
+        ids = list(dict.fromkeys(serializer.validated_data["ids"]))
         user = request.user
         now = timezone.now()
+        valid_ids = set(Notification.objects.filter(id__in=ids).values_list("id", flat=True))
+        skipped_ids = [nid for nid in ids if nid not in valid_ids]
+        if not valid_ids:
+            return JsonResponse(
+                {"result": True, "message": "已标记 0 条通知为已读", "data": {"skipped_ids": skipped_ids}}
+            )
+
         existing = set(
-            NotificationRead.objects.filter(user=user, notification_id__in=ids)
+            NotificationRead.objects.filter(user=user, notification_id__in=valid_ids)
             .values_list("notification_id", flat=True)
         )
         if existing:
             NotificationRead.objects.filter(
                 user=user, notification_id__in=existing, is_read=False,
             ).update(is_read=True, read_at=now)
-        new_ids = set(ids) - existing
+        new_ids = valid_ids - existing
         if new_ids:
             NotificationRead.objects.bulk_create([
                 NotificationRead(notification_id=nid, user=user, is_read=True, read_at=now)
                 for nid in new_ids
             ], ignore_conflicts=True)
 
-        return JsonResponse({"result": True, "message": f"已标记 {len(ids)} 条通知为已读"})
+        return JsonResponse(
+            {"result": True, "message": f"已标记 {len(valid_ids)} 条通知为已读", "data": {"skipped_ids": skipped_ids}}
+        )
 
     @action(methods=["get"], detail=False)
     def unread_count(self, request):

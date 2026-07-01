@@ -46,7 +46,7 @@ def _load_policy_methods(monkeypatch, module_name="monitor_policy_preview_policy
     )
 
 
-def test_build_over_time_query_keeps_complex_expression_without_range_selector(monkeypatch):
+def test_build_two_stage_over_time_query_wraps_complex_expression(monkeypatch):
     module = _load_policy_methods(monkeypatch, "monitor_policy_preview_complex_query_builder_test_module")
 
     query = module.build_policy_query(
@@ -57,12 +57,12 @@ def test_build_over_time_query_keeps_complex_expression_without_range_selector(m
     )
 
     assert query == (
-        'any(avg_over_time(100 - cpu_usage_idle{cpu="cpu-total", '
-        'instance_type="os", instance_id=~"abc"})) by (instance_id)'
+        'avg_over_time((avg(100 - cpu_usage_idle{cpu="cpu-total", '
+        'instance_type="os", instance_id=~"abc"}) by (instance_id))[5m:10s])'
     )
 
 
-def test_build_over_time_query_adds_range_selector_for_simple_selector(monkeypatch):
+def test_build_two_stage_over_time_query_uses_subquery_resolution(monkeypatch):
     module = _load_policy_methods(monkeypatch, "monitor_policy_preview_simple_query_builder_test_module")
 
     query = module.build_policy_query(
@@ -73,12 +73,12 @@ def test_build_over_time_query_adds_range_selector_for_simple_selector(monkeypat
     )
 
     assert query == (
-        'any(avg_over_time(cpu_usage_idle{cpu="cpu-total", '
-        'instance_id=~"abc"}[5m])) by (instance_id)'
+        'avg_over_time((avg(cpu_usage_idle{cpu="cpu-total", '
+        'instance_id=~"abc"}) by (instance_id))[5m:10s])'
     )
 
 
-def test_build_normal_aggregation_query_wraps_complex_expression(monkeypatch):
+def test_build_legacy_normal_aggregation_query_maps_to_window_query(monkeypatch):
     module = _load_policy_methods(monkeypatch, "monitor_policy_preview_normal_query_builder_test_module")
 
     query = module.build_policy_query(
@@ -89,9 +89,36 @@ def test_build_normal_aggregation_query_wraps_complex_expression(monkeypatch):
     )
 
     assert query == (
-        'avg(100 - cpu_usage_idle{cpu="cpu-total", '
-        'instance_id=~"abc"}) by (instance_id)'
+        'avg_over_time((avg(100 - cpu_usage_idle{cpu="cpu-total", '
+        'instance_id=~"abc"}) by (instance_id))[5m:10s])'
     )
+
+
+def test_build_two_stage_count_over_time_query_uses_count_grouping(monkeypatch):
+    module = _load_policy_methods(monkeypatch, "monitor_policy_preview_count_query_builder_test_module")
+
+    query = module.build_policy_query(
+        "count_over_time",
+        "interface_info",
+        "5m",
+        "instance_id",
+        "count",
+    )
+
+    assert query == "count_over_time((count(interface_info) by (instance_id))[5m:10s])"
+
+
+def test_build_legacy_count_query_uses_count_grouping_and_last_window(monkeypatch):
+    module = _load_policy_methods(monkeypatch, "monitor_policy_preview_legacy_count_query_builder_test_module")
+
+    query = module.build_policy_query(
+        "count",
+        "interface_info",
+        "5m",
+        "instance_id",
+    )
+
+    assert query == "last_over_time((count(interface_info) by (instance_id))[5m:10s])"
 
 
 def _load_policy_preview_service(monkeypatch, metric, vm_response=None):
@@ -178,8 +205,8 @@ def test_policy_preview_scopes_metric_query_to_selected_instance_and_returns_que
     result = module.PolicyPreviewService(payload).preview()
 
     assert result["query"] == (
-        'any(avg_over_time(100 - cpu_usage_idle{cpu="cpu-total", '
-        'instance_type="os", instance_id=~"abc"})) by (instance_id)'
+        'avg_over_time((avg(100 - cpu_usage_idle{cpu="cpu-total", '
+        'instance_type="os", instance_id=~"abc"}) by (instance_id))[5m:10s])'
     )
     assert result["data"]["status"] == "success"
     assert result["data"]["unit"] == "percent"
@@ -244,7 +271,28 @@ def test_policy_preview_filters_empty_group_by_values(monkeypatch):
 
     result = module.PolicyPreviewService(payload).preview()
 
-    assert result["query"] == 'any(sum_over_time(cpu_usage_idle{instance_id=~"abc"}[5m])) by (instance_id)'
+    assert result["query"] == 'sum_over_time((sum(cpu_usage_idle{instance_id=~"abc"}) by (instance_id))[5m:10s])'
+
+
+def test_policy_preview_uses_selected_group_algorithm(monkeypatch):
+    metric = types.SimpleNamespace(
+        query='cpu_usage_idle{__$labels__}',
+        unit="percent",
+        instance_id_keys=["instance_id"],
+    )
+    module = _load_policy_preview_service(monkeypatch, metric)
+    payload = {
+        "query_condition": {"type": "metric", "metric_id": 10, "filter": []},
+        "period": {"type": "min", "value": 5},
+        "group_algorithm": "max",
+        "algorithm": "avg_over_time",
+        "group_by": ["instance_id"],
+        "preview": {"instance_id": "host-1", "instance_id_values": ["abc"]},
+    }
+
+    result = module.PolicyPreviewService(payload).preview()
+
+    assert result["query"] == 'avg_over_time((max(cpu_usage_idle{instance_id=~"abc"}) by (instance_id))[5m:10s])'
 
 
 def test_monitor_policy_preview_action_delegates_to_preview_service(monkeypatch):

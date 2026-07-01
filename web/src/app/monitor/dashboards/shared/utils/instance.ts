@@ -55,6 +55,45 @@ export const buildInstanceSearchTokens = (item: any, displayName: string) =>
     )
   );
 
+export interface DashboardInstanceOption {
+  label: string;
+  value: string;
+  instanceIdValues: string[];
+  searchTokens?: string[];
+  interval?: number;
+}
+
+export const buildClusterFilterOptions = (options: readonly DashboardInstanceOption[]) => {
+  const seen = new Map<string, { label: string; value: string; searchTokens: string[] }>();
+  options.forEach((item) => {
+    const cluster = item.instanceIdValues[0];
+    if (cluster && !seen.has(cluster)) {
+      seen.set(cluster, { label: cluster, value: cluster, searchTokens: [cluster] });
+    }
+  });
+  return Array.from(seen.values());
+};
+
+export const filterInstanceOptionsByCluster = (
+  options: readonly DashboardInstanceOption[],
+  cluster?: string
+) => (cluster ? options.filter((item) => item.instanceIdValues[0] === cluster) : [...options]);
+
+export const selectFirstInstanceInCluster = (
+  options: readonly DashboardInstanceOption[],
+  cluster: string
+) => options.find((item) => item.instanceIdValues[0] === cluster);
+
+export const isInstanceOptionForIdentity = (
+  option: DashboardInstanceOption,
+  instanceId: string | number,
+  idValues: readonly string[]
+) => {
+  if (option.value === String(instanceId || '')) return true;
+  if (option.instanceIdValues.length !== idValues.length) return false;
+  return option.instanceIdValues.every((value, index) => value === idValues[index]);
+};
+
 export const parseLegacyParamList = (value?: string | null) => {
   if (!value) return [] as string[];
   const normalized = value
@@ -63,4 +102,30 @@ export const parseLegacyParamList = (value?: string | null) => {
     .map((item) => item.trim())
     .filter(Boolean);
   return Array.from(new Set(normalized));
+};
+
+export const buildStorageInstanceId = (values: string[]) => {
+  const normalizedValues = values.map((value) => String(value || '').trim()).filter(Boolean);
+  if (normalizedValues.length <= 1) {
+    return normalizedValues[0] || '';
+  }
+  return `(${normalizedValues.map((value) => `'${value}'`).join(', ')})`;
+};
+
+export const resolveDashboardInstanceIdentity = (params: URLSearchParams) => {
+  const rawInstanceId = params.get('instance_id') || '';
+  const rawInstanceIdValues = params.get('instance_id_values') || '';
+  const storageInstanceId = rawInstanceId.trim() === '--' ? '' : rawInstanceId.trim();
+  const parsedLegacyInstanceIds = parseLegacyParamList(rawInstanceId);
+  const explicitValues = parseLegacyParamList(rawInstanceIdValues);
+
+  const idValues = explicitValues.length > 0
+    ? explicitValues
+    : parsedLegacyInstanceIds.length > 0
+      ? parsedLegacyInstanceIds
+      : storageInstanceId ? [storageInstanceId] : [];
+
+  const instanceId = storageInstanceId || buildStorageInstanceId(idValues);
+
+  return { instanceId, idValues };
 };

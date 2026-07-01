@@ -101,6 +101,7 @@ const ContextMenu: React.FC<ContextMenuProps> = ({
       overlay={getMenu()}
       open={visible}
       getPopupContainer={() => document.body}
+      overlayStyle={{ zIndex: 1100 }}
     >
       <div
         style={{

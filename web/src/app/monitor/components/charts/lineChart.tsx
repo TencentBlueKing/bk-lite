@@ -4,7 +4,8 @@ import React, {
   useMemo,
   useCallback,
   memo,
-  useRef
+  useRef,
+  useId
 } from 'react';
 import { Empty } from 'antd';
 import {
@@ -21,7 +22,6 @@ import {
 import CustomTooltip from './customTooltips';
 import EventBar from './eventBar';
 import {
-  generateUniqueRandomColor,
   useFormatTime,
   isStringArray
 } from '@/app/monitor/utils/common';
@@ -36,13 +36,19 @@ import {
   MetricItem,
   ThresholdField
 } from '@/app/monitor/types';
-import { LEVEL_MAP } from '@/app/monitor/constants';
+import { LEVEL_MAP, CHART_COLORS } from '@/app/monitor/constants';
 import { useLevelList } from '@/app/monitor/hooks';
 import {
   GAP_INTERVAL_AREA_STYLE,
   getChartDataWithGapBreaks,
   getRenderedGapIntervals
 } from '@/app/monitor/utils/gapIntervals';
+
+// 折线图默认视觉 token（报告风）：细线 + linear 折角 + 渐变淡填充。
+// 配色用固定分类色板 CHART_COLORS 按序列索引稳定分配（替代随机配色），
+// 与 echarts 版折线图共用同一色板，保证两类图表配色一致。
+const DEFAULT_STROKE_WIDTH = 1;
+const DEFAULT_FILL_OPACITY = 0.36;
 
 interface LineChartProps {
   data: ChartData[];
@@ -177,8 +183,8 @@ const LineChart: React.FC<LineChartProps> = memo(
     const [startX, setStartX] = useState<number | null>(null);
     const [endX, setEndX] = useState<number | null>(null);
     const [isDragging, setIsDragging] = useState(false);
-    const [colors, setColors] = useState<string[]>([]);
     const [visibleAreas, setVisibleAreas] = useState<string[]>([]);
+    const gradientId = useId().replace(/:/g, '');
     const [hoveredThreshold, setHoveredThreshold] =
       useState<ThresholdField | null>(null);
     const [mousePosition, setMousePosition] = useState({ x: 0, y: 0 });
@@ -209,15 +215,14 @@ const LineChart: React.FC<LineChartProps> = memo(
           color:
             seriesStyles[index]?.color ||
             (index === 0 && metric && typeof metric.color === 'string' ? metric.color : '') ||
-            colors[index] ||
-            generateUniqueRandomColor(),
+            CHART_COLORS[index % CHART_COLORS.length],
           strokeDasharray: seriesStyles[index]?.strokeDasharray,
-          fillOpacity: seriesStyles[index]?.fillOpacity ?? 0,
+          fillOpacity: seriesStyles[index]?.fillOpacity ?? DEFAULT_FILL_OPACITY,
           strokeOpacity: seriesStyles[index]?.strokeOpacity ?? 1,
-          strokeWidth: seriesStyles[index]?.strokeWidth ?? 2.5,
+          strokeWidth: seriesStyles[index]?.strokeWidth ?? DEFAULT_STROKE_WIDTH,
           unit: seriesStyles[index]?.unit
         })),
-      [chartAreaKeys, colors, metric, seriesStyles]
+      [chartAreaKeys, metric, seriesStyles]
     );
 
     const seriesUnits = useMemo(
@@ -539,17 +544,10 @@ const LineChart: React.FC<LineChartProps> = memo(
       return !Object.values(details || {}).every((item) => !item.length);
     }, [details]);
 
-    // 生成颜色的逻辑优化
+    // 默认展示全部序列
     useEffect(() => {
-      if (chartAreaKeys.length > colors.length) {
-        const newColors = Array.from(
-          { length: chartAreaKeys.length - colors.length },
-          () => generateUniqueRandomColor()
-        );
-        setColors((prev) => [...prev, ...newColors]);
-      }
       setVisibleAreas(chartAreaKeys);
-    }, [chartAreaKeys, colors.length]);
+    }, [chartAreaKeys]);
 
     useEffect(() => {
       if (!allowSelect) return;
@@ -628,7 +626,7 @@ const LineChart: React.FC<LineChartProps> = memo(
             x={x}
             y={y}
             textAnchor="end"
-            fontSize={14}
+            fontSize={12}
             fill="var(--color-text-3)"
             dy={4}
             dx={2}
@@ -681,7 +679,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   dataKey="time"
                   type="number"
                   domain={['dataMin', 'dataMax']}
-                  tick={{ fill: 'var(--color-text-3)', fontSize: 14 }}
+                  tick={{ fill: 'var(--color-text-3)', fontSize: 12 }}
                   tickFormatter={formatXAxisTick}
                   tickCount={xAxisTickCount}
                   minTickGap={36}
@@ -698,7 +696,7 @@ const LineChart: React.FC<LineChartProps> = memo(
                   interval={0}
                   width={leftAxisWidth}
                 />
-                <CartesianGrid strokeDasharray="4 6" vertical={false} stroke="rgba(107, 127, 152, 0.28)" />
+                <CartesianGrid vertical={false} stroke="var(--color-border-1)" />
                 {renderedGapIntervals.map((gap) => (
                   <ReferenceArea
                     key={`gap-${gap.start}-${gap.end}`}
@@ -711,10 +709,16 @@ const LineChart: React.FC<LineChartProps> = memo(
                 ))}
                 <Tooltip
                   offset={-1}
+                  cursor={{
+                    stroke: 'var(--color-text-3)',
+                    strokeWidth: 1,
+                    strokeDasharray: '3 3'
+                  }}
                   content={
                     <CustomTooltip
                       unit={unit}
                       visible={!isDragging}
+                      dark
                       metric={metric as MetricItem}
                       seriesUnits={seriesUnits}
                       maxHeight={
@@ -726,20 +730,41 @@ const LineChart: React.FC<LineChartProps> = memo(
                     />
                   }
                 />
+                {/* 每条序列的渐变填充：顶部为该序列色（透明度=fillOpacity），底部淡出 */}
+                <defs>
+                  {chartAreaKeys.map((key, index) => {
+                    const color = resolvedSeriesStyles[index]?.color;
+                    const fillOpacity =
+                      resolvedSeriesStyles[index]?.fillOpacity ?? DEFAULT_FILL_OPACITY;
+                    return (
+                      <linearGradient
+                        key={`grad-${key}`}
+                        id={`${gradientId}-${index}`}
+                        x1="0"
+                        y1="0"
+                        x2="0"
+                        y2="1"
+                      >
+                        <stop offset="0%" stopColor={color} stopOpacity={fillOpacity} />
+                        <stop offset="100%" stopColor={color} stopOpacity={0} />
+                      </linearGradient>
+                    );
+                  })}
+                </defs>
                 {chartAreaKeys.map((key, index) => (
                     <Area
                       key={key}
-                      type="monotoneX"
+                      type="linear"
                       dataKey={key}
                       yAxisId="left"
-                      stroke={resolvedSeriesStyles[index]?.color || colors[index]}
+                      stroke={resolvedSeriesStyles[index]?.color}
                       strokeDasharray={resolvedSeriesStyles[index]?.strokeDasharray}
                       strokeOpacity={resolvedSeriesStyles[index]?.strokeOpacity}
-                    fillOpacity={resolvedSeriesStyles[index]?.fillOpacity ?? 0}
-                    fill={resolvedSeriesStyles[index]?.color || colors[index]}
-                    strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? 2.5}
+                    fillOpacity={1}
+                    fill={`url(#${gradientId}-${index})`}
+                    strokeWidth={resolvedSeriesStyles[index]?.strokeWidth ?? DEFAULT_STROKE_WIDTH}
                     dot={false}
-                    activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color || colors[index] }}
+                    activeDot={{ r: 4, strokeWidth: 2, fill: resolvedSeriesStyles[index]?.color }}
                     isAnimationActive={false}
                     strokeLinecap="round"
                     strokeLinejoin="round"

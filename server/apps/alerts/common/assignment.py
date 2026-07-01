@@ -69,6 +69,9 @@ class AlertAssignmentOperator:
     # 字段映射到模型字段
     FIELD_MAPPING = {
         "source_id": "source_name",
+        # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
+        # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
+        "level": "level",
         "level_id": "level",
         "resource_type": "resource_type",
         "resource_id": "resource_id",
@@ -213,19 +216,28 @@ class AlertAssignmentOperator:
         if excluded_ids:
             base_queryset = base_queryset.exclude(id__in=excluded_ids)
 
-        # 首先按照Alert的created_at时间过滤符合分派策略时间范围的告警
-        time_matched_alert_ids = []
-        for alert_pk, created_at in base_queryset.values_list("id", "created_at"):
-            checker = TimeRangeChecker(assignment.config, created_at)
-            if checker.is_in_range():
-                time_matched_alert_ids.append(alert_pk)
+        # 按分派策略的时间范围过滤告警
+        # 优先尝试将时间范围下推到数据库（利用 created_at 索引），
+        # 仅当 type 不支持 SQL 下推（day/week/month 循环型）时才退化到 Python 遍历。
+        checker_proto = TimeRangeChecker(assignment.config)
+        orm_filter = checker_proto.to_orm_filter("created_at")
+
+        if orm_filter is not None:
+            # 快速路径：一次性时段（type=one）或无配置 → 全在 DB 完成，无 Python 遍历
+            time_filtered_queryset = base_queryset.filter(orm_filter)
+            time_matched_alert_ids = list(time_filtered_queryset.values_list("id", flat=True))
+        else:
+            # 退化路径：循环型时段（day/week/month）→ Python 层逐行判断
+            time_matched_alert_ids = []
+            for alert_pk, created_at in base_queryset.values_list("id", "created_at"):
+                checker = TimeRangeChecker(assignment.config, created_at)
+                if checker.is_in_range():
+                    time_matched_alert_ids.append(alert_pk)
+            time_filtered_queryset = Alert.objects.filter(id__in=time_matched_alert_ids)
 
         if not time_matched_alert_ids:
             logger.debug("[AlertAssign] 无告警匹配分派时间范围 assignment_id=%s", assignment.id)
             return []
-
-        # 重新构建查询集，只包含时间范围匹配的告警
-        time_filtered_queryset = Alert.objects.filter(id__in=time_matched_alert_ids)
 
         if assignment.match_type == AlertAssignmentMatchType.ALL:
             # 全部匹配，返回所有时间范围匹配且未分派的告警

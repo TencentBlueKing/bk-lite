@@ -81,7 +81,12 @@ def calculate_alerts(alert_name, df, thresholds, template_context=None, n=1):
         raw_data["values"] = values
 
         alert_triggered = False
-        for threshold_info in thresholds:
+        sorted_thresholds = sorted(
+            thresholds,
+            key=lambda item: AlertConstants.LEVEL_WEIGHT.get(item.get("level"), 0),
+            reverse=True,
+        )
+        for threshold_info in sorted_thresholds:
             method = AlertConstants.THRESHOLD_METHODS.get(threshold_info["method"])
             if not method:
                 raise BaseAppException(

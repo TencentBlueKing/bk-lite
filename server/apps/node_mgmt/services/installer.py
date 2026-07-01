@@ -311,7 +311,7 @@ class InstallerService:
         install_dir = session["install_dir"]
         server_url = session["server_url"].replace("/api/v1/node_mgmt/open_api/node", "")
         bootstrap_url = f"{server_url}/api/v1/node_mgmt/open_api/installer/linux_bootstrap?token={token}"
-        command = f"curl -sSL {bootstrap_url} | bash -s -- --install-dir '{install_dir}' --installer-name '{installer['filename']}'"
+        command = f"curl -sSLk {bootstrap_url} | bash -s -- --install-dir '{install_dir}' --installer-name '{installer['filename']}'"
 
         if install_mode == InstallerService.AUTO_INSTALL_MODE:
             return (

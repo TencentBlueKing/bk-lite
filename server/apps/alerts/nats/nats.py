@@ -7,6 +7,7 @@
 """
 
 import datetime
+import os
 from typing import Any, Dict
 from zoneinfo import ZoneInfo
 
@@ -24,6 +25,22 @@ from apps.core.logger import alert_logger as logger
 from apps.core.utils.viewset_utils import GenericViewSetFun
 
 ALERT_LEVEL_DISPLAY_MAP = dict(EventLevel.CHOICES)
+
+# 各粒度允许的最大时间跨度（秒）；可通过环境变量调整（保守默认值）
+_MAX_SPAN_SECONDS = {
+    "minute": int(os.getenv("ALERT_TREND_MAX_SPAN_MINUTE", str(7 * 24 * 3600))),   # 7 天 → 10,080 点
+    "hour":   int(os.getenv("ALERT_TREND_MAX_SPAN_HOUR",   str(90 * 24 * 3600))),  # 90 天 → 2,160 点
+    "day":    int(os.getenv("ALERT_TREND_MAX_SPAN_DAY",    str(730 * 24 * 3600))), # 2 年 → 730 点
+    "week":   int(os.getenv("ALERT_TREND_MAX_SPAN_WEEK",   str(730 * 24 * 3600))), # 2 年 → ~104 点
+    "month":  int(os.getenv("ALERT_TREND_MAX_SPAN_MONTH",  str(730 * 24 * 3600))), # 2 年 → 24 点
+}
+_MAX_SPAN_LABEL = {
+    "minute": "7 天",
+    "hour":   "90 天",
+    "day":    "2 年",
+    "week":   "2 年",
+    "month":  "2 年",
+}
 
 
 def _get_alert_level_display_map():
@@ -226,6 +243,21 @@ def get_alert_trend_data(*args, **kwargs) -> Dict[str, Any]:
     group_by = kwargs.pop("group_by", "day")
     trunc_func, _ = group_dy_date_format(group_by)
 
+    # 时间跨度上界校验，防止大跨度 minute/hour 请求撑爆 Worker 内存
+    span_seconds = (aware_end - aware_start).total_seconds()
+    max_span = _MAX_SPAN_SECONDS.get(group_by, _MAX_SPAN_SECONDS["day"])
+    if span_seconds > max_span:
+        label = _MAX_SPAN_LABEL.get(group_by, "2 年")
+        logger.warning(
+            "[AlertNatsRPC] get_alert_trend_data 时间跨度 %.0f 秒超过 %s 粒度上限 %d 秒，已拒绝",
+            span_seconds, group_by, max_span,
+        )
+        return {
+            "result": False,
+            "data": [],
+            "message": f"时间跨度超过 {group_by} 粒度的最大限制（{label}），请缩短查询范围或改用更粗粒度。",
+        }
+
     # 构建告警过滤条件
     alert_filter = Q()
     alert_model_fields = set(Alert.model_fields())
@@ -272,7 +304,11 @@ def get_alert_source_event_top(*args, **kwargs) -> Dict[str, Any]:
     return:
         {
             "result": True,
-            "data": [["Zabbix", 42156], ["Prometheus", 31245], ...]
+            "data": [
+                {"source_name": "Zabbix", "count": 42156},
+                {"source_name": "Prometheus", "count": 31245},
+                ...
+            ]
         }
     """
     logger.info("[AlertNatsRPC] === get_alert_source_event_top ===, args=%s, kwargs=%s", args, kwargs)
@@ -289,7 +325,7 @@ def get_alert_source_event_top(*args, **kwargs) -> Dict[str, Any]:
     # 按告警源名称分组统计
     top_sources = event_qs.values("source__name").annotate(count=Count("id")).order_by("-count")[:limit]
 
-    data = [[item["source__name"] or "--", item["count"]] for item in top_sources]
+    data = [{"source_name": item["source__name"] or "--", "count": item["count"]} for item in top_sources]
     return {"result": True, "data": data, "message": ""}
 
 
@@ -637,9 +673,7 @@ def receive_alert_events(*args, **kwargs) -> Dict[str, Any]:
         # 创建适配器（内部调用无需密钥验证）
         adapter_class = AlertSourceAdapterFactory.get_adapter(event_source)
         # 传递空密钥，因为不需要认证
-        adapter = adapter_class(
-            alert_source=event_source, secret="", events=normalized_events, trusted_internal=trusted_internal
-        )
+        adapter = adapter_class(alert_source=event_source, secret="", events=normalized_events, trusted_internal=trusted_internal)
 
         # 记录推送来源信息
         logger.info("[AlertEvent] 开始处理 %s 条事件 source_id=%s pusher=%s", len(events), source_id, pusher)
@@ -735,6 +769,108 @@ def get_alert_statistics(**kwargs):
         },
         "message": "",
     }
+
+
+@nats_client.register
+def get_alert_today_status_summary(**kwargs):
+    """
+    获取今日告警状态摘要：今日产生、今日关闭、当前处理中。
+    """
+    user_info = kwargs.get("user_info", {})
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.get("timezone"))
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    now = timezone.now().astimezone(target_tz)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    tomorrow_start = today_start + datetime.timedelta(days=1)
+
+    return {
+        "result": True,
+        "data": {
+            "today_created_count": queryset.filter(
+                created_at__gte=today_start,
+                created_at__lt=tomorrow_start,
+            ).count(),
+            "today_closed_count": queryset.filter(
+                status__in=AlertStatus.CLOSED_STATUS,
+                updated_at__gte=today_start,
+                updated_at__lt=tomorrow_start,
+            ).count(),
+            "processing_count": queryset.filter(status=AlertStatus.PROCESSING).count(),
+        },
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_alert_status_distribution(**kwargs):
+    """
+    获取活跃告警状态分布，供饼图展示。
+    """
+    user_info = kwargs.get("user_info", {})
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    status_labels = dict(AlertStatus.CHOICES)
+    status_order = [AlertStatus.UNASSIGNED, AlertStatus.PENDING, AlertStatus.PROCESSING]
+    status_counts = queryset.filter(status__in=status_order).values("status").annotate(count=Count("id"))
+    counts = {item["status"]: item["count"] for item in status_counts}
+
+    return {
+        "result": True,
+        "data": [{"name": status_labels.get(status, status), "value": counts.get(status, 0)} for status in status_order],
+        "message": "",
+    }
+
+
+@nats_client.register
+def get_alert_level_trend(**kwargs):
+    """
+    获取指定时间范围内按告警等级分组的趋势数据。
+    """
+    logger.info("[AlertNatsRPC] === get_alert_level_trend ===, kwargs=%s", kwargs)
+    user_info = kwargs.get("user_info", {})
+    target_tz = _resolve_target_timezone((user_info or {}).get("timezone") or kwargs.get("timezone"))
+    queryset, error = _get_authorized_alert_queryset(user_info)
+    if error:
+        return error
+
+    time = kwargs.get("time", [])
+    if not time or len(time) != 2:
+        return {
+            "result": False,
+            "data": {},
+            "message": "start_time and end_time are required.",
+        }
+
+    aware_start = _parse_client_datetime(time[0], target_tz)
+    aware_end = _parse_client_datetime(time[1], target_tz)
+    start_dt = aware_start.astimezone(target_tz)
+    end_dt = aware_end.astimezone(target_tz)
+    group_by = kwargs.get("group_by", "day")
+    trunc_func, _ = group_dy_date_format(group_by)
+    all_periods = _generate_time_periods(group_by, start_dt, end_dt)
+    level_map = _get_alert_level_display_map()
+
+    levels = queryset.filter(created_at__gte=aware_start, created_at__lt=aware_end).values_list("level", flat=True).distinct()
+
+    data = {}
+    for level in levels:
+        display_name = level_map.get(level, level)
+        data[display_name] = _build_period_series(
+            queryset.filter(level=level),
+            "created_at",
+            trunc_func,
+            target_tz,
+            aware_start,
+            aware_end,
+            all_periods,
+        )
+
+    return {"result": True, "data": data, "message": ""}
 
 
 @nats_client.register

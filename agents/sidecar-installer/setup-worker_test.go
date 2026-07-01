@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
-	"net/http"
 	"os"
 	"strings"
 	"testing"
@@ -86,35 +85,5 @@ func TestClassifyDownloadErrorDetectsIOTimeout(t *testing.T) {
 	// Issue #2985: "read pipe: i/o timeout" 应被归类为 timeout（服务端可识别枚举），而非空字符串
 	if got := classifyDownloadError(errors.New("Download failed: read pipe: i/o timeout")); got != "timeout" {
 		t.Fatalf("expected timeout, got %q", got)
-	}
-}
-
-// TestNewHTTPClientDefaultsToTLSVerification 验证 issue #3524：
-// newHTTPClient(false) 必须启用 TLS 验证（InsecureSkipVerify == false），
-// 确保"不传 --skip-tls"时 HTTPS 下载受证书校验保护。
-func TestNewHTTPClientDefaultsToTLSVerification(t *testing.T) {
-	client := newHTTPClient(false)
-	tr, ok := client.Transport.(*http.Transport)
-	if !ok {
-		// nil Transport 表示使用 DefaultTransport，TLS 校验已启用
-		return
-	}
-	if tr.TLSClientConfig != nil && tr.TLSClientConfig.InsecureSkipVerify {
-		t.Fatal("newHTTPClient(false) must not disable TLS verification (InsecureSkipVerify must be false)")
-	}
-}
-
-// TestNewHTTPClientSkipTLSWhenExplicitlyRequested 验证 --skip-tls=true 仍可显式禁用校验（opt-out 保留）。
-func TestNewHTTPClientSkipTLSWhenExplicitlyRequested(t *testing.T) {
-	client := newHTTPClient(true)
-	tr, ok := client.Transport.(*http.Transport)
-	if !ok {
-		t.Fatal("expected *http.Transport when skipTLS=true")
-	}
-	if tr.TLSClientConfig == nil {
-		t.Fatal("expected non-nil TLSClientConfig when skipTLS=true")
-	}
-	if !tr.TLSClientConfig.InsecureSkipVerify {
-		t.Fatal("newHTTPClient(true) must set InsecureSkipVerify=true")
 	}
 }

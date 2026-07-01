@@ -35,9 +35,11 @@ class MonitorPolicy(TimeInfo, MaintainerInfo):
     schedule = models.JSONField(default=dict, verbose_name="策略执行周期, eg: 1h执行一次, 5m执行一次")
     period = models.JSONField(default=dict, verbose_name="每次监控检测的数据周期,eg: 1h内, 5m内")
 
-    algorithm = models.CharField(max_length=50, verbose_name="聚合算法")
+    group_algorithm = models.CharField(max_length=50, default="avg", verbose_name="分组聚合算法")
+    algorithm = models.CharField(max_length=50, verbose_name="周期聚合算法")
     group_by = models.JSONField(default=list, verbose_name="分组字段")
     threshold = models.JSONField(default=list, verbose_name="阈值")
+    trigger_count = models.SmallIntegerField(default=1, verbose_name="连续多少个汇聚周期满足阈值触发告警")
     recovery_condition = models.SmallIntegerField(default=1, verbose_name="多少周期不满足阈值自动恢复")
 
     # 单位配置

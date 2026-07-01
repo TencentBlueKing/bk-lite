@@ -140,6 +140,34 @@ class TestMarkActions:
         assert resp.json()["result"] is True
         assert "已标记 0 条" in resp.json()["message"]
 
+    def test_mark_batch_as_read_拒绝非整数数组(self, user_client):
+        """revert-fail：若去掉 serializer 校验，字符串会被 set(ids) 拆成字符集合继续写库。"""
+        _, client = user_client
+
+        for payload in ({"ids": "123"}, {"ids": [1, "x"]}, {"ids": []}):
+            resp = client.post(f"{BASE}mark_batch_as_read/", data=payload, format="json")
+            assert resp.status_code == 400
+            assert resp.json()["result"] is False
+
+    def test_mark_batch_as_read_过滤不存在的通知ID(self, user_client):
+        """revert-fail：若直接 bulk_create 缺失 ID，数据库外键会抛 IntegrityError。"""
+        user, client = user_client
+        notification = NotificationFactory()
+        missing_id = notification.id + 10000
+
+        resp = client.post(
+            f"{BASE}mark_batch_as_read/",
+            data={"ids": [notification.id, missing_id]},
+            format="json",
+        )
+
+        data = resp.json()
+        assert resp.status_code == 200
+        assert data["result"] is True
+        assert data["data"]["skipped_ids"] == [missing_id]
+        assert NotificationRead.objects.filter(notification=notification, user=user, is_read=True).exists()
+        assert not NotificationRead.objects.filter(notification_id=missing_id, user=user).exists()
+
     def test_unread_count_排除已读与已删除(self, user_client):
         _, client = user_client
         read = NotificationFactory()

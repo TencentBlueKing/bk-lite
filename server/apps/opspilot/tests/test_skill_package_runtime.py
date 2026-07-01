@@ -207,6 +207,29 @@ def test_skill_package_runtime_marks_missing_required_tools():
     assert "缺少依赖工具：日志查询工具" in prompt
 
 
+def test_skill_package_runtime_matches_required_tool_by_display_name():
+    from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt
+
+    prompt, matched = build_skill_package_prompt(
+        base_prompt="你是运维助手。",
+        skill_packages=[
+            {
+                "id": "kubernetes-specialist",
+                "name": "Kubernetes Specialist",
+                "description": "Kubernetes 专家技能包",
+                "required_tools": ["kubernetes"],
+                "triggers": ["k8s"],
+                "skill_markdown": "Use Kubernetes workflow.",
+            }
+        ],
+        user_message="k8s 集群下所有工作负载有什么问题",
+        available_tool_names={"Kubernetes工具"},
+    )
+
+    assert "缺少依赖工具" not in prompt
+    assert matched[0]["missing_tools"] == []
+
+
 def test_skill_package_runtime_accepts_agui_message_list():
     from apps.opspilot.services.skill_package.runtime import append_matching_skill_packages_to_prompt
 

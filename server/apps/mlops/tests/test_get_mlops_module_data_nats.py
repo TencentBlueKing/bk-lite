@@ -186,6 +186,7 @@ class TestGetMlopsModuleDataValidation(unittest.TestCase):
                 page=1,
                 page_size=999999,
                 group_id=1,
+                actor_context={"is_superuser": True},
             )
 
         # Verify the queryset was sliced with a capped end index
@@ -225,6 +226,7 @@ class TestGetMlopsModuleDataValidation(unittest.TestCase):
                 page=1,
                 page_size=-1,
                 group_id=1,
+                actor_context={"is_superuser": True},
             )
 
         # Must succeed (not raise AssertionError from Django negative slice)
@@ -262,11 +264,81 @@ class TestGetMlopsModuleDataValidation(unittest.TestCase):
                 page=1,
                 page_size=10,
                 group_id=42,
+                actor_context={"is_superuser": True},
             )
 
         self.assertTrue(result["result"])
         self.assertEqual(result["count"], 2)
         self.assertEqual(len(result["items"]), 2)
+
+    def test_missing_actor_context_is_rejected(self):
+        """Calls without trusted user context must not choose an arbitrary group_id."""
+        result = _get_mlops_module_data(
+            module="dataset",
+            child_module="anomaly_detection_dataset",
+            page=1,
+            page_size=10,
+            group_id=42,
+        )
+
+        self.assertFalse(result["result"])
+        self.assertIn("调用方上下文", result["message"])
+
+    def test_unauthorized_group_id_is_rejected_before_query(self):
+        """Non-superusers may only query MLOps data for groups in actor_context.group_list."""
+        fake_model = MagicMock()
+
+        original_registry = _nats_api._get_module_registry
+
+        def patched_registry():
+            reg = original_registry()
+            reg["dataset"]["anomaly_detection_dataset"] = (fake_model, "team")
+            return reg
+
+        with patch.object(_nats_api, "_get_module_registry", patched_registry):
+            result = _get_mlops_module_data(
+                module="dataset",
+                child_module="anomaly_detection_dataset",
+                page=1,
+                page_size=10,
+                group_id=42,
+                actor_context={"is_superuser": False, "group_list": [1, 2]},
+            )
+
+        self.assertFalse(result["result"])
+        self.assertIn("无权访问该组织", result["message"])
+        fake_model.objects.filter.assert_not_called()
+
+    def test_authorized_group_id_filters_queryset(self):
+        """Authorized non-superuser requests should still return the selected group's data."""
+        fake_qs = MagicMock()
+        fake_qs.count.return_value = 1
+        values_mock = MagicMock()
+        values_mock.__getitem__ = lambda self, sl: [{"id": 1, "name": "foo"}]
+        fake_qs.values.return_value = values_mock
+
+        fake_model = MagicMock()
+        fake_model.objects.filter.return_value = fake_qs
+
+        original_registry = _nats_api._get_module_registry
+
+        def patched_registry():
+            reg = original_registry()
+            reg["dataset"]["anomaly_detection_dataset"] = (fake_model, "team")
+            return reg
+
+        with patch.object(_nats_api, "_get_module_registry", patched_registry):
+            result = _get_mlops_module_data(
+                module="dataset",
+                child_module="anomaly_detection_dataset",
+                page=1,
+                page_size=10,
+                group_id=42,
+                actor_context={"is_superuser": False, "group_list": [1, "42"]},
+            )
+
+        self.assertTrue(result["result"])
+        fake_model.objects.filter.assert_called_once_with(team__contains=42)
 
 
 if __name__ == "__main__":

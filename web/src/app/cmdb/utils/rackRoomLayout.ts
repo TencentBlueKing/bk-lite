@@ -43,8 +43,8 @@ export const roomGridSize = (data: RoomLayoutData) => ({
   rows: Math.max(6, data.grid.max_row),
 });
 
-export const CELL = 112;  // 网格单元像素
-export const PAD = 44;    // 行/列标题留白
+export const CELL = 124;  // 网格单元像素
+export const PAD = 34;    // 行/列标题留白
 export const GAP = 14;    // 机柜与格线间距
 
 export const cellXY = (row: number, col: number) => ({

@@ -9,7 +9,34 @@ from apps.monitor.filters.monitor_metrics import MetricGroupFilter, MetricFilter
 from apps.monitor.models.monitor_object import MonitorObject
 from apps.monitor.serializers.monitor_metrics import MetricGroupSerializer, MetricSerializer
 from apps.monitor.models.monitor_metrics import MetricGroup, Metric
+from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from config.drf.pagination import CustomPageNumberPagination
+
+
+def collect_vm_field_names(metric_obj):
+    api = VictoriaMetricsAPI()
+    metric_name = (getattr(metric_obj, "name", "") or "").strip()
+    if metric_name:
+        response = api.labels(match=f'{{__name__="{metric_name}"}}')
+        fields = set(response.get("data", []))
+        fields.discard("__name__")
+        if fields:
+            return sorted(fields)
+
+    query = (
+        (metric_obj.query or "")
+        .replace("__$labels__", "")
+        .replace("{, ", "{")
+        .replace("{,", "{")
+        .replace(", }", "}")
+        .replace(",}", "}")
+    )
+    response = api.query(query)
+    fields = set()
+    for item in response.get("data", {}).get("result", []):
+        fields.update(item.get("metric", {}).keys())
+    fields.discard("__name__")
+    return sorted(fields)
 
 
 class MetricGroupViewSet(viewsets.ModelViewSet):
@@ -101,3 +128,8 @@ class MetricViewSet(viewsets.ModelViewSet):
         ]
         Metric.objects.bulk_update(updates, ["sort_order"], batch_size=DatabaseConstants.BULK_UPDATE_BATCH_SIZE)
         return WebUtils.response_success()
+
+    @action(detail=True, methods=["get"], url_path="vm-fields")
+    def vm_fields(self, request, *args, **kwargs):
+        metric = self.get_object()
+        return WebUtils.response_success(collect_vm_field_names(metric))

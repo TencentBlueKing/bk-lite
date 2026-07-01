@@ -11,6 +11,7 @@ from apps.job_mgmt.config import SCHEDULED_TASK_QUEUE_RETRY_COUNTDOWN
 from apps.job_mgmt.constants import ConcurrencyPolicy, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, ScheduledTask
 from apps.job_mgmt.services import FileDistributionRunner, ScriptExecutionRunner, ScriptParamsService
+from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
 from apps.job_mgmt.services.execution_stream_service import publish_done_sentinel
 from apps.job_mgmt.services.playbook_execution import PlaybookExecution
@@ -73,6 +74,8 @@ def finalize_cancelling_execution(execution_id: int):
     execution.failed_count = sum(1 for r in results if r.get("status") in (ExecutionStatus.FAILED, ExecutionStatus.TIMEOUT))
     execution.save(update_fields=["execution_results", "success_count", "failed_count", "updated_at"])
     logger.info(f"[finalize_cancelling_execution] 取消中任务已强制收敛为 CANCELLED: execution_id={execution_id}")
+    # 超时兜底取消也是终态，补发完成通知（HTTP 回调 + 告警推送）
+    send_callback(execution)
 
 
 @shared_task(max_retries=0)
@@ -305,3 +308,19 @@ def do_callback_task(self, url: str, payload: dict, execution_id: int) -> None:
             f"[callback] 回调异常: execution_id={execution_id}, " f"url={url}, attempt={self.request.retries + 1}/{self.max_retries + 1}, error={e}"
         )
         raise
+
+
+@shared_task(max_retries=0)
+def do_nats_callback_task(subject: str, payload: dict, execution_id: int) -> None:
+    """nats 回调通道：把作业结果 publish 到指定 NATS 主题（fire-and-forget）。
+
+    在 Celery worker（同步上下文）中执行 publish；消费方未注册接收函数时消息被 NATS 安全丢弃。
+    任何异常仅记录不抛出，避免影响 web 通道回调及作业本身。
+    """
+    try:
+        from apps.job_mgmt.services.callback_service import publish_job_result_to_subject
+
+        publish_job_result_to_subject(subject, payload)
+        logger.info(f"[callback][nats] 回调成功: execution_id={execution_id}, subject={subject}, status={payload.get('status')}")
+    except Exception as e:
+        logger.warning(f"[callback][nats] 回调失败: execution_id={execution_id}, subject={subject}, error={e}")

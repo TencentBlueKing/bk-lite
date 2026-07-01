@@ -89,7 +89,7 @@ def _build_installer_summary(steps, overall_status=None):
         if step.get("status") == "success" and step.get("action") in EXPECTED_INSTALLER_STEPS
     ]
     observed_actions = {step.get("action") for step in deduped_core_steps}
-    missing_steps = [step for step in EXPECTED_INSTALLER_STEPS if step not in observed_actions]
+    missing_steps = [step for step in EXPECTED_INSTALLER_STEPS if step not in observed_actions] if installer_steps else []
     last_step = deduped_core_steps[-1] if deduped_core_steps else None
     connectivity_step = next(
         (
@@ -102,7 +102,13 @@ def _build_installer_summary(steps, overall_status=None):
 
     anomalies = []
     state = "installer_events_complete"
-    if not installer_steps:
+    if not installer_steps and connectivity_step and connectivity_step.get("status") == "success":
+        state = "installer_success_without_detail"
+        anomalies.append("no_installer_events")
+    elif not installer_steps and connectivity_step and connectivity_step.get("status") in {"error", "timeout"}:
+        state = "installer_no_report_connectivity_timeout"
+        anomalies.append("no_installer_events")
+    elif not installer_steps:
         state = "no_installer_events"
         anomalies.append(state)
     elif missing_steps or any(step.get("status") in {"error", "timeout"} for step in deduped_core_steps):
@@ -134,6 +140,84 @@ def _build_installer_summary(steps, overall_status=None):
         "anomalies": anomalies,
         "steps": deduped_core_steps,
     }
+
+
+def _latest_step_by_action(steps, action):
+    if not isinstance(steps, list):
+        return None
+
+    return next(
+        (
+            step
+            for step in reversed(steps)
+            if isinstance(step, dict) and step.get("action") == action
+        ),
+        None,
+    )
+
+
+def _build_controller_install_display(steps, installer_summary, overall_status=None):
+    if not isinstance(installer_summary, dict):
+        return None
+
+    credential_step = _latest_step_by_action(steps, "credential_check")
+    command_step = _latest_step_by_action(steps, "run")
+    summary_state = installer_summary.get("state")
+    installer_steps_received = bool(installer_summary.get("observed_count"))
+
+    display = {
+        "state": "waiting",
+        "phase": "credential_validation",
+        "severity": "default",
+        "installer_steps_received": installer_steps_received,
+    }
+
+    if credential_step and credential_step.get("status") in {"error", "timeout"}:
+        display.update({"state": "credential_failed", "severity": "error"})
+        return display
+
+    if command_step and command_step.get("status") in {"error", "timeout"}:
+        display.update({"state": "command_failed", "phase": "command_dispatch", "severity": "error"})
+        return display
+
+    if command_step and command_step.get("status") == "running" and not installer_steps_received:
+        display.update({"state": "command_running", "phase": "command_dispatch", "severity": "processing"})
+        return display
+
+    if summary_state == "installer_success_without_detail":
+        display.update({"state": "success_without_detail", "phase": "node_connectivity", "severity": "success"})
+    elif summary_state == "installer_no_report_connectivity_timeout":
+        display.update({"state": "installer_no_report", "phase": "installer_execution", "severity": "error"})
+    elif summary_state == "no_installer_events":
+        display.update({"state": "installer_no_report", "phase": "installer_execution", "severity": "warning"})
+    elif summary_state == "incomplete_installer_events":
+        has_failed_installer_step = any(
+            isinstance(step, dict) and step.get("status") in {"error", "timeout"}
+            for step in installer_summary.get("steps", [])
+        )
+        display.update(
+            {
+                "state": "installer_failed" if has_failed_installer_step or overall_status in {"error", "timeout"} else "installer_running",
+                "phase": "installer_execution",
+                "severity": "error" if has_failed_installer_step or overall_status in {"error", "timeout"} else "processing",
+            }
+        )
+    elif summary_state == "installer_success_connectivity_pending":
+        display.update({"state": "connectivity_waiting", "phase": "node_connectivity", "severity": "processing"})
+    elif summary_state == "installer_success_connectivity_timeout":
+        display.update({"state": "connectivity_failed", "phase": "node_connectivity", "severity": "error"})
+    elif summary_state == "installer_success_connectivity_confirmed":
+        display.update({"state": "success", "phase": "node_connectivity", "severity": "success"})
+    elif overall_status == "success":
+        display.update({"state": "success", "phase": "node_connectivity", "severity": "success"})
+    elif overall_status in {"error", "timeout", "cancelled"}:
+        display.update({"state": "command_failed", "phase": "command_dispatch", "severity": "error"})
+    elif installer_steps_received:
+        display.update({"state": "installer_running", "phase": "installer_execution", "severity": "processing"})
+    else:
+        display.update({"state": "installer_waiting", "phase": "installer_execution", "severity": "processing"})
+
+    return display
 
 
 def normalize_task_details(details=None, *, message=None, error=None):
@@ -231,7 +315,13 @@ def normalize_task_result_for_read(result=None):
     )
     if installer_summary:
         prepared_result["installer_summary"] = installer_summary
+        prepared_result["controller_install_display"] = _build_controller_install_display(
+            normalized_steps,
+            installer_summary,
+            overall_status=prepared_result.get("overall_status"),
+        )
     else:
         prepared_result.pop("installer_summary", None)
+        prepared_result.pop("controller_install_display", None)
 
     return prepared_result

@@ -396,6 +396,9 @@ monitor_object_metric:
     system_load15:
       name: 15 Minute Average Load
       desc: Represents the average system load over the last 15 minutes, commonly used to evaluate long-term load stability.
+    system_uptime:
+      name: System Uptime
+      desc: Represents how long the host has been running since the last boot, in seconds, useful for observing stability and detecting unexpected restarts.
     host_cpu_core_count:
       name: CPU Core Count
       desc: Represents the number of logical CPU cores available on the host, used to evaluate compute capacity and resource baseline.
@@ -414,18 +417,30 @@ monitor_object_metric:
     diskio_writes_rate:
       name: Disk Write IOPS
       desc: Represents the number of disk write operations completed per second, measuring write I/O intensity and concurrency.
+    diskio_writes_total:
+      name: Disk Writes
+      desc: Represents the cumulative number of write operations completed by the disk device, useful for analyzing total write load and trends.
     diskio_write_bytes_rate:
       name: Disk Write Rate
       desc: Indicates the amount of data written to disk per unit time, used to evaluate disk write throughput.
+    diskio_write_bytes_total:
+      name: Disk Written Bytes
+      desc: Represents the cumulative number of bytes written by the disk device, useful for analyzing write traffic volume.
     disk_write_latency:
       name: Disk Write Latency
       desc: Represents the average latency of disk write operations, used to analyze disk write performance and responsiveness.
     diskio_reads_rate:
       name: Disk Read IOPS
       desc: Represents the number of disk read operations completed per second, measuring read I/O concurrency and intensity.
+    diskio_reads_total:
+      name: Disk Reads
+      desc: Represents the cumulative number of read operations completed by the disk device, useful for analyzing total read load and trends.
     diskio_read_bytes_rate:
       name: Disk Read Rate
       desc: Indicates the amount of data read from disk per unit time, used to evaluate disk read throughput.
+    diskio_read_bytes_total:
+      name: Disk Read Bytes
+      desc: Represents the cumulative number of bytes read by the disk device, useful for analyzing read traffic volume.
     disk_read_latency:
       name: Disk Read Latency
       desc: Represents the average latency of disk read operations, used to analyze disk read performance and access delay.
@@ -498,9 +513,15 @@ monitor_object_metric:
     net_packets_recv_rate:
       name: Network Receive Packet Rate
       desc: Represents the number of packets received per unit time on a network interface, reflecting packet-level traffic.
+    net_packets_recv_total:
+      name: Network Received Packets
+      desc: Represents the cumulative number of packets received on a network interface, useful for analyzing inbound traffic volume.
     net_packets_sent_rate:
       name: Network Send Packet Rate
       desc: Represents the number of packets sent per unit time on a network interface.
+    net_packets_sent_total:
+      name: Network Sent Packets
+      desc: Represents the cumulative number of packets sent on a network interface, useful for analyzing outbound traffic volume.
     net_bytes_recv_rate:
       name: Network Receive Throughput Rate
       desc: Represents the amount of data received per unit time on a network interface, used to evaluate inbound bandwidth utilization.
@@ -528,9 +549,15 @@ monitor_object_metric:
     net_drop_in_rate:
       name: Network Receive Drop Rate
       desc: Represents the number of incoming packets dropped per unit time, indicating congestion or abnormal conditions.
+    net_drop_in_total:
+      name: Network Receive Drops
+      desc: Represents the cumulative number of incoming packets dropped on a network interface, useful for locating congestion, buffer pressure, or driver anomalies.
     net_drop_out_rate:
       name: Network Send Drop Rate
       desc: Represents the number of outgoing packets dropped per unit time on a network interface.
+    net_drop_out_total:
+      name: Network Send Drops
+      desc: Represents the cumulative number of outgoing packets dropped on a network interface, useful for troubleshooting outbound network issues.
     nvidia_smi_memory_total:
       name: GPU Memory Total
       desc: Represents the total available memory capacity of the GPU, serving as a baseline GPU resource metric.
@@ -849,25 +876,25 @@ monitor_object_metric:
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
-      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+      desc: Total device traffic rate estimated from Flow records according to the active protocol metric contract, used for bandwidth trend and capacity monitoring.
     device_flow_packets_rate:
       name: Device Flow Packet Rate
-      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+      desc: Total device packet rate estimated from Flow records according to the active protocol metric contract, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
-      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+      desc: Average packet or sampled frame size from Flow records, useful for identifying small-packet bursts or large-packet transfer patterns.
     device_flow_effective_sampling_rate:
       name: Device Flow Effective Sampling Rate
       desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
@@ -1140,25 +1167,25 @@ monitor_object_metric:
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
-      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+      desc: Total device traffic rate estimated from Flow records according to the active protocol metric contract, used for bandwidth trend and capacity monitoring.
     device_flow_packets_rate:
       name: Device Flow Packet Rate
-      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+      desc: Total device packet rate estimated from Flow records according to the active protocol metric contract, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
-      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+      desc: Average packet or sampled frame size from Flow records, useful for identifying small-packet bursts or large-packet transfer patterns.
     device_flow_effective_sampling_rate:
       name: Device Flow Effective Sampling Rate
       desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
@@ -2606,25 +2633,25 @@ monitor_object_metric:
       desc: This metric reports the fan rotation speed (RPM) of the device, taken as the maximum across fans. Abnormally low or zero RPM indicates a stalled or failed fan and a risk of overheating; abnormally high RPM may indicate the device is compensating for high temperature. For devices that expose only fan speed without a fan-state enum, speed is the only signal of fan health.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
-      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+      desc: Total device traffic rate estimated from Flow records according to the active protocol metric contract, used for bandwidth trend and capacity monitoring.
     device_flow_packets_rate:
       name: Device Flow Packet Rate
-      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+      desc: Total device packet rate estimated from Flow records according to the active protocol metric contract, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
-      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+      desc: Average packet or sampled frame size from Flow records, useful for identifying small-packet bursts or large-packet transfer patterns.
     device_flow_effective_sampling_rate:
       name: Device Flow Effective Sampling Rate
       desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
@@ -2742,25 +2769,25 @@ monitor_object_metric:
       desc: This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes, measured in bytes per second. By summing the outgoing byte counts from multiple interfaces, this metric allows administrators to comprehensively assess the sending performance of the entire system, enabling more effective traffic management and optimization.
     device_flow_bytes_rate:
       name: Device Flow Traffic Rate
-      desc: Total device traffic rate normalized from Flow records and effective sampling rate, used for bandwidth trend and capacity monitoring.
+      desc: Total device traffic rate estimated from Flow records according to the active protocol metric contract, used for bandwidth trend and capacity monitoring.
     device_flow_packets_rate:
       name: Device Flow Packet Rate
-      desc: Total device packet rate normalized from Flow records and effective sampling rate, used to observe packet-level load and bursts.
+      desc: Total device packet rate estimated from Flow records according to the active protocol metric contract, used to observe packet-level load and bursts.
     device_flow_in_bytes_rate:
       name: Device Flow Inbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_bytes_rate:
       name: Device Flow Outbound Traffic Rate
-      desc: Flow traffic rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow traffic rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_in_packets_rate:
       name: Device Flow Inbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to input-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_out_packets_rate:
       name: Device Flow Outbound Packet Rate
-      desc: Flow packet rate normalized from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
+      desc: Flow packet rate estimated from records attributed to output-side flow data; protocol-specific interface direction is shown in interface metrics.
     device_flow_avg_packet_size:
       name: Device Flow Average Packet Size
-      desc: Average packet size calculated from normalized Flow bytes and packets, useful for identifying small-packet bursts or large-packet transfer patterns.
+      desc: Average packet or sampled frame size from Flow records, useful for identifying small-packet bursts or large-packet transfer patterns.
     device_flow_effective_sampling_rate:
       name: Device Flow Effective Sampling Rate
       desc: Effective sampling rate used for Flow calculation. Device-reported fields are preferred; the asset fallback sampling rate is used when missing.
@@ -2847,6 +2874,16 @@ monitor_object_metric:
     ping_ttl:
       name: Time To Live
       desc: Time To Live value of received ICMP response packets, reflecting number of network hops
+  TCPPort:
+    net_response_response_time:
+      name: Response Time
+      desc: TCP connection round-trip time in milliseconds. net_response emits seconds; the query multiplies by 1000 for display. Higher values indicate slower connections or higher network latency.
+    net_response_result_code:
+      name: Result Code
+      desc: TCP probe result code. 0 success, 1 connection timeout, 2 connection failed, 3 read failed, 4 response string mismatch. Any non-zero value indicates a probe failure.
+    net_response_string_found:
+      name: String Found
+      desc: Whether the expected string was matched in the response. Reported only when an expect string is configured; 1 means found, 0 means not found.
   Nginx:
     nginx_active:
       name: Active Connections
@@ -4009,8 +4046,10 @@ monitor_object_metric_group:
     Disk IO: Disk I/O
     Disk: Disk
     Process: Process
+    Processes: Processes
     Memory: Memory
     Net: Net
+    Network: Network
     Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: Packet
@@ -4229,6 +4268,8 @@ monitor_object_metric_group:
     Service: Service
   Ping:
     Ping: Ping
+  TCPPort:
+    TCPPort: TCP
   SNMP Trap: None
   Website:
     HTTP: HTTP
@@ -5077,7 +5118,7 @@ monitor_object_plugin:
     desc: Use NetFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Switch Flow sFlow:
     name: Switch Flow Analysis (sFlow)
-    desc: Use sFlow to collect switch traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
+    desc: Use sFlow to collect switch traffic, map exporter data to monitored assets, consume Telegraf-estimated sFlow values directly, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   WebLogic-JMX:
     name: WebLogic(JMX)
     desc: Through the WebLogic-JMX collector, regularly collect key WebLogic metrics,
@@ -5141,7 +5182,7 @@ monitor_object_plugin:
     desc: Use NetFlow to collect load balancer traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Loadbalance Flow sFlow:
     name: Load Balancer Flow Analysis (sFlow)
-    desc: Use sFlow to collect load balancer traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
+    desc: Use sFlow to collect load balancer traffic, map exporter data to monitored assets, consume Telegraf-estimated sFlow values directly, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Bastion Host SNMP General:
     desc: The SNMP universal plugin is designed to monitor and manage bastion hosts
       via SNMP. It enables administrators to retrieve critical device information
@@ -5213,6 +5254,9 @@ monitor_object_plugin:
   Firewall Secworld SNMP:
     name: Secworld (Telegraf)
     desc: Secworld (安世) firewall SNMP collection (Foundry/Brocade-compatible private MIB, enterprise 1991). Beyond standard IF-MIB interface metrics, it collects the 1991 private OIDs for device health including average CPU utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.50, snAgGblCpuUtil1SecAvg, reported directly as a percentage) and memory utilisation (OID 1.3.6.1.4.1.1991.1.1.2.1.53, snAgGblDynMemUtil, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Secworld firewalls / network-security appliances reusing the Foundry/Brocade 1991 MIB tree.
+  Firewall Westone SNMP:
+    name: Westone (Telegraf)
+    desc: Westone (卫士通) firewall SNMP collection (enterprise 31648 private MIB). Beyond standard IF-MIB interface metrics, it collects Westone private OIDs for device health including average CPU utilisation (OID 31648.3.15.1, reported directly as a percentage) and memory utilisation (OID 31648.3.15.5, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Westone Information Security firewalls / network-security appliances (enterprise 31648).
   Firewall Check Point SNMP:
     name: Check Point (Telegraf)
     desc: Check Point-specific SNMP collection template for Quantum NGFW (Gaia) firewalls.
@@ -5313,7 +5357,7 @@ monitor_object_plugin:
     desc: Use NetFlow to collect firewall traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Firewall Flow sFlow:
     name: Firewall Flow Analysis (sFlow)
-    desc: Use sFlow to collect firewall traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
+    desc: Use sFlow to collect firewall traffic, map exporter data to monitored assets, consume Telegraf-estimated sFlow values directly, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   SNMP Trap:
     desc: The SNMP Trap monitoring plugin is designed to receive and process alerts
       or status notifications (Trap messages) actively pushed by network devices,
@@ -5451,7 +5495,7 @@ monitor_object_plugin:
     desc: Use NetFlow to collect router traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   Router Flow sFlow:
     name: Router Flow Analysis (sFlow)
-    desc: Use sFlow to collect router traffic, map exporter data to monitored assets, normalize by reported or fallback sampling rate, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
+    desc: Use sFlow to collect router traffic, map exporter data to monitored assets, consume Telegraf-estimated sFlow values directly, and provide overview, interface, protocol, port, endpoint, and conversation metrics.
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: The ActiveMQ plugin, based on JMX collection, acquires key performance metrics
@@ -5508,6 +5552,9 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, regularly send ICMP Echo Requests (ECHO_REQUEST)
       to check the connectivity and response time of target hosts or network devices.
     name: Ping(Telegraf)
+  TCPPort:
+    name: TCP(Telegraf)
+    desc: Probe TCP port reachability of a target host through the Telegraf net_response plugin, supporting IPv4 and IPv6, with optional send payload and expected response matching.
   MongoDB:
     name: MongoDB(Telegraf)
     desc: Through the Telegraf collector, regularly collect MongoDB metrics including
@@ -5598,6 +5645,7 @@ monitor_object:
   Minio: Minio
   Postgres: Postgres
   Ping: Ping
+  TCPPort: TCP
   vCenter: vCenter
   Switch: Switch
   WebLogic: WebLogic

@@ -76,8 +76,15 @@ def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
     assert all(item["notice_users"] == ["alice", "bob"] for item in payloads)
     assert all(item["enable"] is False for item in payloads)
     assert all(item["organizations"] in ([7], [8]) for item in payloads)
+    assert all(item["trigger_count"] == 1 for item in payloads)
     assert all("no_data_level" not in item for item in payloads)
     assert all("no_data_alert_name" not in item for item in payloads)
+    assert [(item["group_algorithm"], item["algorithm"]) for item in payloads] == [
+        ("max", "max_over_time"),
+        ("max", "max_over_time"),
+        ("avg", "avg_over_time"),
+        ("avg", "avg_over_time"),
+    ]
 
 
 def test_build_bulk_policy_payloads_includes_no_data_fields_only_when_enabled():
@@ -105,3 +112,40 @@ def test_build_bulk_policy_payloads_includes_no_data_fields_only_when_enabled():
 
     assert payloads[0]["no_data_level"] == "warning"
     assert payloads[0]["no_data_alert_name"] == "无数据告警"
+    assert payloads[0]["group_algorithm"] == "avg"
+    assert payloads[0]["algorithm"] == "avg_over_time"
+
+
+def test_build_bulk_policy_payloads_prefers_config_trigger_count_then_template_default():
+    module_path = Path(__file__).resolve().parents[1] / "services" / "policy_bulk.py"
+    module = _load_module("monitor_policy_bulk_trigger_count_payload_test_module", module_path)
+
+    config_payload = module.build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "CPU 使用率过高",
+                "metric_id": 101,
+                "collect_type": 9,
+                "trigger_count": 2,
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={"trigger_count": 3},
+    )
+    assert config_payload[0]["trigger_count"] == 3
+
+    template_payload = module.build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "CPU 使用率过高",
+                "metric_id": 101,
+                "collect_type": 9,
+                "trigger_count": 2,
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={},
+    )
+    assert template_payload[0]["trigger_count"] == 2

@@ -523,6 +523,23 @@ def test_render_template_supports_lower_filter_for_toml_booleans(monkeypatch):
     assert rendered == "insecure_skip_verify = false"
 
 
+def test_render_template_keeps_ping_address_family_implicit(monkeypatch):
+    plugin_controller_module = _load_plugin_controller_module(monkeypatch)
+    template = 'urls = ["{{ url }}"]'
+
+    ipv6_rendered = plugin_controller_module.Controller({}).render_template(
+        template,
+        {"url": "::1"},
+    )
+    ipv4_rendered = plugin_controller_module.Controller({}).render_template(
+        template,
+        {"url": "127.0.0.1"},
+    )
+
+    assert ipv6_rendered == 'urls = ["::1"]'
+    assert ipv4_rendered == 'urls = ["127.0.0.1"]'
+
+
 def test_render_template_allows_business_default_variables(monkeypatch):
     plugin_controller_module = _load_plugin_controller_module(monkeypatch)
 
@@ -762,15 +779,14 @@ def test_host_remote_status_query_is_scoped_to_host_config_type():
     assert "config_type='host'" in data["status_query"]
 
 
-def test_host_remote_ui_exposes_selectable_metrics_and_credentials():
+def test_host_remote_ui_hides_metrics_modules_and_keeps_credentials():
     ui_path = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf" / "http" / "host" / "UI.json"
     data = json.loads(ui_path.read_text(encoding="utf-8"))
     fields = {field["name"]: field for field in data["form_fields"]}
 
-    assert fields["metrics_modules"]["type"] == "checkbox_group"
-    assert fields["metrics_modules"]["default_value"] == ["cpu", "mem", "disk", "net"]
-    metric_values = {option["value"] for option in fields["metrics_modules"]["options"]}
-    assert {"cpu", "mem", "disk", "net", "diskio", "processes", "system"}.issubset(metric_values)
+    assert fields["metrics_modules"]["type"] == "hidden"
+    assert fields["metrics_modules"]["default_value"] == ["cpu", "mem", "disk", "diskio", "net", "processes", "system"]
+    assert "options" not in fields["metrics_modules"]
 
     assert fields["auth_type"]["type"] == "select"
     assert fields["auth_type"]["default_value"] == "password"

@@ -68,8 +68,12 @@ class TestRecordExecutionResult:
     @pytest.fixture
     def mock_engine(self):
         """Create a mock ChatFlowEngine instance."""
-        with patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult") as mock_task_result:
-            with patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult"):
+        with patch(
+            "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult"
+        ) as mock_task_result:
+            with patch(
+                "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult"
+            ):
                 from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
 
                 # Create mock instance
@@ -131,9 +135,13 @@ class TestRecordConversationHistory:
     @pytest.fixture
     def mock_engine_for_history(self):
         """Create a mock ChatFlowEngine for conversation history tests."""
-        with patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowConversationHistory") as mock_history:
-            with patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult"):
-                with patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult"):
+        with patch(
+            "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowConversationHistory"
+        ) as mock_history:
+            with patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult"):
+                with patch(
+                    "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult"
+                ):
                     from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
 
                     mock_instance = MagicMock()
@@ -247,6 +255,27 @@ class TestRecordConversationHistory:
 
 class TestSynchronousExecution:
     """Tests to verify synchronous execution behavior."""
+
+    def test_engine_persistence_methods_delegate_to_repository(self):
+        """TC-19-10b: ChatFlowEngine keeps compatibility wrappers but does not own ORM writes."""
+        from apps.opspilot.utils.chat_flow_utils.engine.engine import ChatFlowEngine
+
+        methods_to_check = [
+            "_record_execution_result",
+            "_record_conversation_history",
+            "_record_node_execution_result",
+            "_finalize_interrupted_execution",
+            "_ensure_execution_result_started",
+        ]
+
+        for method_name in methods_to_check:
+            source = inspect.getsource(getattr(ChatFlowEngine, method_name))
+            assert "execution_repository" in source, f"{method_name} should delegate persistence to ExecutionRepository"
+            assert "WorkFlowTaskResult" not in source, f"{method_name} should not directly use WorkFlowTaskResult"
+            assert "WorkFlowTaskNodeResult" not in source, f"{method_name} should not directly use WorkFlowTaskNodeResult"
+            assert (
+                "WorkFlowConversationHistory" not in source
+            ), f"{method_name} should not directly use WorkFlowConversationHistory"
 
     def test_no_thread_spawning_in_persistence_path(self):
         """TC-19-11: Persistence methods should not spawn any threads."""

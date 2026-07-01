@@ -82,6 +82,23 @@ def test_validate_threshold_rejects_missing_keys_and_bad_enums(monkeypatch):
     _assert_raises(lambda: s.validate_threshold("not-a-list"))
 
 
+# ---------------- trigger_count ----------------
+
+
+def test_validate_trigger_count_accepts_positive_integer(monkeypatch):
+    s = _serializer(_load_serializer_module(monkeypatch, "mp_trigger_count_ok_module"))
+    assert s.validate_trigger_count(1) == 1
+    assert s.validate_trigger_count(2) == 2
+
+
+def test_validate_trigger_count_rejects_non_positive_and_non_integer(monkeypatch):
+    s = _serializer(_load_serializer_module(monkeypatch, "mp_trigger_count_bad_module"))
+    _assert_raises(lambda: s.validate_trigger_count(0))
+    _assert_raises(lambda: s.validate_trigger_count(-1))
+    _assert_raises(lambda: s.validate_trigger_count("2"))
+    _assert_raises(lambda: s.validate_trigger_count(1.5))
+
+
 # ---------------- query_condition ----------------
 
 
@@ -119,8 +136,19 @@ def test_validate_source_requires_type_values_and_valid_type(monkeypatch):
 
 def test_validate_algorithm_enforces_supported_set(monkeypatch):
     s = _serializer(_load_serializer_module(monkeypatch, "mp_algo_module"))
-    for ok in ("max", "avg", "last_over_time"):
+    for ok in ("max_over_time", "avg_over_time", "count_over_time", "last_over_time"):
         assert s.validate_algorithm(ok) == ok
     assert s.validate_algorithm("") == ""  # 空放行（交由其它校验）
+    _assert_raises(lambda: s.validate_algorithm("avg"))
+    _assert_raises(lambda: s.validate_algorithm("max"))
     _assert_raises(lambda: s.validate_algorithm("median"))
     _assert_raises(lambda: s.validate_algorithm("p99"))
+
+
+def test_validate_group_algorithm_enforces_supported_set(monkeypatch):
+    s = _serializer(_load_serializer_module(monkeypatch, "mp_group_algo_module"))
+    for ok in ("avg", "max", "min", "sum", "count"):
+        assert s.validate_group_algorithm(ok) == ok
+    assert s.validate_group_algorithm("") == ""
+    _assert_raises(lambda: s.validate_group_algorithm("avg_over_time"))
+    _assert_raises(lambda: s.validate_group_algorithm("median"))

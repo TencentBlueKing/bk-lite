@@ -83,6 +83,61 @@
     "batchEdit": "Batch Edit",
     "searchTitle": "Asset Search",
     "assetSearchTxt": "Please enter the keywords...",
+    "AssetSearch": {
+        "heroTitle": "Search assets fast and locate issues",
+        "heroPlaceholder": "Search IP, host name, business, application, service, database, owner",
+        "advancedSearch": "Advanced Search",
+        "recentSearch": "Recent",
+        "clearHistory": "Clear History",
+        "commonTags": "Common Fields",
+        "recentChanges": "Recent Asset Changes",
+        "myFollowedAssets": "My Followed Assets",
+        "assetCategories": "Asset Categories",
+        "viewAll": "View All",
+        "refresh": "Refresh",
+        "loadingMore": "Loading...",
+        "viewDetail": "View Detail",
+        "status": "Status",
+        "operationType": "Operation",
+        "object": "Object",
+        "type": "Type",
+        "operator": "Operator",
+        "time": "Time",
+        "follow": "Follow",
+        "unfollow": "Unfollow",
+        "followSuccess": "Followed",
+        "unfollowSuccess": "Unfollowed",
+        "changeFilters": {
+            "all": "All",
+            "mine": "Mine",
+            "highRisk": "High Risk"
+        },
+        "operationTypes": {
+            "create": "Create",
+            "update": "Update",
+            "delete": "Delete",
+            "execute": "Execute",
+            "createRelation": "Create relation",
+            "deleteRelation": "Remove relation",
+            "unknown": "Unknown"
+        },
+        "quickTags": {
+            "prod": "Production",
+            "core": "Core Business",
+            "database": "Database",
+            "middleware": "Middleware",
+            "webApp": "Web App",
+            "network": "Network Device"
+        },
+        "categories": {
+            "host": "Host",
+            "app": "Application",
+            "service": "Service",
+            "database": "Database",
+            "network": "Network Device",
+            "other": "Other Devices"
+        }
+    },
     "menu": {
         "log": "Log",
         "assetManage": "Model",
@@ -110,9 +165,33 @@
         "rackContiguousFree": "Contiguous free U",
         "rackContiguousFreeShort": "Free run",
         "networkTopo": "Network Topology",
+        "ipView": "IP View",
+        "ipViewCapacity": "Capacity",
+        "ipViewUsed": "Used",
+        "ipViewAvailable": "Available",
+        "ipViewRatio": "Utilization",
+        "ipViewFree": "Free",
+        "ipViewAllocatedOnline": "Allocated - Online",
+        "ipViewAllocatedOffline": "Allocated - Offline",
+        "ipViewConflict": "Conflict",
+        "ipViewReserved": "Reserved",
+        "ipViewGateway": "Gateway/Reserved",
+        "ipViewUnknown": "Unknown",
+        "ipViewTooltipStatus": "Status",
+        "ipViewTooltipType": "Alloc Status",
+        "ipViewTooltipUser": "User",
+        "ipViewDrillTitle": "Subnet Block",
+        "ipViewBack": "Back",
         "noNetworkTopo": "No network topology relationships",
         "networkTopoMaxHop": "Maximum expansion depth reached (4 hops), cannot expand further",
         "networkTopoNodeLimit": "Too many topology nodes; display limit reached (100), no further expansion",
+        "layoutHierarchical": "Layered",
+        "layoutForce": "Force",
+        "layoutCircular": "Circular",
+        "exportImage": "Export image",
+        "networkTopoZoomOut": "Zoom out",
+        "networkTopoZoomIn": "Zoom in",
+        "networkTopoFitView": "Fit view",
         "networkTopoEdit": "Edit",
         "networkTopoExitEdit": "Done",
         "networkTopoEditHint": "Drag to move a device; right-click a device and choose \"Add Connection\", then click the target device; right-click a connection to delete.",
@@ -597,6 +676,15 @@
             "never": "none",
             "expand": "Expand overview",
             "collapse": "Collapse overview"
+        },
+        "IPTask": {
+            "chooseSubnet": "Select Subnets",
+            "scanMethod": "Scan Method",
+            "tcpPorts": "TCP Ports",
+            "tcpPortsInvalid": "Invalid port format. Enter numbers between 1-65535, separated by commas.",
+            "securityWarning": "Large-scale IP scanning may be flagged as port scanning or intrusion by security devices. Please notify your security team in advance and keep the scan scope and frequency reasonable.",
+            "rangeGuardTitle": "Large scan range — please confirm",
+            "rangeGuardContent": "The selected subnets contain more than 1,024 addresses (equivalent to a /22 network). A large scan may put load pressure on the network and security devices. Continue submitting?"
         }
     },
     "OidLibrary": {
@@ -888,5 +976,8 @@
             "failed": "Failed"
         },
         "noTaskSelected": "Select a task to view details"
+    },
+    "IPAM": {
+        "conflictFilter": "Conflict IPs"
     }
 }

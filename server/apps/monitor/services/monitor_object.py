@@ -4,6 +4,7 @@ import uuid
 from django.db import transaction
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.core.logger import monitor_logger as logger
 from apps.monitor.constants.database import DatabaseConstants
 from apps.monitor.constants.monitor_object import MonitorObjConstants
 from apps.monitor.models.monitor_metrics import Metric
@@ -18,6 +19,7 @@ from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import (
     display_field_key,
+    extract_field_bindings,
     extract_metric_bindings,
 )
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -210,6 +212,51 @@ class MonitorObjectService:
         return value_map
 
     @staticmethod
+    def _query_metric_field_values(metric_obj, target_instances, field):
+        """对 target_instances 查询指标,返回 VM label 字段值 {instance_id: field_value}。"""
+        target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
+        query_parts = []
+        for i, key in enumerate(metric_obj.instance_id_keys):
+            values_set = {re.escape(str(item[i])) for item in target_ids if len(item) > i and item[i] is not None}
+            if not values_set:
+                continue
+            values = MonitorObjectService._escape_promql_label_value("|".join(sorted(values_set)))
+            query_parts.append(f'{key}=~"{values}"')
+
+        labels_str = f"{', '.join(query_parts)}"
+        metric_name = (getattr(metric_obj, "name", "") or "").strip()
+        if metric_name:
+            query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
+        else:
+            query = metric_obj.query.replace("__$labels__", labels_str)
+        metrics = VictoriaMetricsAPI().query(query)
+        target_instance_ids = {inst["instance_id"] for inst in target_instances}
+        value_map = {}
+        time_map = {}
+        for metric in metrics.get("data", {}).get("result", []):
+            labels = metric.get("metric", {})
+            field_value = labels.get(field)
+            if field_value in (None, ""):
+                continue
+            label_values = tuple([labels.get(i) for i in metric_obj.instance_id_keys])
+            instance_id = str(label_values)
+            if instance_id not in target_instance_ids:
+                for value in label_values:
+                    value_str = str(value)
+                    if value_str in target_instance_ids:
+                        instance_id = value_str
+                        break
+                    parsed_key = str(parse_instance_id(value_str))
+                    if parsed_key in target_instance_ids:
+                        instance_id = parsed_key
+                        break
+            timestamp = metric.get("value", [0])[0]
+            if instance_id not in value_map or timestamp >= time_map.get(instance_id, 0):
+                value_map[instance_id] = field_value
+                time_map[instance_id] = timestamp
+        return value_map
+
+    @staticmethod
     def _fill_display_metrics(monitor_object_id, obj_metric_map, result):
         """按 display_fields 的 (plugin, metric) 绑定回填展示指标值。
 
@@ -220,9 +267,11 @@ class MonitorObjectService:
         - 兼容:绑定缺 plugin(遗留配置)时按指标名匹配、不做隔离、用裸指标名回填;display_fields
           为空时退回 supplementary_indicators(裸指标名,不区分插件)。
         """
-        bindings = extract_metric_bindings(obj_metric_map.get("display_fields", []))
+        display_fields = obj_metric_map.get("display_fields", [])
+        bindings = extract_metric_bindings(display_fields)
+        field_bindings = extract_field_bindings(display_fields)
 
-        if not bindings:
+        if not bindings and not field_bindings:
             supplementary = obj_metric_map.get("supplementary_indicators", [])
             if not supplementary:
                 return
@@ -241,12 +290,46 @@ class MonitorObjectService:
         for inst_id, plugin_name in cc_qs:
             instance_plugin_map.setdefault(inst_id, set()).add(plugin_name)
 
+        # 派生/上报型实例(如 K8s 集群/Pod/Node 经集群内采集器上报,但 bk-lite 侧无 CollectConfig)
+        # 也应纳入其「上报插件」的展示列取数;否则插件隔离会把它们一律判为 --。
+        # 与 effective_plugins 的 reported 逻辑一致:按对象各插件 status_query 反查上报实例,
+        # 以实例主键(instance_id)前缀匹配,使集群及其下 Pod/Node 都能命中所属插件。
+        uncovered = [inst for inst in result if inst["instance_id"] not in instance_plugin_map]
+        if uncovered:
+            plugin_status_qs = (
+                MonitorPlugin.objects.filter(monitor_object=monitor_object_id)
+                .exclude(status_query="")
+                .values_list("name", "status_query")
+                .distinct()
+            )
+            for plugin_name, status_query in plugin_status_qs:
+                query = (status_query or "").strip()
+                if not query:
+                    continue
+                try:
+                    resp = VictoriaMetricsAPI().query(query)
+                except Exception:
+                    logger.warning("回填展示列时查询插件上报状态失败: plugin=%s", plugin_name, exc_info=True)
+                    continue
+                reported_primary_ids = {
+                    metric["metric"].get("instance_id")
+                    for metric in resp.get("data", {}).get("result", [])
+                }
+                reported_primary_ids.discard(None)
+                if not reported_primary_ids:
+                    continue
+                for inst in uncovered:
+                    parsed = parse_instance_id(inst["instance_id"])
+                    primary = str(parsed[0]) if parsed else None
+                    if primary in reported_primary_ids:
+                        instance_plugin_map.setdefault(inst["instance_id"], set()).add(plugin_name)
+
         # 同名指标可能分属多个插件,按 (plugin, name) 精确取;另留 name 兜底给遗留无 plugin 的绑定
         metric_by_plugin = {}
         metric_by_name = {}
         for metric_obj in Metric.objects.filter(
             monitor_object_id=monitor_object_id,
-            name__in=[b["metric"] for b in bindings],
+            name__in=[b["metric"] for b in bindings + field_bindings],
         ).select_related("monitor_plugin"):
             plugin_name = metric_obj.monitor_plugin.name if metric_obj.monitor_plugin_id else ""
             metric_by_plugin[(plugin_name, metric_obj.name)] = metric_obj
@@ -287,6 +370,23 @@ class MonitorObjectService:
                 out_key = display_field_key(plugin_name, metric_name)
                 for instance in eligible:
                     instance[out_key] = value_map.get(instance["instance_id"])
+
+        for binding in field_bindings:
+            plugin_name, metric_name, field = binding["plugin"], binding["metric"], binding["field"]
+            if plugin_name:
+                metric_obj = metric_by_plugin.get((plugin_name, metric_name))
+                eligible = [
+                    inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())
+                ]
+            else:
+                metric_obj = metric_by_name.get(metric_name)
+                eligible = result
+            if not metric_obj or not eligible:
+                continue
+            value_map = MonitorObjectService._query_metric_field_values(metric_obj, eligible, field)
+            out_key = display_field_key(plugin_name, metric_name, field)
+            for instance in eligible:
+                instance[out_key] = value_map.get(instance["instance_id"])
 
     @staticmethod
     def _serialize_instance_list_item(obj, instance_map, org_map):

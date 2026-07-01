@@ -113,7 +113,9 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
                 }}
                 onClick={() => setRack(r)}>
                 <span className="rf-rack-led" style={{ background: c, boxShadow: `0 0 0 3px ${c}1f` }} />
-                <EllipsisWithTooltip text={r.inst_name} className="rf-rack-name" />
+                <div className="rf-rack-name-slot">
+                  <EllipsisWithTooltip text={r.inst_name} className="rf-rack-name" />
+                </div>
                 <div className="rf-rack-type" style={{ color: c }}>
                   {rackTypeName(r.datacenter_type)} · {r.u_count}U
                 </div>
@@ -195,7 +197,7 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
 
       <style jsx>{`
         .rf {
-          padding: 12px;
+          padding: 8px 0 0;
           color: ${isDark ? '#e5edf8' : TECH.text};
           background: ${roomBg};
           border-radius: 10px;
@@ -299,17 +301,29 @@ const RoomFloorPlan: React.FC<Props> = ({ modelId, instId }) => {
           box-shadow: ${rackHoverShadow} !important;
         }
         .rf-rack-led {
-          position: absolute; top: 10px; right: 10px;
+          position: absolute; top: 7px; right: 6px;
           width: 7px; height: 7px; border-radius: 50%;
         }
+        .rf-rack-name-slot {
+          display: flex;
+          align-items: center;
+          min-height: 27.6px;
+          padding-right: 8px;
+        }
         :global(.rf-rack-name) {
-          color: ${isDark ? '#e5edf8' : TECH.text}; font-size: 11.5px; font-weight: 760; line-height: 1.2;
+          display: -webkit-box;
+          -webkit-box-orient: vertical;
+          -webkit-line-clamp: 2;
+          color: var(--color-text-2); font-size: 11.5px; font-weight: 760; line-height: 1.2;
           letter-spacing: 0;
-          white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
-          margin-top: 0; padding-right: 16px;
+          white-space: normal; overflow: hidden; text-overflow: ellipsis;
+          word-break: normal; overflow-wrap: normal;
+          max-height: 27.6px;
+          width: 100%;
+          margin-top: 0;
         }
         .rf-rack-type {
-          font-size: 10px; margin-top: 6px; font-weight: 700;
+          font-size: 10px; margin-top: 4px; font-weight: 700;
           white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
         }
         .rf-rack-free {

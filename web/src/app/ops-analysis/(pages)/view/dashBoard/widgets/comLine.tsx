@@ -5,7 +5,8 @@ import { randomColorForLegend } from '@/app/ops-analysis/utils/randomColorForCha
 import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
 import { useTranslation } from '@/utils/i18n';
 import {
-  getOpsChartTheme,
+  getOpsChartColorsByMode,
+  getOpsChartThemeByMode,
   resolveOpsChartThemeName,
 } from '@/app/ops-analysis/utils/chartTheme';
 import ChartLegend from '../components/chartLegend';
@@ -75,8 +76,13 @@ const TrendLine: React.FC<TrendLineProps> = ({
   const { t } = useTranslation();
   const chartRef = useRef<any>(null);
   const themeName = resolveOpsChartThemeName();
-  const chartTheme = getOpsChartTheme(themeName);
-  const chartColors = randomColorForLegend(themeName);
+  const usesScreenChartTheme =
+    config?.chartThemeMode === 'screen-dark' ||
+    config?.chartThemeMode === 'screen-light';
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const chartColors = usesScreenChartTheme
+    ? getOpsChartColorsByMode(config?.chartThemeMode, themeName)
+    : randomColorForLegend(themeName);
   const [legendSelected, setLegendSelected] = useState<Record<string, boolean>>({});
   const [zoomRange, setZoomRange] = useState<{ start: number; end: number }>({ start: 0, end: 100 });
 
@@ -386,6 +392,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
       lineStyle: {
         width: chartTheme.lineWidth,
         opacity: chartTheme.lineOpacity,
+        shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur : 0,
+        shadowColor: usesScreenChartTheme
+          ? chartTheme.lineShadowColor
+          : 'transparent',
       },
       itemStyle: {
         borderColor: chartTheme.panelBg,
@@ -401,6 +411,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
         focus: 'series',
         lineStyle: {
           width: chartTheme.lineWidth + 0.8,
+          shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur + 4 : 0,
+          shadowColor: usesScreenChartTheme
+            ? chartTheme.lineShadowColor
+            : 'transparent',
         },
       },
     }));
@@ -416,6 +430,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
         lineStyle: {
           width: chartTheme.lineWidth,
           opacity: chartTheme.lineOpacity,
+          shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur : 0,
+          shadowColor: usesScreenChartTheme
+            ? chartTheme.lineShadowColor
+            : 'transparent',
         },
         itemStyle: {
           borderColor: chartTheme.panelBg,
@@ -428,6 +446,10 @@ const TrendLine: React.FC<TrendLineProps> = ({
           focus: 'series',
           lineStyle: {
             width: chartTheme.lineWidth + 0.8,
+            shadowBlur: usesScreenChartTheme ? chartTheme.lineShadowBlur + 4 : 0,
+            shadowColor: usesScreenChartTheme
+              ? chartTheme.lineShadowColor
+              : 'transparent',
           },
         },
       },
@@ -520,6 +542,7 @@ const TrendLine: React.FC<TrendLineProps> = ({
           data={legendData}
           colors={chartColors}
           layout="vertical"
+          textColor={chartTheme.axisLabelColor}
           onSelectionChange={handleLegendChange}
         />
       )}

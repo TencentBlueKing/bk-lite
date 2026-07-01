@@ -188,6 +188,129 @@ def test_execute_nats_create_rejects_user_info_without_user(monkeypatch):
     assert called["count"] == 0
 
 
+def test_query_monitor_data_by_metric_rebuilds_child_instance_id_from_vm_labels(monkeypatch):
+    module = _load_monitor_nats_module(monkeypatch, "monitor_nats_child_metric_identity_test_module")
+
+    monitor_obj = types.SimpleNamespace(id="pod", instance_id_keys=["instance_id", "pod"])
+    metric = types.SimpleNamespace(
+        name="cpu_usage",
+        query='pod_cpu_usage{instance_type="pod", __$labels__}',
+        instance_id_keys=["instance_id", "pod"],
+        dimensions=[],
+    )
+
+    class MonitorObjectDoesNotExist(Exception):
+        pass
+
+    class MetricDoesNotExist(Exception):
+        pass
+
+    class MonitorObjectManager:
+        @staticmethod
+        def get(id):
+            assert id == "pod"
+            return monitor_obj
+
+    class MetricManager:
+        @staticmethod
+        def get(monitor_object, name):
+            assert monitor_object is monitor_obj
+            assert name == "cpu_usage"
+            return metric
+
+    class MonitorObjectModel:
+        DoesNotExist = MonitorObjectDoesNotExist
+        objects = MonitorObjectManager()
+
+    class MetricModel:
+        DoesNotExist = MetricDoesNotExist
+        objects = MetricManager()
+
+    class AuthorizedQuerySet:
+        def filter(self, **kwargs):
+            if "id__in" in kwargs:
+                assert kwargs["id__in"] == ["('cluster-a', 'pod-1')"]
+            assert kwargs["monitor_object"] is monitor_obj
+            assert kwargs["is_deleted"] is False
+            return self
+
+        @staticmethod
+        def values_list(*args, **kwargs):
+            return ["('cluster-a', 'pod-1')"]
+
+    captured = {}
+
+    class MetricsService:
+        @staticmethod
+        def parse_step_to_seconds(step):
+            return 300
+
+        @staticmethod
+        def get_metrics_range(query, start_time, end_time, step):
+            captured["query"] = query
+            return {
+                "data": {
+                    "result": [
+                        {
+                            "metric": {
+                                "instance_id": "cluster-a",
+                                "pod": "pod-1",
+                                "namespace": "default",
+                            },
+                            "values": [[1, "0.5"]],
+                        },
+                        {
+                            "metric": {
+                                "instance_id": "cluster-a",
+                                "pod": "pod-2",
+                                "namespace": "default",
+                            },
+                            "values": [[1, "0.9"]],
+                        },
+                    ]
+                }
+            }
+
+    monkeypatch.setattr(module, "MonitorObject", MonitorObjectModel)
+    monkeypatch.setattr(module, "Metric", MetricModel)
+    monkeypatch.setattr(module, "Metrics", MetricsService)
+    monkeypatch.setattr(
+        module,
+        "_get_monitor_instance_permission",
+        lambda monitor_obj_id, user_info: ({}, None),
+    )
+    monkeypatch.setattr(
+        module,
+        "_get_authorized_instance_queryset",
+        lambda permission: AuthorizedQuerySet(),
+    )
+
+    result = module.query_monitor_data_by_metric(
+        {
+            "monitor_obj_id": "pod",
+            "metric": "cpu_usage",
+            "start": 1,
+            "end": 2,
+            "instance_ids": ["('cluster-a', 'pod-1')"],
+        },
+        user_info={"user": "alice", "team": 1},
+    )
+
+    assert result["result"] is True
+    assert 'instance_id=~"cluster-a"' in captured["query"]
+    assert 'pod=~"pod-1"' in captured["query"]
+    assert result["data"]["data"]["result"] == [
+        {
+            "metric": {
+                "instance_id": "cluster-a",
+                "pod": "pod-1",
+                "namespace": "default",
+            },
+            "values": [[1, "0.5"]],
+        }
+    ]
+
+
 def test_create_monitor_policy_rejects_anonymous_caller_without_side_effects(monkeypatch):
     module = _load_monitor_nats_module(monkeypatch, "monitor_nats_create_policy_anonymous_test_module")
 

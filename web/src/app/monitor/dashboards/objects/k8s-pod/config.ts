@@ -10,6 +10,7 @@ export const POD_DASHBOARD_CONFIG: SimpleDashboardConfig = {
   pageTitle: 'K8s Pod 监控仪表盘',
   objectFallbackName: 'Pod',
   instanceType: 'k8s',
+  clusterFilter: true,
   collectionStatusQuery:
     "count(prometheus_remote_write_kube_pod_info{instance_type='k8s', __$labels__}) by (instance_id)",
   metaItems: ['cAdvisor', 'k8s'],

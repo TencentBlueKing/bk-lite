@@ -108,6 +108,7 @@ const StrategyOperation = () => {
   const [groupBy, setGroupBy] = useState<string[]>(
     getGroupIds(monitorName as string)?.default || defaultGroup
   );
+  const [groupAlgorithm, setGroupAlgorithm] = useState<string | null>('avg');
   const [period, setPeriod] = useState<number | null>(null);
   const [algorithm, setAlgorithm] = useState<string | null>(null);
   const [formData, setFormData] = useState<StrategyFields>({
@@ -168,14 +169,16 @@ const StrategyOperation = () => {
         notice: false,
         period: 5,
         schedule: 5,
+        trigger_count: 1,
         recovery_condition: 5,
         collect_type: pluginList[0]?.value,
-        algorithm: 'avg'
+        group_algorithm: 'avg',
+        algorithm: 'avg_over_time'
       };
       let _metricId = searchParams.get('metricId') || null;
       if (type === 'builtIn') {
-        ['name', 'alert_name', 'algorithm'].forEach((item) => {
-          initForm[item] = strategyInfo[item] || null;
+        ['name', 'alert_name', 'group_algorithm', 'algorithm'].forEach((item) => {
+          initForm[item] = strategyInfo[item] || initForm[item] || null;
         });
         feedbackThreshold(strategyInfo.threshold || []);
         _metricId = strategyInfo.metric_name || null;
@@ -184,7 +187,8 @@ const StrategyOperation = () => {
       const defaultNoDataAlertName = t('monitor.events.noDataAlertNameDefault');
       setNoDataAlertName(defaultNoDataAlertName);
       // 设置汇聚方式默认值
-      setAlgorithm(initForm.algorithm);
+      setGroupAlgorithm(initForm.group_algorithm || 'avg');
+      setAlgorithm(initForm.algorithm || 'avg_over_time');
       // 设置无数据告警默认值为5分钟
       setNoDataAlert(5);
       form.setFieldsValue({
@@ -304,6 +308,7 @@ const StrategyOperation = () => {
       threshold: thresholdList,
       no_data_period,
       recovery_condition,
+      trigger_count,
       group_by,
       query_condition,
       collect_type,
@@ -316,6 +321,7 @@ const StrategyOperation = () => {
     form.setFieldsValue({
       ...data,
       collect_type: collect_type ? +collect_type : '',
+      trigger_count: trigger_count || 1,
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
       period: period?.value || null,
@@ -326,6 +332,7 @@ const StrategyOperation = () => {
     setCalculationUnit(filterInvalidUnit(calculation_unit));
     setPeriod(period?.value || null);
     setPeriodUnit(period?.type || 'min');
+    setGroupAlgorithm(data.group_algorithm || 'avg');
     setAlgorithm(data.algorithm || null);
     if (source?.type) {
       setSource(source);
@@ -551,6 +558,10 @@ const StrategyOperation = () => {
     setAlgorithm(val);
   };
 
+  const handleGroupAlgorithmChange = (val: string) => {
+    setGroupAlgorithm(val);
+  };
+
   const handleNodataUnitChange = (val: string) => {
     setNodataUnit(val);
     setNoDataAlert(null);
@@ -614,6 +625,7 @@ const StrategyOperation = () => {
           query: params.query
         };
         params.source = {};
+        params.group_algorithm = 'avg';
         params.algorithm = 'last_over_time';
       } else {
         const mertricTarget = metrics.find((item) => item.name === metric);
@@ -627,6 +639,8 @@ const StrategyOperation = () => {
           ? ''
           : mertricTarget?.unit;
       }
+      params.group_algorithm = params.group_algorithm || groupAlgorithm || 'avg';
+      params.algorithm = params.algorithm || algorithm || 'avg_over_time';
       params.threshold = threshold.filter(
         (item) => !!item.value || item.value === 0
       );
@@ -751,6 +765,7 @@ const StrategyOperation = () => {
                           labels={labels}
                           conditions={conditions}
                           groupBy={groupBy}
+                          groupAlgorithm={groupAlgorithm}
                           period={period}
                           periodUnit={periodUnit}
                           originMetricData={originMetricData}
@@ -759,6 +774,7 @@ const StrategyOperation = () => {
                           onMetricChange={handleMetricChange}
                           onFiltersChange={handleConditionsChange}
                           onGroupChange={handleGroupByChange}
+                          onGroupAlgorithmChange={handleGroupAlgorithmChange}
                           onPeriodChange={handlePeriodChange}
                           onPeriodUnitChange={handlePeriodUnitChange}
                           onAlgorithmChange={handleAlgorithmChange}
@@ -835,6 +851,7 @@ const StrategyOperation = () => {
                 metric={metric}
                 metrics={metrics}
                 groupBy={groupBy}
+                groupAlgorithm={groupAlgorithm}
                 conditions={conditions}
                 period={period}
                 periodUnit={periodUnit}

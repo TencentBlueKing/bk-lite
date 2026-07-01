@@ -23,6 +23,8 @@ import {
   toggleTemplateSelection
 } from './templateBulkUtils';
 
+const MAX_VISIBLE_SELECTED_TEMPLATE_TAGS = 4;
+
 const Template: React.FC = () => {
   const { isLoading } = useApiClient();
   const { getMonitorObject } = useMonitorApi();
@@ -75,12 +77,19 @@ const Template: React.FC = () => {
   );
 
   const selectedTemplateTags = useMemo(() => {
-    const groupSet = new Set<string>();
-    selectedTemplates.forEach((item) => {
-      groupSet.add(item.template_group || item.plugin_display_name || item.plugin_name || '--');
-    });
-    return Array.from(groupSet);
+    return selectedTemplates.map((item) => ({
+      key: getTemplateKey(item),
+      label: item.name || item.metric_name || '--'
+    }));
   }, [selectedTemplates]);
+
+  const visibleSelectedTemplateTags = selectedTemplateTags.slice(
+    0,
+    MAX_VISIBLE_SELECTED_TEMPLATE_TAGS
+  );
+  const hiddenSelectedTemplateTags = selectedTemplateTags.slice(
+    MAX_VISIBLE_SELECTED_TEMPLATE_TAGS
+  );
 
   useEffect(() => {
     if (isLoading) return;
@@ -314,9 +323,25 @@ const Template: React.FC = () => {
                 已选 {selectedTemplates.length} 个策略模版
               </span>
               <div className={templateStyle.bulkTags}>
-                {selectedTemplateTags.map((tag) => (
-                  <Tag key={tag}>{tag}</Tag>
+                {visibleSelectedTemplateTags.map((tag) => (
+                  <Tag
+                    key={tag.key}
+                    className={templateStyle.bulkTemplateTag}
+                    title={tag.label}
+                  >
+                    {tag.label}
+                  </Tag>
                 ))}
+                {hiddenSelectedTemplateTags.length > 0 && (
+                  <Tag
+                    className={templateStyle.bulkMoreTag}
+                    title={hiddenSelectedTemplateTags
+                      .map((tag) => tag.label)
+                      .join('、')}
+                  >
+                    +{hiddenSelectedTemplateTags.length}
+                  </Tag>
+                )}
               </div>
             </div>
             <div className={templateStyle.bulkActions}>

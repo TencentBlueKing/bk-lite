@@ -45,8 +45,10 @@ export interface StrategyFields {
     type: string;
     value: number;
   };
+  group_algorithm?: string;
   algorithm?: string;
   threshold: ThresholdField[];
+  trigger_count?: number;
   recovery_condition?: number;
   no_data_period?: {
     type: string;

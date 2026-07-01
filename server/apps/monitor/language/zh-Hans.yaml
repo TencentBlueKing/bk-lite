@@ -396,6 +396,9 @@ monitor_object_metric:
     system_load15:
       name: 15分钟平均负载
       desc: 表示系统在最近 15 分钟内的平均运行负载，用于评估系统负载的长期稳定性。
+    system_uptime:
+      name: 系统运行时长
+      desc: 表示主机自上次启动以来的持续运行时间（秒），用于观察主机稳定性和识别异常重启。
     host_cpu_core_count:
       name: CPU核心数
       desc: 表示主机可用的逻辑 CPU 核心数量，用于评估计算资源规模和容量基线。
@@ -414,18 +417,30 @@ monitor_object_metric:
     diskio_writes_rate:
       name: 磁盘写入IOPS
       desc: 表示磁盘每秒完成的写入操作次数，用于衡量写入请求的并发强度和 I/O 压力。
+    diskio_writes_total:
+      name: 磁盘写入次数
+      desc: 表示磁盘设备累计完成的写入操作次数，用于分析写入负载总量和变化趋势。
     diskio_write_bytes_rate:
       name: 磁盘写入速率
       desc: 表示磁盘单位时间内写入的数据量，用于评估磁盘写入吞吐能力。
+    diskio_write_bytes_total:
+      name: 磁盘写入字节数
+      desc: 表示磁盘设备累计写入的数据量（字节），用于分析磁盘写入流量规模。
     disk_write_latency:
       name: 磁盘写入延迟
       desc: 表示单次磁盘写入操作的平均耗时，用于分析磁盘写入性能及响应能力。
     diskio_reads_rate:
       name: 磁盘读出IOPS
       desc: 表示磁盘每秒完成的读取操作次数，用于衡量读请求的并发程度和 I/O 压力。
+    diskio_reads_total:
+      name: 磁盘读取次数
+      desc: 表示磁盘设备累计完成的读取操作次数，用于分析读取负载总量和变化趋势。
     diskio_read_bytes_rate:
       name: 磁盘读出速率
       desc: 表示磁盘单位时间内读取的数据量，用于评估磁盘读取吞吐能力。
+    diskio_read_bytes_total:
+      name: 磁盘读取字节数
+      desc: 表示磁盘设备累计读取的数据量（字节），用于分析磁盘读取流量规模。
     disk_read_latency:
       name: 磁盘读出延迟
       desc: 表示单次磁盘读取操作的平均耗时，用于分析磁盘读取性能和访问延迟。
@@ -498,9 +513,15 @@ monitor_object_metric:
     net_packets_recv_rate:
       name: 网络接收包速率
       desc: 表示网络接口单位时间内接收的数据包数量，用于衡量网络包级流量情况。
+    net_packets_recv_total:
+      name: 网络接收包数
+      desc: 表示网络接口累计接收的数据包数量，用于分析网络接收流量规模。
     net_packets_sent_rate:
       name: 网络发送包速率
       desc: 表示网络接口单位时间内发送的数据包数量。
+    net_packets_sent_total:
+      name: 网络发送包数
+      desc: 表示网络接口累计发送的数据包数量，用于分析网络发送流量规模。
     net_bytes_recv_rate:
       name: 网络接收吞吐速率
       desc: 表示网络接口单位时间内接收的数据量，用于评估网络接收带宽使用情况。
@@ -528,9 +549,15 @@ monitor_object_metric:
     net_drop_in_rate:
       name: 网络接收丢包速率
       desc: 表示网络接口单位时间内被丢弃的接收数据包数量，用于评估网络拥塞或异常情况。
+    net_drop_in_total:
+      name: 网络接收丢包数
+      desc: 表示网络接口累计丢弃的接收数据包数量，用于定位链路拥塞、缓冲区不足或驱动异常。
     net_drop_out_rate:
       name: 网络发送丢包速率
       desc: 表示网络接口单位时间内被丢弃的发送数据包数量。
+    net_drop_out_total:
+      name: 网络发送丢包数
+      desc: 表示网络接口累计丢弃的发送数据包数量，用于辅助排查网络发送路径异常。
     nvidia_smi_memory_total:
       name: GPU显存总容量
       desc: 表示 GPU 可用的显存总容量，是 GPU 资源评估的基础指标。
@@ -810,10 +837,10 @@ monitor_object_metric:
       desc: 该指标表示设备自上次启动以来的运行时间。通过监测设备的运行时间，网络管理员可以了解到设备的稳定性及可靠性，识别潜在的重启或故障问题。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -828,7 +855,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -1076,10 +1103,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -1094,7 +1121,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2338,10 +2365,10 @@ monitor_object_metric:
       desc: 该指标表示设备风扇的转速（RPM），取各风扇的最大值。转速异常偏低或为 0 表示风扇卡转或故障、设备面临过热风险；转速异常偏高可能是设备在为高温加速散热。对于仅提供转速、无风扇状态枚举的设备，转速是判断风扇健康的唯一依据。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -2356,7 +2383,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2474,10 +2501,10 @@ monitor_object_metric:
       desc: 此指标表示整个设备在过去5分钟内发送的总字节流量的平均速率，单位为字节每秒。通过对多个接口的发送字节进行汇总，管理员可以全面评估整个系统的发送性能，从而进行更有效的流量管理和优化。
     device_flow_bytes_rate:
       name: 设备 Flow 总流量速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总流量速率，用于观察整体带宽压力和容量趋势。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总流量速率，用于观察整体带宽压力和容量趋势。
     device_flow_packets_rate:
       name: 设备 Flow 总包速率
-      desc: 基于 Flow 记录和生效采样率换算后的设备总包速率，用于观察包级负载和突增流量。
+      desc: 按当前协议指标契约从 Flow 记录估算出的设备总包速率，用于观察包级负载和突增流量。
     device_flow_in_bytes_rate:
       name: 设备 Flow 入方向流量速率
       desc: 基于 Flow 记录换算并归属到输入侧数据的流量速率；具体协议的接口方向请以接口指标为准。
@@ -2492,7 +2519,7 @@ monitor_object_metric:
       desc: 基于 Flow 记录换算并归属到输出侧数据的包速率；具体协议的接口方向请以接口指标为准。
     device_flow_avg_packet_size:
       name: 设备 Flow 平均包大小
-      desc: 由采样率归一化后的字节数和包数计算出的平均包大小，可辅助识别小包风暴或大包传输特征。
+      desc: 基于 Flow 记录计算出的平均包大小或采样帧长，可辅助识别小包风暴或大包传输特征。
     device_flow_effective_sampling_rate:
       name: 设备 Flow 生效采样率
       desc: 当前 Flow 数据计算使用的生效采样率，优先取设备上报字段，缺失时使用资产兜底采样率。
@@ -2573,6 +2600,16 @@ monitor_object_metric:
     ping_ttl:
       name: 生存时间(TTL)
       desc: 接收到的ICMP响应包的生存时间值，反映数据包经过的网络跳数
+  TCPPort:
+    net_response_response_time:
+      name: 响应时间
+      desc: TCP建立连接的往返耗时（毫秒）。net_response原始输出为秒，查询时乘以1000换算为毫秒展示，数值越大表示连接越慢或网络延迟越高。
+    net_response_result_code:
+      name: 探测结果码
+      desc: TCP探测的结果码。0表示成功，1表示连接超时，2表示连接失败，3表示读取失败，4表示返回内容与期望串不匹配。非0均代表探测异常。
+    net_response_string_found:
+      name: 返回匹配
+      desc: 是否在响应内容中匹配到期望字符串。仅在配置了期望返回串时上报，1表示命中，0表示未命中。
   Nginx:
     nginx_active:
       name: 活跃连接数
@@ -3667,8 +3704,10 @@ monitor_object_metric_group:
     Disk IO: 磁盘 IO
     Disk: 磁盘
     Process: 进程
+    Processes: 进程
     Memory: 内存
     Net: 网络
+    Network: 网络
     Nvidia GPU: Nvidia GPU
   Firewall:
     Packet: 数据包
@@ -3887,6 +3926,8 @@ monitor_object_metric_group:
     Service: 服务状态
   Ping:
     Ping: Ping
+  TCPPort:
+    TCPPort: TCP
   SNMP Trap: None
   Website:
     HTTP: HTTP
@@ -4448,7 +4489,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Switch Flow sFlow:
     name: 交换机流量分析（sFlow）
-    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对交换机进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   WebLogic-JMX:
     name: WebLogic（JMX）
     desc: 通过WebLogic-JMX采集器定期收集WebLogic关键指标，包括线程池、连接池、内存、EJB、Servlet、JMS 性能及 Web 服务响应时间等。
@@ -4512,7 +4553,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Loadbalance Flow sFlow:
     name: 负载均衡流量分析（sFlow）
-    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对负载均衡进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   Bastion Host SNMP General:
     desc: SNMP 通用插件用于通过 SNMP 监控和管理堡垒机的监控情况。管理员可以获取有关设备的关键信息，例如 接口流量、错误统计和状态信息等，从而优化网络性能和提高管理效率。
     name: 堡垒机通用（SNMP）
@@ -4568,6 +4609,9 @@ monitor_object_plugin:
   Firewall Secworld SNMP:
     name: 安世（Telegraf）
     desc: 安世（Secworld）防火墙专用 SNMP 采集模板（Foundry/Brocade 兼容私有 MIB，企业号 1991）。除标准 IF-MIB 接口指标外，额外采集 1991 私有 OID 的设备健康指标：CPU 平均使用率（1991.1.1.2.1.50，snAgGblCpuUtil1SecAvg，直接 %）与内存使用率（1991.1.1.2.1.53，snAgGblDynMemUtil，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——安世（Secworld）防火墙 / 网络安全设备，OID 体系沿用 Foundry/Brocade 1991 贴牌。
+  Firewall Westone SNMP:
+    name: 卫士通（Telegraf）
+    desc: 卫士通（Westone）防火墙专用 SNMP 采集模板（企业号 31648 私有 MIB）。除标准 IF-MIB 接口指标外，额外采集卫士通私有 OID 的设备健康指标：CPU 平均使用率（31648.3.15.1，直接 %）与内存使用率（31648.3.15.5，直接 %，无 used/free 字节）。温度/风扇/电源与会话计数本模板未采集，故为 N/A。适用品牌型号——卫士通信息安全（Westone）防火墙 / 网络安全设备（企业号 31648）。
   Firewall Check Point SNMP:
     name: Check Point（Telegraf）
     desc: 面向 Check Point Quantum NGFW（Gaia）防火墙的专用 SNMP 采集模板。在标准 IF-MIB 接口指标与 64 位 HC 流量计数之外，额外采集 CHECKPOINT-MIB 私有 OID 的设备健康（CPU 使用率，真实内存 总量/空闲/已用及推算使用率）与防火墙特有的 VPN 吞吐（每秒加密/解密包数）。内存使用率按 (总量-空闲)/总量 推算。
@@ -4621,7 +4665,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Firewall Flow sFlow:
     name: 防火墙流量分析（sFlow）
-    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对防火墙进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   SNMP Trap:
     desc: SNMP Trap监控插件用于接收和处理网络设备主动推送的报警或状态通知（Trap消息），以实现实时监控和故障告警。
     name: SNMP Trap
@@ -4717,7 +4761,7 @@ monitor_object_plugin:
     desc: 使用 NetFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
   Router Flow sFlow:
     name: 路由器流量分析（sFlow）
-    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，按设备上报或兜底采样率归一化，并提供总览、接口、协议、端口、端点和会话维度指标。
+    desc: 使用 sFlow 对路由器进行流量分析采集，通过资产映射补充实例信息，直接消费 Telegraf 已估算的 sFlow 值，并提供总览、接口、协议、端口、端点和会话维度指标。
   ActiveMQ-JMX:
     name: ActiveMQ-JMX
     desc: 该 ActiveMQ 插件基于 JMX 采集，可获取消息队列、连接池、消息吞吐量等关键性能指标，实时监控消息处理效率与资源使用情况，助力优化系统性能，保障服务稳定。
@@ -4757,6 +4801,9 @@ monitor_object_plugin:
   Ping:
     desc: 通过Telegraf采集器定期发送ICMP回显请求（ECHO_REQUEST）来检查目标主机或网络设备的连通性和响应时间。
     name: Ping（Telegraf）
+  TCPPort:
+    name: TCP（Telegraf）
+    desc: 通过Telegraf net_response插件对目标主机的TCP端口进行连通性探测，支持IPv4和IPv6，可选发送内容并匹配期望返回串。
   MongoDB:
     name: MongoDB（Telegraf）
     desc: 通过Telegraf采集器定期收集MongoDB的基础信息、性能指标、操作统计和资源使用情况，帮助优化性能，保障数据库高效稳定运行。
@@ -4832,6 +4879,7 @@ monitor_object:
   Minio: Minio
   Postgres: Postgres
   Ping: Ping
+  TCPPort: TCP
   vCenter: vCenter
   Switch: 交换机
   WebLogic: WebLogic

@@ -6,8 +6,9 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count, Q
-from django.db.models.functions import TruncDate
+from django.db.models import Count, IntegerField, Q, Sum
+from django.db.models.fields.json import KeyTextTransform
+from django.db.models.functions import Cast, Coalesce, TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -143,7 +144,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
     if not token:
         return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
-    user = UserAPISecret.objects.filter(api_secret=token).first()
+    user = UserAPISecret.find_by_api_secret(token)
     if not user:
         if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
@@ -515,19 +516,36 @@ def _token_consumption_queryset(request):
     return queryset, start_time, end_time
 
 
+def _annotate_token_fields(queryset):
+    """在 DB 层从 response_detail JSONField 中提取各 token 整型字段，供聚合使用。
+
+    response_detail 结构：{"usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
+    KeyTextTransform 提取文本值后 Cast 为整型；NULL 值（路径不存在的旧行）被 Coalesce 置零。
+    """
+
+    def _int_field(path):
+        return Coalesce(Cast(KeyTextTransform(path[1], KeyTextTransform(path[0], "response_detail")), IntegerField()), 0)
+
+    return queryset.annotate(
+        _prompt=_int_field(("usage", "prompt_tokens")),
+        _completion=_int_field(("usage", "completion_tokens")),
+        _total=_int_field(("usage", "total_tokens")),
+    )
+
+
 @HasRole("admin")
 def get_total_token_consumption(request):
     queryset, _start_time, _end_time = _token_consumption_queryset(request)
-    input_tokens = output_tokens = total_tokens = 0
-    for response_detail in queryset.values_list("response_detail", flat=True).iterator():
-        prompt, completion, total = _extract_token_usage(response_detail)
-        input_tokens += prompt
-        output_tokens += completion
-        total_tokens += total
+    # DB 层聚合：不再把记录全量拉取到 Python 进程
+    result = _annotate_token_fields(queryset).aggregate(
+        input_tokens=Sum("_prompt"),
+        output_tokens=Sum("_completion"),
+        total_tokens=Sum("_total"),
+    )
     data = {
-        "total_tokens": total_tokens,
-        "input_tokens": input_tokens,
-        "output_tokens": output_tokens,
+        "total_tokens": result["total_tokens"] or 0,
+        "input_tokens": result["input_tokens"] or 0,
+        "output_tokens": result["output_tokens"] or 0,
     }
     return JsonResponse({"result": True, "data": data})
 
@@ -536,13 +554,19 @@ def get_total_token_consumption(request):
 def get_token_consumption_overview(request):
     queryset, start_time, end_time = _token_consumption_queryset(request)
     num_days = (end_time - start_time).days + 1
+    # 先初始化日期骨架（保证无数据日仍有 0 占位）
     daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
-    for created_at, response_detail in queryset.values_list("created_at", "response_detail").iterator():
-        _prompt, _completion, total = _extract_token_usage(response_detail)
-        date_key = created_at.strftime("%Y-%m-%d")
-        if date_key not in daily_totals:
-            daily_totals[date_key] = 0
-        daily_totals[date_key] += total
+    # DB 层按日期聚合 token 总量，不再全量拉取行到 Python
+    rows = (
+        _annotate_token_fields(queryset)
+        .annotate(date=TruncDate("created_at"))
+        .values("date")
+        .annotate(tokens=Sum("_total"))
+        .order_by("date")
+    )
+    for row in rows:
+        date_key = row["date"].strftime("%Y-%m-%d")
+        daily_totals[date_key] = (daily_totals.get(date_key) or 0) + (row["tokens"] or 0)
     items = [{"date": date, "tokens": tokens} for date, tokens in sorted(daily_totals.items())]
     return JsonResponse({"result": True, "data": {"items": items}})
 

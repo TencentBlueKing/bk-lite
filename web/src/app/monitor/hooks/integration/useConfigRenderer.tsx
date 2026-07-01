@@ -317,6 +317,7 @@ export const useConfigRenderer = () => {
       rules = [],
       required = false
     } = columnConfig;
+    const { width: columnWidth, ...componentProps } = widget_props;
 
     let options = columnConfig.options || [];
     if (!options?.length && externalOptions) {
@@ -333,7 +334,7 @@ export const useConfigRenderer = () => {
       title: label,
       dataIndex: name,
       key: name,
-      width: widget_props.width || 200
+      width: columnWidth || 200
     };
 
     // 验证函数
@@ -407,10 +408,10 @@ export const useConfigRenderer = () => {
               <Input
                 value={text}
                 onChange={(e) => handleChange(e.target.value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}
                 style={{ flex: 1 }}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -432,10 +433,10 @@ export const useConfigRenderer = () => {
               <InputNumber
                 value={text}
                 onChange={(value) => handleChange(value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -455,7 +456,7 @@ export const useConfigRenderer = () => {
           const filteredOptions = getFilteredOptionsForRow(
             options,
             enable_row_filter,
-            widget_props.mode,
+            componentProps.mode,
             dataSource,
             index,
             name
@@ -466,12 +467,12 @@ export const useConfigRenderer = () => {
               <Select
                 value={text}
                 onChange={(value) => handleChange(value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 style={{ flex: 1 }}
                 status={errorMsg ? 'error' : ''}
                 showSearch
                 optionFilterProp="children"
-                {...widget_props}
+                {...componentProps}
               >
                 {filteredOptions.map((option: any) => (
                   <Select.Option key={option.value} value={option.value}>
@@ -506,7 +507,7 @@ export const useConfigRenderer = () => {
                 onChange={handleGroupChange}
                 status={errorMsg ? 'error' : ''}
                 style={{ flex: 1 }}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -529,10 +530,10 @@ export const useConfigRenderer = () => {
                 value={text}
                 clickToEdit={false}
                 onChange={(value) => handleChange(value, record, index)}
-                placeholder={widget_props.placeholder || label}
+                placeholder={componentProps.placeholder || label}
                 status={errorMsg ? 'error' : ''}
                 style={{ flex: 1 }}
-                {...widget_props}
+                {...componentProps}
               />
               {errorMsg && (
                 <Tooltip title={errorMsg}>
@@ -544,6 +545,18 @@ export const useConfigRenderer = () => {
             </div>
           );
         };
+        break;
+
+      case 'switch':
+        column.render = (text: any, record: any, index: number) => (
+          <div style={{ display: 'flex', alignItems: 'center', minHeight: 32 }}>
+            <Switch
+              checked={Boolean(text)}
+              onChange={(checked) => handleChange(checked, record, index)}
+              {...componentProps}
+            />
+          </div>
+        );
         break;
 
       default:
