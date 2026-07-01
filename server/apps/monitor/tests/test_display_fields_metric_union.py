@@ -203,6 +203,36 @@ def test_query_metric_field_values_matches_storage_instance_key(monkeypatch):
     assert result == {"('i1',)": "10.0.0.1"}
 
 
+def test_query_metric_field_values_uses_metric_query_when_storage_name_differs(monkeypatch):
+    class FakeVM:
+        def query(self, query):
+            assert query == 'cpu_usage_system_total_gauge{instance_type="os", instance_id=~"i1"}'
+            return {"data": {"result": [
+                {
+                    "metric": {
+                        "instance_id": "i1",
+                        "host": "remote-host",
+                    },
+                    "value": [0, "1"],
+                },
+            ]}}
+
+    monkeypatch.setattr("apps.monitor.services.monitor_object.VictoriaMetricsAPI", lambda: FakeVM())
+
+    metric_obj = SimpleNamespace(
+        name="cpu_usage_system_total",
+        query='cpu_usage_system_total_gauge{instance_type="os", __$labels__}',
+        instance_id_keys=["instance_id"],
+    )
+    result = MonitorObjectService._query_metric_field_values(
+        metric_obj,
+        [{"instance_id": "('i1',)"}],
+        "host",
+    )
+
+    assert result == {"('i1',)": "remote-host"}
+
+
 def test_collect_vm_field_names_queries_vm_without_dimensions(monkeypatch):
     class FakeVM:
         def labels(self, match=None):

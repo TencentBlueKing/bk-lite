@@ -224,11 +224,15 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         labels_str = f"{', '.join(query_parts)}"
-        metric_name = (getattr(metric_obj, "name", "") or "").strip()
-        if metric_name:
-            query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
+        query_template = (getattr(metric_obj, "query", "") or "").strip()
+        if "__$labels__" in query_template:
+            query = query_template.replace("__$labels__", labels_str)
         else:
-            query = metric_obj.query.replace("__$labels__", labels_str)
+            metric_name = (getattr(metric_obj, "name", "") or "").strip()
+            if metric_name:
+                query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
+            else:
+                query = query_template
         metrics = VictoriaMetricsAPI().query(query)
         target_instance_ids = {inst["instance_id"] for inst in target_instances}
         value_map = {}
