@@ -75,6 +75,10 @@ def validate_requested_teams(request, team_ids, field_name="team"):
         except (TypeError, ValueError):
             raise serializers.ValidationError({field_name: "组织ID必须为整数"})
 
+    allowed_team_ids = get_allowed_team_ids(request)
+    if allowed_team_ids is not None and not set(normalized).issubset(allowed_team_ids):
+        raise serializers.ValidationError({field_name: "只能选择当前用户所属组织"})
+
     return normalized
 
 
