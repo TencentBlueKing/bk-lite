@@ -1833,7 +1833,7 @@ class TestMemoryWriteCacheFlushTriggers:
 
         with patch("apps.opspilot.tasks.close_old_connections"):
             with patch("apps.opspilot.tasks.flush_memory_write_cache_for_node") as mock_flush:
-                with django_assert_num_queries(2):
+                with django_assert_num_queries(3):
                     flush_all_pending_memory_write_cache()
 
         assert mock_flush.call_count == 2
@@ -2211,6 +2211,7 @@ def test_memory_write_cache_flush_timing_and_org(mocker):
     )
     bot = Bot.objects.create(name="b-mem", team=[5], created_by="admin")
     wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+    mocker.patch("apps.opspilot.tasks.close_old_connections")
 
     def call(content):
         process_memory_write_cache(

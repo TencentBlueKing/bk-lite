@@ -33,5 +33,5 @@ def test_异步函数被标记且可正常调用():
 
     assert view.api_exempt is True
     assert asyncio.iscoroutinefunction(view)
-    assert asyncio.get_event_loop().run_until_complete(view(3)) == 6
+    assert asyncio.run(view(3)) == 6
     assert view.__name__ == "view"

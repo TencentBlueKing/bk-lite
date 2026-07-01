@@ -6,13 +6,16 @@ import pytest
 
 from apps.cmdb.node_configs.config_factory import NodeParamsFactory
 
+# 仅社区版 node_configs 实际注册的私有云（openstack/manageone/smartx 属企业插件，
+# 本社区 worktree 未注册，get_params_class 会抛 ValueError，见
+# test_unregistered_cloud_raises_valueerror）。
 CLOUDS = {
     "hwcloud": "huaweicloud_info",
-    "openstack": "openstack_info",
-    "manageone": "manageone_info",
-    "smartx": "smartx_info",
     "fusioninsight": "fusioninsight_info",
 }
+
+# 企业云：社区 worktree 未注册 node_configs，工厂应抛 ValueError。
+ENTERPRISE_ONLY_CLOUDS = ["openstack", "manageone", "smartx"]
 
 
 def _fake_instance(model_id, host_via="endpoint"):
@@ -70,9 +73,16 @@ def test_push_params_builds_and_headers_align_collector(model_id, plugin_name):
     assert env["PASSWORD_access_secret_cmdb_123"] == "SK-yyy"
 
 
+@pytest.mark.parametrize("model_id", ENTERPRISE_ONLY_CLOUDS)
+def test_unregistered_cloud_raises_valueerror(model_id):
+    """社区 worktree 未注册 openstack/manageone/smartx 的 NodeParams，工厂应抛 ValueError。"""
+    with pytest.raises(ValueError):
+        NodeParamsFactory.get_params_class(model_id, "protocol")
+
+
 def test_host_falls_back_to_global_domain_name():
-    """openstack/manageone 平台属性是 global_domain_name，host 取它。"""
-    node = NodeParamsFactory.get_node_params(_fake_instance("openstack", host_via="global_domain_name"))
+    """实例属性是 global_domain_name（无 endpoint）时，host 取 global_domain_name。"""
+    node = NodeParamsFactory.get_node_params(_fake_instance("hwcloud", host_via="global_domain_name"))
     assert node.custom_headers()["cmdbhost"] == "https://cloud.example.com:8774"
 
 

@@ -8,11 +8,27 @@ Issue #3483: set_user_info 热路径写放大修复单元测试
 - update_fields 仅包含实际变化的字段（精确写列保护）
 """
 
+import contextlib
 from unittest.mock import MagicMock, patch, call
 
 import pytest
 
+from apps.base.models import User
 from apps.core.backends import AuthBackend
+
+
+@contextlib.contextmanager
+def _patch_get_or_create(user, created):
+    """patch User._default_manager.get_or_create 返回指定 (user, created)。
+
+    _default_manager 是只读属性，无法整体替换；这里只 patch 其上的方法。
+    """
+    with patch.object(
+        User._default_manager,
+        "get_or_create",
+        return_value=(user, created),
+    ) as mock_get_or_create:
+        yield mock_get_or_create
 
 
 class FakeUser:
@@ -102,9 +118,8 @@ class TestNoWriteWhenUnchanged:
                 "get_is_superuser",
                 return_value=False,
             ),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),  # 非新建
         ):
-            mock_manager.get_or_create.return_value = (user, False)  # 非新建
             result = backend.set_user_info(_make_request(), user_info, {})
 
         assert result is user
@@ -122,9 +137,8 @@ class TestNoWriteWhenUnchanged:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=False),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),
         ):
-            mock_manager.get_or_create.return_value = (user, False)
             # 直接调用修复后的方法
             backend.set_user_info(_make_request(), user_info, {})
 
@@ -146,9 +160,8 @@ class TestWriteWhenChanged:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=False),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),
         ):
-            mock_manager.get_or_create.return_value = (user, False)
             result = backend.set_user_info(_make_request(), user_info, {})
 
         assert result is user
@@ -164,9 +177,8 @@ class TestWriteWhenChanged:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=False),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),
         ):
-            mock_manager.get_or_create.return_value = (user, False)
             result = backend.set_user_info(_make_request(), user_info, {})
 
         assert result is user
@@ -180,9 +192,8 @@ class TestWriteWhenChanged:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=True),  # 升权
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),
         ):
-            mock_manager.get_or_create.return_value = (user, False)
             result = backend.set_user_info(_make_request(), user_info, {})
 
         assert result is user
@@ -200,9 +211,8 @@ class TestWriteWhenChanged:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=False),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),
         ):
-            mock_manager.get_or_create.return_value = (user, False)
             backend.set_user_info(_make_request(), user_info, {})
 
         fields = user.save.call_args.kwargs["update_fields"]
@@ -225,9 +235,8 @@ class TestNewUserSave:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=False),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, True),  # 新建
         ):
-            mock_manager.get_or_create.return_value = (user, True)  # 新建
             result = backend.set_user_info(_make_request(), user_info, {})
 
         assert result is user
@@ -258,9 +267,8 @@ class TestRuntimeAttributes:
 
         with (
             patch.object(AuthBackend, "get_is_superuser", return_value=False),
-            patch("apps.core.backends.User._default_manager") as mock_manager,
+            _patch_get_or_create(user, False),
         ):
-            mock_manager.get_or_create.return_value = (user, False)
             result = backend.set_user_info(_make_request(), user_info, rules)
 
         # 运行时属性已赋值

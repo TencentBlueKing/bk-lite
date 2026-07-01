@@ -315,7 +315,7 @@ def test_inst_list_save(fake_graph, monkeypatch):
     fake_graph("apps.cmdb.utils.Import", batch_create_entity=[{"data": {"inst_name": "h1"}, "success": True}])
     # get_check_attr_map 依赖 build_unique_rule_context → mock 之
     monkeypatch.setattr(
-        "apps.cmdb.services.unique_rule.build_unique_rule_context",
+        "apps.cmdb.utils.Import.build_unique_rule_context",
         lambda mid: type("Ctx", (), {"unique_rules": [], "attrs_by_id": {}})(),
     )
     result = obj.inst_list_save([{"inst_name": "h1"}])
@@ -333,7 +333,7 @@ def test_inst_list_update(fake_graph, monkeypatch):
         lambda data, attrs: [],
     )
     monkeypatch.setattr(
-        "apps.cmdb.services.unique_rule.build_unique_rule_context",
+        "apps.cmdb.utils.Import.build_unique_rule_context",
         lambda mid: type("Ctx", (), {"unique_rules": [], "attrs_by_id": {}})(),
     )
     obj = _make([{"attr_id": "inst_name", "attr_type": "str", "attr_name": "名称", "is_required": True}])

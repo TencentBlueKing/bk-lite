@@ -9,6 +9,9 @@ from loguru import logger
 from apps.opspilot.metis.llm.tools.common.sql_guard import run_blocking
 from apps.opspilot.metis.llm.tools.common.sql_guard import validate_sql_safety as _shared_validate_sql_safety
 
+if not hasattr(oracledb, "Error"):
+    oracledb.Error = getattr(getattr(oracledb, "exceptions", None), "Error", Exception)
+
 
 def prepare_context(config: RunnableConfig = None) -> dict:
     """

@@ -680,7 +680,8 @@ def test_execute_chat_flow_test_mode_enqueues_async_run(rf, mocker):
     request.META["REMOTE_ADDR"] = "127.0.0.1"
     request.META["HTTP_USER_AGENT"] = "pytest"
 
-    response = views.execute_chat_flow(request, 101, "agents-1")
+    # execute_chat_flow 已改为 async 视图，需在事件循环中 await。
+    response = asyncio.run(views.execute_chat_flow(request, 101, "agents-1"))
 
     assert response.status_code == 200
     payload = json.loads(response.content)
@@ -776,25 +777,28 @@ def test_kubernetes_data_collection_toolkit_exposes_only_collection_focused_tool
     assert "delete_kubernetes_resource" not in tool_names
 
 
-def test_builtin_k8s_chatflow_uses_restricted_data_collection_toolkit():
+def test_builtin_k8s_chatflow_uses_kubernetes_toolkit():
+    """内置 k8s 巡检 chatflow 现绑定通用 ``kubernetes`` 工具集（巡检场景）。"""
     config_path = Path(__file__).resolve().parents[1] / "management" / "chatflow_data" / "config.json"
     config = json.loads(config_path.read_text(encoding="utf-8"))
     k8s_item = next(item for item in config if item["id"] == "k8s")
 
-    assert k8s_item["tools"] == ["kubernetes_data_collection"]
+    assert k8s_item["tools"] == ["kubernetes"]
 
 
-def test_builtin_k8s_chatflow_prompts_align_alert_input_and_evidence_output():
+def test_builtin_k8s_chatflow_prompts_describe_inspection_and_html_report():
+    """check 提示为集群巡检策略，format 提示输出可嵌邮件的 HTML 巡检报告表格。"""
     chatflow_dir = Path(__file__).resolve().parents[1] / "management" / "chatflow_data" / "k8s"
     check_prompt = (chatflow_dir / "check.txt").read_text(encoding="utf-8")
     format_prompt = (chatflow_dir / "format.txt").read_text(encoding="utf-8")
 
-    assert "normalize_alert_event" in check_prompt
-    assert "build_incident_evidence_package" in check_prompt
-    assert "incident evidence package" in check_prompt
-    assert "incident evidence package" in format_prompt
-    assert "根因" in format_prompt
-    assert "不要重新采集" in format_prompt
+    # check 提示聚焦巡检（只查异常资源）
+    assert "巡检" in check_prompt
+    assert "Pod" in check_prompt
+    # format 提示输出 HTML 邮件巡检报告
+    assert "HTML" in format_prompt
+    assert "巡检报告" in format_prompt
+    assert "<table" in format_prompt
 
 
 def test_normalize_alert_event_builds_stable_schema():
@@ -884,6 +888,33 @@ def test_build_incident_evidence_package_wraps_uniform_evidence_blocks():
     assert payload["events_timeline"]["status"] == "success"
     assert payload["pod_logs"]["status"] == "success"
     assert payload["missing_data"] == ["previous_container_logs_not_supported"]
+    # 告警标题含 "CrashLoopBackOff"（crash/backoff），且 resource_type=pod，
+    # 进入“重启类 Pod 故障”严格分支：要求 snapshot+events+logs+node 全部 success。
+    # 此处未提供 node_context（status=skipped），因此 ready_for_analysis 应为 False。
+    assert payload["node_context"]["status"] == "skipped"
+    assert payload["ready_for_analysis"] is False
+
+
+def test_build_incident_evidence_package_ready_when_crash_pod_has_full_context():
+    """重启类 Pod 告警在 snapshot/events/logs/node 全部成功时，ready_for_analysis=True。"""
+    from apps.opspilot.metis.llm.tools.kubernetes.data_collection import build_incident_evidence_package
+
+    result = build_incident_evidence_package.invoke(
+        {
+            "alert": {"alert_id": "alert-001", "title": "Pod CrashLoopBackOff"},
+            "target": {"resource_type": "pod", "resource_name": "order-api-7d8c6", "resolved": True},
+            "collection_scope": {"time_window_minutes": 60, "log_lines": 200},
+            "resource_snapshot": {"phase": "Running"},
+            "events_timeline": {"timeline": []},
+            "pod_logs": {"current": {"content": "boom"}, "previous": None},
+            "node_context": {"node": "node-1", "ready": True},
+            "missing_data": [],
+            "errors": [],
+        }
+    )
+
+    payload = json.loads(result)
+    assert payload["node_context"]["status"] == "success"
     assert payload["ready_for_analysis"] is True
 
 
