@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="RACOM">
+  <rect width="1024" height="1024" rx="112" fill="#172554"/>
+  <path d="M212 676c86-126 186-188 300-188s214 62 300 188" fill="none" stroke="#BFDBFE" stroke-width="58" stroke-linecap="round"/>
+  <path d="M302 578c60-68 130-102 210-102s150 34 210 102" fill="none" stroke="#38BDF8" stroke-width="54" stroke-linecap="round"/>
+  <path d="M392 486c36-32 76-48 120-48s84 16 120 48" fill="none" stroke="#F8FAFC" stroke-width="50" stroke-linecap="round"/>
+  <circle cx="512" cy="716" r="72" fill="#22C55E"/>
+  <path d="M406 308h212c70 0 118 42 118 104 0 46-27 80-70 96l92 146h-104l-78-128h-78v128h-92V308zm92 82v62h106c24 0 38-12 38-31s-14-31-38-31H498z" fill="#EFF6FF"/>
+</svg>

@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Lantronix">
+  <rect width="64" height="64" rx="12" fill="#155F72"/>
+  <path d="M18 16h10v24h18v8H18V16z" fill="#FFFFFF"/>
+  <path d="M34 16h12v8h-8v7h8v8H34V16z" fill="#7ED6E6"/>
+</svg>

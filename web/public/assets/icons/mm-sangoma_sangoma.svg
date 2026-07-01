@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Sangoma Vega">
+  <rect width="64" height="64" rx="12" fill="#f8fafc"/>
+  <path d="M15 20h34v24H15z" fill="#0f172a"/>
+  <path d="M20 25h24v5H20zm0 10h16v4H20z" fill="#e2e8f0"/>
+  <path d="M49 26c5 2 8 6 8 12s-3 10-8 12v-7c2-1 3-3 3-5s-1-4-3-5z" fill="#16a34a"/>
+  <path d="M15 26c-5 2-8 6-8 12s3 10 8 12v-7c-2-1-3-3-3-5s1-4 3-5z" fill="#22c55e"/>
+  <path d="M26 47h12v5H26z" fill="#475569"/>
+  <circle cx="46" cy="22" r="4" fill="#84cc16"/>
+</svg>

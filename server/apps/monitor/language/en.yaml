@@ -172,12 +172,51 @@ monitor_object_metric:
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_cpu_usage:
+      name: CPU Usage
+      desc: Overall CPU utilization of the access device, reported directly as a percentage by a private scalar. Sustained high usage indicates OLT control-plane or management-plane pressure.
+    device_memory_total:
+      name: Memory Total
+      desc: Total physical memory capacity reported by the access device in bytes. This metric can be combined with free memory to derive overall memory utilization.
+    device_memory_free:
+      name: Memory Free
+      desc: Available physical memory currently reported by the access device in bytes. Persistently decreasing free memory can indicate pressure from control services or service tables.
+    device_memory_usage:
+      name: Memory Usage
+      desc: System memory utilization of the access device, reported directly as a percentage by a private scalar. Sustained high memory can indicate forwarding table, ONU management table, or control-service pressure.
+    device_temperature_celsius:
+      name: System Temperature
+      desc: System temperature of the access device in degrees Celsius. Persistently high values may indicate cooling problems, high ambient temperature, or excessive device load.
+    device_card_temperature_level:
+      name: Card Temperature Level
+      desc: Relative card temperature level of the access device. Values 1-10 indicate coolest to hottest and 999 means no report; this is useful for card temperature trend detection and is not a Celsius reading.
+    device_card_state:
+      name: Card State
+      desc: Primary state of each access-device card. The in-service state is normalized to 1 and every other or unknown state is normalized to 2, indicating that the card may be unavailable or should be checked.
+    device_psu_state:
+      name: Power Module State
+      desc: Power module status of the access device. Normal state is normalized to 1 and alarm or unknown states are normalized to 2, indicating possible power input, module, or alarm-light risk.
+    device_fan_state:
+      name: Fan State
+      desc: Fan operating state of the access device. Normal state is normalized to 1 and abnormal or unknown states are normalized to 2, indicating possible cooling degradation.
+    device_disk_usage:
+      name: Disk Usage
+      desc: Disk volume usage of the access device, reported as the highest volume usage per device. Sustained high values can risk log, configuration, or runtime-file writes.
+    device_disk_state:
+      name: Disk State
+      desc: Disk volume usage level of the access device. Normal is normalized to 1 and minor, major, critical, or unknown states are normalized to 2, indicating disk-space attention is needed.
   ConsoleServer:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_temperature_celsius:
+      name: Temperature
+      desc: Temperature reading of the console server in degrees Celsius. High values may indicate cooling or ambient-temperature risk.
+    device_psu_state:
+      name: Power Supply Status
+      desc: Input power state of the console server, normalized to 1=healthy and 2=fault. Any unknown or non-normal code should be investigated as a power-path risk.
   NetworkService:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
@@ -220,12 +259,36 @@ monitor_object_metric:
     network_service_pool_member_state:
       name: Pool Member Status
       desc: Availability state of the service pool member, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_sync_state:
+      name: Spectracom Sync Status
+      desc: Spectracom xSync system synchronization state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_dc_power_state:
+      name: Spectracom DC Power Status
+      desc: Spectracom DC power input state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_minor_alarm_state:
+      name: Spectracom Minor Alarm Status
+      desc: Spectracom minor alarm state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_major_alarm_state:
+      name: Spectracom Major Alarm Status
+      desc: Spectracom major alarm state, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_ntp_state:
+      name: Spectracom NTP Status
+      desc: Spectracom NTP current mode, normalized to 1=healthy and 2=fault.
+    network_service_spectracom_ntp_stratum:
+      name: Spectracom NTP Stratum
+      desc: Current Spectracom NTP stratum level.
   VoiceGateway:
     snmp_uptime: *id001
     interface_ifHCInOctets: *id002
     interface_ifHCOutOctets: *id003
     device_total_incoming_traffic: *id004
     device_total_outgoing_traffic: *id005
+    device_temperature_celsius:
+      name: Device Temperature
+      desc: Voice gateway device temperature in degrees Celsius, used to detect cooling problems, blocked airflow, or overheating risk.
+    device_psu_state:
+      name: PSU State
+      desc: Voice gateway power-source state normalized so 1 means healthy and 2 means fault.
   Minio:
     minio_cluster_capacity_usable_total_bytes_gauge:
       name: Cluster Usable Total Capacity
@@ -3839,9 +3902,14 @@ monitor_object_metric_group:
   Access:
     Base: Base
     Traffic: Traffic
+    Access: Access
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   ConsoleServer:
     Base: Base
     Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   NetworkService:
     Base: Base
     Traffic: Traffic
@@ -3849,6 +3917,8 @@ monitor_object_metric_group:
   VoiceGateway:
     Base: Base
     Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
   Dameng:
     Base: Base
     Session: Session
@@ -3989,6 +4059,8 @@ monitor_object_metric_group:
     Status: Status
     Bandwidth: Bandwidth
     Traffic: Traffic
+    Temperature: Temperature
+    Hardware Status: Hardware Status
     Firewall: Firewall
     Traffic Overview: Traffic Overview
     Sampling: Sampling
@@ -4227,6 +4299,12 @@ monitor_object_plugin:
   Wireless Cambium SNMP:
     name: Wireless Cambium SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/associated clients) use Cambium private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp, so they are N/A. Applicable to Cambium Networks wireless devices (cnPilot/ePMP/PMP, enterprise OID 17713) and other IF-MIB compliant wireless AP/bridges.
+  Switch WAGO SNMP:
+    name: WAGO (Telegraf)
+    desc: Baseline SNMP template for WAGO industrial managed Ethernet switches (enterprise PEN 13576). It collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Only WAGO 852 series SNMP management support and enterprise identity are confirmed here; stable row-filter-free private CPU, memory, temperature, fan or power-supply health OIDs are not confirmed, so those health metrics are N/A and not faked. Applicable to WAGO 852 industrial managed switches and other IF-MIB compliant WAGO switches.
+  Switch Weidmuller SNMP:
+    name: Weidmuller (Telegraf)
+    desc: Baseline SNMP template for Weidmuller industrial managed Ethernet switches (enterprise PEN 38187). It collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Only Weidmuller industrial managed switch SNMP support and enterprise identity are confirmed here; stable row-filter-free private CPU, memory, temperature, fan or power-supply health OIDs are not confirmed, so those health metrics are N/A and not faked. Applicable to Weidmuller industrial managed switches and other IF-MIB compliant Weidmuller switches.
   Wireless Proxim SNMP:
     name: Wireless Proxim SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/subscriber units) use Proxim ORiNOCO/Tsunami private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp; LibreNMS also has no Proxim processors/mempools/sensors discovery (only ORiNOCO-MIB for OS detection), so wireless health is N/A. Applicable to Proxim Wireless devices (ORiNOCO AP access points, Tsunami MP point-to-multipoint backhaul base stations/subscriber units, enterprise OID 841) and other IF-MIB compliant wireless AP/backhaul bridges.
@@ -4236,6 +4314,15 @@ monitor_object_plugin:
   Wireless Albentia SNMP:
     name: Albentia (Telegraf)
     desc: Albentia Systems WiMAX / AerDOCSIS wireless SNMP child template (ALBENTIA-AS-MIB, enterprise PEN 28087). The source queue confirms private Albentia telemetry for sector temperature, clients, frequency, distance and power, but the exact raw MIB object list is not present in this worktree; without row-filter-free OIDs, those private temperature/client/radio/link health metrics are N/A and not faked. This child declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the Albentia collect_type, UI and Telegraf child template. Applicable to Albentia wireless base stations / access devices and other IF-MIB compliant wireless devices.
+  Wireless LigoWave SNMP:
+    name: LigoWave (Telegraf)
+    desc: LigoWave wireless AP and backhaul SNMP child template, enterprise PEN 32750. The confirmed LigoWave MIB set exposes wireless interface, remote-node, signal, noise, SNR, Tx power and byte-counter telemetry, but this pass has not confirmed stable row-filter-free CPU, memory, temperature, fan or power-supply device-health OIDs. Those device-health metrics are therefore N/A and wireless link counters are not promoted into shared health metrics. This child declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the LigoWave collect_type, UI and Telegraf child template. Applicable to LigoWave wireless APs, bridges, backhaul devices and other IF-MIB compliant wireless devices.
+  Wireless Radwin SNMP:
+    name: Radwin (Telegraf)
+    desc: Radwin wireless broadband PtP and PtMP SNMP child template, enterprise PEN 4458. The current state facts confirm RADWIN-MIB-WINLINK1000 and the Radwin enterprise number, but this pass has not confirmed stable row-filter-free CPU, memory, temperature, fan or power-supply device-health OIDs. Those device-health metrics are therefore N/A and wireless link counters are not promoted into shared health metrics. This child declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the Radwin collect_type, UI and Telegraf child template. Applicable to Radwin 5000 and other Radwin wireless broadband PtP or PtMP devices plus IF-MIB compliant wireless devices.
+  Wireless Mimosa SNMP:
+    name: Mimosa (Telegraf)
+    desc: Mimosa wireless PtP and PtMP backhaul SNMP child template, enterprise PEN 43356. This child collects the confirmed internal temperature scalar, reported as tenths of a degree Celsius and converted to Celsius in the query. CPU, memory, fan and power-supply health objects are currently N/A because no stable shared OIDs are confirmed for them, and wireless link or subscriber counters are not promoted into shared health metrics. The shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic while this plugin provides the Mimosa collect_type, UI and Telegraf child template. Applicable to Mimosa B5, B11 and other Mimosa wireless PtP or PtMP backhaul devices plus IF-MIB compliant wireless devices.
   Wireless Grandstream SNMP:
     name: Grandstream (Telegraf)
     desc: Baseline SNMP collection template for Grandstream GWN wireless devices (interface traffic + uptime, enterprise PEN 42397). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The GRANDSTREAM-GWN-MIB is oriented to wireless radio statistics and per-client information, exposing only gwnDeviceUptime as a scalar system object with no CPU/memory/temperature objects, while associated clients appear only as the per-MAC gwnClientTable with no scalar count that telegraf inputs.snmp cannot aggregate row-wise. CPU/memory/temperature/client-count/channel-utilization are therefore N/A and not faked. Applicable to Grandstream GWN76xx/GWN78xx Wi-Fi access points and controllers (enterprise PEN 42397) and other IF-MIB compliant wireless AP devices.
@@ -4262,6 +4349,21 @@ monitor_object_plugin:
   Transmission SAF Tehnika SNMP:
     name: SAF Tehnika (Telegraf)
     desc: Baseline SNMP collection template for SAF Tehnika microwave transmission devices (enterprise PEN 19011). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms SAF Tehnika public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private microwave health metrics such as radio signal, link state, temperature and optical/radio power are N/A and not faked. Applicable to SAF Tehnika microwave / packet radio transmission devices and other IF-MIB compliant transmission devices.
+  Transmission MRV SNMP:
+    name: MRV (Telegraf)
+    desc: Baseline SNMP collection template for MRV OptiDriver optical transmission devices, enterprise PEN 33. It collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). MRV-IN-REACH-SYSTEM-MIB facts are available, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private CPU, memory, temperature, fan, power and optical health metrics are N/A and not faked. Applicable to MRV OptiDriver ROADM and optical transmission devices, plus other IF-MIB compliant transmission devices.
+  Transmission Marconi SNMP:
+    name: Marconi (Telegraf)
+    desc: Baseline SNMP collection template for Marconi Communications ATM and SDH transmission devices, enterprise PEN 7262. It collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). MARCONI-MIB facts are available, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private CPU, memory, temperature, fan, power and optical health metrics are N/A and not faked. Applicable to Marconi ATM, SDH and optical transmission devices, plus other IF-MIB compliant transmission devices.
+  Transmission Alcoma SNMP:
+    name: Alcoma (Telegraf)
+    desc: Baseline SNMP collection template for Alcoma microwave radio and wireless transmission devices, enterprise PEN 12140. It collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). ALCOMA-MIB facts are available, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private CPU, memory, temperature, fan, power, radio and link-health metrics are N/A and not faked. Applicable to Alcoma microwave transmission devices, plus other IF-MIB compliant transmission devices.
+  Transmission SIAE Microelettronica SNMP:
+    name: SIAE Microelettronica (Telegraf)
+    desc: SIAE Microelettronica microwave transmission SNMP child template for devices under enterprise PEN 3373. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds sensorTempValue from SIAE-SENSOR-TEMP-MIB as device_temperature_celsius, read directly in degrees Celsius. CPU, memory, fan and power-supply health are N/A because stable shared health objects are not confirmed. Temperature monitor up/down state remains alarm context and is not promoted into a generic hardware-state metric.
+  Transmission PacketLight SNMP:
+    name: PacketLight (Telegraf)
+    desc: Baseline SNMP collection template for PacketLight DWDM and OTN optical transmission devices, enterprise PEN 4515. It collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The queue confirms PacketLight SL-NE-MIB and SL-SFP-MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private optical health metrics such as optical link, transponder, amplifier, temperature and optical power are N/A and not faked. Applicable to PacketLight DWDM, OTN and optical transmission devices and other IF-MIB compliant transmission devices.
   Transmission Pan Dacom SNMP:
     name: Pan Dacom (Telegraf)
     desc: Baseline SNMP collection template for Pan Dacom CWDM/optical transmission devices (PAN-DACOM-MIB). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The source queue confirms Pan Dacom public MIB availability, but the exact raw MIB object list is not present in this worktree; without verified row-filter-free OIDs, private optical/CWDM health metrics such as link state, temperature and optical power are N/A and not faked. Applicable to Pan Dacom optical/CWDM transmission devices and other IF-MIB compliant transmission devices.
@@ -4271,18 +4373,99 @@ monitor_object_plugin:
   Transmission XKL SNMP:
     name: XKL (Telegraf)
     desc: XKL DXMOS optical transport SNMP child template. In addition to the shared Transmission SNMP floor for uptime and IF-MIB interface traffic, it collects XKL private hardware health tables for sensor temperature, fan controller state and power-supply state. Temperature is reported directly in degrees Celsius with no scaling. Fan and power-supply normal(2) states are normalized to 1 healthy, and all other states are normalized to 2 fault. CPU and memory are N/A because XKL-MIB does not expose stable shared health objects for them.
+  Transmission Siklu SNMP:
+    name: Siklu (Telegraf)
+    desc: Siklu EtherHaul and MultiHaul millimeter-wave transmission SNMP child template for enterprise PEN 31926. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds the Radio Bridge system temperature scalar rbSysTemperature as device_temperature_celsius. CPU, memory, fan and power-supply health are N/A because stable shared health objects are not exposed. RF signal, CINR, Tx power and per-radio state are link telemetry and are not promoted into shared device health in this pass.
+  Transmission 4RF Aprisa SNMP:
+    name: 4RF Aprisa (Telegraf)
+    desc: 4RF AprisaXE wireless transmission SNMP child template for enterprise PEN 14817. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds AprisaXE receiver temperature and two fan-status objects. Temperature is read directly in degrees Celsius. Fan status maps notFitted(0) and fanOkay(1) to 1 healthy, while other and unknown states map to 2 fault. CPU, memory and power-supply health are N/A because stable shared health objects are not exposed. RSSI, SNR, TDM and Ethernet objects are link or service telemetry and are not promoted into device health.
   Transmission Viavi SNMP:
     name: Viavi (Telegraf)
     desc: Viavi/JDSU transmission and network-visibility SNMP baseline child template for devices under Viavi PEN 26052. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   Transmission Sycamore SNMP:
     name: Sycamore (Telegraf)
     desc: Sycamore optical switching transmission SNMP baseline child template for devices under Sycamore PEN 2411. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Ekinops SNMP:
+    name: Ekinops (Telegraf)
+    desc: Ekinops WDM, CWDM and DWDM transmission SNMP baseline child template for devices under Ekinops PEN 20044. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Infinera SNMP:
+    name: Infinera (Telegraf)
+    desc: Infinera optical transport SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission BridgeWave SNMP:
+    name: BridgeWave (Telegraf)
+    desc: BridgeWave millimeter-wave wireless transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Huber+Suhner Cubo SNMP:
+    name: Huber+Suhner Cubo (Telegraf)
+    desc: Huber+Suhner Cubo Mini optical transmission SNMP child template for devices under PEN 27894. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. This child adds Cubo Mini fan-card status and transceiver temperature from CUBO-MINI-MIB. Temperature is normalized from tenths of degrees Celsius. CPU, memory and power health objects are N/A until stable shared OIDs are confirmed.
+  Transmission Fibrolan SNMP:
+    name: Fibrolan (Telegraf)
+    desc: Fibrolan Falcon carrier Ethernet and IEEE 1588 transmission SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Exalt SNMP:
+    name: Exalt (Telegraf)
+    desc: Exalt EX-i digital microwave backhaul SNMP baseline child template. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Smartoptics SNMP:
+    name: Smartoptics (Telegraf)
+    desc: Smartoptics DCP and M-Series WDM/DWDM optical transmission SNMP baseline child template for devices under Smartoptics PEN 30826. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission RACOM SNMP:
+    name: RACOM (Telegraf)
+    desc: RACOM RAy microwave backhaul transmission SNMP baseline child template for devices under RACOM PEN 33555. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
   Access BDCOM SNMP:
     name: Access BDCOM SNMP
     desc: Dedicated SNMP collection template for BDCOM access devices. Collects standard IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) and device uptime (sysUpTime), and derives total inbound/outbound device traffic rates. Health metrics of BDCOM access devices (OLT/switch) such as optical power, PON ports and temperature use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to BDCOM access/OLT devices.
+  Access V-SOL SNMP:
+    name: Access V-SOL SNMP
+    desc: V-SOL / V-SOLUTION V1600D EPON OLT access-device SNMP child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds confirmed V1600D private scalar health metrics — CPU utilization (cpuLoad, direct percent), memory utilization (memoryLoad, direct percent), and system temperature (sysTemperature, direct Celsius). PON, ONU, optical transceiver and alarm tables are business, port, or row-level objects and are not promoted to shared device-health metrics. Power-module state is not collected until the normal-state enum is reliably verified.
+  Access ARRIS Cadant SNMP:
+    name: Access ARRIS Cadant SNMP
+    desc: ARRIS Cadant E6 CMTS access-device SNMP child template for devices under enterprise PEN 4998. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds CADANT-CMTS-EQUIPMENT-MIB private equipment health metrics — fan ambient temperature in Celsius, relative card temperature level, card primary state, PEM power LED status, disk-volume usage percentage, and disk-volume usage level. DOCSIS port, channel, and service counters are business or row-level objects and are not promoted into shared device-health metrics.
+  Access FiberHome OLT SNMP:
+    name: Access FiberHome OLT SNMP
+    desc: FiberHome OLT and GPON access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power device-health scalars are not proven from the current FIBERHOME-OLT-COMMON-MIB signal, so they are not promoted into shared device-health metrics. PON, ONU and optical tables are business, port or row-level objects and are not promoted into generic device health in this pass.
+  Access Zhone DZS SNMP:
+    name: Access Zhone DZS SNMP
+    desc: Zhone/DZS GPON access-device SNMP baseline child template for devices under enterprise PEN 6296. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Access UTStarcom SNMP:
+    name: Access UTStarcom SNMP
+    desc: UTStarcom DSLAM and broadband access-device SNMP baseline child template for devices under enterprise PEN 4666. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Access Raisecom SNMP:
+    name: Access Raisecom SNMP
+    desc: Raisecom ROAP/ROS access-device SNMP child template for devices under enterprise PEN 8886. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds Raisecom private health metrics — CPU utilization, memory total/free/usage, device temperature, fan state, and power supply state. Optical transceiver, PON, and alarm tables are business, port, or row-level objects and are not promoted into shared device-health metrics.
+  Access PacketFront SNMP:
+    name: Access PacketFront SNMP
+    desc: PacketFront DRG and CPE access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power device-health scalars are not proven from the current PACKETFRONT-DRG-MIB and PACKETFRONT-SMI signal, so they are not promoted into shared device-health metrics.
+  Access C-Data SNMP:
+    name: Access C-Data SNMP
+    desc: C-Data GPON and EPON access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power device-health scalars are not proven from the current CDATA-GPON-MIB signal, so they are not promoted into shared device-health metrics.
+  Access Casa Systems SNMP:
+    name: Access Casa Systems SNMP
+    desc: Casa Systems CMTS and broadband access-device SNMP baseline child template. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public OID facts confirm the Casa enterprise root, casaMgmt subtree and casaModuleCpuMemMib module direction, but stable private CPU, memory, temperature, fan and power device-health leaf OIDs or enum semantics are not proven, so they are not promoted into shared device-health metrics.
+  Access Nateks SNMP:
+    name: Access Nateks SNMP
+    desc: Nateks Megatrans and Orion access-device SNMP child template for devices under enterprise PEN 4249. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds NATEKS-MIB temperature sensor values normalized from 1/1000 degrees Celsius and local power-source availability status. CPU, memory, fan, SFP DDM, digital I/O, alarm, and TLM tables are not promoted into shared device-health metrics.
+  Access Harmonic SNMP:
+    name: Access Harmonic SNMP
+    desc: Harmonic NSG Pro access-platform SNMP baseline child template for devices under enterprise PEN 1563. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts prove only the private enterprise root and access-platform identity; stable private CPU, memory, temperature, fan and power device-health scalars are not proven, so they are not promoted into shared device-health metrics.
+  Access RAD SNMP:
+    name: Access RAD SNMP
+    desc: RAD Data Communications access, CPE, industrial-router and broadband-wireless SNMP baseline child template for devices under enterprise PEN 164. The shared Access SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts prove only the RAD enterprise root and access-device scope; stable private CPU, memory, temperature, fan and power device-health leaf OIDs are not proven, so they are not promoted into shared device-health metrics.
   ConsoleServer Opengear SNMP:
     name: ConsoleServer Opengear SNMP
     desc: Dedicated SNMP collection template for Opengear console servers. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the console server object. Opengear private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to Opengear console/serial servers.
+  ConsoleServer WTI SNMP:
+    name: WTI Console Server (Telegraf)
+    desc: WTI console-server and remote-power SNMP child template for devices under WTI PEN 2634. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds verified environment-unit temperature and input-power state leaves, normalizing input power to 1=healthy and 2=fault. Serial-port rows, outlet power metering, users and trap objects are not promoted into shared device-health metrics.
+  ConsoleServer Avocent ACS SNMP:
+    name: Avocent ACS ConsoleServer SNMP
+    desc: Avocent ACS console-server SNMP baseline child template for devices under Avocent PEN 10418. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current MIB facts confirm the ACS product subtree but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
+  ConsoleServer Perle IOLAN SNMP:
+    name: Perle IOLAN ConsoleServer SNMP
+    desc: Perle IOLAN console-server SNMP baseline child template for Perle console and serial servers. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current public MIB facts confirm official IOLAN MIB packages but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
+  ConsoleServer Raritan SX SNMP:
+    name: Raritan SX ConsoleServer SNMP
+    desc: Raritan Dominion SX console-server SNMP baseline child template for devices under Raritan PEN 13742. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current public MIB facts confirm the SX product subtree but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
+  ConsoleServer Lantronix SLC SNMP:
+    name: Lantronix SLC ConsoleServer SNMP
+    desc: Lantronix SLC and EMG console-server SNMP baseline child template for devices under Lantronix PEN 244. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; current public facts confirm SLC 8000 SNMP MIB-II compatibility, SNMPv1/v2/v3 support, custom-MIB capability and environmental-sensor support, but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so private objects are not promoted into shared device-health metrics.
   NetworkService Infoblox SNMP:
     name: NetworkService Infoblox SNMP
     desc: Dedicated SNMP collection template for Infoblox NIOS network-service appliances. Collects IF-MIB 64-bit HC interface traffic (ifHCInOctets/ifHCOutOctets, ifXTable) plus uptime (sysUpTime). Infoblox NIOS DNS/DHCP service statistics and per-node CPU/memory use per-row indexed MIBs requiring row-level filtering, so they are N/A. Applicable to Infoblox NIOS DDI appliances.
@@ -4298,12 +4481,99 @@ monitor_object_plugin:
   NetworkService BlueCat SNMP:
     name: BlueCat (Telegraf)
     desc: BlueCat DDI network-service SNMP collection for appliances under BlueCat PEN 13315. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, and DNS, DHCP and IPAM counters are business or capacity indicators, so they are not promoted into shared device-health metrics.
+  NetworkService Server Technology Sentry3 SNMP:
+    name: Server Technology Sentry3 (Telegraf)
+    desc: Server Technology Sentry3 SNMP baseline child template for remote power, PDU and environmental monitor devices under Server Technology PEN 1718.3. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm tower, infeed, outlet, temperature and humidity sensor, contact-closure and branch power tables, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private health and PDU business counters are not promoted into shared device-health metrics.
+  NetworkService Enlogic PDU SNMP:
+    name: Enlogic PDU (Telegraf)
+    desc: Enlogic PDU and EN2.0 PDU SNMP baseline child template for network-service devices under Enlogic PEN 38446. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm PDU nameplate, input phase, breaker, outlet, power status, external sensor and Smart Cabinet tables, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private health and PDU business counters are not promoted into shared device-health metrics.
+  NetworkService Rittal CMC III SNMP:
+    name: Rittal CMC III (Telegraf)
+    desc: Rittal CMC III SNMP baseline child template for network-service rack, environment, power and monitoring units under Rittal PEN 2606.7. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm unit, power-load, current-consumption, device-status and variable tables, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private health, environment and PDU business counters are not promoted into shared device-health metrics.
+  NetworkService Gude PDU SNMP:
+    name: Gude PDU (Telegraf)
+    desc: Gude Expert Power Control, PDU, ATS and ETS SNMP baseline child template for network-service devices under Gude PEN 28507. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm PDU8310 power, channel status and ETS primary or secondary power-availability tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and PDU business counters are not promoted into shared device-health metrics.
+  NetworkService Geist PDU Environmental SNMP:
+    name: Geist PDU Environmental (Telegraf)
+    desc: Geist and Vertiv PDU, environmental monitor and remote power SNMP baseline child template for network-service devices under Geist PEN 21239. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm internal, temperature sensor, airflow, relay, RPM, analog, outlet, device-availability and remote-power tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and PDU business counters are not promoted into shared device-health metrics.
+  NetworkService Panduit iPDU SNMP:
+    name: Panduit iPDU (Telegraf)
+    desc: Panduit G5 iPDU and intelligent PDU SNMP baseline child template for network-service devices under Panduit PEN 19536. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm PDU identity, input phase or line, outlet, temperature and humidity probe, rack access, HID and alarm tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and PDU business counters are not promoted into shared device-health metrics.
+  NetworkService APC UPS PDU Environmental SNMP:
+    name: APC UPS PDU Environmental (Telegraf)
+    desc: APC UPS, PDU and environmental monitor SNMP baseline child template for network-service devices under APC PEN 318. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm UPS outlet group, diagnostic temperature, diagnostic humidity and battery voltage tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics across APC device families, so private health and UPS/PDU/environmental business counters are not promoted into shared device-health metrics.
+  NetworkService Eaton UPS PDU Environmental SNMP:
+    name: Eaton UPS PDU Environmental (Telegraf)
+    desc: Eaton UPS, PDU and environmental monitor SNMP baseline child template for network-service devices under Eaton PEN 534. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm UPS, PDU, receptacle, battery, power output, temperature and humidity tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU/environmental business counters are not promoted into shared device-health metrics.
+  NetworkService Tripp Lite UPS PDU Environmental SNMP:
+    name: Tripp Lite UPS PDU Environmental (Telegraf)
+    desc: Tripp Lite UPS, PDU and environmental sensor SNMP baseline child template for network-service devices under Tripp Lite PEN 3417. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm PowerAlert-managed UPS, PDU and environmental sensor SNMP capability plus official MIB file names, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private UPS/PDU/environmental business counters are not promoted into shared device-health metrics.
+  NetworkService Allot SNMP:
+    name: Allot (Telegraf)
+    desc: Allot enterprise service gateway SNMP baseline child template for network-service devices under Allot PEN 2603. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm enterprise gateway monitoring and private SNMP MIB identity, but do not prove stable shared CPU, memory, temperature, fan or power-health scalar semantics, so private service, traffic and policy tables are not promoted into shared device-health metrics.
+  NetworkService EfficientIP SNMP:
+    name: EfficientIP (Telegraf)
+    desc: EfficientIP SOLIDserver DDI SNMP baseline child template for network-service devices under EfficientIP PEN 2440. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm DDI appliance SNMP capability and hardware or service OID subtrees, but do not prove stable shared CPU, memory, temperature, fan, PSU or DNS-DHCP service-health scalar semantics, so private hardware and service subtrees are not promoted into shared device-health metrics.
+  NetworkService Socomec iPDU UPS SNMP:
+    name: Socomec iPDU UPS (Telegraf)
+    desc: Socomec iPDU, UPS and Net Vision SNMP baseline child template for network-service devices under Socomec PEN 4555. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm iPDU identity, inlet, outlet, EMD temperature or humidity, threshold alarm, UPS input, output, bypass, battery, load and device connection tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU business counters are not promoted into shared device-health metrics.
+  NetworkService Liebert PDU UPS Environmental SNMP:
+    name: Liebert PDU UPS Environmental (Telegraf)
+    desc: Liebert and Vertiv PDU, UPS and environmental monitor SNMP baseline child template for network-service devices under Liebert Global Products PEN 476.1.42. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm rack PDU, MPX, MPH, RPC2, power measurement, power line, DC power, threshold, load circuit, temperature, humidity and remote sensor tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU/environmental business counters are not promoted into shared device-health metrics.
+  NetworkService NTI ENVIROMUX SNMP:
+    name: NTI ENVIROMUX (Telegraf)
+    desc: NTI ENVIROMUX SNMP baseline child template for environmental monitor and remote sensor network-service devices under NTI PEN 3699. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm internal, auxiliary, external and IP sensor tables, ACLM power tables, dry-contact, relay, message and alarm objects, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private environment, sensor and relay business counters are not promoted into shared device-health metrics.
+  NetworkService Meinberg LANTIME SNMP:
+    name: Meinberg LANTIME (Telegraf)
+    desc: Meinberg LANTIME time-server SNMP collection for appliances under Meinberg PEN 5597. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The public LANTIME MIB confirms NTP and PTP service objects, but stable shared CPU, memory, temperature, fan and power health scalars with conservative status semantics are not proven in the current MIB facts, so service indicators are not promoted into shared device-health metrics.
+  NetworkService Endace SNMP:
+    name: Endace (Telegraf)
+    desc: Endace network visibility and traffic capture appliance SNMP collection for devices under Endace PEN 18418. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so capture and visibility indicators are not promoted into shared device-health metrics.
+  NetworkService DEVA Broadcast SNMP:
+    name: DEVA Broadcast (Telegraf)
+    desc: DEVA Broadcast receiver SNMP collection for devices under DEVA PEN 35833. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts expose RF, MPX, audio and pilot broadcast-service alarms, but stable private CPU, memory, temperature, fan and power health scalars are not proven, so broadcast-service indicators are not promoted into shared device-health metrics.
+  NetworkService EndRun SNMP:
+    name: EndRun (Telegraf)
+    desc: EndRun time-server SNMP collection for devices under EndRun PEN 13827. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so NTP, PTP and GPS service indicators are not promoted into shared device-health metrics.
+  NetworkService Spectracom SNMP:
+    name: Spectracom (Telegraf)
+    desc: Spectracom SecureSync and NetClock time-server SNMP collection for appliances under Spectracom PEN 18837. The shared NetworkService SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds xSync and NTP status scalars for synchronization, DC power, major and minor alarms, NTP current mode and stratum. Temperature and hot-swap objects are not collected in this pass because their numeric leaf OIDs were not fully verified.
+  NetworkService Asentria SiteBoss SNMP:
+    name: Asentria SiteBoss (Telegraf)
+    desc: Asentria SiteBoss remote-site monitoring SNMP collection for devices under Asentria PEN 3052. This child template relies on the shared NetworkService SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. SiteBoss EventSensor points are configurable per installation and need row-level interpretation before temperature, humidity, contact, relay or power-output points can be normalized, so they are not promoted into shared device-health metrics in this pass.
   VoiceGateway AudioCodes SNMP:
     name: VoiceGateway AudioCodes SNMP
     desc: Dedicated SNMP collection template for AudioCodes voice gateways/SBC. Collects standard IF-MIB interface traffic (64-bit ifHCInOctets/ifHCOutOctets, auto-expanded per interface) and device uptime, providing baseline monitoring for the voice gateway/SBC object. AudioCodes private health metrics are mostly per-row indexed tables (row-level filtering) that telegraf inputs.snmp cannot filter, so they are N/A. Applicable to AudioCodes Mediant/SBC voice gateways.
   VoiceGateway Ribbon SNMP:
     name: Ribbon (Telegraf)
     desc: Ribbon/Sonus voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  VoiceGateway Acme Packet SNMP:
+    name: Acme Packet (Telegraf)
+    desc: Acme Packet voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Public system-management MIB facts prove SBC management objects exist, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Patton SNMP:
+    name: Patton (Telegraf)
+    desc: Patton SmartNode voice gateway and IAD SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. SmartNode enterprise and product subtrees are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Innovaphone SNMP:
+    name: Innovaphone (Telegraf)
+    desc: Innovaphone voice gateway and SBC SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Innovaphone enterprise root and gateway subtree are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Mitel SNMP:
+    name: Mitel (Telegraf)
+    desc: Mitel voice gateway and PBX SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Mitel enterprise root and call server MIB family are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Polycom SNMP:
+    name: Polycom (Telegraf)
+    desc: Polycom voice endpoint and conference phone SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Polycom enterprise root and endpoint MIB subtree are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Yeastar SNMP:
+    name: Yeastar (Telegraf)
+    desc: Yeastar IP PBX and VoIP gateway SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Yeastar enterprise root and gateway product family are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs and enum meanings are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway Zenitel SNMP:
+    name: Zenitel (Telegraf)
+    desc: Zenitel Vingtor-Stentofon Exigo and Turbine voice device SNMP child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Zenitel VS-DEVICE-MIB temperature sensors and power-source status tables are verified, so this child collects temperature and normalized power state. Fan speed is RPM-only and voltage is mV-only, so they are not promoted into shared fan-state or voltage health metrics in this pass.
+  VoiceGateway Sangoma Vega SNMP:
+    name: Sangoma Vega (Telegraf)
+    desc: Sangoma Vega voice gateway SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Vega voice-gateway family and enterprise MIB subtree are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs are not fully verified in this pass, so they are not promoted into shared device-health metrics.
+  VoiceGateway AddPac SNMP:
+    name: AddPac (Telegraf)
+    desc: AddPac VoIP and media gateway SNMP baseline child template. The shared VoiceGateway SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The AddPac voice-gateway family and SNMP MIB support are verified, but stable CPU, memory, temperature, fan and power health leaf OIDs are not fully verified in this pass, so they are not promoted into shared device-health metrics.
   DM-Exporter:
     name: Dameng Database Monitoring Exporter
     desc: Deploy the Dameng database monitoring exporter through DM-Exporter to collect core metrics such as sessions, locks, tablespaces, memory usage, and slow queries.
@@ -4667,6 +4937,9 @@ monitor_object_plugin:
   Switch TsnTec SNMP:
     name: TsnTec (Telegraf)
     desc: TsnTec 8148SC switch-specific SNMP collection template (IANA PEN 65531). Beyond the shared Switch SNMP floor, it collects TsnTec private OIDs for device health including control-plane CPU utilization, memory utilization, CPU temperature, fan state and power-supply state. CPU and memory are direct 0-100 percentages, and temperature is read directly in degrees Celsius. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. System uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. Supported brands/models — TsnTec 8148SC ultra-low-latency switches.
+  Switch Wi-Tek SNMP:
+    name: Wi-Tek (Telegraf)
+    desc: Wi-Tek managed switch-specific SNMP collection template (IANA PEN 12284). Beyond the shared Switch SNMP floor, it collects Wi-Tek private OIDs from SYSINFO-MIB and IMIMGMT-MIB for device health including control-plane CPU utilization, memory used/free/usage, system temperature, fan state and power-supply state. CPU is read from taskInformation.total as a direct percentage. Memory usage is derived from allocated and free bytes. Temperature is read directly in degrees Celsius from systemTemperature. Fan and PSU raw states are normalized through telegraf processors.enum to 1=healthy / 2=fault. System uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. Industry temperature/power and SFP DDM objects are DisplayString or port-level diagnostics, so they are not collected as device-level health metrics.
   Switch BDCOM SNMP:
     name: BDCOM (Telegraf)
     desc: BDCOM (Shanghai Baud Data Communication) switch-specific SNMP collection
@@ -4771,6 +5044,9 @@ monitor_object_plugin:
   Switch Sixnet SNMP:
     name: Sixnet (Telegraf)
     desc: Sixnet SLX industrial Ethernet switch SNMP collection (enterprise 20540). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic, per-interface incoming/outgoing error and discard rates, interface admin/oper status and bandwidth, plus device-aggregated total incoming/outgoing traffic rates. Sixnet SLX units are fanless passively cooled industrial managed switches whose temperature, dual redundant power inputs and alarm relay are exposed mainly over Modbus/TCP and LED/alarm-relay rather than as row-filter-free private SNMP scalars, so CPU, memory, temperature, fan and power are N/A. Supported brands/models — Sixnet SLX / SL SlimLine industrial Ethernet switches (SLX-5MS / 8MS / 10MG / 16MS series; enterprise 20540).
+  Switch AsterFusion SNMP:
+    name: AsterFusion (Telegraf)
+    desc: AsterFusion open-network switch SNMP baseline collection (enterprise 55955). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm AsterNOS SNMP v1/v2c/v3 support and private-node entry points for RoCE, BGP and RIB data, but they do not prove stable shared CPU, memory, temperature, fan or power health scalars with conservative status semantics, so service or fabric indicators are not promoted into device-health metrics. Supported brands/models — AsterFusion AsterNOS open-network switches.
   Switch Phoenix Contact SNMP:
     name: Phoenix Contact (Telegraf)
     desc: Baseline SNMP collection template for Phoenix Contact FL SWITCH industrial Ethernet switches (enterprise PEN 4346). Based on standard MIB-II / IF-MIB, it collects device uptime and 64-bit HC interface traffic, per-interface incoming/outgoing error and discard rates, interface admin/oper status and bandwidth, plus device-aggregated total incoming/outgoing traffic rates. The FL SWITCH temperature, redundant power-supply inputs (P1/P2) and alarm-contact objects live in product-family-specific private MIBs (PEN 4346) shipped inside the firmware package and are not exposed as row-filter-free pollable scalars across the GHS/MM/SMN/SMCS/EP74/2000 ranges, so CPU, memory, temperature, fan and power are N/A and not faked. Supported brands/models — Phoenix Contact FL SWITCH industrial Ethernet switches (FL SWITCH GHS/MM/SMN/SMCS/EP74/2000 families; enterprise PEN 4346).
@@ -4966,6 +5242,9 @@ monitor_object_plugin:
   Firewall DPtech SNMP:
     name: DPtech (Telegraf)
     desc: DPtech (迪普科技) firewall SNMP collection (enterprise PEN 31648 private MIB). Beyond standard IF-MIB interface metrics, it collects DPtech private OIDs for device health including average CPU utilization (OID 31648.3.15.1, reported directly as a percentage) and memory utilization (OID 31648.3.15.5, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — DPtech NGFW / UTM / network-security appliances (FW1000 and the like, enterprise PEN 31648).
+  Firewall Barracuda SNMP:
+    name: Barracuda (Telegraf)
+    desc: Barracuda CloudGen Firewall / Web Filter SNMP child template for devices under enterprise PEN 20632. The shared Firewall SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic; this template adds CPU/system temperature and firmware/log storage utilization from the bspyware system leaves, taking the highest value per device. CPU, memory, fan state and power-supply state are N/A because stable shared state leaves are not confirmed. Fan RPM and trap-only alarms are not promoted into shared device-health metrics.
   Firewall Westone SNMP:
     name: Westone (Telegraf)
     desc: Westone (卫士通) firewall SNMP collection (enterprise 31648 private MIB). Beyond standard IF-MIB interface metrics, it collects Westone private OIDs for device health including average CPU utilisation (OID 31648.3.15.1, reported directly as a percentage) and memory utilisation (OID 31648.3.15.5, reported directly as a percentage — no used/free bytes). Temperature/fan/power and session counters are not collected here, so they are N/A. Supported brands/models — Westone Information Security firewalls / network-security appliances (enterprise 31648).
@@ -5177,6 +5456,9 @@ monitor_object_plugin:
   Router 6WIND VSR SNMP:
     name: 6WIND VSR (Telegraf)
     desc: 6WIND VSR router SNMP collection template (enterprise 7336). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because no cross-version stable row-filter-free vendor scalar device-health gauges are currently confirmed. Supported brands/models — 6WIND Virtual Service Router.
+  Router Robustel SNMP:
+    name: Robustel (Telegraf)
+    desc: Robustel industrial cellular router / gateway SNMP collection template (enterprise 39699). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because no cross-version stable row-filter-free vendor scalar device-health gauges are currently confirmed. Cellular, WAN, VPN, SMS and trap-event tables are also not promoted to shared device-health metrics. Supported brands/models — Robustel R3000 industrial cellular routers and gateways.
   Router MultiTech SNMP:
     name: MultiTech (Telegraf)
     desc: MultiTech Systems cellular router / IoT gateway SNMP collection template

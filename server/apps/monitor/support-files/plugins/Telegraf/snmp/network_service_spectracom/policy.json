@@ -1,0 +1,46 @@
+{
+  "object": "NetworkService",
+  "plugin": "NetworkService Spectracom SNMP",
+  "templates": [
+    {
+      "name": "Spectracom时间同步异常",
+      "alert_name": "网络服务${resource_name} Spectracom 时间同步异常",
+      "description": "监控 Spectracom 时间服务器同步状态，非同步状态时触发告警。",
+      "metric_name": "network_service_spectracom_sync_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ]
+    },
+    {
+      "name": "Spectracom NTP状态异常",
+      "alert_name": "网络服务${resource_name} Spectracom NTP 状态异常",
+      "description": "监控 Spectracom NTP 当前模式，未同步或未运行时触发告警。",
+      "metric_name": "network_service_spectracom_ntp_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ]
+    },
+    {
+      "name": "Spectracom电源状态异常",
+      "alert_name": "网络服务${resource_name} Spectracom DC 电源异常",
+      "description": "监控 Spectracom DC 电源输入状态，异常或未检测到电源时触发告警。",
+      "metric_name": "network_service_spectracom_dc_power_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ]
+    },
+    {
+      "name": "Spectracom主告警",
+      "alert_name": "网络服务${resource_name} Spectracom 主告警",
+      "description": "监控 Spectracom 主告警状态，出现 pending 时触发告警。",
+      "metric_name": "network_service_spectracom_major_alarm_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {"level": "critical", "value": 1, "method": ">"}
+      ]
+    }
+  ]
+}

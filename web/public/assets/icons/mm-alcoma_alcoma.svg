@@ -1,0 +1,12 @@
+<svg width="128" height="128" viewBox="0 0 128 128" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="alcomaBlue" x1="14" y1="16" x2="112" y2="116" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#1EA7FF"/>
+      <stop offset="1" stop-color="#1D4ED8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="112" height="112" rx="22" fill="url(#alcomaBlue)"/>
+  <path d="M64 24L96 92H82L76 78H51L45 92H32L64 24ZM56 66H71L64 47L56 66Z" fill="white"/>
+  <path d="M27 43C37 33 49 28 64 28C79 28 92 33 101 43" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+  <path d="M35 96C43 103 53 106 64 106C75 106 85 103 93 96" stroke="white" stroke-width="6" stroke-linecap="round" opacity="0.55"/>
+</svg>

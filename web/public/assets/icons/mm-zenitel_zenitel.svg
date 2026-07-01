@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Zenitel">
+  <rect width="64" height="64" rx="12" fill="#f8fafc"/>
+  <path d="M16 20h32v24H16z" fill="#0f766e"/>
+  <path d="M22 26h20v4H22zm0 8h14v4H22z" fill="#ccfbf1"/>
+  <path d="M48 25c4 2 7 6 7 11s-3 9-7 11v-6c1-1 2-3 2-5s-1-4-2-5z" fill="#14b8a6"/>
+  <path d="M16 25c-4 2-7 6-7 11s3 9 7 11v-6c-1-1-2-3-2-5s1-4 2-5z" fill="#14b8a6"/>
+  <path d="M25 48h14v5H25z" fill="#334155"/>
+  <path d="M20 14h24v5H20z" fill="#155e75"/>
+</svg>

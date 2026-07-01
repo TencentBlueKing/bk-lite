@@ -1,0 +1,30 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission SIAE Microelettronica SNMP",
+  "templates": [
+    {
+      "name": "SIAE传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 SIAE Microelettronica 微波传输设备的设备温度，持续高于阈值时提示散热异常、环境温度过高或硬件过载风险。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

@@ -53,7 +53,19 @@ export const useAccessConfig = () => {
       default: ['instance_id']
     },
     collectTypes: {
-      'Access BDCOM SNMP': 'snmp_bdcom'
+      'Access BDCOM SNMP': 'snmp_bdcom',
+      'Access V-SOL SNMP': 'snmp_vsolution',
+      'Access ARRIS Cadant SNMP': 'snmp_arris',
+      'Access FiberHome OLT SNMP': 'snmp_fiberhome_olt',
+      'Access Zhone DZS SNMP': 'snmp_zhone',
+      'Access UTStarcom SNMP': 'snmp_utstarcom',
+      'Access Raisecom SNMP': 'snmp_raisecom',
+      'Access PacketFront SNMP': 'snmp_packetfront',
+      'Access C-Data SNMP': 'snmp_cdata',
+      'Access Casa Systems SNMP': 'snmp_casa',
+      'Access Nateks SNMP': 'snmp_nateks',
+      'Access Harmonic SNMP': 'snmp_harmonic',
+      'Access RAD SNMP': 'snmp_rad'
     }
   };
 };

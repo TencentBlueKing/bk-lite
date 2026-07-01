@@ -174,6 +174,10 @@ def test_toml_collects_64bit_ifhc_counters(toml_text):
     assert "1.3.6.1.2.1.31.1.1.1.6" in toml_text
     assert "1.3.6.1.2.1.31.1.1.1.10" in toml_text
     assert "ifHCInOctets" in toml_text and "ifHCOutOctets" in toml_text
+    assert 'name = "ifInOctets"' not in toml_text
+    assert 'name = "ifOutOctets"' not in toml_text
+    assert 'oid = "1.3.6.1.2.1.2.2.1.10"' not in toml_text
+    assert 'oid = "1.3.6.1.2.1.2.2.1.16"' not in toml_text
 
 
 @pytest.mark.unit
@@ -259,3 +263,26 @@ def test_passwords_use_sidecar_env_placeholders_not_plaintext(ui, toml_text):
     assert 'priv_password = "${PRIV_PASSWORD__{{ config_id }}}"' in toml_text
     assert 'auth_password = "{{ auth_password }}"' not in toml_text
     assert 'priv_password = "{{ priv_password }}"' not in toml_text
+
+
+@pytest.mark.unit
+def test_new_files_do_not_leak_external_source_names():
+    checked_paths = [
+        BRAND_DIR / "metrics.json",
+        BRAND_DIR / "policy.json",
+        BRAND_DIR / "UI.json",
+        BRAND_DIR / f"{CONFIG_TYPE}.child.toml.j2",
+        Path(__file__),
+        WEB_ROOT / "public" / "assets" / "icons" / "mm-xkl_xkl.svg",
+    ]
+    checked_text = "\n".join(path.read_text(encoding="utf-8") for path in checked_paths)
+    forbidden_terms = (
+        "Data" + "dog",
+        "Libre" + "NMS",
+        "Zab" + "bix",
+        "Check" + "mk",
+        "Open" + "NMS",
+        "snmp_" + "exporter",
+    )
+    leaked = [term for term in forbidden_terms if term in checked_text]
+    assert leaked == []

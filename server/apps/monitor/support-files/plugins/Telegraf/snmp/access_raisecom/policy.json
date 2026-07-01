@@ -1,0 +1,41 @@
+{
+  "object": "Access",
+  "plugin": "Access Raisecom SNMP",
+  "templates": [
+    {
+      "metric_name": "device_cpu_usage",
+      "alert_name": "CPU usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_memory_usage",
+      "alert_name": "Memory usage high",
+      "algorithm": "Threshold",
+      "threshold": 85,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_temperature_celsius",
+      "alert_name": "Temperature high",
+      "algorithm": "Threshold",
+      "threshold": 70,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_fan_state",
+      "alert_name": "Fan state abnormal",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    },
+    {
+      "metric_name": "device_psu_state",
+      "alert_name": "Power supply state abnormal",
+      "algorithm": "Threshold",
+      "threshold": 1,
+      "level": "warning"
+    }
+  ]
+}
