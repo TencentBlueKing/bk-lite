@@ -138,6 +138,7 @@ export const useSwitchConfig = () => {
       'Switch Waystream SNMP': 'snmp_waystream',
       'Switch TsnTec SNMP': 'snmp_tsntec',
       'Switch Antaira SNMP': 'snmp_antaira',
+      'Switch RubyTech SNMP': 'snmp_rubytech',
       'Switch Kyland SNMP': 'snmp_kyland',
       'Switch Lantech SNMP': 'snmp_lantech',
       'Switch WAGO SNMP': 'snmp_wago',
