@@ -19,6 +19,7 @@ from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import GroupDataRule, UserRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
+from apps.system_mgmt.utils.group_filter_mixin import get_user_group_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -68,9 +69,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     def _get_user_group_ids(self, user):
         """获取用户有权限的组ID集合"""
-        if getattr(user, "is_superuser", False):
-            return None  # superuser 返回 None 表示有权限访问所有组
-        return {g["id"] for g in getattr(user, "group_list", [])}
+        return get_user_group_ids(user)
 
     def _validate_group_permission(self, request, group_id):
         """校验用户是否有权限访问指定组

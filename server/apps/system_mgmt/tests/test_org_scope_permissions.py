@@ -6,6 +6,7 @@ from django.contrib.auth.hashers import make_password
 from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.system_mgmt.models import Group, Role, User
+from apps.system_mgmt.viewset.group_data_rule_viewset import GroupDataRuleViewSet
 from apps.system_mgmt.viewset.role_viewset import RoleViewSet
 from apps.system_mgmt.viewset.user_viewset import UserViewSet
 
@@ -24,6 +25,17 @@ def _request_user(group_ids, permission, *, is_superuser=False):
 
 def _json_payload(response):
     return json.loads(response.content)
+
+
+def test_group_data_rule_permission_accepts_integer_group_list():
+    request = types.SimpleNamespace(
+        user=types.SimpleNamespace(is_superuser=False, group_list=[7]),
+    )
+
+    is_valid, error_response = GroupDataRuleViewSet()._validate_group_permission(request, 7)
+
+    assert is_valid is True
+    assert error_response is None
 
 
 @pytest.mark.django_db
