@@ -4,6 +4,7 @@
 # @Author: windyzhao
 import json
 import os
+import threading
 import time
 from typing import List, Union
 
@@ -36,10 +37,13 @@ class FalkorDBConnectionPool:
     _client = None
     _graph = None
     _initialized = False
+    _lock = threading.Lock()
 
     def __new__(cls):
         if cls._instance is None:
-            cls._instance = super(FalkorDBConnectionPool, cls).__new__(cls)
+            with cls._lock:
+                if cls._instance is None:
+                    cls._instance = super(FalkorDBConnectionPool, cls).__new__(cls)
         return cls._instance
 
     def get_connection(self):
@@ -49,25 +53,29 @@ class FalkorDBConnectionPool:
         return self._client, self._graph
 
     def _initialize(self):
-        """初始化连接"""
+        """初始化连接（双检锁保护，防止多线程并发重复创建连接）"""
         if self._initialized:
             return
 
-        try:
-            password = os.getenv("FALKORDB_REQUIREPASS", "") or None
-            host = os.getenv("FALKORDB_HOST", "127.0.0.1")
-            port = int(os.getenv("FALKORDB_PORT", "6379"))
-            database = os.getenv("FALKORDB_DATABASE", "cmdb_graph")
+        with self.__class__._lock:
+            if self._initialized:
+                return
 
-            self._client = falkordb.FalkorDB(host=host, port=port, password=password)
-            self._graph = self._client.select_graph(database)
-            self._initialized = True
-            logger.info(f"已连接到 FalkorDB，选择Graph: {database}")
-        except Exception:
-            import traceback
+            try:
+                password = os.getenv("FALKORDB_REQUIREPASS", "") or None
+                host = os.getenv("FALKORDB_HOST", "127.0.0.1")
+                port = int(os.getenv("FALKORDB_PORT", "6379"))
+                database = os.getenv("FALKORDB_DATABASE", "cmdb_graph")
 
-            logger.error(f"连接失败: {traceback.format_exc()}")
-            raise
+                self._client = falkordb.FalkorDB(host=host, port=port, password=password)
+                self._graph = self._client.select_graph(database)
+                self._initialized = True
+                logger.info(f"已连接到 FalkorDB，选择Graph: {database}")
+            except Exception:
+                import traceback
+
+                logger.error(f"连接失败: {traceback.format_exc()}")
+                raise
 
 
 class FalkorDBClient:
