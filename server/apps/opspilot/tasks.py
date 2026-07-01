@@ -160,9 +160,11 @@ def _resolve_org_display_name(organization_id) -> str:
 
 def _recover_stale_memory_write_cache():
     cutoff = timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS)
-    return MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PROCESSING).filter(
-        Q(processing_started_at__lt=cutoff) | Q(processing_started_at__isnull=True, created_at__lt=cutoff)
-    ).update(status=MemoryWriteCache.STATUS_PENDING, processing_started_at=None)
+    return (
+        MemoryWriteCache.objects.filter(status=MemoryWriteCache.STATUS_PROCESSING)
+        .filter(Q(processing_started_at__lt=cutoff) | Q(processing_started_at__isnull=True, created_at__lt=cutoff))
+        .update(status=MemoryWriteCache.STATUS_PENDING, processing_started_at=None)
+    )
 
 
 def _flush_memory_write_cache_group(
@@ -217,7 +219,7 @@ def _flush_memory_write_cache_group(
             owner_username = _resolve_org_display_name(organization_id)
 
         with transaction.atomic():
-            process_memory_write(
+            _process_memory_write_impl(
                 memory_space_id=memory_space_id,
                 title=title,
                 content=summarized_content,
@@ -1472,8 +1474,7 @@ def flush_all_pending_memory_write_cache():
         )
 
 
-@shared_task
-def process_memory_write(
+def _process_memory_write_impl(
     memory_space_id: int,
     title: str,
     content: str,
@@ -1496,8 +1497,6 @@ def process_memory_write(
     """
     is_org_memory = organization_id is not None
     try:
-        close_old_connections()
-
         # 获取记忆空间配置
         memory_space = MemorySpace.objects.get(id=memory_space_id)
         write_rule = memory_space.write_rule
@@ -1678,6 +1677,30 @@ def process_memory_write(
     except Exception as e:
         logger.error(f"[MemoryWriteTask] 记忆写入失败: {e}", exc_info=True)
         raise
+
+
+@shared_task
+def process_memory_write(
+    memory_space_id: int,
+    title: str,
+    content: str,
+    owner_username: str,
+    owner_domain: str,
+    organization_id: int = None,
+    model_id: int = None,
+    skip_write_rule: bool = False,
+):
+    close_old_connections()
+    return _process_memory_write_impl(
+        memory_space_id=memory_space_id,
+        title=title,
+        content=content,
+        owner_username=owner_username,
+        owner_domain=owner_domain,
+        organization_id=organization_id,
+        model_id=model_id,
+        skip_write_rule=skip_write_rule,
+    )
 
 
 @shared_task
