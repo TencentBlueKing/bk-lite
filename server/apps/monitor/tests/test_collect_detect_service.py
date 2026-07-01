@@ -1,7 +1,8 @@
 import pytest
 
-from apps.monitor.models import CollectDetectTask, MonitorObject, MonitorPlugin
+from apps.monitor.models import CollectDetectTask, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
+from apps.monitor.services.collect_detect import CollectDetectService
 from apps.monitor.services.collect_detect_runtime import (
     build_telegraf_once_command,
     render_preflight_telegraf_config,
@@ -115,3 +116,122 @@ def test_sanitize_execution_result_redacts_and_truncates_output():
     assert "top-secret" not in result["stdout"]
     assert "abc123" not in result["stderr"]
     assert result["stdout_truncated"] is True
+
+
+@pytest.mark.django_db
+def test_create_collect_detect_task_requires_supported_plugin():
+    plugin = MonitorPlugin.objects.create(
+        name="JMX",
+        collector="JMX",
+        collect_type="jmx",
+        support_collect_detect=False,
+    )
+
+    with pytest.raises(ValueError, match="不支持采集检测"):
+        CollectDetectService.create_task(
+            {
+                "monitor_plugin_id": plugin.id,
+                "monitor_object_id": 1,
+                "node_id": "node-1",
+                "instance": {"host": "127.0.0.1"},
+                "env": {},
+            },
+            user=type("User", (), {"username": "admin"})(),
+            organization=3,
+        )
+
+
+@pytest.mark.django_db
+def test_create_collect_detect_task_stores_sanitized_snapshot_and_dispatches(monkeypatch):
+    plugin = MonitorPlugin.objects.create(
+        name="MySQL",
+        collector="Telegraf",
+        collect_type="mysql",
+        support_collect_detect=True,
+    )
+    dispatched = {}
+    monkeypatch.setattr(
+        "apps.monitor.tasks.collect_detect.run_collect_detect_task.delay",
+        lambda task_id, runtime_payload: dispatched.update(task_id=task_id, runtime_payload=runtime_payload),
+    )
+
+    task = CollectDetectService.create_task(
+        {
+            "monitor_plugin_id": plugin.id,
+            "monitor_object_id": 1,
+            "node_id": "node-1",
+            "instance_key": "mysql-1",
+            "instance": {"host": "127.0.0.1", "password": "top-secret"},
+            "env": {"PASSWORD__detect": "top-secret"},
+        },
+        user=type("User", (), {"username": "admin"})(),
+        organization=3,
+    )
+
+    assert task.status == "pending"
+    assert task.request_snapshot["instance"]["password"] == "***"
+    assert dispatched["task_id"] == task.id
+    assert dispatched["runtime_payload"]["instance"]["password"] == "top-secret"
+    assert "top-secret" not in str(task.request_snapshot)
+
+
+@pytest.mark.django_db
+def test_run_collect_detect_task_executes_telegraf_once(monkeypatch):
+    plugin = MonitorPlugin.objects.create(
+        name="MySQL",
+        collector="Telegraf",
+        collect_type="mysql",
+        support_collect_detect=True,
+    )
+    MonitorPluginConfigTemplate.objects.create(
+        plugin=plugin,
+        type="mysql",
+        config_type="mysql",
+        file_type="toml",
+        content='[[inputs.mysql]]\n  servers = ["{{ username }}:${PASSWORD__{{ config_id }}}@tcp({{ host }}:{{ port }})/"]\n',
+    )
+    task = CollectDetectTask.objects.create(
+        status="pending",
+        phase="validate",
+        monitor_plugin_id=plugin.id,
+        monitor_object_id=1,
+        collector="Telegraf",
+        collect_type="mysql",
+        node_id="node-1",
+        request_fingerprint="fp-1",
+        created_by="admin",
+        organization=3,
+    )
+    executed = {}
+
+    class FakeExecutor:
+        def __init__(self, node_id):
+            executed["node_id"] = node_id
+
+        def execute_local(self, command, timeout=60, shell=None, env=None):
+            executed.update(command=command, timeout=timeout, shell=shell, env=env)
+            return {"success": True, "result": "mysql_up value=1", "error": ""}
+
+    monkeypatch.setattr("apps.monitor.services.collect_detect.Executor", FakeExecutor)
+
+    result = CollectDetectService.run_task(
+        task.id,
+        {
+            "instance": {
+                "config_id": "detect",
+                "username": "root",
+                "host": "127.0.0.1",
+                "port": 3306,
+            },
+            "env": {"PASSWORD__detect": "top-secret"},
+            "timeout": 30,
+        },
+    )
+
+    task.refresh_from_db()
+    assert result["success"] is True
+    assert task.status == "success"
+    assert "telegraf --once --config" in executed["command"]
+    assert "[[outputs.file]]" in executed["command"]
+    assert executed["env"] == {"PASSWORD__detect": "top-secret"}
+    assert "top-secret" not in str(task.result)
