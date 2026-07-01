@@ -207,6 +207,8 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_data(self, request):
         params = request.GET.dict()
+        # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
+        app = params.get("app", "")
         if params.get("app") == "mlops":
             try:
                 group_id = int(params.get("group_id"))
@@ -229,6 +231,21 @@ class GroupDataRuleViewSet(LanguageViewSet):
             raise AttributeError(message)
         params["page"] = int(params.get("page", "1"))
         params["page_size"] = int(params.get("page_size", "10"))
+        # 对 CMDB 权限实例查询注入调用方用户上下文，供 NATS handler 构建真实权限 map
+        if app == "cmdb":
+            user = request.user
+            current_team = get_current_team(request)
+            try:
+                team = int(current_team) if current_team not in (None, "") else None
+            except (TypeError, ValueError):
+                message = self.loader.get("error.invalid_current_team") if self.loader else "current_team 参数非法"
+                return JsonResponse({"result": False, "message": message}, status=400)
+            params["user_info"] = {
+                "user": getattr(user, "username", ""),
+                "domain": getattr(user, "domain", "domain.com"),
+                "team": team,
+                "include_children": request.COOKIES.get("include_children", "0") == "1",
+            }
         return_data = fun(**params)
         if isinstance(return_data, dict) and not return_data.get("result", True):
             return JsonResponse({"result": False, "message": return_data.get("message", "")}, status=400)

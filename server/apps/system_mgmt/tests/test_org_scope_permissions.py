@@ -38,6 +38,80 @@ def test_group_data_rule_permission_accepts_integer_group_list():
     assert error_response is None
 
 
+def test_group_data_rule_cmdb_get_app_data_injects_user_info(monkeypatch):
+    captured = {}
+
+    class FakeClient:
+        def get_module_data(self, **kwargs):
+            captured.update(kwargs)
+            return {"count": 0, "items": []}
+
+    def fake_get_client(params):
+        params.pop("app")
+        return FakeClient()
+
+    monkeypatch.setattr(GroupDataRuleViewSet, "get_client", staticmethod(fake_get_client))
+
+    request = APIRequestFactory().get(
+        "/system_mgmt/api/group_data_rule/get_app_data/",
+        {
+            "app": "cmdb",
+            "module": "instances",
+            "child_module": "host",
+            "page": "1",
+            "page_size": "10",
+            "group_id": "7",
+        },
+    )
+    request.COOKIES["current_team"] = "7"
+    request.COOKIES["include_children"] = "1"
+    force_authenticate(request, user=_request_user([7], {"data_permission-View"}))
+
+    response = GroupDataRuleViewSet.as_view({"get": "get_app_data"})(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 200
+    assert payload == {"result": True, "data": {"count": 0, "items": []}}
+    assert captured["user_info"] == {
+        "user": "org-scope-operator",
+        "domain": "domain.com",
+        "team": 7,
+        "include_children": True,
+    }
+
+
+def test_group_data_rule_cmdb_get_app_data_rejects_invalid_current_team(monkeypatch):
+    class FakeClient:
+        def get_module_data(self, **kwargs):
+            return {"count": 0, "items": []}
+
+    def fake_get_client(params):
+        params.pop("app")
+        return FakeClient()
+
+    monkeypatch.setattr(GroupDataRuleViewSet, "get_client", staticmethod(fake_get_client))
+
+    request = APIRequestFactory().get(
+        "/system_mgmt/api/group_data_rule/get_app_data/",
+        {
+            "app": "cmdb",
+            "module": "instances",
+            "child_module": "host",
+            "page": "1",
+            "page_size": "10",
+            "group_id": "7",
+        },
+    )
+    request.COOKIES["current_team"] = "bad"
+    force_authenticate(request, user=_request_user([7], {"data_permission-View"}))
+
+    response = GroupDataRuleViewSet.as_view({"get": "get_app_data"})(request)
+    payload = _json_payload(response)
+
+    assert response.status_code == 400
+    assert payload == {"result": False, "message": "current_team 参数非法"}
+
+
 @pytest.mark.django_db
 def test_search_user_list_filters_to_accessible_groups():
     allowed = Group.objects.create(name="scope-search-allowed", parent_id=0, is_virtual=False)
