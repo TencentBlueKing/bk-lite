@@ -88,7 +88,7 @@ mkdir -p "${CONFIG_DIR}"
 
 # ==================== 下载数据集 ====================
 log_info "从 MinIO 下载数据集: ${MINIO_BUCKET}/${DATASET_NAME}"
-DATASET_FILE="${DOWNLOAD_DIR}/$(basename ${DATASET_NAME})"
+DATASET_FILE="${DOWNLOAD_DIR}/$(basename -- "${DATASET_NAME}")"
 
 # 使用 Python 脚本下载
 if python "${DOWNLOAD_SCRIPT}" \
@@ -114,7 +114,7 @@ fi
 if [ -n "$3" ]; then
     # 用户指定了配置名称，从 MinIO 下载
     log_info "从 MinIO 下载配置文件: ${MINIO_BUCKET}/${CONFIG_NAME}"
-    CONFIG_FILE="${CONFIG_DIR}/$(basename ${CONFIG_NAME})"
+    CONFIG_FILE="${CONFIG_DIR}/$(basename -- "${CONFIG_NAME}")"
     
     if python "${DOWNLOAD_SCRIPT}" \
         --bucket "${MINIO_BUCKET}" \
@@ -148,13 +148,15 @@ log_info "MLflow Tracking URI: ${MLFLOW_TRACKING_URI}"
 export MLFLOW_TRACKING_URI="${MLFLOW_TRACKING_URI}"
 
 # 构建训练命令（使用已注册的 CLI 入口点）
-TRAIN_CMD="classify_anomaly_server train \
-    --dataset-path \"${EXTRACT_DIR}\" \
-    --config \"${CONFIG_FILE}\""
+TRAIN_CMD=(
+    classify_anomaly_server train
+    --dataset-path "${EXTRACT_DIR}"
+    --config "${CONFIG_FILE}"
+)
 
 # 执行训练（捕获标准输出和标准错误）
-log_info "执行训练命令: ${TRAIN_CMD}"
-eval ${TRAIN_CMD}
+log_info "执行训练命令: ${TRAIN_CMD[*]}"
+"${TRAIN_CMD[@]}"
 EXIT_CODE=$?
 
 # 检查退出码
