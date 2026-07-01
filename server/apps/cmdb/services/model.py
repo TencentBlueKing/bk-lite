@@ -65,6 +65,7 @@ from apps.core.services.user_group import UserGroup
 from apps.rpc.system_mgmt import SystemMgmt
 
 FIELD_GROUP_MANAGER: Any = getattr(FieldGroup, "objects")
+PROTECTED_MODEL_ATTR_IDS = frozenset({ORGANIZATION})
 
 
 class ModelManage(object):
@@ -219,6 +220,11 @@ class ModelManage(object):
     def _validate_model_id(model_id: str):
         if not IdentifierValidator.is_valid(model_id):
             raise BaseAppException(IdentifierValidator.get_error_message("模型ID"))
+
+    @staticmethod
+    def _guard_protected_model_attr(attr_id: str, action: str):
+        if attr_id in PROTECTED_MODEL_ATTR_IDS:
+            raise BaseAppException(f"模型字段 {attr_id} 为系统字段，不允许{action}")
 
     @staticmethod
     def normalize_enum_public_binding(attr_info: dict, current_attr: dict | None = None) -> dict:
@@ -967,6 +973,7 @@ class ModelManage(object):
         """
         更新模型属性
         """
+        ModelManage._guard_protected_model_attr(attr_info["attr_id"], "修改")
         with GraphClient() as ag:
             ModelManage._validate_attr_id(attr_info["attr_id"])
             model_query = {"field": "model_id", "type": "str=", "value": model_id}
@@ -1183,6 +1190,7 @@ class ModelManage(object):
         """
         删除模型属性
         """
+        ModelManage._guard_protected_model_attr(attr_id, "删除")
         guard_attr_change_against_unique_rules(
             model_id,
             attr_id,
