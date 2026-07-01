@@ -1,4 +1,5 @@
 import pytest
+from django.test import RequestFactory
 
 from apps.monitor.models import CollectDetectTask, MonitorObject, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.serializers.plugin import MonitorPluginSerializer
@@ -235,3 +236,53 @@ def test_run_collect_detect_task_executes_telegraf_once(monkeypatch):
     assert "[[outputs.file]]" in executed["command"]
     assert executed["env"] == {"PASSWORD__detect": "top-secret"}
     assert "top-secret" not in str(task.result)
+
+
+@pytest.mark.django_db
+def test_collect_detect_viewset_create_returns_task(monkeypatch):
+    from apps.monitor.views.collect_detect import CollectDetectViewSet
+
+    created = type("Task", (), {"id": 9, "status": "pending"})()
+    monkeypatch.setattr(
+        "apps.monitor.views.collect_detect.CollectDetectService.create_task",
+        lambda payload, user, organization: created,
+    )
+    request = RequestFactory().post(
+        "/monitor/api/collect_detect/",
+        data={"monitor_plugin_id": 1, "monitor_object_id": 2, "node_id": "node-1"},
+        content_type="application/json",
+    )
+    request.user = type("User", (), {"username": "admin"})()
+    request.COOKIES["current_team"] = "3"
+    monkeypatch.setattr("apps.monitor.views.collect_detect.WebUtils.response_success", staticmethod(lambda data=None: data))
+
+    response = CollectDetectViewSet().create(request)
+
+    assert response == {"task_id": 9, "status": "pending"}
+
+
+@pytest.mark.django_db
+def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
+    from apps.monitor.views.collect_detect import CollectDetectViewSet
+
+    task = CollectDetectTask.objects.create(
+        status="failed",
+        phase="execute_once",
+        monitor_plugin_id=1,
+        monitor_object_id=2,
+        collector="Telegraf",
+        collect_type="mysql",
+        node_id="node-1",
+        request_fingerprint="fp-1",
+        created_by="admin",
+        organization=3,
+        result={"success": False, "stdout": "", "stderr": "authentication failed", "exit_code": 1},
+    )
+    request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
+    monkeypatch.setattr("apps.monitor.views.collect_detect.WebUtils.response_success", staticmethod(lambda data=None: data))
+
+    response = CollectDetectViewSet().retrieve(request, pk=task.id)
+
+    assert response["id"] == task.id
+    assert response["status"] == "failed"
+    assert response["result"]["stderr"] == "authentication failed"
