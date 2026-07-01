@@ -25,7 +25,11 @@ import {
   ListItem
 } from '@/app/monitor/types';
 import { StrategyFields } from '@/app/monitor/types/event';
-import { useScheduleList, useMethodList } from '@/app/monitor/hooks/event';
+import {
+  useScheduleList,
+  useMethodList,
+  useGroupMethodList
+} from '@/app/monitor/hooks/event';
 import { SCHEDULE_UNIT_MAP } from '@/app/monitor/constants/event';
 import { useConditionList } from '@/app/monitor/hooks';
 import { useObjectConfigInfo } from '@/app/monitor/hooks/integration/common/getObjectConfig';
@@ -45,6 +49,7 @@ interface MetricDefinitionFormProps {
   labels: string[];
   conditions: FilterItem[];
   groupBy: string[];
+  groupAlgorithm: string | null;
   period: number | null;
   periodUnit: string;
   originMetricData: IndexViewItem[];
@@ -53,6 +58,7 @@ interface MetricDefinitionFormProps {
   onMetricChange: (val: string) => void;
   onFiltersChange: (filters: FilterItem[]) => void;
   onGroupChange: (val: string[]) => void;
+  onGroupAlgorithmChange: (val: string) => void;
   onPeriodChange: (val: number | null) => void;
   onPeriodUnitChange: (val: string) => void;
   onAlgorithmChange: (val: string) => void;
@@ -67,6 +73,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   labels,
   conditions,
   groupBy,
+  groupAlgorithm,
   periodUnit,
   originMetricData,
   monitorName,
@@ -74,6 +81,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   onMetricChange,
   onFiltersChange,
   onGroupChange,
+  onGroupAlgorithmChange,
   onPeriodChange,
   onPeriodUnitChange,
   onAlgorithmChange,
@@ -81,6 +89,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
 }) => {
   const { t } = useTranslation();
   const METHOD_LIST = useMethodList();
+  const GROUP_METHOD_LIST = useGroupMethodList();
   const SCHEDULE_LIST = useScheduleList();
   const CONDITION_LIST = useConditionList();
   const { getGroupIds } = useObjectConfigInfo();
@@ -277,22 +286,60 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
                 }
                 className="mb-[16px]"
               >
-                <Select
-                  style={{ width: '100%' }}
-                  showSearch
-                  allowClear
-                  mode="multiple"
-                  maxTagCount="responsive"
-                  placeholder={t('monitor.events.groupDimension')}
-                  value={groupBy}
-                  onChange={(value) => onGroupChange(sanitizeGroupBy(value))}
-                >
-                  {groupByOptions.map((item: string) => (
-                    <Option value={item} key={item}>
-                      {item}
-                    </Option>
-                  ))}
-                </Select>
+                <div className="flex items-center gap-[8px]">
+                  <Form.Item
+                    name="group_algorithm"
+                    noStyle
+                    rules={[
+                      {
+                        required: true,
+                        message: t('common.required')
+                      }
+                    ]}
+                  >
+                    <Select
+                      className="shrink-0"
+                      style={{ width: 170 }}
+                      value={groupAlgorithm || 'avg'}
+                      placeholder={t('monitor.events.groupAggregationMethod')}
+                      onChange={onGroupAlgorithmChange}
+                    >
+                      {GROUP_METHOD_LIST.map((item) => (
+                        <Option value={item.value} key={item.value}>
+                          <Tooltip
+                            overlayInnerStyle={{
+                              whiteSpace: 'pre-line',
+                              color: 'var(--color-text-1)'
+                            }}
+                            placement="rightTop"
+                            arrow={false}
+                            color="var(--color-bg-1)"
+                            title={item.title}
+                          >
+                            <span className="w-full flex">{item.label}</span>
+                          </Tooltip>
+                        </Option>
+                      ))}
+                    </Select>
+                  </Form.Item>
+                  <span className="text-[var(--color-text-3)]">by</span>
+                  <Select
+                    style={{ flex: 1 }}
+                    showSearch
+                    allowClear
+                    mode="multiple"
+                    maxTagCount="responsive"
+                    placeholder={t('monitor.events.groupDimension')}
+                    value={groupBy}
+                    onChange={(value) => onGroupChange(sanitizeGroupBy(value))}
+                  >
+                    {groupByOptions.map((item: string) => (
+                      <Option value={item} key={item}>
+                        {item}
+                      </Option>
+                    ))}
+                  </Select>
+                </div>
                 <div className="text-[var(--color-text-3)] mt-[8px]">
                   {t('monitor.events.groupDimensionTip')}
                 </div>

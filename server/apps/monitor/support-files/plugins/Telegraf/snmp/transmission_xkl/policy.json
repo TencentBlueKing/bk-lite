@@ -24,7 +24,8 @@
           "value": 65,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "XKL传输设备风扇异常",
@@ -38,7 +39,8 @@
           "value": 2,
           "method": "=="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "XKL传输设备电源异常",
@@ -52,7 +54,8 @@
           "value": 2,
           "method": "=="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

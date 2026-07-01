@@ -7,7 +7,7 @@
       "alert_name": "MongoDB 实例 ${resource_name} 操作延迟超标",
       "description": "监控命令执行P99延迟，高延迟表明数据库负载过重。需优化慢查询或检查硬件资源瓶颈。",
       "metric_name": "mongodb_latency_commands_avg",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -24,14 +24,15 @@
           "value": 100,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "活跃写入操作堆积",
       "alert_name": "MongoDB 实例 ${resource_name} 写入延迟",
       "description": "监控当前活跃写入操作数量，持续高位可能导致写入排队。需检查存储引擎性能或分片均衡状态。",
       "metric_name": "mongodb_active_writes",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -48,14 +49,15 @@
           "value": 20,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "全表扫描风险告警",
       "alert_name": "MongoDB 集合 ${resource_name} 扫描文档数超标",
       "description": "监控全集合扫描文档数量，全表扫描会严重拖慢查询性能。需检查缺失索引或优化查询条件。",
       "metric_name": "mongodb_total_docs_scanned",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -72,7 +74,8 @@
           "value": 10000,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

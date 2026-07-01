@@ -7,7 +7,7 @@
       "alert_name": "PostgreSQL 实例 ${resource_name} 缓存效率低",
       "description": "监控数据块缓存命中率，低命中率会导致大量物理IO。需优化shared_buffers配置或检查查询模式。",
       "metric_name": "postgresql_blks_hit_rate",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -24,14 +24,15 @@
           "value": 95,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     },
     {
       "name": "磁盘写入延迟",
       "alert_name": "PostgreSQL 实例 ${resource_name} 写入性能下降",
       "description": "检测块写入耗时，高延迟表明磁盘IO瓶颈。需检查存储性能或WAL配置。",
       "metric_name": "postgresql_blk_write_time",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -48,14 +49,15 @@
           "value": 100,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "检查点频繁触发",
       "alert_name": "PostgreSQL 实例 ${resource_name} 检查点过频",
       "description": "监控检查点缓冲区写入数速率，频繁检查点影响性能。需调整checkpoint_segments/wal配置。",
       "metric_name": "postgresql_buffers_checkpoint_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -72,14 +74,15 @@
           "value": 200,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "连接异常终止",
       "alert_name": "PostgreSQL 实例 ${resource_name} 连接异常",
       "description": "检测被终止会话频率，突增可能表明应用连接泄漏。",
       "metric_name": "postgresql_sessions_killed",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -96,14 +99,15 @@
           "value": 1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "物理读过高",
       "alert_name": "PostgreSQL 实例 ${resource_name} 物理 IO 压力",
       "description": "检测块缓存命中率，反映缓存的有效性",
       "metric_name": "postgresql_blks_read_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -120,14 +124,15 @@
           "value": 99,
           "method": "<"
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "事务执行时间异常",
       "alert_name": "PostgreSQL 实例 ${resource_name} 长事务堆积",
       "description": "检测活跃事务累计执行时间，长事务会阻塞vacuum和DDL操作。",
       "metric_name": "postgresql_active_time",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -144,7 +149,8 @@
           "value": 540,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

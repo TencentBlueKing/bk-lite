@@ -26,6 +26,7 @@ interface MetricPreviewProps {
   metric: string | null;
   metrics: MetricItem[];
   groupBy: string[];
+  groupAlgorithm: string | null;
   conditions: FilterItem[];
   period: number | null;
   periodUnit: string;
@@ -43,6 +44,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   metric,
   metrics,
   groupBy,
+  groupAlgorithm,
   conditions,
   period,
   periodUnit,
@@ -172,6 +174,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
         value: period || 5
       },
       algorithm,
+      group_algorithm: groupAlgorithm || 'avg',
       group_by: sanitizedGroupBy,
       metric_unit: currentMetric.unit || '',
       calculation_unit: calculationUnit || '',
@@ -303,6 +306,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
     conditions,
     period,
     periodUnit,
+    groupAlgorithm,
     algorithm,
     calculationUnit
   ]);

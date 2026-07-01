@@ -19,6 +19,7 @@ class PolicyPreviewService:
         query_condition = self._require_dict("query_condition")
         period = self._require_dict("period")
         algorithm = self._require_value("algorithm")
+        group_algorithm = self.payload.get("group_algorithm")
         group_by = self._require_string_list("group_by")
         step = self._format_period(period)
         group_by_clause = ",".join(group_by)
@@ -28,11 +29,11 @@ class PolicyPreviewService:
         if not method:
             raise BaseAppException(f"invalid algorithm method: {algorithm}")
 
-        query = build_policy_query(algorithm, metric_query, step, group_by_clause)
+        query = build_policy_query(algorithm, metric_query, step, group_by_clause, group_algorithm)
         end = int(time.time())
         points = self._preview_points()
         start = end - period_to_seconds(period) * points
-        data = method(metric_query, start, end, step, group_by_clause)
+        data = method(metric_query, start, end, step, group_by_clause, group_algorithm)
         self._raise_for_vm_error(data)
         data = self._apply_unit_conversion(data)
         data["unit"] = self._display_unit()

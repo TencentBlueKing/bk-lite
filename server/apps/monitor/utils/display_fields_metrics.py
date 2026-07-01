@@ -6,13 +6,24 @@
 # 前后端必须用同一套规则拼 key(见 web 端 displayFieldKey)。
 
 DISPLAY_FIELD_KEY_SEP = "::"
+FIELD_DISPLAY_KEY_PREFIX = "field"
 
 
-def display_field_key(plugin, metric):
-    """展示指标回填用的复合 key:有插件用 ``<plugin>::<metric>``,无插件(遗留/补充指标)退化为裸指标名。"""
+def display_field_key(plugin, metric, field=None):
+    """展示列回填 key。
+
+    - 指标值列:有插件用 ``<plugin>::<metric>``,无插件(遗留/补充指标)退化为裸指标名。
+    - 字段展示列:使用 ``field::<plugin>::<metric>::<field>``，避免和指标值 key 冲突。
+    """
+    if field:
+        return f"{FIELD_DISPLAY_KEY_PREFIX}{DISPLAY_FIELD_KEY_SEP}{plugin}{DISPLAY_FIELD_KEY_SEP}{metric}{DISPLAY_FIELD_KEY_SEP}{field}"
     if plugin:
         return f"{plugin}{DISPLAY_FIELD_KEY_SEP}{metric}"
     return metric
+
+
+def is_field_display_column(col):
+    return (col.get("type") or "metric") == "field"
 
 
 def extract_metric_bindings(display_fields):
@@ -23,6 +34,8 @@ def extract_metric_bindings(display_fields):
     bindings = []
     seen = set()
     for col in display_fields or []:
+        if is_field_display_column(col):
+            continue
         for binding in col.get("metrics", []):
             metric = binding.get("metric")
             if not metric:
@@ -32,6 +45,26 @@ def extract_metric_bindings(display_fields):
             if dedup_key not in seen:
                 seen.add(dedup_key)
                 bindings.append({"plugin": plugin, "metric": metric})
+    return bindings
+
+
+def extract_field_bindings(display_fields):
+    """从字段展示列抽取 (plugin, metric, field) 绑定并集(保持首次出现顺序,去重)。"""
+    bindings = []
+    seen = set()
+    for col in display_fields or []:
+        if not is_field_display_column(col):
+            continue
+        for binding in col.get("metrics", []):
+            metric = binding.get("metric")
+            field = binding.get("field")
+            if not metric or not field:
+                continue
+            plugin = binding.get("plugin") or ""
+            dedup_key = (plugin, metric, field)
+            if dedup_key not in seen:
+                seen.add(dedup_key)
+                bindings.append({"plugin": plugin, "metric": metric, "field": field})
     return bindings
 
 

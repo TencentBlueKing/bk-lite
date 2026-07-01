@@ -24,7 +24,8 @@
           "value": 65,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Benu路由器风扇异常",
@@ -38,7 +39,8 @@
           "value": 2,
           "method": "=="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Benu路由器电源异常",
@@ -52,7 +54,8 @@
           "value": 2,
           "method": "=="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }
