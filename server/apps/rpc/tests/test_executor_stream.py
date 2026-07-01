@@ -54,6 +54,19 @@ def test_execute_local_stream_sets_stream_fields():
     assert request_data["stream_log_topic"] == "job.stream.99.n7"
 
 
+def test_execute_local_forwards_environment_variables():
+    ex = Executor("inst-1")
+    with patch.object(ex.local_client, "run", return_value={"stdout": "ok"}) as mock_run:
+        ex.execute_local(
+            "telegraf --once",
+            timeout=30,
+            shell="bash",
+            env={"BK_LITE_PREFLIGHT_SECRET": "secret"},
+        )
+    request_data = mock_run.call_args.args[1]
+    assert request_data["env"] == {"BK_LITE_PREFLIGHT_SECRET": "secret"}
+
+
 def test_execute_local_stream_without_optional_fields():
     ex = Executor("inst-1")
     with patch.object(ex.local_client, "run", return_value={"stdout": "ok"}) as mock_run:
