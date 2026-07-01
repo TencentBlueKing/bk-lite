@@ -176,9 +176,18 @@ class TestGetUserAllRoles:
     """测试 _get_user_all_roles 方法（使用两步有界查询）"""
 
     def test_user_direct_roles_only(self):
-        """测试用户只有直接授权的角色（无 group_list，不触发 DB 查询）"""
+        """测试用户只有直接授权的角色（无 group_list，不触发 Group 查询）。
+
+        个人角色取自 system_mgmt.User.role_list（按 username+domain 查库），
+        而非 base.User 对象上的属性，故需创建真实 SystemUser 行。
+        """
+        from apps.system_mgmt.models import User as SystemUser
+
+        SystemUser.objects.create(
+            username="directuser", domain="domain.com", role_list=[1, 2, 3]
+        )
         backend = APISecretAuthBackend()
-        user = MockUser(role_list=[1, 2, 3], group_list=[])
+        user = MockUser(username="directuser", group_list=[])
 
         with patch("apps.core.backends.Group") as MockGroupModel:
             result = backend._get_user_all_roles(user)
@@ -201,9 +210,14 @@ class TestGetUserAllRoles:
         assert result == {100, 101}
 
     def test_user_combined_roles(self):
-        """测试用户直接角色和组织角色的合并"""
+        """测试用户直接角色（来自 system_mgmt.User.role_list）和组织角色的合并"""
+        from apps.system_mgmt.models import User as SystemUser
+
+        SystemUser.objects.create(
+            username="combineduser", domain="domain.com", role_list=[1, 2]
+        )
         backend = APISecretAuthBackend()
-        user = MockUser(role_list=[1, 2], group_list=[10])
+        user = MockUser(username="combineduser", group_list=[10])
 
         group = MockGroupWithRoles(id=10, roles=[MockRole(100)])
 
@@ -292,82 +306,64 @@ class TestPopulateUserPermissions:
     """测试 _populate_user_permissions 方法"""
 
     def test_superuser_detection(self):
-        """测试超级用户检测"""
+        """测试超级用户检测：无 app 的 admin 角色 → is_superuser=True。
+
+        _populate_user_permissions 内部用 apps.core.backends 命名空间的 Role，
+        故使用真实 Role 行（而非 patch apps.system_mgmt.models.Role）。
+        """
+        from apps.system_mgmt.models import Role
+
+        role = Role.objects.create(app="", name="admin", menu_list=[])
+
         backend = APISecretAuthBackend()
         user = MockUser(username="admin", group_list=[1])
 
-        with patch.object(backend, "_get_user_all_roles", return_value={1}):
-            with patch("apps.system_mgmt.models.Role") as MockRoleModel:
-                mock_role = MagicMock()
-                mock_role.app = ""
-                mock_role.name = "admin"
-                mock_role.menu_list = []
-
-                mock_queryset = MagicMock()
-                mock_queryset.__iter__ = lambda self: iter([mock_role])
-                mock_queryset.values_list.return_value = [[]]
-                MockRoleModel.objects.filter.return_value = mock_queryset
-
-                backend._populate_user_permissions(user, 1)
+        with patch.object(backend, "_get_user_all_roles", return_value={role.id}):
+            backend._populate_user_permissions(user, 1)
 
         assert user.is_superuser is True
+        assert user.role_ids == [role.id]
+        # 超级用户不计算菜单权限
+        assert user.permission == {}
 
     def test_system_manager_admin_is_superuser(self):
         """测试 system-manager--admin 角色被识别为超级用户"""
+        from apps.system_mgmt.models import Role
+
+        role = Role.objects.create(app="system-manager", name="admin", menu_list=[])
+
         backend = APISecretAuthBackend()
         user = MockUser(username="sysadmin", group_list=[1])
 
-        with patch.object(backend, "_get_user_all_roles", return_value={1}):
-            with patch("apps.system_mgmt.models.Role") as MockRoleModel:
-                mock_role = MagicMock()
-                mock_role.app = "system-manager"
-                mock_role.name = "admin"
-                mock_role.menu_list = []
-
-                mock_queryset = MagicMock()
-                mock_queryset.__iter__ = lambda self: iter([mock_role])
-                mock_queryset.values_list.return_value = [[]]
-                MockRoleModel.objects.filter.return_value = mock_queryset
-
-                backend._populate_user_permissions(user, 1)
+        with patch.object(backend, "_get_user_all_roles", return_value={role.id}):
+            backend._populate_user_permissions(user, 1)
 
         assert user.is_superuser is True
+        assert "system-manager--admin" in user.roles
 
     def test_normal_user_permissions(self):
-        """测试普通用户权限填充"""
+        """测试普通用户权限填充：角色名拼接 + 菜单权限聚合"""
+        from apps.system_mgmt.models import Menu, Role
+
+        menu1 = Menu.objects.create(app="ops-analysis", name="view-View", display_name="查看", url="/v")
+        menu2 = Menu.objects.create(app="ops-analysis", name="view-AddView", display_name="新增", url="/a")
+        menu3 = Menu.objects.create(app="system-manager", name="user-View", display_name="用户", url="/u")
+
+        role1 = Role.objects.create(app="ops-analysis", name="viewer", menu_list=[menu1.id, menu2.id])
+        role2 = Role.objects.create(app="system-manager", name="editor", menu_list=[menu3.id])
+
         backend = APISecretAuthBackend()
         user = MockUser(username="normaluser", group_list=[1])
 
-        with patch.object(backend, "_get_user_all_roles", return_value={1, 2}):
-            with patch("apps.system_mgmt.models.Role") as MockRoleModel:
-                mock_role1 = MagicMock()
-                mock_role1.app = "ops-analysis"
-                mock_role1.name = "viewer"
-                mock_role1.menu_list = [1, 2]
-
-                mock_role2 = MagicMock()
-                mock_role2.app = "system-manager"
-                mock_role2.name = "editor"
-                mock_role2.menu_list = [3]
-
-                mock_queryset = MagicMock()
-                mock_queryset.__iter__ = lambda self: iter([mock_role1, mock_role2])
-                mock_queryset.values_list.return_value = [[1, 2], [3]]
-                MockRoleModel.objects.filter.return_value = mock_queryset
-
-                with patch("apps.system_mgmt.models.Menu") as MockMenuModel:
-                    MockMenuModel.objects.filter.return_value.values_list.return_value = [
-                        ("ops-analysis", "view-View"),
-                        ("ops-analysis", "view-AddView"),
-                        ("system-manager", "user-View"),
-                    ]
-
-                    backend._populate_user_permissions(user, 1)
+        with patch.object(backend, "_get_user_all_roles", return_value={role1.id, role2.id}):
+            backend._populate_user_permissions(user, 1)
 
         assert user.is_superuser is False
         assert "ops-analysis--viewer" in user.roles
         assert "system-manager--editor" in user.roles
-        assert "view-View" in user.permission.get("ops-analysis", set())
+        assert user.permission.get("ops-analysis") == {"view-View", "view-AddView"}
+        assert user.permission.get("system-manager") == {"user-View"}
+        assert sorted(user.role_ids) == sorted([role1.id, role2.id])
 
     def test_cache_hit(self):
         """测试缓存命中"""

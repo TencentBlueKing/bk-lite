@@ -47,8 +47,9 @@ PLUGIN_NAME = "Switch Ruijie SNMP"
 OBJECT_NAME = "Switch"
 
 SUPPORTED_SCALAR_UNITS = {
-    "byteps", "bytes", "counts", "cps", "percent", "celsius", "s", "short", "none",
-    "volts",
+    # volts 是 unit_converter 真实支持的标量单位(STANDALONE_UNITS),
+    # 交换机电压指标 device_voltage_volts 即用此单位,补入避免误报。
+    "byteps", "bytes", "counts", "cps", "percent", "celsius", "s", "short", "none", "volts",
 }
 INTERFACE_METRICS = ("interface_ifHCInOctets", "interface_ifHCOutOctets")
 MEMORY_METRICS = ("device_memory_total", "device_memory_used", "device_memory_usage")

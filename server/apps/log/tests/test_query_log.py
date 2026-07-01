@@ -37,6 +37,7 @@ def test_query_skips_invalid_json_lines(mocker):
     post_mock = mocker.patch("apps.log.utils.query_log.requests.post", return_value=response)
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     result = api.query("*", "", "", 10)
 
@@ -49,6 +50,7 @@ def test_query_ignores_empty_lines(mocker):
     mocker.patch("apps.log.utils.query_log.requests.post", return_value=response)
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     result = api.query("*", "", "", 10)
 
@@ -61,6 +63,7 @@ def test_query_logs_malformed_line_context(mocker):
     warning_mock = mocker.patch("apps.log.utils.query_log.logger.warning")
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     result = api.query("level:error", "start-ts", "end-ts", 5)
 
@@ -667,7 +670,11 @@ def test_search_endpoint_with_specific_group_does_not_expand_to_other_accessible
     )
 
     assert response.status_code == status.HTTP_200_OK
-    search_mock.assert_called_once_with('instance_id:"uuid"', "", "", 10, ["g-1"])
+    search_mock.assert_called_once()
+    pos_args = search_mock.call_args.args
+    assert pos_args == ('instance_id:"uuid"', "", "", 10, ["g-1"])
+    resolved = search_mock.call_args.kwargs["resolved_groups"]
+    assert [g.id for g in resolved] == ["g-1"]
 
 
 @pytest.mark.django_db
@@ -683,7 +690,12 @@ def test_field_values_endpoint_uses_explicit_log_groups(api_client, authenticate
     )
 
     assert response.status_code == status.HTTP_200_OK
-    field_values_mock.assert_called_once_with("", "", "host", 100, query="level:error", log_groups=["g-1"])
+    field_values_mock.assert_called_once()
+    fv_args = field_values_mock.call_args
+    assert fv_args.args == ("", "", "host", 100)
+    assert fv_args.kwargs["query"] == "level:error"
+    assert fv_args.kwargs["log_groups"] == ["g-1"]
+    assert [g.id for g in fv_args.kwargs["resolved_groups"]] == ["g-1"]
 
 
 @pytest.mark.django_db
@@ -753,7 +765,10 @@ def test_hits_endpoint_uses_explicit_log_groups(api_client, authenticated_user, 
     )
 
     assert response.status_code == status.HTTP_200_OK
-    hits_mock.assert_called_once_with("*", "", "", "_stream", 5, "5m", ["g-1"])
+    hits_mock.assert_called_once()
+    hits_args = hits_mock.call_args
+    assert hits_args.args == ("*", "", "", "_stream", 5, "5m", ["g-1"])
+    assert [g.id for g in hits_args.kwargs["resolved_groups"]] == ["g-1"]
 
 
 @pytest.mark.django_db
@@ -941,6 +956,7 @@ async def test_tail_async_iter_lines_runs_in_thread_not_event_loop(mocker):
     )
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     # 并发协程：在 tail_async 运行期间尽量多递增 counter
     counter = 0

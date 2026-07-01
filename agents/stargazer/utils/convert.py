@@ -1,3 +1,7 @@
+def _escape_prometheus_label_value(value):
+    return str(value).replace("\\", "\\\\").replace("\n", "\\n").replace('"', '\\"')
+
+
 def convert_to_influxdb(data):
     """数据格式转换"""
     influxdb_data = []
@@ -37,8 +41,8 @@ def convert_to_prometheus(data):
 
     # **第一步：遍历数据，按 `metric_name` 进行分组**
     for resource_tup, metrics in data.items():
-        resource_id = resource_tup[0]
-        resource_type = resource_tup[1]
+        resource_id = _escape_prometheus_label_value(resource_tup[0])
+        resource_type = _escape_prometheus_label_value(resource_tup[1])
         for metric_name, metric_data in metrics.items():
             if metric_name not in metrics_map:
                 metrics_map[metric_name] = []  # 初始化该指标的存储列表
@@ -49,7 +53,7 @@ def convert_to_prometheus(data):
                     # **构建 Prometheus 标签字符串**
                     label_str = f'resource_id="{resource_id}", resource_type="{resource_type}"'
                     for dim_key, dim_value in dims_tuple:
-                        label_str += f', {dim_key}="{dim_value}"'
+                        label_str += f', {dim_key}="{_escape_prometheus_label_value(dim_value)}"'
 
                     # **遍历时间序列数据**
                     for timestamp, value in values:
@@ -64,10 +68,17 @@ def convert_to_prometheus(data):
                 for item in metric_data:
                     if isinstance(item, (tuple, list)) and len(item) == 2:
                         timestamp, value = item
+                        label_str = (
+                            f'resource_id="{resource_id}", '
+                            f'resource_type="{resource_type}"'
+                        )
                         if timestamp:
-                            prometheus_line = f'{metric_name}{{resource_id="{resource_id}", resource_type="{resource_type}"}} {value} {int(timestamp)}'
+                            prometheus_line = (
+                                f"{metric_name}{{{label_str}}} "
+                                f"{value} {int(timestamp)}"
+                            )
                         else:
-                            prometheus_line = f'{metric_name}{{resource_id="{resource_id}", resource_type="{resource_type}"}} {value}'
+                            prometheus_line = f"{metric_name}{{{label_str}}} {value}"
                         metrics_map[metric_name].append(prometheus_line)
 
     # **第二步：遍历 `metrics_map`，生成最终 Prometheus 格式**

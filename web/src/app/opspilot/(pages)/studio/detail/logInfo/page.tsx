@@ -13,6 +13,7 @@ import { LogRecord, Channel, WorkflowTaskResult, WorkflowExecutionDetailItem } f
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 import { fetchLogDetails, createConversation } from '@/app/opspilot/utils/logUtils';
 import { useStudioApi } from '@/app/opspilot/api/studio';
+import dayjs from 'dayjs';
 
 const { Search } = Input;
 
@@ -22,7 +23,10 @@ const StudioLogsPage: React.FC = () => {
   const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData, fetchExecutionDetail } = useStudioApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [searchText, setSearchText] = useState('');
-  const [dates, setDates] = useState<number[]>([]);
+  const [dates, setDates] = useState<number[]>([
+    dayjs().subtract(1440, 'minute').valueOf(),
+    dayjs().valueOf(),
+  ]);
   const [data, setData] = useState<LogRecord[] | WorkflowTaskResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [channels, setChannels] = useState<Channel[]>([]);

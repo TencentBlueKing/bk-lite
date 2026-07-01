@@ -16,14 +16,20 @@ import importlib.util
 import sys
 import types
 import unittest
+from pathlib import Path
 from unittest.mock import MagicMock, patch, call
+
+_MISSING = object()
 
 
 def _build_fake_modules():
     """向 sys.modules 注入最小伪依赖，使 monitor_alert.py 可被 import。"""
     mods = {}
+    originals = {}
 
     def add(name, **attrs):
+        if name not in originals:
+            originals[name] = sys.modules.get(name, _MISSING)
         m = types.ModuleType(name)
         for k, v in attrs.items():
             setattr(m, k, v)
@@ -101,30 +107,45 @@ def _build_fake_modules():
     add("config.drf")
     add("config.drf.pagination", CustomPageNumberPagination=MagicMock())
 
-    return mods
+    return mods, originals
 
 
-def _load_monitor_alert(mods):
+def _load_monitor_alert(mods, originals):
     """Load monitor_alert module using importlib with fake dependencies in place."""
+    module_name = "apps.monitor.views.monitor_alert"
+    if module_name not in originals:
+        originals[module_name] = sys.modules.get(module_name, _MISSING)
     spec = importlib.util.spec_from_file_location(
-        "apps.monitor.views.monitor_alert",
-        "/Users/justin/bklite-loops/wt-issue-scan/server/apps/monitor/views/monitor_alert.py"
+        module_name,
+        Path(__file__).resolve().parents[1] / "views" / "monitor_alert.py",
     )
     mod = importlib.util.module_from_spec(spec)
-    sys.modules["apps.monitor.views.monitor_alert"] = mod
+    sys.modules[module_name] = mod
     spec.loader.exec_module(mod)
     return mod
+
+
+def _restore_modules(originals):
+    for name, original in reversed(list(originals.items())):
+        if original is _MISSING:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 class TestAlertPermissionMixin(unittest.TestCase):
 
     @classmethod
     def setUpClass(cls):
-        cls._mods = _build_fake_modules()
-        cls._module = _load_monitor_alert(cls._mods)
+        cls._mods, cls._original_modules = _build_fake_modules()
+        cls._module = _load_monitor_alert(cls._mods, cls._original_modules)
         cls.AlertPermissionMixin = cls._module.AlertPermissionMixin
         cls.MonitorAlertViewSet = cls._module.MonitorAlertViewSet
         cls.MonitorEventViewSet = cls._module.MonitorEventViewSet
+
+    @classmethod
+    def tearDownClass(cls):
+        _restore_modules(cls._original_modules)
 
     # -----------------------------------------------------------------
     # 1. DRY：两个 ViewSet 都继承自 AlertPermissionMixin
