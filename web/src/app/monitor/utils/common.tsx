@@ -623,6 +623,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /alaxala|\bax2[0-9]{3}s\b/i, label: 'Alaxala', icon: 'mm-alaxala_alaxala' },
   { match: /transition\s*networks?|\bsispm\b|\bionmm\b/i, label: 'Transition Networks', icon: 'mm-transition_transition' },
   { match: /antaira|aaxeon|\blmx\b/i, label: 'Antaira', icon: 'mm-antaira_antaira' },
+  { match: /rubytech|ruby\s*tech|\bigs-?27|\bipgs-?27/i, label: 'RubyTech', icon: 'mm-rubytech_rubytech' },
   { match: /kyland|\bsicom\b|\bkien\b/i, label: 'Kyland', icon: 'mm-kyland_kyland' },
   { match: /lantech/i, label: 'Lantech', icon: 'mm-lantech_lantech' },
   { match: /\bwago\b|852-?1305/i, label: 'WAGO', icon: 'mm-wago_wago' },
