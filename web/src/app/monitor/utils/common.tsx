@@ -736,6 +736,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /tripp\s*lite|poweralert|webcardlx|snmpwebcard/i, label: 'Tripp Lite', icon: 'mm-tripplite_tripplite' },
   { match: /allot|netxplorer|netexplorer/i, label: 'Allot', icon: 'mm-allot_allot' },
   { match: /efficient\s*ip|solidserver/i, label: 'EfficientIP', icon: 'mm-efficientip_efficientip' },
+  { match: /nomadix|ag-?2000w/i, label: 'Nomadix', icon: 'mm-nomadix_nomadix' },
   { match: /socomec|net\s*vision/i, label: 'Socomec', icon: 'mm-socomec_socomec' },
   { match: /liebert|vertiv/i, label: 'Liebert', icon: 'mm-liebert_liebert' },
   { match: /wti|western\s*telematic/i, label: 'WTI', icon: 'mm-wti_wti' },
