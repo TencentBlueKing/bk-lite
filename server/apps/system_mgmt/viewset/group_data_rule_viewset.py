@@ -235,10 +235,16 @@ class GroupDataRuleViewSet(LanguageViewSet):
         if app == "cmdb":
             user = request.user
             current_team = get_current_team(request)
+            try:
+                team = int(current_team) if current_team not in (None, "") else None
+            except (TypeError, ValueError):
+                message = self.loader.get("error.invalid_current_team") if self.loader else "current_team 参数非法"
+                return JsonResponse({"result": False, "message": message}, status=400)
             params["user_info"] = {
                 "user": getattr(user, "username", ""),
                 "domain": getattr(user, "domain", "domain.com"),
-                "team": int(current_team) if current_team is not None else None,
+                "team": team,
+                "include_children": request.COOKIES.get("include_children", "0") == "1",
             }
         return_data = fun(**params)
         if isinstance(return_data, dict) and not return_data.get("result", True):
