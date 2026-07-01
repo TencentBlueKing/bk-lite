@@ -4154,6 +4154,9 @@ monitor_object_plugin:
   Transmission Redline SNMP:
     name: Redline（Telegraf）
     desc: Redline 宽带无线传输设备 SNMP 基线子模板（企业号 PEN 10728）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实只证明公开企业根与私有子树，未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
+  Transmission DragonWave SNMP:
+    name: DragonWave（Telegraf）
+    desc: DragonWave 微波传输设备 SNMP 基线子模板（企业号 PEN 7262）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实只证明公开企业根与 airPair/horizon 产品子树，未取得可验证厂商 MIB 包或设备 walk，未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此本品牌 metrics.json 不声明厂商增量指标，也不采私有企业树。
   Transmission Ekinops SNMP:
     name: Ekinops（Telegraf）
     desc: Ekinops WDM/CWDM/DWDM 光传输设备 SNMP 基线子模板（企业号 PEN 20044）。通用 Transmission SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前 MIB 事实未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康标量，因此不提升为共享设备健康指标。
