@@ -11,7 +11,7 @@ from .base_collector import BaseCollector
 logger = logging.getLogger("stargazer.host_collector")
 
 
-def _url_decode_secret(value: Any) -> str:
+def _url_decode_secret(value: Any, credential_encoding: Any = "url") -> str:
     """还原前端对 encrypted 字段做的 encodeURIComponent。
 
     Web 端在提交时对标记为 encrypted 的字段（密码、SSH 私钥、passphrase）统一做了
@@ -24,6 +24,8 @@ def _url_decode_secret(value: Any) -> str:
     """
     if not value:
         return value
+    if str(credential_encoding or "url").strip().lower() in {"plain", "raw", "none"}:
+        return str(value)
     return unquote(str(value))
 
 SCRIPTS_DIR = Path(__file__).parent / "scripts"
@@ -273,6 +275,7 @@ class HostCollector(BaseCollector):
         execute_timeout = int(self.params.get("execute_timeout", 60))
 
         modules = self._resolve_modules()
+        credential_encoding = self.params.get("credential_encoding") or self.params.get("credentials_encoding") or "url"
 
         logger.info(f"[Host Collector] host={host}, os={os_type}, modules={modules}")
 
@@ -292,14 +295,14 @@ class HostCollector(BaseCollector):
             if auth_type == "private_key":
                 private_key_content = self.params.get("private_key_content")
                 if private_key_content:
-                    host_credential["private_key_content"] = _url_decode_secret(private_key_content)
+                    host_credential["private_key_content"] = _url_decode_secret(private_key_content, credential_encoding)
                 private_key_passphrase = self.params.get("private_key_passphrase")
                 if private_key_passphrase:
-                    host_credential["private_key_passphrase"] = _url_decode_secret(private_key_passphrase)
+                    host_credential["private_key_passphrase"] = _url_decode_secret(private_key_passphrase, credential_encoding)
             else:
-                host_credential["password"] = _url_decode_secret(self.params.get("password", ""))
+                host_credential["password"] = _url_decode_secret(self.params.get("password", ""), credential_encoding)
         else:
-            host_credential["password"] = _url_decode_secret(self.params.get("password", ""))
+            host_credential["password"] = _url_decode_secret(self.params.get("password", ""), credential_encoding)
             host_credential["winrm_scheme"] = self.params.get("winrm_scheme") or "https"
             host_credential["winrm_transport"] = self.params.get("winrm_transport") or "ntlm"
             host_credential["winrm_cert_validation"] = _as_bool(

@@ -338,8 +338,41 @@ export const renderChart = (
 ): ChartData[] => {
   const result: ChartData[] = [];
   const target = config[0]?.dimensions || [];
-  data.forEach((item, index) => {
+  const seriesKeyToValueKey = new Map<string, string>();
+  const getSeriesKey = (metric: Record<string, string>) => {
+    const identityKeys = Array.from(
+      new Set([
+        ...(config[0]?.instance_id_keys || []),
+        ...target.map((item) => item.name),
+      ])
+    );
+    const identityEntries = identityKeys
+      .filter((key) => Object.prototype.hasOwnProperty.call(metric || {}, key))
+      .map((key) => [key, metric[key]]);
+
+    return JSON.stringify(
+      (identityEntries.length ? identityEntries : Object.entries(metric || {}))
+        .sort(([left], [right]) => left.localeCompare(right))
+    );
+  };
+  const getValueKey = (metric: Record<string, string>) => {
+    const seriesKey = getSeriesKey(metric);
+    const existingKey = seriesKeyToValueKey.get(seriesKey);
+    if (existingKey) {
+      return existingKey;
+    }
+    const valueKey = `value${seriesKeyToValueKey.size + 1}`;
+    seriesKeyToValueKey.set(seriesKey, valueKey);
+    return valueKey;
+  };
+
+  data.forEach((item) => {
+    const valueKey = getValueKey(item.metric);
     item.values.forEach(([timestamp, value]) => {
+      const numericValue = parseFloat(value);
+      if (!Number.isFinite(numericValue)) {
+        return;
+      }
       const existing = result.find((entry) => entry.time === timestamp);
       const detailValue = Object.entries(item.metric)
         .map(([key, dimenValue]) => ({
@@ -365,28 +398,35 @@ export const renderChart = (
         });
       }
       if (existing) {
-        existing[`value${index + 1}`] = parseFloat(value);
+        existing[valueKey] = numericValue;
+        existing.seriesMetrics = {
+          ...(existing.seriesMetrics || {}),
+          [valueKey]: item.metric
+        };
         if (!existing.details) {
           existing.details = {};
         }
-        if (!existing.details[`value${index + 1}`]) {
-          existing.details[`value${index + 1}`] = [];
+        if (!existing.details[valueKey]) {
+          existing.details[valueKey] = [];
         }
-        existing.details[`value${index + 1}`].push(...detailValue);
+        existing.details[valueKey].push(...detailValue);
       } else {
         const details = {
-          [`value${index + 1}`]: detailValue
+          [valueKey]: detailValue
         };
         result.push({
           time: timestamp,
           title: config[0]?.title || '--',
-          [`value${index + 1}`]: parseFloat(value),
+          [valueKey]: numericValue,
+          seriesMetrics: {
+            [valueKey]: item.metric
+          },
           details
         });
       }
     });
   });
-  return result;
+  return result.sort((left, right) => left.time - right.time);
 };
 
 export const findTreeParentKey = (
@@ -507,7 +547,8 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /juniper/i, label: 'Juniper', icon: 'mm-juniper_juniper' },
   { match: /extreme/i, label: 'Extreme', icon: 'mm-extreme_extreme' },
   { match: /brocade/i, label: 'Brocade', icon: 'mm-brocade_brocade' },
-  { match: /alcatel|nokia|sr.?linux|srlinux|timos|\b7750\b|\b7450\b|\b7950\b/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
+  { match: /\bnokia\b|omniswitch/i, label: 'Nokia', icon: 'mm-nokia_nokia' },
+  { match: /alcatel|sr.?linux|srlinux|timos|\b7750\b|\b7450\b|\b7950\b/i, label: 'Alcatel-Lucent', icon: 'mm-alcatel_alcatel' },
   { match: /mikrotik/i, label: 'MikroTik', icon: 'mm-mikrotik_mikrotik' },
   { match: /dlink|d-link/i, label: 'D-Link', icon: 'mm-dlink_dlink' },
   { match: /netgear/i, label: 'NETGEAR', icon: 'mm-netgear_netgear' },
@@ -524,21 +565,87 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /watchguard|fireware/i, label: 'WatchGuard', icon: 'mm-watchguard_watchguard' },
   { match: /pfsense/i, label: 'pfSense', icon: 'mm-pfsense_pfsense' },
   { match: /opnsense/i, label: 'OPNsense', icon: 'mm-opnsense_opnsense' },
+  { match: /clavister/i, label: 'Clavister', icon: 'mm-clavister_clavister' },
+  { match: /genua/i, label: 'Genua', icon: 'mm-genua_genua' },
+  { match: /kerio/i, label: 'Kerio', icon: 'mm-kerio_kerio' },
+  { match: /sangfor|深信服/i, label: 'Sangfor', icon: 'mm-sangfor_sangfor' },
+  { match: /zorp/i, label: 'Zorp', icon: 'mm-zorp_zorp' },
   { match: /\bf5\b|big-?ip/i, label: 'F5', icon: 'mm-f5_f5' },
   { match: /hillstone|stoneos/i, label: 'Hillstone', icon: 'mm-hillstone_hillstone' },
   { match: /sophos|\bxg\b|sfos|cyberoam/i, label: 'Sophos XG', icon: 'mm-sophos_sophos' },
+  { match: /neteye|leadsec|网御/i, label: 'Neteye', icon: 'mm-neteye_neteye' },
+  { match: /bluedon|蓝盾/i, label: 'Bluedon', icon: 'mm-bluedon_bluedon' },
+  { match: /pulse\s*secure|ivanti|pulsesecure/i, label: 'Pulse Secure', icon: 'mm-pulsesecure_pulsesecure' },
+  { match: /\bdptech\b|迪普/i, label: 'DPtech', icon: 'mm-dptech_dptech' },
+  { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
+  { match: /amaranten|安然/i, label: 'Amaranten', icon: 'mm-amaranten_amaranten' },
+  { match: /secworld|安世/i, label: 'Secworld', icon: 'mm-secworld_secworld' },
+  { match: /superiority|超数/i, label: 'Superiority', icon: 'mm-superiority_superiority' },
+  { match: /westone|卫士通/i, label: 'Westone', icon: 'mm-westone_westone' },
+  { match: /harbour|港湾/i, label: 'Harbour Networks', icon: 'mm-harbour_harbour' },
+  { match: /aethra|dolcevita/i, label: 'Aethra', icon: 'mm-aethra_aethra' },
+  { match: /relianoid|\bzva\b/i, label: 'RELIANOID', icon: 'mm-relianoid_relianoid' },
+  { match: /velocloud|vmware\s*sd-?wan|\bvce\b/i, label: 'VeloCloud', icon: 'mm-velocloud_velocloud' },
+  { match: /benu|benu\s*networks|\bmeg\d+/i, label: 'Benu Networks', icon: 'mm-benu_benu' },
   { match: /forcepoint|stonesoft|stonegate|ngfw/i, label: 'Forcepoint', icon: 'mm-forcepoint_forcepoint' },
   { match: /screenos|netscreen|\bssg\b/i, label: 'Juniper ScreenOS', icon: 'mm-screenos_screenos' },
   { match: /netscaler|citrix/i, label: 'Citrix NetScaler', icon: 'mm-netscaler_netscaler' },
   { match: /\ba10\b|thunder|acos/i, label: 'A10 Thunder', icon: 'mm-a10_a10' },
   { match: /fortiadc|fad\b/i, label: 'FortiADC', icon: 'mm-fortiadc_fortiadc' },
   { match: /alteon|radware/i, label: 'Radware Alteon', icon: 'mm-alteon_alteon' },
+  { match: /kemp|loadmaster/i, label: 'Kemp LoadMaster', icon: 'mm-kemp_kemp' },
   { match: /vyatta|vyos/i, label: 'Vyatta', icon: 'mm-vyatta_vyatta' },
   { match: /\bnec\b|univerge|\bix[0-9]{3,4}\b/i, label: 'NEC', icon: 'mm-nec_nec' },
   { match: /draytek|vigor/i, label: 'DrayTek', icon: 'mm-draytek_draytek' },
+  { match: /bintec/i, label: 'Bintec', icon: 'mm-bintec_bintec' },
+  { match: /cradlepoint|netcloud/i, label: 'Cradlepoint', icon: 'mm-cradlepoint_cradlepoint' },
+  { match: /\bdigi\b|digi.?transport/i, label: 'Digi', icon: 'mm-digi_digi' },
+  { match: /oneaccess/i, label: 'OneAccess', icon: 'mm-oneaccess_oneaccess' },
+  { match: /teldat/i, label: 'Teldat', icon: 'mm-teldat_teldat' },
+  { match: /teltonika|rutos/i, label: 'Teltonika', icon: 'mm-teltonika_teltonika' },
+  { match: /versa|flexvnf|\bvos\b/i, label: 'Versa', icon: 'mm-versa_versa' },
+  { match: /viprinet/i, label: 'Viprinet', icon: 'mm-viprinet_viprinet' },
   { match: /datacom|dmos/i, label: 'Datacom', icon: 'mm-datacom_datacom' },
   { match: /eltex/i, label: 'Eltex', icon: 'mm-eltex_eltex' },
   { match: /\bsnr\b|nag-mib/i, label: 'SNR', icon: 'mm-snr_snr' },
+  { match: /apresia/i, label: 'APRESIA', icon: 'mm-apresia_apresia' },
+  { match: /intelbras/i, label: 'Intelbras', icon: 'mm-intelbras_intelbras' },
+  { match: /nexans/i, label: 'Nexans', icon: 'mm-nexans_nexans' },
+  { match: /pica8|picos/i, label: 'Pica8', icon: 'mm-pica8_pica8' },
+  { match: /advantech|\beki\b/i, label: 'Advantech', icon: 'mm-advantech_advantech' },
+  { match: /etherwan/i, label: 'EtherWAN', icon: 'mm-etherwan_etherwan' },
+  { match: /sixnet|\bslx\b/i, label: 'Sixnet', icon: 'mm-sixnet_sixnet' },
+  { match: /allnet|\ball-sg\b/i, label: 'ALLNET', icon: 'mm-allnet_allnet' },
+  { match: /redlion|red\s*lion|n-?tron/i, label: 'Red Lion', icon: 'mm-redlion_redlion' },
+  { match: /alaxala|\bax2[0-9]{3}s\b/i, label: 'Alaxala', icon: 'mm-alaxala_alaxala' },
+  { match: /transition\s*networks?|\bsispm\b|\bionmm\b/i, label: 'Transition Networks', icon: 'mm-transition_transition' },
+  { match: /antaira|aaxeon|\blmx\b/i, label: 'Antaira', icon: 'mm-antaira_antaira' },
+  { match: /multitech|multiconnect|\brcell\b/i, label: 'MultiTech', icon: 'mm-multitech_multitech' },
+  { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
+  { match: /unisphere|\berx\b/i, label: 'Unisphere', icon: 'mm-unisphere_unisphere' },
+  { match: /waystream|asr[0-9]+|ftth/i, label: 'Waystream', icon: 'mm-waystream_waystream' },
+  { match: /tsntec|8148sc/i, label: 'TsnTec', icon: 'mm-tsntec_tsntec' },
+  { match: /6wind|\bvsr\b/i, label: '6WIND VSR', icon: 'mm-6wind_6wind' },
+  { match: /sierra\s*wireless|airlink|\baleos\b/i, label: 'Sierra Wireless', icon: 'mm-sierrawireless_sierrawireless' },
+  { match: /netmodule/i, label: 'NetModule', icon: 'mm-netmodule_netmodule' },
+  { match: /engenius/i, label: 'EnGenius', icon: 'mm-engenius_engenius' },
+  { match: /aerohive|hiveap|hiveos/i, label: 'Aerohive', icon: 'mm-aerohive_aerohive' },
+  { match: /grandstream|\bgwn\d/i, label: 'Grandstream', icon: 'mm-grandstream_grandstream' },
+  { match: /phoenix\s*contact|fl\s*switch/i, label: 'Phoenix Contact', icon: 'mm-phoenixcontact_phoenixcontact' },
+  { match: /albentia|aerdocsis|wimax/i, label: 'Albentia', icon: 'mm-albentia_albentia' },
+  { match: /synology|diskstation|rackstation|\bdsm\b/i, label: 'Synology', icon: 'mm-synology_synology' },
+  { match: /macrosan|\bms[0-9]{3,4}\b/i, label: 'MacroSAN', icon: 'mm-macrosan_macrosan' },
+  { match: /sugon|parastor/i, label: 'Sugon', icon: 'mm-sugon_sugon' },
+  { match: /netapp|ontap|\bfas[0-9]|\baff\b/i, label: 'NetApp', icon: 'mm-netapp_netapp' },
+  { match: /fujitsu|eternus/i, label: 'Fujitsu', icon: 'mm-fujitsu_fujitsu' },
+  { match: /inspur|as5500/i, label: 'Inspur', icon: 'mm-inspur_inspur' },
+  { match: /ceresdata|ceres\s*data|希磁/i, label: 'CeresData', icon: 'mm-ceresdata_ceresdata' },
+  { match: /dell\s*sc|sc8000|compellent/i, label: 'Dell SC8000', icon: 'mm-dellsc8000_dellsc8000' },
+  { match: /powervault|equallogic|dell\s*ps|dell\s*md/i, label: 'Dell PowerVault', icon: 'mm-dellpowervault_dellpowervault' },
+  { match: /hikvision|brainware|海康/i, label: 'Hikvision', icon: 'mm-hikvision_hikvision' },
+  { match: /zdns|zddi|中国互联网研究院/i, label: 'ZDNS', icon: 'mm-zdns_zdns' },
+  { match: /blockbit/i, label: 'Blockbit', icon: 'mm-blockbit_blockbit' },
+  { match: /ascom|ip-?dect/i, label: 'Ascom', icon: 'mm-ascom_ascom' },
   { match: /parks/i, label: 'Parks', icon: 'mm-parks_parks' },
   { match: /ubiquiti|ubnt|edgeswitch/i, label: 'Ubiquiti', icon: 'mm-ubiquiti_ubiquiti' },
   { match: /ruijie|reyee|\brg-?nos\b/i, label: 'Ruijie', icon: 'mm-ruijie_ruijie' },
@@ -556,7 +663,41 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /hirschmann|belden|\brs[234]0\b|greyhound/i, label: 'Hirschmann', icon: 'mm-hirschmann_hirschmann' },
   { match: /3com|a3com/i, label: '3Com', icon: 'mm-3com_3com' },
   { match: /adtran|netvanta|adtran.?aos/i, label: 'Adtran', icon: 'mm-adtran_adtran' },
-  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' }
+  { match: /lancom|lcos/i, label: 'LANCOM', icon: 'mm-lancom_lancom' },
+  { match: /cumulus/i, label: 'Cumulus Linux', icon: 'mm-cumulus_cumulus' },
+  { match: /\bdcn\b|digital.?china/i, label: 'DCN', icon: 'mm-dcn_dcn' },
+  { match: /edgecore/i, label: 'Edgecore', icon: 'mm-edgecore_edgecore' },
+  { match: /enterasys|dragon/i, label: 'Enterasys', icon: 'mm-enterasys_enterasys' },
+  { match: /\bfs\b|fs\.com/i, label: 'FS', icon: 'mm-fs_fs' },
+  { match: /garretcom|garrettcom/i, label: 'GarretCom', icon: 'mm-garretcom_garretcom' },
+  { match: /korenix/i, label: 'Korenix', icon: 'mm-korenix_korenix' },
+  { match: /microsens/i, label: 'Microsens', icon: 'mm-microsens_microsens' },
+  { match: /moxa/i, label: 'Moxa', icon: 'mm-moxa_moxa' },
+  { match: /netonix/i, label: 'Netonix', icon: 'mm-netonix_netonix' },
+  { match: /planet/i, label: 'PLANET', icon: 'mm-planet_planet' },
+  { match: /pluribus|netvisor/i, label: 'Pluribus', icon: 'mm-pluribus_pluribus' },
+  { match: /ruggedcom/i, label: 'Ruggedcom', icon: 'mm-ruggedcom_ruggedcom' },
+  { match: /scalance/i, label: 'SCALANCE', icon: 'mm-scalance_scalance' },
+  { match: /westermo/i, label: 'Westermo', icon: 'mm-westermo_westermo' },
+  { match: /audiocodes/i, label: 'AudioCodes', icon: 'mm-audiocodes_audiocodes' },
+  { match: /ribbon|sonus|genband/i, label: 'Ribbon', icon: 'mm-ribbon_ribbon' },
+  { match: /opengear/i, label: 'Opengear', icon: 'mm-opengear_opengear' },
+  { match: /infoblox/i, label: 'Infoblox', icon: 'mm-infoblox_infoblox' },
+  { match: /gigamon|gigavue/i, label: 'Gigamon', icon: 'mm-gigamon_gigamon' },
+  { match: /bluecat|bcn-|ddi/i, label: 'BlueCat', icon: 'mm-bluecat_bluecat' },
+  { match: /gigamon|gigavue/i, label: 'Gigamon' },
+  { match: /accedian|skylight|metronid/i, label: 'Accedian', icon: 'mm-accedian_accedian' },
+  { match: /cradlepoint|netcloud/i, label: 'Cradlepoint' },
+  { match: /ciena/i, label: 'Ciena', icon: 'mm-ciena_ciena' },
+  { match: /saf\s*tehnika|saftehnika|integra-[a-z0-9]+/i, label: 'SAF Tehnika', icon: 'mm-saftehnika_saftehnika' },
+  { match: /pan\s*dacom|pandacom/i, label: 'Pan Dacom', icon: 'mm-pandacom_pandacom' },
+  { match: /tachyon|\btna\s*300|tna30x/i, label: 'Tachyon', icon: 'mm-tachyon_tachyon' },
+  { match: /\bxkl\b|dxmos|dqt400|dqm400/i, label: 'XKL', icon: 'mm-xkl_xkl' },
+  { match: /viavi|jdsu|acterna/i, label: 'Viavi', icon: 'mm-viavi_viavi' },
+  { match: /sycamore/i, label: 'Sycamore', icon: 'mm-sycamore_sycamore' },
+  { match: /bdcom/i, label: 'BDCOM', icon: 'mm-bdcom_bdcom' },
+  { match: /cambium/i, label: 'Cambium', icon: 'mm-cambium_cambium' },
+  { match: /proxim/i, label: 'Proxim', icon: 'mm-proxim_proxim' }
 ];
 
 // 按插件名取品牌 logo 图标；未命中返回 undefined（调用方回退监控对象图标）。

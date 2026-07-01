@@ -3,6 +3,8 @@
 对照 spec/prd/告警中心·告警：未分派→待响应→处理中→关闭，含转派/认领与权限校验。
 """
 
+from unittest import mock
+
 import pytest
 
 from apps.alerts.constants.constants import AlertStatus
@@ -250,7 +252,24 @@ def test_assign_with_assignment_id_creates_reminder(sys_user):
 def test_format_notify_data_no_channel_returns_empty():
     alert = _make_alert(status=AlertStatus.PENDING)
     op = AlertOperator(user="u1")
-    assert op.format_notify_data(["op1"], alert) == {}
+    # 收口后统一返回 list(sync_notify 期望 list[dict]);无渠道 → 空列表
+    assert op.format_notify_data(["op1"], alert) == []
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+def test_format_notify_data_returns_list_of_params(_mock_chan, _mt, _mc):
+    """收口后:配了默认渠道时返回 list[dict](修掉原先返回单 dict 致 sync_notify 崩的 bug)。"""
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-NOTIFY")
+    op = AlertOperator(user="u1")
+    result = op.format_notify_data(["op1", "u1"], alert)  # u1 是操作者自己,应被排除
+    assert isinstance(result, list) and len(result) == 1
+    assert result[0]["channel_type"] == "email"
+    assert result[0]["channel_id"] == 5
+    assert result[0]["username_list"] == ["op1"]
+    assert result[0]["object_id"] == alert.alert_id
 
 
 @pytest.mark.django_db
@@ -261,10 +280,14 @@ def test_stop_reminder_tasks_noop_when_none():
 
 
 @pytest.mark.django_db
-def test_create_reminder_record_assignment_not_found():
-    alert = _make_alert()
-    op = AlertOperator(user="u1")
-    op._create_reminder_record(alert, assignment_id=999999)
+def test_assign_missing_assignment_id_is_graceful(sys_user):
+    from apps.alerts.models.alert_operator import AlertReminderTask
+
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+    result = op.operate("assign", "A1", {"assignee": ["op1"], "assignment_id": 999999})
+    assert result["result"] is True
+    assert not AlertReminderTask.objects.filter(alert__alert_id="A1").exists()
 
 
 @pytest.mark.django_db
@@ -293,3 +316,130 @@ def test_is_alert_allowed_restricts():
     op = AlertOperator(user="op1", allowed_alert_ids=["A1"])
     assert op._is_alert_allowed("A1") is True
     assert op._is_alert_allowed("A2") is False
+
+
+# --------------------------------------------------------------------------
+# format_assignment_notify_data（auto-dispatch 按策略勾选的 notify_channels）
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="正文")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="标题")
+def test_format_assignment_notify_data_builds_from_notify_channels(_mt, _mc):
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=True,
+        notify_channels=[{"id": 9, "channel_type": "nats"}, {"id": 3, "channel_type": "email"}],
+    )
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-AN", team=[2])
+    # 自动分派操作人=系统(SYSTEM_OPERATOR_USER="admin")；策略也分派给 admin，
+    # 不能把与操作人同名的收件人过滤掉，否则收件人为空、不发通知。
+    op = AlertOperator(user="admin")
+
+    result = op.format_assignment_notify_data(assignment, ["admin", "op1"], alert)
+
+    nats = next(p for p in result if p["channel_type"] == "nats")
+    assert nats["channel_id"] == 9
+    assert nats["content"] == {"message": "正文", "team": 2, "user_ids": ["admin", "op1"]}
+    assert nats["object_id"] == "A-AN"
+    email = next(p for p in result if p["channel_type"] == "email")
+    assert email["channel_id"] == 3
+    assert email["content"] == "正文"
+    assert email["username_list"] == ["admin", "op1"]
+
+
+@pytest.mark.django_db
+def test_format_assignment_notify_data_none_returns_empty():
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-NF")
+    op = AlertOperator(user="system")
+    assert op.format_assignment_notify_data(None, ["op1"], alert) == []
+
+
+@pytest.mark.django_db
+def test_format_assignment_notify_data_empty_channels_returns_empty():
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=True, notify_channels=[],
+    )
+    alert = _make_alert(status=AlertStatus.PENDING, alert_id="A-EC", team=[2])
+    op = AlertOperator(user="system")
+    assert op.format_assignment_notify_data(assignment, ["op1"], alert) == []
+
+
+# --------------------------------------------------------------------------
+# _assign_alert 通知分流：auto→notify_channels / manual→默认邮件
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="正文")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="标题")
+@mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+def test_assign_auto_dispatch_notifies_via_notify_channels(mock_enqueue, _mt, _mc, sys_user):
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=True,
+        personnel=["op1"],
+        notify_channels=[{"id": 9, "channel_type": "nats"}],
+        notification_frequency={"0": {"interval_minutes": 30}},
+    )
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+
+    result = op.operate("assign", "A1", {"assignee": ["op1"], "assignment_id": assignment.id})
+
+    assert result["result"] is True
+    assert mock_enqueue.called
+    params = mock_enqueue.call_args.args[0]
+    assert len(params) == 1
+    nats = next((p for p in params if p["channel_type"] == "nats"), None)
+    assert nats is not None, "expected nats channel in enqueued params"
+    assert nats["content"] == {"message": "正文", "team": 1, "user_ids": ["op1"]}
+    assert all(p["channel_type"] != "email" for p in params)
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+def test_assign_manual_still_uses_default_email(mock_enqueue, _mt, _mc, _chan, sys_user):
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+
+    result = op.operate("assign", "A1", {"assignee": ["op1"]})  # 无 assignment_id → manual
+
+    assert result["result"] is True
+    assert mock_enqueue.called
+    params = mock_enqueue.call_args.args[0]
+    assert len(params) == 1
+    assert params[0]["channel_type"] == "email" and params[0]["channel_id"] == 5
+
+
+@pytest.mark.django_db
+@mock.patch("apps.alerts.service.alter_operator.get_default_notify_params", return_value=("email", 5))
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_content", return_value="c")
+@mock.patch("apps.alerts.common.notify.base.NotifyParamsFormat.format_title", return_value="t")
+@mock.patch("apps.alerts.common.notify.dispatcher.enqueue_notifications")
+def test_assign_inactive_assignment_falls_back_to_default_email(mock_enqueue, _mt, _mc, _chan, sys_user):
+    from apps.alerts.models.alert_operator import AlertAssignment
+
+    # 非活跃策略：_assign_alert 用 is_active=True 查不到 → assignment=None → 回退默认邮件
+    assignment = AlertAssignment.objects.create(
+        name="分派", match_type="all", is_active=False,
+        notify_channels=[{"id": 9, "channel_type": "nats"}],
+    )
+    _make_alert(status=AlertStatus.UNASSIGNED, team=[1], alert_id="A1")
+    op = AlertOperator(user="system")
+
+    result = op.operate("assign", "A1", {"assignee": ["op1"], "assignment_id": assignment.id})
+
+    assert result["result"] is True
+    assert mock_enqueue.called
+    params = mock_enqueue.call_args.args[0]
+    assert len(params) == 1
+    assert params[0]["channel_type"] == "email" and params[0]["channel_id"] == 5

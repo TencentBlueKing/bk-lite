@@ -1,5 +1,9 @@
 import {
   ControllerInstallProgressRow,
+  ControllerInstallDisplay,
+  ControllerInstallDisplayPhase,
+  ControllerInstallDisplaySeverity,
+  ControllerInstallDisplayState,
   InstallerFailure,
   InstallerFailureContext,
   InstallerEventSummary,
@@ -99,13 +103,23 @@ const normalizeProgress = (progress?: InstallerProgressMetric) => {
   const percent = normalizeNumber(progress.percent);
   const current = normalizeNumber(progress.current);
   const total = normalizeNumber(progress.total);
+  const unit = normalizeText(progress.unit);
+  const normalizedProgress: InstallerProgressMetric = {};
 
-  return {
-    percent: percent === null ? null : clampNumber(Math.round(percent), 0, 100),
-    current: current === null ? null : Math.max(current, 0),
-    total: total === null ? null : Math.max(total, 0),
-    unit: normalizeText(progress.unit)
-  };
+  if (percent !== null) {
+    normalizedProgress.percent = clampNumber(Math.round(percent), 0, 100);
+  }
+  if (current !== null) {
+    normalizedProgress.current = Math.max(current, 0);
+  }
+  if (total !== null) {
+    normalizedProgress.total = Math.max(total, 0);
+  }
+  if (unit) {
+    normalizedProgress.unit = unit;
+  }
+
+  return Object.keys(normalizedProgress).length ? normalizedProgress : null;
 };
 
 const normalizeStringList = (values?: string[] | null) => {
@@ -116,6 +130,40 @@ const normalizeStringList = (values?: string[] | null) => {
   return values
     .map((value) => normalizeText(value))
     .filter((value): value is string => Boolean(value));
+};
+
+const normalizeDisplayString = <T extends string>(
+  value: string | null | undefined,
+  fallback: T
+): T | string => {
+  return normalizeText(value) || fallback;
+};
+
+const normalizeControllerInstallDisplay = (
+  display?: ControllerInstallDisplay | null
+): ControllerInstallDisplay | undefined => {
+  if (!display) {
+    return undefined;
+  }
+
+  return {
+    state: normalizeDisplayString(
+      display.state,
+      'waiting'
+    ) as ControllerInstallDisplayState,
+    phase: normalizeDisplayString(
+      display.phase,
+      'credential_validation'
+    ) as ControllerInstallDisplayPhase,
+    severity: normalizeDisplayString(
+      display.severity,
+      'default'
+    ) as ControllerInstallDisplaySeverity,
+    installer_steps_received:
+      typeof display.installer_steps_received === 'boolean'
+        ? display.installer_steps_received
+        : undefined
+  };
 };
 
 export const normalizeInstallerStatus = (status?: string | null) => {
@@ -234,6 +282,9 @@ export const normalizeInstallerResult = (
     steps: normalizeInstallerLogs(result.steps),
     installer_progress: installerProgress,
     installer_summary: normalizeInstallerSummary(result.installer_summary),
+    controller_install_display: normalizeControllerInstallDisplay(
+      result.controller_install_display
+    ),
     failure: normalizeFailure(result.failure)
   };
 };
@@ -494,6 +545,10 @@ export const getInstallerSummaryGuidance = (
       'node-manager.cloudregion.node.installerSummaryConnectivityPending',
     installer_success_connectivity_timeout:
       'node-manager.cloudregion.node.installerSummaryConnectivityTimeout',
+    installer_no_report_connectivity_timeout:
+      'node-manager.cloudregion.node.installerSummaryNoReportConnectivityTimeout',
+    installer_success_without_detail:
+      'node-manager.cloudregion.node.installerSummarySuccessWithoutDetail',
     duplicated_events:
       'node-manager.cloudregion.node.installerSummaryDuplicatedEvents'
   };
@@ -582,4 +637,354 @@ export const getInstallerSummaryLabel = (
     installerProgress.current_step,
     installerProgress.current_message || installerProgress.current_step
   );
+};
+
+export const getInstallerSummaryProgressInfo = (
+  summary?: InstallerEventSummary | null
+) => {
+  const completedCount = normalizeNumber(summary?.completed_count);
+  const expectedCount = normalizeNumber(summary?.expected_count);
+  const observedCount = normalizeNumber(summary?.observed_count);
+
+  if (
+    completedCount === null ||
+    expectedCount === null ||
+    expectedCount <= 0 ||
+    !observedCount
+  ) {
+    return null;
+  }
+
+  return {
+    stepInfo: `${Math.min(Math.round(completedCount), Math.round(expectedCount))}/${Math.round(expectedCount)}`,
+    percent: clampNumber(
+      Math.round((completedCount / expectedCount) * 100),
+      0,
+      100
+    )
+  };
+};
+
+const findLatestStepByAction = (steps: LogStep[] | undefined, action: string) => {
+  if (!steps?.length) {
+    return null;
+  }
+
+  return [...steps].reverse().find((step) => step.action === action) || null;
+};
+
+const CONTROLLER_INSTALL_ACTIONS = new Set([
+  'credential_check',
+  'run',
+  'connectivity_check'
+]);
+
+export const shouldUseControllerInstallPhases = (
+  result?: OperationTaskResult | null,
+  displayMode?: 'controllerInstall' | 'stepList'
+) => {
+  if (displayMode === 'controllerInstall') {
+    return true;
+  }
+  if (displayMode === 'stepList') {
+    return false;
+  }
+
+  const normalizedResult = normalizeInstallerResult(result);
+  const steps = normalizedResult?.steps || [];
+  const summary = normalizedResult?.installer_summary;
+
+  if (summary || normalizedResult?.controller_install_display) {
+    return true;
+  }
+
+  return steps.some((step) =>
+    CONTROLLER_INSTALL_ACTIONS.has(step.action) || !!step.details?.installer_event
+  );
+};
+
+const buildDisplayResult = (
+  state: ControllerInstallDisplayState,
+  phase: ControllerInstallDisplayPhase,
+  severity: ControllerInstallDisplaySeverity,
+  installerStepsReceived: boolean
+) => ({
+  state,
+  phase,
+  severity,
+  installerStepsReceived
+});
+
+export type ControllerInstallPhaseCode =
+  | 'credential_validation'
+  | 'command_dispatch'
+  | 'installer_execution'
+  | 'node_connectivity';
+
+export type ControllerInstallPhaseStatus =
+  | 'waiting'
+  | 'running'
+  | 'success'
+  | 'warning'
+  | 'error';
+
+export type ControllerInstallPhaseDetailState =
+  | 'none'
+  | 'no_report'
+  | 'partial'
+  | 'complete';
+
+export interface ControllerInstallPhase {
+  code: ControllerInstallPhaseCode;
+  status: ControllerInstallPhaseStatus;
+  detailState: ControllerInstallPhaseDetailState;
+  showMissingSteps: boolean;
+}
+
+export const deriveControllerInstallDisplay = (
+  result?: OperationTaskResult | null
+) => {
+  const normalizedResult = normalizeInstallerResult(result);
+  const backendDisplay = normalizeControllerInstallDisplay(
+    normalizedResult?.controller_install_display
+  );
+
+  if (backendDisplay) {
+    return buildDisplayResult(
+      backendDisplay.state,
+      backendDisplay.phase,
+      backendDisplay.severity,
+      !!backendDisplay.installer_steps_received
+    );
+  }
+
+  const steps = normalizedResult?.steps || [];
+  const summary = normalizedResult?.installer_summary;
+  const installerStepsReceived = !!summary?.observed_count;
+  const credentialStep = findLatestStepByAction(steps, 'credential_check');
+  const commandStep = findLatestStepByAction(steps, 'run');
+
+  if (['error', 'timeout'].includes(credentialStep?.status || '')) {
+    return buildDisplayResult(
+      'credential_failed',
+      'credential_validation',
+      'error',
+      installerStepsReceived
+    );
+  }
+
+  if (['error', 'timeout'].includes(commandStep?.status || '')) {
+    return buildDisplayResult(
+      'command_failed',
+      'command_dispatch',
+      'error',
+      installerStepsReceived
+    );
+  }
+
+  if (commandStep?.status === 'running' && !installerStepsReceived) {
+    return buildDisplayResult(
+      'command_running',
+      'command_dispatch',
+      'processing',
+      installerStepsReceived
+    );
+  }
+
+  switch (summary?.state) {
+    case 'installer_success_without_detail':
+      return buildDisplayResult(
+        'success_without_detail',
+        'node_connectivity',
+        'success',
+        false
+      );
+    case 'installer_no_report_connectivity_timeout':
+      return buildDisplayResult(
+        'installer_no_report',
+        'installer_execution',
+        'error',
+        false
+      );
+    case 'no_installer_events':
+      return buildDisplayResult(
+        'installer_no_report',
+        'installer_execution',
+        'warning',
+        false
+      );
+    case 'incomplete_installer_events': {
+      const hasFailedInstallerStep = summary.steps?.some((step) =>
+        ['error', 'timeout'].includes(step.status)
+      );
+      return buildDisplayResult(
+        hasFailedInstallerStep ? 'installer_failed' : 'installer_running',
+        'installer_execution',
+        hasFailedInstallerStep ? 'error' : 'processing',
+        installerStepsReceived
+      );
+    }
+    case 'installer_success_connectivity_pending':
+      return buildDisplayResult(
+        'connectivity_waiting',
+        'node_connectivity',
+        'processing',
+        installerStepsReceived
+      );
+    case 'installer_success_connectivity_timeout':
+      return buildDisplayResult(
+        'connectivity_failed',
+        'node_connectivity',
+        'error',
+        installerStepsReceived
+      );
+    case 'installer_success_connectivity_confirmed':
+      return buildDisplayResult(
+        'success',
+        'node_connectivity',
+        'success',
+        installerStepsReceived
+      );
+    default:
+      return buildDisplayResult(
+        installerStepsReceived ? 'installer_running' : 'installer_waiting',
+        'installer_execution',
+        'processing',
+        installerStepsReceived
+      );
+  }
+};
+
+const stepStatusToPhaseStatus = (
+  status?: string | null
+): ControllerInstallPhaseStatus => {
+  if (status === 'success' || status === 'installed') {
+    return 'success';
+  }
+  if (status === 'error' || status === 'timeout') {
+    return 'error';
+  }
+  if (status === 'running' || status === 'installing') {
+    return 'running';
+  }
+  return 'waiting';
+};
+
+const displaySeverityToPhaseStatus = (
+  severity?: string
+): ControllerInstallPhaseStatus => {
+  if (severity === 'success') return 'success';
+  if (severity === 'error') return 'error';
+  if (severity === 'warning') return 'warning';
+  if (severity === 'processing') return 'running';
+  return 'waiting';
+};
+
+export const deriveControllerInstallPhases = (
+  result?: OperationTaskResult | null
+): ControllerInstallPhase[] => {
+  const normalizedResult = normalizeInstallerResult(result);
+  const steps = normalizedResult?.steps || [];
+  const summary = normalizedResult?.installer_summary;
+  const display = deriveControllerInstallDisplay(normalizedResult);
+  const credentialStep = findLatestStepByAction(steps, 'credential_check');
+  const commandStep = findLatestStepByAction(steps, 'run');
+  const connectivityStep = findLatestStepByAction(steps, 'connectivity_check');
+  const installerStepsReceived = !!summary?.observed_count;
+  const showMissingSteps = installerStepsReceived && !!summary?.missing_steps?.length;
+  const commandDispatched = commandStep?.status === 'success' || installerStepsReceived;
+  let installerDetailState: ControllerInstallPhaseDetailState = 'none';
+  if (commandDispatched && !installerStepsReceived) {
+    installerDetailState = 'no_report';
+  } else if (
+    commandDispatched &&
+    (showMissingSteps || summary?.state === 'incomplete_installer_events')
+  ) {
+    installerDetailState = 'partial';
+  } else if (commandDispatched) {
+    installerDetailState = 'complete';
+  }
+
+  let installerStatus: ControllerInstallPhaseStatus;
+  if (display.phase === 'installer_execution') {
+    installerStatus = displaySeverityToPhaseStatus(display.severity);
+  } else if (
+    ['connectivity_waiting', 'connectivity_failed', 'success', 'success_without_detail'].includes(
+      display.state
+    )
+  ) {
+    installerStatus = display.state === 'success_without_detail' ? 'warning' : 'success';
+  } else {
+    installerStatus = installerStepsReceived ? 'running' : 'waiting';
+  }
+
+  return [
+    {
+      code: 'credential_validation',
+      status: stepStatusToPhaseStatus(credentialStep?.status),
+      detailState: 'none',
+      showMissingSteps: false
+    },
+    {
+      code: 'command_dispatch',
+      status: installerStepsReceived
+        ? 'success'
+        : stepStatusToPhaseStatus(commandStep?.status),
+      detailState: 'none',
+      showMissingSteps: false
+    },
+    {
+      code: 'installer_execution',
+      status: installerStatus,
+      detailState: installerDetailState,
+      showMissingSteps
+    },
+    {
+      code: 'node_connectivity',
+      status: stepStatusToPhaseStatus(connectivityStep?.status),
+      detailState: 'none',
+      showMissingSteps: false
+    }
+  ];
+};
+
+export const CONTROLLER_INSTALL_PHASE_LABEL_KEYS: Record<
+  ControllerInstallPhaseCode,
+  string
+> = {
+  credential_validation: 'node-manager.cloudregion.node.installPhaseCredential',
+  command_dispatch: 'node-manager.cloudregion.node.installPhaseCommand',
+  installer_execution: 'node-manager.cloudregion.node.installPhaseInstaller',
+  node_connectivity: 'node-manager.cloudregion.node.installPhaseConnectivity'
+};
+
+export const CONTROLLER_INSTALL_STATE_LABEL_KEYS: Partial<
+  Record<ControllerInstallDisplayState, string>
+> = {
+  waiting: 'node-manager.cloudregion.node.installStateWaiting',
+  credential_failed: 'node-manager.cloudregion.node.installStateCredentialFailed',
+  command_running: 'node-manager.cloudregion.node.installStateCommandRunning',
+  command_failed: 'node-manager.cloudregion.node.installStateCommandFailed',
+  installer_waiting: 'node-manager.cloudregion.node.installStateInstallerWaiting',
+  installer_no_report: 'node-manager.cloudregion.node.installStateInstallerNoReport',
+  installer_running: 'node-manager.cloudregion.node.installStateInstallerRunning',
+  installer_failed: 'node-manager.cloudregion.node.installStateInstallerFailed',
+  connectivity_waiting: 'node-manager.cloudregion.node.installStateConnectivityWaiting',
+  connectivity_failed: 'node-manager.cloudregion.node.installStateConnectivityFailed',
+  success: 'node-manager.cloudregion.node.installStateSuccess',
+  success_without_detail:
+    'node-manager.cloudregion.node.installStateSuccessWithoutDetail'
+};
+
+export const getControllerInstallPhaseLabel = (
+  t: TranslationFunction,
+  phase: ControllerInstallPhaseCode
+) => t(CONTROLLER_INSTALL_PHASE_LABEL_KEYS[phase] || phase);
+
+export const getControllerInstallDisplayLabel = (
+  t: TranslationFunction,
+  display: ReturnType<typeof deriveControllerInstallDisplay>
+) => {
+  const labelKey = CONTROLLER_INSTALL_STATE_LABEL_KEYS[display.state];
+  return labelKey ? t(labelKey) : display.state;
 };

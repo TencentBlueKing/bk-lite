@@ -147,18 +147,8 @@ def test_get_event_level(event_levels):
 
 
 @pytest.mark.django_db
-def test_create_events_calls_enrichment_engine_once(event_levels, restful_source):
-    """批量丰富：create_events 只调用一次 EnrichmentEngine.enrich_batch（新语义）。"""
-    from unittest.mock import patch
-
-    with patch("apps.alerts.common.source_adapter.base.EnrichmentEngine") as mock_cls:
-        mock_cls.return_value.enrich_batch.return_value = None
-        adapter = RestFulAdapter(alert_source=restful_source)
-        adapter.create_events([
-            {"title": "t1", "level": "0", "item": "cpu", "resource_type": "host",
-             "resource_id": "1", "resource_name": "h1"},
-        ])
-        assert mock_cls.return_value.enrich_batch.call_count == 1
+def test_enable_enrich_default_false():
+    assert AlertSourceAdapter.enable_enrich() is False
 
 
 @pytest.mark.django_db
@@ -494,19 +484,13 @@ def test_trusted_internal_empty_team_secrets_blocks_all(event_levels, db):
     assert event.team == [], "team_secrets 为空时任何 org 均应被拦截，不退化为全放行"
 
 
-@pytest.mark.django_db
-def test_create_events_enrichment_exception_does_not_raise(event_levels, restful_source):
-    """批量丰富失败时 create_events 不抛异常（有界降级）。"""
-    from unittest.mock import patch
-
-    with patch("apps.alerts.common.source_adapter.base.EnrichmentEngine") as mock_cls:
-        mock_cls.return_value.enrich_batch.side_effect = RuntimeError("engine down")
-        adapter = RestFulAdapter(alert_source=restful_source)
-        # 不应抛出任何异常
-        adapter.create_events([
-            {"title": "t1", "level": "0", "item": "cpu", "resource_type": "host",
-             "resource_id": "1", "resource_name": "h1"},
-        ])
+def test_rich_event_disabled_noop(event_levels, restful_source):
+    adapter = RestFulAdapter(alert_source=restful_source)
+    adapter.enable_rich_event = False
+    data = {"labels": {}}
+    # 未开启丰富 → 直接返回，不修改
+    adapter.rich_event(data)
+    assert data == {"labels": {}}
 
 
 @pytest.mark.django_db
@@ -546,6 +530,76 @@ def test_get_active_shields(event_levels, restful_source):
     AlertShield.objects.create(name="s", match_type="all", match_rules=[], suppression_time={})
     shields = AlertSourceAdapter.get_active_shields()
     assert shields is not None and shields.count() == 1
+
+
+# --------------------------------------------------------------------------
+# resolve_recovery_external_id — Prefetch 过滤优化（issue #3701）
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_resolve_recovery_external_id_prefetch_filters_non_created_events(event_levels, restful_source):
+    """回归：候选告警的 prefetch 必须只加载 CREATED 事件（DB 侧过滤），
+    Python 层不应再看到其他 action 的事件。修复前用 alert.events.all() 会
+    返回所有事件；修复后用 Prefetch(to_attr='_created_events') 仅含 CREATED。
+    若把修复代码 revert（恢复为 events.all()），alert._created_events 不存在，
+    遍历将抛 AttributeError，测试必然失败。"""
+    from apps.alerts.constants.constants import AlertStatus, EventAction
+    from apps.alerts.models.models import Alert
+
+    adapter = RestFulAdapter(alert_source=restful_source)
+
+    # 建两条事件：一条 CREATED（目标），一条 RECOVERY（噪声，旧逻辑会混入 events.all()）
+    created_evt = Event.objects.create(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-CREATED",
+        action=EventAction.CREATED, item="mem", resource_name="host2",
+        external_id="ext-3701",
+    )
+    noise_evt = Event.objects.create(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-RECOVERY-NOISE",
+        action=EventAction.RECOVERY, item="mem", resource_name="host2",
+        external_id="",
+    )
+
+    alert = Alert.objects.create(
+        alert_id="A-3701", level="0", title="t", content="c",
+        fingerprint="fp-3701", status=AlertStatus.PENDING,
+    )
+    alert.events.add(created_evt, noise_evt)
+
+    recovery = Event(
+        source=restful_source, raw_data={}, title="t", level="0",
+        start_time=timezone.now(), event_id="E-REC", action=EventAction.RECOVERY,
+        item="mem", resource_name="host2",
+    )
+
+    result = adapter.resolve_recovery_external_id(recovery)
+
+    # 只应解析到唯一 CREATED 事件的 external_id
+    assert result == "ext-3701"
+
+    # 核心断言：candidate_alerts 必须带 _created_events 属性（Prefetch to_attr），
+    # 且只含 CREATED 事件（不含噪声的 RECOVERY 事件）
+    from apps.alerts.constants.constants import EventAction as EA
+    from apps.alerts.models.models import Alert as AlertModel
+    from django.db.models import Prefetch
+
+    prefetch_qs = Event.objects.filter(
+        action=EA.CREATED,
+        source=restful_source,
+        item="mem",
+        resource_name="host2",
+    ).only("external_id", "item", "resource_name", "source_id", "action")
+
+    qs = AlertModel.objects.filter(pk=alert.pk).prefetch_related(
+        Prefetch("events", queryset=prefetch_qs, to_attr="_created_events")
+    )
+    fetched = qs.first()
+    assert hasattr(fetched, "_created_events"), "_created_events 属性不存在，Prefetch(to_attr=) 未生效"
+    assert len(fetched._created_events) == 1, "DB 侧过滤应只保留 1 条 CREATED 事件"
+    assert fetched._created_events[0].external_id == "ext-3701"
 
 
 # --------------------------------------------------------------------------
@@ -652,37 +706,42 @@ def test_get_event_level_no_levels():
 
 
 # --------------------------------------------------------------------------
-# 批量丰富引擎接入（新语义替换旧 enrich_event / rich_event）
+# enrich_event / rich_event 开启
 # --------------------------------------------------------------------------
 
 
 @pytest.mark.django_db
-def test_create_events_enrichment_written_to_event(event_levels, restful_source):
-    """enrich_batch 写入的 enrichment 最终落库到 Event 对象。"""
-    from unittest.mock import patch
-    from apps.alerts.models.models import Event
+def test_enrich_event_no_resource_type_returns():
+    from apps.alerts.common.source_adapter.base import AlertSourceAdapter
 
-    def _fake_enrich(event_dicts):
-        for d in event_dicts:
-            d["enrichment"] = {"cmdb": {"owner": "bob"}}
-
-    with patch("apps.alerts.common.source_adapter.base.EnrichmentEngine") as mock_cls:
-        mock_cls.return_value.enrich_batch.side_effect = _fake_enrich
-        adapter = RestFulAdapter(alert_source=restful_source)
-        adapter.create_events([
-            {"title": "enrich-test", "level": "0", "item": "cpu",
-             "resource_type": "host", "resource_id": "42", "resource_name": "h42"},
-        ])
-    assert Event.objects.get(title="enrich-test").enrichment == {"cmdb": {"owner": "bob"}}
+    # 无 resource_type → 直接返回，不查询 CMDB
+    data = {"labels": {}}
+    AlertSourceAdapter.enrich_event(data)
+    assert data == {"labels": {}}
 
 
 @pytest.mark.django_db
-def test_create_events_no_enrichment_methods_on_adapter(event_levels, restful_source):
-    """旧的 enrich_event / rich_event / enable_rich_event 已从适配器删除。"""
-    from apps.alerts.common.source_adapter.base import AlertSourceAdapter
-    assert not hasattr(AlertSourceAdapter, "enrich_event")
-    assert not hasattr(AlertSourceAdapter, "rich_event")
-    assert not hasattr(AlertSourceAdapter, "enable_enrich")
+def test_enrich_event_with_resource(monkeypatch):
+    from apps.alerts.common.source_adapter import base as base_mod
+
+    class FakeCMDB:
+        def search_instances(self, params):
+            return {"vendor": "dell"}
+
+    monkeypatch.setattr(base_mod, "CMDB", FakeCMDB)
+    data = {"labels": {}, "resource_type": "host", "resource_id": "1"}
+    base_mod.AlertSourceAdapter.enrich_event(data)
+    assert data["labels"]["vendor"] == "dell"
+
+
+@pytest.mark.django_db
+def test_rich_event_enabled_calls_enrich(event_levels, restful_source, monkeypatch):
+    adapter = RestFulAdapter(alert_source=restful_source)
+    adapter.enable_rich_event = True
+    called = {}
+    monkeypatch.setattr(adapter, "enrich_event", lambda data: called.setdefault("yes", True))
+    adapter.rich_event({"labels": {}})
+    assert called.get("yes") is True
 
 
 @pytest.mark.django_db

@@ -1,10 +1,12 @@
 'use client';
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import type { Dayjs } from 'dayjs';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { DatabaseOutlined, CloudServerOutlined, AppstoreOutlined, DeploymentUnitOutlined, PartitionOutlined, ReloadOutlined } from '@ant-design/icons';
 import useViewApi from '@/app/monitor/api/view';
 import useMonitorApi from '@/app/monitor/api';
+import MetricViews from '@/app/monitor/components/metric-views';
 import { ChartData, TimeSelectorDefaultValue, TimeValuesProps } from '@/app/monitor/types';
 import {
   buildSearchParams,
@@ -18,7 +20,7 @@ import {
   buildInstanceSearchTokens,
   normalizeDisplayText,
   isOpaqueIdentifier,
-  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
   formatMetricValue,
   buildPreviousPeriodTimeValues,
   getPeriodCompare,
@@ -50,6 +52,11 @@ import {
   RING_DONE,
   NS_LABEL
 } from './queries';
+import {
+  DashboardDisplayMode,
+  getDashboardDisplayModeFromParams,
+  setDashboardDisplayModeInParams
+} from '../../shared/utils/display-mode-route';
 import {
   latestScalar,
   seriesLatestByLabel,
@@ -110,35 +117,44 @@ export default function K8sClusterDashboardPage() {
   });
 
   const monitorObjectId = searchParams.get('monitorObjId') || '';
-  const rawInstanceId = searchParams.get('instance_id') || '';
-  const parsedLegacy = parseLegacyParamList(rawInstanceId);
-  const instanceId = parsedLegacy[0] || rawInstanceId || '';
   const instanceName = searchParams.get('instance_name') || '--';
-  const idValues = useMemo(() => {
-    const explicit = parseLegacyParamList(searchParams.get('instance_id_values'));
-    if (explicit.length > 0) return explicit;
-    if (parsedLegacy.length > 0) return parsedLegacy;
-    const normalized = normalizeDisplayText(String(instanceId));
-    return normalized ? [normalized] : [];
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
+  const instanceIdentity = useMemo(
+    () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
+  const instanceId = instanceIdentity.instanceId;
+  const idValues = instanceIdentity.idValues;
   const instanceIdKeys = (searchParams.get('instance_id_keys') || 'instance_id').split(',').filter(Boolean);
   const idValuesKey = idValues.join('|');
 
   const resolvedInstanceName = isOpaqueIdentifier(instanceName) ? '' : normalizeDisplayText(instanceName);
   const objectFallbackName = 'K8s 集群';
+  const monitorObjectName = searchParams.get('name') || 'Cluster';
 
-  const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
+  const [displayMode, setDisplayModeState] = useState<DashboardDisplayMode>(() =>
+    getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString()))
+  );
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({ timeRange: [], originValue: 15 });
-  const timeDefaultValue: TimeSelectorDefaultValue = { selectValue: 15, rangePickerVaule: null };
+  const [timeDefaultValue, setTimeDefaultValue] = useState<TimeSelectorDefaultValue>({ selectValue: 15, rangePickerVaule: null });
   const [frequence, setFrequence] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [raw, setRaw] = useState<RawMap>({});
   const [previousRaw, setPreviousRaw] = useState<RawMap>({});
   const [instanceOptions, setInstanceOptions] = useState<InstanceOption[]>([]);
   const [instanceLoading, setInstanceLoading] = useState(false);
+  const [metricsRefreshSignal, setMetricsRefreshSignal] = useState(0);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const loadSequence = useLoadSequence();
+
+  useEffect(() => {
+    setDisplayModeState(getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString())));
+  }, [searchParams]);
+
+  const setDisplayMode = (mode: DashboardDisplayMode) => {
+    setDisplayModeState(mode);
+    const params = setDashboardDisplayModeInParams(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  };
 
   // 实例列表
   useEffect(() => {
@@ -210,6 +226,10 @@ export default function K8sClusterDashboardPage() {
   };
 
   useEffect(() => {
+    if (displayMode !== 'dashboard') {
+      setLoading(false);
+      return;
+    }
     if (idValues.length === 0) {
       setRaw({});
       setLoading(false);
@@ -217,7 +237,7 @@ export default function K8sClusterDashboardPage() {
     }
     loadAll();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [currentInstanceInterval, idValuesKey, timeValues]);
+  }, [currentInstanceInterval, idValuesKey, timeValues, displayMode]);
 
   useEffect(() => {
     if (timerRef.current) {
@@ -409,6 +429,14 @@ export default function K8sClusterDashboardPage() {
   const onTimeChange = (vals: number[], originValue: number | null) => {
     setTimeValues({ timeRange: vals, originValue: originValue ?? 0 });
   };
+  const onXRangeChange = (arr: [Dayjs, Dayjs]) => {
+    if (!arr?.[0] || !arr?.[1]) return;
+    const start = arr[0].valueOf();
+    const end = arr[1].valueOf();
+    if (!Number.isFinite(start) || !Number.isFinite(end) || start >= end) return;
+    setTimeDefaultValue((prev) => ({ ...prev, rangePickerVaule: arr, selectValue: 0 }));
+    setTimeValues({ timeRange: [start, end], originValue: 0 });
+  };
   const onInstanceChange = (value: string) => {
     const opt = instanceOptions.find((o) => o.value === value);
     const params = new URLSearchParams(Array.from(searchParams.entries()));
@@ -418,6 +446,13 @@ export default function K8sClusterDashboardPage() {
     router.push(`?${params.toString()}`);
   };
   const goBack = () => router.back();
+  const onRefresh = () => {
+    if (displayMode === 'dashboard') {
+      loadAll();
+    } else {
+      setMetricsRefreshSignal((value) => value + 1);
+    }
+  };
 
   const guide = (label: string, detail: string) => [{ label, detail }];
 
@@ -426,13 +461,13 @@ export default function K8sClusterDashboardPage() {
       <div className={styles.shell}>
         <div className={styles.pageHeader}>
           <DashboardPageHeader
-            title="K8s 集群监控仪表盘"
+            title={displayMode === 'metrics' ? `${objectFallbackName} 全量指标` : 'K8s 集群监控仪表盘'}
             displayMode={displayMode}
             onDisplayModeChange={setDisplayMode}
             timeDefaultValue={timeDefaultValue}
             onTimeChange={onTimeChange}
             onFrequenceChange={setFrequence}
-            onRefresh={() => loadAll()}
+            onRefresh={onRefresh}
             onBack={goBack}
             showTimeSelector={false}
             styles={styles}
@@ -450,41 +485,71 @@ export default function K8sClusterDashboardPage() {
             selectorPlaceholder="选择实例"
             selectorTitle={currentOption?.label || resolvedInstanceName}
             isDashboardMode={displayMode === 'dashboard'}
-            timeSelectorProps={{ timeDefaultValue, onTimeChange, onFrequenceChange: setFrequence, onRefresh: () => loadAll() }}
+            timeSelectorProps={{ timeDefaultValue, onTimeChange, onFrequenceChange: setFrequence, onRefresh }}
             styles={styles}
           />
         </div>
 
-        {/* Tier 1 · 概览:6 张等宽卡(采集状态 + 5 KPI),全 span2(=12) */}
-        <div className={styles.sectionLabel}>概览</div>
-        <section className={styles.dashboardSection}>
-          <div className={styles.sectionGrid}>
-            <CollectionStatusCard
-              status={collectionStatus}
-              timeline={collectionTimeline}
-              guideItems={guide('采集状态', '集群监控采集是否正常。')}
-              className={styles.span2}
-              styles={styles}
-            />
-            {kpiCards.map((c) => (
-              <StatCard
-                key={c.key}
-                title={<TitleWithGuide title={c.title} items={guide(c.title, c.desc)} styles={styles} />}
-                value={num(c.value)}
-                unit=""
-                icon={c.icon}
-                iconStyle={{ color: c.color }}
-                color={c.color}
-                footer={<span>{c.footer}</span>}
-                compare={c.compare}
-                trendData={c.trendData}
-                noDataType={loading ? 'empty' : undefined}
-                className={styles.span2}
-                styles={styles}
+        {displayMode === 'metrics' ? (
+          <div className={styles.metricsMode}>
+            <div className={`${styles.panel} ${styles.fullPanel}`}>
+              <div className={styles.sectionHeading}>
+                <h3 className={styles.panelTitle}>
+                  <TitleWithGuide
+                    title="监控指标全量"
+                    items={[{ label: '监控指标全景', detail: '承载完整原始监控视图，适合在仪表盘发现异常后继续下钻排查。' }]}
+                    styles={styles}
+                  />
+                </h3>
+              </div>
+              <MetricViews
+                monitorObjectId={monitorObjectId}
+                monitorObjectName={monitorObjectName}
+                instanceId={instanceId}
+                instanceName={resolvedInstanceName}
+                idValues={idValues}
+                externalTimeValues={timeValues}
+                externalTimeDefaultValue={timeDefaultValue}
+                externalFrequence={frequence}
+                externalRefreshSignal={metricsRefreshSignal}
+                collectionInterval={currentInstanceInterval}
+                hideTimeSelector
+                onExternalXRangeChange={onXRangeChange}
               />
-            ))}
+            </div>
           </div>
-        </section>
+        ) : (
+          <>
+            {/* Tier 1 · 概览:6 张等宽卡(采集状态 + 5 KPI),全 span2(=12) */}
+            <div className={styles.sectionLabel}>概览</div>
+            <section className={styles.dashboardSection}>
+              <div className={styles.sectionGrid}>
+                <CollectionStatusCard
+                  status={collectionStatus}
+                  timeline={collectionTimeline}
+                  guideItems={guide('采集状态', '集群监控采集是否正常。')}
+                  className={styles.span2}
+                  styles={styles}
+                />
+                {kpiCards.map((c) => (
+                  <StatCard
+                    key={c.key}
+                    title={<TitleWithGuide title={c.title} items={guide(c.title, c.desc)} styles={styles} />}
+                    value={num(c.value)}
+                    unit=""
+                    icon={c.icon}
+                    iconStyle={{ color: c.color }}
+                    color={c.color}
+                    footer={<span>{c.footer}</span>}
+                    compare={c.compare}
+                    trendData={c.trendData}
+                    noDataType={loading ? 'empty' : undefined}
+                    className={styles.span2}
+                    styles={styles}
+                  />
+                ))}
+              </div>
+            </section>
 
         {/* Tier 2 · 健康构成:三环统一 span4 */}
         <div className={styles.sectionLabel}>健康构成</div>
@@ -583,33 +648,35 @@ export default function K8sClusterDashboardPage() {
             />
           </div>
         </section>
-        <section className={styles.dashboardSection}>
-          <div className={styles.sectionGrid}>
-            <HorizontalBarPanel
-              title="节点内存 Top"
-              guide={guide('节点内存 Top', '内存使用率最高的节点。')}
-              items={nodeMemBars}
-              tiered
-              className={styles.span4}
-              styles={styles}
-            />
-            <HorizontalBarPanel
-              title="Top 命名空间 · 内存"
-              guide={guide('Top 命名空间 · 内存', '内存占用最高的命名空间。')}
-              items={topNsMemBars}
-              tiered
-              className={styles.span4}
-              styles={styles}
-            />
-            <HorizontalBarPanel
-              title="工作负载可用度"
-              guide={guide('工作负载可用度', '各类工作负载可用副本占期望副本的比例。')}
-              items={workloadBars}
-              className={styles.span4}
-              styles={styles}
-            />
-          </div>
-        </section>
+            <section className={styles.dashboardSection}>
+              <div className={styles.sectionGrid}>
+                <HorizontalBarPanel
+                  title="节点内存 Top"
+                  guide={guide('节点内存 Top', '内存使用率最高的节点。')}
+                  items={nodeMemBars}
+                  tiered
+                  className={styles.span4}
+                  styles={styles}
+                />
+                <HorizontalBarPanel
+                  title="Top 命名空间 · 内存"
+                  guide={guide('Top 命名空间 · 内存', '内存占用最高的命名空间。')}
+                  items={topNsMemBars}
+                  tiered
+                  className={styles.span4}
+                  styles={styles}
+                />
+                <HorizontalBarPanel
+                  title="工作负载可用度"
+                  guide={guide('工作负载可用度', '各类工作负载可用副本占期望副本的比例。')}
+                  items={workloadBars}
+                  className={styles.span4}
+                  styles={styles}
+                />
+              </div>
+            </section>
+          </>
+        )}
       </div>
     </div>
   );

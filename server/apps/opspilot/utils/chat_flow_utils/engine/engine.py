@@ -6,19 +6,15 @@ import json
 import threading
 import time
 import uuid
-from datetime import datetime
-from datetime import timezone as dt_timezone
 from graphlib import CycleError
 from typing import Any, Callable, Dict, List, Optional
 
 from asgiref.sync import sync_to_async
 from django.http import StreamingHttpResponse
-from django.utils import timezone
 
 from apps.core.logger import opspilot_logger as logger
-from apps.opspilot.enum import WorkFlowExecuteType, WorkFlowTaskStatus
+from apps.opspilot.enum import WorkFlowExecuteType
 from apps.opspilot.models import BotWorkFlow
-from apps.opspilot.models.bot_mgmt import WorkFlowConversationHistory, WorkFlowTaskNodeResult, WorkFlowTaskResult
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested, is_interrupt_requested_async
 
 from .core.base_executor import BaseNodeExecutor  # noqa: F401  (保留以兼容历史 from .engine import ...)
@@ -26,6 +22,7 @@ from .core.enums import NodeStatus
 from .core.models import NodeExecutionContext
 from .core.node_result import NodeResult  # noqa: F401  (类型化节点契约，供门面/测试引用)
 from .core.variable_manager import VariableManager  # noqa: F401
+from .execution_repository import ExecutionRepository
 from .flow_graph import FlowGraphMixin
 from .node_registry import node_registry  # noqa: F401  (保留以兼容历史 from .engine import node_registry)
 from .node_runner import NodeRunnerMixin
@@ -60,7 +57,8 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
         self.execution_id = execution_id or str(uuid.uuid4())
         # 标记本次执行是否来自配置页的"测试"发起；用于区分测试执行与真实对话执行
         self.is_test = False
-        self.task_result: Optional[WorkFlowTaskResult] = None
+        self.task_result: Optional[Any] = None
+        self.execution_repository = ExecutionRepository(instance, self.execution_id)
         self.variable_manager = VariableManager()
         self.execution_contexts: Dict[str, NodeExecutionContext] = {}
 
@@ -112,9 +110,7 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
 
     @staticmethod
     def _to_datetime(timestamp: Optional[float]):
-        if not timestamp:
-            return None
-        return datetime.fromtimestamp(timestamp, tz=dt_timezone.utc)
+        return ExecutionRepository.to_datetime(timestamp)
 
     def _check_interrupt_requested(self) -> bool:
         return is_interrupt_requested(self.execution_id)
@@ -125,22 +121,13 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
     def _finalize_interrupted_execution(self, input_data: Dict[str, Any], result: Any = None, start_node_type: str = None) -> None:
         task_result = self._ensure_execution_result_started(input_data, start_node_type)
         output_data = self._build_execution_output_data()
-        if isinstance(result, dict):
-            last_output = json.dumps(result, ensure_ascii=False)
-        elif isinstance(result, str):
-            last_output = result
-        else:
-            last_output = str(result or "execution interrupted")
-
-        task_result.status = WorkFlowTaskStatus.INTERRUPTED
-        task_result.input_data = json.dumps(input_data, ensure_ascii=False)
-        task_result.output_data = output_data
-        task_result.last_output = last_output
-        task_result.execute_type = self._get_execute_type(start_node_type)
-        task_result.finished_at = timezone.now()
-        task_result.save(update_fields=["status", "input_data", "output_data", "last_output", "execute_type", "finished_at"])
-
-        WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
+        self.execution_repository.finalize_interrupted_execution(
+            task_result=task_result,
+            input_data=input_data,
+            output_data=output_data,
+            result=result,
+            execute_type=self._get_execute_type(start_node_type),
+        )
 
     def _interrupt_result(self, message: str = "执行已中断") -> Dict[str, Any]:
         return {"success": False, "interrupted": True, "error": message, "execution_id": self.execution_id}
@@ -155,41 +142,17 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
 
     def _record_node_execution_result(self, node_id: str, context: NodeExecutionContext) -> None:
         """记录节点执行明细（幂等 upsert）"""
-        if not node_id or not context:
-            return
-
-        try:
-            status = context.status.value if hasattr(context.status, "value") else str(context.status)
-            node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
-            node_type = self.variable_manager.get_variable(f"node_{node_id}_type") or ""
-            node_name = self.variable_manager.get_variable(f"node_{node_id}_name") or ""
-
-            duration_ms = None
-            if context.start_time and context.end_time:
-                duration_ms = int((context.end_time - context.start_time) * 1000)
-
-            defaults = {
-                "node_name": node_name,
-                "node_type": node_type,
-                "node_index": node_index,
-                "status": status,
-                "input_data": context.input_data or {},
-                "output_data": context.output_data or {},
-                "error_message": context.error_message,
-                "start_time": self._to_datetime(context.start_time),
-                "end_time": self._to_datetime(context.end_time),
-                "duration_ms": duration_ms,
-            }
-            if self.task_result:
-                defaults["task_result"] = self.task_result
-
-            WorkFlowTaskNodeResult.objects.update_or_create(
-                execution_id=self.execution_id,
-                node_id=node_id,
-                defaults=defaults,
-            )
-        except Exception as e:
-            logger.exception(f"记录节点执行明细失败: execution_id={self.execution_id}, node_id={node_id}, error={str(e)}")
+        node_index = self.variable_manager.get_variable(f"node_{node_id}_index")
+        node_type = self.variable_manager.get_variable(f"node_{node_id}_type") or ""
+        node_name = self.variable_manager.get_variable(f"node_{node_id}_name") or ""
+        self.execution_repository.record_node_result(
+            node_id=node_id,
+            context=context,
+            node_index=node_index,
+            node_type=node_type,
+            node_name=node_name,
+            task_result=self.task_result,
+        )
 
     def _get_execute_type(self, start_node_type: str = None) -> str:
         """获取执行类型"""
@@ -199,24 +162,14 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
             execute_type = effective_type.lower()
         return execute_type
 
-    def _ensure_execution_result_started(self, input_data: Dict[str, Any], start_node_type: str = None) -> WorkFlowTaskResult:
+    def _ensure_execution_result_started(self, input_data: Dict[str, Any], start_node_type: str = None) -> Any:
         """确保执行主记录在任务开始时创建"""
-        if self.task_result:
-            return self.task_result
-
-        task_result = WorkFlowTaskResult.objects.filter(bot_work_flow=self.instance, execution_id=self.execution_id).order_by("-id").first()
-        if task_result:
-            self.task_result = task_result
-            return task_result
-
-        self.task_result = WorkFlowTaskResult.objects.create(
-            bot_work_flow=self.instance,
-            execution_id=self.execution_id,
-            status=WorkFlowTaskStatus.RUNNING,
-            input_data=json.dumps(input_data, ensure_ascii=False),
-            output_data={},
-            execute_type=self._get_execute_type(start_node_type),
+        self.task_result = self.execution_repository.ensure_result_started(
+            input_data=input_data,
+            start_node_type=start_node_type,
+            task_result=self.task_result,
             is_test=self.is_test,
+            get_execute_type=self._get_execute_type,
         )
         return self.task_result
 
@@ -1010,42 +963,16 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
             success: 是否执行成功
             start_node_type: 启动节点类型（已废弃，使用 self.entry_type）
         """
-        try:
-            task_result = self._ensure_execution_result_started(input_data, start_node_type)
-            interrupted = isinstance(result, dict) and result.get("interrupted")
-            if task_result.status == WorkFlowTaskStatus.INTERRUPTED and not interrupted:
-                logger.info("跳过执行结果覆盖，执行已中断: execution_id=%s", self.execution_id)
-                return
-
-            output_data = self._build_execution_output_data()
-
-            # 确定状态
-            status = WorkFlowTaskStatus.INTERRUPTED if interrupted else (WorkFlowTaskStatus.SUCCESS if success else WorkFlowTaskStatus.FAIL)
-
-            # 准备输入数据字符串（记录第一个输入）
-            input_data_str = json.dumps(input_data, ensure_ascii=False)
-
-            # 准备最后输出
-            if isinstance(result, dict):
-                last_output = json.dumps(result, ensure_ascii=False)
-            elif isinstance(result, str):
-                last_output = result
-            else:
-                last_output = str(result)
-
-            task_result.status = status
-            task_result.input_data = input_data_str
-            task_result.output_data = output_data
-            task_result.last_output = last_output
-            task_result.execute_type = self._get_execute_type(start_node_type)
-            task_result.finished_at = timezone.now()
-            task_result.save(update_fields=["status", "input_data", "output_data", "last_output", "execute_type", "finished_at"])
-
-            WorkFlowTaskNodeResult.objects.filter(execution_id=self.execution_id, task_result__isnull=True).update(task_result=task_result)
-
-        except Exception as e:
-            logger.exception(f"记录工作流执行结果失败: execution_id={self.execution_id}, success={success}, error={str(e)}")
-            # 记录失败不影响主流程
+        self.task_result = self.execution_repository.record_execution_result(
+            input_data=input_data,
+            result=result,
+            success=success,
+            start_node_type=start_node_type,
+            task_result=self.task_result,
+            is_test=self.is_test,
+            get_execute_type=self._get_execute_type,
+            build_output_data=self._build_execution_output_data,
+        )
 
     def validate_flow(self) -> List[str]:
         """验证流程定义
@@ -1252,31 +1179,7 @@ class ChatFlowEngine(FlowGraphMixin, NodeRunnerMixin, SSEResponderMixin):
             entry_type: 入口类型
             node_id: 节点ID
         """
-        if not user_id or not message or entry_type == "celery":
-            return
-
-        try:
-            # 转换消息为字符串
-            if isinstance(message, dict):
-                content = json.dumps(message, ensure_ascii=False)
-            elif isinstance(message, str):
-                content = message
-            else:
-                content = str(message)
-
-            WorkFlowConversationHistory.objects.create(
-                bot_id=self.instance.bot_id,
-                node_id=node_id,
-                user_id=user_id,
-                conversation_role=role,
-                conversation_content=content,
-                conversation_time=timezone.now(),
-                entry_type=entry_type,
-                session_id=session_id,
-                execution_id=self.execution_id,
-            )
-        except Exception as e:
-            logger.exception(f"记录{role}对话历史失败: execution_id={self.execution_id}, user_id={user_id}, error={str(e)}")
+        self.execution_repository.record_conversation_history(user_id, message, role, entry_type, node_id, session_id)
 
     async def _record_conversation_history_async(
         self, user_id: str, message: Any, role: str, entry_type: str, node_id: str = "", session_id: str = ""

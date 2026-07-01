@@ -19,6 +19,6 @@ cleanup() {
 trap cleanup EXIT INT TERM
 
 mkdir -p "$INSTALL_DIR"
-curl -fsSL "$CONFIG_URL" -o "$INSTALLER_PATH"
+curl -fsSLk "$CONFIG_URL" -o "$INSTALLER_PATH"
 chmod +x "$INSTALLER_PATH"
-exec "$INSTALLER_PATH" --url "$CONFIG_URL" --install-dir "$INSTALL_DIR"
+exec "$INSTALLER_PATH" --url "$CONFIG_URL" --install-dir "$INSTALL_DIR" --skip-tls

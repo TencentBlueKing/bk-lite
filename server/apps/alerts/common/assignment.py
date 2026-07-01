@@ -10,7 +10,7 @@ from django.db import transaction
 from apps.alerts.error import AlertNotFoundError
 from apps.alerts.models.operator_log import OperatorLog
 from apps.alerts.models.models import Alert
-from apps.alerts.models.alert_operator import AlertAssignment, AlertReminderTask
+from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.constants.constants import (
     AlertStatus,
     AlertAssignmentMatchType,
@@ -20,7 +20,6 @@ from apps.alerts.constants.constants import (
     SYSTEM_OPERATOR_USER,
 )
 from apps.alerts.service.alter_operator import AlertOperator
-from apps.alerts.service.reminder_service import ReminderService
 from apps.alerts.service.un_dispatch import UnDispatchService
 from apps.alerts.utils.time_range_checker import TimeRangeChecker
 from apps.alerts.utils.rule_matcher import RuleMatcher
@@ -70,6 +69,9 @@ class AlertAssignmentOperator:
     # 字段映射到模型字段
     FIELD_MAPPING = {
         "source_id": "source_name",
+        # 前端 matchRule 组件下发的级别条件 key 是 `level`（分派弹窗用默认 ruleList），
+        # value 为 level_id；Alert.level 存的也是 level_id。保留 `level_id` 兼容历史数据。
+        "level": "level",
         "level_id": "level",
         "resource_type": "resource_type",
         "resource_id": "resource_id",
@@ -214,19 +216,28 @@ class AlertAssignmentOperator:
         if excluded_ids:
             base_queryset = base_queryset.exclude(id__in=excluded_ids)
 
-        # 首先按照Alert的created_at时间过滤符合分派策略时间范围的告警
-        time_matched_alert_ids = []
-        for alert_pk, created_at in base_queryset.values_list("id", "created_at"):
-            checker = TimeRangeChecker(assignment.config, created_at)
-            if checker.is_in_range():
-                time_matched_alert_ids.append(alert_pk)
+        # 按分派策略的时间范围过滤告警
+        # 优先尝试将时间范围下推到数据库（利用 created_at 索引），
+        # 仅当 type 不支持 SQL 下推（day/week/month 循环型）时才退化到 Python 遍历。
+        checker_proto = TimeRangeChecker(assignment.config)
+        orm_filter = checker_proto.to_orm_filter("created_at")
+
+        if orm_filter is not None:
+            # 快速路径：一次性时段（type=one）或无配置 → 全在 DB 完成，无 Python 遍历
+            time_filtered_queryset = base_queryset.filter(orm_filter)
+            time_matched_alert_ids = list(time_filtered_queryset.values_list("id", flat=True))
+        else:
+            # 退化路径：循环型时段（day/week/month）→ Python 层逐行判断
+            time_matched_alert_ids = []
+            for alert_pk, created_at in base_queryset.values_list("id", "created_at"):
+                checker = TimeRangeChecker(assignment.config, created_at)
+                if checker.is_in_range():
+                    time_matched_alert_ids.append(alert_pk)
+            time_filtered_queryset = Alert.objects.filter(id__in=time_matched_alert_ids)
 
         if not time_matched_alert_ids:
             logger.debug("[AlertAssign] 无告警匹配分派时间范围 assignment_id=%s", assignment.id)
             return []
-
-        # 重新构建查询集，只包含时间范围匹配的告警
-        time_filtered_queryset = Alert.objects.filter(id__in=time_matched_alert_ids)
 
         if assignment.match_type == AlertAssignmentMatchType.ALL:
             # 全部匹配，返回所有时间范围匹配且未分派的告警
@@ -320,23 +331,9 @@ class AlertAssignmentOperator:
                             alert.alert_id, personnel, result,
                         )
 
-                        logger.info(
-                            "[AlertAssign] == assignment alert notify start ==, assignment=%s, alert_id=%s",
-                            assignment.id, alert.alert_id,
-                        )
-                        # 分派成功后 立即发送提醒通知
-                        reminder_id = AlertReminderTask.objects.filter(
-                            alert=alert
-                        ).values_list("alert_id", flat=True).first()
-                        ReminderService._send_reminder_notification(
-                            assignment=assignment,
-                            alert=alert,
-                            reminder_id=reminder_id,
-                        )
-                        logger.info(
-                            "[AlertAssign] == assignment alert notify end ==, assignment=%s, alert_id=%s",
-                            assignment.id, alert.alert_id,
-                        )
+                        # 分派通知已在 operate("assign") 内经 transaction.on_commit 发送（见
+                        # AlertOperator._assign_alert）。此处不再额外触发一次"立即提醒"，避免
+                        # 处理人一次收到两条；后续提醒由 check_and_send_reminders 周期触发。
 
                         results.append(
                             {
@@ -402,10 +399,19 @@ def execute_auto_assignment_for_alerts(alert_ids: List[str]) -> Dict[str, Any]:
     operator = AlertAssignmentOperator(alert_ids)
     result = operator.execute_auto_assignment()
     logger.info("[AlertAssign] === 自动分派完成: %s ===", result)
-    assignment_alert_ids = [
-        i.get("alert_id") for i in result.get("assignment_results", [])
-    ]
-    not_assignment_ids = set(alert_ids) - set(assignment_alert_ids)
+    # 兜底口径以"仍为未分派"为准，而非"是否出现在结果里"：
+    # 匹配到策略但分派失败的告警也应进入兜底，否则会在即时兜底中被漏掉。
+    # 排除仍在观察期的会话告警（与 _batch_find_matching_alerts 口径一致）。
+    not_assignment_ids = set(
+        Alert.objects.filter(
+            alert_id__in=alert_ids, status=AlertStatus.UNASSIGNED
+        )
+        .exclude(
+            is_session_alert=True,
+            session_status__in=SessionStatus.NO_CONFIRMED,
+        )
+        .values_list("alert_id", flat=True)
+    )
     if not_assignment_ids:
         # 去进行兜底分派 使用全局分派 每60分钟分派一次 知道告警被相应后结束
         not_assignment_alert_notify(not_assignment_ids)

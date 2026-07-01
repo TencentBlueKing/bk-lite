@@ -1,11 +1,15 @@
 import json
+import subprocess
+import sys
 from pathlib import Path
 
+import pytest
 import yaml
 
 
 FLOW_METRICS_ROOT = Path(__file__).resolve().parents[1] / "support-files" / "plugins" / "Telegraf"
 MONITOR_ROOT = Path(__file__).resolve().parents[1]
+SERVER_ROOT = MONITOR_ROOT.parents[1]
 LANGUAGE_ROOT = MONITOR_ROOT / "language"
 
 FLOW_PROTOCOLS = ("netflow", "sflow")
@@ -83,6 +87,46 @@ NETFLOW_INTERFACE_METRICS = {
     "device_flow_interface_packets_rate": "netflow_in_packets",
     "device_flow_top_interfaces_by_bytes": "netflow_in_bytes",
 }
+SFLOW_TRAFFIC_METRICS = {
+    "device_flow_bytes_rate": "sflow_bytes",
+    "device_flow_packets_rate": "sflow_packets",
+    "device_flow_in_bytes_rate": "sflow_bytes",
+    "device_flow_out_bytes_rate": "sflow_bytes",
+    "device_flow_in_packets_rate": "sflow_packets",
+    "device_flow_out_packets_rate": "sflow_packets",
+    "device_flow_interface_bytes_rate": "sflow_bytes",
+    "device_flow_interface_packets_rate": "sflow_packets",
+    "device_flow_top_interfaces_by_bytes": "sflow_bytes",
+    "device_flow_protocol_bytes_rate": "sflow_bytes",
+    "device_flow_protocol_packets_rate": "sflow_packets",
+    "device_flow_dst_port_bytes_rate": "sflow_bytes",
+    "device_flow_dst_port_packets_rate": "sflow_packets",
+    "device_flow_src_port_bytes_rate": "sflow_bytes",
+    "device_flow_top_src_bytes_rate": "sflow_bytes",
+    "device_flow_top_dst_bytes_rate": "sflow_bytes",
+    "device_flow_top_src_packets_rate": "sflow_packets",
+    "device_flow_top_dst_packets_rate": "sflow_packets",
+    "device_flow_top_conversation_bytes_rate": "sflow_bytes",
+}
+SFLOW_ENDPOINT_METRICS = {
+    "device_flow_top_src_bytes_rate": "src_ip",
+    "device_flow_top_src_packets_rate": "src_ip",
+    "device_flow_top_dst_bytes_rate": "dst_ip",
+    "device_flow_top_dst_packets_rate": "dst_ip",
+}
+SFLOW_PROTOCOL_METRICS = {
+    "device_flow_protocol_bytes_rate",
+    "device_flow_protocol_packets_rate",
+}
+SFLOW_INTERFACE_METRICS = {
+    "device_flow_in_bytes_rate": ("sflow_bytes", ("input_ifindex",)),
+    "device_flow_out_bytes_rate": ("sflow_bytes", ("output_ifindex",)),
+    "device_flow_in_packets_rate": ("sflow_packets", ("input_ifindex",)),
+    "device_flow_out_packets_rate": ("sflow_packets", ("output_ifindex",)),
+    "device_flow_interface_bytes_rate": ("sflow_bytes", ("input_ifindex", "output_ifindex")),
+    "device_flow_interface_packets_rate": ("sflow_packets", ("input_ifindex", "output_ifindex")),
+    "device_flow_top_interfaces_by_bytes": ("sflow_bytes", ("input_ifindex", "output_ifindex")),
+}
 
 
 def _flow_metric_files():
@@ -93,13 +137,13 @@ def _flow_metric_files():
     )
 
 
-def test_flow_traffic_metric_queries_use_effective_sampling_rate():
-    flow_metric_files = _flow_metric_files()
+def test_netflow_traffic_metric_queries_use_effective_sampling_rate():
+    netflow_metric_files = sorted((FLOW_METRICS_ROOT / "netflow").glob("*/metrics.json"))
 
-    assert flow_metric_files
+    assert netflow_metric_files
 
     missing_sampling_rate_queries = []
-    for path in flow_metric_files:
+    for path in netflow_metric_files:
         payload = json.loads(path.read_text())
         for metric in payload.get("metrics", []):
             query = metric.get("query", "")
@@ -107,6 +151,26 @@ def test_flow_traffic_metric_queries_use_effective_sampling_rate():
                 missing_sampling_rate_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}")
 
     assert missing_sampling_rate_queries == []
+
+
+def test_sflow_traffic_metric_queries_do_not_second_pass_normalize_sampling_rate():
+    invalid_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "sflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            expected_measurement = SFLOW_TRAFFIC_METRICS.get(metric["name"])
+            if expected_measurement is None:
+                continue
+
+            query = metric["query"]
+            if expected_measurement not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_measurement}")
+            if "label_value(" in query and (
+                '"effective_sampling_rate"' in query or '"sflow_sampling_rate"' in query
+            ):
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:second-pass-sampling")
+
+    assert invalid_queries == []
 
 
 def test_flow_traffic_queries_use_telegraf_metric_names():
@@ -185,6 +249,119 @@ def test_netflow_common_dimension_metrics_use_portable_counters():
                 )
 
     assert invalid_queries == []
+
+
+def test_sflow_endpoint_metrics_use_production_ip_labels():
+    invalid_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "sflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            expected_label = SFLOW_ENDPOINT_METRICS.get(metric["name"])
+            if expected_label is None:
+                continue
+
+            query = metric["query"]
+            if expected_label not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_label}")
+            if "by (instance_id, src)" in query or "by (instance_id, dst)" in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:netflow-style-endpoint")
+
+    assert invalid_queries == []
+
+
+def test_sflow_protocol_and_conversation_metrics_use_header_protocol():
+    invalid_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "sflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            query = metric["query"]
+            if metric["name"] in SFLOW_PROTOCOL_METRICS:
+                if "header_protocol" not in query:
+                    invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:header_protocol")
+                if "by (instance_id, protocol)" in query:
+                    invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:netflow-style-protocol")
+
+            if metric["name"] == "device_flow_top_conversation_bytes_rate":
+                for expected_label in ("src_ip", "dst_ip", "header_protocol", "dst_port"):
+                    if expected_label not in query:
+                        invalid_queries.append(
+                            f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_label}"
+                        )
+                if "src, dst, protocol" in query:
+                    invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:netflow-style-conversation")
+
+    assert invalid_queries == []
+
+
+def test_sflow_interface_metrics_use_production_interface_labels():
+    invalid_queries = []
+    for path in sorted((FLOW_METRICS_ROOT / "sflow").glob("*/metrics.json")):
+        payload = json.loads(path.read_text())
+        for metric in payload.get("metrics", []):
+            expected = SFLOW_INTERFACE_METRICS.get(metric["name"])
+            if expected is None:
+                continue
+
+            expected_measurement, expected_interface_labels = expected
+            query = metric["query"]
+            if expected_measurement not in query:
+                invalid_queries.append(f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{expected_measurement}")
+            for interface_label in expected_interface_labels:
+                if f'"interface", "$1", "{interface_label}"' not in query:
+                    invalid_queries.append(
+                        f"{path.relative_to(FLOW_METRICS_ROOT)}:{metric['name']}:missing:{interface_label}"
+                    )
+
+    assert invalid_queries == []
+
+
+@pytest.mark.django_db
+def test_sflow_metrics_survive_builtin_import_with_production_queries():
+    from apps.monitor.management.services.plugin_migrate import _import_plugins_from_files
+    from apps.monitor.models import MonitorPlugin
+    from apps.monitor.models.monitor_metrics import Metric
+
+    paths = sorted(str(path) for path in (FLOW_METRICS_ROOT / "sflow").glob("*/metrics.json"))
+
+    success_count, error_count, _ = _import_plugins_from_files(paths)
+
+    assert success_count == len(FLOW_OBJECTS)
+    assert error_count == 0
+
+    for object_name in FLOW_MONITOR_OBJECTS:
+        plugin = MonitorPlugin.objects.get(name=f"{object_name} Flow sFlow")
+        imported_metrics = {metric.name: metric for metric in Metric.objects.filter(monitor_plugin=plugin)}
+
+        bytes_metric = imported_metrics["device_flow_bytes_rate"]
+        assert "sflow_bytes" in bytes_metric.query
+        assert "label_value(" not in bytes_metric.query
+
+        src_metric = imported_metrics["device_flow_top_src_bytes_rate"]
+        dst_metric = imported_metrics["device_flow_top_dst_bytes_rate"]
+        protocol_metric = imported_metrics["device_flow_protocol_bytes_rate"]
+        conversation_metric = imported_metrics["device_flow_top_conversation_bytes_rate"]
+
+        assert "by (instance_id, src_ip)" in src_metric.query
+        assert "by (instance_id, dst_ip)" in dst_metric.query
+        assert "by (instance_id, header_protocol)" in protocol_metric.query
+        assert "by (instance_id, src_ip, dst_ip, header_protocol, dst_port)" in conversation_metric.query
+
+
+def test_sflow_metrics_contract_script_passes_with_production_sample():
+    script_path = SERVER_ROOT / "scripts" / "validate_sflow_metrics_contract.py"
+
+    result = subprocess.run(
+        [sys.executable, str(script_path)],
+        cwd=SERVER_ROOT,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "sample check: 263 * 2048 = 538624" in result.stdout
+    assert "sflow/switch/metrics.json" in result.stdout
+    assert "no second-pass sampling normalization" in result.stdout
 
 
 def test_flow_metric_files_use_unified_metric_set_and_default_indicators():

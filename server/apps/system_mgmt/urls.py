@@ -10,6 +10,7 @@ from apps.system_mgmt.viewset import (
     IMNotificationChannelViewSet,
     IntegrationInstanceViewSet,
     LoginAuthBindingViewSet,
+    NetworkWhiteListViewSet,
     OperationLogViewSet,
     RoleViewSet,
     SystemSettingsViewSet,
@@ -34,6 +35,7 @@ router.register(r"custom_menu_group", CustomMenuGroupViewSet)
 router.register(r"user_login_log", UserLoginLogViewSet)
 router.register(r"operation_log", OperationLogViewSet)
 router.register(r"error_log", ErrorLogViewSet)
+router.register(r"network_white_list", NetworkWhiteListViewSet)
 urlpatterns = router.urls
 
 try:

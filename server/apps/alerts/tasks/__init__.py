@@ -4,9 +4,12 @@
 # @Author: windyzhao
 
 # 导入所有任务，使 Celery autodiscover_tasks() 能够发现它们
+from apps.alerts.tasks import action_tasks  # noqa
 from apps.alerts.tasks.tasks import (
     async_auto_assignment_for_alerts,
     beat_close_alert,
+    build_instant_alerts,
+    check_and_send_escalations,
     check_and_send_reminders,
     cleanup_reminder_tasks,
     event_aggregation_alert,

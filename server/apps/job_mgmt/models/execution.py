@@ -4,7 +4,7 @@ from django.db import models
 
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.core.models.time_info import TimeInfo
-from apps.job_mgmt.constants import ExecutionStatus, JobType, OverwriteStrategy, ScriptType, TargetSource, TriggerSource
+from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, OverwriteStrategy, ScriptType, TargetSource, TriggerSource
 from apps.job_mgmt.models.playbook import Playbook
 from apps.job_mgmt.models.script import Script
 
@@ -69,8 +69,11 @@ class JobExecution(TimeInfo, MaintainerInfo):
     # 执行用户（快照，记录执行时的凭据用户名）
     executor_user = models.CharField(max_length=128, blank=True, default="", verbose_name="执行用户")
 
-    # 回调地址（第三方 API 调用时传入，任务完成后 POST 通知）
-    callback_url = models.CharField(max_length=512, null=True, blank=True, verbose_name="回调地址")
+    # 任务完成回调（第三方 API 调用时传入，任务完成后通知）
+    # callback_type 选择投递通道：web=HTTP POST 到 callback_url；nats=publish 到 callback_subject；both=两者都投
+    callback_type = models.CharField(max_length=16, choices=CallbackType.CHOICES, default=CallbackType.WEB, verbose_name="回调通道")
+    callback_url = models.CharField(max_length=512, null=True, blank=True, verbose_name="回调地址（web通道）")
+    callback_subject = models.CharField(max_length=256, null=True, blank=True, verbose_name="NATS回调主题（nats通道）")
 
     # Celery 任务 ID（用于 revoke 取消队列中的任务）
     celery_task_id = models.CharField(max_length=256, blank=True, default="", verbose_name="Celery任务ID")

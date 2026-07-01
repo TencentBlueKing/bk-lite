@@ -140,6 +140,25 @@ async def _publish_lines_with_retry(subject: str, influx_lines: list[str], task_
                 getattr(err, "delivery_detected", False)
             )
             last_error = f"{type(err).__name__}: {err}"
+            if not delivery_detected:
+                last_error = (
+                    f"{type(err).__name__}: publish state unknown after failure; "
+                    f"aborting retry to avoid duplicate metrics: {err}"
+                )
+                logger.error(
+                    f"[NATS Helper] Metrics publish state unknown attempt={attempt} task_id={task_id} "
+                    f"subject={subject} success_count={success_count} total_lines={total_lines} "
+                    f"error={err} action=abort_full_batch_retry"
+                )
+                raise MetricsPublishError(
+                    task_id=task_id,
+                    subject=subject,
+                    total_lines=total_lines,
+                    success_count=best_success_count,
+                    delivery_detected=True,
+                    attempts=attempt,
+                    reason=last_error,
+                ) from err
             if _has_any_delivery(success_count, delivery_detected):
                 last_error = (
                     f"{type(err).__name__}: delivery detected ({success_count}/{total_lines}); "

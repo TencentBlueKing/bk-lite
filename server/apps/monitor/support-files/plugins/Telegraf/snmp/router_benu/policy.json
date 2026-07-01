@@ -1,0 +1,58 @@
+{
+  "object": "Router",
+  "plugin": "Router Benu SNMP",
+  "templates": [
+    {
+      "name": "Benu路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 Benu Networks 路由器的机箱温度传感器，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或硬件过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Benu路由器风扇异常",
+      "alert_name": "路由器${resource_name} 风扇异常",
+      "description": "监控 Benu Networks 路由器的风扇传感器状态，非正常状态表示散热风扇异常、不可用或未知异常。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ]
+    },
+    {
+      "name": "Benu路由器电源异常",
+      "alert_name": "路由器${resource_name} 电源异常",
+      "description": "监控 Benu Networks 路由器的电源模块状态，缺失、未供电、不可用或未知状态会触发告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ]
+    }
+  ]
+}

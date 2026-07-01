@@ -42,10 +42,6 @@ class SystemMgmt(object):
     def delete_rules(self, group_ids, instance_id, app, module, child_module=""):
         return self.client.run("delete_rules", group_ids, instance_id, app, module, child_module)
 
-    def generate_qr_code(self, username):
-        return_data = self.client.run("generate_qr_code", username=username)
-        return return_data
-
     def generate_qr_code_by_user_id(self, user_id):
         """
         Generate OTP QR code for a user by user_id.

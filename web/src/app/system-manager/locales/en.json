@@ -429,7 +429,8 @@
       "tabs": {
         "key": "Keys",
         "portal": "Portal",
-        "license": "License"
+        "license": "License",
+        "networkWhitelist": "Network Whitelist"
       },
       "secret": {
         "title": "API Secret Keys",
@@ -607,6 +608,20 @@
           "mongo": "Mongo",
           "size": "Storage Capacity"
         }
+      },
+      "networkWhitelist": {
+        "title": "Network Whitelist",
+        "content": "Add trusted internal CIDR ranges. Matching targets are allowed; cloud metadata addresses are never allowed.",
+        "network": "Network (CIDR)",
+        "remark": "Remark",
+        "enabled": "Enabled",
+        "createdAt": "Created At",
+        "add": "Add Entry",
+        "edit": "Edit Entry",
+        "deleteConfirm": "Delete this whitelist entry?",
+        "networkPlaceholder": "e.g. 10.11.73.0/24 or 10.11.73.15",
+        "networkRequired": "Please enter a valid CIDR or IP",
+        "metadataHint": "Cloud metadata addresses (e.g. 169.254.169.254) are never allowed"
       },
       "portal": {
         "title": "Portal Settings",

@@ -299,6 +299,68 @@
     ]
 },
 {
+    "name": "今日告警状态总览",
+    "desc": "今日产生、今日关闭与当前处理中告警统计",
+    "rest_api": "alert/get_alert_today_status_summary",
+    "tag": [
+        "alerts"
+    ],
+    "chart_type": [
+        "single"
+    ],
+    "params": [],
+    "field_schema": [
+        {"key": "today_created_count", "title": "今日产生告警数", "value_type": "number", "description": "今日 0 点起新产生的告警数"},
+        {"key": "today_closed_count", "title": "今日关闭告警数", "value_type": "number", "description": "今日关闭、自动关闭或自动恢复的告警数"},
+        {"key": "processing_count", "title": "当前处理中告警数", "value_type": "number", "description": "当前处理中的告警数"}
+    ]
+},
+{
+    "name": "告警状态分布",
+    "desc": "活跃告警按未分派、待响应、处理中状态分布",
+    "rest_api": "alert/get_alert_status_distribution",
+    "tag": [
+        "alerts"
+    ],
+    "chart_type": [
+        "pie"
+    ],
+    "params": [],
+    "field_schema": [
+        {"key": "name", "title": "状态名称", "value_type": "string", "description": "告警状态名称"},
+        {"key": "value", "title": "数量", "value_type": "number", "description": "告警数量"}
+    ]
+},
+{
+    "name": "近7日告警等级趋势",
+    "desc": "指定时间范围内按告警等级分组的趋势数据",
+    "rest_api": "alert/get_alert_level_trend",
+    "tag": [
+        "alerts"
+    ],
+    "chart_type": [
+        "bar",
+        "line"
+    ],
+    "params": [
+        {
+            "name": "group_by",
+            "type": "string",
+            "value": "day",
+            "alias_name": "group_by",
+            "filterType": "fixed"
+        },
+        {
+            "name": "time",
+            "type": "timeRange",
+            "value": 10080,
+            "alias_name": "time",
+            "filterType": "filter"
+        }
+    ],
+    "field_schema": []
+},
+{
     "name": "监控中心总览统计",
     "desc": "监控中心资源/能力/告警总览统计数据",
     "rest_api": "monitor/get_monitor_statistics",

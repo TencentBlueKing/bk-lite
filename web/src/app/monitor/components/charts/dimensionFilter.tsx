@@ -59,7 +59,7 @@ const DimensionFilter: React.FC<DimensionFilterProps> = memo(
                 onClick={() => onLegendClick(key)}
               >
                 <span
-                  className="w-[10px] h-[4px] mr-[10px]"
+                  className="w-[10px] h-[4px] mr-[10px] shrink-0"
                   style={{
                     background: visibleAreas.includes(key)
                       ? colors[index]

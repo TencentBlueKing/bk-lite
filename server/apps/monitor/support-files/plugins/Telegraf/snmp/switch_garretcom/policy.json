@@ -1,0 +1,92 @@
+{
+  "object": "Switch",
+  "plugin": "Switch GarretCom SNMP",
+  "templates": [
+    {
+      "name": "GarretCom交换机CPU使用率过高",
+      "alert_name": "交换机${resource_name} CPU 使用率过高",
+      "description": "监控 GarretCom 工业交换机的 CPU 使用率，当持续高于阈值时触发告警，提示可能存在控制平面过载、环网协议震荡或异常流量，避免管理响应变慢或转发受影响。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "GarretCom交换机内存使用率过高",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 GarretCom 工业交换机的内存使用率，当持续高于阈值时触发告警，提示可能存在内存泄漏或资源紧张，避免设备稳定性下降。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 95,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "GarretCom交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 GarretCom 工业交换机的机箱温度，当持续高于阈值时触发告警，提示可能存在散热不良或环境温度过高，避免器件过热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "GarretCom交换机电源异常",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 GarretCom 工业交换机的电源模块状态，当电源故障或未就绪时触发告警，提示需检查供电冗余，避免单电源失效导致设备宕机。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

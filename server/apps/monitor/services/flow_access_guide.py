@@ -66,6 +66,14 @@ class FlowAccessGuideService:
         monitor_object = cls._resolve_monitor_object(monitor_object=monitor_object, monitor_object_id=monitor_object_id)
         endpoint = cls.get_listener_endpoint(protocol, cloud_region_id)
         listener_endpoints = cls.get_listener_endpoints(protocol, cloud_region_id)
+        endpoint_protocol = next(
+            (
+                item["protocol"]
+                for item in listener_endpoints
+                if item["endpoint"] == endpoint
+            ),
+            protocol,
+        )
         protocol_name = "NetFlow" if protocol == "netflow" else "sFlow"
         endpoint_tip = (
             "NetFlow v5 使用 UDP 2055，NetFlow v9 使用 UDP 2056，请按设备导出版本选择对应端口。"
@@ -77,7 +85,9 @@ class FlowAccessGuideService:
             "protocol": protocol,
             "protocol_name": protocol_name,
             "endpoint": endpoint,
+            "endpoint_protocol": endpoint_protocol,
             "listener_endpoints": listener_endpoints,
+            "has_multiple_listener_endpoints": len(listener_endpoints) > 1,
             "cloud_region_id": cloud_region_id,
             "monitor_object_id": monitor_object.id,
             "monitor_object_name": monitor_object.display_name or monitor_object.name,

@@ -1,0 +1,21 @@
+name: ip_discovery
+version: "1.0.0"
+category: infrastructure
+
+metadata:
+  display_name: "IP 发现扫描"
+  description: "按子网范围 ICMP/TCP 探活，发现在线 IP（agentless）"
+  author: "WeOps"
+  tags: [infrastructure, network, discovery]
+  cloud_protocol: false
+  model_id: ip
+
+executors:
+  protocol:
+    type: protocol
+    timeout: 600
+    collector:
+      module: plugins.inputs.ip_discovery.ip_discovery_scanner
+      class: IPDiscoveryScanner
+
+default_executor: protocol

@@ -1,3 +1,4 @@
+from django.db import connection
 from django.db.models import Q
 from django.http import JsonResponse
 from rest_framework.exceptions import PermissionDenied
@@ -5,6 +6,50 @@ from rest_framework.exceptions import PermissionDenied
 from apps.core.logger import system_mgmt_logger as logger
 from apps.core.utils.team_utils import get_current_team
 from apps.system_mgmt.models import Group, User
+
+
+def normalize_group_id_set(group_list):
+    group_ids = set()
+    for group in group_list or []:
+        group_id = group.get("id") if isinstance(group, dict) else group
+        try:
+            group_ids.add(int(group_id))
+        except (TypeError, ValueError):
+            continue
+    return group_ids
+
+
+def get_user_group_ids(user):
+    """获取用户有权限的组ID集合；超管返回 None 表示全量权限。"""
+    if getattr(user, "is_superuser", False):
+        return None
+    return normalize_group_id_set(getattr(user, "group_list", []))
+
+
+def get_unauthorized_group_ids(user, group_ids):
+    accessible_group_ids = get_user_group_ids(user)
+    if accessible_group_ids is None:
+        return []
+    requested_group_ids = normalize_group_id_set(group_ids)
+    return sorted(requested_group_ids - accessible_group_ids)
+
+
+def filter_queryset_by_group_ids(queryset, group_ids, group_field="group_list"):
+    if not group_ids:
+        return queryset.none()
+
+    if connection.features.supports_json_field_contains:
+        query = Q()
+        for group_id in group_ids:
+            query |= Q(**{f"{group_field}__contains": group_id})
+        return queryset.filter(query)
+
+    matched_ids = [
+        item.id
+        for item in queryset.only("id", group_field)
+        if normalize_group_id_set(getattr(item, group_field)).intersection(group_ids)
+    ]
+    return queryset.filter(id__in=matched_ids)
 
 
 class GroupPermissionMixin:
@@ -30,9 +75,7 @@ class GroupPermissionMixin:
         Returns:
             set: 用户有权限的组ID集合
         """
-        if getattr(user, "is_superuser", False):
-            return None  # superuser 返回 None 表示有权限访问所有组
-        return {g["id"] for g in getattr(user, "group_list", [])}
+        return get_user_group_ids(user)
 
     def _validate_group_permission(self, user, group_id, loader=None):
         """校验用户是否有权限访问指定组
@@ -73,7 +116,7 @@ class GroupPermissionMixin:
             return True, None
 
         user_group_ids = self._get_user_group_ids(current_user)
-        target_group_ids = set(target_user.group_list or [])
+        target_group_ids = normalize_group_id_set(target_user.group_list)
 
         # 检查目标用户的组是否与当前用户的组有交集
         if not user_group_ids.intersection(target_group_ids):
@@ -99,11 +142,7 @@ class GroupPermissionMixin:
         if not user_group_ids:
             return queryset.none()
 
-        # 构建查询条件：group_list 与用户有权限的组有交集
-        query = Q()
-        for group_id in user_group_ids:
-            query |= Q(**{f"{group_field}__contains": group_id})
-        return queryset.filter(query)
+        return filter_queryset_by_group_ids(queryset, user_group_ids, group_field=group_field)
 
 
 class GroupFilterMixin:

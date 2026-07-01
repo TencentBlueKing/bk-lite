@@ -101,9 +101,9 @@ export class SSEHandler {
         console.error('Fetch SSE error:', error);
         this.handleError(error);
         if (this.reconnectAttempts < this.maxReconnectAttempts) {
-          await this.sleep(this.reconnectDelay);
           this.reconnectAttempts++;
-          this.connectWithFetch(url, headers);
+          await this.sleep(this.reconnectDelay);
+          await this.connectWithFetch(url, headers);
         }
       }
     }

@@ -168,6 +168,9 @@ const useIntegrationApi = () => {
       getInstanceListByPrimaryObject: async (
         params: {
           id?: React.Key;
+          page?: number;
+          page_size?: number;
+          name?: string;
         } = {},
         config?: AxiosRequestConfig
       ) => {

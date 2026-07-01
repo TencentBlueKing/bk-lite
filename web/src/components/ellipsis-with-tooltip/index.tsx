@@ -12,7 +12,10 @@ const EllipsisWithTooltip: React.FC<EllipsisWithTooltipProps> = ({ text, classNa
 
   const checkOverflow = (element: HTMLDivElement | null, setOverflow: (value: boolean) => void) => {
     if (element) {
-      setOverflow(element.scrollWidth > element.clientWidth);
+      setOverflow(
+        element.scrollWidth > element.clientWidth ||
+          element.scrollHeight > element.clientHeight
+      );
     }
   };
 

@@ -8,6 +8,7 @@ from .im_notification_channel import *  # noqa
 from .login_auth_binding import *  # noqa
 from .login_module import *  # noqa
 from .menu import *  # noqa
+from .network_white_list import NetworkWhiteList  # noqa
 from .operation_log import *  # noqa
 from .role import *  # noqa
 from .sensitive_info_authorization import *  # noqa

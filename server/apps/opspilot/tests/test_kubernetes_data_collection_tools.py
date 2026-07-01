@@ -339,13 +339,18 @@ def test_chatflow_engine_records_execution_summary_with_final_and_failed_nodes(m
     mocker.patch.object(ChatFlowEngine, "_parse_edges", return_value=[])
     mocker.patch.object(ChatFlowEngine, "_identify_entry_nodes", return_value=[])
     mocker.patch.object(ChatFlowEngine, "_build_topology", return_value=mocker.Mock())
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.filter")
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.create", return_value=task_result)
-    node_update = mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult.objects.filter")
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.filter")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
+        return_value=task_result,
+    )
+    node_update = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
+    )
 
-    from apps.opspilot.utils.chat_flow_utils.engine import engine as engine_module
+    from apps.opspilot.utils.chat_flow_utils.engine import execution_repository
 
-    engine_module.WorkFlowTaskResult.objects.filter.return_value.order_by.return_value.first.return_value = None
+    execution_repository.WorkFlowTaskResult.objects.filter.return_value.order_by.return_value.first.return_value = None
     node_update.return_value.update.return_value = 1
 
     engine = ChatFlowEngine(workflow, execution_id="exec-summary-1")
@@ -405,12 +410,14 @@ def test_sse_subsequent_nodes_use_output_params_for_next_node_input(mocker):
     mocker.patch.object(ChatFlowEngine, "_parse_edges", return_value=[])
     mocker.patch.object(ChatFlowEngine, "_identify_entry_nodes", return_value=["node_collector"])
     mocker.patch.object(ChatFlowEngine, "_build_topology", return_value=mocker.Mock())
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.filter")
+    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.filter")
     mocker.patch(
-        "apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskResult.objects.create",
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskResult.objects.create",
         return_value=mocker.Mock(),
     )
-    mocker.patch("apps.opspilot.utils.chat_flow_utils.engine.engine.WorkFlowTaskNodeResult.objects.filter")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.engine.execution_repository.WorkFlowTaskNodeResult.objects.filter"
+    )
 
     engine = ChatFlowEngine(workflow, execution_id="exec-sse-params-1")
     evidence_package = '{"alert_id":"alert-001","ready_for_analysis":true}'
@@ -479,6 +486,7 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     skill_obj = mocker.Mock()
     skill_obj.name = "k8s-collector"
     skill_obj.skill_type = 1
+    skill_obj.skill_prompt = "你是 K8s 运维助手。"
     skill_obj.tools = [{"name": "kubernetes_data_collection", "kwargs": []}]
     skill_obj.team = [7]
     skill_obj.enable_km_route = False
@@ -486,6 +494,15 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     skill_obj.enable_suggest = False
     skill_obj.enable_query_rewrite = False
     skill_obj.skill_params = []
+    skill_obj.skill_packages = [
+        {
+            "name": "RCA 复盘",
+            "description": "根因分析与复盘报告",
+            "required_tools": ["kubernetes_data_collection"],
+            "triggers": ["CrashLoopBackOff"],
+            "skill_markdown": "按事件概述、关键证据、根因结论输出。",
+        }
+    ]
 
     user = mocker.Mock()
     user.username = "tester"
@@ -516,6 +533,8 @@ def test_llm_view_execute_passes_default_collection_tools_to_stream_chat(mocker)
     assert stream_params["tools"] == [{"name": "kubernetes_data_collection", "kwargs": []}]
     assert stream_params["locale"] == "zh-Hans"
     assert stream_params["group"] == 7
+    assert "RCA 复盘" in stream_params["skill_prompt"]
+    assert "按事件概述" in stream_params["skill_prompt"]
     assert stream_chat.call_args.args[1] == "k8s-collector"
 
 

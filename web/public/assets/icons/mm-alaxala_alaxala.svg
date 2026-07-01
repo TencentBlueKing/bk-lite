@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="alaxalaBlue" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2f6fe0"/>
+      <stop offset="1" stop-color="#11409e"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#alaxalaBlue)"/>
+  <path d="M60 34 L82 86 H70 L66 74 H54 L50 86 H38 Z M58 50 L54 64 H62 Z" fill="#ffffff"/>
+</svg>

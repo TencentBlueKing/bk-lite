@@ -1,9 +1,10 @@
 """
-Tests for issue #3622: discover_node_versions uses iterator to avoid full-table OOM.
+Tests for issue #3622 + #3610: discover_node_versions uses iterator and preloads Controllers.
 
 验证修复点：
-1. Node.objects.all().iterator(chunk_size=500) 被调用（而不是 Node.objects.all() 全量加载）
-2. 返回的 total 来自独立的 Node.objects.count()，而不是已遍历 queryset 的 .count()
+1. Node.objects.iterator(chunk_size=200) 被调用（而不是 Node.objects.all() 全量加载）
+2. 返回的 total 由 success_count + failed_count 计算，不再调用 Node.objects.count()
+3. Controller.objects.filter 在循环前只调用 1 次（预加载）
 
 这是 Django-free 的注入式测试，不依赖 ORM/settings 加载。
 """
@@ -84,7 +85,7 @@ class TestDiscoverNodeVersionsIterator:
 
     def test_uses_iterator_with_chunk_size(self):
         """
-        核心修复验证：Node.objects.all().iterator(chunk_size=500) 必须被调用。
+        核心修复验证：Node.objects.iterator(chunk_size=200) 必须被调用。
         Revert 修复后，此测试应失败（因为 iterator 不会被调用）。
         """
         vd = _load_vd()
@@ -94,56 +95,62 @@ class TestDiscoverNodeVersionsIterator:
         fake_node.name = "test-node"
         fake_node.ip = "1.2.3.4"
 
-        # 构造可链式调用的 queryset mock：
-        # Node.objects.all() 返回 qs_mock，qs_mock.iterator(chunk_size=500) 返回 [fake_node]
-        qs_mock = MagicMock()
-        qs_mock.iterator.return_value = iter([fake_node])
-
+        # 构造 node manager mock：Node.objects.iterator(chunk_size=200) 返回 [fake_node]
         node_manager_mock = MagicMock()
-        node_manager_mock.all.return_value = qs_mock
-        node_manager_mock.count.return_value = 1
+        node_manager_mock.iterator.return_value = iter([fake_node])
 
         # 替换 Node 模型
         vd.Node = MagicMock()
         vd.Node.objects = node_manager_mock
 
-        # 让 _discover_controller_version 不报错
+        # Controller 预加载返回空列表
+        ctrl_manager_mock = MagicMock()
+        ctrl_qs_mock = MagicMock()
+        ctrl_qs_mock.__iter__ = MagicMock(return_value=iter([]))
+        ctrl_manager_mock.filter.return_value = ctrl_qs_mock
+        vd.Controller = MagicMock()
+        vd.Controller.objects = ctrl_manager_mock
+
         vd.VersionUpgradeService.get_latest_versions_map.return_value = {}
 
         with patch.object(vd, "_discover_controller_version", return_value=None):
             result = vd.discover_node_versions()
 
-        # 断言 iterator(chunk_size=500) 被调用
-        qs_mock.iterator.assert_called_once_with(chunk_size=500)
+        # 断言 iterator(chunk_size=200) 被调用（直接在 Node.objects 上，无 .all()）
+        node_manager_mock.iterator.assert_called_once_with(chunk_size=200)
 
-        # 断言返回值中 total 来自独立的 count()
-        node_manager_mock.count.assert_called_once()
+        # 断言 total 来自计数器而非 count() 查询
+        node_manager_mock.count.assert_not_called()
         assert result["total"] == 1
 
-    def test_total_from_count_not_queryset(self):
+    def test_total_from_counter_not_count_query(self):
         """
-        验证 total 来自 Node.objects.count()，而非已遍历 queryset 的 .count()。
-        避免全量遍历后再额外发出一条 COUNT SQL。
+        验证 total = success_count + failed_count，不发 Node.objects.count() 额外查询。
         """
         vd = _load_vd()
 
-        qs_mock = MagicMock()
-        qs_mock.iterator.return_value = iter([])
-
         node_manager_mock = MagicMock()
-        node_manager_mock.all.return_value = qs_mock
-        node_manager_mock.count.return_value = 42
+        node_manager_mock.iterator.return_value = iter([])
 
         vd.Node = MagicMock()
         vd.Node.objects = node_manager_mock
+
+        ctrl_manager_mock = MagicMock()
+        ctrl_qs_mock = MagicMock()
+        ctrl_qs_mock.__iter__ = MagicMock(return_value=iter([]))
+        ctrl_manager_mock.filter.return_value = ctrl_qs_mock
+        vd.Controller = MagicMock()
+        vd.Controller.objects = ctrl_manager_mock
+
         vd.VersionUpgradeService.get_latest_versions_map.return_value = {}
 
         with patch.object(vd, "_discover_controller_version", return_value=None):
             result = vd.discover_node_versions()
 
-        assert result["total"] == 42
-        # qs_mock.count 不应被调用（已废弃的旧写法）
-        qs_mock.count.assert_not_called()
+        # total 为 0（无节点，无成功无失败）
+        assert result["total"] == 0
+        # 不应调用 count()
+        node_manager_mock.count.assert_not_called()
 
     def test_success_and_failed_counts(self):
         """验证成功/失败计数正确"""
@@ -157,20 +164,24 @@ class TestDiscoverNodeVersionsIterator:
         bad_node.name = "bad"
         bad_node.ip = "2.2.2.2"
 
-        qs_mock = MagicMock()
-        qs_mock.iterator.return_value = iter([good_node, bad_node])
-
         node_manager_mock = MagicMock()
-        node_manager_mock.all.return_value = qs_mock
-        node_manager_mock.count.return_value = 2
+        node_manager_mock.iterator.return_value = iter([good_node, bad_node])
 
         vd.Node = MagicMock()
         vd.Node.objects = node_manager_mock
+
+        ctrl_manager_mock = MagicMock()
+        ctrl_qs_mock = MagicMock()
+        ctrl_qs_mock.__iter__ = MagicMock(return_value=iter([]))
+        ctrl_manager_mock.filter.return_value = ctrl_qs_mock
+        vd.Controller = MagicMock()
+        vd.Controller.objects = ctrl_manager_mock
+
         vd.VersionUpgradeService.get_latest_versions_map.return_value = {}
 
         call_count = 0
 
-        def side_effect(node, versions_map):
+        def side_effect(node, versions_map, controllers_map, all_controllers):
             nonlocal call_count
             call_count += 1
             if node is bad_node:

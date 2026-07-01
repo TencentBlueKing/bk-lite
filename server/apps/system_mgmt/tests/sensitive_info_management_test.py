@@ -519,6 +519,7 @@ def test_user_viewset_search_user_list_keeps_plaintext_when_sensitive_info_prote
     from apps.system_mgmt.viewset.user_viewset import UserViewSet
 
     _set_sensitive_info_settings(enabled=False)
+    group = Group.objects.create(name="group-for-plain-list")
     target_user = User.objects.create(
         username="plain_user",
         display_name="明文用户",
@@ -526,6 +527,7 @@ def test_user_viewset_search_user_list_keeps_plaintext_when_sensitive_info_prote
         phone="13800001111",
         password=make_password("password123"),
         locale="zh-Hans",
+        group_list=[group.id],
     )
 
     factory = APIRequestFactory()
@@ -537,6 +539,7 @@ def test_user_viewset_search_user_list_keeps_plaintext_when_sensitive_info_prote
             username="viewer-plain",
             is_superuser=False,
             permission={"system-manager": {"user_group-View"}},
+            group_list=[{"id": group.id}],
         ),
     )
 

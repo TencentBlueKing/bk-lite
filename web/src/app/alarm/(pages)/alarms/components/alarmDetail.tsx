@@ -2,6 +2,7 @@
 
 import BaseInfo from './baseInfo';
 import EventTable from '@/app/alarm/components/eventTable';
+import ActionTimeline from './actionTimeline';
 import AlarmAction from './alarmAction';
 import Icon from '@/components/icon';
 import DeclareIncident from './declareIncident';
@@ -82,6 +83,10 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
       {
         key: 'timeline',
         label: t('alarms.changes'),
+      },
+      {
+        key: 'actionRecords',
+        label: t('settings.actionTab'),
       },
     ];
 
@@ -389,7 +394,7 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
             </div>
           )}
 
-          {!isBaseInfo && !isEventTab && (
+          {activeTab === 'timeline' && (
             <Spin spinning={recordLoading}>
               {timeLineData.length > 1 ? (
                 <div
@@ -407,6 +412,9 @@ const AlertDetail = forwardRef<ModalRef, ModalConfig & { readonly?: boolean }>(
                 />
               )}
             </Spin>
+          )}
+          {activeTab === 'actionRecords' && (
+            <ActionTimeline alertId={formData.alert_id || ''} />
           )}
         </div>
       </Drawer>

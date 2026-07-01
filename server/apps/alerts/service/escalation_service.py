@@ -178,8 +178,11 @@ class EscalationService:
         cls, alert: Alert, assignment: AlertAssignment,
         roster: List[str], layer_channels: List[dict],
     ) -> bool:
-        """升级通知：复用与提醒一致的发送出口 sync_notify。"""
-        from apps.alerts.common.notify.base import NotifyParamsFormat
+        """升级通知：走统一通知出口(build_channel_params + enqueue_notifications)。"""
+        from apps.alerts.common.notify.dispatcher import (
+            build_channel_params,
+            enqueue_notifications,
+        )
 
         if alert.is_session_alert and alert.session_status != SessionStatus.CONFIRMED:
             logger.info("升级跳过会话观察期告警: alert_id=%s", alert.alert_id)
@@ -191,29 +194,8 @@ class EscalationService:
             logger.warning("升级通知无可用渠道: alert_id=%s", alert.alert_id)
             return False
 
-        param_format = NotifyParamsFormat(username_list=roster, alerts=[alert])
-        title = param_format.format_title()
-        content = param_format.format_content()
-        channel_params = [{
-            "username_list": roster,
-            "channel_type": ch["channel_type"],
-            "channel_id": ch["id"],
-            "title": title,
-            "content": content,
-            "object_id": alert.alert_id,
-            "notify_action_object": "alert",
-        } for ch in channels]
-
-        from apps.alerts.tasks import sync_notify
-
-        def _enqueue():
-            sync_notify.delay(channel_params)
-
-        if transaction.get_connection().in_atomic_block:
-            transaction.on_commit(_enqueue)
-        else:
-            _enqueue()
-        return True
+        params = build_channel_params(roster, channels, [alert], alert.alert_id)
+        return enqueue_notifications(params)
 
     @classmethod
     def _advance_layer(cls, task: AlertEscalationTask) -> bool:

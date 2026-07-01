@@ -134,15 +134,23 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
         return "object_missing"
     if "bucket" in normalized_text and "not found" in normalized_text:
         return "bucket_missing"
+    if any(
+        marker in normalized_text
+        for marker in [
+            "authentication failed",
+            "unable to authenticate",
+            "no supported methods remain",
+            "authorization violation",
+            "access denied",
+            "invalid credentials",
+            "permission violation",
+        ]
+    ):
+        return "auth"
     if explicit_error_type == "connection" or any(
         marker in normalized_text for marker in ["connection refused", "connection reset", "no route to host", "network is unreachable", "ssh client"]
     ):
         return "connection"
-    if any(
-        marker in normalized_text
-        for marker in ["authentication failed", "authorization violation", "access denied", "invalid credentials", "permission violation"]
-    ):
-        return "auth"
     if any(marker in normalized_text for marker in ["permission denied", "operation not permitted", "read-only file system"]):
         return "permission"
     if any(marker in normalized_text for marker in ["no space left on device", "disk quota exceeded", "not enough space"]):
@@ -171,6 +179,51 @@ def _infer_failure_type(message: str | None, error: str | None, details: dict[st
         return "package_invalid"
 
     return explicit_error_type if explicit_error_type in {"connection", "timeout"} else "unknown"
+
+
+def _has_failure_signal(message: str | None, error: str | None, details: dict[str, Any] | None) -> bool:
+    prepared_details = details if isinstance(details, dict) else {}
+    if _clean_text(error):
+        return True
+    if _clean_text(prepared_details.get("error")) or _clean_text(prepared_details.get("service_error")):
+        return True
+    if _clean_text(prepared_details.get("error_message")) or _clean_text(prepared_details.get("error_type")):
+        return True
+    if prepared_details.get("timeout") or prepared_details.get("exit_code") not in (None, "", 0, "0"):
+        return True
+
+    normalized_text = " ".join(
+        filter(
+            None,
+            [
+                _clean_text(message),
+                _clean_text(prepared_details.get("message")),
+            ],
+        )
+    ).lower()
+    if not normalized_text:
+        return False
+
+    return any(
+        marker in normalized_text
+        for marker in [
+            "fail",
+            "error",
+            "timeout",
+            "timed out",
+            "unable",
+            "denied",
+            "refused",
+            "unreachable",
+            "not found",
+            "no route",
+            "no space",
+            "text file busy",
+            "corrupt",
+            "invalid",
+            "mismatch",
+        ]
+    )
 
 
 def normalize_installer_action(raw_step: Any) -> str:
@@ -241,6 +294,8 @@ def normalize_failure(message=None, error=None, details=None) -> dict | None:
         or _clean_text(error)
     )
     if not failure_message:
+        return None
+    if not _has_failure_signal(message, error, prepared_details):
         return None
 
     failure_type = _infer_failure_type(message, error, prepared_details)

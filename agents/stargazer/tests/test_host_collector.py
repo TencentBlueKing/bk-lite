@@ -809,6 +809,20 @@ class TestHostCollectorCredentialDecoding:
 
         assert config["host_credentials"][0]["password"] == "simplepass123"
 
+    def test_plain_credential_encoding_skips_url_decode_for_literal_percent_sequences(self):
+        collector = HostCollector({
+            "host": "10.11.27.147",
+            "os_type": "linux",
+            "username": "root",
+            "password": "literal%23password",
+            "credential_encoding": "plain",
+            "ansible_node_id": "node1",
+        })
+
+        config = collector._resolve_execution_config()
+
+        assert config["host_credentials"][0]["password"] == "literal%23password"
+
 
 @pytest.mark.asyncio
 class TestHostRemoteMonitorTask:
@@ -2267,7 +2281,7 @@ class TestPublishMetricsToNats:
 
         monkeypatch.setattr(nats_helper_module, "nats_publish_lines", fake_publish_lines)
 
-        with pytest.raises(RuntimeError, match="line publish failed"):
+        with pytest.raises(nats_helper_module.MetricsPublishError, match="line publish failed"):
             await nats_helper_module.publish_metrics_to_nats({}, "ignored", {"monitor_type": "host"}, "task-900")
 
         assert len(published) == 2

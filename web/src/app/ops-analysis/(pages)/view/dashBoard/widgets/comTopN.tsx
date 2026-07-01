@@ -1,6 +1,10 @@
 import React, { useEffect } from 'react';
 import { Spin, Empty } from 'antd';
-import { resolveOpsChartThemeName } from '@/app/ops-analysis/utils/chartTheme';
+import {
+  getOpsChartColorsByMode,
+  getOpsChartThemeByMode,
+  resolveOpsChartThemeName,
+} from '@/app/ops-analysis/utils/chartTheme';
 import { ValueConfig } from '@/app/ops-analysis/types/dashBoard';
 import type {
   DatasourceItem,
@@ -41,6 +45,7 @@ const unwrapTopNData = (data: any): any[] => {
 export const resolveTopNHeaderLabel = (
   fieldKey?: string,
   fieldSchema?: ResponseFieldDefinition[],
+  options?: { preferTitleOnly?: boolean },
 ) => {
   const key = String(fieldKey || '').trim();
   if (!key) return '';
@@ -48,7 +53,9 @@ export const resolveTopNHeaderLabel = (
   const field = (fieldSchema || []).find((item) => item.key === key);
   const title = String(field?.title || '').trim();
 
-  return title ? `${key}（${title}）` : key;
+  if (!title) return options?.preferTitleOnly ? '' : key;
+
+  return options?.preferTitleOnly ? title : `${key}（${title}）`;
 };
 
 const TopN: React.FC<TopNProps> = ({
@@ -60,15 +67,22 @@ const TopN: React.FC<TopNProps> = ({
 }) => {
   const themeName = resolveOpsChartThemeName();
   const isDark = themeName === 'dark';
+  const usesScreenChartTheme =
+    config?.chartThemeMode === 'screen-dark' ||
+    config?.chartThemeMode === 'screen-light';
+  const chartTheme = getOpsChartThemeByMode(config?.chartThemeMode);
+  const barColors = getOpsChartColorsByMode(config?.chartThemeMode, themeName);
   const labelField = config?.topNLabelField;
   const valueField = config?.topNValueField;
   const labelHeader = resolveTopNHeaderLabel(
     labelField,
     dataSource?.field_schema,
+    { preferTitleOnly: usesScreenChartTheme },
   );
   const valueHeader = resolveTopNHeaderLabel(
     valueField,
     dataSource?.field_schema,
+    { preferTitleOnly: usesScreenChartTheme },
   );
 
   const transformData = (data: any): TopNItem[] => {
@@ -161,7 +175,9 @@ const TopN: React.FC<TopNProps> = ({
           style={{
             gridTemplateColumns: 'minmax(112px, 28%) minmax(0, 1fr) minmax(48px, auto)',
             columnGap: 12,
-            color: isDark ? 'rgba(255,255,255,0.66)' : '#5f6f89',
+            color: usesScreenChartTheme
+              ? chartTheme.singleValueMetaColor
+              : isDark ? 'rgba(255,255,255,0.66)' : '#5f6f89',
           }}
         >
           <span className="truncate" title={labelHeader}>
@@ -189,7 +205,9 @@ const TopN: React.FC<TopNProps> = ({
               <span
                 className="flex h-7 items-center truncate rounded-l-md px-2 text-[13px]"
                 style={{
-                  color: isDark ? 'rgba(255,255,255,0.82)' : '#26364f',
+                  color: usesScreenChartTheme
+                    ? chartTheme.axisLabelColor
+                    : isDark ? 'rgba(255,255,255,0.82)' : '#26364f',
                   minWidth: 0,
                 }}
                 title={item.name}
@@ -200,16 +218,23 @@ const TopN: React.FC<TopNProps> = ({
                 <div
                   className="h-2.5 w-full overflow-hidden rounded-full"
                   style={{
-                    backgroundColor: isDark ? 'rgba(255,255,255,0.09)' : '#e8eef8',
+                    backgroundColor: usesScreenChartTheme
+                      ? chartTheme.panelSubtleBg
+                      : isDark ? 'rgba(255,255,255,0.09)' : '#e8eef8',
                   }}
                 >
                   <div
                     className="h-full rounded-full transition-all duration-300"
                     style={{
                       width: `${Math.max(percent, item.value > 0 ? 2 : 0)}%`,
-                      background: isDark
-                        ? 'linear-gradient(90deg, #5b8cff 0%, #2f6bff 100%)'
-                        : 'linear-gradient(90deg, #4f7df3 0%, #235ee8 100%)',
+                      background: usesScreenChartTheme && barColors.length > 0
+                        ? `linear-gradient(90deg, ${barColors[index % barColors.length]} 0%, ${barColors[(index + 1) % barColors.length]} 100%)`
+                        : isDark
+                          ? 'linear-gradient(90deg, #5b8cff 0%, #2f6bff 100%)'
+                          : 'linear-gradient(90deg, #4f7df3 0%, #235ee8 100%)',
+                      boxShadow: usesScreenChartTheme
+                        ? `0 0 ${chartTheme.topNBarShadowBlur}px ${chartTheme.topNBarShadowColor}`
+                        : 'none',
                     }}
                   />
                 </div>
@@ -217,7 +242,9 @@ const TopN: React.FC<TopNProps> = ({
               <span
                 className="flex h-7 items-center justify-end rounded-r-md px-2 text-[13px] font-semibold tabular-nums"
                 style={{
-                  color: isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
+                  color: usesScreenChartTheme
+                    ? chartTheme.pieValueColor
+                    : isDark ? 'rgba(255,255,255,0.88)' : '#1f2d44',
                   minWidth: 48,
                 }}
               >

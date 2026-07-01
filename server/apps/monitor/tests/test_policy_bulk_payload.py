@@ -49,6 +49,7 @@ def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
             "schedule": {"type": "min", "value": 5},
             "period": {"type": "min", "value": 10},
             "notice": True,
+            "notice_type": "email",
             "notice_type_ids": [11, 12],
             "notice_users": ["alice", "bob"],
             "enable_alerts": ["threshold"],
@@ -70,7 +71,73 @@ def test_build_bulk_policy_payloads_expands_templates_for_each_asset():
     assert all(item["schedule"] == {"type": "min", "value": 5} for item in payloads)
     assert all(item["period"] == {"type": "min", "value": 10} for item in payloads)
     assert all(item["notice"] is True for item in payloads)
+    assert all(item["notice_type"] == "email" for item in payloads)
     assert all(item["notice_type_ids"] == [11, 12] for item in payloads)
     assert all(item["notice_users"] == ["alice", "bob"] for item in payloads)
     assert all(item["enable"] is False for item in payloads)
     assert all(item["organizations"] in ([7], [8]) for item in payloads)
+    assert all(item["trigger_count"] == 1 for item in payloads)
+    assert all("no_data_level" not in item for item in payloads)
+    assert all("no_data_alert_name" not in item for item in payloads)
+
+
+def test_build_bulk_policy_payloads_includes_no_data_fields_only_when_enabled():
+    module_path = Path(__file__).resolve().parents[1] / "services" / "policy_bulk.py"
+    module = _load_module("monitor_policy_bulk_no_data_payload_test_module", module_path)
+
+    payloads = module.build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "CPU 使用率过高",
+                "metric_id": 101,
+                "collect_type": 9,
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={
+            "name_prefix": "批量策略",
+            "enable_alerts": ["threshold", "no_data"],
+            "no_data_level": "warning",
+            "no_data_alert_name": "无数据告警",
+            "notice": False,
+        },
+    )
+
+    assert payloads[0]["no_data_level"] == "warning"
+    assert payloads[0]["no_data_alert_name"] == "无数据告警"
+
+
+def test_build_bulk_policy_payloads_prefers_config_trigger_count_then_template_default():
+    module_path = Path(__file__).resolve().parents[1] / "services" / "policy_bulk.py"
+    module = _load_module("monitor_policy_bulk_trigger_count_payload_test_module", module_path)
+
+    config_payload = module.build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "CPU 使用率过高",
+                "metric_id": 101,
+                "collect_type": 9,
+                "trigger_count": 2,
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={"trigger_count": 3},
+    )
+    assert config_payload[0]["trigger_count"] == 3
+
+    template_payload = module.build_bulk_policy_payloads(
+        monitor_object_id=3,
+        templates=[
+            {
+                "name": "CPU 使用率过高",
+                "metric_id": 101,
+                "collect_type": 9,
+                "trigger_count": 2,
+            }
+        ],
+        assets=[{"instance_id": "('host-a',)", "organizations": [7]}],
+        config={},
+    )
+    assert template_payload[0]["trigger_count"] == 2

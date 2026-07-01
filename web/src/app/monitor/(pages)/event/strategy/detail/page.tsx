@@ -46,6 +46,7 @@ import {
   COMPARISON_METHOD,
   ENUM_COMPARISON_METHOD
 } from '@/app/monitor/constants/event';
+import { resolveInitialMetricPluginId } from './strategyDetailUtils';
 const defaultGroup = ['instance_id'];
 
 // 过滤无效的单位值（none 、 short 和 JSON 字符串格式 已从单位列表中移除，不能作为单位值）
@@ -136,9 +137,11 @@ const StrategyOperation = () => {
   const [initMetricData, setInitMetricData] = useState<MetricItem[]>([]);
   const [channelList, setChannelList] = useState<ChannelItem[]>([]);
   const [enableAlerts, setEnableAlerts] = useState<string[]>(['threshold']);
+  const initialMetricPluginIdRef = useRef<string | number | undefined>(undefined);
 
   useEffect(() => {
     if (!isLoading) {
+      initialMetricPluginIdRef.current = undefined;
       setPageLoading(true);
       Promise.all([
         getPlugins(),
@@ -165,6 +168,7 @@ const StrategyOperation = () => {
         notice: false,
         period: 5,
         schedule: 5,
+        trigger_count: 1,
         recovery_condition: 5,
         collect_type: pluginList[0]?.value,
         algorithm: 'avg'
@@ -240,6 +244,24 @@ const StrategyOperation = () => {
     }
   }, [initMetricData]);
 
+  useEffect(() => {
+    const targetPluginId = resolveInitialMetricPluginId({
+      type,
+      pluginList,
+      policyCollectType: formData?.collect_type
+    });
+    if (!monitorObjId || !targetPluginId) return;
+    if (initialMetricPluginIdRef.current === targetPluginId) return;
+    initialMetricPluginIdRef.current = targetPluginId;
+    getMetrics(
+      {
+        monitor_object_id: monitorObjId,
+        monitor_plugin_id: targetPluginId
+      },
+      'init'
+    );
+  }, [type, pluginList, formData?.collect_type, monitorObjId]);
+
   const getObjects = async () => {
     const data = await getMonitorObject();
     setObjects(data);
@@ -273,13 +295,6 @@ const StrategyOperation = () => {
         name: item.name
       }));
     setPluginList(plugins);
-    getMetrics(
-      {
-        monitor_object_id: monitorObjId,
-        monitor_plugin_id: plugins[0]?.value
-      },
-      'init'
-    );
   };
 
   const dealDetail = (data: StrategyFields) => {
@@ -290,6 +305,7 @@ const StrategyOperation = () => {
       threshold: thresholdList,
       no_data_period,
       recovery_condition,
+      trigger_count,
       group_by,
       query_condition,
       collect_type,
@@ -302,6 +318,7 @@ const StrategyOperation = () => {
     form.setFieldsValue({
       ...data,
       collect_type: collect_type ? +collect_type : '',
+      trigger_count: trigger_count || 1,
       recovery_condition: recovery_condition || null,
       schedule: schedule?.value || null,
       period: period?.value || null,

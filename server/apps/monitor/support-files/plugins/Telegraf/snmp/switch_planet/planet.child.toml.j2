@@ -1,0 +1,95 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_planet"
+        config_type = "planet"
+        brand = "planet"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- PLANET managed-switch CPU load (PLANET-MIB, 私有企业号 10456, 直接 %, scalar) ----
+    # 待现网核验：整机 CPU 使用率标量 1.3.6.1.4.1.10456.1.999.1.1.1.0（设备直接以 0-100% 上报）。
+    # 标量用 table+field 命名 → device_cpu_usage。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.1.999.1.1.1.0"
+        name = "usage"
+    # ---- PLANET 内存 (已用 + 空闲, 字节；无总量 → used/(used+free)) ----
+    # 待现网核验：内存已用 .10456.1.999.1.2.1.0 / 空闲 .10456.1.999.1.2.2.0（bytes）。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.1.999.1.2.1.0"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.1.999.1.2.2.0"
+        name = "free"
+    # ---- PLANET 温度 (机箱温度, 直接 ℃, scalar) ----
+    # 待现网核验：机箱温度标量 .10456.1.999.1.3.1.0（℃）。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.1.999.1.3.1.0"
+        name = "celsius"
+    # ---- PLANET 电源状态表 (.10456.1.999.1.4.1.1.2, 每电源 ok(1)/failed(2)) ----
+    # 待现网核验：原始码 ok=1；下方 enum 归一 1→1(正常),其余→2(异常)。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.10456.1.999.1.4.1.1.2"
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.10456.1.999.1.4.1.1.2"
+        name = "state"
+# ---- 风扇:PLANET 管理型交换机紧凑机型多为无风扇被动散热设计，未以无需行级过滤的标量形式暴露独立风扇状态 OID → 风扇 N/A。CPU/内存/温度/电源四项干净可采。----
+# ---- 状态归一:电源 ok(1)→1(正常),其余→2(异常)。----
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

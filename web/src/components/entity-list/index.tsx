@@ -7,6 +7,25 @@ import { EntityListProps } from '@/types';
 import PermissionWrapper from '@/components/permission';
 
 const { Search } = Input;
+const TAG_COLOR_MAP: Record<string, string> = {
+  search: 'blue',
+  搜索: 'blue',
+  general: 'cyan',
+  通用: 'cyan',
+  maintenance: 'green',
+  运维: 'green',
+  media: 'magenta',
+  媒体: 'magenta',
+  collaboration: 'geekblue',
+  协作: 'geekblue',
+  other: 'gold',
+  其他: 'gold',
+};
+
+const getTagColor = (value: unknown) => {
+  const text = String(value || '').trim();
+  return TAG_COLOR_MAP[text] || 'blue';
+};
 
 const EntityList = <T,>({
   data,
@@ -17,6 +36,7 @@ const EntityList = <T,>({
   filter = false,
   filterLoading = false,
   search = true,
+  toolbarPrefix,
   operateSection,
   menuActions,
   singleAction,
@@ -28,6 +48,7 @@ const EntityList = <T,>({
   nameField = 'name',
   iconRender,
   descSlot,
+  showBuiltinTag = true,
 }: EntityListProps<T>) => {
   const { t } = useTranslation();
   const [searchTerm, setSearchTerm] = useState('');
@@ -108,21 +129,35 @@ const EntityList = <T,>({
             </div>
           )
         }
-        <div className="flex items-center">
+        <div className={`relative flex items-center ${isSingleButtonAction ? 'pr-8' : ''}`}>
           <div className="rounded-full">
             {iconRender ? iconRender(icon) : <Icon type={icon} className="text-4xl" />}
           </div>
-          <div className="ml-2">
+          <div className="ml-2 min-w-0">
             <h3 className="font-semibold truncate text-sm" title={name}>
               {name}
             </h3>
           </div>
+          {isSingleButtonAction && hoveredCard === id && (
+            <Tooltip title={singleButtonAction.text}>
+              <Button
+                type="text"
+                size="small"
+                className="absolute right-0 top-1/2 -translate-y-1/2"
+                icon={<Icon type="bianji" className="text-base" />}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  singleButtonAction.onClick(item);
+                }}
+              />
+            </Tooltip>
+          )}
         </div>
         <div className="flex-1 min-h-[50px]">
           <p
-            className={`text-xs mt-3 text-sm max-h-[66px] ${(isSingleButtonAction && hoveredCard === id) ? 'line-clamp-2' : 'line-clamp-3'} ${styles.desc}`}>{description}</p>
+            className={`text-xs mt-3 text-sm max-h-[66px] line-clamp-3 ${styles.desc}`}>{description}</p>
         </div>
-        <div className="mt-auto mt-2 flex justify-between items-center">
+        <div className="mt-auto pt-4 flex justify-between items-center">
           <div className="flex flex-wrap gap-1">
             {tagList && tagList.length > 0 && tagList.map((t: any, idx: number) => {
               if (typeof t === 'object' && t.name) {
@@ -135,12 +170,12 @@ const EntityList = <T,>({
                 );
               }
               return (
-                <Tag key={idx} className="mr-1 font-mini">
+                <Tag key={idx} color={getTagColor(t)} className="mr-1 font-mini">
                   {t}
                 </Tag>
               );
             })}
-            {is_build_in !== undefined && (
+            {showBuiltinTag && is_build_in !== undefined && (
               <Tag color={is_build_in ? 'blue' : 'green'} className="mr-1 font-mini">
                 {is_build_in ? t('common.builtin') : t('common.externalApp')}
               </Tag>
@@ -149,49 +184,41 @@ const EntityList = <T,>({
           </div>
           {descSlot && descSlot(item)}
         </div>
-        {isSingleButtonAction && (
-          <Button
-            size="small"
-            type="primary"
-            className={`w-[92%] absolute bottom-2 left-1/2 transform -translate-x-1/2 ${hoveredCard === id ? '' : 'hidden'}`}
-            onClick={(e) => {
-              e.stopPropagation();
-              singleButtonAction.onClick(item);
-            }}
-          >
-            {singleButtonAction.text}
-          </Button>
-        )}
       </div>
     );
-  }, [hoveredCard, nameField]);
+  }, [descSlot, hoveredCard, iconRender, infoText, menuActions, nameField, onCardClick, showBuiltinTag, singleAction, singleActionType, t]);
 
   return (
     <div className="w-full h-full">
-      <div className="flex justify-end mb-4">
-        <Space.Compact>
-          {filter && (<Select
-            size={searchSize}
-            allowClear={true}
-            placeholder={`${t('common.select')}...`}
-            mode="multiple"
-            maxTagCount="responsive"
-            className="w-[170px]"
-            options={filterOptions}
-            disabled={filterLoading}
-            loading={filterLoading}
-            onChange={handleFilter}
-          />)}
-          {search && (<Search
-            size={searchSize}
-            allowClear
-            enterButton
-            placeholder={`${t('common.search')}...`}
-            className="w-60"
-            onSearch={handleSearch}
-          />)}
-        </Space.Compact>
-        {operateSection && <>{operateSection}</>}
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-2">
+          {toolbarPrefix}
+        </div>
+        <div className="ml-auto flex flex-wrap items-center justify-end gap-2">
+          <Space.Compact>
+            {filter && (<Select
+              size={searchSize}
+              allowClear={true}
+              placeholder={`${t('common.select')}...`}
+              mode="multiple"
+              maxTagCount="responsive"
+              className="w-[170px]"
+              options={filterOptions}
+              disabled={filterLoading}
+              loading={filterLoading}
+              onChange={handleFilter}
+            />)}
+            {search && (<Search
+              size={searchSize}
+              allowClear
+              enterButton
+              placeholder={`${t('common.search')}...`}
+              className="w-60"
+              onSearch={handleSearch}
+            />)}
+          </Space.Compact>
+          {operateSection && <>{operateSection}</>}
+        </div>
       </div>
       {loading ? (
         <div className="min-h-[300px] flex items-center justify-center">

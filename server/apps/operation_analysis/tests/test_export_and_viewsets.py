@@ -24,9 +24,29 @@ def test_normalize_dashboard_returns_list():
 
 def test_normalize_topology_fills_keys():
     out = vs.normalize_canvas_view_sets_for_storage({}, ObjectType.TOPOLOGY)
-    assert out == {"nodes": [], "edges": [], "filters": [], "viewport": {}}
+    assert out == {"nodes": [], "edges": [], "filters": [], "viewport": {}, "presentation": {}}
     out2 = vs.normalize_canvas_view_sets_for_storage("bad", ObjectType.TOPOLOGY)
-    assert out2 == {"nodes": [], "edges": [], "filters": [], "viewport": {}}
+    assert out2 == {"nodes": [], "edges": [], "filters": [], "viewport": {}, "presentation": {}}
+
+
+def test_normalize_topology_keeps_presentation():
+    view_sets = {
+        "nodes": [],
+        "edges": [],
+        "filters": [],
+        "viewport": {"width": 1920, "height": 1080, "letterboxColor": "#000000"},
+        "presentation": {
+            "templateKey": "custom-screen",
+            "templateVersion": 1,
+            "theme": "tech-blue",
+            "background": {"type": "preset", "key": "circuit-blue"},
+            "chrome": {"title": "基础资源态势大屏", "showClock": True},
+        },
+    }
+
+    out = vs.normalize_canvas_view_sets_for_storage(view_sets, ObjectType.TOPOLOGY)
+
+    assert out["presentation"] == view_sets["presentation"]
 
 
 def test_normalize_architecture_fills_keys():
@@ -38,7 +58,13 @@ def test_normalize_architecture_fills_keys():
 
 def test_normalize_for_yaml_dashboard_and_other():
     assert vs.normalize_canvas_view_sets_for_yaml([1], ObjectType.DASHBOARD) == [1]
-    assert vs.normalize_canvas_view_sets_for_yaml({}, ObjectType.TOPOLOGY) == {"nodes": [], "edges": [], "filters": [], "viewport": {}}
+    assert vs.normalize_canvas_view_sets_for_yaml({}, ObjectType.TOPOLOGY) == {
+        "nodes": [],
+        "edges": [],
+        "filters": [],
+        "viewport": {},
+        "presentation": {},
+    }
 
 
 def test_rewrite_datasource_refs_in_dashboard():
@@ -58,6 +84,30 @@ def test_rewrite_datasource_refs_in_topology():
     assert out["nodes"][0]["valueConfig"]["dataSource"] == "ds::k"
     assert out["filters"] == [{"x": 1}]
     assert out["viewport"] == {"width": 1920, "height": 1080, "letterboxColor": "#000000"}
+
+
+def test_rewrite_topology_refs_keeps_presentation():
+    view_sets = {
+        "nodes": [{"valueConfig": {"dataSource": 3}}],
+        "edges": [],
+        "filters": [],
+        "viewport": {"width": 1600, "height": 900, "letterboxColor": "#050b18"},
+        "presentation": {
+            "templateKey": "custom-screen",
+            "templateVersion": 1,
+            "theme": "tech-blue",
+            "viewportPreset": "1600x900",
+        },
+    }
+
+    out = vs.rewrite_canvas_view_sets_refs_for_storage(
+        view_sets,
+        ObjectType.TOPOLOGY,
+        {3: "监控中心总览统计::monitor/get_monitor_statistics"},
+    )
+
+    assert out["nodes"][0]["valueConfig"]["dataSource"] == "监控中心总览统计::monitor/get_monitor_statistics"
+    assert out["presentation"] == view_sets["presentation"]
 
 
 def test_rewrite_datasource_refs_for_yaml_architecture():

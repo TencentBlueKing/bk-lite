@@ -5,23 +5,12 @@ import { Alert, Button, Card, Descriptions, Spin, message } from 'antd';
 import dayjs from 'dayjs';
 import { useTranslation } from '@/utils/i18n';
 import useIntegrationApi from '@/app/monitor/api/integration';
-import type { FlowProtocol } from '@/app/monitor/types/integration';
+import type { FlowAccessGuideDoc, FlowProtocol } from '@/app/monitor/types/integration';
 import {
   buildFlowEndpointGuideStep,
   shouldShowSingleFlowEndpoint
 } from '@/app/monitor/utils/flowAccessGuide';
 import type { FlowAssetWizardState } from './flowConfiguration';
-
-interface FlowGuideDocument {
-  protocol: FlowProtocol;
-  endpoint: string;
-  listener_endpoints?: {
-    protocol: string;
-    protocol_name: string;
-    endpoint: string;
-    port: number;
-  }[];
-}
 
 interface FlowDetectResult {
   success: boolean;
@@ -56,7 +45,7 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
   const { getFlowGuide, detectFlowStatus } = useIntegrationApi();
   const [loading, setLoading] = useState(false);
   const [detecting, setDetecting] = useState(false);
-  const [guide, setGuide] = useState<FlowGuideDocument | null>(null);
+  const [guide, setGuide] = useState<FlowAccessGuideDoc | null>(null);
   const [detectResult, setDetectResult] = useState<FlowDetectResult | null>(null);
 
   useEffect(() => {
@@ -70,7 +59,7 @@ const AccessGuide: React.FC<AccessGuideProps> = ({
           protocol,
           cloud_region_id: assetState.cloud_region_id,
           monitor_object_id: objectId
-        })) as FlowGuideDocument;
+        })) as FlowAccessGuideDoc;
         setGuide(result);
       } catch (error: any) {
         message.error(error?.message || t('common.operationFailed'));

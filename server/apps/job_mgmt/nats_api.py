@@ -7,7 +7,7 @@ from django.utils import timezone
 import nats_client
 from apps.core.logger import job_logger as logger
 from apps.core.utils.ssrf_validator import SSRFError, SSRFValidator
-from apps.job_mgmt.constants import ExecutionStatus, JobType, TriggerSource
+from apps.job_mgmt.constants import CallbackType, ExecutionStatus, JobType, TriggerSource
 from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, Playbook, ScheduledTask, Script, Target
 from apps.job_mgmt.services.callback_service import send_callback
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
@@ -19,6 +19,29 @@ from apps.rpc.sensitive import sanitize_sensitive_data, summarize_ansible_callba
 
 
 CANCEL_CONVERGE_BUFFER_SECONDS = 60
+
+
+def _validate_callback_config(callback_type: str, callback_url: str, callback_subject: str, tag: str):
+    """校验回调配置，返回错误信息字符串；通过则返回 None。
+
+    - callback_type 必须为 web/nats/both
+    - web 通道（web/both）：对 callback_url 做 SSRF 校验（宽松模式，仅阻断云元数据）
+    - nats 通道（nats/both）：callback_subject 必填
+    """
+    if callback_type not in (CallbackType.WEB, CallbackType.NATS, CallbackType.BOTH):
+        return f"callback_type 必须为 web/nats/both，收到: {callback_type}"
+
+    if CallbackType.use_web(callback_type) and callback_url:
+        try:
+            SSRFValidator.validate_callback(callback_url)
+        except SSRFError as e:
+            logger.warning(f"[{tag}] callback_url SSRF 校验失败: url={callback_url}, error={e}")
+            return f"Invalid callback_url: {e}"
+
+    if CallbackType.use_nats(callback_type) and not callback_subject:
+        return "callback_type 含 nats 时 callback_subject 不能为空"
+
+    return None
 
 
 @nats_client.register
@@ -76,6 +99,33 @@ def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
     return {
         "count": total_count,
         "items": list(data_list),
+    }
+
+
+@nats_client.register
+def job_script_detail(data: dict):
+    """返回单个脚本模板的完整详情（content/script_type/params/timeout）。
+
+    供第三方 App（如告警动作）按 id 读取脚本内容以内联执行。
+    Args:
+        data: {"id": <script_id>}
+    Returns:
+        {"result": True, "data": {id, name, script_type, content, params, timeout}} 或 {"result": False, "message": "..."}
+    """
+    script_id = data.get("id")
+    script = Script.objects.filter(id=script_id).first()
+    if not script:
+        return {"result": False, "message": f"脚本不存在: id={script_id}"}
+    return {
+        "result": True,
+        "data": {
+            "id": script.id,
+            "name": script.name,
+            "script_type": script.script_type,
+            "content": script.content,
+            "params": script.params,
+            "timeout": script.timeout,
+        },
     }
 
 
@@ -297,7 +347,9 @@ def job_script_execute(data: dict):
             - params: 参数列表（可选）
             - timeout: 超时秒数（可选，默认600）
             - team: 团队ID列表（必填）
-            - callback_url: 回调地址（可选）
+            - callback_type: 回调通道 web|nats|both（可选，默认 web）
+            - callback_url: web 通道回调地址（callback_type 含 web 时使用）
+            - callback_subject: nats 通道回调主题，如 bklite.alert_job_result（callback_type 含 nats 时必填）
 
     Returns:
         {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
@@ -312,7 +364,9 @@ def job_script_execute(data: dict):
     team = data.get("team", [])
     timeout = data.get("timeout", 600)
     params = data.get("params", [])
+    callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
+    callback_subject = data.get("callback_subject")
 
     if not name:
         return {"result": False, "message": "name 不能为空"}
@@ -327,13 +381,10 @@ def job_script_execute(data: dict):
     if not team:
         return {"result": False, "message": "team 不能为空"}
 
-    # SSRF 防护：校验 callback_url（宽松模式，仅阻断云元数据）
-    if callback_url:
-        try:
-            SSRFValidator.validate_callback(callback_url)
-        except SSRFError as e:
-            logger.warning(f"[job_script_execute] callback_url SSRF 校验失败: url={callback_url}, error={e}")
-            return {"result": False, "message": f"Invalid callback_url: {e}"}
+    # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
+    cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_script_execute")
+    if cb_err:
+        return {"result": False, "message": cb_err}
 
     # 高危命令检测
     check_result = DangerousChecker.check_command(script_content, team)
@@ -359,7 +410,9 @@ def job_script_execute(data: dict):
         target_source=target_source,
         target_list=target_list,
         team=team,
+        callback_type=callback_type,
         callback_url=callback_url,
+        callback_subject=callback_subject,
         created_by="api",
         updated_by="api",
     )
@@ -387,7 +440,9 @@ def job_file_distribute(data: dict):
             - overwrite_strategy: 覆盖策略（可选，默认overwrite）
             - timeout: 超时秒数（可选，默认600）
             - team: 团队ID列表（必填）
-            - callback_url: 回调地址（可选）
+            - callback_type: 回调通道 web|nats|both（可选，默认 web）
+            - callback_url: web 通道回调地址（callback_type 含 web 时使用）
+            - callback_subject: nats 通道回调主题，如 bklite.alert_job_result（callback_type 含 nats 时必填）
 
     Returns:
         {"result": True, "data": {"task_id": <int>}} 或 {"result": False, "message": "..."}
@@ -401,7 +456,9 @@ def job_file_distribute(data: dict):
     overwrite_strategy = data.get("overwrite_strategy", "overwrite")
     timeout = data.get("timeout", 600)
     team = data.get("team", [])
+    callback_type = data.get("callback_type", CallbackType.WEB)
     callback_url = data.get("callback_url")
+    callback_subject = data.get("callback_subject")
 
     if not name:
         return {"result": False, "message": "name 不能为空"}
@@ -416,13 +473,10 @@ def job_file_distribute(data: dict):
     if not team:
         return {"result": False, "message": "team 不能为空"}
 
-    # SSRF 防护：校验 callback_url（宽松模式，仅阻断云元数据）
-    if callback_url:
-        try:
-            SSRFValidator.validate_callback(callback_url)
-        except SSRFError as e:
-            logger.warning(f"[job_file_distribute] callback_url SSRF 校验失败: url={callback_url}, error={e}")
-            return {"result": False, "message": f"Invalid callback_url: {e}"}
+    # 回调配置校验（web 通道 SSRF 校验、nats 通道 subject 必填）
+    cb_err = _validate_callback_config(callback_type, callback_url, callback_subject, "job_file_distribute")
+    if cb_err:
+        return {"result": False, "message": cb_err}
 
     # 高危路径检测
     check_result = DangerousChecker.check_path(target_path, team)
@@ -454,7 +508,9 @@ def job_file_distribute(data: dict):
         target_source=target_source,
         target_list=target_list,
         team=team,
+        callback_type=callback_type,
         callback_url=callback_url,
+        callback_subject=callback_subject,
         created_by="api",
         updated_by="api",
     )

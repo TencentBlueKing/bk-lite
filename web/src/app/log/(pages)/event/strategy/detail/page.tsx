@@ -1,6 +1,6 @@
 'use client';
 import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { Spin, Button, Form, message, Steps } from 'antd';
+import { Spin, Button, Form, message, Steps, Tag } from 'antd';
 import useApiClient from '@/utils/request';
 import useLogEventApi from '@/app/log/api/event';
 import { useTranslation } from '@/utils/i18n';
@@ -78,6 +78,12 @@ const StrategyOperation = () => {
     () => shouldInitializeStrategyForm({ isEdit, createAlertType }),
     [isEdit, createAlertType]
   );
+  const policyTypeLabel = useMemo(() => {
+    if (lockedAlertType === 'aggregate') {
+      return t('log.event.aggregationAlert');
+    }
+    return t('log.event.keywordAlert');
+  }, [lockedAlertType, t]);
 
   useEffect(() => {
     if (!isLoading) {
@@ -261,11 +267,18 @@ const StrategyOperation = () => {
                 </span>
               </span>
             ) : (
-              t('log.event.createPolicy')
+              <span>
+                {lockedAlertType === 'aggregate'
+                  ? t('log.event.createAggregatePolicy')
+                  : t('log.event.createKeywordPolicy')}
+                <Tag color="blue" className="ml-[10px]">
+                  {policyTypeLabel}
+                </Tag>
+              </span>
             )}
           </div>
           <div
-            className={`${strategyStyle.form} grid grid-cols-1 2xl:grid-cols-[minmax(860px,1fr)_minmax(360px,460px)] gap-4 items-start`}
+            className={`${strategyStyle.form} ${strategyStyle.detailLayout}`}
           >
             <Form form={form} name="basic" className="flex-1 min-w-0">
               <Steps
@@ -273,7 +286,9 @@ const StrategyOperation = () => {
                 items={[
                   {
                     title: t('log.event.basicInformation'),
-                    description: <BasicInfoForm />,
+                    description: (
+                      <BasicInfoForm policyType={lockedAlertType} />
+                    ),
                     status: 'process'
                   },
                   {
@@ -309,7 +324,7 @@ const StrategyOperation = () => {
                 ]}
               />
             </Form>
-            <div className="w-full space-y-4 2xl:sticky 2xl:top-4">
+            <div className={strategyStyle.sidePanel}>
               <AlertNameVariables form={form} groupBy={alertGroupBy} />
               <LogPreview
                 query={previewQuery}

@@ -21,6 +21,7 @@ from apps.opspilot.viewsets import (
     OCRProviderViewSet,
     QAPairsViewSet,
     RasaModelViewSet,
+    SkillPackageViewSet,
     RerankProviderViewSet,
     SkillRequestLogViewSet,
     SkillToolsViewSet,
@@ -37,6 +38,7 @@ router.register(r"model_provider_mgmt/ocr_provider", OCRProviderViewSet)
 router.register(r"model_provider_mgmt/llm", LLMViewSet)
 router.register(r"model_provider_mgmt/llm_model", LLMModelViewSet)
 router.register(r"model_provider_mgmt/skill_tools", SkillToolsViewSet)
+router.register(r"model_provider_mgmt/skill_packages", SkillPackageViewSet)
 router.register(r"model_provider_mgmt/skill_log", SkillRequestLogViewSet)
 router.register(r"model_provider_mgmt/model_vendor", ModelVendorViewSet)
 

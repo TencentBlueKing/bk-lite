@@ -1,0 +1,18 @@
+{
+  "object": "Router",
+  "plugin": "Router NetModule SNMP",
+  "templates": [
+  {
+    "name": "NetModule路由器温度过高",
+    "alert_name": "路由器${resource_name} 温度过高",
+    "description": "监控 NetModule 设备系统温度（systemTemperature，原始值÷10=摄氏度），当超过阈值时触发告警，提示机箱过热风险，防止蜂窝模块热保护停机。",
+    "metric_name": "device_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 75, "method": ">" },
+        { "level": "error", "value": 65, "method": ">" },
+        { "level": "warning", "value": 55, "method": ">" }
+    ]
+  }
+  ]
+}

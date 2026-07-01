@@ -16,13 +16,14 @@ import { cloneDeep } from 'lodash';
 import BulkApplyModal from './bulkApplyModal';
 import {
   clearTemplateSelection,
-  getMetricLabel,
   getTemplateKey,
   groupPolicyTemplates,
   PolicyTemplateItem,
   selectTemplateGroup,
   toggleTemplateSelection
 } from './templateBulkUtils';
+
+const MAX_VISIBLE_SELECTED_TEMPLATE_TAGS = 4;
 
 const Template: React.FC = () => {
   const { isLoading } = useApiClient();
@@ -76,12 +77,19 @@ const Template: React.FC = () => {
   );
 
   const selectedTemplateTags = useMemo(() => {
-    const groupSet = new Set<string>();
-    selectedTemplates.forEach((item) => {
-      groupSet.add(item.template_group || item.plugin_display_name || item.plugin_name || '--');
-    });
-    return Array.from(groupSet);
+    return selectedTemplates.map((item) => ({
+      key: getTemplateKey(item),
+      label: item.name || item.metric_name || '--'
+    }));
   }, [selectedTemplates]);
+
+  const visibleSelectedTemplateTags = selectedTemplateTags.slice(
+    0,
+    MAX_VISIBLE_SELECTED_TEMPLATE_TAGS
+  );
+  const hiddenSelectedTemplateTags = selectedTemplateTags.slice(
+    MAX_VISIBLE_SELECTED_TEMPLATE_TAGS
+  );
 
   useEffect(() => {
     if (isLoading) return;
@@ -201,6 +209,7 @@ const Template: React.FC = () => {
         key={key}
         type="button"
         className={`${templateStyle.templateCard} ${selected ? templateStyle.templateCardSelected : ''}`}
+        aria-pressed={selected}
         onClick={() => {
           setSelectedTemplateKeys((prev) => toggleTemplateSelection(prev, item));
         }}
@@ -223,9 +232,6 @@ const Template: React.FC = () => {
           <Tag className={templateStyle.cardTag}>
             {item.template_group || item.plugin_display_name || item.plugin_name || '--'}
           </Tag>
-          <div className={templateStyle.cardMetric} title={getMetricLabel(item)}>
-            {getMetricLabel(item)}
-          </div>
           <div className={templateStyle.cardDescription} title={item.description || '--'}>
             {item.description || '--'}
           </div>
@@ -251,7 +257,7 @@ const Template: React.FC = () => {
         <div className={templateStyle.toolbar}>
           <Input
             allowClear
-            prefix={<SearchOutlined />}
+            suffix={<SearchOutlined />}
             placeholder="搜索模版名称、指标或描述"
             value={searchKeyword}
             onChange={(event) => setSearchKeyword(event.target.value)}
@@ -276,25 +282,27 @@ const Template: React.FC = () => {
                         <span className={templateStyle.groupCount}>
                           {group.templates.length} 个模版
                         </span>
-                        <span className={templateStyle.groupSelected}>
-                          已选 {group.selectedCount}
-                        </span>
                       </div>
-                      <Checkbox
-                        checked={allChecked}
-                        indeterminate={indeterminate}
-                        onChange={(event) => {
-                          setSelectedTemplateKeys((prev) =>
-                            selectTemplateGroup(
-                              prev,
-                              group.templates,
-                              event.target.checked
-                            )
-                          );
-                        }}
-                      >
-                        全选本组
-                      </Checkbox>
+                      <div className={templateStyle.groupActions}>
+                        <span className={templateStyle.groupSelected}>
+                          已选 {group.selectedCount} / {group.templates.length}
+                        </span>
+                        <Checkbox
+                          checked={allChecked}
+                          indeterminate={indeterminate}
+                          onChange={(event) => {
+                            setSelectedTemplateKeys((prev) =>
+                              selectTemplateGroup(
+                                prev,
+                                group.templates,
+                                event.target.checked
+                              )
+                            );
+                          }}
+                        >
+                          全选本组
+                        </Checkbox>
+                      </div>
                     </div>
                     <div className={templateStyle.cardGrid}>
                       {group.templates.map(renderTemplateCard)}
@@ -315,9 +323,25 @@ const Template: React.FC = () => {
                 已选 {selectedTemplates.length} 个策略模版
               </span>
               <div className={templateStyle.bulkTags}>
-                {selectedTemplateTags.map((tag) => (
-                  <Tag key={tag}>{tag}</Tag>
+                {visibleSelectedTemplateTags.map((tag) => (
+                  <Tag
+                    key={tag.key}
+                    className={templateStyle.bulkTemplateTag}
+                    title={tag.label}
+                  >
+                    {tag.label}
+                  </Tag>
                 ))}
+                {hiddenSelectedTemplateTags.length > 0 && (
+                  <Tag
+                    className={templateStyle.bulkMoreTag}
+                    title={hiddenSelectedTemplateTags
+                      .map((tag) => tag.label)
+                      .join('、')}
+                  >
+                    +{hiddenSelectedTemplateTags.length}
+                  </Tag>
+                )}
               </div>
             </div>
             <div className={templateStyle.bulkActions}>

@@ -1,5 +1,6 @@
 import asyncio
 import concurrent.futures
+import os
 import re
 import uuid
 from typing import Any, Dict, Tuple
@@ -28,6 +29,15 @@ from apps.opspilot.services.history_service import history_service
 from apps.opspilot.services.rag_service import rag_service
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+
+
+def _resolve_agent_execute_timeout() -> int:
+    """整轮 agent 执行预算（秒）：覆盖一次 invoke_chat 内的全部多轮 LLM + 工具调用。
+
+    优先 AGENT_EXECUTE_TIMEOUT；兼容旧的 LLM_INVOKE_TIMEOUT；默认 300。
+    单次 LLM 调用超时仍由 LLM_INVOKE_TIMEOUT 控制（见 llm_client_factory），二者解耦。
+    """
+    return int(os.getenv("AGENT_EXECUTE_TIMEOUT") or os.getenv("LLM_INVOKE_TIMEOUT") or "300")
 
 
 def _is_eventlet_environment() -> bool:
@@ -136,9 +146,11 @@ class ChatService:
                         pass
                     loop.close()
 
+            # 整轮 agent 执行预算（含多轮 LLM + 工具调用），独立于单次 LLM 调用超时
+            _agent_timeout = _resolve_agent_execute_timeout()
             with concurrent.futures.ThreadPoolExecutor(max_workers=1) as pool:
                 future = pool.submit(_run_in_new_loop)
-                response = future.result()
+                response = future.result(timeout=_agent_timeout)
 
             # 构建返回结果
             result = {
@@ -156,6 +168,27 @@ class ChatService:
                 result["message"] = content
 
             return result, doc_map, title_map
+
+        except concurrent.futures.TimeoutError:
+            # 整轮 agent 执行超时，worker 线程已放弃等待
+            _agent_timeout = _resolve_agent_execute_timeout()
+            logger.error(f"invoke_chat agent 执行超时（>{_agent_timeout}s）: skill_type={skill_type}")
+            loader = LanguageLoader(app="opspilot", default_lang="en")
+            message = loader.get("error.llm_timeout") or f"智能体执行超时（>{_agent_timeout}s），请稍后重试"
+            return (
+                {
+                    "message": message,
+                    "success": False,
+                    "error_type": "TimeoutError",
+                    "error": f"agent execute timeout after {_agent_timeout}s",
+                    "total_tokens": 0,
+                    "prompt_tokens": 0,
+                    "completion_tokens": 0,
+                    "browser_steps": [],
+                },
+                doc_map,
+                title_map,
+            )
 
         except Exception as e:
             # 记录详细的异常信息以便排查问题
@@ -280,10 +313,6 @@ class ChatService:
             extra_config["node_id"] = kwargs["node_id"]
         if kwargs.get("trigger_type"):
             extra_config["trigger_type"] = kwargs["trigger_type"]
-        if kwargs.get("session_id"):
-            extra_config["session_id"] = kwargs["session_id"]
-        if kwargs.get("bot_id"):
-            extra_config["bot_id"] = kwargs["bot_id"]
 
         # 当 attachment_file 工具被启用时，向系统提示词末尾注入强制调用指令，
         # 防止用户 skill_prompt 中的"直接输出"类指令覆盖工具调用意图。
@@ -373,6 +402,16 @@ class ChatService:
                 }
             )
 
+        if kwargs.get("matched_skill_packages") is not None:
+            extra_config.update(
+                {
+                    "matched_skill_packages": kwargs.get("matched_skill_packages") or [],
+                    "skill_package_capabilities": kwargs.get("skill_package_capabilities") or [],
+                    "skill_package_reports": kwargs.get("skill_package_reports") or {},
+                    "skill_package_workflows": kwargs.get("skill_package_workflows") or {},
+                }
+            )
+
         if kwargs["skill_type"] != SkillTypeChoices.KNOWLEDGE_TOOL:
             ChatService._process_tools_and_extra_config(kwargs, chat_kwargs, extra_config)
         elif extra_config:
@@ -383,10 +422,6 @@ class ChatService:
                 extra_config["node_id"] = kwargs["node_id"]
             if kwargs.get("trigger_type"):
                 extra_config["trigger_type"] = kwargs["trigger_type"]
-            if kwargs.get("session_id"):
-                extra_config["session_id"] = kwargs["session_id"]
-            if kwargs.get("bot_id"):
-                extra_config["bot_id"] = kwargs["bot_id"]
             chat_kwargs.update({"extra_config": extra_config})
         return chat_kwargs, doc_map, title_map
 

@@ -1501,34 +1501,11 @@ def get_wechat_settings():
     }
 
 
-# 生成二维码
-@nats_client.register
-def generate_qr_code(username):
-    # 查找用户
-    user = User.objects.filter(username=username).first()
-    if not user:
-        return {"result": False, "message": "User not found"}
-    user.otp_secret = pyotp.random_base32()
-    user.save()
-    totp = pyotp.TOTP(user.otp_secret)
-    # 创建用于Authenticator应用的配置URL
-    provisioning_uri = totp.provisioning_uri(name=username, issuer_name="WeopsX")
-
-    qr = qrcode.QRCode(
-        version=1,
-        error_correction=qrcode.constants.ERROR_CORRECT_L,
-        box_size=10,
-        border=4,
-    )
-    qr.add_data(provisioning_uri)
-    qr.make(fit=True)
-
-    img = qr.make_image(fill_color="black", back_color="white")
-    buffer = io.BytesIO()
-    img.save(buffer, format="PNG")
-    qr_code_base64 = base64.b64encode(buffer.getvalue()).decode()
-
-    return {"result": True, "data": {"qr_code": qr_code_base64}}
+# generate_qr_code(username) 已于 #3439 废弃并移除：
+# 该 NATS handler 接受外部传入的 username，无任何调用方身份校验，
+# 任意内网服务均可通过单条消息覆盖任意用户的 OTP secret（认证凭据劫持）。
+# 安全替代接口请使用 generate_qr_code_by_user_id，
+# Web 层入口见 core/views/index_view.py::generate_qr_code。
 
 
 @nats_client.register

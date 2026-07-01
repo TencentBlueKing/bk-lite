@@ -262,6 +262,90 @@ def test_effective_plugins_service_deduplicates_configured_reported_plugin(db, m
     assert by_name["HostRemote"]["collect_mode"] == "auto"
 
 
+def test_effective_plugins_service_resolves_derived_instance_without_row(db, monkeypatch):
+    # 回归：K8s Pod/Node 等派生实例在指标里上报，但没有自己的 MonitorInstance 行。
+    # 修复前 get_effective_plugins 强制要求实例行，缺失即抛 "Monitor instance does not exist"（500）。
+    # 修复后无行也能基于上报指标解析有效插件，不再抛异常。
+    from apps.monitor.services import effective_plugins
+
+    monitor_object = MonitorObject.objects.create(
+        name="Pod",
+        display_name="Pod",
+        instance_id_keys=["instance_id"],
+    )
+    reported_plugin = MonitorPlugin.objects.create(
+        name="K8sPod",
+        display_name="K8s Pod",
+        template_id="k8spod",
+        template_type="api",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="any({plugin_id='k8spod'}) by (instance_id)",
+        is_pre=False,
+    )
+    reported_plugin.monitor_object.add(monitor_object)
+
+    derived_instance_id = "('derived-pod-x',)"
+    # 该派生实例确实没有 MonitorInstance 行
+    assert not MonitorInstance.objects.filter(id=derived_instance_id).exists()
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            return {"data": {"result": [{"metric": {"instance_id": "derived-pod-x"}, "value": [100, "1"]}]}}
+
+    monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = effective_plugins.MonitorEffectivePluginService.get_effective_plugins(
+        monitor_object.id,
+        derived_instance_id,
+        locale="zh-Hans",
+    )
+
+    by_name = {item["name"]: item for item in result}
+    assert "K8sPod" in by_name
+    assert by_name["K8sPod"]["status"] == "normal"
+    assert by_name["K8sPod"]["collect_mode"] == "manual"
+
+
+def test_effective_plugins_service_matches_multi_key_derived_by_primary(db, monkeypatch):
+    from apps.monitor.services import effective_plugins
+
+    monitor_object = MonitorObject.objects.create(
+        name="PodMultiKey",
+        display_name="PodMultiKey",
+        instance_id_keys=["instance_id", "pod"],
+    )
+    reported_plugin = MonitorPlugin.objects.create(
+        name="K8S",
+        display_name="K8S",
+        template_id="k8s-mk",
+        template_type="api",
+        collector="push_api",
+        collect_type="push_api",
+        status_query="any({instance_type='k8s'}) by (instance_id)",
+        is_pre=False,
+    )
+    reported_plugin.monitor_object.add(monitor_object)
+
+    multi_key_instance_id = "('mac', 'coredns-abc')"
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, step="5m", time=None):
+            return {"data": {"result": [{"metric": {"instance_id": "mac"}, "value": [100, "1"]}]}}
+
+    monkeypatch.setattr(effective_plugins, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = effective_plugins.MonitorEffectivePluginService.get_effective_plugins(
+        monitor_object.id,
+        multi_key_instance_id,
+        locale="zh-Hans",
+    )
+
+    by_name = {item["name"]: item for item in result}
+    assert "K8S" in by_name
+    assert by_name["K8S"]["status"] == "normal"
+
+
 def test_primary_object_plugin_list_keeps_builtin_plugins_distinct_by_plugin_id(db, monkeypatch):
     from apps.monitor.constants.plugin import PluginConstants
     from apps.monitor.services import monitor_instance
@@ -580,7 +664,7 @@ def test_effective_plugins_action_returns_service_data(monkeypatch):
     monkeypatch.setattr(
         monitor_instance_view,
         "_ensure_operate_instances",
-        lambda request, instance_ids, actor_context=None: instance_ids,
+        lambda request, instance_ids, actor_context=None, allow_missing=False: instance_ids,
     )
     monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
 
@@ -665,6 +749,60 @@ def test_effective_plugins_action_normalizes_clean_instance_id(db, monkeypatch):
     assert payload["data"] == expected
 
 
+def test_effective_plugins_action_allows_derived_instance_without_row(db, monkeypatch):
+    # 回归：K8s Pod/Node 等派生实例没有 MonitorInstance 行。视图层 _ensure_operate_instances
+    # 修复前对无行实例抛 "监控实例不存在"（500，先于 service）；修复后以 allow_missing=True 放行，
+    # 详情页据上报指标解析插件并返回 200，而非 500。
+    monitor_object = MonitorObject.objects.create(
+        name="Pod",
+        display_name="Pod",
+        instance_id_keys=["instance_id"],
+    )
+    derived_instance_id = "('derived-pod-x',)"
+    assert not MonitorInstance.objects.filter(id=derived_instance_id).exists()
+
+    expected = [{"id": 7, "name": "K8sPod"}]
+
+    class StubService:
+        @staticmethod
+        def get_effective_plugins(monitor_object_id, instance_id, locale):
+            return expected
+
+    monkeypatch.setattr(monitor_instance_view, "MonitorEffectivePluginService", StubService)
+    # 超管 + 真实 _ensure_operate_instances，触发存在性查询路径（无行不再抛异常）。
+    monkeypatch.setattr(
+        monitor_instance_view,
+        "_build_actor_context",
+        lambda request: {
+            "is_superuser": True,
+            "current_team": 1,
+            "username": "tester",
+            "domain": "default",
+            "group_list": [],
+            "include_children": False,
+        },
+    )
+
+    request = types.SimpleNamespace(
+        GET={"instance_id": "derived-pod-x"},
+        COOKIES={"current_team": "1"},
+        user=types.SimpleNamespace(
+            username="tester",
+            domain="default",
+            locale="zh-Hans",
+            is_superuser=True,
+            group_list=[],
+        ),
+    )
+
+    response = monitor_instance_view.MonitorInstanceViewSet().effective_plugins(
+        request, str(monitor_object.id)
+    )
+    payload = json.loads(response.content)
+
+    assert payload["data"] == expected
+
+
 def test_effective_plugins_action_keeps_multi_dimension_instance_id(monkeypatch):
     """多维实例ID(如 VMware ESXi 的 instance_id+resource_id)不能被裁成单维。
 
@@ -684,7 +822,7 @@ def test_effective_plugins_action_keeps_multi_dimension_instance_id(monkeypatch)
     monkeypatch.setattr(
         monitor_instance_view,
         "_ensure_operate_instances",
-        lambda request, instance_ids, actor_context=None: instance_ids,
+        lambda request, instance_ids, actor_context=None, allow_missing=False: instance_ids,
     )
     monkeypatch.setattr(
         monitor_instance_view,

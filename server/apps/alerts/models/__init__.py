@@ -35,6 +35,9 @@ from .operator_log import OperatorLog
 # 丰富规则
 from .enrichment import EnrichmentRule  # noqa: F401
 
+# 动作规则与执行记录
+from .action import ActionRule, ActionExecution  # noqa: F401
+
 __all__ = [
     # 告警源
     "AlertSource",
@@ -61,4 +64,8 @@ __all__ = [
 
     # 丰富规则
     "EnrichmentRule",
+
+    # 动作规则与执行记录
+    "ActionRule",
+    "ActionExecution",
 ]

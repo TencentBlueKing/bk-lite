@@ -5,7 +5,7 @@
 from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.constants.constants import AlertStatus
 from apps.alerts.models.sys_setting import SystemSetting
-from apps.alerts.models.models import  Alert
+from apps.alerts.models.models import Alert
 
 
 class UnDispatchService:
@@ -43,6 +43,9 @@ class UnDispatchService:
         title = param_format.format_title()
         content = param_format.format_content()
         for channel in notify_channel:
+            # 未分派兜底聚合多条告警、无单一组织，opspilot NATS 触发不适用，跳过
+            if channel.get("channel_type") == "nats":
+                continue
             result.append(
                 {"username_list": notify_people,
                  "channel_type": channel["channel_type"],

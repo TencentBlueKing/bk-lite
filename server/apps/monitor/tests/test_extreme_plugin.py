@@ -26,8 +26,8 @@ import yaml
 
 SERVER_ROOT = Path(__file__).resolve().parents[3]
 PLUGINS = SERVER_ROOT / "apps" / "monitor" / "support-files" / "plugins" / "Telegraf"
-EXTREME_DIR = PLUGINS / "snmp_extreme" / "switch"
-CISCO_DIR = PLUGINS / "snmp_cisco" / "switch"
+EXTREME_DIR = PLUGINS / "snmp" / "switch_extreme"
+CISCO_DIR = PLUGINS / "snmp" / "switch_cisco"
 LANGUAGE_DIR = SERVER_ROOT / "apps" / "monitor" / "language"
 
 BRAND = "extreme"

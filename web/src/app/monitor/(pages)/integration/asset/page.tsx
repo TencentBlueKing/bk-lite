@@ -43,13 +43,14 @@ import TreeSelector from '@/app/monitor/components/treeSelector';
 import EditConfig from './updateConfig';
 import EditInstance from './editInstance';
 import TemplateConfigDrawer from './templateConfigDrawer';
-import { OBJECT_DEFAULT_ICON } from '@/app/monitor/constants';
 import { isDerivativeObject } from '@/app/monitor/utils/monitorObject';
 import Permission from '@/components/permission';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import type { TableProps, MenuProps } from 'antd';
 import { cloneDeep } from 'lodash';
 import ResizableSidebar from '@/app/monitor/components/resizableSidebar';
+import { getProfessionalDashboardUrl } from '@/app/monitor/dashboards/registry';
+import { buildAssetViewUrl } from './viewRoute';
 
 type TableRowSelection<T extends object = object> =
   TableProps<T>['rowSelection'];
@@ -367,17 +368,12 @@ const Asset = () => {
     const monitorItem = objects.find(
       (item: ObjectItem) => item.id === objectId
     );
-    const params: any = {
-      monitorObjId: objectId || '',
-      name: monitorItem?.name || '',
-      monitorObjDisplayName: monitorItem?.display_name || '',
-      instance_id: row.instance_id,
-      icon: monitorItem?.icon || OBJECT_DEFAULT_ICON,
-      instance_name: row.instance_name,
-      instance_id_values: row.instance_id_values
-    };
-    const queryString = new URLSearchParams(params).toString();
-    const url = `/monitor/view/detail?${queryString}`;
+    const url = buildAssetViewUrl({
+      objectId: objectId || '',
+      monitorItem,
+      row,
+      resolveProfessionalDashboardUrl: getProfessionalDashboardUrl
+    });
     window.open(url, '_blank', 'noopener,noreferrer');
   };
 

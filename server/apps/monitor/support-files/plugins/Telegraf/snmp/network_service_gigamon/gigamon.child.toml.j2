@@ -1,0 +1,64 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_gigamon"
+        config_type = "gigamon"
+        brand = "gigamon"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.31.1.1"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.1"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Gigamon GigaVUE CPU (PRIVATE PEN 26866, chassis CPU utilization, 直接%, scalar) ----
+    # 待现网核验：1.3.6.1.4.1.26866.2.1.1.0（整机 CPU 使用率%，GIGAMON-SNMP-MIB 健康标量）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26866.2.1.1.0"
+        name = "usage"
+    # ---- Gigamon GigaVUE memory (PEN 26866, memory utilization, 直接%, scalar) ----
+    # 待现网核验：1.3.6.1.4.1.26866.2.1.2.0（内存使用率%）。device_memory_usage 直采。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.26866.2.1.2.0"
+        name = "usage"
+# ---- 温度/风扇/电源：Gigamon GigaVUE 以 per-row 组件表带行级过滤暴露环境传感器，inputs.snmp 不能行级过滤 → 温度/风扇/电源 N/A。CPU/内存两标量 + IF-MIB 64位 HC 接口流量 + 运行时长干净可采。----

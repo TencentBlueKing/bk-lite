@@ -88,6 +88,36 @@
   width: 100%;
 }
 
+.instanceNameCell {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  min-width: 0;
+  vertical-align: middle;
+}
+
+.instanceFollowButton {
+  flex: 0 0 auto;
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  padding: 0;
+  color: var(--color-text-3);
+}
+
+.instanceFollowed {
+  color: #fa8c16 !important;
+}
+
+.instanceNameText {
+  display: inline-block;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .actionGroup {
   display: inline-flex;
   align-items: center;

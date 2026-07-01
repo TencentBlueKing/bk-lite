@@ -9,7 +9,6 @@ from django.db import transaction, connection
 from datetime import timedelta
 from typing import Dict, Any, Optional, Tuple
 
-from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models import Alert, AlertReminderTask, AlertAssignment, Level
 from apps.alerts.constants import SessionStatus, AlertStatus
 from apps.core.logger import alert_logger as logger
@@ -288,7 +287,7 @@ class ReminderService:
         except Exception as e:
             logger.error(
                 "[AlertReminder] 更新提醒任务配置失败: reminder_id=%s, error=%s",
-                reminder.id, e, exc_info=True,
+                reminder.pk, e, exc_info=True,
             )
             return False
 
@@ -303,7 +302,7 @@ class ReminderService:
                 AlertReminderTask.objects.filter(
                     is_active=True,
                     next_reminder_time__lte=timezone.now(),
-                ).values_list("id", flat=True)
+                ).values_list("alert_id", flat=True)
             )
 
             select_for_update_kwargs = {}
@@ -318,7 +317,7 @@ class ReminderService:
                                 **select_for_update_kwargs
                             )
                             .select_related("alert", "assignment")
-                            .filter(id=reminder_id, is_active=True)
+                            .filter(pk=reminder_id, is_active=True)
                             .first()
                         )
 
@@ -361,7 +360,7 @@ class ReminderService:
                         if cls._send_reminder_notification(
                             assignment=reminder.assignment,
                             alert=reminder.alert,
-                            reminder_id=reminder.id,
+                            reminder_id=reminder.pk,
                         ):
                             success += 1
 
@@ -426,25 +425,11 @@ class ReminderService:
                 )
                 return False
 
-            param_format = NotifyParamsFormat(
-                username_list=username_list, alerts=[alert]
-            )
-            title = param_format.format_title()
-            content = param_format.format_content()
+            from apps.alerts.common.notify.dispatcher import build_channel_params
 
-            channel_params = []
-            for channel in channel_list:
-                channel_params.append(
-                    {
-                        "username_list": username_list,
-                        "channel_type": channel["channel_type"],
-                        "channel_id": channel["id"],
-                        "title": title,
-                        "content": content,
-                        "object_id": alert.alert_id,
-                        "notify_action_object": "alert",
-                    }
-                )
+            channel_params = build_channel_params(
+                username_list, channel_list, [alert], alert.alert_id
+            )
             # 移动导入到函数内部避免循环导入
             from apps.alerts.tasks import sync_notify
 
@@ -488,7 +473,7 @@ class ReminderService:
                 reminder = (
                     AlertReminderTask.objects.select_for_update()
                     .select_related("alert", "assignment")
-                    .filter(id=reminder_id)
+                    .filter(pk=reminder_id)
                     .first()
                 )
 

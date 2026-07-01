@@ -1,0 +1,13 @@
+[[inputs.net_response]]
+    startup_error_behavior = "retry"
+    protocol = "tcp"
+    address = "{% if ':' in host %}[{{ host }}]{% else %}{{ host }}{% endif %}:{{ port }}"
+    timeout = "{{ timeout | default(5) }}s"
+    interval = "{{ interval }}s"
+    {% if send %}send = "{{ send | replace('\\', '\\\\') | replace('"', '\\"') }}"
+    {% endif %}{% if expect %}expect = "{{ expect | replace('\\', '\\\\') | replace('"', '\\"') }}"
+    {% endif %}[inputs.net_response.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "tcp"
+        config_type = "net_response"

@@ -6,7 +6,6 @@
 from django.utils import timezone
 from django.db import transaction
 
-from apps.alerts.common.notify.base import NotifyParamsFormat
 from apps.alerts.models.alert_operator import AlertAssignment
 from apps.alerts.models.models import Alert
 from apps.alerts.utils.operator_log import record_operator_log
@@ -86,16 +85,13 @@ class AlertOperator(object):
         """
         return Alert.objects.select_for_update().get(alert_id=alert_id)
 
-    def _create_reminder_record(self, alert: Alert, assignment_id: str):
-        """创建提醒记录"""
+    def _create_reminder_record(self, alert: Alert, assignment):
+        """创建提醒记录（assignment 已由调用方查出并校验 is_active）"""
         try:
             from apps.alerts.service.reminder_service import ReminderService
 
-            assignment = AlertAssignment.objects.get(id=assignment_id, is_active=True)
             ReminderService.create_reminder_task(alert, assignment)
-        except AlertAssignment.DoesNotExist:
-            logger.error("[AlertOperator] 分派策略不存在: assignment_id=%s", assignment_id)
-        except Exception as e:
+        except Exception:
             logger.exception("[AlertOperator] 创建提醒记录失败: alert_id=%s", alert.alert_id)
 
     def _stop_reminder_tasks(self, alert: Alert):
@@ -129,15 +125,12 @@ class AlertOperator(object):
         except Exception as e:
             logger.error("[AlertOperator] 恢复提醒任务失败: %s", e, exc_info=True)
 
-    def _create_escalation_task(self, alert: Alert, assignment_id: str):
-        """分派时创建升级任务"""
+    def _create_escalation_task(self, alert: Alert, assignment):
+        """分派时创建升级任务（assignment 已由调用方查出并校验 is_active）"""
         try:
             from apps.alerts.service.escalation_service import EscalationService
 
-            assignment = AlertAssignment.objects.get(id=assignment_id, is_active=True)
             EscalationService.create_escalation_task(alert, assignment)
-        except AlertAssignment.DoesNotExist:
-            logger.error("[AlertOperator] 分派策略不存在: assignment_id=%s", assignment_id)
         except Exception:
             logger.exception("[AlertOperator] 创建升级任务失败: alert_id=%s", alert.alert_id)
 
@@ -206,21 +199,35 @@ class AlertOperator(object):
             alert.updated_at = timezone.now()
             alert.save()
 
-            # 创建提醒记录
+            # 创建提醒记录（一次查出策略对象，复用给提醒/升级/通知，避免重复查询）
             assignment_id = data.get("assignment_id")  # 分派策略ID
+            assignment = None
             if assignment_id:
-                self._create_reminder_record(alert, assignment_id)
-                self._create_escalation_task(alert, assignment_id)
+                assignment = AlertAssignment.objects.filter(id=assignment_id, is_active=True).first()
+                if assignment:
+                    self._create_reminder_record(alert, assignment)
+                    self._create_escalation_task(alert, assignment)
+                else:
+                    logger.error("[AlertOperator] 分派策略不存在或未激活: assignment_id=%s", assignment_id)
 
-            notify_param = self.format_notify_data(assignee, alert)
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "assigned"))
+
+            # 通知分流：auto-dispatch(有策略) 严格按勾选的通知方式发(勾哪个发哪个,含 opspilot)；
+            # manual(无策略) 维持默认邮件。
+            if assignment:
+                notify_param = self.format_assignment_notify_data(assignment, assignee, alert)
+            else:
+                notify_param = self.format_notify_data(assignee, alert)
             if notify_param:
-                from apps.alerts.tasks import sync_notify
+                from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
-                transaction.on_commit(lambda: sync_notify.delay(notify_param))
+                enqueue_notifications(notify_param)
             else:
                 logger.warning(
-                    "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
-                    alert_id, assignee,
+                    "[AlertOperator] 分派通知无可用渠道，未发送！alert_id=%s, assignee=%s, assignment_id=%s",
+                    alert_id, assignee, assignment_id,
                 )
 
             logger.info(
@@ -290,6 +297,10 @@ class AlertOperator(object):
             alert.operate = AlertOperate.ACKNOWLEDGE
             alert.updated_at = timezone.now()
             alert.save()
+
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "acknowledged"))
 
             logger.info(
                 "[AlertOperator] 告警认领成功: alert_id=%s, user=%s, 状态变更: %s -> %s",
@@ -375,6 +386,10 @@ class AlertOperator(object):
             alert.updated_at = timezone.now()
             alert.save()
 
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "reassigned"))
+
             logger.info(
                 "[AlertOperator] 告警转派成功: alert_id=%s, old_assignee=%s, new_assignee=%s, 状态变更: %s -> %s",
                 alert_id, old_assignee, new_assignee, AlertStatus.PROCESSING, AlertStatus.PENDING,
@@ -382,9 +397,9 @@ class AlertOperator(object):
 
             notify_param = self.format_notify_data(new_assignee, alert)
             if notify_param:
-                from apps.alerts.tasks import sync_notify
+                from apps.alerts.common.notify.dispatcher import enqueue_notifications
 
-                transaction.on_commit(lambda: sync_notify.delay(notify_param))
+                enqueue_notifications(notify_param)
             else:
                 logger.warning(
                     "[AlertOperator] 未找到有效的email通知参数，邮件通知失败！alert_id=%s, assignee=%s",
@@ -462,6 +477,10 @@ class AlertOperator(object):
             alert.updated_at = timezone.now()
             alert.save()
 
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "closed"))
+
             logger.info(
                 "[AlertOperator] 告警关闭成功: alert_id=%s, user=%s, reason=%s, 状态变更: %s -> %s",
                 alert_id, self.user, close_reason, AlertStatus.PROCESSING, AlertStatus.CLOSED,
@@ -532,6 +551,10 @@ class AlertOperator(object):
             alert.updated_at = timezone.now()
             alert.save()
 
+            from apps.alerts.action.engine import ActionEngine
+
+            transaction.on_commit(lambda aid=alert.alert_id: ActionEngine.dispatch_async(aid, "resolved"))
+
             logger.info(
                 "[AlertOperator] 告警处理成功: alert_id=%s, user=%s, note=%s, 状态变更: %s -> %s",
                 alert_id, self.user, resolve_note, AlertStatus.PROCESSING, AlertStatus.RESOLVED,
@@ -560,27 +583,44 @@ class AlertOperator(object):
 
     def format_notify_data(self, assignee, alert):
         """
-        格式化通知数据
-        :return: 格式化后的通知数据
+        格式化通知数据。走统一通知出口,返回 sync_notify 期望的 list[dict];
+        无渠道或无接收人 → 返回 []。
         """
+        from apps.alerts.common.notify.dispatcher import build_channel_params
+
         channel, channel_id = get_default_notify_params()
         if not channel_id:
-            return {}
+            return []
         user_list = [i for i in assignee if i != self.user]
-        param_format = NotifyParamsFormat(username_list=user_list, alerts=[alert])
-        title = param_format.format_title()
-        content = param_format.format_content()
-        object_id = alert.alert_id
-        result = {
-            "username_list": user_list,
-            "channel_type": channel,
-            "channel_id": channel_id,
-            "title": title,
-            "content": content,
-            "object_id": object_id,
-            "notify_action_object": "alert",
-        }
-        return result
+        return build_channel_params(
+            user_list,
+            [{"channel_type": channel, "id": channel_id}],
+            [alert],
+            alert.alert_id,
+        )
+
+    def format_assignment_notify_data(self, assignment, assignee, alert):
+        """auto-dispatch：严格按分派策略勾选的通知方式(notify_channels)构造通知，
+        勾哪个发哪个(含 opspilot)；无策略 / 无渠道 / 无接收人 → 返回 []。"""
+        from apps.alerts.common.notify.dispatcher import build_channel_params
+
+        if not assignment:
+            logger.info("[AlertNotify] 分派通知: 无有效策略, 不发送, alert_id=%s", alert.alert_id)
+            return []
+        channels = assignment.notify_channels or []
+        # 自动分派操作人是系统(SYSTEM_OPERATOR_USER)，按策略配置的全部人员通知，
+        # 不排除操作人——否则与系统同名(如 admin)的收件人会被过滤导致不发。
+        user_list = list(assignee)
+        logger.info(
+            "[AlertNotify] 分派通知构造: alert_id=%s, assignment_id=%s, team=%s, notify_channels=%s, 接收人=%s",
+            alert.alert_id, assignment.id, alert.team, channels, user_list,
+        )
+        params = build_channel_params(user_list, channels, [alert], alert.alert_id)
+        logger.info(
+            "[AlertNotify] 分派通知构造结果: alert_id=%s, 参数数=%s, 渠道=%s",
+            alert.alert_id, len(params), [(p.get("channel_type"), p.get("channel_id")) for p in params],
+        )
+        return params
 
     @staticmethod
     def operator_log(log_data: dict):

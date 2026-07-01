@@ -80,6 +80,41 @@ def test_calculate_alerts_should_render_resource_and_dimension_value():
     assert alert_events[0]["content"] == "主机A|节点:a-1|主机A - agent_id:a-1|92.00%"
 
 
+def test_calculate_alerts_uses_highest_level_satisfied_by_all_recent_points():
+    calculate_module = _load_module(
+        "policy_calculate_highest_level_module",
+        Path(__file__).resolve().parents[1] / "tasks" / "utils" / "policy_calculate.py",
+    )
+
+    df = pd.DataFrame(
+        [
+            {
+                "instance_id": ("i-1",),
+                "values": [[1700000000, "85"], [1700000300, "95"]],
+            }
+        ]
+    )
+
+    thresholds = [
+        {"method": ">", "value": 70, "level": "warning"},
+        {"method": ">", "value": 80, "level": "error"},
+        {"method": ">", "value": 90, "level": "critical"},
+    ]
+
+    alert_events, info_events = calculate_module.calculate_alerts(
+        "${level}:${value}",
+        df,
+        thresholds,
+        {"instance_id_keys": ["instance_id"], "instances_map": {"i-1": "host-a"}},
+        n=2,
+    )
+
+    assert len(info_events) == 0
+    assert len(alert_events) == 1
+    assert alert_events[0]["level"] == "error"
+    assert alert_events[0]["content"] == "error:95.00"
+
+
 def test_resolve_metric_instance_id_keys_inherits_monitor_object_keys():
     instance_id_keys_module = _load_module(
         "instance_id_keys_module",

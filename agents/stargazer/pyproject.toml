@@ -37,6 +37,7 @@ dependencies = [
     "redis>=5.0.0",
     "influxdb-client>=1.49.0",
     "psycopg2==2.9.11",
+    "icmplib>=3.0.4",
 ]
 
 [project.optional-dependencies]
@@ -126,4 +127,9 @@ snmp = [
     "pysnmp==5.1.0",
     "pyasn1==0.5.1",
     "pyasn1-modules==0.3.0",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=9.1.1",
 ]

@@ -8,6 +8,7 @@ from .im_notification_channel_viewset import IMNotificationChannelViewSet  # noq
 from .integration_instance_viewset import IntegrationInstanceViewSet  # noqa
 from .login_auth_binding_viewset import LoginAuthBindingViewSet  # noqa
 from .login_module_viewset import LoginModuleViewSet  # noqa
+from .network_white_list_viewset import NetworkWhiteListViewSet  # noqa
 from .operation_log_viewset import OperationLogViewSet  # noqa
 from .role_viewset import RoleViewSet  # noqa
 from .system_settings_viewset import SystemSettingsViewSet  # noqa

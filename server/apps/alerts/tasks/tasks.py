@@ -6,6 +6,7 @@ import time
 from typing import Iterable, List
 
 from celery import shared_task
+from django.core.cache import cache
 
 from apps.alerts.common.notify.notify import Notify
 from apps.alerts.models.sys_setting import SystemSetting
@@ -16,6 +17,12 @@ from apps.core.logger import alert_logger as logger
 
 AUTO_ASSIGNMENT_CHUNK_SIZE = 200
 
+# D1：聚合 beat 单例锁。串行化聚合运行，防止并发聚合对同一 fingerprint 重复建警
+# （create_or_update_alert 的 select_for_update 对"建新"路径无效、Alert.fingerprint 无唯一约束）。
+# 跨进程依赖 default cache 为 Redis/DB 后端（LocMem 仅进程内有效）。
+AGGREGATION_LOCK_KEY = "alerts:aggregation:beat:lock"
+AGGREGATION_LOCK_TIMEOUT = 60 * 30  # 安全超时:崩溃时锁自动过期，避免永久死锁
+
 
 def _chunk_alert_ids(alert_ids: List[str], chunk_size: int) -> Iterable[List[str]]:
     for i in range(0, len(alert_ids), chunk_size):
@@ -24,28 +31,39 @@ def _chunk_alert_ids(alert_ids: List[str], chunk_size: int) -> Iterable[List[str
 
 @shared_task
 def event_aggregation_alert():
-    """执行告警聚合任务（周期性调度）"""
-    logger.info("[AlertTask] 开始执行告警聚合任务")
-    from apps.alerts.aggregation.processor.aggregation_processor import (
-        AggregationProcessor,
-    )
+    """执行告警聚合任务（周期性调度）。
+
+    单例锁串行化：上一轮聚合仍在进行时直接跳过本次，避免两次聚合运行并发对同一
+    fingerprint 重复建出活跃告警（D1）。
+    """
+    if not cache.add(AGGREGATION_LOCK_KEY, "1", AGGREGATION_LOCK_TIMEOUT):
+        logger.warning("[AlertTask] 上一轮聚合仍在进行，跳过本次以避免并发重复建警")
+        return
 
     try:
-        processor = AggregationProcessor()
-        processor.process_aggregation()
-        logger.info("[AlertTask] 告警聚合任务执行完成")
+        logger.info("[AlertTask] 开始执行告警聚合任务")
+        from apps.alerts.aggregation.processor.aggregation_processor import (
+            AggregationProcessor,
+        )
 
-    except Exception as e:
-        logger.exception("[AlertTask] 告警聚合任务执行失败: %s", e)
+        try:
+            processor = AggregationProcessor()
+            processor.process_aggregation()
+            logger.info("[AlertTask] 告警聚合任务执行完成")
 
-    try:
-        from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
+        except Exception as e:
+            logger.exception("[AlertTask] 告警聚合任务执行失败: %s", e)
 
-        confirmed_count = TimeoutChecker.check_session_timeouts()
-        logger.info("[AlertTask] 聚合后会话超时检查完成，确认告警数=%s", confirmed_count)
-    except Exception as e:
-        logger.exception("[AlertTask] 聚合后会话超时检查失败: %s", e)
-        raise
+        try:
+            from apps.alerts.aggregation.recovery.timeout_checker import TimeoutChecker
+
+            confirmed_count = TimeoutChecker.check_session_timeouts()
+            logger.info("[AlertTask] 聚合后会话超时检查完成，确认告警数=%s", confirmed_count)
+        except Exception as e:
+            logger.exception("[AlertTask] 聚合后会话超时检查失败: %s", e)
+            raise
+    finally:
+        cache.delete(AGGREGATION_LOCK_KEY)
 
 
 @shared_task
@@ -257,8 +275,9 @@ def sync_notify(params):
         object_id = param.get("object_id", "")
         notify_action_object = param.get("notify_action_object", "alert")
         logger.info(
-            "[AlertTask] === 开始执行通知任务 time=%s username_list=%s, channel=%s ===",
-            send_time, username_list, channel_type,
+            "[AlertTask] === 开始执行通知任务 time=%s channel=%s channel_id=%s object_id=%s "
+            "username_list=%s content=%s ===",
+            send_time, channel_type, channel_id, object_id, username_list, content,
         )
         notify = Notify(
             username_list=username_list,

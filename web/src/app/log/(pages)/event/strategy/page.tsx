@@ -16,7 +16,11 @@ import CustomTable from '@/components/custom-table';
 import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import { getRandomColor } from '@/app/log/utils/common';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
-import { PlusOutlined } from '@ant-design/icons';
+import {
+  BarChartOutlined,
+  FileSearchOutlined,
+  PlusOutlined
+} from '@ant-design/icons';
 import { useRouter } from 'next/navigation';
 import Permission from '@/components/permission';
 import {
@@ -44,6 +48,8 @@ const Strategy: React.FC = () => {
   const [enableLoading, setEnableLoading] = useState<boolean>(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const [policyTypeModalOpen, setPolicyTypeModalOpen] = useState(false);
+  const [selectedPolicyType, setSelectedPolicyType] =
+    useState<LogPolicyType>('keyword');
   const columns: ColumnItem[] = [
     {
       title: t('common.name'),
@@ -262,6 +268,11 @@ const Strategy: React.FC = () => {
     router.push(buildStrategyDetailUrl('add', { alertType }));
   };
 
+  const openPolicyTypeModal = () => {
+    setSelectedPolicyType('keyword');
+    setPolicyTypeModalOpen(true);
+  };
+
   return (
     <div className={assetStyle.assetNoTree}>
       <div className={assetStyle.table}>
@@ -280,7 +291,7 @@ const Strategy: React.FC = () => {
             <Button
               type="primary"
               icon={<PlusOutlined />}
-              onClick={() => setPolicyTypeModalOpen(true)}
+              onClick={openPolicyTypeModal}
             >
               {t('common.add')}
             </Button>
@@ -299,33 +310,59 @@ const Strategy: React.FC = () => {
       <Modal
         title={t('log.event.selectPolicyType')}
         open={policyTypeModalOpen}
-        footer={null}
-        width={560}
+        width={640}
+        centered
         onCancel={() => setPolicyTypeModalOpen(false)}
+        footer={[
+          <Button key="cancel" onClick={() => setPolicyTypeModalOpen(false)}>
+            {t('common.cancel')}
+          </Button>,
+          <Button
+            key="next"
+            type="primary"
+            onClick={() => handlePolicyTypeSelect(selectedPolicyType)}
+          >
+            {t('common.next')}
+          </Button>
+        ]}
       >
-        <div className="grid grid-cols-2 gap-4 pt-2">
+        <div className={assetStyle.policyTypeGrid}>
           <button
             type="button"
-            className="text-left border border-[var(--color-border-2)] rounded-md p-4 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
-            onClick={() => handlePolicyTypeSelect('keyword')}
+            className={`${assetStyle.policyTypeCard} ${
+              selectedPolicyType === 'keyword' ? assetStyle.selected : ''
+            }`}
+            onClick={() => setSelectedPolicyType('keyword')}
           >
-            <div className="text-base font-medium">
-              {t('log.event.keywordAlert')}
+            <div className={assetStyle.policyTypeIcon}>
+              <FileSearchOutlined />
             </div>
-            <div className="text-[var(--color-text-3)] mt-2">
-              {t('log.event.keywordAlertDes')}
+            <div>
+              <div className={assetStyle.policyTypeTitle}>
+                {t('log.event.keywordAlert')}
+              </div>
+              <div className={assetStyle.policyTypeDesc}>
+                {t('log.event.keywordAlertDes')}
+              </div>
             </div>
           </button>
           <button
             type="button"
-            className="text-left border border-[var(--color-border-2)] rounded-md p-4 hover:border-[var(--color-primary)] hover:text-[var(--color-primary)]"
-            onClick={() => handlePolicyTypeSelect('aggregate')}
+            className={`${assetStyle.policyTypeCard} ${
+              selectedPolicyType === 'aggregate' ? assetStyle.selected : ''
+            }`}
+            onClick={() => setSelectedPolicyType('aggregate')}
           >
-            <div className="text-base font-medium">
-              {t('log.event.aggregationAlert')}
+            <div className={assetStyle.policyTypeIcon}>
+              <BarChartOutlined />
             </div>
-            <div className="text-[var(--color-text-3)] mt-2">
-              {t('log.event.aggregationAlertDes')}
+            <div>
+              <div className={assetStyle.policyTypeTitle}>
+                {t('log.event.aggregationAlert')}
+              </div>
+              <div className={assetStyle.policyTypeDesc}>
+                {t('log.event.aggregationAlertDes')}
+              </div>
             </div>
           </button>
         </div>

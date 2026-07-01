@@ -22,6 +22,12 @@ from apps.core.utils.permission_cache import clear_user_permission_cache, clear_
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, Role, User, UserRule
 from apps.system_mgmt.serializers.user_serializer import UserSerializer
+from apps.system_mgmt.utils.group_filter_mixin import (
+    filter_queryset_by_group_ids,
+    get_unauthorized_group_ids,
+    get_user_group_ids,
+    normalize_group_id_set,
+)
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.password_validator import PasswordValidator
 from apps.system_mgmt.utils.user_status import is_user_locked
@@ -80,9 +86,14 @@ class UserViewSet(ViewSetUtils):
 
     def _get_user_group_ids(self, user):
         """获取用户有权限的组ID集合"""
-        if getattr(user, "is_superuser", False):
-            return None  # superuser 返回 None 表示有权限访问所有组
-        return {g["id"] for g in getattr(user, "group_list", [])}
+        return get_user_group_ids(user)
+
+    def _validate_group_scope_for_request(self, request, group_ids, loader):
+        unauthorized_group_ids = get_unauthorized_group_ids(request.user, group_ids)
+        if unauthorized_group_ids:
+            message = loader.get("error.no_permission_access_group", "无权访问该组织")
+            return JsonResponse({"result": False, "message": message}, status=403)
+        return None
 
     def _validate_target_user_permission(self, request, target_user):
         """校验当前用户是否有权限访问目标用户
@@ -98,7 +109,7 @@ class UserViewSet(ViewSetUtils):
             return True, None
 
         user_group_ids = self._get_user_group_ids(request.user)
-        target_group_ids = set(target_user.group_list or [])
+        target_group_ids = normalize_group_id_set(target_user.group_list)
 
         # 检查目标用户的组是否与当前用户的组有交集
         if not user_group_ids.intersection(target_group_ids):
@@ -124,11 +135,7 @@ class UserViewSet(ViewSetUtils):
         if not user_group_ids:
             return queryset.none()
 
-        # 构建查询条件：group_list 与用户有权限的组有交集
-        query = Q()
-        for group_id in user_group_ids:
-            query |= Q(group_list__contains=group_id)
-        return queryset.filter(query)
+        return filter_queryset_by_group_ids(queryset, user_group_ids)
 
     def list(self, request, *args, **kwargs):
         """禁用内置 list 接口 - 使用 search_user_list action"""
@@ -222,6 +229,8 @@ class UserViewSet(ViewSetUtils):
         if is_superuser:
             super_role_id = Role.objects.get(app="", name="admin").id
             queryset = queryset.filter(role_list__contains=super_role_id)
+
+        queryset = self._filter_users_by_accessible_groups(queryset, request.user)
 
         # 如果指定了用户组ID，则过滤该组内的用户
         if group_id:
@@ -336,6 +345,9 @@ class UserViewSet(ViewSetUtils):
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
+        group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
+        if group_scope_error:
+            return group_scope_error
 
         # 校验 roles ID 是否真实存在
         roles = kwargs.get("roles", [])
@@ -362,6 +374,7 @@ class UserViewSet(ViewSetUtils):
                 group_list=groups,
                 role_list=roles,
                 temporary_pwd=kwargs.get("temporary_pwd", False),
+                password=make_password(None),
             )
             if rules:
                 add_rule = [UserRule(username=kwargs["username"], group_rule_id=i) for i in rules]
@@ -554,6 +567,9 @@ class UserViewSet(ViewSetUtils):
         if group_validation_error:
             return JsonResponse({"result": False, "message": group_validation_error})
         groups, _ = _normalize_group_ids(groups)
+        group_scope_error = self._validate_group_scope_for_request(request, groups, loader)
+        if group_scope_error:
+            return group_scope_error
         params["groups"] = groups
         is_superuser = params.pop("is_superuser", False)
         admin_role_id = Role.objects.get(name="admin", app="").id
