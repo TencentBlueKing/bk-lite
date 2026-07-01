@@ -5,7 +5,6 @@ from sanic.log import logger
 from sanic import response
 
 from core.task_queue import get_task_queue
-from utils.convert import _escape_prometheus_label_value
 
 monitor_router = Blueprint("monitor", url_prefix="/monitor")
 
@@ -356,110 +355,6 @@ async def oceanstor_metrics(request):
             content_type="text/plain; version=0.0.4; charset=utf-8",
             status=500,
         )
-
-
-async def _queue_storage_metrics_request(request, monitor_type: str):
-    logger.info("=== %s metrics collection request received ===", monitor_type)
-
-    username = request.headers.get("username")
-    password = request.headers.get("password")
-    base_url = request.headers.get("base_url")
-    host = base_url
-    instance_id = request.headers.get("instance_id", "")
-
-    agent_id = request.headers.get("agent_id", "")
-    instance_type = request.headers.get("instance_type", "storage")
-    collect_type = request.headers.get("collect_type", monitor_type)
-    config_type = request.headers.get("config_type", monitor_type)
-    sample_seconds = request.headers.get("sample_seconds")
-
-    logger.info(
-        "Request: monitor_type=%s, Host=%s, User=%s, instance_id=%s",
-        monitor_type,
-        host,
-        username,
-        instance_id,
-    )
-
-    try:
-        task_params = {
-            "monitor_type": monitor_type,
-            "username": username,
-            "password": password,
-            "host": host,
-            "base_url": base_url,
-            "instance_id": instance_id,
-            "tags": {
-                "agent_id": agent_id,
-                "instance_id": instance_id,
-                "instance_type": instance_type,
-                "collect_type": collect_type,
-                "config_type": config_type,
-            },
-        }
-        if sample_seconds:
-            task_params["sample_seconds"] = sample_seconds
-
-        task_queue = get_task_queue()
-        task_info = await task_queue.enqueue_collect_task(task_params)
-
-        logger.info("%s metrics task queued: %s", monitor_type, task_info["task_id"])
-
-        current_timestamp = int(time.time() * 1000)
-        safe_monitor_type = _escape_prometheus_label_value(monitor_type)
-        safe_host = _escape_prometheus_label_value(host)
-        safe_task_id = _escape_prometheus_label_value(task_info["task_id"])
-        prometheus_lines = [
-            "# HELP monitor_request_accepted Indicates that monitor request was accepted",
-            "# TYPE monitor_request_accepted gauge",
-            (
-                f'monitor_request_accepted{{monitor_type="{safe_monitor_type}",'
-                f'host="{safe_host}",task_id="{safe_task_id}",status="queued"}} '
-                f"1 {current_timestamp}"
-            ),
-        ]
-
-        return response.raw(
-            "\n".join(prometheus_lines) + "\n",
-            content_type="text/plain; version=0.0.4; charset=utf-8",
-            headers={
-                "X-Task-ID": task_info["task_id"],
-                "X-Job-ID": task_info.get("job_id", ""),
-            },
-        )
-
-    except Exception as e:
-        logger.error(
-            "Error queuing %s metrics task: %s", monitor_type, e, exc_info=True
-        )
-        current_timestamp = int(time.time() * 1000)
-        safe_monitor_type = _escape_prometheus_label_value(monitor_type)
-        safe_host = _escape_prometheus_label_value(host)
-        safe_error = _escape_prometheus_label_value(str(e))
-        error_lines = [
-            "# HELP monitor_request_error Monitor request error",
-            "# TYPE monitor_request_error gauge",
-            (
-                f'monitor_request_error{{monitor_type="{safe_monitor_type}",'
-                f'host="{safe_host}",error="{safe_error}"}} '
-                f"1 {current_timestamp}"
-            ),
-        ]
-        return response.raw(
-            "\n".join(error_lines) + "\n",
-            content_type="text/plain; version=0.0.4; charset=utf-8",
-            status=500,
-        )
-
-
-@monitor_router.get("/pure/metrics")
-async def pure_metrics(request):
-    return await _queue_storage_metrics_request(request, "pure")
-
-
-@monitor_router.get("/infinibox/metrics")
-async def infinibox_metrics(request):
-    return await _queue_storage_metrics_request(request, "infinibox")
 
 
 @monitor_router.get("/windows/wmi/metrics")

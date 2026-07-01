@@ -31,7 +31,6 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
-import StorageDashboard from './objects/storage';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -293,15 +292,6 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: '语音网关',
     inheritedPermissionPath: '/monitor/view',
     component: VoiceGatewayDashboard
-  },
-  {
-    key: 'storage',
-    aliases: ['存储', 'Pure', 'InfiniBox'],
-    groupKey: 'hardware',
-    objectName: 'Storage',
-    objectDisplayName: '存储',
-    inheritedPermissionPath: '/monitor/view',
-    component: StorageDashboard
   },
   {
     key: 'k8s-cluster',

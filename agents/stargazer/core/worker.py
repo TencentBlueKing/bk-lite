@@ -62,16 +62,6 @@ async def collect_task(
 
             result = await collect_oceanstor_metrics_task(ctx, params, task_id)
 
-        elif monitor_type == "pure":
-            from tasks.handlers.monitor_handler import collect_pure_metrics_task
-
-            result = await collect_pure_metrics_task(ctx, params, task_id)
-
-        elif monitor_type == "infinibox":
-            from tasks.handlers.monitor_handler import collect_infinibox_metrics_task
-
-            result = await collect_infinibox_metrics_task(ctx, params, task_id)
-
         elif monitor_type == "host":
             from tasks.handlers.monitor_handler import collect_host_metrics_task
 
