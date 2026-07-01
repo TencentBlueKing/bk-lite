@@ -54,6 +54,7 @@
     "@antv/x6-react-shape": "^2.2.3",
     "@types/react-resizable": "^3.0.8",
     "@xyflow/react": "^12.8.4",
+    "ace-builds": "1.44.0",
     "aieditor": "^1.4.2",
     "antd": "^5.29.3",
     "axios": "^1.7.7",
