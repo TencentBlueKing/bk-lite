@@ -7,7 +7,8 @@ from django.utils import timezone
 from apps.monitor.models import CollectDetectTask, MonitorPlugin, MonitorPluginConfigTemplate
 from apps.monitor.services.collect_detect_runtime import (
     build_write_config_and_telegraf_command,
-    render_preflight_telegraf_config,
+    disable_real_outputs,
+    render_telegraf_config_template,
     sanitize_execution_result,
 )
 from apps.rpc.executor import Executor
@@ -74,7 +75,6 @@ class CollectDetectService:
 
         try:
             plugin = cls._get_supported_plugin(task.monitor_plugin_id)
-            template = cls._get_child_template(plugin)
             instance = runtime_payload.get("instance") or {}
             config_id = instance.get("config_id") or f"detect_{task.id}"
             env = cls._build_preflight_env(instance, runtime_payload.get("env") or {}, config_id)
@@ -85,7 +85,10 @@ class CollectDetectService:
                 "collector": plugin.collector,
                 "collect_type": plugin.collect_type,
             }
-            config_content = render_preflight_telegraf_config(template.content, config_context)
+            templates = cls._get_child_templates(plugin, cls._resolve_config_types(instance, plugin))
+            config_content = disable_real_outputs(
+                "\n\n".join(render_telegraf_config_template(template.content, config_context) for template in templates)
+            )
             config_path = f"/tmp/bklite-telegraf-detect-{task.id}-{uuid.uuid4().hex}.toml"
             command = build_write_config_and_telegraf_command(config_path, config_content)
 
@@ -129,7 +132,19 @@ class CollectDetectService:
         return plugin
 
     @staticmethod
-    def _get_child_template(plugin):
+    def _get_child_templates(plugin, config_types=None):
+        config_types = [item for item in (config_types or []) if item]
+        if config_types:
+            templates = list(
+                MonitorPluginConfigTemplate.objects.filter(
+                    plugin=plugin,
+                    config_type__in=config_types,
+                    file_type="toml",
+                ).order_by("id")
+            )
+            if templates:
+                return templates
+
         template = (
             MonitorPluginConfigTemplate.objects.filter(
                 plugin=plugin,
@@ -146,7 +161,16 @@ class CollectDetectService:
             ).order_by("id").first()
         if not template:
             raise ValueError("未找到 Telegraf TOML 采集模板")
-        return template
+        return [template]
+
+    @staticmethod
+    def _resolve_config_types(instance, plugin):
+        metric_type = instance.get("metric_type")
+        if isinstance(metric_type, list):
+            return metric_type
+        if metric_type:
+            return [metric_type]
+        return [plugin.collect_type]
 
     @classmethod
     def _sanitize_mapping(cls, value):

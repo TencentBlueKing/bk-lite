@@ -12,12 +12,16 @@ _SECRET_ASSIGNMENT_PATTERN = re.compile(
 
 
 def render_preflight_telegraf_config(template_content: str, context: dict) -> str:
-    rendered = Controller({}).render_template(
+    rendered = render_telegraf_config_template(template_content, context)
+    return disable_real_outputs(rendered)
+
+
+def render_telegraf_config_template(template_content: str, context: dict) -> str:
+    return Controller({}).render_template(
         template_content,
         context,
         escape_toml_strings=True,
     )
-    return disable_real_outputs(rendered)
 
 
 def disable_real_outputs(config_content: str) -> str:

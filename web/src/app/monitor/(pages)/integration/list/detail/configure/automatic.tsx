@@ -1,7 +1,7 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Form, Button, message, Spin, Empty, Dropdown, Modal } from 'antd';
+import { Form, Button, message, Spin, Empty, Dropdown, Modal, Tag } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined, UploadOutlined } from '@ant-design/icons';
+import { DownOutlined, ThunderboltOutlined, UploadOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
@@ -22,12 +22,23 @@ import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
 const { confirm } = Modal;
 
+interface CollectDetectState {
+  status: 'pending' | 'running' | 'success' | 'failed';
+  result?: Record<string, any>;
+  error_message?: string;
+}
+
 const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
   const searchParams = useSearchParams();
   const { isLoading } = useApiClient();
-  const { getMonitorNodeList, updateNodeChildConfig } = useIntegrationApi();
+  const {
+    createCollectDetectTask,
+    getCollectDetectTask,
+    getMonitorNodeList,
+    updateNodeChildConfig
+  } = useIntegrationApi();
   const router = useRouter();
   const { renderTableColumn } = useConfigRenderer();
   const jsonConfig = usePluginFromJson();
@@ -49,6 +60,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const [currentConfig, setCurrentConfig] = useState<any>(null);
   const [configLoading, setConfigLoading] = useState<boolean>(false);
   const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
+  const [collectDetectTasks, setCollectDetectTasks] = useState<
+    Record<string, CollectDetectState>
+  >({});
+  const collectDetectTimersRef = useRef<
+    Record<string, ReturnType<typeof setTimeout>>
+  >({});
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);
 
@@ -133,6 +150,138 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     return configsInfo?.collect_type || '';
   }, [configsInfo]);
 
+  const supportCollectDetect = !!currentConfig?.support_collect_detect;
+
+  useEffect(() => {
+    return () => {
+      Object.values(collectDetectTimersRef.current).forEach(clearTimeout);
+    };
+  }, []);
+
+  const getRowNodeId = (record: IntegrationMonitoredObject) => {
+    if (Array.isArray(record.node_ids)) {
+      return record.node_ids[0];
+    }
+    return record.node_ids;
+  };
+
+  const buildDetectInstance = (record: IntegrationMonitoredObject) => {
+    const formValues = cloneDeep(form.getFieldsValue());
+    delete formValues.nodes;
+    const rowValues = Object.keys(record)
+      .filter((key) => key !== 'key' && !key.endsWith('_error'))
+      .reduce((acc, key) => {
+        acc[key] = record[key];
+        return acc;
+      }, {} as Record<string, any>);
+    return {
+      ...formValues,
+      ...rowValues,
+      instance_type: configsInfo?.instance_type
+    };
+  };
+
+  const formatCollectDetectMessage = (task: CollectDetectState) => {
+    const result = task.result || {};
+    const parts = [
+      `状态：${task.status}`,
+      `退出码：${result.exit_code ?? '--'}`,
+      result.stdout ? `stdout:\n${result.stdout}` : '',
+      result.stderr || task.error_message
+        ? `stderr:\n${result.stderr || task.error_message}`
+        : ''
+    ].filter(Boolean);
+    return parts.join('\n\n');
+  };
+
+  const showCollectDetectResult = (task: CollectDetectState) => {
+    Modal.info({
+      title:
+        task.status === 'success'
+          ? t('monitor.integrations.collectDetectSuccess')
+          : t('monitor.integrations.collectDetectFailed'),
+      width: 720,
+      content: (
+        <pre className="mt-[12px] max-h-[420px] overflow-auto whitespace-pre-wrap rounded bg-[#f5f7fa] p-[12px] text-[12px] leading-[18px]">
+          {formatCollectDetectMessage(task)}
+        </pre>
+      )
+    });
+  };
+
+  const updateCollectDetectState = (
+    rowKey: string,
+    task: CollectDetectState
+  ) => {
+    setCollectDetectTasks((prev) => ({
+      ...prev,
+      [rowKey]: task
+    }));
+  };
+
+  const pollCollectDetectTask = async (
+    rowKey: string,
+    taskId: React.Key,
+    retryCount = 0
+  ) => {
+    try {
+      const task = (await getCollectDetectTask(taskId)) as CollectDetectState;
+      updateCollectDetectState(rowKey, task);
+      if (['pending', 'running'].includes(task.status) && retryCount < 60) {
+        collectDetectTimersRef.current[rowKey] = setTimeout(() => {
+          pollCollectDetectTask(rowKey, taskId, retryCount + 1);
+        }, 2000);
+        return;
+      }
+      showCollectDetectResult(task);
+    } catch (error: any) {
+      updateCollectDetectState(rowKey, {
+        status: 'failed',
+        error_message: error?.message || t('common.operationFailed')
+      });
+    }
+  };
+
+  const handleCollectDetect = async (record: IntegrationMonitoredObject) => {
+    const rowKey = record.key as string;
+    const nodeId = getRowNodeId(record);
+    if (!nodeId) {
+      message.warning(t('monitor.integrations.collectDetectNodeRequired'));
+      return;
+    }
+    updateCollectDetectState(rowKey, { status: 'running' });
+    try {
+      const data = (await createCollectDetectTask({
+        monitor_plugin_id: Number(pluginId),
+        monitor_object_id: Number(objectId),
+        node_id: nodeId,
+        instance_key: record.instance_id || record.instance_name || rowKey,
+        instance: buildDetectInstance(record)
+      })) as { task_id: React.Key };
+      pollCollectDetectTask(rowKey, data.task_id);
+    } catch (error: any) {
+      updateCollectDetectState(rowKey, {
+        status: 'failed',
+        error_message: error?.message || t('common.operationFailed')
+      });
+    }
+  };
+
+  const renderCollectDetectStatus = (record: IntegrationMonitoredObject) => {
+    const task = collectDetectTasks[record.key as string];
+    if (!task) {
+      return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
+    }
+    if (['pending', 'running'].includes(task.status)) {
+      return <Tag color="processing">{t('monitor.integrations.collectDetectRunning')}</Tag>;
+    }
+    return task.status === 'success' ? (
+      <Tag color="success">{t('monitor.integrations.collectDetectSuccess')}</Tag>
+    ) : (
+      <Tag color="error">{t('monitor.integrations.collectDetectFailed')}</Tag>
+    );
+  };
+
   // 动态生成 columns
   const columns = useMemo(() => {
     if (configLoading || !currentConfig || !currentConfig.table_columns) {
@@ -151,10 +300,23 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
       title: t('common.action'),
       key: 'action',
       dataIndex: 'action',
-      width: 160,
+      width: supportCollectDetect ? 240 : 160,
       fixed: 'right' as const,
       render: (_: any, record: IntegrationMonitoredObject) => (
         <>
+          {supportCollectDetect && (
+            <Button
+              type="link"
+              icon={<ThunderboltOutlined />}
+              loading={['pending', 'running'].includes(
+                collectDetectTasks[record.key as string]?.status
+              )}
+              className="mr-[10px]"
+              onClick={() => handleCollectDetect(record)}
+            >
+              {t('monitor.integrations.collectDetect')}
+            </Button>
+          )}
           <Button
             type="link"
             className="mr-[10px]"
@@ -182,7 +344,19 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         </>
       )
     };
-    return [...dataColumns, actionColumn];
+    const collectDetectStatusColumn = supportCollectDetect
+      ? [
+        {
+          title: t('monitor.integrations.collectDetectStatus'),
+          key: 'collect_detect_status',
+          dataIndex: 'collect_detect_status',
+          width: 140,
+          render: (_: any, record: IntegrationMonitoredObject) =>
+            renderCollectDetectStatus(record)
+        }
+      ]
+      : [];
+    return [...dataColumns, ...collectDetectStatusColumn, actionColumn];
   }, [
     configLoading,
     currentConfig,
@@ -190,7 +364,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     nodeList,
     renderTableColumn,
     t,
-    collectType
+    collectType,
+    supportCollectDetect,
+    collectDetectTasks
   ]);
 
   const formItems = useMemo(() => {
