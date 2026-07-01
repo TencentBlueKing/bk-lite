@@ -163,7 +163,6 @@ export const useSwitchConfig = () => {
       'Switch GarretCom SNMP': 'snmp_garretcom',
       'Switch Enterasys SNMP': 'snmp_enterasys',
       'Switch Cumulus SNMP': 'snmp_cumulus',
-      'Switch Netonix SNMP': 'snmp_netonix',
       'Switch DCN SNMP': 'snmp_dcn',
       'Switch Edgecore SNMP': 'snmp_edgecore',
       'Switch FS SNMP': 'snmp_fs',
