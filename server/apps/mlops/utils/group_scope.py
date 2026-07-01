@@ -12,6 +12,7 @@ from types import SimpleNamespace
 import logging
 
 from rest_framework import serializers
+from rest_framework.exceptions import PermissionDenied
 from apps.core.utils.team_utils import get_current_team as _get_current_team_str
 
 logger = logging.getLogger(__name__)
@@ -105,7 +106,11 @@ def filter_queryset_by_parent_team(queryset, request, parent_team_lookup):
     if getattr(user, "is_superuser", False):
         return queryset
 
-    current_team = get_current_team(request)
+    current_team = get_current_team(request, default=None)
+    allowed_team_ids = get_allowed_team_ids(request)
+    if not current_team or current_team not in allowed_team_ids:
+        raise PermissionDenied("无权访问该团队数据")
+
     return queryset.filter(**{f"{parent_team_lookup}__contains": current_team})
 
 
