@@ -90,6 +90,7 @@ export const useNetworkServiceConfig = () => {
       'NetworkService Tripp Lite UPS PDU Environmental SNMP': 'snmp_tripplite',
       'NetworkService Allot SNMP': 'snmp_allot',
       'NetworkService EfficientIP SNMP': 'snmp_efficientip',
+      'NetworkService Nomadix SNMP': 'snmp_nomadix',
       'NetworkService Socomec iPDU UPS SNMP': 'snmp_socomec',
       'NetworkService Liebert PDU UPS Environmental SNMP': 'snmp_liebert',
       'NetworkService NTI ENVIROMUX SNMP': 'snmp_nti'

@@ -4148,6 +4148,9 @@ monitor_object_plugin:
   NetworkService EfficientIP SNMP:
     name: EfficientIP（Telegraf）
     desc: EfficientIP SOLIDserver DDI 网络服务设备 SNMP 基线子模板，适用于 EfficientIP 企业号 2440 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料确认 DDI appliance SNMP 能力以及硬件、服务 OID 子树，但未证明可稳定归一为共享 CPU、内存、温度、风扇、电源或 DNS-DHCP 服务健康标量，因此本轮不把私有硬件与服务子树提升为共享设备健康指标。
+  NetworkService Nomadix SNMP:
+    name: Nomadix（Telegraf）
+    desc: Nomadix 酒店与 MDU 网络接入网关 SNMP 基线子模板，适用于 Nomadix 企业号 3309 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料只确认企业根与 AG-2000w 网关 MIB 身份，未证明稳定共享 CPU、内存、温度、风扇或电源健康叶子 OID，因此本轮不把私有接入、门户或带宽业务对象提升为共享设备健康指标。
   NetworkService Socomec iPDU UPS SNMP:
     name: Socomec iPDU UPS（Telegraf）
     desc: Socomec iPDU、UPS 与 Net Vision 网络服务设备 SNMP 基线子模板，适用于 Socomec 企业号 4555 下的设备。该 child 模板依赖通用 SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前 MIB 事实确认存在 iPDU 标识、输入、插座、EMD 温湿度、阈值告警、UPS 输入、输出、旁路、电池、负载与设备连接表，但未证明可稳定归一为共享 CPU、内存、风扇或电源健康标量，因此本轮不把私有健康与 UPS/PDU 业务计数提升为共享设备健康指标。
