@@ -4347,6 +4347,9 @@ monitor_object_plugin:
   Transmission Sycamore SNMP:
     name: Sycamore (Telegraf)
     desc: Sycamore optical switching transmission SNMP baseline child template for devices under Sycamore PEN 2411. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
+  Transmission Redline SNMP:
+    name: Redline (Telegraf)
+    desc: Redline broadband wireless transmission SNMP baseline child template for devices under Redline PEN 10728. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts prove the public enterprise root and private subtrees, but stable private CPU, memory, temperature, fan and power health scalars are not proven, so they are not promoted into shared device-health metrics.
   Transmission Ekinops SNMP:
     name: Ekinops (Telegraf)
     desc: Ekinops WDM, CWDM and DWDM transmission SNMP baseline child template for devices under Ekinops PEN 20044. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
