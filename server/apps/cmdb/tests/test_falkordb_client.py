@@ -761,3 +761,42 @@ def test_connection_pool_initialize_called_once_under_concurrency(monkeypatch):
     assert connection_count[0] == 1, (
         f"FalkorDB 连接应只被创建 1 次，实际创建了 {connection_count[0]} 次（出现连接泄漏）"
     )
+
+
+# --------------------------------------------------------------------------
+# Issue #3664 - 非参数化路径 key 校验（CQL 注入防护）
+# --------------------------------------------------------------------------
+
+
+def test_format_properties_rejects_malicious_key():
+    """非参数化路径 format_properties 对恶意 key 应拒绝（CQL 注入防护）。
+    若将修复 revert，此测试必然 pass 而 BaseAppException 不会被 raise。
+    """
+    malicious_key = "x}); DROP TABLE instance; MATCH (n"
+    with pytest.raises(BaseAppException):
+        FalkorDBClient.format_properties({malicious_key: "value"})
+
+
+def test_format_properties_valid_key_passes():
+    """合法 key 在非参数化路径仍正常工作。"""
+    out = FalkorDBClient.format_properties({"inst_name": "host1", "count": 5})
+    assert "inst_name:'host1'" in out
+    assert "count:5" in out
+
+
+def test_format_properties_set_rejects_malicious_key():
+    """非参数化路径 format_properties_set 对恶意 key 应拒绝（CQL 注入防护）。
+    若将修复 revert，此测试必然 pass 而 BaseAppException 不会被 raise。
+    """
+    c = _client()
+    malicious_key = "name}=1 DETACH DELETE n //"
+    with pytest.raises(BaseAppException):
+        c.format_properties_set({malicious_key: "value"})
+
+
+def test_format_properties_set_valid_key_passes():
+    """合法 key 在 format_properties_set 仍正常工作。"""
+    c = _client()
+    out = c.format_properties_set({"inst_name": "host2", "count": 3})
+    assert "n.inst_name='host2'" in out
+    assert "n.count=3" in out
