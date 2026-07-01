@@ -62,7 +62,8 @@ export const useWirelessConfig = () => {
       'Wireless Albentia SNMP': 'snmp_albentia',
       'Wireless LigoWave SNMP': 'snmp_ligowave',
       'Wireless Radwin SNMP': 'snmp_radwin',
-      'Wireless Mimosa SNMP': 'snmp_mimosa'
+      'Wireless Mimosa SNMP': 'snmp_mimosa',
+      'Wireless Airspan SNMP': 'snmp_airspan'
     }
   };
 };
