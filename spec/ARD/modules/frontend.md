@@ -17,9 +17,18 @@
 - **构建**：`output: 'export'` 静态导出 + Tauri；目标 Android（`build:android*`）、桌面（Windows）。
 - UI：antd-mobile v5 + @ant-design/x（聊天）。
 
+## webchat —— npm monorepo【已实现/已存在】
+- 目录 `webchat/` 为 npm monorepo，包含 `packages/webchat-core`、`packages/webchat-ui`、`packages/webchat-demo`。
+- core 提供会话持久化、SSE/自定义 header fetch 与状态机能力（`webchat-core/src/sessionManager.ts:6`、`sse.ts:6`、`stateMachine.ts:6`）。
+- ui 提供 React Chat 组件与 AG-UI 事件桥接（`webchat-ui/src/Chat.tsx:43`、`agui.ts:47`），支持 Vite library/UMD 构建。
+- demo 为 Next 入口（`webchat-demo/app/page.tsx:9`）。
+
 ## 风险 / 待确认
 - web 模块按 `NEXTAPI_INSTALL_APP` 启用已实际落地【已实现】：运行期由 `(core)/api/_utils/installApps.ts:23` 解析 `process.env.NEXTAPI_INSTALL_APP`（为空时回退到目录发现）；构建期由 `scripts/generate-workspace.js:10-11`、`scripts/generate-tsconfig.js:9-10` 据其生成 `pnpm-workspace.yaml` 与 `tsconfig.lint.json` 的 include 范围。其与后端 `INSTALL_APPS` 的对齐/同步策略【待确认】。
 - mobile 仅暴露会话+工作台，其余模块是否规划【待确认】。
 
+## 2026-07-01 Code-ARD 校准
+- `[frontend#20260701-030]` 补录 webchat monorepo、Core/UI/Demo、会话持久化、SSE、自定义 header fetch、状态机、AG-UI 事件桥接、UMD 构建和 Next demo 入口。
+
 ## 证据来源
-`web/src/{app,utils/request.ts,constants/authOptions.ts,lib/auth.ts,context/*,locales/*}`、`web/src/app/api/wechat-popup-login/route.ts`、`web/src/app/(core)/api/{proxy/[...path]/route.ts,_utils/installApps.ts,locales,markdown,menu,auth,json,versions,mlops}`、`web/scripts/{generate-workspace.js,generate-tsconfig.js}`、`web/{Dockerfile,.env.example,next.config.mjs}`、`mobile/src/{app,utils/{tauriApiProxy,secureStorage}.ts,context/auth.tsx}`、`mobile/src-tauri/tauri.conf.json`、`mobile/next.config.ts`。
+`web/src/{app,utils/request.ts,constants/authOptions.ts,lib/auth.ts,context/*,locales/*}`、`web/src/app/api/wechat-popup-login/route.ts`、`web/src/app/(core)/api/{proxy/[...path]/route.ts,_utils/installApps.ts,locales,markdown,menu,auth,json,versions,mlops}`、`web/scripts/{generate-workspace.js,generate-tsconfig.js}`、`web/{Dockerfile,.env.example,next.config.mjs}`、`mobile/src/{app,utils/{tauriApiProxy,secureStorage}.ts,context/auth.tsx}`、`mobile/src-tauri/tauri.conf.json`、`mobile/next.config.ts`、`webchat/{package.json:2,7,packages/webchat-core/package.json:2,packages/webchat-core/src/{sessionManager.ts:6,sse.ts:6,stateMachine.ts:6},packages/webchat-ui/package.json:2,packages/webchat-ui/src/{Chat.tsx:43,agui.ts:47},packages/webchat-demo/package.json:2,packages/webchat-demo/app/page.tsx:9}`。
