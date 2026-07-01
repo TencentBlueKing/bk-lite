@@ -21,6 +21,8 @@ _factory = APIRequestFactory()
 def _call(action, user, **params):
     view = DashboardViewSet.as_view({"get": action})
     request = _factory.get("/", params)
+    request.COOKIES["current_team"] = "1"
+    user.permission = {"job": {"job_record-View"}}
     force_authenticate(request, user=user)
     return view(request)
 

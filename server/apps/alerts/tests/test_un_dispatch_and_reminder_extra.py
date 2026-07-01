@@ -28,18 +28,21 @@ def _make_assignment(name="分派", frequency=None):
     return AlertAssignment.objects.create(name=name, match_type="all", notification_frequency=frequency or {})
 
 
-class _FakeParamsFormat:
-    """替身：绕开 NotifyParamsFormat 内部对 Level 表的依赖。"""
-
-    def __init__(self, username_list, alerts):
-        self.username_list = username_list
-        self.alerts = alerts
-
-    def format_title(self):
-        return "提醒标题"
-
-    def format_content(self):
-        return "提醒内容"
+def _fake_build_channel_params(
+    username_list, channels, alerts, object_id, notify_action_object="alert", title=None, content=None
+):
+    return [
+        {
+            "username_list": username_list,
+            "channel_type": channel["channel_type"],
+            "channel_id": channel["id"],
+            "title": title or "提醒标题",
+            "content": content or "提醒内容",
+            "object_id": object_id,
+            "notify_action_object": notify_action_object,
+        }
+        for channel in channels
+    ]
 
 
 # --------------------------------------------------------------------------
@@ -148,7 +151,10 @@ def test_send_reminder_notification_enqueues_celery(monkeypatch):
         "apps.alerts.service.escalation_service.EscalationService.active_roster_for_reminder",
         staticmethod(lambda a: (None, None)),
     )
-    monkeypatch.setattr("apps.alerts.service.reminder_service.NotifyParamsFormat", _FakeParamsFormat)
+    monkeypatch.setattr(
+        "apps.alerts.common.notify.dispatcher.build_channel_params",
+        _fake_build_channel_params,
+    )
 
     calls = {"delay": []}
 
@@ -190,7 +196,10 @@ def test_send_reminder_notification_channel_str_json_parsed(monkeypatch):
         "apps.alerts.service.escalation_service.EscalationService.active_roster_for_reminder",
         staticmethod(lambda a: (None, None)),
     )
-    monkeypatch.setattr("apps.alerts.service.reminder_service.NotifyParamsFormat", _FakeParamsFormat)
+    monkeypatch.setattr(
+        "apps.alerts.common.notify.dispatcher.build_channel_params",
+        _fake_build_channel_params,
+    )
 
     calls = {"delay": []}
     import apps.alerts.tasks as tasks_mod

@@ -11,7 +11,8 @@
   "supplementary_indicators": ["net_response_response_time", "net_response_result_code"],
   "display_fields": [
     {"name": "Response Time", "sort_order": 0, "metrics": [{"plugin": "TCPPort", "metric": "net_response_response_time"}]},
-    {"name": "Result Code", "sort_order": 1, "metrics": [{"plugin": "TCPPort", "metric": "net_response_result_code"}]}
+    {"name": "Result Code", "sort_order": 1, "metrics": [{"plugin": "TCPPort", "metric": "net_response_result_code"}]},
+    {"name": "String Found", "sort_order": 2, "metrics": [{"plugin": "TCPPort", "metric": "net_response_string_found"}]}
   ],
   "metrics": [
     {

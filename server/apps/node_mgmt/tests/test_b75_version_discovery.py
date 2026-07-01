@@ -51,6 +51,17 @@ def node(db):
     )
 
 
+def _discover_controller_version(node, latest_versions_map=None):
+    all_controllers = list(Controller.objects.filter(name="Controller"))
+    controllers_map = {(c.os, c.cpu_architecture): c for c in all_controllers}
+    return vd._discover_controller_version(
+        node,
+        latest_versions_map or {},
+        controllers_map,
+        all_controllers,
+    )
+
+
 # --------------------------------------------------------------------------- #
 # _calculate_upgrade_info
 # --------------------------------------------------------------------------- #
@@ -152,7 +163,7 @@ def test_save_failure_updates_existing(node):
 @pytest.mark.django_db
 def test_discover_no_controller_saves_failure(node):
     # 没有任何 Controller 配置
-    vd._discover_controller_version(node, {})
+    _discover_controller_version(node)
     record = NodeComponentVersion.objects.get(node=node, component_type="controller")
     assert "未找到操作系统" in record.message
 
@@ -160,7 +171,7 @@ def test_discover_no_controller_saves_failure(node):
 @pytest.mark.django_db
 def test_discover_controller_no_version_command_saves_failure(node):
     Controller.objects.create(os="linux", cpu_architecture="x86_64", name="Controller", version_command="")
-    vd._discover_controller_version(node, {})
+    _discover_controller_version(node)
     record = NodeComponentVersion.objects.get(node=node, component_type="controller")
     assert "未配置版本命令" in record.message
 
@@ -174,7 +185,7 @@ def test_discover_controller_success_with_executor(node):
     executor = MagicMock()
     executor.execute_local.return_value = "1.0.0\n"
     with patch("apps.node_mgmt.tasks.version_discovery.Executor", return_value=executor):
-        vd._discover_controller_version(node, versions_map)
+        _discover_controller_version(node, versions_map)
 
     record = NodeComponentVersion.objects.get(node=node, component_id=str(ctrl.id))
     assert record.version == "1.0.0"
@@ -190,7 +201,7 @@ def test_discover_controller_invalid_version_output(node):
     executor = MagicMock()
     executor.execute_local.return_value = "garbage output"
     with patch("apps.node_mgmt.tasks.version_discovery.Executor", return_value=executor):
-        vd._discover_controller_version(node, {})
+        _discover_controller_version(node)
     record = NodeComponentVersion.objects.get(node=node, component_id=str(ctrl.id))
     assert "不是有效版本号" in record.message
 
@@ -203,7 +214,7 @@ def test_discover_controller_empty_output(node):
     executor = MagicMock()
     executor.execute_local.return_value = "   "
     with patch("apps.node_mgmt.tasks.version_discovery.Executor", return_value=executor):
-        vd._discover_controller_version(node, {})
+        _discover_controller_version(node)
     record = NodeComponentVersion.objects.get(node=node, component_id=str(ctrl.id))
     assert "空结果" in record.message
 
@@ -217,7 +228,7 @@ def test_discover_controller_executor_exception(node):
         "apps.node_mgmt.tasks.version_discovery.Executor",
         side_effect=RuntimeError("rpc down"),
     ):
-        vd._discover_controller_version(node, {})
+        _discover_controller_version(node)
     record = NodeComponentVersion.objects.get(node=node, component_id=str(ctrl.id))
     assert "异常" in record.message
 

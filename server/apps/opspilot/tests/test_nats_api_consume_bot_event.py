@@ -8,13 +8,25 @@ import importlib.util
 import types
 from pathlib import Path
 
+_MISSING = object()
 
-def _install(name, **attrs):
+
+def _install(name, originals=None, **attrs):
+    if originals is not None and name not in originals:
+        originals[name] = sys.modules.get(name, _MISSING)
     mod = types.ModuleType(name)
     for k, v in attrs.items():
         setattr(mod, k, v)
     sys.modules[name] = mod
     return mod
+
+
+def _restore_modules(originals):
+    for name, original in reversed(list(originals.items())):
+        if original is _MISSING:
+            sys.modules.pop(name, None)
+        else:
+            sys.modules[name] = original
 
 
 def _load_nats_api():
@@ -23,15 +35,19 @@ def _load_nats_api():
     injecting all required stubs so Django settings are never touched.
     """
     registered_handlers = {}
+    originals = {}
+
+    def install(name, **attrs):
+        return _install(name, originals, **attrs)
 
     def register(fn):
         registered_handlers[fn.__name__] = fn
         return fn
 
-    _install("nats_client", register=register)
-    _install("django")
-    _install("django.db")
-    _install("django.db.models")
+    install("nats_client", register=register)
+    install("django")
+    install("django.db")
+    install("django.db.models")
 
     # Track Bot.objects.get calls so we can assert Bot #7 is never queried
     bot_get_calls = []
@@ -69,7 +85,7 @@ def _load_nats_api():
     class _BotWorkFlow:
         objects = _QS()
 
-    _install(
+    install(
         "apps.opspilot.models",
         Bot=_Bot,
         BotConversationHistory=_BotConversationHistory,
@@ -82,15 +98,15 @@ def _load_nats_api():
         RerankProvider=object,
         SkillTools=object,
     )
-    _install("apps")
-    _install("apps.core")
-    _install("apps.core.logger", opspilot_logger=__import__("logging").getLogger("test"))
-    _install("apps.opspilot")
-    _install("apps.opspilot.utils")
-    _install("apps.opspilot.utils.bot_utils", get_user_info=lambda *a, **kw: (types.SimpleNamespace(id=1), None))
-    _install("apps.opspilot.utils.chat_flow_utils")
-    _install("apps.opspilot.utils.chat_flow_utils.engine")
-    _install(
+    install("apps")
+    install("apps.core")
+    install("apps.core.logger", opspilot_logger=__import__("logging").getLogger("test"))
+    install("apps.opspilot")
+    install("apps.opspilot.utils")
+    install("apps.opspilot.utils.bot_utils", get_user_info=lambda *a, **kw: (types.SimpleNamespace(id=1), None))
+    install("apps.opspilot.utils.chat_flow_utils")
+    install("apps.opspilot.utils.chat_flow_utils.engine")
+    install(
         "apps.opspilot.utils.chat_flow_utils.engine.factory",
         create_chat_flow_engine=lambda *a, **kw: None,
     )
@@ -98,7 +114,10 @@ def _load_nats_api():
     src = Path(__file__).parent.parent / "nats_api.py"
     spec = importlib.util.spec_from_file_location("opspilot_nats_api_3721", src)
     mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
+    try:
+        spec.loader.exec_module(mod)
+    finally:
+        _restore_modules(originals)
 
     return mod, registered_handlers, bot_get_calls, history_create_calls
 

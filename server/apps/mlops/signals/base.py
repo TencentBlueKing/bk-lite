@@ -124,6 +124,7 @@ def _register_dataset_release_cleanup(
         cleanup_dataset_release_files,
         sender=model,
         dispatch_uid=f"cleanup_{dispatch_uid_prefix}_dataset_release",
+        weak=False,
     )
 
 
@@ -201,6 +202,7 @@ def _register_train_data_cleanup(
         cleanup_train_data_files,
         sender=model,
         dispatch_uid=f"cleanup_{dispatch_uid_prefix}_train_data",
+        weak=False,
     )
 
 
@@ -244,6 +246,7 @@ def _register_train_job_cleanup(
         cleanup_train_job_config_file,
         sender=model,
         dispatch_uid=f"cleanup_{dispatch_uid_prefix}_train_job",
+        weak=False,
     )
 
 
@@ -296,6 +299,7 @@ def _register_mlflow_cleanup(
         cleanup_mlflow_experiment,
         sender=model,
         dispatch_uid=f"cleanup_{dispatch_uid_prefix}_mlflow_experiment",
+        weak=False,
     )
 
 
@@ -367,4 +371,5 @@ def _register_docker_cleanup(
         cleanup_docker_container,
         sender=model,
         dispatch_uid=f"cleanup_{dispatch_uid_prefix}_docker_container",
+        weak=False,
     )

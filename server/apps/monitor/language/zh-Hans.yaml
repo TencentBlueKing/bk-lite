@@ -3843,6 +3843,8 @@ monitor_object_metric_group:
     Packet: 数据包
     Bandwidth: 带宽
     Status: 状态
+    Temperature: 温度
+    Hardware Status: 硬件状态
     Packet Error: 数据包错误
     Loadbalance: 负载均衡
     Traffic Overview: 流量总览

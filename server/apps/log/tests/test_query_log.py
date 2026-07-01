@@ -37,6 +37,7 @@ def test_query_skips_invalid_json_lines(mocker):
     post_mock = mocker.patch("apps.log.utils.query_log.requests.post", return_value=response)
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     result = api.query("*", "", "", 10)
 
@@ -49,6 +50,7 @@ def test_query_ignores_empty_lines(mocker):
     mocker.patch("apps.log.utils.query_log.requests.post", return_value=response)
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     result = api.query("*", "", "", 10)
 
@@ -61,6 +63,7 @@ def test_query_logs_malformed_line_context(mocker):
     warning_mock = mocker.patch("apps.log.utils.query_log.logger.warning")
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     result = api.query("level:error", "start-ts", "end-ts", 5)
 
@@ -953,6 +956,7 @@ async def test_tail_async_iter_lines_runs_in_thread_not_event_loop(mocker):
     )
 
     api = VictoriaMetricsAPI()
+    api.host = "http://victorialogs.local"
 
     # 并发协程：在 tail_async 运行期间尽量多递增 counter
     counter = 0

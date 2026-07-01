@@ -141,5 +141,3 @@ class TestMysqlValidateSqlSafety:
         assert ok is True
         bad, msg = my_utils.validate_sql_safety("DELETE FROM t")
         assert bad is False and "delete" in msg
-
-

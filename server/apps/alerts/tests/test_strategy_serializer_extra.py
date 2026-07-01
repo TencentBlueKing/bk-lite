@@ -116,9 +116,9 @@ def test_validate_aggregation_group_by_not_in_whitelist_raises():
 
 def test_validate_aggregation_group_by_valid_dim_passes():
     ser = AlarmStrategySerializer(context=_ctx())
-    attrs = {"strategy_type": "smart_denoise", "params": {"window_size": 10, "group_by": ["level", "source"]}}
+    attrs = {"strategy_type": "smart_denoise", "params": {"window_size": 10, "group_by": ["level", "source_id"]}}
     result = ser.validate(attrs)
-    assert result["params"]["group_by"] == ["level", "source"]
+    assert result["params"]["group_by"] == ["level", "source_id"]
 
 
 # --------------------------------------------------------------------------

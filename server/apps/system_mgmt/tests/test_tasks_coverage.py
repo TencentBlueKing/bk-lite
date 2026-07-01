@@ -70,7 +70,6 @@ def test_sync_by_login_module_calls_rpc_and_syncs():
     lm = LoginModule.objects.create(
         name="ldap2",
         source_type="ldap",
-       
         enabled=True,
         other_config={"namespace": "ns1", "root_group": "ROOT", "domain": "corp.com", "default_roles": [1]},
     )
@@ -102,7 +101,6 @@ def _make_login_module(**cfg):
     return LoginModule.objects.create(
         name="mod",
         source_type="ldap",
-       
         enabled=True,
         other_config=cfg,
     )

@@ -4185,6 +4185,8 @@ monitor_object_metric_group:
     Packet: Packet
     Bandwidth: Bandwidth
     Status: Status
+    Temperature: Temperature
+    Hardware Status: Hardware Status
     Packet Error: Packet Error
     Loadbalance: Load Balance
     Traffic Overview: Traffic Overview

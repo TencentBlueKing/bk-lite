@@ -38,7 +38,7 @@ def _policy(**kwargs):
 def _mq(metric=None, **kwargs):
     m = SimpleNamespace(
         metric=metric,
-        query_aggregation_metrics=lambda period: kwargs.get("agg", {"data": {"result": []}}),
+        query_aggregation_metrics=lambda period, points=1: kwargs.get("agg", {"data": {"result": []}}),
         convert_metric_values=lambda data: data,
         format_aggregation_metrics=lambda data: kwargs.get("formatted", {}),
         get_display_unit=lambda: kwargs.get("display_unit", ""),

@@ -38,9 +38,9 @@ class TestFormatPeriod:
         assert svc.format_period({"type": "hour", "value": 2}) == "2h"
         assert svc.format_period({"type": "day", "value": 1}) == "1d"
 
-    def test_points_divides_value(self):
+    def test_points_keep_period_step(self):
         svc = MetricQueryService(_policy(), {})
-        assert svc.format_period({"type": "min", "value": 10}, points=2) == "5m"
+        assert svc.format_period({"type": "min", "value": 10}, points=2) == "10m"
 
     def test_empty_period_raises(self):
         svc = MetricQueryService(_policy(), {})
