@@ -102,11 +102,28 @@ interface ViewConfigPropsWithManager extends ViewConfigProps {
 
 const NETWORK_INSTANCE_PAGE_SIZE = 100;
 const SELECT_SCROLL_LOAD_OFFSET = 24;
+const NETWORK_STATUS_TOPOLOGY = 'networkStatusTopology';
 
 interface SelectOption {
   label: string;
   value: string;
 }
+
+interface SelectorLike {
+  id?: unknown;
+  chartType?: unknown;
+  sceneWidgetType?: unknown;
+}
+
+const isSceneWidgetSelection = (item?: SelectorLike | null): boolean => {
+  if (!item) return false;
+
+  return (
+    item.sceneWidgetType === NETWORK_STATUS_TOPOLOGY ||
+    item.chartType === NETWORK_STATUS_TOPOLOGY ||
+    item.id === `scene:${NETWORK_STATUS_TOPOLOGY}`
+  );
+};
 
 const mergeSelectOptions = (
   previous: SelectOption[],
@@ -150,6 +167,7 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
   const [networkInstanceKeyword, setNetworkInstanceKeyword] = useState('');
   const networkInstanceRequestIdRef = useRef(0);
   const networkInstanceSearchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const configRequestIdRef = useRef(0);
   const sceneModelId = Form.useWatch(['networkStatusTopology', 'modelId'], form);
 
   const {
@@ -269,10 +287,58 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     open,
   });
 
+  const nextConfigRequestId = useCallback(() => {
+    configRequestIdRef.current += 1;
+    return configRequestIdRef.current;
+  }, []);
+
+  const isCurrentConfigRequest = useCallback(
+    (requestId: number) => requestId === configRequestIdRef.current,
+    [],
+  );
+
   /** 用户通过弹窗选择了新的数据源，重置所有依赖配置 */
   const handleDataSourceChangeFromSelector = useCallback(
     async (item: DatasourceItem) => {
+      const requestId = nextConfigRequestId();
       setDataSourceSelectorVisible(false);
+
+      if (isSceneWidgetSelection(item)) {
+        setChartType(NETWORK_STATUS_TOPOLOGY);
+        setSelectedDataSource(undefined);
+        setFilterBindings({});
+        setActions([]);
+        tableConfig.resetTableConfig();
+        singleValueConfig.resetSingleValueConfig();
+
+        form.setFieldsValue({
+          chartType: NETWORK_STATUS_TOPOLOGY,
+          sceneWidgetType: NETWORK_STATUS_TOPOLOGY,
+          dataSource: undefined,
+          networkStatusTopology: {
+            modelId: '',
+            instId: '',
+            depth: 2,
+          },
+          params: {},
+          dataSourceParams: [],
+          selectedFields: [],
+          topNLabelField: undefined,
+          topNValueField: undefined,
+          unit: undefined,
+          unitId: undefined,
+          valueMappings: undefined,
+          conversionFactor: undefined,
+          decimalPlaces: undefined,
+          gaugeMin: 0,
+          gaugeMax: 100,
+          gaugeShape: 'semicircle',
+          compare: false,
+          tableConfig: undefined,
+          actions: [],
+        });
+        return;
+      }
 
       // 重置依赖字段
       setChartType('');
@@ -283,6 +349,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
       // 加载完整数据源（brief 模式不含 params）
       const fullItem = (await ensureDataSource(item.id)) || item;
+      if (!isCurrentConfigRequest(requestId)) {
+        return;
+      }
 
       // 设置新数据源
       setSelectedDataSource(fullItem);
@@ -300,6 +369,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       form.setFieldsValue({
         dataSource: fullItem.id,
         chartType: defaultChartType,
+        sceneWidgetType: undefined,
+        networkStatusTopology: undefined,
         params,
         selectedFields: [],
         topNLabelField: undefined,
@@ -336,6 +407,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             fullItem,
             params,
           );
+          if (!isCurrentConfigRequest(requestId)) {
+            return;
+          }
           tableConfig.setDetectedDisplayColumns(probedColumns);
         }
       }
@@ -348,6 +422,8 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
       filterDefinitions,
       tableConfig,
       singleValueConfig,
+      nextConfigRequestId,
+      isCurrentConfigRequest,
     ],
   );
 
@@ -443,7 +519,12 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   const initializeItemForm = async (
     widgetItem: ViewConfigItem,
+    requestId: number,
   ): Promise<void> => {
+    if (!isCurrentConfigRequest(requestId)) {
+      return;
+    }
+
     const { valueConfig } = widgetItem;
     const isSceneWidget =
       valueConfig?.sceneWidgetType === 'networkStatusTopology' ||
@@ -498,6 +579,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
     }
 
     const targetDataSource = await ensureDataSource(formValues.dataSource);
+    if (!isCurrentConfigRequest(requestId)) {
+      return;
+    }
+
     if (targetDataSource) {
       setSelectedDataSource(targetDataSource);
       formValues.params = formValues.params || {};
@@ -545,6 +630,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
           targetDataSource,
           formValues.params || {},
         );
+        if (!isCurrentConfigRequest(requestId)) {
+          return;
+        }
         const probeDefaultKeys = new Set(
           (probedColumns || []).map((col) => col.key),
         );
@@ -598,6 +686,9 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
             targetDataSource,
             formValues.params || {},
           );
+          if (!isCurrentConfigRequest(requestId)) {
+            return;
+          }
           tableConfig.setDetectedDisplayColumns(probedColumns);
         }
       }
@@ -837,8 +928,10 @@ const ViewConfig: React.FC<ViewConfigPropsWithManager> = ({
 
   useEffect(() => {
     if (open) {
-      void initializeItemForm(widgetItem);
+      const requestId = nextConfigRequestId();
+      void initializeItemForm(widgetItem, requestId);
     } else if (!open) {
+      nextConfigRequestId();
       resetForm();
     }
   }, [open, widgetItem, form]);
