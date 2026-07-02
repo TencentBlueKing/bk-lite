@@ -151,13 +151,15 @@ class CollectModelSerializer(AuthSerializer):
             except Exception as err:
                 raise serializers.ValidationError({"params": str(err)}) from err
 
-            need_enable = bool(params.get("need_enable"))
             credential_items = attrs.get("credential")
             if credential_items is None and self.instance is not None:
                 credential_items = self.instance.credential
             credential_pool = CollectCredentialPoolService.normalize_pool(copy.deepcopy(credential_items))
-            if need_enable and not any(item.get("enable_password") for item in credential_pool if isinstance(item, dict)):
-                raise serializers.ValidationError({"credential": "启用特权模式时必须配置特权密码"})
+            need_enable = any(
+                bool(item.get("enable_password"))
+                for item in credential_pool
+                if isinstance(item, dict)
+            )
 
             attrs["instances"] = validated_instances
             attrs["ip_range"] = ""

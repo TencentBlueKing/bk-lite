@@ -1041,6 +1041,34 @@ class TestExcludeFieldsCache:
         assert cache_mod.initialize_exclude_fields_cache() is True
         assert cache_mod.initialize_model_fields_mapping_cache() is True
 
+    def test_startup_init_skip_when_global_cache_exists(self, monkeypatch):
+        from django.core.cache import cache as dj_cache
+
+        from apps.cmdb.display_field import cache as cache_mod
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+        dj_cache.set(ExcludeFieldsCache.EXCLUDE_FIELDS_KEY, ["organization"])
+        dj_cache.set(ExcludeFieldsCache.MODEL_FIELDS_MAPPING_KEY, {"host": {"organization": ["organization"], "user": []}})
+        fake = _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=([], 0))
+
+        assert cache_mod.init_all_caches_on_startup() is True
+        assert fake.calls == []
+
+    def test_startup_init_refresh_when_global_cache_missing(self, monkeypatch):
+        from django.core.cache import cache as dj_cache
+
+        from apps.cmdb.display_field import cache as cache_mod
+        from apps.cmdb.display_field.cache import ExcludeFieldsCache
+
+        dj_cache.delete(ExcludeFieldsCache.EXCLUDE_FIELDS_KEY)
+        dj_cache.delete(ExcludeFieldsCache.MODEL_FIELDS_MAPPING_KEY)
+        models = [{"model_id": "host", "attrs": json.dumps([{"attr_id": "org", "attr_type": "organization"}])}]
+        fake = _patch_graph(monkeypatch, "apps.cmdb.display_field.cache", query_entity=(models, 1))
+
+        assert cache_mod.init_all_caches_on_startup() is True
+        assert ("query_entity", ("model", []), {}) in fake.calls
+        assert "org" in ExcludeFieldsCache.get_exclude_fields()
+
 
 # ===========================================================================
 # migrate_field_constraints management command

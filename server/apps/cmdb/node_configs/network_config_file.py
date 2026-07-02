@@ -30,17 +30,21 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
     def _secret_env_name(self, field_name):
         return f"PASSWORD_{field_name}_{self._instance_id}"
 
+    def _needs_enable(self):
+        return bool((self.credential or {}).get("enable_password"))
+
     def set_credential(self, *args, **kwargs):
         params = self.instance.params or {}
         target_instance = self._target_instance()
         credential = self.credential or {}
+        need_enable = self._needs_enable()
         data = {
             "username": credential.get("username", credential.get("user", "")),
             "password": "${" + self._secret_env_name("password") + "}",
             "port": credential.get("port") or target_instance.get("port") or 22,
             "config_name": params.get("config_name", ""),
             "commands": params.get("commands", ""),
-            "need_enable": params.get("need_enable", False),
+            "need_enable": need_enable,
             "collect_task_id": self.instance.id,
             "target_model_id": target_instance.get("model_id"),
             "target_instance_id": target_instance.get("_id") or target_instance.get("id") or "",
@@ -48,7 +52,7 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
             "device_type": target_instance.get("device_type"),
             "callback_subject": "receive_config_file_result",
         }
-        if params.get("need_enable"):
+        if need_enable:
             data["enable_password"] = "${" + self._secret_env_name("enable_password") + "}"
         if credential.get("credential_id"):
             data["credential_id"] = credential.get("credential_id")
@@ -58,6 +62,6 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
         if not self.credential:
             return {}
         env = {self._secret_env_name("password"): self.credential.get("password", "")}
-        if (self.instance.params or {}).get("need_enable"):
+        if self._needs_enable():
             env[self._secret_env_name("enable_password")] = self.credential.get("enable_password", "")
         return env

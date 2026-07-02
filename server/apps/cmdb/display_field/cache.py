@@ -55,6 +55,8 @@ class ExcludeFieldsCache:
     EXCLUDE_FIELDS_KEY = CACHE_KEY_EXCLUDE_FIELDS
     MODEL_FIELDS_MAPPING_KEY = CACHE_KEY_MODEL_FIELDS_MAPPING
     MODEL_ATTRS_KEY_PREFIX = CACHE_KEY_MODEL_ATTRS_PREFIX
+    STARTUP_INIT_LOCK_KEY = "cmdb:exclude_fields:startup_init_lock"
+    STARTUP_INIT_LOCK_TTL = 60
     CACHE_TTL = CACHE_TTL_SECONDS
 
     # 需要排除的字段类型（使用统一的常量）
@@ -100,6 +102,36 @@ class ExcludeFieldsCache:
 
         except Exception as e:
             logger.error(f"[ExcludeFieldsCache] 缓存初始化异常: {e}", exc_info=True)
+            return False
+
+    @classmethod
+    def initialize_on_startup(cls) -> bool:
+        """
+        项目启动时预热缓存。
+
+        启动路径以“可用即跳过”为主，避免每次进程启动都清缓存、查图库。
+        模型字段变更和手动刷新仍然使用 initialize_all/refresh_cache 的强制刷新语义。
+        """
+        try:
+            if cls._global_caches_ready():
+                logger.info("[ExcludeFieldsCache] 启动缓存已存在，跳过初始化")
+                return True
+
+            if not cache.add(cls.STARTUP_INIT_LOCK_KEY, "1", timeout=cls.STARTUP_INIT_LOCK_TTL):
+                logger.info("[ExcludeFieldsCache] 其他进程正在初始化启动缓存，当前进程跳过")
+                return True
+
+            try:
+                if cls._global_caches_ready():
+                    logger.info("[ExcludeFieldsCache] 启动缓存已由其他进程初始化，跳过刷新")
+                    return True
+
+                return cls.initialize_all()
+            finally:
+                cache.delete(cls.STARTUP_INIT_LOCK_KEY)
+
+        except Exception as e:
+            logger.error(f"[ExcludeFieldsCache] 启动缓存预热异常: {e}", exc_info=True)
             return False
 
     @classmethod
@@ -311,6 +343,11 @@ class ExcludeFieldsCache:
         except Exception as e:
             logger.error(f"[ExcludeFieldsCache] 获取{cache_name}失败: {e}", exc_info=True)
             return default_value
+
+    @classmethod
+    def _global_caches_ready(cls) -> bool:
+        """判断全局缓存是否已可用。"""
+        return cache.get(cls.EXCLUDE_FIELDS_KEY) is not None and cache.get(cls.MODEL_FIELDS_MAPPING_KEY) is not None
 
     @classmethod
     def _refresh_all_caches(cls) -> bool:
@@ -577,7 +614,7 @@ def init_all_caches_on_startup() -> bool:
     logger.info("[CacheManager] 项目启动，开始初始化所有缓存...")
 
     try:
-        success = ExcludeFieldsCache.initialize_all()
+        success = ExcludeFieldsCache.initialize_on_startup()
 
         if success:
             logger.info("[CacheManager] 项目启动缓存初始化成功")

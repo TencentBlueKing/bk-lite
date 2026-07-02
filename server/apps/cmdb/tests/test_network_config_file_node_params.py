@@ -35,6 +35,33 @@ def _task():
     )
 
 
+def test_need_enable_is_derived_from_credential_enable_password():
+    task = _task()
+    task.params["need_enable"] = False
+    params = NetworkConfigFileNodeParams(task)
+
+    headers = params.custom_headers()
+    env = params.env_config()
+
+    assert headers["cmdbneed_enable"] == "True"
+    assert headers["cmdbenable_password"].startswith("${PASSWORD_enable_password_cmdb_42")
+    assert any(value == "enable-secret" for value in env.values())
+
+
+def test_need_enable_is_false_without_credential_enable_password():
+    task = _task()
+    task.params["need_enable"] = True
+    task.decrypt_credentials.pop("enable_password")
+    params = NetworkConfigFileNodeParams(task)
+
+    headers = params.custom_headers()
+    env = params.env_config()
+
+    assert headers["cmdbneed_enable"] == "False"
+    assert "cmdbenable_password" not in headers
+    assert not any(value == "enable-secret" for value in env.values())
+
+
 def test_custom_headers_include_network_config_callback_and_device_type():
     params = NetworkConfigFileNodeParams(_task())
 
