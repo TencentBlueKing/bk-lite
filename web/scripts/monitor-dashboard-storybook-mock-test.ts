@@ -18,7 +18,6 @@ const MIDDLEWARE_DASHBOARD_KEYS = [
   'apache',
   'consul',
   'rabbitmq',
-  'ibmmq',
   'tomcat',
   'zookeeper'
 ];
