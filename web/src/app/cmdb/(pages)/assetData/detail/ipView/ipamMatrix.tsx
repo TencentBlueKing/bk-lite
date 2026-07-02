@@ -265,7 +265,7 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
 // ─── Square Grid (prefixlen >= 24) ────────────────────────────────────────────
 
 const CELL_MIN = 40; // px — minimum cell width; grid auto-fills columns to fill the row
-const CELL_H = 28;   // px — fixed compact row height (keeps the grid from growing tall on wide screens)
+const CELL_H = 36;   // px — readable fixed row height without returning to square wide-screen cells
 const GRID_GAP = 4;
 
 interface SquareGridProps {
