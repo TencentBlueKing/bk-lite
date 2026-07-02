@@ -25,6 +25,12 @@ def test_monitor_plugin_defaults_collect_detect_disabled():
     assert plugin.support_collect_detect is False
 
 
+def test_monitor_tasks_package_registers_collect_detect_task():
+    from apps.monitor import tasks
+
+    assert tasks.run_collect_detect_task.name == "apps.monitor.tasks.collect_detect.run_collect_detect_task"
+
+
 @pytest.mark.django_db
 def test_monitor_plugin_serializer_exposes_collect_detect_capability():
     plugin = MonitorPlugin.objects.create(
@@ -151,7 +157,7 @@ def test_render_preflight_telegraf_config_replaces_real_outputs():
 def test_build_telegraf_once_command_uses_temp_config_and_cleanup():
     command = build_telegraf_once_command("/tmp/bklite-detect.toml")
 
-    assert "telegraf --once --config /tmp/bklite-detect.toml" in command
+    assert "/opt/fusion-collectors/bin/telegraf --once --config /tmp/bklite-detect.toml" in command
     assert "rm -f /tmp/bklite-detect.toml" in command
 
 
@@ -172,6 +178,15 @@ def test_sanitize_execution_result_redacts_and_truncates_output():
     assert "top-secret" not in result["stdout"]
     assert "abc123" not in result["stderr"]
     assert result["stdout_truncated"] is True
+
+
+def test_sanitize_execution_result_accepts_string_stdout():
+    result = sanitize_execution_result("cpu,host=node usage_idle=99")
+
+    assert result["success"] is True
+    assert result["stdout"] == "cpu,host=node usage_idle=99"
+    assert result["stderr"] == ""
+    assert result["exit_code"] == 0
 
 
 @pytest.mark.django_db
@@ -415,22 +430,67 @@ def test_collect_detect_viewset_create_returns_task(monkeypatch):
     from apps.monitor.views.collect_detect import CollectDetectViewSet
 
     created = type("Task", (), {"id": 9, "status": "pending"})()
+    calls = []
+
+    def ensure_access(request, payload):
+        calls.append(("access", payload["node_id"]))
+        return {"current_team": 3}
+
+    def create_task(payload, user, organization):
+        calls.append(("create", payload["node_id"]))
+        return created
+
+    monkeypatch.setattr(
+        "apps.monitor.views.collect_detect._ensure_collect_detect_access",
+        ensure_access,
+        raising=False,
+    )
     monkeypatch.setattr(
         "apps.monitor.views.collect_detect.CollectDetectService.create_task",
-        lambda payload, user, organization: created,
+        create_task,
     )
     request = RequestFactory().post(
         "/monitor/api/collect_detect/",
         data={"monitor_plugin_id": 1, "monitor_object_id": 2, "node_id": "node-1"},
         content_type="application/json",
     )
-    request.user = type("User", (), {"username": "admin"})()
+    request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": True, "group_list": []})()
     request.COOKIES["current_team"] = "3"
     monkeypatch.setattr("apps.monitor.views.collect_detect.WebUtils.response_success", staticmethod(lambda data=None: data))
 
     response = CollectDetectViewSet().create(request)
 
     assert response == {"task_id": 9, "status": "pending"}
+    assert calls == [("access", "node-1"), ("create", "node-1")]
+
+
+@pytest.mark.django_db
+def test_create_collect_detect_task_caps_timeout(monkeypatch):
+    plugin = MonitorPlugin.objects.create(
+        name="MySQL",
+        collector="Telegraf",
+        collect_type="mysql",
+        support_collect_detect=True,
+    )
+    dispatched = {}
+    monkeypatch.setattr(
+        "apps.monitor.tasks.collect_detect.run_collect_detect_task.delay",
+        lambda task_id, runtime_payload: dispatched.update(task_id=task_id, runtime_payload=runtime_payload),
+    )
+
+    CollectDetectService.create_task(
+        {
+            "monitor_plugin_id": plugin.id,
+            "monitor_object_id": 1,
+            "node_id": "node-1",
+            "timeout": 9999,
+            "instance": {"host": "127.0.0.1"},
+        },
+        user=type("User", (), {"username": "admin"})(),
+        organization=3,
+    )
+
+    assert dispatched["runtime_payload"]["timeout"] == 600
 
 
 @pytest.mark.django_db
@@ -451,6 +511,8 @@ def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
         result={"success": False, "stdout": "", "stderr": "authentication failed", "exit_code": 1},
     )
     request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
+    request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": True, "group_list": []})()
+    request.COOKIES["current_team"] = "3"
     monkeypatch.setattr("apps.monitor.views.collect_detect.WebUtils.response_success", staticmethod(lambda data=None: data))
 
     response = CollectDetectViewSet().retrieve(request, pk=task.id)
@@ -458,3 +520,33 @@ def test_collect_detect_viewset_retrieve_returns_task_result(monkeypatch):
     assert response["id"] == task.id
     assert response["status"] == "failed"
     assert response["result"]["stderr"] == "authentication failed"
+
+
+@pytest.mark.django_db
+def test_collect_detect_viewset_retrieve_hides_other_user_task(monkeypatch):
+    from apps.monitor.views.collect_detect import CollectDetectViewSet
+
+    task = CollectDetectTask.objects.create(
+        status="failed",
+        phase="execute_once",
+        monitor_plugin_id=1,
+        monitor_object_id=2,
+        collector="Telegraf",
+        collect_type="mysql",
+        node_id="node-1",
+        request_fingerprint="fp-1",
+        created_by="other",
+        organization=3,
+        result={"success": False, "stdout": "", "stderr": "authentication failed", "exit_code": 1},
+    )
+    request = RequestFactory().get(f"/monitor/api/collect_detect/{task.id}/")
+    request.user = type("User", (), {"username": "admin", "domain": "default", "is_superuser": False, "group_list": []})()
+    request.COOKIES["current_team"] = "3"
+    monkeypatch.setattr(
+        "apps.monitor.views.collect_detect.WebUtils.response_error",
+        staticmethod(lambda message, status_code=400: {"message": message, "status_code": status_code}),
+    )
+
+    response = CollectDetectViewSet().retrieve(request, pk=task.id)
+
+    assert response == {"message": "任务不存在或无权访问", "status_code": 404}
