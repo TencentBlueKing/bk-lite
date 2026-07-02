@@ -20,12 +20,12 @@ class TestModuleData:
 
     def test_module_data_script(self):
         Script.objects.create(name="s1", content="echo", script_type="shell", team=[1])
-        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, 1)
+        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, 1, team=[1])
         assert out["count"] == 1 and out["items"][0]["name"] == "s1"
 
     def test_module_data_system_child(self):
         DangerousRule.objects.create(name="r1", pattern="rm", level=DangerousLevel.CONFIRM, team=[1])
-        out = nats_api.get_job_mgmt_module_data("system", "dangerous_rule", 1, 10, 1)
+        out = nats_api.get_job_mgmt_module_data("system", "dangerous_rule", 1, 10, 1, team=[1])
         assert out["count"] == 1
 
 
