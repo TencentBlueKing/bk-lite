@@ -5371,6 +5371,12 @@ monitor_object_plugin:
   Router Robustel SNMP:
     name: Robustel (Telegraf)
     desc: Robustel industrial cellular router / gateway SNMP collection template (enterprise 39699). This is a clean baseline template — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic. CPU, memory, temperature, fan and power-supply state are not collected (N/A) because no cross-version stable row-filter-free vendor scalar device-health gauges are currently confirmed. Cellular, WAN, VPN, SMS and trap-event tables are also not promoted to shared device-health metrics. Supported brands/models — Robustel R3000 industrial cellular routers and gateways.
+  Router Milesight SNMP:
+    name: Milesight (Telegraf)
+    desc: Milesight UR32/UR35/UR75 industrial cellular router SNMP collection template. The official manuals confirm SNMPv1/v2c/v3, SNMP Trap, MIB View, VACM and an LTE-ROUTER-MIB.txt download path. This remains a clean baseline template because no cross-model stable row-filter-free vendor scalar CPU, memory, temperature, fan or power-supply gauges are currently confirmed — it collects system uptime and IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, admin/oper status, speed, error/discard/packet counters and aggregate device traffic.
+  Router MikroTik SNMP:
+    name: MikroTik (Telegraf)
+    desc: MikroTik RouterOS Ethernet router SNMP collection template. The official RouterOS SNMP documentation publishes the MikroTik RouterOS MIB, MIKROTIK-MIB, HOST-RESOURCES-MIB and IF-MIB, and documents the mtxrHlTemperature private temperature OID. Beyond the shared Router SNMP floor, this template collects per-core CPU utilization, system memory used/total, memory utilization and board temperature. MikroTik exposes fan as raw RPM and has no cross-model standardized power-supply state OID, so fan and power health are not collected.
   Router MultiTech SNMP:
     name: MultiTech (Telegraf)
     desc: MultiTech Systems cellular router / IoT gateway SNMP collection template
