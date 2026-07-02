@@ -32,6 +32,20 @@ import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
 import { normalizeDashboardKey } from './shared/utils';
 
+const loadEnterpriseDashboards = (): ProfessionalDashboardRegistryItem[] => {
+  try {
+    // eslint-disable-next-line @typescript-eslint/no-require-imports
+    const mod = require('@/app/monitor/(enterprise)/dashboards/registry');
+    return Array.isArray(mod.ENTERPRISE_PROFESSIONAL_DASHBOARDS)
+      ? mod.ENTERPRISE_PROFESSIONAL_DASHBOARDS
+      : [];
+  } catch {
+    return [];
+  }
+};
+
+const ENTERPRISE_PROFESSIONAL_DASHBOARDS = loadEnterpriseDashboards();
+
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
   hardware: { label: '硬件设备', order: 10 },
   container: { label: '容器', order: 15 },
@@ -309,7 +323,8 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Pod',
     inheritedPermissionPath: '/monitor/view',
     component: K8sPodDashboard
-  }
+  },
+  ...ENTERPRISE_PROFESSIONAL_DASHBOARDS
 ];
 
 export const PROFESSIONAL_DASHBOARD_MAP = new Map(
