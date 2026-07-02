@@ -1,10 +1,11 @@
+from dataclasses import replace
 from unittest.mock import patch
 
 import pytest
 from ldap3.core.exceptions import LDAPBindError
 
 from apps.system_mgmt.providers.adapters.ad import ADLoginAuthAdapter, ADUserSyncAdapter
-from apps.system_mgmt.providers.adapters.common.ldap import resolve_ldap_server_target
+from apps.system_mgmt.providers.adapters.common.ldap import build_connection_config, resolve_ldap_server_target
 
 
 pytestmark = pytest.mark.unit
@@ -231,6 +232,46 @@ def test_ad_connection_tests_use_root_dse_probe(mock_probe_root_dse):
     assert login_result.success is True
     assert sync_result.success is True
     assert mock_probe_root_dse.call_count == 2
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+@patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
+def test_ad_user_sync_test_connection_succeeds_without_base_dn(
+    mock_build_connection_config,
+    mock_probe_root_dse,
+):
+    def _build(config):
+        return replace(build_connection_config(config), base_dn="")
+
+    mock_build_connection_config.side_effect = _build
+
+    result = ADUserSyncAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="user_sync",
+    )
+
+    assert result.success is True
+
+
+@patch("apps.system_mgmt.providers.adapters.ad.probe_root_dse")
+@patch("apps.system_mgmt.providers.adapters.ad.build_connection_config")
+def test_ad_login_auth_test_connection_succeeds_without_base_dn(
+    mock_build_connection_config,
+    mock_probe_root_dse,
+):
+    def _build(config):
+        return replace(build_connection_config(config), base_dn="")
+
+    mock_build_connection_config.side_effect = _build
+
+    result = ADLoginAuthAdapter.test_connection(
+        config=_base_config(),
+        provider_key="ad",
+        capability_key="login_auth",
+    )
+
+    assert result.success is True
 
 
 def test_resolve_ldap_server_target_supports_ip_only_input():

@@ -35,6 +35,18 @@ def user_sync_source(ready_integration_instance):
     )
 
 
+@pytest.fixture
+def ready_ad_integration_instance(db):
+    return IntegrationInstance.objects.create(
+        name="ad-sync",
+        provider_key="ad",
+        enabled=True,
+        status="ready",
+        capability_status={"user_sync": "ready", "login_auth": "ready"},
+        config={"host": "ldap.example.com", "port": 389, "bind_dn": "CN=svc,DC=example,DC=com"},
+    )
+
+
 @pytest.mark.django_db
 def test_sync_now_rejects_disabled_source(api_client, authenticated_user, user_sync_source):
     authenticated_user.is_superuser = True
@@ -519,3 +531,73 @@ def test_preview_uses_existing_source_without_persisting(api_client, authenticat
     assert mock_preview.called is True
     user_sync_source.refresh_from_db()
     assert user_sync_source.description == ""
+
+
+@pytest.mark.django_db
+def test_sync_source_accepts_root_dn_without_base_dn_rail(
+    api_client, authenticated_user, ready_ad_integration_instance
+):
+    """T3: AD user-sync source must accept business_config with only root_dn.
+
+    The legacy is_sub_dn(root_dn, base_dn) boundary check used
+    integration_instance.config.base_dn as a rail. With that field removed
+    from the rail, a source specifying a root_dn that is not a sub of
+    config.base_dn must still validate successfully — the rail is gone.
+    """
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    # config.base_dn is intentionally a different DN than root_dn, so the
+    # legacy is_sub_dn rail (before removal) raises ValidationError on it.
+    ready_ad_integration_instance.config = {
+        "host": "ldap.example.com",
+        "port": 389,
+        "bind_dn": "CN=svc,DC=boundary,DC=com",
+        "base_dn": "DC=boundary,DC=com",
+    }
+    ready_ad_integration_instance.save(update_fields=["config"])
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/user_sync_source/",
+        {
+            "name": "ad-source-no-rail",
+            "integration_instance": ready_ad_integration_instance.id,
+            "enabled": True,
+            "root_group_name": "AD Root",
+            "business_config": {"root_dn": "OU=A,DC=x,DC=y"},
+            "field_mapping": {},
+            "schedule_config": {"mode": "disabled", "timezone": "Asia/Shanghai"},
+        },
+        format="json",
+    )
+
+    assert response.status_code == 201, response.json()
+    created = UserSyncSource.objects.get(name="ad-source-no-rail")
+    assert created.business_config == {"root_dn": "OU=A,DC=x,DC=y"}
+
+
+@pytest.mark.django_db
+def test_sync_source_still_requires_root_dn_non_empty(
+    api_client, authenticated_user, ready_ad_integration_instance
+):
+    """T3 complementary: empty root_dn must still be rejected for AD."""
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    response = api_client.post(
+        "/api/v1/system_mgmt/user_sync_source/",
+        {
+            "name": "ad-source-empty-root",
+            "integration_instance": ready_ad_integration_instance.id,
+            "enabled": True,
+            "root_group_name": "AD Empty Root",
+            "business_config": {"root_dn": ""},
+            "field_mapping": {},
+            "schedule_config": {"mode": "disabled", "timezone": "Asia/Shanghai"},
+        },
+        format="json",
+    )
+
+    assert response.status_code == 400

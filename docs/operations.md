@@ -122,4 +122,20 @@ cd algorithms/<svc> && make install && make serving  # BentoML :3000；uv run py
 9. `stargazer` 无任务消费 → Redis/NATS 与 Server/Worker 一致,先起 Worker。
 10. K8s 采集器无数据 → 检查 `secret.env` 的 `CLUSTER_NAME/NATS_*` 与 `ca.crt`。
 
+## 6. 升级说明 / 集成中心 AD Provider `base_dn` 字段废弃 (2026-07)
+
+- **变更摘要**：集成中心 AD provider 的 `base_dn` 字段已从 manifest、adapter、serializer 与 capability contract 中整体移除；`IntegrationInstance.config.base_dn` 与 `UserSyncSource.business_config.base_dn` 不再被接受。
+- **运行时影响（breaking change）**：
+  - 旧 API 客户端若仍随 `POST / PATCH` 携带 `config.base_dn` 或 `business_config.base_dn`,`validate_user_sync_contract` 的严格白名单校验会拒绝未知字段,返回 **HTTP 400** `Unsupported user_sync business config fields: base_dn`。
+  - 正常前后端协调升级路径安全:新 manifest 驱动的表单已不再渲染 `base_dn` 字段,前端 POST 自然不会带该字段。
+- **数据层面**:
+  - **无 Django 数据迁移**。`base_dn` 是 `IntegrationInstance.config` / `UserSyncSource.business_config` 这两个 JSONField 里的一个 key,不是 DB 列;升级后存量 JSON 里残留的 `base_dn` 键是「无害的尸体」,**不会有任何代码路径再读它**。
+  - 如运维出于节省存储 / 审计可读性考虑需要清理存量 JSON 里的 `base_dn`,由运维另起一次性 `manage.py shell` 任务维护,**不在本变更的契约范围内**。
+- **升级动作**:
+  - **前端**:升级到移除 `base_dn` 表单项的版本;确认 `web/src/app/system-manager/.../user-sync` 与 i18n 文案不再出现 `catalog/baseDn`。
+  - **后端**:升级到 manifest / adapter / serializer / capability contract 一致移除 `base_dn` 读写路径的版本。
+  - **第三方客户端**(脚本 / 老版 GUI):停发 `config.base_dn` 与 `business_config.base_dn`,否则请求会被 400 拒绝。
+- **回滚**:见 spec §8;短期可借 `git revert` 回滚该 PR;存量 JSON 里残留 `base_dn` 不会因为回滚而「自动恢复成被读取状态」,DB 数据无需特殊处理。
+- **关联文档**:`docs/superpowers/specs/2026-07-02-integration-center-ad-base-dn-relocation-spec.md`(spec v0.2)、`docs/superpowers/plans/2026-07-02-integration-center-ad-base-dn-removal-plan.md`(plan v1.2,决定不再做 silent-tolerance)。
+
 > 质量门禁与代码红线见 [QUALITY_SCORE.md](../QUALITY_SCORE.md);回滚与韧性见 [RELIABILITY.md](../RELIABILITY.md)。

@@ -36,7 +36,6 @@ class ADLoginAuthAdapter(BaseLoginAuthAdapter):
                     connection_config.connection_url,
                     connection_config.bind_dn,
                     connection_config.bind_password,
-                    connection_config.base_dn,
                 ]
             ):
                 return CapabilityExecutionResult.failed_result(
@@ -150,7 +149,6 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                     connection_config.connection_url,
                     connection_config.bind_dn,
                     connection_config.bind_password,
-                    connection_config.base_dn,
                 ]
             ):
                 return CapabilityExecutionResult.failed_result(
@@ -203,7 +201,6 @@ class ADUserSyncAdapter(BaseUserSyncAdapter):
                     connection_config.connection_url,
                     connection_config.bind_dn,
                     connection_config.bind_password,
-                    connection_config.base_dn,
                 ]
             ):
                 return CapabilityExecutionResult.failed_result(

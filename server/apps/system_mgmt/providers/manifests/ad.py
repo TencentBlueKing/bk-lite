@@ -60,15 +60,6 @@ PROVIDER_MANIFEST = ProviderManifest.model_validate(
                                 "mask_strategy": "full",
                                 "reset_capabilities": ["login_auth", "user_sync"],
                             },
-                            {
-                                "key": "base_dn",
-                                "label": "目录访问边界",
-                                "field_type": "string",
-                                "required": True,
-                                "placeholder": "DC=example,DC=com",
-                                "help_text": "平台只会在该目录访问边界内访问用户和组织；同步起始目录也必须位于该边界之下。",
-                                "reset_capabilities": ["login_auth", "user_sync"],
-                            },
                         ],
                     }
                 ],

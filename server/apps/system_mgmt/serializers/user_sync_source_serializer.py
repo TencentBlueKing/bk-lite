@@ -10,7 +10,6 @@ from apps.system_mgmt.models import (
     UserSyncRun,
     UserSyncSource,
 )
-from apps.system_mgmt.providers.adapters.common.ldap import is_sub_dn
 from apps.system_mgmt.services import user_sync_service
 from apps.system_mgmt.services.capability_contract_service import (
     CapabilityContractError,
@@ -121,10 +120,6 @@ class UserSyncSourceSerializer(UsernameSerializer):
         if input_mode == "manual_input":
             business_config.pop("department_id_type", None)
             business_config[root_scope_field] = root_scope_value
-            if integration_instance.provider_key == "ad":
-                base_dn = str((integration_instance.config or {}).get("base_dn") or "").strip()
-                if base_dn and not is_sub_dn(root_scope_value, base_dn):
-                    raise serializers.ValidationError({"business_config": "Sync root must stay within the instance directory boundary"})
         else:
             runtime_service = RuntimeApplicationService()
             department_result = runtime_service.execute(
