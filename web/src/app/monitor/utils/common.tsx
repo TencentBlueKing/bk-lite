@@ -749,6 +749,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /nomadix|ag-?2000w/i, label: 'Nomadix', icon: 'mm-nomadix_nomadix' },
   { match: /airspan|air4g|air5g|airharmony|airvelocity/i, label: 'Airspan', icon: 'mm-airspan_airspan' },
   { match: /acksys|airlink|waveos/i, label: 'ACKSYS', icon: 'mm-acksys_acksys' },
+  { match: /prosoft|radiolinx|\brlx2?\b|icx35/i, label: 'ProSoft Technology', icon: 'mm-prosoft_prosoft' },
   { match: /socomec|net\s*vision/i, label: 'Socomec', icon: 'mm-socomec_socomec' },
   { match: /liebert|vertiv/i, label: 'Liebert', icon: 'mm-liebert_liebert' },
   { match: /wti|western\s*telematic/i, label: 'WTI', icon: 'mm-wti_wti' },
