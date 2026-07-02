@@ -168,7 +168,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     switch (eventType) {
       case 'RUN_STARTED':
         setIsThinking(true);
-        stateMachineRef.current?.transition('chatting');
+        stateMachineRef.current?.transitionToChatting();
         
         streamingContentRef.current = '';
         currentMessageIdRef.current = null;
@@ -797,7 +797,7 @@ export const Chat = React.forwardRef<any, ChatProps>((props, ref) => {
     setIsLoading(true);
 
     try {
-      stateMachineRef.current?.transition('chatting');
+      stateMachineRef.current?.transitionToChatting();
 
       if (sseUrl) {
         // Get current session data
