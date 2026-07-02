@@ -4657,6 +4657,9 @@ monitor_object_plugin:
   Router Milesight SNMP:
     name: Milesight（Telegraf）
     desc: Milesight UR32/UR35/UR75 工业蜂窝路由器专用 SNMP 采集模板。官方手册已确认 SNMPv1/v2c/v3、SNMP Trap、MIB View、VACM 与 LTE-ROUTER-MIB.txt 下载入口；当前未确认跨型号稳定、无需行级过滤的厂商私有 CPU、内存、温度、风扇或电源状态标量，故本模板保持干净基线，仅采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。
+  Router MikroTik SNMP:
+    name: MikroTik（Telegraf）
+    desc: MikroTik RouterOS 以太网路由器专用 SNMP 采集模板。官方 RouterOS SNMP 文档已公开 MikroTik RouterOS MIB、MIKROTIK-MIB、HOST-RESOURCES-MIB 与 IF-MIB，并给出 mtxrHlTemperature 私有温度 OID；本模板在通用 Router SNMP 底座之外额外采集每核 CPU 使用率、系统内存已用/总量、内存使用率与板载温度。MikroTik 风扇以原始 RPM 上报且电源状态无跨型号标准化状态 OID，故风扇与电源健康不采集。
   Router MultiTech SNMP:
     name: MultiTech（Telegraf）
     desc: MultiTech Systems 蜂窝路由器/IoT 网关专用 SNMP 采集模板（MultiConnect rCell 系列，IANA PEN 995）。rCell 平台 SNMP agent 为 RFC1213 兼容（标准 MIB-II + IF-MIB），故本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 rCell agent 未以可轮询标量暴露设备健康量，故不采集（N/A）；蜂窝 RSSI/信号对象跨固件未统一以可轮询标量暴露，留待后续增量。

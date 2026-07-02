@@ -89,6 +89,7 @@ export const useRouterConfig = () => {
       'Router 6WIND VSR SNMP': 'snmp_6wind',
       'Router Robustel SNMP': 'snmp_robustel',
       'Router Milesight SNMP': 'snmp_milesight',
+      'Router MikroTik SNMP': 'snmp_mikrotik_router',
       'Router Sierra Wireless SNMP': 'snmp_sierrawireless',
       'Router NEC SNMP': 'snmp_nec',
       'Router DrayTek SNMP': 'snmp_draytek',
