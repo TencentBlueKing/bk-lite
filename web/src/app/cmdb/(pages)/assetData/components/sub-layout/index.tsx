@@ -9,6 +9,7 @@ import { usePathname, useRouter, useSearchParams } from 'next/navigation';
 import { MenuItem } from '@/types/index';
 import { usePermissions } from '@/context/permissions';
 import { isConfigFileSupportedModel } from '@/app/cmdb/constants/configFile';
+import { isIpamModel } from '@/app/cmdb/constants/ipam';
 
 export interface WithSideMenuLayoutProps {
   intro?: React.ReactNode;
@@ -79,6 +80,7 @@ const SideMenuLayout: React.FC<WithSideMenuLayoutProps> = ({
     setMenuItems(updateMenuItems?.filter(menu => (
       !menu.isNotMenuItem
       && (menu.name !== 'asset_config_files' || isConfigFileSupportedModel(modelId))
+      && (menu.name !== 'asset_ip_view' || isIpamModel(modelId))
     )));
   }, [updateMenuItems, modelId]);
 

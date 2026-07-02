@@ -1,39 +1,63 @@
-"""选子网发现：范围推导 + 下发 payload 组装（单子网）+ 回调回写。规格 §13.1/§13.2/§13.4。"""
+"""IPAM 发现采集：VM 指标行回写 + 台账写回。"""
 import pytest
-from unittest.mock import patch, MagicMock
-from apps.cmdb.services.ipam_discovery import build_scan_payload
+from types import SimpleNamespace
 
 pytestmark = pytest.mark.unit
 
-SUBNETS = {
-    1: {"_id": 1, "subnet_address": "10.0.1.0", "subnet_mask": "24", "gateway": "10.0.1.1"},
-    2: {"_id": 2, "subnet_address": "192.168.0.0", "subnet_mask": "30", "gateway": ""},
-}
 
+class TestApplyIpDiscoveryVmRows:
+    def test_按任务所选子网回写_空子网也会触发离线(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
 
-class TestBuildScanPayload:
-    def test_payload单子网推导目标并排除网关(self):
-        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[1]]):
-            payload = build_scan_payload(subnet_id=1, scan_method="icmp", ports=None)
-        assert payload["model_id"] == "ip"
-        assert payload["scan_method"] == "icmp"
-        assert payload["subnet_id"] == 1
-        assert len(payload["targets"]) == 253  # /24 去掉网络/广播/网关
-        assert "10.0.1.1" not in payload["targets"]
-        assert "10.0.1.0" not in payload["targets"]
-        assert payload["callback_subject"] == "receive_ip_discovery_result"
+        task = SimpleNamespace(params={"subnet_ids": [1, 2]}, instances={})
+        calls = []
 
-    def test_subnet_id存在于payload中(self):
-        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
-            payload = build_scan_payload(subnet_id=2, scan_method="icmp", ports=None)
-        assert "subnet_id" in payload
-        assert payload["subnet_id"] == 2
-        assert len(payload["targets"]) == 2  # /30 有2个主机地址
+        def fake_apply(subnet_id, alive):
+            calls.append((str(subnet_id), alive))
+            return {"created": len(alive), "updated": 0, "offline": 1 if not alive else 0}
 
-    def test_tcp默认端口(self):
-        with patch("apps.cmdb.services.ipam_discovery._load_subnets_by_ids", return_value=[SUBNETS[2]]):
-            payload = build_scan_payload(subnet_id=2, scan_method="tcp", ports=None)
-        assert payload["ports"] == [22, 80, 443, 3389]
+        monkeypatch.setattr(ipam_discovery, "apply_discovery_result", fake_apply)
+
+        result = ipam_discovery.apply_ip_discovery_vm_rows(
+            task,
+            [
+                {
+                    "collect_status": "success",
+                    "subnet_id": "1",
+                    "ip_addr": "10.0.1.10",
+                    "mac": "AA:BB:CC:DD:EE:FF",
+                }
+            ],
+        )
+
+        assert calls == [
+            ("1", [{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}]),
+            ("2", []),
+        ]
+        assert result == {"created": 1, "updated": 0, "offline": 1}
+
+    def test_忽略失败行和缺少关键字段的行(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        task = SimpleNamespace(params={}, instances={})
+        calls = []
+        monkeypatch.setattr(
+            ipam_discovery,
+            "apply_discovery_result",
+            lambda subnet_id, alive: calls.append((subnet_id, alive)) or {"created": 0, "updated": 0, "offline": 0},
+        )
+
+        result = ipam_discovery.apply_ip_discovery_vm_rows(
+            task,
+            [
+                {"collect_status": "failed", "subnet_id": "1", "ip_addr": "10.0.1.10"},
+                {"collect_status": "success", "subnet_id": "", "ip_addr": "10.0.1.11"},
+                {"collect_status": "success", "subnet_id": "1", "ip_addr": ""},
+            ],
+        )
+
+        assert calls == []
+        assert result == {"created": 0, "updated": 0, "offline": 0}
 
 
 class TestApplyDiscoveryResult:
@@ -44,6 +68,7 @@ class TestApplyDiscoveryResult:
             {"_id": 12, "ip_addr": "10.0.1.20", "auto_collect": True, "subnet_id": "1"},
             {"_id": 13, "ip_addr": "10.0.1.30", "auto_collect": False, "subnet_id": "1"},
         ])
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": []}])
         ups, offs = [], []
         monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
         monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))
@@ -65,6 +90,7 @@ class TestApplyDiscoveryResult:
         monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [
             {"_id": 21, "ip_addr": "10.0.1.50", "subnet_id": "1"},  # 无 auto_collect 字段
         ])
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": []}])
         ups, offs = [], []
         monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
         monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))

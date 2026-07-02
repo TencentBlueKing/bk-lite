@@ -17,8 +17,6 @@ class AlertsConfig(AppConfig):
         # 检查是否正在运行迁移命令
         is_running_migrations = 'makemigrations' in sys.argv or 'migrate' in sys.argv
         if not is_running_migrations:
-            # 注册告警源适配器
-            adapters()
             import apps.alerts.nats.nats # noqa
             # 注册即时告警策略缓存失效信号
             _register_instant_cache_signals()
@@ -28,15 +26,8 @@ def adapters():
     """注册告警源适配器"""
     try:
         from apps.alerts.common.source_adapter.base import AlertSourceAdapterFactory
-        from apps.alerts.common.source_adapter.restful import RestFulAdapter
-        from apps.alerts.common.source_adapter.nats import NatsAdapter
-        from apps.alerts.common.source_adapter.prometheus import PrometheusAdapter
-        from apps.alerts.common.source_adapter.zabbix import ZabbixAdapter
 
-        AlertSourceAdapterFactory.register_adapter('restful', RestFulAdapter)
-        AlertSourceAdapterFactory.register_adapter("nats", NatsAdapter)
-        AlertSourceAdapterFactory.register_adapter("prometheus", PrometheusAdapter)
-        AlertSourceAdapterFactory.register_adapter("zabbix", ZabbixAdapter)
+        AlertSourceAdapterFactory.ensure_registered()
     except Exception as e:
         logger.error("[AlertInit] 注册告警源适配器失败: %s", e, exc_info=True)
         raise
@@ -55,7 +46,17 @@ def _register_instant_cache_signals():
         def _invalidate(sender, **kwargs):
             InstantStrategyCache.cache_clear()
 
-        post_save.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_save")
-        post_delete.connect(_invalidate, sender=AlarmStrategy, dispatch_uid="instant_cache_post_delete")
+        post_save.connect(
+            _invalidate,
+            sender=AlarmStrategy,
+            dispatch_uid="instant_cache_post_save",
+            weak=False,
+        )
+        post_delete.connect(
+            _invalidate,
+            sender=AlarmStrategy,
+            dispatch_uid="instant_cache_post_delete",
+            weak=False,
+        )
     except Exception as e:  # noqa
         logger.error("[AlertInit] 注册即时告警缓存信号失败: %s", e, exc_info=True)

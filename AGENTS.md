@@ -73,6 +73,10 @@
 
 ## Agent 执行规则（红线）
 
+- **项目快捷工作流**:
+  - `/fix` / `/修复`: 缺陷修复流程。先系统化调试确认根因,经确认后 TDD 复现与最小修复,最后真实验证并收口。
+  - `/feature` / `/功能`: 功能开发流程。先澄清与设计,必要时走 OpenSpec,多步骤实现先写计划,实现阶段 TDD,最后跑对应模块门禁。
+  - 工具入口按会话类型同步维护:`.agents/skills/source-command-*`、`.claude/commands/`、`.claude/skills/`、`.opencode/command/`、`.opencode/skills/`、`.github/prompts/`。
 - **最小 diff**:仅改需求相关文件与代码块。
 - **避免格式化污染**:只格式化触及文件,不全仓格式化。
 - **变更后必验**:至少跑对应模块最小门禁。
