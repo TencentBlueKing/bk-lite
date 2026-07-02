@@ -4654,6 +4654,9 @@ monitor_object_plugin:
   Router Robustel SNMP:
     name: Robustel（Telegraf）
     desc: Robustel 工业蜂窝路由器/网关专用 SNMP 采集模板（企业号 39699）。本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。当前未确认跨版本稳定、无需行级过滤的厂商私有 CPU、内存、温度、风扇或电源状态标量，蜂窝链路、WAN、VPN、SMS 与 Trap 事件表也不提升为共享设备健康指标，故这些指标不采集（N/A）。适用品牌型号——Robustel R3000 系列工业蜂窝路由器/网关。
+  Router Milesight SNMP:
+    name: Milesight（Telegraf）
+    desc: Milesight UR32/UR35/UR75 工业蜂窝路由器专用 SNMP 采集模板。官方手册已确认 SNMPv1/v2c/v3、SNMP Trap、MIB View、VACM 与 LTE-ROUTER-MIB.txt 下载入口；当前未确认跨型号稳定、无需行级过滤的厂商私有 CPU、内存、温度、风扇或电源状态标量，故本模板保持干净基线，仅采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。
   Router MultiTech SNMP:
     name: MultiTech（Telegraf）
     desc: MultiTech Systems 蜂窝路由器/IoT 网关专用 SNMP 采集模板（MultiConnect rCell 系列，IANA PEN 995）。rCell 平台 SNMP agent 为 RFC1213 兼容（标准 MIB-II + IF-MIB），故本模板为干净的基线——采集系统运行时长与 IF-MIB 接口指标（含 64 位 ifHCInOctets/ifHCOutOctets、admin/oper 状态、速率、错误/丢弃/包计数与整机汇总流量）。CPU、内存、温度、风扇与电源状态因 rCell agent 未以可轮询标量暴露设备健康量，故不采集（N/A）；蜂窝 RSSI/信号对象跨固件未统一以可轮询标量暴露，留待后续增量。
