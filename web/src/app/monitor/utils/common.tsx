@@ -632,6 +632,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /\bcomtrol\b|rocketlinx|pepperl\+fuchs\s+comtrol/i, label: 'Comtrol RocketLinx', icon: 'mm-comtrol_rocketlinx' },
   { match: /womaster/i, label: 'WoMaster', icon: 'mm-womaster_womaster' },
   { match: /murrelektronik/i, label: 'Murrelektronik', icon: 'mm-murrelektronik_murrelektronik' },
+  { match: /inhand/i, label: 'InHand Networks', icon: 'mm-inhand_inhand' },
   { match: /wi-?tek|wireless-tek/i, label: 'Wi-Tek', icon: 'mm-witek_witek' },
   { match: /multitech|multiconnect|\brcell\b/i, label: 'MultiTech', icon: 'mm-multitech_multitech' },
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
