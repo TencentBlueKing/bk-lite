@@ -69,7 +69,7 @@ class TestExecutorNodeStepInjection:
             "final_response": None,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(node.executor_node(state, config))
+        result = asyncio.run(node.executor_node(state, config))
 
         # Should have messages with a HumanMessage
         assert "messages" in result
@@ -88,7 +88,7 @@ class TestExecutorNodeStepInjection:
             "final_response": None,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(node.executor_node(state, config))
+        result = asyncio.run(node.executor_node(state, config))
 
         # Should only contain execution_prompt and messages keys
         # Should NOT contain original_plan, current_plan, final_response
@@ -110,7 +110,7 @@ class TestExecutorNodeStepInjection:
             "final_response": None,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(node.executor_node(state, config))
+        result = asyncio.run(node.executor_node(state, config))
 
         # Empty plan — no new messages, returns state spread
         assert "messages" not in result or len(result.get("messages", [])) == 0
@@ -125,7 +125,7 @@ class TestExecutorNodeStepInjection:
             "final_response": None,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(node.executor_node(state, config))
+        result = asyncio.run(node.executor_node(state, config))
 
         msg = result["messages"][0]
         # Should contain both the step and the original user message
@@ -142,7 +142,7 @@ class TestExecutorNodeStepInjection:
             "final_response": None,
         }
 
-        result = asyncio.get_event_loop().run_until_complete(node.executor_node(state, config))
+        result = asyncio.run(node.executor_node(state, config))
 
         assert "execution_prompt" in result
         assert "检查Pod状态" in result["execution_prompt"]

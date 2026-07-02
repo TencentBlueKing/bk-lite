@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_rubytech",
+  "plugin": "Switch RubyTech SNMP",
+  "plugin_desc": "Baseline SNMP child template for RubyTech managed Ethernet and industrial switches (enterprise PEN 5205). The available state confirms RubyTech managed switch product families and public enterprise switch subtrees, but no reliable public row-filter-free scalar CPU, memory, temperature, fan or power-supply health OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Switch SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — RubyTech managed Ethernet switches such as IGS/IPGS industrial series and related L2/L3 managed switch families.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_rubytech'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-rubytech_rubytech",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

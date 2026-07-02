@@ -1534,7 +1534,7 @@ class TestProcessMemoryWriteCacheBatching:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Batch Memory",
@@ -1553,7 +1553,7 @@ class TestProcessMemoryWriteCacheBatching:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Batch Memory",
@@ -1593,7 +1593,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1603,6 +1603,39 @@ class TestProcessMemoryWriteCacheBatching:
 
         mock_write.assert_called_once()
         assert MemoryWriteCache.objects.count() == 0
+
+    def test_flush_writes_memory_without_closing_connection_inside_atomic(self, memory_space_team):
+        from django.db import connection
+
+        from apps.opspilot.tasks import flush_memory_write_cache_for_node
+
+        MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="event-1",
+        )
+
+        close_call_count = 0
+
+        def fail_if_final_write_closes_inside_atomic():
+            nonlocal close_call_count
+            close_call_count += 1
+            if close_call_count > 1 and connection.in_atomic_block:
+                raise AssertionError("must not close DB connections inside the flush write transaction")
+
+        with patch("apps.opspilot.tasks.close_old_connections", side_effect=fail_if_final_write_closes_inside_atomic):
+            flush_memory_write_cache_for_node(
+                workflow_id=1001,
+                node_id="memory_write_node",
+                memory_space_id=memory_space_team.id,
+                title="Flush Memory",
+            )
+
+        assert MemoryWriteCache.objects.count() == 0
+        memory = Memory.objects.get(memory_space=memory_space_team, organization_id=1)
+        assert memory.title == "Flush Memory"
+        assert memory.content == "event-1"
 
     def test_flush_recovers_stale_legacy_processing_cache_without_timestamp(self, memory_space_team):
         from apps.opspilot.tasks import MEMORY_WRITE_PROCESSING_TTL_SECONDS, flush_memory_write_cache_for_node
@@ -1614,12 +1647,10 @@ class TestProcessMemoryWriteCacheBatching:
             content="event-1",
             status=MemoryWriteCache.STATUS_PROCESSING,
         )
-        MemoryWriteCache.objects.filter(id=cache.id).update(
-            created_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1)
-        )
+        MemoryWriteCache.objects.filter(id=cache.id).update(created_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1))
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1642,7 +1673,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1666,7 +1697,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1690,7 +1721,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1833,7 +1864,7 @@ class TestMemoryWriteCacheFlushTriggers:
 
         with patch("apps.opspilot.tasks.close_old_connections"):
             with patch("apps.opspilot.tasks.flush_memory_write_cache_for_node") as mock_flush:
-                with django_assert_num_queries(2):
+                with django_assert_num_queries(3):
                     flush_all_pending_memory_write_cache()
 
         assert mock_flush.call_count == 2
@@ -1857,7 +1888,7 @@ class TestMemoryWriteCacheFlushTriggers:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_personal.id,
                     title="Batch Memory",
@@ -1897,7 +1928,7 @@ class TestMemoryWriteCacheFlushTriggers:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Immediate Memory",
@@ -1926,7 +1957,7 @@ class TestMemoryWriteCacheFlushTriggers:
         mock_client.invoke.return_value = mock_response
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 with patch(
                     "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                     return_value=mock_client,
@@ -1968,7 +1999,7 @@ class TestMemoryWriteCacheFlushTriggers:
         mock_client.invoke.side_effect = Exception("summary failed")
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks.process_memory_write") as mock_write:
+            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
                 with patch(
                     "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                     return_value=mock_client,
@@ -2211,6 +2242,7 @@ def test_memory_write_cache_flush_timing_and_org(mocker):
     )
     bot = Bot.objects.create(name="b-mem", team=[5], created_by="admin")
     wf = BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [], "edges": []})
+    mocker.patch("apps.opspilot.tasks.close_old_connections")
 
     def call(content):
         process_memory_write_cache(

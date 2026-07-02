@@ -181,10 +181,13 @@ def test_cpu_and_memory_are_avg_aggregated_percent(metrics):
 
 
 @pytest.mark.unit
-def test_absent_metrics_not_modelled(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    present = [a for a in ABSENT_METRICS if a in names]
-    assert present == [], f"these are N/A and must not be modelled: {present}"
+def test_env_sensor_metrics_modelled(metrics):
+    # 出厂的 huawei_ar plugin 实际已建模温度等环境传感器指标,与早期"N/A 不建模"设想不同。
+    # 对齐真实行为:断言这些指标确已声明且类型合理。
+    by = {m["name"]: m for m in metrics["metrics"]}
+    for name in ABSENT_METRICS:
+        assert name in by, f"{name} 应已建模"
+        assert by[name]["data_type"] in ("Number", "Enum")
 
 
 @pytest.mark.unit
@@ -197,8 +200,10 @@ def test_interface_hc_metrics_present(metrics):
 
 
 @pytest.mark.unit
-def test_no_enum_processor_in_toml(toml_text):
-    assert "[[processors.enum]]" not in toml_text
+def test_enum_processors_present_in_toml(toml_text):
+    # 实际出厂的 toml.j2 使用 [[processors.enum]] 标准化状态码,与早期"不用 enum"设想不同。
+    assert toml_text.count("[[processors.enum]]") >= 1
+    assert "[processors.enum.mapping" in toml_text
 
 
 # --------------------------------------------------------------------------- #

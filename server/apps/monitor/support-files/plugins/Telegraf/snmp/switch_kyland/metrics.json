@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_kyland",
+  "plugin": "Switch Kyland SNMP",
+  "plugin_desc": "Kyland industrial managed Ethernet switch SNMP baseline child template for devices under Kyland PEN 26067. This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the enterprise root, industrial switch product surface and an official MIB entry page only, but do not prove stable shared CPU, memory, temperature, fan or power-health leaf OIDs, so private switch-management objects are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_kyland'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-kyland_kyland",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

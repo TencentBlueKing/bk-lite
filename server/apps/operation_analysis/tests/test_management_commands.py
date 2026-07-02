@@ -9,7 +9,6 @@ from django.core.management import call_command
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Directory
 
-
 # --------------------------------------------------------------------------
 # init_default_namespace
 # --------------------------------------------------------------------------
@@ -135,6 +134,21 @@ def test_init_default_groups_fills_empty_groups():
     skip.refresh_from_db()
     assert obj.groups  # 已补充默认组织
     assert skip.groups == [5]  # 非空保持不变
+
+
+@pytest.mark.django_db
+def test_init_default_groups_uses_root_default_group_when_child_has_same_name():
+    from apps.system_mgmt.models.user import Group
+
+    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    parent = Group.objects.create(name="业务组织", parent_id=0)
+    Group.objects.create(name="Default", parent_id=parent.id)
+    obj = Directory.objects.create(name="无组织目录", groups=[], created_by="system")
+
+    call_command("init_default_groups")
+
+    obj.refresh_from_db()
+    assert obj.groups == [root_default.id]
 
 
 @pytest.mark.django_db

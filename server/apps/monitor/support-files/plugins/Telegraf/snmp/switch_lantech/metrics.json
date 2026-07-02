@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_lantech",
+  "plugin": "Switch Lantech SNMP",
+  "plugin_desc": "Lantech industrial managed Ethernet switch SNMP baseline child template for devices under Lantech PEN 148305. This child template relies on the shared Switch SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the enterprise root, industrial switch product surface and official SNMP/MIB capability statements, but do not prove stable shared CPU, memory, temperature, fan or power-health leaf OIDs, so private switch-management objects are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_lantech'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-lantech_lantech",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -232,7 +232,7 @@ def test_format_excel_data_with_asso_column():
 @pytest.mark.django_db
 def test_get_check_attr_map(monkeypatch):
     monkeypatch.setattr(
-        "apps.cmdb.services.unique_rule.build_unique_rule_context",
+        "apps.cmdb.utils.Import.build_unique_rule_context",
         lambda mid: type("Ctx", (), {"unique_rules": [], "attrs_by_id": {}})(),
     )
     obj = _make([

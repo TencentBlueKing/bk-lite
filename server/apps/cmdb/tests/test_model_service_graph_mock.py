@@ -246,9 +246,16 @@ def test_create_model_uses_targeted_conflict_query(fake_graph, monkeypatch):
 
     _patch_create_model_side_effects(monkeypatch)
 
+    # create_entity 真实行为：回显已创建节点的全部属性（含 classification_id），
+    # 后续 create_edge 会读取 result['classification_id'] / result['model_id']。
     fake = fake_graph(
         "apps.cmdb.services.model",
-        create_entity={"model_id": "new_model", "model_name": "新模型", "_id": 10},
+        create_entity={
+            "model_id": "new_model",
+            "model_name": "新模型",
+            "classification_id": "infra",
+            "_id": 10,
+        },
         create_edge={},
     )
 
@@ -282,6 +289,14 @@ def test_create_model_raises_on_duplicate_model_id(fake_graph, monkeypatch):
 
     _patch_create_model_side_effects(monkeypatch)
 
+    # create_entity 的真实唯一性校验委托给 FalkorDBClient.check_unique_attr：
+    # 用真实逻辑判断冲突，避免在 fake 里重写恒真断言。
+    def _create_entity_with_real_check(label, properties, check_attr_map, exist_items, *a, **k):
+        from apps.cmdb.graph.falkordb import FalkorDBClient
+
+        FalkorDBClient.check_unique_attr(properties, check_attr_map["is_only"], exist_items)
+        return {**properties, "_id": 10}
+
     # 定点查询返回一个 model_id 相同的已有模型（模拟重复）
     fake_graph(
         "apps.cmdb.services.model",
@@ -289,6 +304,7 @@ def test_create_model_raises_on_duplicate_model_id(fake_graph, monkeypatch):
             [{"model_id": "new_model", "model_name": "其他名称", "_id": 5}],
             1,
         ),
+        create_entity=_create_entity_with_real_check,
     )
 
     data = {
@@ -308,6 +324,12 @@ def test_create_model_raises_on_duplicate_model_name(fake_graph, monkeypatch):
 
     _patch_create_model_side_effects(monkeypatch)
 
+    def _create_entity_with_real_check(label, properties, check_attr_map, exist_items, *a, **k):
+        from apps.cmdb.graph.falkordb import FalkorDBClient
+
+        FalkorDBClient.check_unique_attr(properties, check_attr_map["is_only"], exist_items)
+        return {**properties, "_id": 10}
+
     # 定点查询返回一个 model_name 相同的已有模型（模拟重复）
     fake_graph(
         "apps.cmdb.services.model",
@@ -315,6 +337,7 @@ def test_create_model_raises_on_duplicate_model_name(fake_graph, monkeypatch):
             [{"model_id": "other_id", "model_name": "新模型", "_id": 6}],
             1,
         ),
+        create_entity=_create_entity_with_real_check,
     )
 
     data = {
