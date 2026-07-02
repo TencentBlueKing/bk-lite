@@ -12,7 +12,11 @@ from apps.system_mgmt.models import (
 )
 from apps.system_mgmt.providers.adapters.common.ldap import is_sub_dn
 from apps.system_mgmt.services import user_sync_service
-from apps.system_mgmt.services.capability_contract_service import CapabilityContractError, validate_user_sync_contract
+from apps.system_mgmt.services.capability_contract_service import (
+    CapabilityContractError,
+    validate_user_sync_contract,
+    validate_user_sync_schedule_config,
+)
 from apps.system_mgmt.services.user_sync_service import (
     get_user_sync_root_department_input_mode,
     get_user_sync_root_scope_field,
@@ -148,30 +152,10 @@ class UserSyncSourceSerializer(UsernameSerializer):
         return attrs
 
     def _validate_schedule_config(self, schedule_config):
-        if schedule_config is None:
-            return
-        if not isinstance(schedule_config, dict):
-            raise serializers.ValidationError({"schedule_config": "Schedule config must be an object"})
-
-        enabled = schedule_config.get("enabled", False)
-        if not isinstance(enabled, bool):
-            raise serializers.ValidationError({"schedule_config": "Schedule enabled must be a boolean"})
-        if not enabled:
-            return
-
-        sync_time = schedule_config.get("sync_time")
-        if not isinstance(sync_time, str):
-            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"})
-        parts = sync_time.split(":")
-        if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
-            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"})
         try:
-            hour = int(parts[0])
-            minute = int(parts[1])
-        except ValueError:
-            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"}) from None
-        if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-            raise serializers.ValidationError({"schedule_config": "Schedule sync_time must be HH:mm"})
+            validate_user_sync_schedule_config(schedule_config, field="schedule_config")
+        except CapabilityContractError as exc:
+            raise serializers.ValidationError({exc.field: exc.message}) from exc
 
     def create(self, validated_data):
         instance = super().create(validated_data)
@@ -185,7 +169,7 @@ class UserSyncSourceSerializer(UsernameSerializer):
 
     def _sync_periodic_task(self, instance: UserSyncSource):
         schedule_config = instance.schedule_config or {}
-        if instance.enabled and schedule_config.get("enabled") and schedule_config.get("sync_time"):
+        if instance.enabled and schedule_config.get("mode") not in (None, "disabled"):
             instance.create_sync_periodic_task()
         else:
             instance.delete_sync_periodic_task()

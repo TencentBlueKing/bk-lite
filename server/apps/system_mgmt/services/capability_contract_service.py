@@ -3,6 +3,64 @@ from apps.system_mgmt.models import IntegrationInstanceStatusChoices
 
 USER_SYNC_PLATFORM_FIELDS = {"username", "display_name", "email", "phone"}
 SCHEDULE_SYNC_TIME_ERROR = "Schedule sync_time must be HH:mm"
+USER_SYNC_SCHEDULE_TIME_ERROR = "Schedule time must be HH:mm"
+USER_SYNC_SCHEDULE_MODE_ERROR = "Schedule mode is invalid"
+
+USER_SYNC_SCHEDULE_MODES = {"disabled", "daily", "weekly", "interval_hours"}
+USER_SYNC_INTERVAL_HOURS = {1, 2, 3, 4, 6, 8, 12}
+
+
+def _validate_hhmm(value, *, field: str, message: str):
+    if not isinstance(value, str):
+        raise CapabilityContractError(field, message)
+    parts = value.split(":")
+    if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
+        raise CapabilityContractError(field, message)
+    try:
+        hour = int(parts[0])
+        minute = int(parts[1])
+    except ValueError:
+        raise CapabilityContractError(field, message) from None
+    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
+        raise CapabilityContractError(field, message)
+
+
+def validate_user_sync_schedule_config(schedule_config, *, field: str):
+    if schedule_config is None:
+        return
+    if not isinstance(schedule_config, dict):
+        raise CapabilityContractError(field, "Schedule config must be an object")
+
+    mode = schedule_config.get("mode")
+    if mode not in USER_SYNC_SCHEDULE_MODES:
+        raise CapabilityContractError(field, USER_SYNC_SCHEDULE_MODE_ERROR)
+
+    if mode == "disabled":
+        return
+
+    if mode == "daily":
+        _validate_hhmm(schedule_config.get("time"), field=field, message=USER_SYNC_SCHEDULE_TIME_ERROR)
+        return
+
+    if mode == "weekly":
+        _validate_hhmm(schedule_config.get("time"), field=field, message=USER_SYNC_SCHEDULE_TIME_ERROR)
+        weekdays = schedule_config.get("weekdays")
+        if not isinstance(weekdays, list) or not weekdays:
+            raise CapabilityContractError(field, "Schedule weekdays must be a non-empty list")
+        normalized = []
+        for item in weekdays:
+            if not isinstance(item, int) or item < 1 or item > 7:
+                raise CapabilityContractError(field, "Schedule weekdays must contain integers from 1 to 7")
+            normalized.append(item)
+        if len(set(normalized)) != len(normalized):
+            raise CapabilityContractError(field, "Schedule weekdays must not contain duplicates")
+        return
+
+    interval_hours = schedule_config.get("interval_hours")
+    if interval_hours not in USER_SYNC_INTERVAL_HOURS:
+        raise CapabilityContractError(field, "Schedule interval_hours must be one of 1,2,3,4,6,8,12")
+
+
 
 
 class CapabilityContractError(ValueError):
@@ -59,7 +117,7 @@ def validate_integration_capability_state(manifest, capability_status=None, capa
 def validate_user_sync_contract(manifest, business_config=None, field_mapping=None, schedule_config=None):
     _validate_object("business_config", business_config, required=False)
     _validate_object("field_mapping", field_mapping, required=False)
-    validate_schedule_config(schedule_config, field="schedule_config")
+    validate_user_sync_schedule_config(schedule_config, field="schedule_config")
 
     template_key = (manifest.get_capability("user_sync").business_template if manifest.get_capability("user_sync") else "")
     template = manifest.business_templates.get(template_key) if template_key else None
@@ -129,19 +187,7 @@ def validate_schedule_config(schedule_config, *, field: str):
     if not enabled:
         return
 
-    sync_time = schedule_config.get("sync_time")
-    if not isinstance(sync_time, str):
-        raise CapabilityContractError(field, SCHEDULE_SYNC_TIME_ERROR)
-    parts = sync_time.split(":")
-    if len(parts) != 2 or len(parts[0]) != 2 or len(parts[1]) != 2:
-        raise CapabilityContractError(field, SCHEDULE_SYNC_TIME_ERROR)
-    try:
-        hour = int(parts[0])
-        minute = int(parts[1])
-    except ValueError:
-        raise CapabilityContractError(field, SCHEDULE_SYNC_TIME_ERROR) from None
-    if hour < 0 or hour > 23 or minute < 0 or minute > 59:
-        raise CapabilityContractError(field, SCHEDULE_SYNC_TIME_ERROR)
+    _validate_hhmm(schedule_config.get("sync_time"), field=field, message=SCHEDULE_SYNC_TIME_ERROR)
 
 
 def _validate_object(field: str, value, *, required: bool):

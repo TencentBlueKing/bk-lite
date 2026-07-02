@@ -106,7 +106,14 @@ class UserSyncSourceViewSet(MaintainerViewSet):
             },
         )
         if not result.success:
-            return JsonResponse({"result": False, "message": result.summary, "errors": result.errors}, status=400)
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": result.summary,
+                    "errors": [item.model_dump() for item in result.errors],
+                },
+                status=400,
+            )
 
         payload = result.payload
         all_department_id = str(payload.get("all_department_id") or "")

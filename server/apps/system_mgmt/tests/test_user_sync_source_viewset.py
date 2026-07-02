@@ -31,7 +31,7 @@ def user_sync_source(ready_integration_instance):
         root_group_name="Root A",
         business_config={"root_department_id": "0"},
         field_mapping={},
-        schedule_config={},
+        schedule_config={"mode": "disabled", "timezone": "Asia/Shanghai"},
     )
 
 
@@ -212,6 +212,65 @@ def test_create_source_logs_operation(api_client, authenticated_user, ready_inte
     assert UserSyncSource.objects.filter(name="source-b").exists() is True
     mock_log.assert_called_once()
 
+@pytest.mark.django_db
+def test_create_source_accepts_weekly_schedule_config(api_client, authenticated_user, ready_integration_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    with patch(
+        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+        return_value="manual_input",
+    ):
+        response = api_client.post(
+            "/api/v1/system_mgmt/user_sync_source/",
+            {
+                "name": "source-weekly",
+                "integration_instance": ready_integration_instance.id,
+                "enabled": True,
+                "root_group_name": "Weekly Root",
+                "business_config": {"root_department_id": "dept-root"},
+                "field_mapping": {},
+                "schedule_config": {
+                    "mode": "weekly",
+                    "time": "02:00",
+                    "weekdays": [1, 3, 5],
+                    "timezone": "Asia/Shanghai",
+                },
+            },
+            format="json",
+        )
+
+    assert response.status_code == 201
+    assert response.json()["data"]["schedule_config"]["mode"] == "weekly"
+
+
+@pytest.mark.django_db
+def test_create_source_rejects_legacy_schedule_payload(api_client, authenticated_user, ready_integration_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-Add"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    with patch(
+        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+        return_value="manual_input",
+    ):
+        response = api_client.post(
+            "/api/v1/system_mgmt/user_sync_source/",
+            {
+                "name": "source-legacy",
+                "integration_instance": ready_integration_instance.id,
+                "enabled": True,
+                "root_group_name": "Legacy Root",
+                "business_config": {"root_department_id": "dept-root"},
+                "field_mapping": {},
+                "schedule_config": {"enabled": True, "sync_time": "02:00"},
+            },
+            format="json",
+        )
+
+    assert response.status_code == 400
+
 
 @pytest.mark.django_db
 def test_update_source_logs_operation(api_client, authenticated_user, user_sync_source):
@@ -272,6 +331,38 @@ def test_department_options_rejects_manual_input_provider(api_client, authentica
 
     assert response.status_code == 400
     assert "manual_input mode" in response.json()["message"]
+
+@pytest.mark.django_db
+def test_department_options_returns_serialized_errors_when_provider_call_fails(
+    api_client, authenticated_user, ready_integration_instance
+):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    failed_result = CapabilityExecutionResult.failed_result(
+        "Feishu access token request failed",
+        code="provider.request_failed",
+        retryable=True,
+    )
+
+    with patch(
+        "apps.system_mgmt.viewset.user_sync_source_viewset.RuntimeApplicationService.execute",
+        return_value=failed_result,
+    ):
+        response = api_client.get(
+            "/api/v1/system_mgmt/user_sync_source/department_options/",
+            {
+                "integration_instance": ready_integration_instance.id,
+                "current_root_department_id": "",
+                "department_id_type": "department_id",
+            },
+        )
+
+    assert response.status_code == 400
+    body = response.json()
+    assert body["message"] == "Feishu access token request failed"
+    assert body["errors"][0]["code"] == "provider.request_failed"
 
 
 @pytest.mark.django_db

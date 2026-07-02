@@ -45,11 +45,59 @@ class UserSyncSource(MaintainerInfo, TimeInfo, PeriodicTaskUtils):
     def periodic_task_name(self):
         return f"user_sync_source_{self.id}"
 
+    def build_schedule_spec(self):
+        schedule_config = self.schedule_config or {}
+        mode = schedule_config.get("mode")
+        timezone_name = schedule_config.get("timezone") or timezone.get_current_timezone()
+
+        if mode == "disabled" or not mode:
+            return None
+
+        if mode == "daily":
+            hour, minute = map(int, str(schedule_config["time"]).split(":"))
+            return {
+                "kind": "crontab",
+                "minute": str(minute),
+                "hour": str(hour),
+                "day_of_week": "*",
+                "day_of_month": "*",
+                "month_of_year": "*",
+                "timezone": timezone_name,
+            }
+
+        if mode == "weekly":
+            hour, minute = map(int, str(schedule_config["time"]).split(":"))
+            weekdays = ",".join(str(day) for day in schedule_config["weekdays"])
+            return {
+                "kind": "crontab",
+                "minute": str(minute),
+                "hour": str(hour),
+                "day_of_week": weekdays,
+                "day_of_month": "*",
+                "month_of_year": "*",
+                "timezone": timezone_name,
+            }
+
+        if mode == "interval_hours":
+            return {
+                "kind": "crontab",
+                "minute": "0",
+                "hour": f"*/{schedule_config['interval_hours']}",
+                "day_of_week": "*",
+                "day_of_month": "*",
+                "month_of_year": "*",
+                "timezone": timezone_name,
+            }
+
+        raise ValueError(f"Unsupported user sync schedule mode: {mode}")
+
     def create_sync_periodic_task(self):
-        sync_time = (self.schedule_config or {}).get("sync_time", "00:00")
+        schedule_spec = self.build_schedule_spec()
+        if schedule_spec is None:
+            return
         task_args = json.dumps([self.id, UserSyncTriggerModeChoices.SCHEDULE], separators=(",", ":"))
         task_path = "apps.system_mgmt.tasks.execute_user_sync_source"
-        self.create_periodic_task(sync_time, self.periodic_task_name(), task_args, task_path)
+        self.create_periodic_task_from_spec(schedule_spec, self.periodic_task_name(), task_args, task_path)
 
     def delete_sync_periodic_task(self):
         self.delete_periodic_task(self.periodic_task_name())

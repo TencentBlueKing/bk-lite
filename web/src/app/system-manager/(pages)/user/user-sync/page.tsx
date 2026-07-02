@@ -43,6 +43,7 @@ import {
   type MappingRow,
   type RecordRow,
   RUN_STATUS_TEXT_STYLE,
+  getScheduleSummary,
   toFieldMappingPayload,
 } from '@/app/system-manager/utils/userSyncPageUtils';
 import { isSilentRequestError } from '@/utils/request';
@@ -146,9 +147,7 @@ const UserSyncPage: React.FC = () => {
       const latestStatusText = latestStatus
         ? t(`system.user.userSyncPage.runStatus.${latestStatus}`)
         : t('system.user.userSyncPage.noRun');
-      const syncCycleText = source.schedule_config?.enabled && source.schedule_config.sync_time
-        ? source.schedule_config.sync_time
-        : t('system.user.userSyncPage.manualSync');
+      const syncCycleText = getScheduleSummary(source.schedule_config, source.enabled, t);
 
       return {
         id: source.id,

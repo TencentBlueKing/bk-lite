@@ -1,9 +1,14 @@
 export type RunStatus = 'running' | 'success' | 'failed' | 'partial';
 export type TriggerMode = 'manual' | 'schedule';
 
+export type UserSyncScheduleMode = 'disabled' | 'daily' | 'weekly' | 'interval_hours';
+
 export interface ScheduleConfig {
-  enabled: boolean;
-  sync_time: string;
+  mode: UserSyncScheduleMode;
+  time?: string;
+  weekdays?: number[];
+  interval_hours?: 1 | 2 | 3 | 4 | 6 | 8 | 12;
+  timezone?: string;
   [key: string]: unknown;
 }
 
@@ -84,8 +89,10 @@ export interface UserSyncSourceConfigFormValues {
 
 export interface UserSyncSourceStrategyFormValues {
   enabled: boolean;
-  schedule_enabled: boolean;
-  sync_time: string;
+  schedule_mode: UserSyncScheduleMode;
+  time?: string;
+  weekdays?: number[];
+  interval_hours?: 1 | 2 | 3 | 4 | 6 | 8 | 12;
 }
 
 export interface UserSyncSourceCreateFormValues extends UserSyncSourceBasicFormValues, UserSyncSourceConfigFormValues {

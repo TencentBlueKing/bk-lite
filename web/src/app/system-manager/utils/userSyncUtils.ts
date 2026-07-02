@@ -23,21 +23,39 @@ export function normalizeUserSyncList<T>(
 }
 
 export function buildSchedulePayload(
-  scheduleEnabled: boolean,
-  syncTime: string | undefined
-): { enabled: boolean; sync_time: string } {
-  return { enabled: scheduleEnabled, sync_time: syncTime ?? '' };
+  values: UserSyncSourceStrategyFormValues
+): UserSyncSource['schedule_config'] {
+  switch (values.schedule_mode) {
+    case 'daily':
+      return { mode: 'daily', time: values.time ?? '', timezone: 'Asia/Shanghai' };
+    case 'weekly':
+      return {
+        mode: 'weekly',
+        time: values.time ?? '',
+        weekdays: values.weekdays ?? [],
+        timezone: 'Asia/Shanghai',
+      };
+    case 'interval_hours':
+      return {
+        mode: 'interval_hours',
+        interval_hours: values.interval_hours ?? 1,
+        timezone: 'Asia/Shanghai',
+      };
+    case 'disabled':
+    default:
+      return { mode: 'disabled', timezone: 'Asia/Shanghai' };
+  }
 }
 
 export function parseScheduleConfig(
-  scheduleConfig: { enabled?: boolean; sync_time?: string } | null | undefined
-): { scheduleEnabled: boolean; syncTime: string } {
-  if (!scheduleConfig) {
-    return { scheduleEnabled: false, syncTime: '' };
-  }
+  scheduleConfig: UserSyncSource['schedule_config'] | null | undefined
+): Pick<UserSyncSourceStrategyFormValues, 'schedule_mode' | 'time' | 'weekdays' | 'interval_hours'> {
+  const mode = scheduleConfig?.mode ?? 'disabled';
   return {
-    scheduleEnabled: scheduleConfig.enabled ?? false,
-    syncTime: scheduleConfig.sync_time ?? '',
+    schedule_mode: mode,
+    time: scheduleConfig?.time ?? '',
+    weekdays: Array.isArray(scheduleConfig?.weekdays) ? scheduleConfig.weekdays : [],
+    interval_hours: (scheduleConfig?.interval_hours as UserSyncSourceStrategyFormValues['interval_hours']) ?? 1,
   };
 }
 
@@ -183,10 +201,7 @@ function buildExistingSourcePayload(source: UserSyncSource): Partial<UserSyncSou
     description: source.description,
     root_group_name: source.root_group_name,
     field_mapping: { ...(source.field_mapping || {}) },
-    schedule_config: {
-      enabled: source.schedule_config?.enabled ?? false,
-      sync_time: source.schedule_config?.sync_time ?? '',
-    },
+    schedule_config: source.schedule_config ? { ...source.schedule_config } : { mode: 'disabled', timezone: 'Asia/Shanghai' },
     business_config: { ...(source.business_config || {}) },
   };
 }
@@ -216,7 +231,7 @@ export function buildCreateSyncSourcePayload(
     description: values.description,
     root_group_name: values.root_group_name,
     field_mapping: fieldMapping,
-    schedule_config: buildSchedulePayload(false, ''),
+    schedule_config: { mode: 'disabled', timezone: 'Asia/Shanghai' },
     business_config: {
       ...(values.business_config || {}),
     },
@@ -255,7 +270,7 @@ export function buildStrategyUpdatePayload(
   return {
     ...buildExistingSourcePayload(source),
     enabled: values.enabled,
-    schedule_config: buildSchedulePayload(values.schedule_enabled, values.sync_time),
+    schedule_config: buildSchedulePayload(values),
   };
 }
 

@@ -64,9 +64,26 @@ export function updateMappingRowField(
   });
 }
 
-export function getScheduleSummary(scheduleConfig: UserSyncSource['schedule_config']): string {
-  if (!scheduleConfig?.enabled || !scheduleConfig.sync_time) {
-    return '手动同步';
+export function getScheduleSummary(
+  scheduleConfig: UserSyncSource['schedule_config'],
+  enabled: boolean,
+  t: (key: string, fallback?: string) => string
+): string {
+  if (!enabled) return t('system.user.userSyncPage.scheduleSummaryStopped');
+  if (!scheduleConfig || scheduleConfig.mode === 'disabled') {
+    return t('system.user.userSyncPage.manualSync');
   }
-  return scheduleConfig.sync_time;
+  if (scheduleConfig.mode === 'daily') {
+    return t('system.user.userSyncPage.scheduleSummaryDaily').replace('{{time}}', String(scheduleConfig.time || '--'));
+  }
+  if (scheduleConfig.mode === 'weekly') {
+    const weekdayLabels = (scheduleConfig.weekdays || [])
+      .map((day) => t(`system.user.userSyncPage.weekdays.${day}`))
+      .join('、');
+    return t('system.user.userSyncPage.scheduleSummaryWeekly')
+      .replace('{{weekdays}}', weekdayLabels)
+      .replace('{{time}}', String(scheduleConfig.time || '--'));
+  }
+  return t('system.user.userSyncPage.scheduleSummaryInterval')
+    .replace('{{hours}}', String(scheduleConfig.interval_hours || '--'));
 }

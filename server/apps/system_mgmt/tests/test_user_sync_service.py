@@ -673,7 +673,81 @@ def test_serializer_accepts_business_config_without_mirroring_legacy_columns(rea
 
 
 @pytest.mark.django_db
-def test_serializer_rejects_invalid_schedule_sync_time(ready_integration_instance):
+def test_user_sync_source_builds_daily_schedule_spec(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="daily-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Daily Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"mode": "daily", "time": "02:15", "timezone": "Asia/Shanghai"},
+    )
+
+    assert source.build_schedule_spec() == {
+        "kind": "crontab",
+        "minute": "15",
+        "hour": "2",
+        "day_of_week": "*",
+        "day_of_month": "*",
+        "month_of_year": "*",
+        "timezone": "Asia/Shanghai",
+    }
+
+
+@pytest.mark.django_db
+def test_user_sync_source_builds_weekly_schedule_spec(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="weekly-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Weekly Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={
+            "mode": "weekly",
+            "time": "03:20",
+            "weekdays": [1, 3, 5],
+            "timezone": "Asia/Shanghai",
+        },
+    )
+
+    assert source.build_schedule_spec() == {
+        "kind": "crontab",
+        "minute": "20",
+        "hour": "3",
+        "day_of_week": "1,3,5",
+        "day_of_month": "*",
+        "month_of_year": "*",
+        "timezone": "Asia/Shanghai",
+    }
+
+
+@pytest.mark.django_db
+def test_user_sync_source_builds_interval_hours_schedule_spec_from_midnight_alignment(ready_integration_instance):
+    source = UserSyncSource.objects.create(
+        name="interval-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Interval Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"mode": "interval_hours", "interval_hours": 6, "timezone": "Asia/Shanghai"},
+    )
+
+    assert source.build_schedule_spec() == {
+        "kind": "crontab",
+        "minute": "0",
+        "hour": "*/6",
+        "day_of_week": "*",
+        "day_of_month": "*",
+        "month_of_year": "*",
+        "timezone": "Asia/Shanghai",
+    }
+
+
+@pytest.mark.django_db
+def test_serializer_rejects_legacy_schedule_payload(ready_integration_instance):
     with patch(
         "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
         return_value="manual_input",
@@ -693,6 +767,31 @@ def test_serializer_rejects_invalid_schedule_sync_time(ready_integration_instanc
         assert serializer.is_valid() is False
 
     assert "schedule_config" in serializer.errors
+
+@pytest.mark.django_db
+def test_serializer_accepts_weekly_schedule_config(ready_integration_instance):
+    with patch(
+        "apps.system_mgmt.serializers.user_sync_source_serializer.get_user_sync_root_department_input_mode",
+        return_value="manual_input",
+    ):
+        serializer = UserSyncSourceSerializer(
+            data={
+                "name": "source-weekly-schedule",
+                "integration_instance": ready_integration_instance.id,
+                "enabled": True,
+                "root_group_name": "Weekly Schedule Root",
+                "business_config": {"root_department_id": "0"},
+                "field_mapping": {},
+                "schedule_config": {
+                    "mode": "weekly",
+                    "time": "02:00",
+                    "weekdays": [1, 3, 5],
+                    "timezone": "Asia/Shanghai",
+                },
+            }
+        )
+
+        assert serializer.is_valid(), serializer.errors
 
 
 @pytest.mark.django_db
@@ -1473,14 +1572,22 @@ def test_user_sync_source_periodic_task_args_are_json_serialized(ready_integrati
         root_group_name="Periodic Json Root",
         business_config={"root_department_id": "0"},
         field_mapping={},
-        schedule_config={"sync_time": "03:30"},
+        schedule_config={"mode": "daily", "time": "03:30", "timezone": "Asia/Shanghai"},
     )
 
-    with patch.object(source, "create_periodic_task") as mock_create:
+    with patch.object(source, "create_periodic_task_from_spec") as mock_create:
         source.create_sync_periodic_task()
 
     mock_create.assert_called_once_with(
-        "03:30",
+        {
+            "kind": "crontab",
+            "minute": "30",
+            "hour": "3",
+            "day_of_week": "*",
+            "day_of_month": "*",
+            "month_of_year": "*",
+            "timezone": "Asia/Shanghai",
+        },
         source.periodic_task_name(),
         f'[{source.id},"{UserSyncTriggerModeChoices.SCHEDULE}"]',
         "apps.system_mgmt.tasks.execute_user_sync_source",
