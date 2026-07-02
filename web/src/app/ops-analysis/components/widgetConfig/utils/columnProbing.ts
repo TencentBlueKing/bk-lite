@@ -90,39 +90,6 @@ export const mergeDetectedFieldsWithSchema = (
 };
 
 /**
- * Merge probed default columns with current columns
- * Preserves custom columns and updates default columns
- */
-export const mergeProbedDefaultsWithCurrentColumns = (
-  probedColumns: DisplayColumnRow[],
-  currentColumns: DisplayColumnRow[],
-): DisplayColumnRow[] => {
-  const existingDefaultMap = new Map(
-    currentColumns.filter((col) => col.isDefault).map((col) => [col.key, col]),
-  );
-
-  const mergedDefaults = probedColumns.map((col, idx) => {
-    const existing = existingDefaultMap.get(col.key);
-    return {
-      ...col,
-      id: existing?.id || col.id,
-      visible: existing?.visible ?? col.visible,
-      order: idx,
-      isDefault: true,
-    };
-  });
-
-  const customColumns = currentColumns
-    .filter((col) => !col.isDefault)
-    .map((col, idx) => ({
-      ...col,
-      order: mergedDefaults.length + idx,
-    }));
-
-  return [...mergedDefaults, ...customColumns];
-};
-
-/**
  * Create a new default display column
  */
 export const createDefaultDisplayColumn = (

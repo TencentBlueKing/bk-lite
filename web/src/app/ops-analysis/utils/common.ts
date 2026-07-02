@@ -1,6 +1,4 @@
 // 架构图相关工具函数
-import type { IconWithSize } from '@/app/ops-analysis/types';
-
 export const svgToBase64 = async (svgPath: string): Promise<string> => {
   try {
     const response = await fetch(`/assets/icons/${svgPath}.svg`);
@@ -14,9 +12,3 @@ export const svgToBase64 = async (svgPath: string): Promise<string> => {
     return `data:image/svg+xml;base64,${fallbackBase64}`;
   }
 };
-
-export const patchIconSize = (icon: IconWithSize) => ({
-  ...icon,
-  width: icon.width || icon.size || 48,
-  height: icon.height || icon.size || 48,
-});

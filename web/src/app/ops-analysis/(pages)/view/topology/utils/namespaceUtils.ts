@@ -70,15 +70,6 @@ export const collectNamespaceIdsFromNodes = (
   return namespaceIds;
 };
 
-export const datasourceSupportsNamespace = (
-  dataSource: DatasourceItem | undefined,
-  namespaceId: number | undefined,
-): boolean => {
-  if (!dataSource || namespaceId === undefined) return true;
-  if (!dataSource.namespaces || dataSource.namespaces.length === 0) return true;
-  return dataSource.namespaces.includes(namespaceId);
-};
-
 /**
  * 将 X6 图表节点转换为 LayoutItem 格式
  * 用于 UnifiedFilterConfigModal 组件

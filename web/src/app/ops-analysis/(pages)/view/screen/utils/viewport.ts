@@ -32,13 +32,6 @@ const cloneViewport = (
   background: viewport.background ? { ...viewport.background } : undefined,
 });
 
-export const DEFAULT_SCREEN_VIEW_SETS: ScreenViewSets = {
-  viewport: cloneViewport(DEFAULT_SCREEN_VIEWPORT),
-  items: [],
-  decorations: { ...DEFAULT_SCREEN_DECORATIONS },
-  filters: [],
-};
-
 export const SCREEN_VIEWPORT_PRESETS: ScreenViewportPreset[] = [
   { key: '1920x1080', label: '1920 × 1080', width: 1920, height: 1080 },
   { key: '1366x768', label: '1366 × 768', width: 1366, height: 768 },
