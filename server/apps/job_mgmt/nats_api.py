@@ -66,8 +66,25 @@ def get_job_mgmt_module_list():
 
 
 @nats_client.register
-def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
-    """获取作业管理模块数据"""
+def get_job_mgmt_module_data(module, child_module, page, page_size, group_id, *, team=None):
+    """获取作业管理模块数据。
+
+    调用方必须在消息体中通过 keyword 参数 ``team`` 声明自己能访问的团队 ID 列表，
+    服务端校验 ``group_id`` 是否落在该白名单内，避免任意内网节点枚举跨团队数据
+    （Issue #3430 / BL-NEW-002 系列修复）。
+
+    Args:
+        module: 顶层模块名（script/playbook/target/job_execution/scheduled_task/system）
+        child_module: system 模块下的子模块（dangerous_rule/dangerous_path）
+        page: 页码（从 1 开始）
+        page_size: 每页条目数
+        group_id: 目标团队 ID
+        team: 调用方声明自己有权限访问的团队 ID 列表（必传；空/缺省 → 拒绝）
+
+    Returns:
+        成功：``{"count": <int>, "items": [{"id", "name"}, ...]}``
+        失败：``{"result": False, "message": <错误原因>}``
+    """
     model_map = {
         "script": Script,
         "playbook": Playbook,
@@ -80,10 +97,22 @@ def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
         "dangerous_path": DangerousPath,
     }
 
+    # ── 防 KeyError：未知 module/child_module 返回明确错误而非崩溃 ─────────
     if module != "system":
-        model = model_map[module]
+        model = model_map.get(module)
+        if model is None:
+            return {"result": False, "message": f"Unknown module: {module}"}
     else:
-        model = system_model_map[child_module]
+        model = system_model_map.get(child_module)
+        if model is None:
+            return {"result": False, "message": f"Unknown child_module: {child_module}"}
+
+    # ── 鉴权：调用方声明的 team 必须非空，且 group_id 必须落在白名单内 ─────
+    authorized_team_ids = normalize_team(team)
+    if not authorized_team_ids:
+        return {"result": False, "message": "team 不能为空"}
+    if int(group_id) not in authorized_team_ids:
+        return {"result": False, "message": "无权访问该团队数据"}
 
     queryset = model.objects.filter(team__contains=int(group_id))
 
