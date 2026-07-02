@@ -61,7 +61,6 @@ const ICON_LIST = [
   'cc-weblogic_WebLogic',
   'cc-websphere_websphere',
   'cc-iis_IIS',
-  'cc-ibmmq_IBM MQ',
   'mm-activemq_ActiveMQ',
   'mm-apache_Apache',
   'mm-cvm_云服务器',

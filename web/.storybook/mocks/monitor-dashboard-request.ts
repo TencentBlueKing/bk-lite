@@ -225,7 +225,6 @@ const objectInstances: Record<string, Array<Record<string, unknown>>> = {
   apache: [{ instance_id: 'apache-web', instance_name: 'apache-web', host: '127.0.0.1', port: 8080, instance_id_values: ['apache-web'], interval: 60 }],
   consul: [{ instance_id: 'consul-server', instance_name: 'consul-server', host: '127.0.0.1', port: 8500, instance_id_values: ['consul-server'], interval: 60 }],
   rabbitmq: [{ instance_id: 'rabbitmq-main', instance_name: 'rabbitmq-main', host: '127.0.0.1', port: 15672, instance_id_values: ['rabbitmq-main'], interval: 60 }],
-  ibmmq: [{ instance_id: 'ibmmq-qm1', instance_name: 'ibmmq-qm1', host: '127.0.0.1', port: 9443, instance_id_values: ['ibmmq-qm1'], interval: 60 }],
   tomcat: [{ instance_id: 'tomcat-app', instance_name: 'tomcat-app', host: '127.0.0.1', port: 8080, instance_id_values: ['tomcat-app'], interval: 60 }],
   zookeeper: [{ instance_id: 'zookeeper-main', instance_name: 'zookeeper-main', host: '127.0.0.1', port: 2181, instance_id_values: ['zookeeper-main'], interval: 60 }],
   'k8s-cluster': [{ instance_id: 'orbstack', instance_name: 'orbstack', instance_id_values: ['orbstack'], interval: 60 }],

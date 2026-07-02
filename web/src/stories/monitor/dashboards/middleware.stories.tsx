@@ -4,7 +4,6 @@ import ActiveMQDashboard from '@/app/monitor/dashboards/objects/activemq';
 import ApacheDashboard from '@/app/monitor/dashboards/objects/apache';
 import ConsulDashboard from '@/app/monitor/dashboards/objects/consul';
 import DockerDashboard from '@/app/monitor/dashboards/objects/docker';
-import IBMMQDashboard from '@/app/monitor/dashboards/objects/ibmmq';
 import NginxDashboard from '@/app/monitor/dashboards/objects/nginx';
 import RabbitMQDashboard from '@/app/monitor/dashboards/objects/rabbitmq';
 import TomcatDashboard from '@/app/monitor/dashboards/objects/tomcat';
@@ -124,18 +123,6 @@ export const RabbitMQ: Story = {
     instanceId: 'rabbitmq-main',
     instanceName: 'rabbitmq-main',
     component: RabbitMQDashboard
-  }
-};
-
-export const IBMMQ: Story = {
-  name: 'IBM MQ',
-  args: {
-    dashboardKey: 'ibmmq',
-    objectName: 'IBMMQ',
-    objectDisplayName: 'IBM MQ',
-    instanceId: 'ibmmq-qm1',
-    instanceName: 'ibmmq-qm1',
-    component: IBMMQDashboard
   }
 };
 
