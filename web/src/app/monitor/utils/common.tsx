@@ -630,6 +630,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /asterfusion|asternos/i, label: 'AsterFusion', icon: 'mm-asterfusion_asterfusion' },
   { match: /\batop\b|nimbl/i, label: 'ATOP', icon: 'mm-atop_atop' },
   { match: /\bcomtrol\b|rocketlinx|pepperl\+fuchs\s+comtrol/i, label: 'Comtrol RocketLinx', icon: 'mm-comtrol_rocketlinx' },
+  { match: /womaster/i, label: 'WoMaster', icon: 'mm-womaster_womaster' },
   { match: /wi-?tek|wireless-tek/i, label: 'Wi-Tek', icon: 'mm-witek_witek' },
   { match: /multitech|multiconnect|\brcell\b/i, label: 'MultiTech', icon: 'mm-multitech_multitech' },
   { match: /\bavici\b/i, label: 'Avici', icon: 'mm-avici_avici' },
