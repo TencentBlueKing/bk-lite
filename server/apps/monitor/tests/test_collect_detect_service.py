@@ -25,6 +25,12 @@ def test_monitor_plugin_defaults_collect_detect_disabled():
     assert plugin.support_collect_detect is False
 
 
+def test_monitor_tasks_package_registers_collect_detect_task():
+    from apps.monitor import tasks
+
+    assert tasks.run_collect_detect_task.name == "apps.monitor.tasks.collect_detect.run_collect_detect_task"
+
+
 @pytest.mark.django_db
 def test_monitor_plugin_serializer_exposes_collect_detect_capability():
     plugin = MonitorPlugin.objects.create(
@@ -151,7 +157,7 @@ def test_render_preflight_telegraf_config_replaces_real_outputs():
 def test_build_telegraf_once_command_uses_temp_config_and_cleanup():
     command = build_telegraf_once_command("/tmp/bklite-detect.toml")
 
-    assert "telegraf --once --config /tmp/bklite-detect.toml" in command
+    assert "/opt/fusion-collectors/bin/telegraf --once --config /tmp/bklite-detect.toml" in command
     assert "rm -f /tmp/bklite-detect.toml" in command
 
 
@@ -172,6 +178,15 @@ def test_sanitize_execution_result_redacts_and_truncates_output():
     assert "top-secret" not in result["stdout"]
     assert "abc123" not in result["stderr"]
     assert result["stdout_truncated"] is True
+
+
+def test_sanitize_execution_result_accepts_string_stdout():
+    result = sanitize_execution_result("cpu,host=node usage_idle=99")
+
+    assert result["success"] is True
+    assert result["stdout"] == "cpu,host=node usage_idle=99"
+    assert result["stderr"] == ""
+    assert result["exit_code"] == 0
 
 
 @pytest.mark.django_db
