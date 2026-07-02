@@ -6,6 +6,7 @@ nats handler 直接可调用（@nats_client.register 返回原函数）。
 import types
 from unittest.mock import MagicMock, patch
 
+import nats_client
 import pytest
 
 from apps.system_mgmt import nats_api
@@ -22,6 +23,62 @@ from apps.system_mgmt.models import (
 from apps.system_mgmt.models.channel import ChannelChoices
 
 pytestmark = pytest.mark.django_db
+
+
+def test_nats_api_compat_exports_all_nats_entrypoints():
+    expected_entrypoints = {
+        "get_pilot_permission_by_token",
+        "verify_token",
+        "revoke_token",
+        "get_user_menus",
+        "get_client",
+        "get_client_detail",
+        "get_group_users",
+        "get_group_users_scoped",
+        "get_authorized_groups_scoped",
+        "get_all_users",
+        "search_groups",
+        "search_users",
+        "init_user_default_attributes",
+        "create_guest_role",
+        "create_default_rule",
+        "get_all_groups",
+        "get_channel_detail",
+        "search_channel_list",
+        "search_channel_list_scoped",
+        "send_msg_with_channel",
+        "_list_opspilot_nats_channels",
+        "sync_opspilot_nats_channels",
+        "delete_opspilot_nats_channels",
+        "search_opspilot_nats_channels",
+        "send_email_to_receiver",
+        "get_user_rules",
+        "get_user_rules_by_module",
+        "get_user_rules_by_app",
+        "get_group_id",
+        "login",
+        "reset_pwd",
+        "wechat_user_register",
+        "get_wechat_settings",
+        "generate_qr_code_by_user_id",
+        "verify_otp_code",
+        "verify_otp_code_by_user_id",
+        "verify_otp_login",
+        "get_namespace_by_domain",
+        "bk_lite_user_login",
+        "get_login_module_domain_list",
+        "delete_rules",
+        "verify_bk_token",
+        "save_error_log",
+        "save_operation_log",
+    }
+    registered_entrypoints = expected_entrypoints - {"_list_opspilot_nats_channels"}
+
+    exported_entrypoints = {name for name in expected_entrypoints if callable(getattr(nats_api, name, None))}
+    actual_registered_entrypoints = {item["name"] for item in nats_client.default_registry.registry.values()}
+
+    assert exported_entrypoints == expected_entrypoints
+    assert registered_entrypoints <= actual_registered_entrypoints
 
 
 # ---------------------------------------------------------------------------
