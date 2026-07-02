@@ -13,14 +13,30 @@ import EllipsisWithTooltip from '@/components/ellipsis-with-tooltip';
 import PermissionWrapper from '@/components/permission';
 import useBtnPermissions from '@/hooks/usePermissions';
 import type { DataNode } from 'antd/lib/tree';
-import { Form } from 'antd';
+import {
+  Button,
+  Dropdown,
+  Empty,
+  Form,
+  Input,
+  Menu,
+  Modal,
+  Spin,
+  Tree,
+} from 'antd';
 import { useTranslation } from '@/utils/i18n';
-import { Input, Button, Modal, Dropdown, Menu, Tree, Empty, Spin } from 'antd';
 import { useSearchParams } from 'next/navigation';
 import { useDirectoryApi } from '@/app/ops-analysis/api/index';
 import { useUserInfoContext } from '@/context/userInfo';
 import { ExportModal, ImportModal } from './importExport';
 import { ObjectType } from '@/app/ops-analysis/api/importExport';
+import { buildDefaultScreenViewSets } from '@/app/ops-analysis/(pages)/view/screen/utils/viewport';
+import {
+  CANVAS_TYPES,
+  getCanvasTypeMeta,
+  isCanvasType,
+  type CanvasType,
+} from '@/app/ops-analysis/constants/canvasTypes';
 import {
   SidebarProps,
   SidebarRef,
@@ -36,11 +52,17 @@ import {
   BarChartOutlined,
   FolderOutlined,
   ApartmentOutlined,
+  DesktopOutlined,
+  FileTextOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
   ({ onSelect, onDataUpdate }, ref) => {
     const [form] = Form.useForm();
+    const selectedCanvasType = Form.useWatch('canvasType', form) as
+      | CanvasType
+      | undefined;
     const { t } = useTranslation();
     const searchParams = useSearchParams();
     const { selectedGroup } = useUserInfoContext();
@@ -62,6 +84,9 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const [exportItem, setExportItem] = useState<DirItem | null>(null);
     const [importModalVisible, setImportModalVisible] = useState(false);
     const [importTargetDir, setImportTargetDir] = useState<DirItem | null>(null);
+    const activeCanvasType =
+      selectedCanvasType || (isCanvasType(newItemType) ? newItemType : undefined);
+    const isCreatingCanvas = modalAction !== 'edit' && isCanvasType(newItemType);
 
     useImperativeHandle(
       ref,
@@ -109,6 +134,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         name: defaultValue,
         desc: action === 'edit' && dir ? dir.desc : '',
         groups: initialGroups,
+        canvasType: isCanvasType(itemType) ? itemType : undefined,
       };
 
       form.setFieldsValue(formData);
@@ -126,6 +152,13 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     const handleSubmit = async (values: FormValues) => {
       setSubmitLoading(true);
       try {
+        const targetItemType =
+          modalAction === 'edit'
+            ? newItemType
+            : isCanvasType(values.canvasType)
+              ? values.canvasType
+              : newItemType;
+
         if (modalAction === 'edit') {
           if (!currentDir) return;
           const updateData = {
@@ -148,18 +181,19 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
             desc: values.desc,
             groups: values.groups,
           };
+          if (targetItemType === 'screen') {
+            itemData.view_sets = buildDefaultScreenViewSets();
+          }
           if (modalAction === 'addChild' && currentDir?.data_id) {
-            if (
-              ['dashboard', 'topology', 'architecture'].includes(newItemType)
-            ) {
+            if (isCanvasType(targetItemType)) {
               itemData.directory = parseInt(currentDir.data_id, 10);
-            } else if (newItemType === 'directory') {
+            } else if (targetItemType === 'directory') {
               itemData.parent = parseInt(currentDir.data_id, 10);
             }
-          } else if (newItemType === 'directory') {
+          } else if (targetItemType === 'directory') {
             itemData.parent = null;
           }
-          await createItem(newItemType, itemData);
+          await createItem(targetItemType, itemData);
         }
         handleModalCancel();
         await loadDirectories();
@@ -212,12 +246,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     };
 
     const mapTypeToObjectType = (type: DirectoryType): ObjectType | null => {
-      const typeMap: Record<string, ObjectType> = {
-        dashboard: 'dashboard',
-        topology: 'topology',
-        architecture: 'architecture',
-      };
-      return typeMap[type] || null;
+      return getCanvasTypeMeta(type)?.objectType || null;
     };
 
     const handleExport = (item: DirItem) => {
@@ -231,18 +260,32 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
     };
 
     const getDirectoryIcon = (type: DirectoryType) => {
-      switch (type) {
-        case 'dashboard':
-          return <BarChartOutlined className="mr-1 text-purple-600" />;
-        case 'topology':
-          return <Icon type="tuoputu" className="mr-1" />;
-        case 'architecture':
-          return <ApartmentOutlined className="mr-1 text-green-600 text-sm" />;
-        case 'directory':
-          return <FolderOutlined className="mr-1" />;
-        default:
-          return '';
+      const meta = getCanvasTypeMeta(type);
+      if (!meta) {
+        return type === 'directory' ? <FolderOutlined className="mr-1" /> : '';
       }
+
+      const className = 'mr-1 text-sm';
+      const iconMap = {
+        dashboard: <BarChartOutlined className={`${className} text-purple-600`} />,
+        topology: <Icon type="tuoputu" className="mr-1" />,
+        architecture: <ApartmentOutlined className={`${className} text-green-600`} />,
+        screen: <DesktopOutlined className={`${className} text-cyan-600`} />,
+        report: <FileTextOutlined className={`${className} text-orange-600`} />,
+      };
+      return iconMap[meta.icon];
+    };
+
+    const renderCanvasTypeIcon = (type: CanvasType) => {
+      const className = 'text-base';
+      const iconMap = {
+        dashboard: <BarChartOutlined className={`${className} text-purple-600`} />,
+        topology: <Icon type="tuoputu" className={`${className} text-blue-600`} />,
+        architecture: <ApartmentOutlined className={`${className} text-green-600`} />,
+        screen: <DesktopOutlined className={`${className} text-cyan-600`} />,
+        report: <FileTextOutlined className={`${className} text-orange-600`} />,
+      };
+      return iconMap[type];
     };
 
     const hasChildren = (item: DirItem): boolean => {
@@ -252,9 +295,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
 
       return item.children.some(
         (child) =>
-          child.type === 'dashboard' ||
-          child.type === 'topology' ||
-          child.type === 'architecture' ||
+          isCanvasType(child.type) ||
           (child.type === 'directory' && hasChildren(child))
       );
     };
@@ -304,14 +345,13 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           {isGroup && (
             <>
               <Menu.Item
-                key="addDashboard"
+                key="add-canvas"
                 onClick={(e) => {
                   stopEventPropagation(e.domEvent);
                   if (!hasPermission(['AddChart'])) return;
-                  setNewItemType('dashboard');
                   showModal(
                     'addChild',
-                    t('opsAnalysisSidebar.addDash'),
+                    t('opsAnalysisSidebar.addCanvas'),
                     '',
                     item,
                     'dashboard',
@@ -319,45 +359,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 }}
               >
                 <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addDash')}
-                </PermissionWrapper>
-              </Menu.Item>
-              <Menu.Item
-                key="addTopology"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  setNewItemType('topology');
-                  showModal(
-                    'addChild',
-                    t('opsAnalysisSidebar.addTopo'),
-                    '',
-                    item,
-                    'topology',
-                  );
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addTopo')}
-                </PermissionWrapper>
-              </Menu.Item>
-              <Menu.Item
-                key="addArchitecture"
-                onClick={(e) => {
-                  stopEventPropagation(e.domEvent);
-                  if (!hasPermission(['AddChart'])) return;
-                  setNewItemType('architecture');
-                  showModal(
-                    'addChild',
-                    t('opsAnalysisSidebar.addArch'),
-                    '',
-                    item,
-                    'architecture',
-                  );
-                }}
-              >
-                <PermissionWrapper requiredPermissions={['AddChart']}>
-                  {t('opsAnalysisSidebar.addArch')}
+                  {t('opsAnalysisSidebar.addCanvas')}
                 </PermissionWrapper>
               </Menu.Item>
               <Menu.Item
@@ -405,11 +407,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
                 'edit',
                 item.type === 'directory'
                   ? t('opsAnalysisSidebar.editGroup')
-                  : item.type === 'dashboard'
-                    ? t('opsAnalysisSidebar.editDash')
-                    : item.type === 'topology'
-                      ? t('opsAnalysisSidebar.editTopo')
-                      : t('opsAnalysisSidebar.editArch'),
+                  : t(getCanvasTypeMeta(item.type)?.editLabelKey || 'common.edit'),
                 item.name,
                 item,
                 item.type,
@@ -582,9 +580,7 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
       if (
         item &&
         item.type === urlType &&
-        (item.type === 'dashboard' ||
-          item.type === 'topology' ||
-          item.type === 'architecture')
+        isCanvasType(item.type)
       ) {
         setSelectedKeys([item.id]);
         if (onSelect) {
@@ -666,14 +662,96 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
         <Modal
           title={modalTitle}
           open={modalVisible}
+          centered
+          width={isCreatingCanvas ? 760 : 520}
           okText={t('common.confirm')}
           cancelText={t('common.cancel')}
-          style={{ top: '35%' }}
           onOk={handleModalOk}
           onCancel={handleModalCancel}
           confirmLoading={submitLoading}
         >
-          <Form form={form} className="mt-5" labelCol={{ span: 5 }}>
+          <Form form={form} className="mt-5" labelCol={{ span: 4 }}>
+            {isCreatingCanvas && (
+              <Form.Item
+                label={t('opsAnalysisSidebar.canvasType')}
+                required
+              >
+                <Form.Item
+                  name="canvasType"
+                  noStyle
+                  rules={[{ required: true, message: t('common.selectMsg') }]}
+                >
+                  <Input type="hidden" />
+                </Form.Item>
+                <div
+                  role="radiogroup"
+                  aria-label={t('opsAnalysisSidebar.canvasType')}
+                  className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3"
+                >
+                  {CANVAS_TYPES.map((canvasType) => {
+                    const meta = getCanvasTypeMeta(canvasType)!;
+                    const selected = activeCanvasType === canvasType;
+
+                    return (
+                      <button
+                        key={canvasType}
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          form.setFieldValue('canvasType', canvasType);
+                          form.validateFields(['canvasType']).catch(() => undefined);
+                          setNewItemType(canvasType);
+                        }}
+                        className={`group relative flex min-h-[104px] w-full cursor-pointer overflow-hidden rounded-md border px-3 py-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
+                          selected
+                            ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-white shadow-[0_2px_8px_rgba(37,99,235,0.08)]'
+                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-slate-50 hover:shadow-[0_2px_6px_rgba(15,23,42,0.05)]'
+                        }`}
+                      >
+                        <span
+                          aria-hidden="true"
+                          className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full text-[10px] transition-all ${
+                            selected
+                              ? 'scale-100 bg-blue-600 text-white opacity-100 shadow-sm'
+                              : 'scale-90 bg-gray-100 text-transparent opacity-0'
+                          }`}
+                        >
+                          <CheckOutlined />
+                        </span>
+                        <span className="block min-w-0 pr-6">
+                          <span className="flex items-center gap-2.5">
+                            <span
+                              className={`flex h-8 w-8 flex-none items-center justify-center rounded-md border transition-colors ${
+                                selected
+                                  ? 'border-blue-100 bg-white shadow-sm'
+                                  : 'border-gray-100 bg-gray-50 group-hover:border-blue-100 group-hover:bg-white'
+                              }`}
+                            >
+                              {renderCanvasTypeIcon(canvasType)}
+                            </span>
+                            <span
+                              className={`block text-sm font-semibold ${
+                                selected ? 'text-blue-700' : 'text-gray-900'
+                              }`}
+                            >
+                              {t(meta.nameKey)}
+                            </span>
+                          </span>
+                          <span
+                            className={`mt-2 block text-xs leading-5 ${
+                              selected ? 'text-slate-600' : 'text-gray-500'
+                            }`}
+                          >
+                            {t(meta.descriptionKey)}
+                          </span>
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </Form.Item>
+            )}
             <Form.Item
               name="name"
               label={t('opsAnalysisSidebar.nameLabel')}

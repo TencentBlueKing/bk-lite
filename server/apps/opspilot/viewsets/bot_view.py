@@ -22,6 +22,7 @@ from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.opspilot.utils.workflow_sensitive_config import merge_masked_workflow_sensitive_config
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -200,6 +201,7 @@ class BotViewSet(PinMixin, AuthViewSet):
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
             old_flow_json = flow.flow_json
+            workflow_data = merge_masked_workflow_sensitive_config(workflow_data, old_flow_json)
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
             flow.save()
@@ -572,9 +574,7 @@ class BotViewSet(PinMixin, AuthViewSet):
         for row in title_rows:
             row_day = row["conversation_time"].date()
             title_key = (row["bot_id"], row["user_id"], row_day)
-            if title_key in title_keys and (
-                title_key not in title_map or row["conversation_time"] < title_map[title_key][0]
-            ):
+            if title_key in title_keys and (title_key not in title_map or row["conversation_time"] < title_map[title_key][0]):
                 title_map[title_key] = (row["conversation_time"], row["conversation_content"])
 
         for entry in page_entries:

@@ -28,7 +28,6 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
     const { t } = useTranslation();
     const authContext = useAuth();
     const token = authContext?.token || null;
-    const tokenRef = useRef(token);
     const isStreaming = useRef(false);
     const [isFullscreen, setIsFullscreen] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
@@ -113,6 +112,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       // 先停止当前流和清除日志
       await stopLogStream();
       setLogs([]);
+      if (!token) return;
       if (isStreaming.current) return;
       try {
         isStreaming.current = true;
@@ -135,7 +135,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
           {
             method: 'GET',
             headers: {
-              Authorization: `Bearer ${tokenRef.current}`,
+              Authorization: `Bearer ${token}`,
             },
             signal: abortController.signal,
           }
@@ -206,7 +206,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
         }
         abortControllerRef.current = null;
       }
-    }, [query, isStreaming.current]);
+    }, [query, stopLogStream, t, fetchData, token]);
 
     // 通过 ref 暴露方法
     useImperativeHandle(
@@ -230,7 +230,7 @@ const LogTerminal = forwardRef<LogTerminalRef, LogTerminalProps>(
       return () => {
         stopLogStream();
       };
-    }, [stopLogStream, isLoading]);
+    }, [stopLogStream, isLoading, token]);
 
     // 监听全屏状态变化
     useEffect(() => {

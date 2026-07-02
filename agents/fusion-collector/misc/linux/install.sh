@@ -10,7 +10,7 @@ show_usage() {
     echo ""
     echo "参数说明:"
     echo "  server_url       - 服务器URL"
-    echo "  server_api_token - 服务器API令牌"
+    echo "  server_api_token - 服务器API令牌；setup-worker 可通过 BK_LITE_SERVER_API_TOKEN_FILE 安全传入"
     echo "  zone             - 云区域"
     echo "  teams           - 分组信息"
     echo "  node_name        - 节点名称 (可选)"
@@ -32,6 +32,22 @@ check_args() {
     if [ $# -lt 4 ] || [ $# -gt 7 ]; then
         show_usage
     fi
+}
+
+load_server_api_token() {
+    local token_arg="$1"
+
+    if [ -n "${BK_LITE_SERVER_API_TOKEN_FILE:-}" ]; then
+        if [ ! -r "$BK_LITE_SERVER_API_TOKEN_FILE" ]; then
+            echo "错误: 无法读取 server_api_token 文件"
+            exit 1
+        fi
+        SERVER_API_TOKEN=$(cat "$BK_LITE_SERVER_API_TOKEN_FILE")
+        rm -f -- "$BK_LITE_SERVER_API_TOKEN_FILE"
+        return
+    fi
+
+    SERVER_API_TOKEN=$token_arg
 }
 
 # 安装服务
@@ -94,7 +110,7 @@ main() {
 
     # 解析参数
     SERVER_URL=$1
-    SERVER_API_TOKEN=$2
+    load_server_api_token "$2"
     ZONE=$3
     TEAMS=$4
     NODE_NAME=""

@@ -2,6 +2,7 @@
  * 拓扑图交互功能管理 Hook，专注于处理用户交互操作和模态框管理
  */
 import type { Edge, Node, Cell } from '@antv/x6';
+import type { Attr } from '@antv/x6/es/registry/attr';
 import { useCallback } from 'react';
 import { message } from 'antd';
 import { v4 as uuidv4 } from 'uuid';
@@ -107,7 +108,7 @@ export const useContextMenuAndModal = (
       });
 
       if (values.styleConfig) {
-        const lineAttrs: Record<string, any> = {
+        const lineAttrs: Attr.ComplexAttrs = {
           ...edge.getAttrs().line,
         };
 

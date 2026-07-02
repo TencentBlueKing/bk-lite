@@ -11,6 +11,7 @@ from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
+from apps.opspilot.utils.workflow_sensitive_config import encrypt_workflow_sensitive_config
 
 BOT_CONVERSATION_ROLE_CHOICES = [("user", "用户"), ("bot", "机器人")]
 
@@ -268,6 +269,8 @@ class BotWorkFlow(models.Model):
 
     def save(self, *args, **kwargs):
         """保存工作流并自动同步聊天应用"""
+        self.flow_json = encrypt_workflow_sensitive_config(self.flow_json)
+        self.web_json = encrypt_workflow_sensitive_config(self.web_json)
         # 先保存工作流
         super().save(*args, **kwargs)
 

@@ -2,12 +2,31 @@
 # @File: directory_service.py
 # @Time: 2025/11/3 16:22
 # @Author: windyzhao
-from apps.operation_analysis.constants.constants import PERMISSION_DIRECTORY, PERMISSION_DATASOURCE
+from apps.core.utils.team_utils import get_current_team
+from apps.operation_analysis.constants.constants import PERMISSION_DATASOURCE, PERMISSION_DIRECTORY
 from apps.operation_analysis.filters.base_filters import GroupPermissionMixin
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-from apps.operation_analysis.models.models import Directory, Dashboard, Topology, Architecture
+from apps.operation_analysis.models.models import Directory
+from apps.operation_analysis.services.canvas.registry import CANVAS_TYPE_REGISTRY
 from apps.operation_analysis.services.node_tree import TreeNodeBuilder
-from apps.core.utils.team_utils import get_current_team
+
+
+def _get_visible_canvas_queryset(meta, directories, current_team, request, group_ids):
+    base = meta.model.objects.filter(directory__in=directories)
+    return (
+        (
+            GroupPermissionMixin.apply_group_filter(
+                base.filter(is_build_in=False),
+                current_team,
+                request.user,
+                meta.permission_key,
+                group_ids=group_ids,
+            )
+            | GroupPermissionMixin.apply_group_filter(base.filter(is_build_in=True), current_team, group_ids=group_ids)
+        )
+        .distinct()
+        .order_by("id")
+    )
 
 
 class DictDirectoryService:
@@ -33,43 +52,12 @@ class DictDirectoryService:
         base_queryset = Directory.objects.filter(is_active=True)
         directories = GroupPermissionMixin.apply_group_filter(base_queryset, current_team, group_ids=group_ids).order_by("id")
 
-        # 构建仪表盘、拓扑图、架构图的查询集
+        # 构建各类画布的查询集
         # 内置画布只需通过组织过滤（第一层），跳过实例级权限过滤（第二层）
-        dashboard_base = Dashboard.objects.filter(directory__in=directories)
-        dashboards = (
-            (
-                GroupPermissionMixin.apply_group_filter(
-                    dashboard_base.filter(is_build_in=False), current_team, request.user, "directory.dashboard", group_ids=group_ids
-                )
-                | GroupPermissionMixin.apply_group_filter(dashboard_base.filter(is_build_in=True), current_team, group_ids=group_ids)
-            )
-            .distinct()
-            .order_by("id")
-        )
-
-        topology_base = Topology.objects.filter(directory__in=directories)
-        topologies = (
-            (
-                GroupPermissionMixin.apply_group_filter(
-                    topology_base.filter(is_build_in=False), current_team, request.user, "directory.topology", group_ids=group_ids
-                )
-                | GroupPermissionMixin.apply_group_filter(topology_base.filter(is_build_in=True), current_team, group_ids=group_ids)
-            )
-            .distinct()
-            .order_by("id")
-        )
-
-        architecture_base = Architecture.objects.filter(directory__in=directories)
-        architectures = (
-            (
-                GroupPermissionMixin.apply_group_filter(
-                    architecture_base.filter(is_build_in=False), current_team, request.user, "directory.architecture", group_ids=group_ids
-                )
-                | GroupPermissionMixin.apply_group_filter(architecture_base.filter(is_build_in=True), current_team, group_ids=group_ids)
-            )
-            .distinct()
-            .order_by("id")
-        )
+        canvas_queryset_map = {
+            object_type: _get_visible_canvas_queryset(meta, directories, current_team, request, group_ids)
+            for object_type, meta in CANVAS_TYPE_REGISTRY.items()
+        }
 
         # 构建所有节点映射
         all_nodes = {}
@@ -78,21 +66,20 @@ class DictDirectoryService:
         directory_nodes, parent_children_map = TreeNodeBuilder.get_directory_nodes(directories)
         all_nodes.update(directory_nodes)
 
-        # 构建仪表盘节点
-        dashboard_nodes = TreeNodeBuilder.get_dashboard_nodes(dashboards, parent_children_map)
-        all_nodes.update(dashboard_nodes)
+        # 构建画布节点
+        for object_type, instances in canvas_queryset_map.items():
+            all_nodes.update(TreeNodeBuilder.get_canvas_nodes(instances, parent_children_map, object_type))
 
-        # 拓扑图节点构建
-        topology_nodes = TreeNodeBuilder.get_topology_nodes(topologies, parent_children_map)
-        all_nodes.update(topology_nodes)
+        def sort_node_key(node_key):
+            node = all_nodes[node_key]
+            return (node.get("_sort_created_at"), node.get("_sort_id", 0))
 
-        # 架构图节点构建
-        architecture_nodes = TreeNodeBuilder.get_architecture_nodes(architectures, parent_children_map)
-        all_nodes.update(architecture_nodes)
+        for parent_key, child_keys in parent_children_map.items():
+            parent_children_map[parent_key] = sorted(child_keys, key=sort_node_key)
 
         def build_tree_recursive(node_key):
             """递归构建子树"""
-            node = all_nodes[node_key]
+            node = dict(all_nodes[node_key])
             child_keys = parent_children_map.get(node_key, [])
 
             if child_keys:
@@ -100,6 +87,8 @@ class DictDirectoryService:
             else:
                 node["children"] = []
 
+            node.pop("_sort_created_at", None)
+            node.pop("_sort_id", None)
             return node
 
         # 构建根节点列表（顶级目录）
@@ -127,7 +116,7 @@ class DictDirectoryService:
         :param group_id: 组ID
         :return: 目录信息列表
         """
-        model_map = {"dashboard": Dashboard, "topology": Topology, "architecture": Architecture}
+        model_map = {key: meta.model for key, meta in CANVAS_TYPE_REGISTRY.items()}
         model_class = model_map.get(child_module)
         if not model_class:
             return {"count": 0, "items": []}

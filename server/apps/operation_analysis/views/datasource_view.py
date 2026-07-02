@@ -2,6 +2,7 @@
 # @File: datasource_view.py
 # @Time: 2025/11/3 15:48
 # @Author: windyzhao
+import json
 from datetime import datetime, timedelta
 
 from django.http import Http404
@@ -22,7 +23,9 @@ from apps.operation_analysis.serializers.datasource_serializers import (
     DataSourceDetailSerializer,
     DataSourceTagModelSerializer,
     NameSpaceModelSerializer,
+    merge_redacted_config,
 )
+from apps.operation_analysis.services.datasource_preview import ConnectorError, get_preview_executor
 from config.drf.pagination import CustomPageNumberPagination
 from config.drf.viewsets import ModelViewSet
 
@@ -43,6 +46,37 @@ def _build_error_response(detail, status_code, data=None):
     if data is not None:
         payload["data"] = data
     return Response(payload, status=status_code)
+
+
+def _normalize_preview_limit(value):
+    try:
+        return min(max(int(value or 100), 1), 1000)
+    except (TypeError, ValueError):
+        raise ValueError("limit 必须是整数")
+
+
+def _normalize_preview_config(value):
+    if isinstance(value, dict):
+        return value
+    if not value:
+        return {}
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+        except json.JSONDecodeError:
+            return {}
+        return parsed if isinstance(parsed, dict) else {}
+    return {}
+
+
+def _execute_inline_preview(source_type, connection_config, query_config, limit):
+    executor = get_preview_executor(source_type)
+    result = executor.preview(
+        connection_config if isinstance(connection_config, dict) else {},
+        query_config if isinstance(query_config, dict) else {},
+        limit=limit,
+    )
+    return result.as_dict()
 
 
 def _get_downstream_failure_status(result):
@@ -374,6 +408,32 @@ class DataSourceAPIModelViewSet(AuthViewSet):
         except ValueError as exc:
             return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
 
+        if instance.source_type != DataSourceAPIModel.SOURCE_TYPE_NATS:
+            try:
+                runtime_limit = _normalize_preview_limit(params.get("page_size") or request.data.get("limit"))
+                payload = _execute_inline_preview(
+                    instance.source_type,
+                    instance.connection_config or {},
+                    instance.query_config or {},
+                    runtime_limit,
+                )
+            except ValueError as exc:
+                return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
+            except ConnectorError as exc:
+                return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+            except Exception as exc:
+                logger.error(
+                    "[DataSourceQuery] Inline 取数失败 datasource_id=%s name=%s source_type=%s：%s",
+                    instance.id,
+                    instance.name,
+                    instance.source_type,
+                    exc,
+                    exc_info=True,
+                )
+                return _build_error_response("数据查询失败", status.HTTP_502_BAD_GATEWAY)
+
+            return Response(payload.get("items", []))
+
         namespace_list = instance.namespaces.all()
         if "/" not in instance.rest_api:
             namespace = "default"
@@ -416,6 +476,74 @@ class DataSourceAPIModelViewSet(AuthViewSet):
             )
 
         return Response(result.get("data"))
+
+    @HasPermission("data_source-View")
+    @action(detail=False, methods=["post"], url_path="preview")
+    def preview_config(self, request, *args, **kwargs):
+        source_type = request.data.get("source_type") or DataSourceAPIModel.SOURCE_TYPE_NATS
+        connection_config = _normalize_preview_config(request.data.get("connection_config"))
+        query_config = _normalize_preview_config(request.data.get("query_config"))
+        if source_type == DataSourceAPIModel.SOURCE_TYPE_EXCEL and request.FILES.get("file"):
+            connection_config["file"] = request.FILES["file"]
+            if request.data.get("sheet_name"):
+                query_config["sheet_name"] = request.data.get("sheet_name")
+        try:
+            limit = _normalize_preview_limit(request.data.get("limit"))
+            payload = _execute_inline_preview(source_type, connection_config, query_config, limit)
+        except ValueError as exc:
+            return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
+        except ConnectorError as exc:
+            return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+        except Exception as exc:
+            logger.error("[DataSourcePreview] 未保存配置预览失败 source_type=%s：%s", source_type, exc, exc_info=True)
+            return _build_error_response("数据源预览失败", status.HTTP_502_BAD_GATEWAY)
+
+        return Response(payload)
+
+    @HasPermission("data_source-View")
+    @action(detail=True, methods=["post"], url_path="preview")
+    def preview(self, request, *args, **kwargs):
+        try:
+            instance = self.get_object()
+        except Http404:
+            return _build_error_response("数据源不存在或已删除", status.HTTP_404_NOT_FOUND)
+
+        current_team = self._parse_current_team_cookie(request)
+        if current_team not in (instance.groups or []):
+            return _build_error_response("无权访问当前数据源", status.HTTP_403_FORBIDDEN)
+
+        try:
+            limit = _normalize_preview_limit(request.data.get("limit"))
+            source_type = request.data.get("source_type") or instance.source_type
+            connection_config = request.data.get("connection_config")
+            if isinstance(connection_config, dict):
+                connection_config = merge_redacted_config(instance.connection_config or {}, connection_config)
+            else:
+                connection_config = instance.connection_config or {}
+            query_config = request.data.get("query_config")
+            if not isinstance(query_config, dict):
+                query_config = instance.query_config or {}
+            payload = _execute_inline_preview(
+                source_type,
+                connection_config,
+                query_config,
+                limit,
+            )
+        except ValueError as exc:
+            return _build_error_response(str(exc), status.HTTP_400_BAD_REQUEST)
+        except ConnectorError as exc:
+            return _build_error_response(exc.message, exc.status_code, {"code": exc.code})
+        except Exception as exc:
+            logger.error(
+                "[DataSourcePreview] 保存数据源预览失败 datasource_id=%s source_type=%s：%s",
+                instance.id,
+                instance.source_type,
+                exc,
+                exc_info=True,
+            )
+            return _build_error_response("数据源预览失败", status.HTTP_502_BAD_GATEWAY)
+
+        return Response(payload)
 
     @HasPermission("data_source-View")
     def retrieve(self, request, *args, **kwargs):

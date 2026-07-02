@@ -372,6 +372,33 @@ COLLECT_OBJ_TREE = [
                 "tag": ["SNMP", "Interfaces"],
                 "desc": "通过SNMP协议发现网络设备和网络拓扑及其基本信息",
                 "encrypted_fields": ["authkey", "privkey", "community"],
+            },
+            {
+                "id": "network_config_file",
+                "model_id": "network_config_file",
+                "name": "网络设备配置文件",
+                "task_type": CollectPluginTypes.CONFIG_FILE,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Netmiko", "Network"],
+                "desc": "通过 Netmiko 采集网络设备配置命令输出并归档为配置文件版本",
+                "icon": "config_file",
+                "encrypted_fields": ["password", "enable_password"],
+            }
+        ],
+    },
+    {
+        "id": "ipam",
+        "name": "IP 地址管理",
+        "children": [
+            {
+                "id": "ip_discovery",
+                "model_id": "ip",
+                "name": "IP 发现",
+                "task_type": CollectPluginTypes.IP,
+                "type": CollectDriverTypes.PROTOCOL,
+                "tag": ["Agentless", "ICMP", "TCP"],
+                "desc": "选择子网后由接入点执行 IP 探活，回写 IPAM 台账与利用率",
+                "encrypted_fields": [],
             }
         ],
     },

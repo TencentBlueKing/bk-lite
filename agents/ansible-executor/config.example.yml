@@ -14,6 +14,17 @@ runtime:
   work_dir: /var/lib/ansible-executor/work
   state_db_path: /var/lib/ansible-executor/task_state.db
 
+security:
+  # Callback subjects are NATS request targets used by the executor to report task results.
+  # Keep this list narrow; append deployment-specific callback prefixes only after review.
+  allowed_callback_subjects:
+    - job.ansible_task_callback
+  # Stream subjects are publish targets used for line-by-line command output.
+  allowed_stream_subjects:
+    - job.stream.>
+    - executor.stream.>
+    - bk.ans_exec.stream.>
+
 jetstream:
   namespace: bk.ans_exec
   # stream: BK_ANS_EXEC_TASKS

@@ -18,12 +18,14 @@ from django.db import transaction
 from apps.core.logger import operation_analysis_logger as logger
 from apps.operation_analysis.constants.import_export import RENAME_SUFFIX, SENSITIVE_PLACEHOLDER, ConflictAction, ImportStatus, ObjectType
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.schemas.import_export_schema import (
     ArchitectureItem,
     DashboardItem,
     DatasourceItem,
     NamespaceItem,
+    ReportItem,
+    ScreenItem,
     TopologyItem,
     YAMLDocument,
 )
@@ -45,6 +47,8 @@ class ImportService:
         ObjectType.DASHBOARD: Dashboard,
         ObjectType.TOPOLOGY: Topology,
         ObjectType.ARCHITECTURE: Architecture,
+        ObjectType.SCREEN: Screen,
+        ObjectType.REPORT: Report,
         ObjectType.DATASOURCE: DataSourceAPIModel,
         ObjectType.NAMESPACE: NameSpace,
     }
@@ -355,7 +359,7 @@ class ImportService:
 
     def _import_canvas(
         self,
-        canvas_item: DashboardItem | TopologyItem | ArchitectureItem,
+        canvas_item: DashboardItem | TopologyItem | ArchitectureItem | ScreenItem | ReportItem,
         object_type: ObjectType,
         model,
     ) -> int | None:
@@ -468,12 +472,14 @@ class ImportService:
             }
         """
         logger.info(
-            "[CanvasImport] 开始导入：命名空间 %s、数据源 %s、仪表盘 %s、拓扑 %s、架构 %s",
+            "[CanvasImport] 开始导入：命名空间 %s、数据源 %s、仪表盘 %s、拓扑 %s、架构 %s、大屏 %s、报表 %s",
             len(self.doc.namespaces),
             len(self.doc.datasources),
             len(self.doc.dashboards),
             len(self.doc.topologies),
             len(self.doc.architectures),
+            len(self.doc.screens),
+            len(self.doc.reports),
         )
 
         try:
@@ -506,6 +512,12 @@ class ImportService:
 
             for architecture in self.doc.architectures:
                 self._import_canvas(architecture, ObjectType.ARCHITECTURE, Architecture)
+
+            for screen in self.doc.screens:
+                self._import_canvas(screen, ObjectType.SCREEN, Screen)
+
+            for report in self.doc.reports:
+                self._import_canvas(report, ObjectType.REPORT, Report)
 
             rollback_result = self._rollback_on_failure()
             if rollback_result:
