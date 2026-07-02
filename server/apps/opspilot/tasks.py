@@ -1255,6 +1255,51 @@ def process_wechat_message(self, bot_id, msg_id, message, sender_id, config):
 
 
 @shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_enterprise_wechat_aibot_message(self, bot_id, msg_id, message, sender_id, config):
+    """处理企微智能机器人短连接消息的 Celery 任务。"""
+    from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
+
+    def _execute():
+        handler = EnterpriseWechatAibotChatFlowUtils(bot_id)
+        try:
+            bot_chat_flow = _get_bot_chat_flow(bot_id)
+            if not bot_chat_flow:
+                logger.error(f"企微智能机器人消息处理失败：Bot {bot_id} 不存在或未配置 ChatFlow")
+                handler.mark_message_failed(msg_id)
+                return
+
+            node_id = config["node_id"]
+            reply_text = handler.execute_chatflow_with_message(bot_chat_flow, node_id, message, sender_id)
+            process_enterprise_wechat_aibot_reply.delay(bot_id, msg_id, config.get("response_url") or "", reply_text)
+
+            logger.info(f"企微智能机器人消息已提交回复任务: bot_id={bot_id}, msg_id={msg_id}")
+
+        except Exception as e:
+            logger.exception(f"企微智能机器人消息处理失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+            handler.mark_message_failed(msg_id)
+            raise
+
+    try:
+        return _run_in_native_thread(_execute)
+    except Exception as e:
+        raise self.retry(exc=e)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
+def process_enterprise_wechat_aibot_reply(self, bot_id, msg_id, response_url, content):
+    """异步发送企微智能机器人回复，发送成功后再标记消息完成。"""
+    from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
+
+    handler = EnterpriseWechatAibotChatFlowUtils(bot_id)
+    try:
+        EnterpriseWechatAibotChatFlowUtils.send_markdown_reply(response_url, content)
+        handler.mark_message_completed(msg_id)
+    except Exception as e:
+        logger.exception(f"企微智能机器人回复发送失败: bot_id={bot_id}, msg_id={msg_id}, error={str(e)}")
+        raise self.retry(exc=e)
+
+
+@shared_task(bind=True, max_retries=3, default_retry_delay=60)
 def process_dingtalk_message(self, bot_id, msg_id, text_content, sender_id, webhook_url, config):
     """处理钉钉消息的 Celery 任务
 
