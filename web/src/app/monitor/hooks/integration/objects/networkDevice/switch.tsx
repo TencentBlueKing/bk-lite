@@ -148,6 +148,7 @@ export const useSwitchConfig = () => {
       'Switch ATOP SNMP': 'snmp_atop',
       'Switch Comtrol RocketLinx SNMP': 'snmp_comtrol',
       'Switch WoMaster SNMP': 'snmp_womaster',
+      'Switch Murrelektronik SNMP': 'snmp_murrelektronik',
       'Switch Wi-Tek SNMP': 'snmp_witek',
       'Switch Nexans SNMP': 'snmp_nexans',
       'Switch Pica8 SNMP': 'snmp_pica8',
