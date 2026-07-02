@@ -969,10 +969,19 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     if alert_type_values:
         queryset = queryset.filter(alert_type__in=alert_type_values)
 
-    items = [_build_monitor_alert_segment(alert) for alert in queryset.order_by("-start_event_time", "-created_at")]
+    ordered_queryset = queryset.order_by("-start_event_time", "-created_at")
+    total_count = ordered_queryset.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = [_build_monitor_alert_segment(alert) for alert in ordered_queryset[start:end]]
     return {
         "result": True,
-        "data": _paginate_items(items, page, page_size),
+        "data": {
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "items": items,
+        },
         "message": "",
     }
 
