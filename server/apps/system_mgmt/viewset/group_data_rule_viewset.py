@@ -86,7 +86,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
         user_group_ids = self._get_user_group_ids(request.user)
         if group_id not in user_group_ids:
-            message = self.loader.get("error.no_permission_access_group") if self.loader else "无权访问该组织"
+            message = (self.loader.get("error.no_permission_access_group") if self.loader else None) or "无权访问该组织"
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
@@ -209,7 +209,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
         params = request.GET.dict()
         # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
         app = params.get("app", "")
-        if params.get("app") == "mlops":
+        if app in {"job", "mlops"}:
             try:
                 group_id = int(params.get("group_id"))
             except (TypeError, ValueError):
@@ -219,10 +219,14 @@ class GroupDataRuleViewSet(LanguageViewSet):
             if not is_valid:
                 return error_response
 
-            actor_context, error_response = _build_actor_context(request, self.loader)
-            if error_response:
-                return error_response
-            params["actor_context"] = actor_context
+            if app == "mlops":
+                actor_context, error_response = _build_actor_context(request, self.loader)
+                if error_response:
+                    return error_response
+                params["actor_context"] = actor_context
+            else:
+                user_group_ids = self._get_user_group_ids(request.user)
+                params["team"] = [group_id] if user_group_ids is None else sorted(user_group_ids)
 
         client = self.get_client(params)
         fun = getattr(client, "get_module_data", None)

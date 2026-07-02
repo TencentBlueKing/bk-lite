@@ -231,10 +231,13 @@ class ActionJobScriptListView(APIView):
     """代理 job_mgmt 脚本列表，供告警动作规则编辑器使用。"""
 
     def get(self, request):
-        from apps.alerts.utils.permission_scope import get_current_team_from_request
+        from apps.alerts.utils.permission_scope import get_authorized_group_ids, get_current_team_from_request
 
         group_id = get_current_team_from_request(request, required=True)
-        data = JobMgmt().list_scripts(group_id=group_id)
+        if not group_id:
+            return Response({"result": False, "message": "缺少团队上下文"}, status=status.HTTP_400_BAD_REQUEST)
+
+        data = JobMgmt().list_scripts(group_id=group_id, team=get_authorized_group_ids(request))
         return Response(data)
 
 
