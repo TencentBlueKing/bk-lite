@@ -3,32 +3,35 @@
 > 路径 `server/apps/operation_analysis` ｜ API 前缀 `api/v1/operation_analysis/`
 
 ## 1. 职责【已实现/已存在】
-统一可视化层：聚合外部 REST/NATS 数据源，组织仪表盘、拓扑、架构图，支持配置导入导出。仪表板组件形态持续扩展：本轮新增分级条形仪表盘（barGauge）、状态时间线（stateTimeline）、文本（text）三类；同时引入结构化单位库与值映射展示层能力（见 §3 前端层）。
+统一可视化层：聚合外部 REST/NATS 数据源，组织仪表盘、拓扑、架构图，并向大屏、报表两类新画布扩展；同时提供网络状态拓扑场景组件与配置导入导出能力。
 
 ## 2. 数据模型与存储【已实现/已存在 / PostgreSQL】
 | 模型 | 文件 | 说明 |
 |------|------|------|
 | Directory | `models/models.py` | 层级目录（最多 3 级）；含 `is_build_in`/`build_in_key`（unique）内置标识 |
 | Dashboard / Topology / Architecture | `models/models.py` | 仪表盘/拓扑/架构图（filters、view_sets JSON）；三者均含 `is_build_in`/`build_in_key`（unique）内置标识 |
+| Screen / Report | `models/models.py` | 大屏/报表画布；均含 `directory`、`view_sets`、`is_build_in`/`build_in_key` |
 | NameSpace | `models/datasource_models.py` | NATS 连接配置（域/账号/密码加密/TLS）；含 `namespace`（NATS 命名空间标识，消息主题前缀，default=`bklite`）；含 `is_active`（内部预留，前端不暴露、运行时不校验） |
 | DataSourceAPIModel | `models/datasource_models.py` | 外部 REST API 数据源；含 `chart_type`（JSON，图表类型，default=list）、`field_schema`（JSON，接口返回字段定义，default=list）、`is_active`（内部预留） |
 | DataSourceTag | `models/datasource_models.py` | 数据源标签；含 `build_in`（是否内置） |
 
-内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
+内置机制【已实现/已存在】：`Directory`/`Dashboard`/`Topology`/`Architecture`/`Screen`/`Report` 通过 `is_build_in` + 唯一 `build_in_key` 标识内置画布，承载「内置视图对组织可见但不可删改」语义（删改在视图层被 `_raise_if_builtin` 拦截，见 §3）；`DataSourceTag.build_in` 标识内置标签。
 
 ## 3. 接口【已实现/已存在】
-路由组：`data_source`/`dashboard`/`directory`/`topology`/`architecture`/`namespace`/`tag`/`import_export`；开放端点 `open_api/import_export`。
+路由组：`data_source`/`dashboard`/`directory`/`topology`/`architecture`/`screen`/`report`/`namespace`/`tag`/`import_export`/`scene_widgets`；开放端点 `open_api/import_export`。
 
 关键自定义动作【已实现/已存在】：
 - `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口，是整个取数链路的起点（`views/datasource_view.py:337`）。
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
+- `scene_widgets/network_status_topology`（POST）：按 `model_id`、`inst_id`、`depth` 构建网络状态拓扑场景数据，是网络状态拓扑组件的专用后端入口（`views/scene_widget_view.py:10-23`）。
+- `screen` / `report`【已实现/已存在】：通过 `CanvasModelViewSet` 复用画布类 CRUD、权限与内置对象保护逻辑，新增 `directory.screen` 与 `directory.report` 两类权限域（`views/view.py:347-423`）。
 
 安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。
 
-### 前端层：仪表板组件与展示能力【已实现】
+### 前端层：画布组件与展示能力【已实现】
 
 **组件注册表（widgetRegistry）**【已实现】  
-`web/src/app/ops-analysis/components/widgetRegistry.ts:14-25` 以 `chartType` 字符串为键，将所有组件类型映射至对应 React 组件，由 `getWidgetComponent` 统一解析。当前注册的组件类型（共 11 种）：
+`web/src/app/ops-analysis/components/widgetRegistry.ts:12-29` 以 `chartType` 字符串为键，将组件类型映射至对应 React 组件，由 `getWidgetComponent` 统一解析。当前注册的组件类型（共 9 种）：
 
 | chartType | 组件文件 | 说明 |
 |-----------|---------|------|
@@ -39,41 +42,14 @@
 | single | comSingle.tsx | 单值 |
 | topN | comTopN.tsx | Top-N |
 | gauge | comGauge.tsx | 仪表盘（半圆/整圆） |
-| barGauge | comBarGauge.tsx | 分级条形仪表盘【新增】 |
-| stateTimeline | comStateTimeline.tsx | 状态时间线【新增】 |
-| text | comText.tsx | 文本（轻量 Markdown content 字段）【新增】 |
 | eventTable | eventTable/eventTable.tsx | 事件表（事件流） |
+| networkStatusTopology | networkStatusTopology/index.tsx | 网络状态拓扑场景组件 |
 
-证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:22-24`（barGauge/stateTimeline/text）；`web/src/app/ops-analysis/(pages)/view/dashBoard/widgets/comBarGauge.tsx`、`comStateTimeline.tsx`、`comText.tsx`。
+证据：`web/src/app/ops-analysis/components/widgetRegistry.ts:12-21`、`web/src/app/ops-analysis/components/widgets/networkStatusTopology/index.tsx`、`web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`。
 
-**组件配置区（viewConfig）**【已实现】  
-`web/src/app/ops-analysis/(pages)/view/dashBoard/components/viewConfig.tsx`：
-- `gauge || barGauge`：共享 `GaugeSettingsSection`（阈值、形态、量程、单位）（取数分支 `viewConfig.tsx:728`，渲染分支 `:950`）。
-- `stateTimeline`：独立配置，挂载 `ValueMappingsConfigSection`（`viewConfig.tsx:992`）。
-- `text`：独立配置，`content` 字段 + `Input.TextArea`（`viewConfig.tsx:1001-1007`）。
-- `line || bar`：新增堆叠系列开关 `stack`（`Switch` 组件，`viewConfig.tsx:978-990`）。
-
-**结构化单位库（unitFormat）**【已实现】  
-`web/src/app/ops-analysis/utils/unitFormat.ts`：对齐 Grafana 单位分类与自动量纲缩放。支持单位族：
-- `bytesIEC`（字节，IEC 1024 进制）、`bytesSI`（字节，SI 1000 进制）
-- `bps`（比特/秒，自动 Kbps/Mbps/Gbps/Tbps）
-- `ms`（毫秒，自动进位至 s/m/h/d）
-- `percent`（0–100）、`percentunit`（0.0–1.0）
-- `short`（计数自动缩放 K/M/B/T）
-- `none`（原样）、`custom:<后缀>`（字面后缀，兼容旧自由文本 `unit`）
-
-`formatDisplayValue`（`thresholdUtils.ts`）新增可选 `unitId` 形参：传入时委托 `formatUnit`；不传则保持原有自由文本后缀行为，向后兼容（证据：`thresholdUtils.ts formatDisplayValue` 函数签名及委托分支）。  
-配置 UI：`GaugeSettingsSection` 的单位字段改为 `Select` 下拉（调用 `getUnitCategories()` 生成分组选项），`unitId` 为空时回退至自由文本 `unit` 字段（`gaugeSettingsSection.tsx:205-248`）。
-
-**值映射（Value Mappings）**【已实现】  
-`web/src/app/ops-analysis/utils/valueMapping.ts`：纯函数，支持四类规则：
-- `value`：精确匹配（与 `String(raw)` 比较）
-- `range`：数值区间（含边界，缺边界表示无穷）
-- `regex`：正则匹配（非法正则忽略不报错）
-- `special`：特殊值（null / nan / empty / true / false）
-
-规则按声明顺序首条命中即返回（与 Grafana 一致）；结果含可选 `text`（展示文本）与 `color`（颜色 hex）。  
-配置入口：`web/src/app/ops-analysis/components/valueMappingsConfigSection.tsx`（187 行）；已接入 `stateTimeline` 配置区与 `GaugeSettingsSection`；`singleValueSettingsSection.tsx` 亦引入该组件（证据：`valueMappingsConfigSection.tsx`；`viewConfig.tsx:992`）。
+**大屏与报表前端入口**【已实现】  
+- `screen`：前端提供独立页面、全屏、统一筛选、命名空间选择、组件布局与保存接口（`(pages)/view/screen/index.tsx:76-213`、`api/screen.ts:4-28`）。
+- `report`：前端提供独立报表页面与读取接口，当前为基础画布模式，构建器仍处于占位态（`(pages)/view/report/index.tsx:37-109`、`api/report.ts:4-28`）。
 
 ## 4. 依赖与通信【已实现/已存在】
 - NATS：`nats/nats.py` 暴露 `get_operation_analysis_module_data`（`nats/nats.py:11`）/`get_operation_analysis_module_list`（`nats/nats.py:28`）（仅暴露自身数据源模块）；`common/get_nats_source_data.py:GetNatsData.get_data()` 为**通用数据源取数器**。其当前实现为**单命名空间取数**：先经 `_get_target_namespace()` 从 `params.namespace_id` 解析目标命名空间（运行时选择；未指定则取第一个可用命名空间，显式指定但数据源未关联该命名空间则报错），再按 `path` 在该命名空间的 NATS 客户端上解析函数；当客户端存在 `DEFAULT_NATS` 属性时改调 `get_customization_nast_data`，否则按 `path` 取同名函数（`common/get_nats_source_data.py:83-138`）。
@@ -90,11 +66,6 @@
 `server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`。
 
 前端层新增证据：
-- `web/src/app/ops-analysis/components/widgetRegistry.ts:14-25`（组件注册表全量映射）
-- `web/src/app/ops-analysis/(pages)/view/dashBoard/widgets/comBarGauge.tsx`、`comStateTimeline.tsx`、`comText.tsx`（新增三类组件）
-- `web/src/app/ops-analysis/(pages)/view/dashBoard/components/viewConfig.tsx:728,950,978-1010`（barGauge/stateTimeline/text/stack 配置分支）
-- `web/src/app/ops-analysis/(pages)/view/dashBoard/components/viewConfig/sections/gaugeSettingsSection.tsx:205-248`（unitId Select + 自由文本回退）
-- `web/src/app/ops-analysis/utils/unitFormat.ts`（结构化单位库全量实现）
-- `web/src/app/ops-analysis/utils/thresholdUtils.ts`（formatDisplayValue 新增 unitId 形参与委托分支）
-- `web/src/app/ops-analysis/utils/valueMapping.ts`（值映射纯函数，四类规则）
-- `web/src/app/ops-analysis/components/valueMappingsConfigSection.tsx`（值映射配置 UI，187 行）
+- `web/src/app/ops-analysis/components/widgetRegistry.ts:12-21`（组件注册表全量映射）
+- `web/src/app/ops-analysis/api/networkStatusTopology.ts:11-25`（网络状态拓扑组件取数）
+- `web/src/app/ops-analysis/api/{screen.ts,report.ts}`、`web/src/app/ops-analysis/(pages)/view/{screen/index.tsx,report/index.tsx}`（大屏/报表入口）
