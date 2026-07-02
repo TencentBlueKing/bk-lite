@@ -21,7 +21,6 @@ import {
   Input,
   Menu,
   Modal,
-  Radio,
   Spin,
   Tree,
 } from 'antd';
@@ -55,6 +54,7 @@ import {
   ApartmentOutlined,
   DesktopOutlined,
   FileTextOutlined,
+  CheckOutlined,
 } from '@ant-design/icons';
 
 const Sidebar = forwardRef<SidebarRef, SidebarProps>(
@@ -673,49 +673,83 @@ const Sidebar = forwardRef<SidebarRef, SidebarProps>(
           <Form form={form} className="mt-5" labelCol={{ span: 4 }}>
             {isCreatingCanvas && (
               <Form.Item
-                name="canvasType"
                 label={t('opsAnalysisSidebar.canvasType')}
-                rules={[{ required: true, message: t('common.selectMsg') }]}
+                required
               >
-                <Radio.Group
+                <Form.Item
+                  name="canvasType"
+                  noStyle
+                  rules={[{ required: true, message: t('common.selectMsg') }]}
+                >
+                  <Input type="hidden" />
+                </Form.Item>
+                <div
+                  role="radiogroup"
+                  aria-label={t('opsAnalysisSidebar.canvasType')}
                   className="grid grid-cols-1 gap-2 sm:grid-cols-2 md:grid-cols-3"
-                  onChange={(event) => setNewItemType(event.target.value)}
                 >
                   {CANVAS_TYPES.map((canvasType) => {
                     const meta = getCanvasTypeMeta(canvasType)!;
                     const selected = activeCanvasType === canvasType;
 
                     return (
-                      <Radio
+                      <button
                         key={canvasType}
-                        value={canvasType}
-                        className={`!m-0 flex min-h-[104px] w-full rounded-md border px-3 py-2.5 transition-all ${
+                        type="button"
+                        role="radio"
+                        aria-checked={selected}
+                        onClick={() => {
+                          form.setFieldValue('canvasType', canvasType);
+                          form.validateFields(['canvasType']).catch(() => undefined);
+                          setNewItemType(canvasType);
+                        }}
+                        className={`group relative flex min-h-[104px] w-full cursor-pointer overflow-hidden rounded-md border px-3 py-3 text-left transition-all focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 ${
                           selected
-                            ? 'border-blue-500 bg-blue-50 shadow-sm'
-                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-gray-50'
+                            ? 'border-blue-500 bg-gradient-to-br from-blue-50 to-white shadow-[0_2px_8px_rgba(37,99,235,0.08)]'
+                            : 'border-gray-200 bg-white hover:border-blue-300 hover:bg-slate-50 hover:shadow-[0_2px_6px_rgba(15,23,42,0.05)]'
                         }`}
                       >
-                        <span className="block min-w-0">
-                          <span className="flex items-center gap-2">
+                        <span
+                          aria-hidden="true"
+                          className={`absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full text-[10px] transition-all ${
+                            selected
+                              ? 'scale-100 bg-blue-600 text-white opacity-100 shadow-sm'
+                              : 'scale-90 bg-gray-100 text-transparent opacity-0'
+                          }`}
+                        >
+                          <CheckOutlined />
+                        </span>
+                        <span className="block min-w-0 pr-6">
+                          <span className="flex items-center gap-2.5">
                             <span
-                              className={`flex h-7 w-7 flex-none items-center justify-center rounded-md ${
-                                selected ? 'bg-white' : 'bg-gray-50'
+                              className={`flex h-8 w-8 flex-none items-center justify-center rounded-md border transition-colors ${
+                                selected
+                                  ? 'border-blue-100 bg-white shadow-sm'
+                                  : 'border-gray-100 bg-gray-50 group-hover:border-blue-100 group-hover:bg-white'
                               }`}
                             >
                               {renderCanvasTypeIcon(canvasType)}
                             </span>
-                            <span className="block text-sm font-medium text-gray-900">
+                            <span
+                              className={`block text-sm font-semibold ${
+                                selected ? 'text-blue-700' : 'text-gray-900'
+                              }`}
+                            >
                               {t(meta.nameKey)}
                             </span>
                           </span>
-                          <span className="mt-1.5 block text-xs leading-5 text-gray-500">
+                          <span
+                            className={`mt-2 block text-xs leading-5 ${
+                              selected ? 'text-slate-600' : 'text-gray-500'
+                            }`}
+                          >
                             {t(meta.descriptionKey)}
                           </span>
                         </span>
-                      </Radio>
+                      </button>
                     );
                   })}
-                </Radio.Group>
+                </div>
               </Form.Item>
             )}
             <Form.Item

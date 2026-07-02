@@ -52,6 +52,7 @@ const SOURCE_TYPE_MYSQL: DataSourceSourceType = 'mysql';
 const SOURCE_TYPE_POSTGRESQL: DataSourceSourceType = 'postgresql';
 const SOURCE_TYPE_REST_API: DataSourceSourceType = 'rest_api';
 const SOURCE_TYPE_EXCEL: DataSourceSourceType = 'excel';
+const TABLE_CHART_TYPE = 'table';
 const PASSWORD_PLACEHOLDER = '******';
 
 const formatJsonText = (value: unknown) => {
@@ -233,6 +234,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const isDatabaseSource =
     sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL;
   const isExcelSource = sourceType === SOURCE_TYPE_EXCEL;
+  const chartTypeOptions = getChartTypeList()
+    .filter((item) => isNatsSource || item.value === TABLE_CHART_TYPE)
+    .map((item) => ({
+      label: t(item.label),
+      value: item.value,
+    }));
 
   useEffect(() => {
     if (!open) return;
@@ -285,11 +292,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     const connectionConfig = currentRow.connection_config || {};
     const queryConfig = currentRow.query_config || {};
+    const rowSourceType = currentRow.source_type || SOURCE_TYPE_NATS;
     const formValues = {
       ...currentRow,
-      source_type: currentRow.source_type || SOURCE_TYPE_NATS,
+      source_type: rowSourceType,
       namespaces: currentRow.namespaces || [],
       groups: currentRow.groups || [],
+      chart_type:
+        rowSourceType === SOURCE_TYPE_NATS
+          ? currentRow.chart_type || []
+          : [TABLE_CHART_TYPE],
       connection_config: {
         ...connectionConfig,
         headersText: formatJsonText(connectionConfig.headers),
@@ -374,6 +386,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
     }
 
     if (previousSourceType !== sourceType) {
+      if (sourceType !== SOURCE_TYPE_NATS) {
+        form.setFieldValue('chart_type', [TABLE_CHART_TYPE]);
+      }
       setPreviewData(null);
       setExcelFile(null);
       setExcelFileList([]);
@@ -382,7 +397,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setEmptyFieldKeys([]);
       previousSourceTypeRef.current = sourceType;
     }
-  }, [open, sourceType]);
+  }, [open, sourceType, form]);
 
   const checkDuplicateNames = (currentParams: ParamItem[]) => {
     const nameCount: { [key: string]: number } = {};
@@ -1158,7 +1173,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         desc: values.desc ? values.desc.trim() : '',
         namespaces: isNatsSource ? values.namespaces || [] : [],
         tag: values.tag || [],
-        chart_type: values.chart_type || [],
+        chart_type: isNatsSource ? values.chart_type || [] : [TABLE_CHART_TYPE],
         groups: values.groups || [],
         field_schema: fieldSchema,
         params: isNatsSource
@@ -1249,6 +1264,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
                     timeout: 10,
                   },
                 });
+              }
+              if (nextSourceType !== SOURCE_TYPE_NATS) {
+                form.setFieldValue('chart_type', [TABLE_CHART_TYPE]);
               }
             }}
           />
@@ -1361,10 +1379,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ]}
         >
           <Checkbox.Group
-            options={getChartTypeList().map((item) => ({
-              label: t(item.label),
-              value: item.value,
-            }))}
+            options={chartTypeOptions}
           />
         </Form.Item>
         <Form.Item
