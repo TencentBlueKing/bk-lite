@@ -1534,7 +1534,7 @@ class TestProcessMemoryWriteCacheBatching:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Batch Memory",
@@ -1553,7 +1553,7 @@ class TestProcessMemoryWriteCacheBatching:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Batch Memory",
@@ -1578,9 +1578,9 @@ class TestProcessMemoryWriteCacheBatching:
                 )
 
         mock_write.assert_called_once()
-        call_kwargs = mock_write.call_args.kwargs
-        assert "event-1" in call_kwargs["content"]
-        assert "event-2" in call_kwargs["content"]
+        write_plan = mock_write.call_args.args[0]
+        assert "event-1" in write_plan["content"]
+        assert "event-2" in write_plan["content"]
 
     def test_flush_task_persists_under_threshold_cache_and_deletes_rows(self, memory_space_team):
         from apps.opspilot.tasks import flush_memory_write_cache_for_node
@@ -1593,7 +1593,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1637,6 +1637,216 @@ class TestProcessMemoryWriteCacheBatching:
         assert memory.title == "Flush Memory"
         assert memory.content == "event-1"
 
+    def test_flush_llm_merge_runs_outside_transaction(self, memory_space_team):
+        from django.db import connection
+
+        from apps.opspilot.tasks import flush_memory_write_cache_for_node
+
+        llm_model = create_test_llm_model(None)
+        memory_space_team.default_model = str(llm_model.id)
+        memory_space_team.save()
+
+        Memory.objects.create(
+            memory_space=memory_space_team,
+            title="Existing Memory",
+            content="old content",
+            owner_username="team",
+            owner_domain="",
+            organization_id=1,
+            created_by="team",
+            updated_by="team",
+        )
+        MemoryWriteCache.objects.create(
+            workflow_id=1001,
+            node_id="memory_write_node",
+            memory_target_id="1",
+            content="new content",
+        )
+
+        baseline_atomic_depth = len(connection.atomic_blocks)
+        invoke_atomic_depths = []
+        mock_client = MagicMock()
+
+        def invoke(messages):
+            invoke_atomic_depths.append(len(connection.atomic_blocks))
+            response = MagicMock()
+            if len(invoke_atomic_depths) == 1:
+                response.content = "summarized new content"
+            else:
+                response.content = '{"title": "Merged Memory", "content": "old content\\nsummarized new content"}'
+            return response
+
+        mock_client.invoke.side_effect = invoke
+
+        with patch("apps.opspilot.tasks.close_old_connections"):
+            with patch(
+                "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
+                return_value=mock_client,
+            ):
+                flush_memory_write_cache_for_node(
+                    workflow_id=1001,
+                    node_id="memory_write_node",
+                    memory_space_id=memory_space_team.id,
+                    title="Flush Memory",
+                )
+
+        assert invoke_atomic_depths == [baseline_atomic_depth, baseline_atomic_depth]
+        memory = Memory.objects.get(memory_space=memory_space_team, organization_id=1)
+        assert memory.title == "Merged Memory"
+        assert "summarized new content" in memory.content
+
+    def test_apply_memory_write_plan_appends_when_memory_changes_after_prepare(self, memory_space_team):
+        from django.db import transaction
+
+        from apps.opspilot.tasks import _apply_memory_write_plan, _prepare_memory_write_plan
+
+        llm_model = create_test_llm_model(None)
+        memory_space_team.default_model = str(llm_model.id)
+        memory_space_team.save()
+
+        memory = Memory.objects.create(
+            memory_space=memory_space_team,
+            title="Existing Memory",
+            content="old content",
+            owner_username="team",
+            owner_domain="",
+            organization_id=1,
+            created_by="team",
+            updated_by="team",
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = '{"title": "Merged Memory", "content": "old content\\nnew content"}'
+        mock_client = MagicMock()
+        mock_client.invoke.return_value = mock_response
+
+        with patch(
+            "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
+            return_value=mock_client,
+        ):
+            write_plan = _prepare_memory_write_plan(
+                memory_space_id=memory_space_team.id,
+                title="Flush Memory",
+                content="new content",
+                owner_username="team",
+                owner_domain="",
+                organization_id=1,
+                model_id=llm_model.id,
+                skip_write_rule=True,
+            )
+
+        memory.content = "concurrent content"
+        memory.save()
+
+        with transaction.atomic():
+            _apply_memory_write_plan(write_plan)
+
+        memory.refresh_from_db()
+        assert memory.title == "Existing Memory"
+        assert "concurrent content" in memory.content
+        assert "new content" in memory.content
+
+    def test_apply_memory_write_plan_does_not_restore_deleted_memory_content(self, memory_space_team):
+        from django.db import transaction
+
+        from apps.opspilot.tasks import _apply_memory_write_plan, _prepare_memory_write_plan
+
+        llm_model = create_test_llm_model(None)
+        memory_space_team.default_model = str(llm_model.id)
+        memory_space_team.save()
+
+        memory = Memory.objects.create(
+            memory_space=memory_space_team,
+            title="Existing Memory",
+            content="old content",
+            owner_username="team",
+            owner_domain="",
+            organization_id=1,
+            created_by="team",
+            updated_by="team",
+        )
+
+        mock_response = MagicMock()
+        mock_response.content = '{"title": "Merged Memory", "content": "old content\\nnew content"}'
+        mock_client = MagicMock()
+        mock_client.invoke.return_value = mock_response
+
+        with patch(
+            "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
+            return_value=mock_client,
+        ):
+            write_plan = _prepare_memory_write_plan(
+                memory_space_id=memory_space_team.id,
+                title="Flush Memory",
+                content="new content",
+                owner_username="team",
+                owner_domain="",
+                organization_id=1,
+                model_id=llm_model.id,
+                skip_write_rule=True,
+            )
+
+        memory.delete()
+
+        with transaction.atomic():
+            _apply_memory_write_plan(write_plan)
+
+        memory = Memory.objects.get(memory_space=memory_space_team, organization_id=1)
+        assert memory.title == "Flush Memory"
+        assert memory.content == "new content"
+
+    def test_prepare_plan_passes_write_rule_to_existing_memory_merge_when_rule_normalization_is_skipped(self, memory_space_team):
+        from apps.opspilot.tasks import _prepare_memory_write_plan
+
+        write_rule = "同 root_cause_id 已存在时，只追加复发行，不得新增重复故障档案"
+        llm_model = create_test_llm_model(None)
+        memory_space_team.default_model = str(llm_model.id)
+        memory_space_team.write_rule = write_rule
+        memory_space_team.save()
+
+        Memory.objects.create(
+            memory_space=memory_space_team,
+            title="K8s RCA",
+            content="### RC-JVM-CGROUP-001\n- reason: OOMKilled",
+            owner_username="team",
+            owner_domain="",
+            organization_id=1,
+            created_by="team",
+            updated_by="team",
+        )
+
+        captured_prompts = []
+        mock_client = MagicMock()
+
+        def invoke(messages):
+            captured_prompts.append(messages[-1].content)
+            response = MagicMock()
+            response.content = (
+                '{"title": "K8s RCA", "content": "### RC-JVM-CGROUP-001\\n- reason: OOMKilled\\n- 复发:2026-07-01 15:30 | ns/app | INC-2026-07-0001"}'
+            )
+            return response
+
+        mock_client.invoke.side_effect = invoke
+
+        with patch(
+            "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
+            return_value=mock_client,
+        ):
+            _prepare_memory_write_plan(
+                memory_space_id=memory_space_team.id,
+                title="K8s RCA",
+                content="### RC-JVM-CGROUP-001\n- reason: OOMKilled\n- 事件编号: INC-2026-07-0001",
+                owner_username="team",
+                owner_domain="",
+                organization_id=1,
+                model_id=llm_model.id,
+                skip_write_rule=True,
+            )
+
+        assert len(captured_prompts) == 1
+        assert write_rule in captured_prompts[0]
+        assert "## 写入规则" in captured_prompts[0]
+
     def test_flush_recovers_stale_legacy_processing_cache_without_timestamp(self, memory_space_team):
         from apps.opspilot.tasks import MEMORY_WRITE_PROCESSING_TTL_SECONDS, flush_memory_write_cache_for_node
 
@@ -1650,7 +1860,7 @@ class TestProcessMemoryWriteCacheBatching:
         MemoryWriteCache.objects.filter(id=cache.id).update(created_at=timezone.now() - timedelta(seconds=MEMORY_WRITE_PROCESSING_TTL_SECONDS + 1))
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1673,7 +1883,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1697,7 +1907,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1721,7 +1931,7 @@ class TestProcessMemoryWriteCacheBatching:
         )
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 flush_memory_write_cache_for_node(
                     workflow_id=1001,
                     node_id="memory_write_node",
@@ -1888,7 +2098,7 @@ class TestMemoryWriteCacheFlushTriggers:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_personal.id,
                     title="Batch Memory",
@@ -1928,7 +2138,7 @@ class TestMemoryWriteCacheFlushTriggers:
         from apps.opspilot.tasks import process_memory_write_cache
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 process_memory_write_cache(
                     memory_space_id=memory_space_team.id,
                     title="Immediate Memory",
@@ -1957,7 +2167,7 @@ class TestMemoryWriteCacheFlushTriggers:
         mock_client.invoke.return_value = mock_response
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 with patch(
                     "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                     return_value=mock_client,
@@ -1986,7 +2196,7 @@ class TestMemoryWriteCacheFlushTriggers:
                     )
 
         mock_client.invoke.assert_called_once()
-        assert mock_write.call_args.kwargs["content"] == "- batched summary"
+        assert mock_write.call_args.args[0]["content"] == "- batched summary"
 
     def test_summary_failure_falls_back_to_joined_content(self, memory_space_team):
         from apps.opspilot.tasks import process_memory_write_cache
@@ -1999,7 +2209,7 @@ class TestMemoryWriteCacheFlushTriggers:
         mock_client.invoke.side_effect = Exception("summary failed")
 
         with patch("apps.opspilot.tasks.close_old_connections"):
-            with patch("apps.opspilot.tasks._process_memory_write_impl") as mock_write:
+            with patch("apps.opspilot.tasks._apply_memory_write_plan") as mock_write:
                 with patch(
                     "apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client",
                     return_value=mock_client,
@@ -2027,9 +2237,9 @@ class TestMemoryWriteCacheFlushTriggers:
                         write_batch_size=2,
                     )
 
-        call_kwargs = mock_write.call_args.kwargs
-        assert "event-1" in call_kwargs["content"]
-        assert "event-2" in call_kwargs["content"]
+        write_plan = mock_write.call_args.args[0]
+        assert "event-1" in write_plan["content"]
+        assert "event-2" in write_plan["content"]
 
 
 # ---------------------------------------------------------------------------
