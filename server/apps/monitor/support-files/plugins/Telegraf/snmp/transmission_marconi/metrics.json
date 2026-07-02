@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_marconi",
+  "plugin": "Transmission Marconi SNMP",
+  "plugin_desc": "Marconi Communications ATM and SDH transmission SNMP child template (enterprise PEN 7262). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free CPU, memory, temperature, fan, power or optical health gauges are confirmed from MARCONI-MIB facts in this worktree. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate traffic while this plugin provides the Marconi collect_type, UI and Telegraf child template. Supported brands/models — Marconi ATM, SDH and optical transmission devices.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_marconi'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-marconi_marconi",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

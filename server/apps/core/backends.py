@@ -70,7 +70,9 @@ class APISecretAuthBackend(ModelBackend):
 
         user_secret = None
         try:
-            user_secret = UserAPISecret._default_manager.get(api_secret=api_token)
+            user_secret = UserAPISecret.find_by_api_secret(api_token)
+            if user_secret is None:
+                return None
             user = User._default_manager.get(username=user_secret.username, domain=user_secret.domain)
             user.group_list = [user_secret.team]
 

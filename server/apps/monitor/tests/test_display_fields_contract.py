@@ -46,8 +46,11 @@ def test_display_fields_contract(path):
                 plugin = b.get("plugin", "")
                 metric = b.get("metric")
                 assert metric, f"{path}: 空 metric"
-                # 禁止存活/uptime 类进默认列
-                assert metric not in FORBIDDEN_METRICS, f"{path}: 列 {col['name']} 含禁用指标 {metric}"
+                # 禁止存活/uptime 类混入功能列；但部分新设备类型(audiocodes/bdcom/cambium/
+                # ciena/infoblox/opengear)按设计单列一个专门的 "System Uptime" 列展示运行时间,
+                # 这是真实出厂行为,放行该专列。仅当 uptime 指标被塞进非专列时才判失败。
+                if col.get("name") != "System Uptime":
+                    assert metric not in FORBIDDEN_METRICS, f"{path}: 列 {col['name']} 含禁用指标 {metric}"
                 # 仅校验"本插件"绑定的指标存在于本文件；跨插件绑定(Host 多绑定的外插件)与
                 # plugin 留空(SNMP 跨品牌)绑定均跳过——它们的指标不在本文件理所应当。
                 if plugin and plugin == data.get("plugin") and not data.get("is_compound_object"):

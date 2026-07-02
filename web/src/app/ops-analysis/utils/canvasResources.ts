@@ -1,5 +1,6 @@
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type { LayoutItem } from '@/app/ops-analysis/types/dashBoard';
+import type { ScreenViewSets } from '@/app/ops-analysis/types/screen';
 import { collectNamespaceIdsFromLayout } from '@/app/ops-analysis/utils/namespaceFilter';
 import { collectNamespaceIdsFromNodes } from '@/app/ops-analysis/(pages)/view/topology/utils/namespaceUtils';
 import type { Graph } from '@antv/x6';
@@ -45,4 +46,30 @@ export const collectTopologyNamespaceIds = (
   dataSources: DatasourceItem[] = [],
 ) => {
   return collectNamespaceIdsFromNodes(graphInstance, dataSources);
+};
+
+export const collectScreenDataSourceIds = (viewSets: ScreenViewSets) => {
+  const ids = new Set<number>();
+  viewSets.items.forEach((item) => {
+    const rawId = item.valueConfig?.dataSource;
+    const normalizedId = typeof rawId === 'string' ? parseInt(rawId, 10) : rawId;
+    if (Number.isFinite(normalizedId)) {
+      ids.add(normalizedId as number);
+    }
+  });
+  return Array.from(ids);
+};
+
+export const collectScreenNamespaceIds = (
+  viewSets: ScreenViewSets,
+  dataSources: DatasourceItem[] = [],
+) => {
+  const namespaceIds = new Set<number>();
+  viewSets.items.forEach((item) => {
+    const rawId = item.valueConfig?.dataSource;
+    const normalizedId = typeof rawId === 'string' ? parseInt(rawId, 10) : rawId;
+    const dataSource = dataSources.find((source) => source.id === normalizedId);
+    dataSource?.namespaces?.forEach((id) => namespaceIds.add(id));
+  });
+  return namespaceIds;
 };

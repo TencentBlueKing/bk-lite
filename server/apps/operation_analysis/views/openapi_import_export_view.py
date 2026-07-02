@@ -19,7 +19,6 @@ from apps.core.exceptions.base_app_exception import UnauthorizedException
 from apps.core.logger import operation_analysis_logger as logger
 from apps.core.utils.open_base import OpenAPIViewSet
 from apps.operation_analysis.constants.import_export import ObjectType
-from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
 from apps.operation_analysis.serializers.import_export_serializers import (
     ExportRequestSerializer,
     ImportPrecheckRequestSerializer,
@@ -88,12 +87,14 @@ class OpenImportExportViewSet(OpenAPIViewSet):
     def _filter_ids_by_org(self, object_type: str, object_ids: list[int], current_team: int = None) -> list[int]:
         """按组织过滤对象 ID，返回当前组织可见的合法 ID 列表"""
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
 
         MODEL_MAP = {
             ObjectType.DASHBOARD.value: Dashboard,
             ObjectType.TOPOLOGY.value: Topology,
             ObjectType.ARCHITECTURE.value: Architecture,
+            ObjectType.SCREEN.value: Screen,
+            ObjectType.REPORT.value: Report,
             ObjectType.DATASOURCE.value: DataSourceAPIModel,
         }
 
@@ -108,12 +109,6 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             return list(NameSpace.objects.filter(id__in=object_ids).values_list("id", flat=True))
 
         return []
-
-    def _parse_yaml_to_document(self, yaml_content: str) -> YAMLDocument:
-        import yaml as pyyaml
-
-        data = pyyaml.safe_load(yaml_content)
-        return YAMLDocument(**data)
 
     @action(detail=False, methods=["post"], url_path="export")
     def export_objects(self, request):
@@ -263,11 +258,11 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             target_directory_id=target_directory_id,
             current_team=current_team,
         )
+        doc = result.pop("_doc")
 
         if not result["valid"]:
             return Response(result, status=status.HTTP_200_OK)
 
-        doc = self._parse_yaml_to_document(yaml_content)
         result = ImportExportAuthorizationService.apply_precheck_permissions(
             request,
             doc,
@@ -369,6 +364,7 @@ class OpenImportExportViewSet(OpenAPIViewSet):
             target_directory_id=target_directory_id,
             current_team=current_team,
         )
+        doc = precheck_result.pop("_doc")
 
         if not precheck_result["valid"]:
             return Response(
@@ -380,7 +376,6 @@ class OpenImportExportViewSet(OpenAPIViewSet):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        doc = self._parse_yaml_to_document(yaml_content)
         precheck_result = ImportExportAuthorizationService.apply_precheck_permissions(
             request,
             doc,

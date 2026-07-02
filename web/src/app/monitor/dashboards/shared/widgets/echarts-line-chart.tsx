@@ -8,6 +8,7 @@ import { useECharts } from './useECharts';
 import { formatMetricValue } from '../utils/format';
 import { MetricUnit } from '../types';
 import { normalizeGapIntervals } from '@/app/monitor/utils/gapIntervals';
+import { CHART_COLORS } from '@/app/monitor/constants';
 
 export interface EChartsLineChartProps {
   data: ChartData[];
@@ -27,11 +28,6 @@ export interface EChartsLineChartProps {
   allowSelect?: boolean;
   onXRangeChange?: (range: [Dayjs, Dayjs]) => void;
 }
-
-const DEFAULT_COLORS = [
-  '#5B8FF9', '#5AD8A6', '#F6BD16', '#E86452',
-  '#6DC8EC', '#945FB9', '#FF9845', '#1E9493'
-];
 
 
 const getChartAreaKeys = (arr: ChartData[]): string[] => {
@@ -141,7 +137,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
 
     const seriesList = areaKeys.map((key, idx) => {
       const style = seriesStyles[idx] || {};
-      const color = style.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
+      const color = style.color || CHART_COLORS[idx % CHART_COLORS.length];
       const fillOpacity = style.fillOpacity ?? 0.05;
       const strokeOpacity = style.strokeOpacity ?? 1;
       const strokeWidth = style.strokeWidth ?? 2;
@@ -250,7 +246,7 @@ const EChartsLineChart: React.FC<EChartsLineChartProps> = ({
                 displayValue = formatted.value;
                 displayUnit = formatted.unit;
               }
-              const color = style.color || DEFAULT_COLORS[idx % DEFAULT_COLORS.length];
+              const color = style.color || CHART_COLORS[idx % CHART_COLORS.length];
               html += `<div style="display:flex;align-items:center;gap:6px"><span style="display:inline-block;width:8px;height:8px;border-radius:50%;background:${color}"></span><span>${displayValue} ${displayUnit}</span></div>`;
             });
           }

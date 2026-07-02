@@ -10,7 +10,6 @@ from rest_framework import serializers
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag
 
-
 # --------------------------------------------------------------------------
 # DataSourceAPIModelFilter
 # --------------------------------------------------------------------------
@@ -59,9 +58,7 @@ def _validate_field_schema(value):
     from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
 
     # validate_field_schema 不依赖 self，直接通过未初始化实例调用
-    return DataSourceAPIModelSerializer.validate_field_schema(
-        DataSourceAPIModelSerializer.__new__(DataSourceAPIModelSerializer), value
-    )
+    return DataSourceAPIModelSerializer.validate_field_schema(DataSourceAPIModelSerializer.__new__(DataSourceAPIModelSerializer), value)
 
 
 def test_validate_field_schema_empty_passes():
@@ -122,7 +119,7 @@ def test_count_objects():
     from apps.operation_analysis.schemas.import_export_schema import YAMLDocument, count_objects
 
     doc = YAMLDocument(
-        meta={"schema_version": "1.0.0"},
+        meta={"schema_version": "1.1.0"},
         namespaces=[{"key": "n", "name": "n", "domain": "d", "account": "a", "password": "p"}],
     )
     counts = count_objects(doc)

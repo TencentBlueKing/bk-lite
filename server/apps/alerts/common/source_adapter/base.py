@@ -24,6 +24,7 @@ from apps.alerts.common.source_adapter import logger
 from apps.alerts.utils.util import decode_team_secret, split_list
 from apps.alerts.utils.permission_scope import normalize_team_ids
 from apps.alerts.enrichment.engine import EnrichmentEngine
+from apps.rpc.cmdb import CMDB
 
 
 class AlertSourceAdapter(ABC):
@@ -74,6 +75,35 @@ class AlertSourceAdapter(ABC):
             Level.objects.filter(level_type=LevelType.EVENT).order_by("level_id").values_list("level_id", flat=True))
 
         return str(max(instance)), [str(i) for i in instance]
+
+    @staticmethod
+    def enable_enrich() -> bool:
+        return False
+
+    @staticmethod
+    def enrich_event(data: Dict[str, Any]) -> None:
+        resource_type = data.get("resource_type")
+        resource_id = data.get("resource_id")
+        if not resource_type or not resource_id:
+            return
+
+        params = {"model_id": resource_type, "_id": resource_id}
+        try:
+            try:
+                resource = CMDB().search_instances(**params)
+            except TypeError:
+                resource = CMDB().search_instances(params)
+        except Exception:
+            logger.error("[AlertSource] 单事件 CMDB 丰富失败: %s", params, exc_info=True)
+            return
+
+        if isinstance(resource, dict) and resource:
+            data.setdefault("labels", {}).update(resource)
+
+    def rich_event(self, data: Dict[str, Any]) -> None:
+        if not getattr(self, "enable_rich_event", self.enable_enrich()):
+            return
+        self.enrich_event(data)
 
     def authenticate(self) -> bool:
         # 契约：认证通过返回 True，否则抛 AuthenticationSourceError（不会返回 False）。

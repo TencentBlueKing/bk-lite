@@ -14,7 +14,8 @@
           "value": 0,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "表空间空间告警",
@@ -38,7 +39,8 @@
           "value": 85,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "SGA内存压力",
@@ -62,14 +64,15 @@
           "value": 70,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "用户等待时间",
       "alert_name": "Oracle 实例 ${resource_name} 用户 IO 等待过高",
       "description": "监控用户IO等待时间占比，高等待表明存储性能瓶颈。需检查ASM磁盘组或存储阵列。",
       "metric_name": "oracledb_wait_time_user_io_gauge",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -86,14 +89,15 @@
           "value": 100,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "回滚率异常",
       "alert_name": "Oracle 实例 ${resource_name} 事务回滚突增",
       "description": "监控事务回滚速率，异常增长表明应用逻辑错误或死锁。需检查业务事务逻辑。",
       "metric_name": "oracledb_activity_user_rollbacks_gauge_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -110,7 +114,8 @@
           "value": 1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "PGA内存溢出",
@@ -134,7 +139,8 @@
           "value": 70,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "RAC节点状态",
@@ -148,7 +154,8 @@
           "value": 0,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

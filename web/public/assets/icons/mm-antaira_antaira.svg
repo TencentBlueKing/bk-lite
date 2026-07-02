@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="Antaira">
+  <rect width="64" height="64" rx="12" fill="#0f766e"/>
+  <path d="M18 48 32 14l14 34h-8l-2.5-6.8h-7L26 48h-8Zm13-13.5h2l-1-2.8-1 2.8Z" fill="#f8fafc"/>
+  <path d="M18 52h28" stroke="#99f6e4" stroke-width="4" stroke-linecap="round"/>
+</svg>

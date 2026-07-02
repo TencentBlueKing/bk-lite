@@ -1,0 +1,111 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_synology",
+  "plugin": "Storage Synology SNMP",
+  "plugin_desc": "Synology NAS/storage-specific SNMP collection for Synology DiskStation/RackStation devices (DSM, IANA PEN 6574). In addition to standard IF-MIB interface metrics, it collects SYNOLOGY-SYSTEM-MIB and SYNOLOGY-RAID-MIB private OIDs for device health — chassis temperature in degrees Celsius (synologyTemperature, read directly with no scaling), the system fan status (synologySystemFanStatus), the power-supply status (synologyPowerStatus) and the RAID/volume array status (synologyRaidStatus, one row per RAID group). The fan, power-supply and RAID raw codes are normalized via telegraf processors.enum to 1=healthy / 2=fault and the worst component is taken per device with max(). The DiskStation MIB exposes system status only as a coarse normal/failed code and does not publish a pollable system-wide CPU or memory utilization gauge under the private tree, so CPU and memory utilization are not collected (N/A). Supported brands/models — Synology DiskStation and RackStation NAS appliances running DSM with SNMP enabled (DS/RS/FS/SA series)."
+  ,
+  "status_query": "any({instance_type='storage', collect_type='snmp_synology'}) by (instance_id)",
+  "name": "Storage",
+  "icon": "mm-storage_储存设备",
+  "type": "Hardware Device",
+  "description": "",
+  "default_metric": "any({instance_type='storage'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_psu_state",
+    "device_raid_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis temperature in degrees Celsius of the Synology device (SYNOLOGY-SYSTEM-MIB synologyTemperature). The object value is already in degrees Celsius and is read directly without scaling. High temperatures can indicate cooling failure, blocked airflow, or an overheating environment and risk triggering thermal protection or damaging the disks and hardware."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the system fan health of the Synology device (SYNOLOGY-SYSTEM-MIB synologySystemFanStatus). The raw codes (normal(1), failed(2)) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a failed system fan that risks overheating the enclosure and warrants immediate investigation."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the power-supply health of the Synology device (SYNOLOGY-SYSTEM-MIB synologyPowerStatus). The raw codes (normal(1), failed(2)) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault. A value greater than 1 indicates a power-supply fault or loss of power redundancy that warrants investigation."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_raid_state",
+      "query": "max(device_raid_state{instance_type='storage', __$labels__}) by (instance_id)",
+      "display_name": "RAID State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the RAID/volume array health of the Synology device, derived from the per-RAID status table (SYNOLOGY-RAID-MIB synologyRaidStatus, one row per RAID group). The raw codes (normal(1) is healthy; degraded/crashed/rebuilding and other non-normal states are faults) are normalized via telegraf processors.enum so that 1 = healthy and 2 = fault, and the worst RAID group is taken per device with max(). A value greater than 1 indicates a degraded or failed array that risks data loss and warrants immediate investigation."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed storage uplinks, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='storage', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed storage uplinks, keeping the rate accurate."
+    }
+  ]
+}

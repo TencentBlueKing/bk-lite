@@ -1,0 +1,138 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_aerohive",
+  "plugin": "Wireless Aerohive SNMP",
+  "plugin_desc": "Aerohive (Extreme Networks) HiveAP / HiveOS access-point and controller-specific SNMP collection (AH-SYSTEM-MIB, enterprise PEN 26928). In addition to standard IF-MIB 64-bit HC interface traffic, it collects the platform health scalars — CPU utilization (ahCpuUtilization, OID 26928.1.2.3) and memory utilization (ahMemUtilization, OID 26928.1.2.4) both reported directly as 0-100 percentages, and chassis temperature (ahEnvirmentTemp, OID 26928.1.2.10) read directly in degrees Celsius (only chassis models with a temperature sensor return a real value, fanless APs return 0). The fan-speed object (ahEnvirmentFan) is an RPM reading rather than a normalized up/down state and most APs are fanless, so fan state and power-supply objects are N/A. Supported brands/models — Aerohive / Extreme Networks HiveAP access points (AP series) and HiveManager-managed wireless devices running HiveOS (enterprise PEN 26928).",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_aerohive'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-aerohive_aerohive",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='wireless', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the wireless device since the last restart, derived from sysUpTime. Monitoring uptime helps administrators understand device stability and identify unexpected reboots."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Aerohive / Extreme HiveOS platform (AH-SYSTEM-MIB ahCpuUtilization, OID 26928.1.2.3), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate heavy client-association load, control-plane pressure, or RF management overhead affecting roaming and management responsiveness."
+    },
+    {
+      "metric_group": "Wireless",
+      "name": "device_memory_usage",
+      "query": "avg(device_memory_usage{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Memory utilization of the Aerohive / Extreme HiveOS platform (AH-SYSTEM-MIB ahMemUtilization, OID 26928.1.2.4), reported directly as a 0-100 percentage. High memory pressure can cause the access point to drop client associations or restart services, so investigate client counts or abnormal load promptly."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='wireless', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature in degrees Celsius of the Aerohive / Extreme device (AH-SYSTEM-MIB ahEnvirmentTemp, OID 26928.1.2.10), read directly with no scaling. Only chassis models equipped with a temperature sensor report a real value; fanless access points return 0. High temperatures can indicate cooling failure or poor airflow and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifHCInOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifHCOutOctets{instance_type='wireless', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    }
+  ]
+}

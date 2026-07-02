@@ -262,8 +262,11 @@ def test_get_token_consumption_overview_uses_db_aggregate_not_iterator():
     mock_dated = MagicMock()
     mock_dated.values.return_value = mock_dated_agg
 
+    mock_token_annotated = MagicMock()
+    mock_token_annotated.annotate.return_value = mock_dated
+
     mock_qs = MagicMock()
-    mock_qs.annotate.return_value = mock_dated
+    mock_qs.annotate.return_value = mock_token_annotated
     mock_qs.iterator.side_effect = AssertionError("iterator() called — fix not working!")
 
     with patch.object(v, "_token_consumption_queryset", return_value=(mock_qs, yesterday, today)):

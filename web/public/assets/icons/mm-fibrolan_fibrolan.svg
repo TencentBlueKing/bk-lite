@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Fibrolan">
+  <rect width="1024" height="1024" rx="112" fill="#0F172A"/>
+  <path d="M188 676h648" stroke="#38BDF8" stroke-width="60" stroke-linecap="round"/>
+  <path d="M252 526h520" stroke="#22C55E" stroke-width="54" stroke-linecap="round"/>
+  <path d="M334 376h356" stroke="#F8FAFC" stroke-width="52" stroke-linecap="round"/>
+  <circle cx="512" cy="676" r="88" fill="#38BDF8"/>
+  <path d="M470 676h84" stroke="#0F172A" stroke-width="34" stroke-linecap="round"/>
+  <path d="M332 784h360" stroke="#F59E0B" stroke-width="46" stroke-linecap="round"/>
+</svg>

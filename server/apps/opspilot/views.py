@@ -6,9 +6,9 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count, IntegerField, Q, Sum
+from django.db.models import Count, IntegerField, Q, Sum, Value
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Cast, Coalesce, TruncDate
+from django.db.models.functions import Cast, Coalesce, NullIf, TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -144,7 +144,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
     if not token:
         return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
-    user = UserAPISecret.objects.filter(api_secret=token).first()
+    user = UserAPISecret.find_by_api_secret(token)
     if not user:
         if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
@@ -521,15 +521,24 @@ def _annotate_token_fields(queryset):
 
     response_detail 结构：{"usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
     KeyTextTransform 提取文本值后 Cast 为整型；NULL 值（路径不存在的旧行）被 Coalesce 置零。
+    与 _extract_token_usage 保持一致：total_tokens 缺失或为 0 时回退为 prompt_tokens + completion_tokens。
     """
 
     def _int_field(path):
         return Coalesce(Cast(KeyTextTransform(path[1], KeyTextTransform(path[0], "response_detail")), IntegerField()), 0)
 
+    prompt_expr = _int_field(("usage", "prompt_tokens"))
+    completion_expr = _int_field(("usage", "completion_tokens"))
+    total_expr = _int_field(("usage", "total_tokens"))
     return queryset.annotate(
-        _prompt=_int_field(("usage", "prompt_tokens")),
-        _completion=_int_field(("usage", "completion_tokens")),
-        _total=_int_field(("usage", "total_tokens")),
+        _prompt=prompt_expr,
+        _completion=completion_expr,
+        _total=Coalesce(
+            NullIf(total_expr, Value(0)),
+            prompt_expr + completion_expr,
+            Value(0),
+            output_field=IntegerField(),
+        ),
     )
 
 

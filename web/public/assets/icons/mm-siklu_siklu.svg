@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Siklu">
+  <rect width="1024" height="1024" rx="112" fill="#0F172A"/>
+  <path d="M186 648c82-118 196-178 326-178s244 60 326 178" fill="none" stroke="#38BDF8" stroke-width="64" stroke-linecap="round"/>
+  <path d="M278 514c60-72 138-108 234-108s174 36 234 108" fill="none" stroke="#A7F3D0" stroke-width="56" stroke-linecap="round"/>
+  <path d="M372 384c36-34 82-52 140-52s104 18 140 52" fill="none" stroke="#F8FAFC" stroke-width="48" stroke-linecap="round"/>
+  <circle cx="512" cy="690" r="82" fill="#38BDF8"/>
+  <path d="M472 690h80" stroke="#0F172A" stroke-width="34" stroke-linecap="round"/>
+</svg>

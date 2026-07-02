@@ -14,14 +14,15 @@
           "value": 1,
           "method": "!="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Leader 切换频繁",
       "alert_name": "Etcd ${resource_name} Leader 频繁切换",
       "description": "监控 5 分钟内 leader 切换速率，频繁切换通常意味着网络抖动、时钟漂移或节点负载异常。",
       "metric_name": "etcd_server_leader_changes_seen_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -33,14 +34,15 @@
           "value": 0.03,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd 心跳发送失败",
       "alert_name": "Etcd ${resource_name} 心跳发送失败率升高",
       "description": "监控 leader 心跳发送失败速率，持续升高通常表示节点间网络或 peer 连接存在异常。",
       "metric_name": "etcd_server_heartbeat_send_failures_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -52,7 +54,8 @@
           "value": 0.01,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Backend 配额使用率过高",
@@ -71,7 +74,8 @@
           "value": 80,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Backend 急需整理",
@@ -85,7 +89,8 @@
           "value": 1,
           "method": "=="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Backend 碎片率过高",
@@ -104,14 +109,15 @@
           "value": 30,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd WAL fsync 延迟过高",
       "alert_name": "Etcd ${resource_name} WAL fsync P99 过高",
       "description": "监控 WAL fsync 的 P99 延迟，持续升高说明磁盘刷盘性能正在影响写入路径。",
       "metric_name": "etcd_disk_wal_fsync_p99_seconds",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -123,14 +129,15 @@
           "value": 0.02,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Backend Commit 延迟过高",
       "alert_name": "Etcd ${resource_name} Backend Commit P99 过高",
       "description": "监控 backend commit 的 P99 延迟，持续升高通常表示 BoltDB 提交或底层磁盘性能出现瓶颈。",
       "metric_name": "etcd_disk_backend_commit_p99_seconds",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -142,14 +149,15 @@
           "value": 0.05,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd 提案失败率过高",
       "alert_name": "Etcd ${resource_name} 提案失败率过高",
       "description": "监控 raft proposal 失败速率，持续升高说明一致性提交链路存在异常。",
       "metric_name": "etcd_server_proposals_failed_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -161,7 +169,8 @@
           "value": 0.1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd 提案排队积压",
@@ -180,7 +189,8 @@
           "value": 8,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd 提案应用落后",
@@ -199,14 +209,15 @@
           "value": 32,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd 慢应用请求增多",
       "alert_name": "Etcd ${resource_name} 慢应用请求增多",
       "description": "监控 slow apply 请求速率，升高说明状态机应用路径已经出现明显性能退化。",
       "metric_name": "etcd_server_slow_apply_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -218,14 +229,15 @@
           "value": 0.1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd 慢读索引增多",
       "alert_name": "Etcd ${resource_name} 慢读索引增多",
       "description": "监控 slow read index 请求速率，升高通常表示 quorum 读路径受网络或 leader 压力影响。",
       "metric_name": "etcd_server_slow_read_indexes_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -237,14 +249,15 @@
           "value": 0.1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Read Index 失败",
       "alert_name": "Etcd ${resource_name} Read Index 失败率升高",
       "description": "监控 read index 失败速率，升高说明线性一致性读路径存在异常。",
       "metric_name": "etcd_server_read_indexes_failed_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -256,14 +269,15 @@
           "value": 0.01,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd Peer 发送失败",
       "alert_name": "Etcd ${resource_name} Peer 发送失败率升高",
       "description": "监控 peer 发送失败速率，持续非零通常意味着节点间复制链路存在网络或连接异常。",
       "metric_name": "etcd_network_peer_sent_failures_total_counter_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -275,14 +289,15 @@
           "value": 0.01,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Etcd RPC 失败率过高",
       "alert_name": "Etcd ${resource_name} RPC 失败率过高",
       "description": "监控非 OK 的 unary RPC 失败速率，升高表示客户端访问路径已经出现明显错误。",
       "metric_name": "etcd_rpc_failed_rate",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -294,7 +309,8 @@
           "value": 1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

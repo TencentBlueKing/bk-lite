@@ -20,6 +20,7 @@ from django.core.management import BaseCommand
 from django.db import transaction
 
 from apps.core.logger import operation_analysis_logger as logger
+from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION
 
 BUILTIN_DIRECTORY_KEY = "__builtin__"
 BUILTIN_DIRECTORY_NAME = "内置目录"
@@ -28,7 +29,7 @@ YAML_FILE_PATH = os.path.join(
     "support-files",
     "builtin_canvases.yaml",
 )
-MERGEABLE_SECTIONS = ("dashboards", "topologies", "architectures", "datasources", "namespaces")
+MERGEABLE_SECTIONS = ("dashboards", "topologies", "architectures", "screens", "reports", "datasources", "namespaces")
 
 
 def _get_default_group_ids():
@@ -91,6 +92,10 @@ def _build_conflict_decisions(doc):
         decisions[tp.key] = "skip"
     for ar in doc.architectures:
         decisions[ar.key] = "skip"
+    for screen in doc.screens:
+        decisions[screen.key] = "skip"
+    for report in doc.reports:
+        decisions[report.key] = "skip"
     return decisions
 
 
@@ -107,7 +112,7 @@ def _get_builtin_canvas_file_paths():
 def _merge_yaml_documents(documents):
     merged = {
         "meta": {
-            "schema_version": "1.0.0",
+            "schema_version": YAML_SCHEMA_VERSION,
             "exported_at": "",
             "source": {"organization_id": 0},
             "object_counts": {},
@@ -159,7 +164,7 @@ class Command(BaseCommand):
             return
 
         # 2. 延迟导入（避免循环依赖）
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
         from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
         from apps.operation_analysis.services.import_export.import_service import ImportService
 
@@ -171,7 +176,7 @@ class Command(BaseCommand):
             logger.error("[BuiltinCanvas] 内置画布 YAML 解析失败：%s", e, exc_info=True)
             return
 
-        total_canvases = len(doc.dashboards) + len(doc.topologies) + len(doc.architectures)
+        total_canvases = len(doc.dashboards) + len(doc.topologies) + len(doc.architectures) + len(doc.screens) + len(doc.reports)
         if total_canvases == 0 and len(doc.namespaces) == 0 and len(doc.datasources) == 0:
             self.stdout.write(self.style.WARNING("内置画布 YAML 中无可导入对象，跳过"))
             return
@@ -187,7 +192,9 @@ class Command(BaseCommand):
             f"{len(doc.datasources)} 数据源, "
             f"{len(doc.dashboards)} 仪表盘, "
             f"{len(doc.topologies)} 拓扑图, "
-            f"{len(doc.architectures)} 架构图"
+            f"{len(doc.architectures)} 架构图, "
+            f"{len(doc.screens)} 大屏, "
+            f"{len(doc.reports)} 报表"
         )
 
         # 5~8 在同一事务中：删旧内置 → 导入 → 标记新内置
@@ -196,7 +203,7 @@ class Command(BaseCommand):
             with transaction.atomic():
                 # 5. 先删除旧内置画布（这样 ImportService 不会按 name 匹配到旧内置，
                 #    只会匹配用户同名画布 → skip 保护用户数据）
-                for model in (Dashboard, Topology, Architecture):
+                for model in (Dashboard, Topology, Architecture, Screen, Report):
                     deleted_count, _ = model.objects.filter(is_build_in=True).delete()
                     if deleted_count:
                         self.stdout.write(f"清理旧内置 {model.__name__}: {deleted_count} 个")
@@ -232,6 +239,8 @@ class Command(BaseCommand):
                     "dashboard": Dashboard,
                     "topology": Topology,
                     "architecture": Architecture,
+                    "screen": Screen,
+                    "report": Report,
                 }
 
                 marked_count = 0

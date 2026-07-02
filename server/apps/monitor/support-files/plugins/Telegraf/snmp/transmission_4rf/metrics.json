@@ -1,0 +1,47 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_4rf",
+  "plugin": "Transmission 4RF Aprisa SNMP",
+  "plugin_desc": "4RF AprisaXE wireless transmission SNMP child template (enterprise PEN 14817). Beyond standard MIB-II uptime and IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects AprisaXE private receiver temperature and fan status objects. Temperature is reported directly in degrees Celsius. Fan status values are normalized so notFitted(0) and fanOkay(1) map to 1 healthy, while fanFailed(2) and unknown values map to 2 fault. CPU, memory and power-supply health are not exposed as stable shared health objects in APRISAXE-MIB-4RF, so they are N/A.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_4rf'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-4rf_4rf",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_fan_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Receiver Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest 4RF AprisaXE receiver temperature in degrees Celsius, read from aprisaXEReceiverTemperature."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst 4RF AprisaXE fan status, normalized from aprisaXEFan1Status and aprisaXEFan2Status so notFitted(0) and fanOkay(1) are healthy and every other state is abnormal."
+    }
+  ]
+}

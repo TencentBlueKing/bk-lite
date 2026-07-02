@@ -463,8 +463,18 @@ Content-Type: application/json
 
 **Request:**
 ```json
+{"task_id": 123, "team": [1]}
+```
+
+兼容旧调用：
+```json
 {"task_id": 123}
 ```
+
+| 字段 | 类型 | 必填 | 说明 |
+|------|------|------|------|
+| task_id | integer | 是 | 作业执行 ID |
+| team | array | 否 | 调用方团队 ID 列表，必须与作业执行记录归属团队有交集；不传时仅返回安全元数据，不返回脚本明文、目标列表和执行结果 |
 
 **Response:**
 ```json
@@ -496,6 +506,27 @@ Content-Type: application/json
         "error_message": ""
       }
     ]
+  }
+}
+```
+
+不传 `team` 的兼容响应只包含安全元数据：
+```json
+{
+  "result": true,
+  "data": {
+    "task_id": 123,
+    "name": "补丁安装-20260430",
+    "job_type": "script",
+    "status": "success",
+    "timeout": 600,
+    "started_at": "2026-04-30T10:00:00",
+    "finished_at": "2026-04-30T10:01:30",
+    "total_count": 3,
+    "success_count": 3,
+    "failed_count": 0,
+    "detail_limited": true,
+    "requires_team": true
   }
 }
 ```

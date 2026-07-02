@@ -1,0 +1,20 @@
+{
+  "object": "Firewall",
+  "plugin": "Firewall Barracuda SNMP",
+  "templates": [
+    {
+      "name": "Barracuda Temperature High",
+      "metric_name": "device_temperature_celsius",
+      "condition": "gt",
+      "threshold": 75,
+      "level": "warning"
+    },
+    {
+      "name": "Barracuda Storage Usage High",
+      "metric_name": "device_disk_usage",
+      "condition": "gt",
+      "threshold": 85,
+      "level": "warning"
+    }
+  ]
+}

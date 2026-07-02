@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_addpac",
+  "plugin": "VoiceGateway AddPac SNMP",
+  "plugin_desc": "AddPac voice gateway SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The AddPac voice-gateway family and SNMP MIB support are verified, but stable shared CPU, memory, temperature, fan and power health leaf OIDs are not proven in this pass, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_addpac'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-addpac_addpac",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_dragonwave",
+  "plugin": "Transmission DragonWave SNMP",
+  "plugin_desc": "DragonWave microwave transmission SNMP baseline child template for devices under DragonWave PEN 7262. The available state confirms public enterprise roots and product subtrees, but no verified vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power health OIDs. This child declares no vendor-specific metric deltas; uptime, IF-MIB 64-bit interface traffic and aggregate device traffic are supplied by the shared Transmission SNMP floor.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_dragonwave'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-dragonwave_dragonwave",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

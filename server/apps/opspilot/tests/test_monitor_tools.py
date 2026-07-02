@@ -245,11 +245,49 @@ def test_monitor_query_metric_data_requires_minimum_fields(mocker):
     rpc_call.assert_not_called()
 
 
-def test_monitor_tools_loader_metadata_includes_monitor():
+def test_monitor_not_in_static_tools_loader_metadata():
+    """monitor 是 builtin 工具（经 build_builtin_monitor_tool 注册），
+
+    刻意不挂在 ToolsLoader.TOOL_MODULES 静态映射里，因此 get_all_tools_metadata
+    不应包含 monitor 类别。回归这一隔离边界，避免 monitor 被重复登记到通用 loader。
+    """
     from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 
-    metadata = ToolsLoader.get_all_tools_metadata()
+    assert "monitor" not in ToolsLoader.TOOL_MODULES
 
-    monitor_item = next(item for item in metadata if item["name"] == "monitor")
-    assert monitor_item["constructor"].endswith("tools.monitor")
-    assert any(tool["name"] == "monitor_list_objects" for tool in monitor_item["tools"])
+    metadata = ToolsLoader.get_all_tools_metadata()
+    names = {item["name"] for item in metadata}
+    assert "monitor" not in names
+
+
+def test_builtin_monitor_tool_descriptor_shape():
+    """build_builtin_monitor_tool 产出的描述符须带 builtin 标记、langchain url 与子工具。"""
+    from apps.core.utils.loader import LanguageLoader
+    from apps.opspilot.services import builtin_tools
+
+    loader = LanguageLoader("opspilot")
+    descriptor = builtin_tools.build_builtin_monitor_tool(loader)
+
+    assert descriptor["id"] == builtin_tools.BUILTIN_MONITOR_TOOL_ID
+    assert descriptor["name"] == "monitor"
+    assert descriptor["is_build_in"] is True
+    assert descriptor["params"]["url"] == "langchain:monitor"
+    # CONSTRUCTOR_PARAMS 不应作为子工具泄漏
+    sub_names = {t["name"] for t in descriptor["tools"]}
+    assert "CONSTRUCTOR_PARAMS" not in sub_names
+    assert "monitor_list_objects" in sub_names
+
+
+def test_builtin_monitor_runtime_tool_passes_param_prompt():
+    """运行期描述符须透传 tool_kwargs 到 extra_param_prompt，并默认关闭鉴权。"""
+    from apps.opspilot.services import builtin_tools
+
+    runtime = builtin_tools.build_builtin_monitor_runtime_tool({"team_id": "12"})
+    assert runtime["name"] == "monitor"
+    assert runtime["url"] == "langchain:monitor"
+    assert runtime["enable_auth"] is False
+    assert runtime["extra_param_prompt"] == {"team_id": "12"}
+
+    # None 时回退为空 dict
+    runtime_none = builtin_tools.build_builtin_monitor_runtime_tool(None)
+    assert runtime_none["extra_param_prompt"] == {}

@@ -12,18 +12,15 @@ logger = logging.getLogger(__name__)
 _VALID_THRESHOLD_LEVELS = {"info", "warning", "error", "critical"}
 # source 合法类型 —— 其余类型在扫描器/基线构建时静默返回空目标（策略不生效），instance/organization 之外即误配
 _VALID_SOURCE_TYPES = {"instance", "organization"}
-# 聚合算法合法集合 —— 来源 apps/monitor/tasks/utils/policy_methods.py 的 METHOD 字典键；
-# 非法值会在扫描聚合处（metric_query 取 METHOD.get(algorithm)）抛 BaseAppException。改 METHOD 时需同步此集合。
+# 分组聚合算法合法集合 —— 先按维度聚合多个原始序列。
+_VALID_GROUP_AGGREGATION_ALGORITHMS = {"sum", "avg", "max", "min", "count"}
+# 周期聚合算法合法集合 —— 再对汇聚周期内的子查询结果做 over_time 计算。
 _VALID_AGGREGATION_ALGORITHMS = {
-    "sum",
-    "avg",
-    "max",
-    "min",
-    "count",
     "max_over_time",
     "min_over_time",
     "avg_over_time",
     "sum_over_time",
+    "count_over_time",
     "last_over_time",
 }
 # PromQL/MetricsQL label 运算符白名单
@@ -126,9 +123,17 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         return value
 
     def validate_algorithm(self, value):
-        """校验聚合算法须为下游支持的聚合函数，否则扫描聚合时抛 BaseAppException。"""
+        """校验周期聚合算法须为下游支持的 over_time 函数。"""
         if value and value not in _VALID_AGGREGATION_ALGORITHMS:
             raise serializers.ValidationError(f"algorithm 非法，须为 {sorted(_VALID_AGGREGATION_ALGORITHMS)} 之一")
+        return value
+
+    def validate_group_algorithm(self, value):
+        """校验分组聚合算法须为下游支持的聚合函数。"""
+        if value and value not in _VALID_GROUP_AGGREGATION_ALGORITHMS:
+            raise serializers.ValidationError(
+                f"group_algorithm 非法，须为 {sorted(_VALID_GROUP_AGGREGATION_ALGORITHMS)} 之一"
+            )
         return value
 
     def validate_group_by(self, value):

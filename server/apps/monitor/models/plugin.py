@@ -14,6 +14,7 @@ class MonitorPlugin(TimeInfo, MaintainerInfo):
     collector = models.CharField(max_length=100, default="", verbose_name="采集器名称")
     collect_type = models.CharField(max_length=50, default="", verbose_name="采集类型")
     node_selector = models.JSONField(default=dict, blank=True, verbose_name="节点选择约束")
+    support_collect_detect = models.BooleanField(default=False, verbose_name="是否支持接入前采集检测")
     description = models.TextField(blank=True, verbose_name="插件描述")
     status_query = models.TextField(blank=True, verbose_name="状态查询语句(PromQL)")
     is_pre = models.BooleanField(default=True, verbose_name="是否内置")
