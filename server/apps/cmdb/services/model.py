@@ -1,8 +1,10 @@
 import json
+import os
 import uuid
 from dataclasses import asdict
-from typing import Any
+from typing import Any, Callable
 
+from django.core.cache import cache
 from django.utils import timezone
 
 from apps.cmdb.constants.constants import (
@@ -65,9 +67,16 @@ from apps.core.services.user_group import UserGroup
 from apps.rpc.system_mgmt import SystemMgmt
 
 FIELD_GROUP_MANAGER: Any = getattr(FieldGroup, "objects")
+MODEL_ATTR_OPTION_CACHE_TTL = int(os.getenv("CMDB_MODEL_ATTR_OPTION_CACHE_TTL", "300"))
+MODEL_ATTR_ORGANIZATION_OPTION_CACHE_KEY = "cmdb:model_attr_options:organization"
+MODEL_ATTR_USER_OPTION_CACHE_KEY = "cmdb:model_attr_options:user"
 
 
 class ModelManage(object):
+    @staticmethod
+    def _clone_options(option: list[dict]) -> list[dict]:
+        return [dict(item) for item in option]
+
     @staticmethod
     def _normalize_default_value(raw_value: Any) -> list[str]:
         if raw_value in (None, ""):
@@ -1283,6 +1292,51 @@ class ModelManage(object):
                 ModelManage.get_organization_option(item["subGroups"], result, name)
 
     @staticmethod
+    def get_cached_organization_options(
+        system_mgmt_client_provider: Callable[[], SystemMgmt],
+    ) -> list[dict]:
+        option = cache.get(MODEL_ATTR_ORGANIZATION_OPTION_CACHE_KEY)
+        if option is not None:
+            return ModelManage._clone_options(option)
+
+        groups = UserGroup.get_all_groups(system_mgmt_client_provider()) or []
+        option = []
+        ModelManage.get_organization_option(groups, option)
+        cache.set(
+            MODEL_ATTR_ORGANIZATION_OPTION_CACHE_KEY,
+            option,
+            timeout=MODEL_ATTR_OPTION_CACHE_TTL,
+        )
+        return ModelManage._clone_options(option)
+
+    @staticmethod
+    def get_cached_user_options(
+        system_mgmt_client_provider: Callable[[], SystemMgmt],
+    ) -> list[dict]:
+        option = cache.get(MODEL_ATTR_USER_OPTION_CACHE_KEY)
+        if option is not None:
+            return ModelManage._clone_options(option)
+
+        users = UserGroup.get_all_users(system_mgmt_client_provider())
+        option = [
+            dict(
+                id=user["id"],
+                name=user["username"],
+                username=user.get("username"),
+                display_name=user.get("display_name"),
+                is_default=False,
+                type="str",
+            )
+            for user in users["users"]
+        ]
+        cache.set(
+            MODEL_ATTR_USER_OPTION_CACHE_KEY,
+            option,
+            timeout=MODEL_ATTR_OPTION_CACHE_TTL,
+        )
+        return ModelManage._clone_options(option)
+
+    @staticmethod
     def search_model_attr(model_id: str, language: str = "en"):
         """
         查询模型属性
@@ -1310,32 +1364,22 @@ class ModelManage(object):
         attrs = [ModelManage.sanitize_attr_default_value(attr, log_context="search_model_attr_v2") for attr in attrs]
         unique_rules = build_unique_rule_context(model_id).unique_rules
         attr_types = {attr["attr_type"] for attr in attrs}
-        system_mgmt_client = SystemMgmt()
+        system_mgmt_client = None
+
+        def get_system_mgmt_client() -> SystemMgmt:
+            nonlocal system_mgmt_client
+            if system_mgmt_client is None:
+                system_mgmt_client = SystemMgmt()
+            return system_mgmt_client
 
         if ORGANIZATION in attr_types:
-            groups = UserGroup.get_all_groups(system_mgmt_client)
-            # 获取默认的第一个根组织
-            groups = groups if groups else []
-            option = []
-            ModelManage.get_organization_option(groups, option)
+            option = ModelManage.get_cached_organization_options(get_system_mgmt_client)
             for attr in attrs:
                 if attr["attr_type"] == ORGANIZATION:
                     attr.update(option=option)
 
         if USER in attr_types:
-            users = UserGroup.get_all_users(system_mgmt_client)
-            option = [
-                dict(
-                    # id=user["username"],
-                    id=user["id"],
-                    name=user["username"],
-                    username=user.get("username"),
-                    display_name=user.get("display_name"),
-                    is_default=False,
-                    type="str",
-                )
-                for user in users["users"]
-            ]
+            option = ModelManage.get_cached_user_options(get_system_mgmt_client)
             for attr in attrs:
                 if attr["attr_type"] == USER:
                     attr.update(option=option)
