@@ -538,7 +538,7 @@
       "noImportData": "No data to import",
       "parseExcelFailed": "Failed to parse Excel file",
       "collectDetect": "Test Connectivity",
-      "collectDetectBatch": "Batch Test Connectivity",
+      "collectDetectBatch": "Batch Test",
       "collectDetectBatchStarted": "Started {{count}} connectivity test(s)",
       "collectDetectStatus": "Test Status",
       "collectDetectUntested": "Untested",

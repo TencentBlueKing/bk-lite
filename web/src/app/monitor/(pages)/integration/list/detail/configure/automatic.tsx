@@ -6,7 +6,6 @@ import {
   CloseCircleOutlined,
   DownOutlined,
   LoadingOutlined,
-  ThunderboltOutlined,
   UploadOutlined
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
@@ -305,7 +304,7 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     rowKey: string,
     taskId: React.Key,
     fingerprint: string,
-    showResult = true,
+    showResult = false,
     retryCount = 0
   ) => {
     try {
@@ -413,13 +412,34 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     if (!task || task.fingerprint !== buildCollectDetectFingerprint(record)) {
       return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
     }
+    const clickableClassName = 'cursor-pointer';
     if (['pending', 'running'].includes(task.status)) {
-      return <Tag color="processing">{t('monitor.integrations.collectDetectRunning')}</Tag>;
+      return (
+        <Tag
+          color="processing"
+          className={clickableClassName}
+          onClick={() => showCollectDetectResult(task)}
+        >
+          {t('monitor.integrations.collectDetectRunning')}
+        </Tag>
+      );
     }
     return task.status === 'success' ? (
-      <Tag color="success">{t('monitor.integrations.collectDetectSuccess')}</Tag>
+      <Tag
+        color="success"
+        className={clickableClassName}
+        onClick={() => showCollectDetectResult(task)}
+      >
+        {t('monitor.integrations.collectDetectSuccess')}
+      </Tag>
     ) : (
-      <Tag color="error">{t('monitor.integrations.collectDetectFailed')}</Tag>
+      <Tag
+        color="error"
+        className={clickableClassName}
+        onClick={() => showCollectDetectResult(task)}
+      >
+        {t('monitor.integrations.collectDetectFailed')}
+      </Tag>
     );
   };
 
@@ -448,7 +468,6 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           {supportCollectDetect && (
             <Button
               type="link"
-              icon={<ThunderboltOutlined />}
               loading={['pending', 'running'].includes(
                 collectDetectTasks[record.key as string]?.fingerprint ===
                   buildCollectDetectFingerprint(record)

@@ -538,7 +538,7 @@
       "noImportData": "没有可导入的数据",
       "parseExcelFailed": "解析Excel文件失败",
       "collectDetect": "测试连通性",
-      "collectDetectBatch": "批量测试连通性",
+      "collectDetectBatch": "批量测试",
       "collectDetectBatchStarted": "已发起 {{count}} 个连通性测试",
       "collectDetectStatus": "测试状态",
       "collectDetectUntested": "未测试",
