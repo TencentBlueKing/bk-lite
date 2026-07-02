@@ -195,8 +195,8 @@ const LoginAuthPage: React.FC = () => {
     setUnmatchedAction('deny');
     form.resetFields();
     form.setFieldsValue({
-      unmatched_user_action: 'deny',
       icon: '',
+      platform_field: 'username',
     });
     fetchAvailableInstances();
     setModalVisible(true);
@@ -294,6 +294,21 @@ const LoginAuthPage: React.FC = () => {
     setSelectedIcon(nextIcon);
     form.setFieldValue('icon', nextIcon);
     form.setFieldValue('external_field', nextExternalField);
+
+    // 微信登录认证默认开启"未匹配时创建用户"并自动填充 OpsPilotGuest 组，
+    // 以接续旧微信扫码登录的首次登录创建组织弹窗（init_user_set）行为。
+    const currentDefaultGroup = form.getFieldValue('default_group_name');
+    if (providerKey === 'wechat') {
+      setUnmatchedAction('create');
+      form.setFieldValue('unmatched_user_action', 'create');
+      if (!currentDefaultGroup) {
+        form.setFieldValue('default_group_name', 'OpsPilotGuest');
+      }
+    } else {
+      setUnmatchedAction('deny');
+      form.setFieldValue('unmatched_user_action', 'deny');
+      form.setFieldValue('default_group_name', '');
+    }
   };
 
   const handleUnmatchedActionChange = (value: string) => {

@@ -104,9 +104,16 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     if binding.unmatched_user_action != LoginAuthBindingUnmatchedActionChoices.CREATE:
         return None
 
+    # 微信登录认证未配置默认组织时，沿用旧微信扫码登录行为，
+    # 自动加入 OpsPilotGuest 组，以便进入 ops-console 首页后触发
+    # init_user_set 首次登录创建组织弹窗。
+    default_group_name = binding.default_group_name
+    if not default_group_name and binding.integration_instance.provider_key == "wechat":
+        default_group_name = "OpsPilotGuest"
+
     default_group = None
-    if binding.default_group_name:
-        default_group, _ = Group.objects.get_or_create(name=binding.default_group_name, parent_id=0)
+    if default_group_name:
+        default_group, _ = Group.objects.get_or_create(name=default_group_name, parent_id=0)
 
     username = external_user.get("user_id") or external_user.get("open_id") or external_user.get("email") or external_value
     email = external_user.get("email", "")
