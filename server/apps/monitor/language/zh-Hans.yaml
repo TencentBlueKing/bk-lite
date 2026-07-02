@@ -3853,6 +3853,9 @@ monitor_object_plugin:
   Wireless Airspan SNMP:
     name: Airspan（Telegraf）
     desc: Airspan 4G/5G 无线接入设备 SNMP 基线子模板，适用于 Airspan 企业号 PEN 1803 下的设备。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料只确认无线接入产品面和企业根，未证明稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
+  Wireless ACKSYS SNMP:
+    name: ACKSYS（Telegraf）
+    desc: ACKSYS AirLink / WaveOS 工业无线设备 SNMP 基线子模板。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料已确认 AirLink 工业无线对象面、SNMP v1/v2c/v3 管理能力与官方 MIB 下载面，但未证明稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
   Wireless Grandstream SNMP:
     name: Grandstream（Telegraf）
     desc: Grandstream GWN 无线设备 SNMP 采集基线模板（接口流量 + 运行时长，企业号 PEN 42397）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。GRANDSTREAM-GWN-MIB 以无线射频统计与连接客户端信息为主，仅暴露 gwnDeviceUptime 这一标量系统量，无 CPU/内存/温度对象；关联客户端数仅以按 MAC 索引的 gwnClientTable 逐行呈现，无标量计数对象，telegraf inputs.snmp 无法行级聚合。故 CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。适用品牌型号——Grandstream GWN76xx/GWN78xx Wi-Fi 接入点与控制器（企业号 PEN 42397）及其他遵循 IF-MIB 标准的无线 AP 设备。
@@ -4329,6 +4332,12 @@ monitor_object_plugin:
   Switch WoMaster SNMP:
     name: WoMaster（Telegraf）
     desc: WoMaster 工业以太网交换机 SNMP 采集基线模板。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量。当前公开事实可确认 WoMaster 工业网管交换机产品与官方 Switch MIB 下载面，但未公开可保守归一的共享 CPU、内存、温度、风扇或电源健康叶子 OID，因此不将厂商健康指标臆造成设备健康指标。适用品牌型号——WoMaster 工业网管交换机。
+  Switch Murrelektronik SNMP:
+    name: Murrelektronik（Telegraf）
+    desc: Murrelektronik 工业以太网交换机 SNMP 采集基线模板（企业号 47330）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量。当前公开事实可确认 Murrelektronik 工业网管交换机产品、SNMPv1/v2c/v3 支持、RMON 支持与企业根，但未公开可保守归一的共享 CPU、内存、温度、风扇或电源健康叶子 OID，因此不将厂商健康指标臆造成设备健康指标。适用品牌型号——Murrelektronik 工业网管交换机。
+  Switch InHand Networks SNMP:
+    name: InHand Networks（Telegraf）
+    desc: InHand Networks 工业以太网交换机 SNMP 采集基线模板（企业号 144629）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量。当前公开事实可确认 InHand Networks 工业网管交换机产品、SNMPv1/v2c/v3、MIB-II、SMIv2、RMON、Ping MIB 支持与企业根，但未公开可保守归一的共享 CPU、内存、温度、风扇或电源健康叶子 OID，因此不将厂商健康指标臆造成设备健康指标。适用品牌型号——InHand Networks 工业网管交换机。
   Switch Phoenix Contact SNMP:
     name: Phoenix Contact（Telegraf）
     desc: Phoenix Contact FL SWITCH 工业以太网交换机 SNMP 采集基线模板（企业号 PEN 4346）。本模板基于标准 MIB-II / IF-MIB 采集设备运行时长与 64 位 HC 接口流量、接口收发错包与丢包速率、接口管理/操作状态与带宽，并按设备汇总收发总流量速率。FL SWITCH 的温度、双路冗余电源输入（P1/P2）与告警继电器等环境量由按产品家族区分的厂商私有 MIB（PEN 4346）承载，且随固件软件包发布、未在 GHS/MM/SMN/SMCS/EP74/2000 各系列以无需行级过滤的稳定标量统一公开，故 CPU、内存、温度、风扇、电源为 N/A，不伪造。适用品牌型号——Phoenix Contact FL SWITCH 工业以太网交换机（FL SWITCH GHS/MM/SMN/SMCS/EP74/2000 系列；企业号 PEN 4346）。
