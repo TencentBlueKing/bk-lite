@@ -55,6 +55,22 @@ interface WidgetGeometry {
   h: number;
 }
 
+interface ScreenDragBounds {
+  width: number;
+  height: number;
+}
+
+interface DragSession {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startGeometry: WidgetGeometry;
+  nextGeometry: WidgetGeometry;
+  node: HTMLElement | null;
+  frame: number | null;
+  moved: boolean;
+}
+
 interface ScreenRndItemProps {
   item: ScreenWidgetItem;
   selected: boolean;
@@ -73,6 +89,29 @@ const getWidgetGeometry = (item: ScreenWidgetItem): WidgetGeometry => ({
   h: item.h,
 });
 
+const clamp = (value: number, min: number, max: number) =>
+  Math.min(Math.max(value, min), max);
+
+const getSafeDragScale = (scale: number) =>
+  Number.isFinite(scale) && scale > 0 ? scale : 1;
+
+const getMovedScreenGeometry = (
+  start: WidgetGeometry,
+  delta: { clientX: number; clientY: number },
+  scale: number,
+  bounds: ScreenDragBounds,
+): WidgetGeometry => {
+  const safeScale = getSafeDragScale(scale);
+  const maxX = Math.max(bounds.width - start.w, 0);
+  const maxY = Math.max(bounds.height - start.h, 0);
+
+  return {
+    ...start,
+    x: Math.round(clamp(start.x + delta.clientX / safeScale, 0, maxX)),
+    y: Math.round(clamp(start.y + delta.clientY / safeScale, 0, maxY)),
+  };
+};
+
 const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
   ({
     item,
@@ -86,6 +125,8 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
   }) => {
     const rndRef = useRef<any>(null);
     const interactingRef = useRef(false);
+    const dragSessionRef = useRef<DragSession | null>(null);
+    const suppressClickRef = useRef(false);
     const [geometry, setGeometry] = useState<WidgetGeometry>(() =>
       getWidgetGeometry(item),
     );
@@ -113,11 +154,136 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
       });
     };
 
+    useEffect(() => {
+      return () => {
+        const session = dragSessionRef.current;
+        if (session && session.frame !== null) {
+          window.cancelAnimationFrame(session.frame);
+        }
+      };
+    }, []);
+
+    const beginMove = (
+      event: React.PointerEvent<HTMLDivElement>,
+      node: HTMLElement | null,
+    ) => {
+      if (event.button !== 0) return;
+
+      const target = event.target;
+      if (!(target instanceof HTMLElement)) return;
+      if (!target.closest(".screen-widget-frame__header")) return;
+      if (
+        target.closest(
+          ".screen-widget-frame__actions,.screen-widget-frame__action,button,input,textarea,.ant-select",
+        )
+      ) {
+        return;
+      }
+
+      event.preventDefault();
+      event.stopPropagation();
+      interactingRef.current = true;
+      suppressClickRef.current = false;
+
+      node?.style.setProperty("z-index", "10000");
+      node?.classList.add("screen-rnd-node--interacting");
+      event.currentTarget.setPointerCapture(event.pointerId);
+
+      const startGeometry = geometry;
+      dragSessionRef.current = {
+        pointerId: event.pointerId,
+        startClientX: event.clientX,
+        startClientY: event.clientY,
+        startGeometry,
+        nextGeometry: startGeometry,
+        node,
+        frame: null,
+        moved: false,
+      };
+    };
+
+    const moveItem = (event: React.PointerEvent<HTMLDivElement>) => {
+      const session = dragSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      const nextGeometry = getMovedScreenGeometry(
+        session.startGeometry,
+        {
+          clientX: event.clientX - session.startClientX,
+          clientY: event.clientY - session.startClientY,
+        },
+        scale,
+        {
+          width: session.node?.parentElement?.offsetWidth || item.w,
+          height: session.node?.parentElement?.offsetHeight || item.h,
+        },
+      );
+
+      session.nextGeometry = nextGeometry;
+      session.moved =
+        session.moved ||
+        nextGeometry.x !== session.startGeometry.x ||
+        nextGeometry.y !== session.startGeometry.y;
+
+      if (session.frame !== null) return;
+
+      session.frame = window.requestAnimationFrame(() => {
+        session.frame = null;
+        rndRef.current?.updatePosition?.({
+          x: session.nextGeometry.x,
+          y: session.nextGeometry.y,
+        });
+      });
+    };
+
+    const finishMove = (event: React.PointerEvent<HTMLDivElement>) => {
+      const session = dragSessionRef.current;
+      if (!session || session.pointerId !== event.pointerId) return;
+
+      event.preventDefault();
+      event.stopPropagation();
+
+      if (session.frame !== null) {
+        window.cancelAnimationFrame(session.frame);
+        session.frame = null;
+      }
+
+      rndRef.current?.updatePosition?.({
+        x: session.nextGeometry.x,
+        y: session.nextGeometry.y,
+      });
+      updateGeometry(session.nextGeometry);
+      interactingRef.current = false;
+      session.node?.style.setProperty("z-index", String(item.zIndex));
+      session.node?.classList.remove("screen-rnd-node--interacting");
+
+      dragSessionRef.current = null;
+      suppressClickRef.current = session.moved;
+
+      try {
+        event.currentTarget.releasePointerCapture(event.pointerId);
+      } catch {
+        // Pointer capture may already be released by the browser.
+      }
+
+      onSelectItem?.(item.id);
+      if (session.moved) {
+        onMoveItem?.(item.id, {
+          x: session.nextGeometry.x,
+          y: session.nextGeometry.y,
+        });
+      }
+    };
+
     return (
       <RndComponent
         ref={rndRef}
         bounds="parent"
         scale={scale}
+        disableDragging
         default={{
           x: geometry.x,
           y: geometry.y,
@@ -156,32 +322,11 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
         style={{ zIndex: item.zIndex }}
         onClick={(event: React.MouseEvent) => {
           event.stopPropagation();
-          onSelectItem?.(item.id);
-        }}
-        onDragStart={(_, data) => {
-          interactingRef.current = true;
-          if (data.node) {
-            data.node.style.zIndex = "10000";
-            data.node.classList.add("screen-rnd-node--interacting");
+          if (suppressClickRef.current) {
+            suppressClickRef.current = false;
+            return;
           }
           onSelectItem?.(item.id);
-        }}
-        onDragStop={(_, data) => {
-          const nextGeometry = {
-            ...geometry,
-            x: data.x,
-            y: data.y,
-          };
-          updateGeometry(nextGeometry);
-          interactingRef.current = false;
-          if (data.node) {
-            data.node.style.zIndex = String(item.zIndex);
-            data.node.classList.remove("screen-rnd-node--interacting");
-          }
-          onMoveItem?.(item.id, {
-            x: Math.round(nextGeometry.x),
-            y: Math.round(nextGeometry.y),
-          });
         }}
         onResizeStart={(_, __, ref) => {
           interactingRef.current = true;
@@ -220,6 +365,17 @@ const ScreenRndItem: React.FC<ScreenRndItemProps> = React.memo(
       >
         <div
           className="h-full w-full"
+          onPointerDown={(event) =>
+            beginMove(
+              event,
+              event.currentTarget.closest(
+                ".screen-rnd-node",
+              ) as HTMLElement | null,
+            )
+          }
+          onPointerMove={moveItem}
+          onPointerUp={finishMove}
+          onPointerCancel={finishMove}
           onDoubleClick={(event) => {
             event.stopPropagation();
             onEditItem?.(item.id);
