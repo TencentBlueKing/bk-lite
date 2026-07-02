@@ -22,6 +22,64 @@ export const nodeConfig = {
 
 export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'enterprise_wechat_aibot', 'dingtalk', 'wechat_official'] as const;
 
+export const nodeCategories = [
+  {
+    key: 'triggers',
+    labelKey: 'chatflow.triggers',
+    items: [
+      { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
+      { type: 'nats', icon: 'WebSphereMQ', labelKey: 'chatflow.nats' },
+      { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
+      { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
+      { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
+    ],
+  },
+  {
+    key: 'applications',
+    labelKey: 'chatflow.applications',
+    items: [
+      { type: 'embedded_chat', icon: 'wendaduihua', labelKey: 'chatflow.embeddedChat' },
+      { type: 'web_chat', icon: 'WebSphereMQ', labelKey: 'chatflow.webChat' },
+      { type: 'mobile', icon: 'zhuji', labelKey: 'chatflow.mobile' },
+      { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
+      { type: 'enterprise_wechat_aibot', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechatAibot' },
+      { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
+      { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
+    ],
+  },
+  {
+    key: 'agents',
+    labelKey: 'chatflow.agents',
+    items: [
+      { type: 'agents', icon: 'zhinengti', labelKey: 'chatflow.agents' },
+    ],
+  },
+  {
+    key: 'logic',
+    labelKey: 'chatflow.logicNodes',
+    items: [
+      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' },
+      { type: 'intent_classification', icon: 'question-circle-fill', labelKey: 'chatflow.intentClassification' },
+    ],
+  },
+  {
+    key: 'memory',
+    labelKey: 'chatflow.memoryNodes',
+    items: [
+      { type: 'memory_read', icon: 'zhishiku2', labelKey: 'chatflow.memoryRead' },
+      { type: 'memory_write', icon: 'bianji', labelKey: 'chatflow.memoryWrite' },
+    ],
+  },
+  {
+    key: 'actions',
+    labelKey: 'chatflow.actionNodes',
+    items: [
+      { type: 'http', icon: 'HTTP', labelKey: 'chatflow.http' },
+      { type: 'notification', icon: 'alarm', labelKey: 'chatflow.notification' },
+    ],
+  },
+] as const;
+
 export const handleColorClasses = {
   green: 'bg-green-500!',
   purple: 'bg-purple-500!',

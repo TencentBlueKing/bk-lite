@@ -1,4 +1,4 @@
-import { getDefaultConfig, nodeConfig, TRIGGER_NODE_TYPES } from '../src/app/opspilot/constants/chatflow';
+import { getDefaultConfig, nodeCategories, nodeConfig, TRIGGER_NODE_TYPES } from '../src/app/opspilot/constants/chatflow';
 
 function assert(condition: unknown, message: string) {
   if (!condition) {
@@ -13,6 +13,14 @@ assert(
   (TRIGGER_NODE_TYPES as readonly string[]).includes('enterprise_wechat_aibot'),
   'enterprise_wechat_aibot must be a trigger node',
 );
+
+const applicationCategory = nodeCategories.find((category) => category.key === 'applications');
+assert(applicationCategory, 'nodeCategories must include applications category');
+assert(
+  applicationCategory.items.some((item) => item.type === 'enterprise_wechat_aibot'),
+  'applications category must show enterprise_wechat_aibot in the node library',
+);
+
 assert(config.connectionMode === 'webhook', 'connectionMode must default to webhook');
 assert(config.webhook?.token === '', 'webhook.token must default to empty string');
 assert(config.webhook?.encodingAESKey === '', 'webhook.encodingAESKey must default to empty string');
