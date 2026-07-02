@@ -333,7 +333,7 @@ class AgentNode(BaseNodeExecutor):
         entry_type = flow_input.get("entry_type", "")
         if entry_type in ("celery", "test"):
             return "unattended"
-        elif entry_type in ("enterprise_wechat", "dingtalk", "wechat_official"):
+        elif entry_type in ("enterprise_wechat", "enterprise_wechat_aibot", "dingtalk", "wechat_official"):
             return "third_party"
         else:
             return "interactive"

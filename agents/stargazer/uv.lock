@@ -1813,6 +1813,37 @@ wheels = [
 ]
 
 [[package]]
+name = "netmiko"
+version = "4.5.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "ntc-templates" },
+    { name = "paramiko" },
+    { name = "pyserial" },
+    { name = "pyyaml" },
+    { name = "rich" },
+    { name = "ruamel-yaml" },
+    { name = "scp" },
+    { name = "textfsm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/da/3c/a684dadb7d676f53cc00efc87cae50e2dc8542348071f48e34709d3b0da6/netmiko-4.5.0.tar.gz", hash = "sha256:dbdfc20b6caaf8e5d7a570bb1b42a26b9a6f8d8234e91f5c65f4dbfe0c0e4f50", size = 159756, upload-time = "2024-12-09T22:04:23.807Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/27/67/1912985e8649e056795837dd65beee66afcec1386d4fae29b0bb69735ce7/netmiko-4.5.0-py3-none-any.whl", hash = "sha256:42d81fb906339af1fb5c6899f181f5cb5c9b03311262ba56c696b113e1f2f61a", size = 244022, upload-time = "2024-12-09T22:04:21.752Z" },
+]
+
+[[package]]
+name = "ntc-templates"
+version = "9.1.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "textfsm" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/13/4a/dede7aa900a47acd8e6a10785b3b1bed69d7dc68f367230b8a77b8ad05fa/ntc_templates-9.1.0.tar.gz", hash = "sha256:2187df39edcd03ee953433c3cec37e2834acbb67dbc03971f06a5842d6e13c71", size = 322614, upload-time = "2026-04-01T14:12:07.468Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/3a/5a/2e863b5479ce69d2bd0c0183f3758434635dac2157268e959117b915c2f1/ntc_templates-9.1.0-py3-none-any.whl", hash = "sha256:d6a25ff09c603ba84deea3a31589287a47320f12e8c2a3613e953951079ae715", size = 642361, upload-time = "2026-04-01T14:12:06.07Z" },
+]
+
+[[package]]
 name = "numpy"
 version = "2.3.3"
 source = { registry = "https://pypi.org/simple" }
@@ -2663,6 +2694,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/03/34/dc4588e07837c90d45e604f618fc338f54f5aa9ecc106699566a6d6d25cb/pyrsistent-0.14.0.tar.gz", hash = "sha256:297714c609506494650eea704d70cbe1b156259a578a98b97864ab9a8cbad39f", size = 96734, upload-time = "2017-10-11T02:19:31.824Z" }
 
 [[package]]
+name = "pyserial"
+version = "3.5"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/7d/ae3f0a63f41e4d2f6cb66a5b57197850f919f59e558159a4dd3a818f5082/pyserial-3.5.tar.gz", hash = "sha256:3c77e014170dfffbd816e6ffc205e9842efb10be9f58ec16d3e8675b4925cddb", size = 159125, upload-time = "2020-11-23T03:59:15.045Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/07/bc/587a445451b253b285629263eb51c2d8e9bcea4fc97826266d186f96f558/pyserial-3.5-py2.py3-none-any.whl", hash = "sha256:c4451db6ba391ca6ca299fb3ec7bae67a5c55dde170964c7a14ceefec02f2cf0", size = 90585, upload-time = "2020-11-23T03:59:13.41Z" },
+]
+
+[[package]]
 name = "pysmi"
 version = "1.2.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2716,6 +2756,19 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/e4/47/b9efed96c114afcfa3c9d3fe98a76a1d14c74a9e266d397cf6eb64be5e01/pytest-9.1.1.tar.gz", hash = "sha256:1088fbde8f2b49d95a549a195707afa7a76a3ce9bcadc26b6d71f0ffda5fe313", size = 1636369, upload-time = "2026-06-19T10:58:32.857Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/24/25/1de2678b631f5a49215c6c96fff41ba892b0a34df68d6d80292b1b48aa7f/pytest-9.1.1-py3-none-any.whl", hash = "sha256:37a86b45efb9a47a61a36449063e8e18d0cab3161329fc099eb21783169c4f0c", size = 386536, upload-time = "2026-06-19T10:58:31.347Z" },
+]
+
+[[package]]
+name = "pytest-asyncio"
+version = "1.4.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "pytest" },
+    { name = "typing-extensions", marker = "python_full_version < '3.13'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/43/7c/d36d04db312ecf4298932ef77e6e4a9e8ad017906e24e34f0b0c361a2473/pytest_asyncio-1.4.0.tar.gz", hash = "sha256:c6c0d2259945122819f171a32ecea2c349ead889ee28176caaf492143424be42", size = 58514, upload-time = "2026-05-26T09:56:04.083Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/03/e2/08a497ef684b88559c9cc5f4ad53a37e7b99e727094a86d6ea32536d5d3c/pytest_asyncio-1.4.0-py3-none-any.whl", hash = "sha256:933ca923a23075a87fb7070c0ec272a6848489824d887c85c812670932835aa1", size = 16930, upload-time = "2026-05-26T09:56:02.576Z" },
 ]
 
 [[package]]
@@ -3011,6 +3064,15 @@ wheels = [
 ]
 
 [[package]]
+name = "ruamel-yaml"
+version = "0.19.1"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/c7/3b/ebda527b56beb90cb7652cb1c7e4f91f48649fbcd8d2eb2fb6e77cd3329b/ruamel_yaml-0.19.1.tar.gz", hash = "sha256:53eb66cd27849eff968ebf8f0bf61f46cdac2da1d1f3576dd4ccee9b25c31993", size = 142709, upload-time = "2026-01-02T16:50:31.84Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b8/0c/51f6841f1d84f404f92463fc2b1ba0da357ca1e3db6b7fbda26956c3b82a/ruamel_yaml-0.19.1-py3-none-any.whl", hash = "sha256:27592957fedf6e0b62f281e96effd28043345e0e66001f97683aa9a40c667c93", size = 118102, upload-time = "2026-01-02T16:50:29.201Z" },
+]
+
+[[package]]
 name = "s3transfer"
 version = "0.16.0"
 source = { registry = "https://pypi.org/simple" }
@@ -3063,6 +3125,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/d1/5c/2a7edd14fbccca3719a8d680951d4b25f986752c781c61ccf156a6d1ebff/sanic-routing-23.12.0.tar.gz", hash = "sha256:1dcadc62c443e48c852392dba03603f9862b6197fc4cba5bbefeb1ace0848b04", size = 29473, upload-time = "2023-12-31T09:28:36.992Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/cf/e3/3425c9a8773807ac2c01d6a56c8521733f09b627e5827e733c5cd36b9ac5/sanic_routing-23.12.0-py3-none-any.whl", hash = "sha256:1558a72afcb9046ed3134a5edae02fc1552cff08f0fff2e8d5de0877ea43ed73", size = 25522, upload-time = "2023-12-31T09:28:35.233Z" },
+]
+
+[[package]]
+name = "scp"
+version = "0.15.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "paramiko" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/d6/1c/d213e1c6651d0bd37636b21b1ba9b895f276e8057f882c9f944931e4f002/scp-0.15.0.tar.gz", hash = "sha256:f1b22e9932123ccf17eebf19e0953c6e9148f589f93d91b872941a696305c83f", size = 13905, upload-time = "2024-05-23T21:37:41.835Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/79/b3/561cd6afa959e9dd522af12acc4f803e8bab1bd0e383bffc5211721c5fcb/scp-0.15.0-py2.py3-none-any.whl", hash = "sha256:9e7f721e5ac563c33eb0831d0f949c6342f1c28c3bdc3b02f39d77b5ea20df7e", size = 8753, upload-time = "2024-05-23T21:37:46.226Z" },
 ]
 
 [[package]]
@@ -3133,6 +3207,7 @@ dependencies = [
     { name = "ipy" },
     { name = "loguru" },
     { name = "nats-py" },
+    { name = "netmiko" },
     { name = "oracledb" },
     { name = "paramiko" },
     { name = "prometheus-client" },
@@ -3231,6 +3306,7 @@ vmware = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pytest-asyncio" },
 ]
 
 [package.metadata]
@@ -3288,6 +3364,7 @@ requires-dist = [
     { name = "keystoneauth1", marker = "extra == 'openstack'", specifier = "==3.18.0" },
     { name = "loguru", specifier = "==0.7.3" },
     { name = "nats-py", specifier = "==2.10.0" },
+    { name = "netmiko", specifier = "==4.5.0" },
     { name = "oracledb", specifier = "==3.3.0" },
     { name = "os-client-config", marker = "extra == 'openstack'", specifier = "==2.0.0" },
     { name = "oss2", marker = "extra == 'aliyun'", specifier = "==2.18.3" },
@@ -3326,7 +3403,10 @@ requires-dist = [
 provides-extras = ["dev", "aliyun", "qcloud", "huawei", "vmware", "openstack", "qingyun", "snmp"]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=9.1.1" }]
+dev = [
+    { name = "pytest", specifier = ">=9.1.1" },
+    { name = "pytest-asyncio", specifier = ">=0.26.0" },
+]
 
 [[package]]
 name = "stevedore"
@@ -3347,6 +3427,15 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/0d/0a/0ea58217b317f246ec5a40106d21bc6828420d1b81e8630067857c4b2dec/tencentcloud-sdk-python-3.0.948.tar.gz", hash = "sha256:695d448020350593faf51ed5648e4c37c101100c07491a7d93d4b264dc001fc6", size = 7744962, upload-time = "2023-08-02T00:21:36.118Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/91/ea/fde51de89f1f37fbc34c1e0e1c83b3181b22993427bb4bea7dba6c3342cc/tencentcloud_sdk_python-3.0.948-py2.py3-none-any.whl", hash = "sha256:2274ed67f19e3b738030f2b98b03614738ce7a9823fa69619ae22f61e2ce23fd", size = 8397787, upload-time = "2023-08-02T00:21:29.395Z" },
+]
+
+[[package]]
+name = "textfsm"
+version = "2.1.0"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/9e/87/2a93c2ced2a11fb26cfec3623894a9127b9b67ae3cfdd1778afa5cff576f/textfsm-2.1.0.tar.gz", hash = "sha256:45c18ff2b7c90163dfdff7e20d3f482514cc7aac26bc2547744e79dfa761e458", size = 55486, upload-time = "2025-04-17T04:55:46.392Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/82/1a/ab772f8479adedad1bdd12dd5c2bf6facf3fad8d04f35b4f4053201d202d/textfsm-2.1.0-py2.py3-none-any.whl", hash = "sha256:55886490474890fa09ade0e8c9555a913fd325724842293364dc44ea705b3616", size = 44345, upload-time = "2025-04-17T04:55:44.542Z" },
 ]
 
 [[package]]

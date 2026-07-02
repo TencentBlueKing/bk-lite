@@ -4,6 +4,8 @@
 """
 
 import datetime
+import sys
+import types
 
 import pytest
 from django.utils import timezone
@@ -49,6 +51,26 @@ def restful_source(db):
 # --------------------------------------------------------------------------
 
 
+def test_alerts_ready_does_not_register_source_adapters(monkeypatch):
+    import apps.alerts
+    from apps.alerts.apps import AlertsConfig
+
+    called = False
+
+    def mark_called():
+        nonlocal called
+        called = True
+
+    monkeypatch.setattr("apps.alerts.apps.adapters", mark_called)
+    monkeypatch.setattr("apps.alerts.apps._register_instant_cache_signals", lambda: None)
+    monkeypatch.setitem(sys.modules, "apps.alerts.nats", types.ModuleType("apps.alerts.nats"))
+    monkeypatch.setitem(sys.modules, "apps.alerts.nats.nats", types.ModuleType("apps.alerts.nats.nats"))
+
+    AlertsConfig("alerts", apps.alerts).ready()
+
+    assert called is False
+
+
 def test_factory_register_and_get():
     class Dummy:
         pass
@@ -57,6 +79,32 @@ def test_factory_register_and_get():
     assert "dummy_type" in AlertSourceAdapterFactory.get_supported_types()
     src = AlertSource(source_type="dummy_type")
     assert AlertSourceAdapterFactory.get_adapter(src) is Dummy
+
+
+def test_factory_get_adapter_registers_defaults_on_first_use(monkeypatch):
+    monkeypatch.setattr(AlertSourceAdapterFactory, "_adapters", {})
+
+    src = AlertSource(source_type="restful")
+
+    assert AlertSourceAdapterFactory.get_adapter(src) is RestFulAdapter
+
+
+def test_factory_get_supported_types_registers_defaults_on_first_use(monkeypatch):
+    monkeypatch.setattr(AlertSourceAdapterFactory, "_adapters", {})
+
+    supported_types = AlertSourceAdapterFactory.get_supported_types()
+
+    assert {"restful", "nats", "prometheus", "zabbix"}.issubset(supported_types)
+
+
+def test_factory_register_adapter_skips_duplicate_info_log(monkeypatch):
+    info_calls = []
+    monkeypatch.setattr(AlertSourceAdapterFactory, "_adapters", {"restful": RestFulAdapter})
+    monkeypatch.setattr("apps.alerts.common.source_adapter.base.logger.info", lambda *args, **kwargs: info_calls.append(args))
+
+    AlertSourceAdapterFactory.register_adapter("restful", RestFulAdapter)
+
+    assert info_calls == []
 
 
 def test_factory_unknown_type_raises():

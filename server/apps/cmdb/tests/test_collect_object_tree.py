@@ -5,6 +5,7 @@
 
 import pytest
 
+from apps.cmdb.constants.constants import CollectDriverTypes, CollectPluginTypes
 from apps.cmdb.collect.extensions import CollectEnterpriseExtension
 from apps.cmdb.services.collect_object_tree import (
     _get_enterprise_collect_obj_tree,
@@ -71,6 +72,21 @@ def test_get_collect_obj_tree_no_enterprise(monkeypatch):
     tree = get_collect_obj_tree()
     assert isinstance(tree, list)
     assert len(tree) > 0
+
+
+def test_get_collect_obj_tree_includes_ipam_discovery(monkeypatch):
+    _patch_collect_extension(monkeypatch, [])
+    tree = get_collect_obj_tree()
+
+    ipam = next((group for group in tree if group.get("id") == "ipam"), None)
+    assert ipam is not None
+
+    discovery = next((child for child in ipam.get("children", []) if child.get("id") == "ip_discovery"), None)
+    assert discovery is not None
+    assert discovery["model_id"] == "ip"
+    assert discovery["task_type"] == CollectPluginTypes.IP
+    assert discovery["type"] == CollectDriverTypes.PROTOCOL
+    assert discovery["encrypted_fields"] == []
 
 
 def test_get_collect_obj_tree_merge_enterprise(monkeypatch):

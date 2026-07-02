@@ -55,6 +55,40 @@ class TestScanner:
             out = _run(scanner.list_all_resources())
         assert out["result"]["ip"][0]["mac"] == "00:0C:29:3A:7B:88"
 
+    def test_从子网推导目标并输出ipam字段(self):
+        scanner = IPDiscoveryScanner({
+            "model_id": "ip",
+            "scan_method": "icmp",
+            "subnets": [
+                {
+                    "subnet_id": 101,
+                    "cidr": "10.0.1.0/30",
+                    "gateway": "10.0.1.1",
+                    "reserved_addresses": [],
+                }
+            ],
+        })
+
+        async def fake_icmp(ip, timeout):
+            return ip == "10.0.1.2"
+
+        with patch.object(scanner, "_icmp_probe", side_effect=fake_icmp), \
+             patch.object(scanner, "_read_mac", side_effect=lambda ip: "00:0C:29:3A:7B:88"):
+            out = _run(scanner.list_all_resources())
+
+        assert out["success"] is True
+        assert out["result"]["ip"] == [
+            {
+                "ip_addr": "10.0.1.2",
+                "ip_status": "online",
+                "subnet_id": "101",
+                "subnet_cidr": "10.0.1.0/30",
+                "scan_method": "icmp",
+                "auto_collect": "true",
+                "mac": "00:0C:29:3A:7B:88",
+            }
+        ]
+
 
 def test_plugin_yml_loads_and_points_to_scanner():
     import os, yaml

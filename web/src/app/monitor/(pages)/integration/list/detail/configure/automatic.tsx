@@ -1,7 +1,13 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Form, Button, message, Spin, Empty, Dropdown, Modal, Tag } from 'antd';
 import type { MenuProps } from 'antd';
-import { DownOutlined, ThunderboltOutlined, UploadOutlined } from '@ant-design/icons';
+import {
+  CheckCircleOutlined,
+  CloseCircleOutlined,
+  DownOutlined,
+  LoadingOutlined,
+  UploadOutlined
+} from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import CustomTable from '@/components/custom-table';
 import { v4 as uuidv4 } from 'uuid';
@@ -20,10 +26,17 @@ import { usePluginFromJson } from '@/app/monitor/hooks/integration/usePluginFrom
 import { useConfigRenderer } from '@/app/monitor/hooks/integration/useConfigRenderer';
 import BatchEditModal from './batchEditModal';
 import ExcelImportModal from './excelImportModal';
+import {
+  buildCollectDetectFingerprint as buildCollectDetectFingerprintValue,
+  getCollectDetectResultPresentation,
+  getRowsForBatchCollectDetect,
+  shouldAcceptCollectDetectResult
+} from './automaticCollectDetect';
 const { confirm } = Modal;
 
 interface CollectDetectState {
   status: 'pending' | 'running' | 'success' | 'failed';
+  fingerprint?: string;
   result?: Record<string, any>;
   error_message?: string;
 }
@@ -66,11 +79,20 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const collectDetectTimersRef = useRef<
     Record<string, ReturnType<typeof setTimeout>>
   >({});
+  const activeCollectDetectFingerprintRef = useRef<Record<string, string>>({});
   const batchEditModalRef = useRef<any>(null);
   const excelImportModalRef = useRef<any>(null);
 
+  const clearCollectDetectState = () => {
+    Object.values(collectDetectTimersRef.current).forEach(clearTimeout);
+    collectDetectTimersRef.current = {};
+    activeCollectDetectFingerprintRef.current = {};
+    setCollectDetectTasks({});
+  };
+
   const onTableDataChange = (data: IntegrationMonitoredObject[]) => {
     setDataSource(data);
+    clearCollectDetectState();
   };
 
   useEffect(() => {
@@ -181,30 +203,89 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
     };
   };
 
-  const formatCollectDetectMessage = (task: CollectDetectState) => {
+  const buildCollectDetectFingerprint = (record: IntegrationMonitoredObject) =>
+    buildCollectDetectFingerprintValue({
+      monitorPluginId: Number(pluginId),
+      monitorObjectId: Number(objectId),
+      nodeId: getRowNodeId(record),
+      instance: buildDetectInstance(record)
+    });
+
+  const getCollectDetectOutputBlocks = (task: CollectDetectState) => {
     const result = task.result || {};
-    const parts = [
-      `状态：${task.status}`,
-      `退出码：${result.exit_code ?? '--'}`,
-      result.stdout ? `stdout:\n${result.stdout}` : '',
-      result.stderr || task.error_message
-        ? `stderr:\n${result.stderr || task.error_message}`
-        : ''
-    ].filter(Boolean);
-    return parts.join('\n\n');
+    return [
+      { label: 'stdout', value: result.stdout },
+      { label: 'stderr', value: result.stderr || task.error_message }
+    ].filter((item) => item.value);
   };
 
   const showCollectDetectResult = (task: CollectDetectState) => {
+    const presentation = getCollectDetectResultPresentation(task);
+    const result = task.result || {};
+    const outputBlocks = getCollectDetectOutputBlocks(task);
+    const icon =
+      presentation.tone === 'success' ? (
+        <CheckCircleOutlined className="text-[#52c41a]" />
+      ) : presentation.tone === 'error' ? (
+        <CloseCircleOutlined className="text-[#ff4d4f]" />
+      ) : (
+        <LoadingOutlined className="text-[#1677ff]" />
+      );
     Modal.info({
-      title:
-        task.status === 'success'
-          ? t('monitor.integrations.collectDetectSuccess')
-          : t('monitor.integrations.collectDetectFailed'),
+      icon,
+      title: t(presentation.titleKey),
       width: 720,
       content: (
-        <pre className="mt-[12px] max-h-[420px] overflow-auto whitespace-pre-wrap rounded bg-[#f5f7fa] p-[12px] text-[12px] leading-[18px]">
-          {formatCollectDetectMessage(task)}
-        </pre>
+        <div className="mt-[14px]">
+          <div className="grid grid-cols-2 gap-[10px] rounded-[6px] border border-[#e5e7eb] bg-[#fafafa] p-[12px]">
+            <div>
+              <div className="text-[12px] text-[#6b7280]">
+                {t('monitor.integrations.collectDetectStatus')}
+              </div>
+              <Tag
+                color={
+                  presentation.tone === 'success'
+                    ? 'success'
+                    : presentation.tone === 'error'
+                      ? 'error'
+                      : 'processing'
+                }
+                className="mt-[6px]"
+              >
+                {t(presentation.titleKey)}
+              </Tag>
+            </div>
+            <div>
+              <div className="text-[12px] text-[#6b7280]">
+                {t('monitor.integrations.collectDetectExitCode')}
+              </div>
+              <div className="mt-[6px] font-mono text-[13px] text-[#111827]">
+                {result.exit_code ?? '--'}
+              </div>
+            </div>
+          </div>
+          <div className="mt-[12px] space-y-[10px]">
+            {outputBlocks.length ? (
+              outputBlocks.map((item) => (
+                <div
+                  key={item.label}
+                  className="overflow-hidden rounded-[6px] border border-[#e5e7eb]"
+                >
+                  <div className="border-b border-[#e5e7eb] bg-[#f8fafc] px-[12px] py-[8px] font-mono text-[12px] text-[#374151]">
+                    {item.label}
+                  </div>
+                  <pre className="m-0 max-h-[300px] overflow-auto whitespace-pre-wrap bg-[#111827] p-[12px] font-mono text-[12px] leading-[18px] text-[#e5e7eb]">
+                    {String(item.value)}
+                  </pre>
+                </div>
+              ))
+            ) : (
+              <div className="rounded-[6px] border border-dashed border-[#d1d5db] bg-[#fafafa] px-[12px] py-[18px] text-center text-[13px] text-[#6b7280]">
+                {t('monitor.integrations.collectDetectNoOutput')}
+              </div>
+            )}
+          </div>
+        </div>
       )
     });
   };
@@ -222,34 +303,66 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   const pollCollectDetectTask = async (
     rowKey: string,
     taskId: React.Key,
+    fingerprint: string,
+    showResult = false,
     retryCount = 0
   ) => {
     try {
       const task = (await getCollectDetectTask(taskId)) as CollectDetectState;
-      updateCollectDetectState(rowKey, task);
+      if (
+        !shouldAcceptCollectDetectResult(
+          { rowKey, fingerprint },
+          activeCollectDetectFingerprintRef.current
+        )
+      ) {
+        return;
+      }
+      updateCollectDetectState(rowKey, { ...task, fingerprint });
       if (['pending', 'running'].includes(task.status) && retryCount < 60) {
         collectDetectTimersRef.current[rowKey] = setTimeout(() => {
-          pollCollectDetectTask(rowKey, taskId, retryCount + 1);
+          pollCollectDetectTask(
+            rowKey,
+            taskId,
+            fingerprint,
+            showResult,
+            retryCount + 1
+          );
         }, 2000);
         return;
       }
-      showCollectDetectResult(task);
+      if (showResult) {
+        showCollectDetectResult(task);
+      }
     } catch (error: any) {
+      if (
+        !shouldAcceptCollectDetectResult(
+          { rowKey, fingerprint },
+          activeCollectDetectFingerprintRef.current
+        )
+      ) {
+        return;
+      }
       updateCollectDetectState(rowKey, {
         status: 'failed',
+        fingerprint,
         error_message: error?.message || t('common.operationFailed')
       });
     }
   };
 
-  const handleCollectDetect = async (record: IntegrationMonitoredObject) => {
+  const handleCollectDetect = async (
+    record: IntegrationMonitoredObject,
+    options: { showResult?: boolean } = {}
+  ) => {
     const rowKey = record.key as string;
     const nodeId = getRowNodeId(record);
     if (!nodeId) {
       message.warning(t('monitor.integrations.collectDetectNodeRequired'));
       return;
     }
-    updateCollectDetectState(rowKey, { status: 'running' });
+    const fingerprint = buildCollectDetectFingerprint(record);
+    activeCollectDetectFingerprintRef.current[rowKey] = fingerprint;
+    updateCollectDetectState(rowKey, { status: 'running', fingerprint });
     try {
       const data = (await createCollectDetectTask({
         monitor_plugin_id: Number(pluginId),
@@ -258,27 +371,75 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
         instance_key: record.instance_id || record.instance_name || rowKey,
         instance: buildDetectInstance(record)
       })) as { task_id: React.Key };
-      pollCollectDetectTask(rowKey, data.task_id);
+      pollCollectDetectTask(
+        rowKey,
+        data.task_id,
+        fingerprint,
+        options.showResult ?? true
+      );
     } catch (error: any) {
       updateCollectDetectState(rowKey, {
         status: 'failed',
+        fingerprint,
         error_message: error?.message || t('common.operationFailed')
       });
     }
   };
 
+  const handleBatchCollectDetect = async () => {
+    const selectedRows = getRowsForBatchCollectDetect(
+      dataSource,
+      selectedRowKeys
+    );
+    const runnableRows = selectedRows.filter((row) => getRowNodeId(row));
+    if (!runnableRows.length) {
+      message.warning(t('monitor.integrations.collectDetectNodeRequired'));
+      return;
+    }
+    message.info(
+      t('monitor.integrations.collectDetectBatchStarted').replace(
+        '{{count}}',
+        String(runnableRows.length)
+      )
+    );
+    await Promise.all(
+      runnableRows.map((row) => handleCollectDetect(row, { showResult: false }))
+    );
+  };
+
   const renderCollectDetectStatus = (record: IntegrationMonitoredObject) => {
     const task = collectDetectTasks[record.key as string];
-    if (!task) {
+    if (!task || task.fingerprint !== buildCollectDetectFingerprint(record)) {
       return <Tag>{t('monitor.integrations.collectDetectUntested')}</Tag>;
     }
+    const clickableClassName = 'cursor-pointer';
     if (['pending', 'running'].includes(task.status)) {
-      return <Tag color="processing">{t('monitor.integrations.collectDetectRunning')}</Tag>;
+      return (
+        <Tag
+          color="processing"
+          className={clickableClassName}
+          onClick={() => showCollectDetectResult(task)}
+        >
+          {t('monitor.integrations.collectDetectRunning')}
+        </Tag>
+      );
     }
     return task.status === 'success' ? (
-      <Tag color="success">{t('monitor.integrations.collectDetectSuccess')}</Tag>
+      <Tag
+        color="success"
+        className={clickableClassName}
+        onClick={() => showCollectDetectResult(task)}
+      >
+        {t('monitor.integrations.collectDetectSuccess')}
+      </Tag>
     ) : (
-      <Tag color="error">{t('monitor.integrations.collectDetectFailed')}</Tag>
+      <Tag
+        color="error"
+        className={clickableClassName}
+        onClick={() => showCollectDetectResult(task)}
+      >
+        {t('monitor.integrations.collectDetectFailed')}
+      </Tag>
     );
   };
 
@@ -307,9 +468,11 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
           {supportCollectDetect && (
             <Button
               type="link"
-              icon={<ThunderboltOutlined />}
               loading={['pending', 'running'].includes(
-                collectDetectTasks[record.key as string]?.status
+                collectDetectTasks[record.key as string]?.fingerprint ===
+                  buildCollectDetectFingerprint(record)
+                  ? collectDetectTasks[record.key as string]?.status
+                  : ''
               )}
               className="mr-[10px]"
               onClick={() => handleCollectDetect(record)}
@@ -489,6 +652,14 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   };
 
   const batchMenuItems: MenuProps['items'] = [
+    ...(supportCollectDetect
+      ? [
+        {
+          key: 'batchCollectDetect',
+          label: t('monitor.integrations.collectDetectBatch')
+        }
+      ]
+      : []),
     {
       key: 'batchEdit',
       label: t('common.batchEdit')
@@ -501,7 +672,9 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
   ];
 
   const handleBatchMenuClick: MenuProps['onClick'] = (e) => {
-    if (e.key === 'batchEdit') {
+    if (e.key === 'batchCollectDetect') {
+      handleBatchCollectDetect();
+    } else if (e.key === 'batchEdit') {
       handleBatchEdit();
     } else if (e.key === 'batchDelete') {
       handleBatchDelete();
@@ -659,7 +832,12 @@ const AutomaticConfiguration: React.FC<IntegrationAccessProps> = ({}) => {
             <Empty description={t('monitor.integrations.noConfigData')} />
           </div>
         ) : (
-          <Form form={form} name="basic" layout="vertical">
+          <Form
+            form={form}
+            name="basic"
+            layout="vertical"
+            onValuesChange={clearCollectDetectState}
+          >
             <b className="text-[14px] flex mb-[10px] ml-[-10px]">
               {t('monitor.integrations.configuration')}
             </b>

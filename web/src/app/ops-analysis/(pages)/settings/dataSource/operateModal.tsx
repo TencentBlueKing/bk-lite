@@ -11,6 +11,7 @@ import {
   PlusCircleOutlined,
   MinusCircleOutlined,
   QuestionCircleOutlined,
+  UploadOutlined,
 } from '@ant-design/icons';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
 import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
@@ -20,6 +21,8 @@ import { useTranslation } from '@/utils/i18n';
 import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
 import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
 import {
+  DataSourcePreviewResult,
+  DataSourceSourceType,
   OperateModalProps,
   ParamItem,
   ResponseFieldDefinition,
@@ -29,8 +32,10 @@ import {
   Drawer,
   Form,
   Input,
+  InputNumber,
   Select,
   Button,
+  Upload,
   DatePicker,
   Switch,
   Checkbox,
@@ -38,7 +43,38 @@ import {
   message,
   Empty,
   Tooltip,
+  Radio,
 } from 'antd';
+import type { UploadFile } from 'antd/es/upload/interface';
+
+const SOURCE_TYPE_NATS: DataSourceSourceType = 'nats';
+const SOURCE_TYPE_MYSQL: DataSourceSourceType = 'mysql';
+const SOURCE_TYPE_POSTGRESQL: DataSourceSourceType = 'postgresql';
+const SOURCE_TYPE_REST_API: DataSourceSourceType = 'rest_api';
+const SOURCE_TYPE_EXCEL: DataSourceSourceType = 'excel';
+const TABLE_CHART_TYPE = 'table';
+const PASSWORD_PLACEHOLDER = '******';
+
+const formatJsonText = (value: unknown) => {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return '';
+  }
+  return JSON.stringify(value, null, 2);
+};
+
+const parseJsonObject = (value: string | undefined, errorMessage: string) => {
+  const text = (value || '').trim();
+  if (!text) return {};
+  try {
+    const parsed = JSON.parse(text);
+    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
+      return parsed;
+    }
+  } catch {
+    // fall through to a unified validation error
+  }
+  throw new Error(errorMessage);
+};
 
 const FormTimeSelector: React.FC<{
   value?: any;
@@ -121,13 +157,29 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const [showSchemaConfig, setShowSchemaConfig] = React.useState(true);
   const [tagList, setTagList] = React.useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = React.useState(false);
+  const [previewLoading, setPreviewLoading] = React.useState(false);
+  const [previewData, setPreviewData] =
+    React.useState<DataSourcePreviewResult | null>(null);
+  const [excelFile, setExcelFile] = React.useState<File | null>(null);
+  const [excelFileList, setExcelFileList] = React.useState<UploadFile[]>([]);
+  const previousSourceTypeRef = React.useRef<DataSourceSourceType | undefined>(
+    undefined,
+  );
   const {
     namespaceList,
     namespacesLoading,
     refreshNamespaces,
   } = useOpsAnalysis();
-  const { createDataSource, updateDataSource } = useDataSourceApi();
+  const {
+    createDataSource,
+    updateDataSource,
+    previewDataSource,
+    previewDataSourceConfig,
+  } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
+  const sourceType =
+    (Form.useWatch('source_type', form) as DataSourceSourceType | undefined) ||
+    SOURCE_TYPE_NATS;
 
   const paramTypeOptions = [
     { label: t('dataSource.paramTypes.string'), value: 'string' },
@@ -169,6 +221,26 @@ const OperateModal: React.FC<OperateModalProps> = ({
     { label: t('dataSource.valueTypes.datetime'), value: 'datetime' },
   ];
 
+  const sourceTypeOptions = [
+    { label: t('dataSource.sourceTypes.nats'), value: SOURCE_TYPE_NATS },
+    { label: 'MySQL', value: SOURCE_TYPE_MYSQL },
+    { label: 'PostgreSQL', value: SOURCE_TYPE_POSTGRESQL },
+    { label: 'REST API', value: SOURCE_TYPE_REST_API },
+    { label: 'Excel', value: SOURCE_TYPE_EXCEL },
+  ];
+
+  const isNatsSource = sourceType === SOURCE_TYPE_NATS;
+  const isRestApiSource = sourceType === SOURCE_TYPE_REST_API;
+  const isDatabaseSource =
+    sourceType === SOURCE_TYPE_MYSQL || sourceType === SOURCE_TYPE_POSTGRESQL;
+  const isExcelSource = sourceType === SOURCE_TYPE_EXCEL;
+  const chartTypeOptions = getChartTypeList()
+    .filter((item) => isNatsSource || item.value === TABLE_CHART_TYPE)
+    .map((item) => ({
+      label: t(item.label),
+      value: item.value,
+    }));
+
   useEffect(() => {
     if (!open) return;
 
@@ -193,11 +265,24 @@ const OperateModal: React.FC<OperateModalProps> = ({
     setDuplicateFieldKeys([]);
     setEmptyFieldKeys([]);
     setShowSchemaConfig(true);
+    setPreviewData(null);
+    setExcelFile(null);
+    setExcelFileList([]);
+    previousSourceTypeRef.current =
+      currentRow?.source_type || SOURCE_TYPE_NATS;
     void refreshNamespaces();
     void fetchTags();
 
     if (!currentRow) {
       setParams([]);
+      form.setFieldsValue({
+        source_type: SOURCE_TYPE_NATS,
+        connection_config: {
+          method: 'GET',
+          timeout: 10,
+        },
+        query_config: {},
+      });
       // 新增时，如果用户有选中的分组，则设置为默认值
       if (selectedGroup) {
         form.setFieldValue('groups', [selectedGroup.id]);
@@ -205,12 +290,42 @@ const OperateModal: React.FC<OperateModalProps> = ({
       return;
     }
 
+    const connectionConfig = currentRow.connection_config || {};
+    const queryConfig = currentRow.query_config || {};
+    const rowSourceType = currentRow.source_type || SOURCE_TYPE_NATS;
     const formValues = {
       ...currentRow,
+      source_type: rowSourceType,
       namespaces: currentRow.namespaces || [],
       groups: currentRow.groups || [],
+      chart_type:
+        rowSourceType === SOURCE_TYPE_NATS
+          ? currentRow.chart_type || []
+          : [TABLE_CHART_TYPE],
+      connection_config: {
+        ...connectionConfig,
+        headersText: formatJsonText(connectionConfig.headers),
+      },
+      query_config: {
+        ...queryConfig,
+        paramsText: formatJsonText(queryConfig.params),
+        bodyText: formatJsonText(queryConfig.body),
+      },
     };
     form.setFieldsValue(formValues);
+
+    if (
+      currentRow.source_type === SOURCE_TYPE_EXCEL &&
+      Array.isArray(queryConfig.imported_items)
+    ) {
+      setPreviewData({
+        items: queryConfig.imported_items,
+        count: Number(queryConfig.imported_count) || queryConfig.imported_items.length,
+        fields: Array.isArray(queryConfig.imported_fields)
+          ? queryConfig.imported_fields
+          : [],
+      });
+    }
 
     if (Array.isArray(currentRow.field_schema)) {
       setSchemaFields(
@@ -257,6 +372,32 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     form.setFieldsValue({ namespaces: [namespaceList[0].id] });
   }, [open, currentRow, namespaceList, form]);
+
+  useEffect(() => {
+    if (!open) {
+      previousSourceTypeRef.current = undefined;
+      return;
+    }
+
+    const previousSourceType = previousSourceTypeRef.current;
+    if (!previousSourceType) {
+      previousSourceTypeRef.current = sourceType;
+      return;
+    }
+
+    if (previousSourceType !== sourceType) {
+      if (sourceType !== SOURCE_TYPE_NATS) {
+        form.setFieldValue('chart_type', [TABLE_CHART_TYPE]);
+      }
+      setPreviewData(null);
+      setExcelFile(null);
+      setExcelFileList([]);
+      setSchemaFields([]);
+      setDuplicateFieldKeys([]);
+      setEmptyFieldKeys([]);
+      previousSourceTypeRef.current = sourceType;
+    }
+  }, [open, sourceType, form]);
 
   const checkDuplicateNames = (currentParams: ParamItem[]) => {
     const nameCount: { [key: string]: number } = {};
@@ -779,6 +920,191 @@ const OperateModal: React.FC<OperateModalProps> = ({
     },
   ];
 
+  const buildConnectorPayload = (values: any) => {
+    const currentSourceType =
+      (values.source_type as DataSourceSourceType) || SOURCE_TYPE_NATS;
+    const connectionConfig = values.connection_config || {};
+    const queryConfig = values.query_config || {};
+
+    if (currentSourceType === SOURCE_TYPE_REST_API) {
+      return {
+        source_type: currentSourceType,
+        connection_config: {
+          url: connectionConfig.url,
+          method: connectionConfig.method || 'GET',
+          timeout: connectionConfig.timeout || 10,
+          headers: parseJsonObject(
+            connectionConfig.headersText,
+            `${t('dataSource.headers')}${t('dataSource.jsonObjectRequired')}`,
+          ),
+        },
+        query_config: {
+          response_path: queryConfig.response_path || '',
+          params: parseJsonObject(
+            queryConfig.paramsText,
+            `${t('dataSource.queryParams')}${t('dataSource.jsonObjectRequired')}`,
+          ),
+          body: parseJsonObject(
+            queryConfig.bodyText,
+            `${t('dataSource.requestBody')}${t('dataSource.jsonObjectRequired')}`,
+          ),
+        },
+      };
+    }
+
+    if (
+      currentSourceType === SOURCE_TYPE_MYSQL ||
+      currentSourceType === SOURCE_TYPE_POSTGRESQL
+    ) {
+      return {
+        source_type: currentSourceType,
+        connection_config: {
+          host: connectionConfig.host,
+          port: connectionConfig.port,
+          database: connectionConfig.database,
+          username: connectionConfig.username,
+          password: connectionConfig.password,
+        },
+        query_config: {
+          table: queryConfig.table || '',
+          sql: queryConfig.sql || '',
+        },
+      };
+    }
+
+    if (currentSourceType === SOURCE_TYPE_EXCEL) {
+      return {
+        source_type: currentSourceType,
+        connection_config: {
+          filename: excelFile?.name || connectionConfig.filename || '',
+        },
+        query_config: {
+          imported_items: previewData?.items || queryConfig.imported_items || [],
+          imported_fields: previewData?.fields || queryConfig.imported_fields || [],
+          imported_count:
+            previewData?.count || queryConfig.imported_count || previewData?.items?.length || 0,
+        },
+      };
+    }
+
+    return {
+      source_type: currentSourceType,
+      connection_config: {},
+      query_config: {},
+    };
+  };
+
+  const getPreviewFieldNames = (): (string | (string | number)[])[] => {
+    if (isRestApiSource) {
+      return [
+        'source_type',
+        ['connection_config', 'url'],
+        ['connection_config', 'method'],
+      ];
+    }
+    if (isDatabaseSource) {
+      return [
+        'source_type',
+        ['connection_config', 'host'],
+        ['connection_config', 'port'],
+        ['connection_config', 'database'],
+        ['connection_config', 'username'],
+        ['connection_config', 'password'],
+      ];
+    }
+    return ['source_type'];
+  };
+
+  const previewColumns = React.useMemo(() => {
+    const fields =
+      previewData?.fields?.length
+        ? previewData.fields
+        : Object.keys(previewData?.items?.[0] || {}).map((key) => ({
+          key,
+          title: key,
+          value_type: 'string' as ResponseFieldDefinition['value_type'],
+        }));
+
+    return fields.map((field) => ({
+      title: field.title || field.key,
+      dataIndex: field.key,
+      key: field.key,
+      width: 160,
+      ellipsis: true,
+      render: (value: unknown) => {
+        if (value === null || value === undefined || value === '') return '-';
+        if (typeof value === 'object') return JSON.stringify(value);
+        return String(value);
+      },
+    }));
+  }, [previewData]);
+
+  const handlePreview = async () => {
+    if (isNatsSource) return;
+
+    try {
+      setPreviewLoading(true);
+      await form.validateFields(getPreviewFieldNames());
+      const values = form.getFieldsValue(true);
+      let response: DataSourcePreviewResult;
+
+      if (isExcelSource) {
+        if (!excelFile) {
+          message.error(t('dataSource.excelFileRequired'));
+          return;
+        }
+        const formData = new FormData();
+        formData.append('source_type', SOURCE_TYPE_EXCEL);
+        formData.append('limit', '1000');
+        formData.append('file', excelFile);
+        response = await previewDataSourceConfig(formData);
+      } else {
+        const payload = {
+          ...buildConnectorPayload(values),
+          limit: 50,
+        };
+        response = currentRow
+          ? await previewDataSource(currentRow.id, payload)
+          : await previewDataSourceConfig(payload);
+      }
+
+      setPreviewData(response);
+      message.success(t('dataSource.previewSuccess'));
+    } catch (error: any) {
+      if (error?.errorFields) return;
+    } finally {
+      setPreviewLoading(false);
+    }
+  };
+
+  const handleApplyPreviewFields = () => {
+    const fields = previewData?.fields || [];
+    if (!fields.length) return;
+    setSchemaFields(
+      fields.map((field) => ({
+        ...field,
+        id: uuidv4(),
+      })),
+    );
+    setShowSchemaConfig(true);
+    setDuplicateFieldKeys([]);
+    setEmptyFieldKeys([]);
+  };
+
+  const handlePasswordFocus = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (!currentRow) return;
+    if (event.target.value === PASSWORD_PLACEHOLDER) {
+      form.setFieldValue(['connection_config', 'password'], '');
+    }
+  };
+
+  const handlePasswordBlur = (event: React.FocusEvent<HTMLInputElement>) => {
+    if (!currentRow) return;
+    if (!event.target.value?.trim()) {
+      form.setFieldValue(['connection_config', 'password'], PASSWORD_PLACEHOLDER);
+    }
+  };
+
   const onFinish = async (values: any) => {
     try {
       setLoading(true);
@@ -787,25 +1113,33 @@ const OperateModal: React.FC<OperateModalProps> = ({
         (param) => param.name && param.name.trim(),
       );
 
-      // 检查参数名称和别名是否为空
-      if (!checkEmptyValues(params)) {
-        setLoading(false);
-        return;
-      }
-      if (!checkDuplicateNames(validParams)) {
-        setLoading(false);
-        return;
+      if (isNatsSource) {
+        // 检查参数名称和别名是否为空
+        if (!checkEmptyValues(params)) {
+          setLoading(false);
+          return;
+        }
+        if (!checkDuplicateNames(validParams)) {
+          setLoading(false);
+          return;
+        }
+
+        // 检查fixed类型的参数是否有默认值
+        const hasEmptyFixedValue = validParams.some((param) => {
+          if (param.filterType === 'fixed') {
+            const value = param.value;
+            return value === '' || value === null || value === undefined;
+          }
+          return false;
+        });
+        if (hasEmptyFixedValue) {
+          setLoading(false);
+          return;
+        }
       }
 
-      // 检查fixed类型的参数是否有默认值
-      const hasEmptyFixedValue = validParams.some((param) => {
-        if (param.filterType === 'fixed') {
-          const value = param.value;
-          return value === '' || value === null || value === undefined;
-        }
-        return false;
-      });
-      if (hasEmptyFixedValue) {
+      if (isExcelSource && !previewData?.items?.length) {
+        message.error(t('dataSource.excelPreviewRequired'));
         setLoading(false);
         return;
       }
@@ -830,25 +1164,29 @@ const OperateModal: React.FC<OperateModalProps> = ({
           description: description?.trim() || '',
         }),
       );
+      const connectorPayload = buildConnectorPayload(values);
 
       const submitData = {
-        rest_api: values.rest_api,
+        ...connectorPayload,
+        rest_api: isNatsSource ? values.rest_api : '',
         name: values.name.trim(),
         desc: values.desc ? values.desc.trim() : '',
-        namespaces: values.namespaces || [],
+        namespaces: isNatsSource ? values.namespaces || [] : [],
         tag: values.tag || [],
-        chart_type: values.chart_type || [],
+        chart_type: isNatsSource ? values.chart_type || [] : [TABLE_CHART_TYPE],
         groups: values.groups || [],
         field_schema: fieldSchema,
-        params: params
-          .filter((param) => param.name && param.name.trim())
-          .map((param) => ({
-            name: param.name,
-            alias_name: param.alias_name,
-            type: param.type,
-            filterType: param.filterType,
-            value: param.value,
-          })),
+        params: isNatsSource
+          ? params
+            .filter((param) => param.name && param.name.trim())
+            .map((param) => ({
+              name: param.name,
+              alias_name: param.alias_name,
+              type: param.type,
+              filterType: param.filterType,
+              value: param.value,
+            }))
+          : [],
       };
 
       if (currentRow) {
@@ -902,11 +1240,36 @@ const OperateModal: React.FC<OperateModalProps> = ({
         onFinish={onFinish}
       >
         <Form.Item
-          name="rest_api"
-          label="NATS"
+          name="source_type"
+          label={t('dataSource.sourceType')}
           rules={[{ required: true, message: t('common.inputMsg') }]}
         >
-          <Input placeholder={t('common.inputMsg')} />
+          <Radio.Group
+            optionType="button"
+            buttonStyle="solid"
+            options={sourceTypeOptions}
+            onChange={(event) => {
+              const nextSourceType = event.target.value as DataSourceSourceType;
+              if (nextSourceType === SOURCE_TYPE_MYSQL) {
+                form.setFieldValue(['connection_config', 'port'], 3306);
+              }
+              if (nextSourceType === SOURCE_TYPE_POSTGRESQL) {
+                form.setFieldValue(['connection_config', 'port'], 5432);
+              }
+              if (nextSourceType === SOURCE_TYPE_REST_API) {
+                form.setFieldsValue({
+                  connection_config: {
+                    ...form.getFieldValue('connection_config'),
+                    method: 'GET',
+                    timeout: 10,
+                  },
+                });
+              }
+              if (nextSourceType !== SOURCE_TYPE_NATS) {
+                form.setFieldValue('chart_type', [TABLE_CHART_TYPE]);
+              }
+            }}
+          />
         </Form.Item>
         <Form.Item
           name="name"
@@ -915,48 +1278,59 @@ const OperateModal: React.FC<OperateModalProps> = ({
         >
           <Input placeholder={t('common.inputMsg')} />
         </Form.Item>
-        <Form.Item
-          name="namespaces"
-          label={t('namespace.title')}
-          rules={[
-            {
-              required: true,
-              type: 'array',
-              min: 1,
-              message: t('common.selectMsg'),
-            },
-          ]}
-        >
-          {namespacesLoading ? (
-            <div style={{ textAlign: 'center', padding: '8px 0' }}>
-              <Spin size="small" />
-            </div>
-          ) : namespaceList.length === 0 ? (
-            <div
-              style={{
-                paddingLeft: '4px',
-                color: 'var(--color-text-4)',
-                fontSize: '13px',
-              }}
+        {isNatsSource && (
+          <>
+            <Form.Item
+              name="rest_api"
+              label="NATS"
+              rules={[{ required: true, message: t('common.inputMsg') }]}
             >
-              {t('common.noData')}
-            </div>
-          ) : (
-            <Checkbox.Group className="grid grid-cols-3 gap-x-4 gap-y-2 pt-1">
-              {namespaceList.map((ns: NamespaceItem) => (
-                <Checkbox
-                  key={ns.id}
-                  value={ns.id}
-                  className="!ml-0 flex min-w-0 items-center"
+              <Input placeholder={t('common.inputMsg')} />
+            </Form.Item>
+            <Form.Item
+              name="namespaces"
+              label={t('namespace.title')}
+              rules={[
+                {
+                  required: true,
+                  type: 'array',
+                  min: 1,
+                  message: t('common.selectMsg'),
+                },
+              ]}
+            >
+              {namespacesLoading ? (
+                <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                  <Spin size="small" />
+                </div>
+              ) : namespaceList.length === 0 ? (
+                <div
+                  style={{
+                    paddingLeft: '4px',
+                    color: 'var(--color-text-4)',
+                    fontSize: '13px',
+                  }}
                 >
-                  <span className="inline-block max-w-[180px] truncate align-bottom" title={ns.name}>
-                    {ns.name}
-                  </span>
-                </Checkbox>
-              ))}
-            </Checkbox.Group>
-          )}
-        </Form.Item>
+                  {t('common.noData')}
+                </div>
+              ) : (
+                <Checkbox.Group className="grid grid-cols-3 gap-x-4 gap-y-2 pt-1">
+                  {namespaceList.map((ns: NamespaceItem) => (
+                    <Checkbox
+                      key={ns.id}
+                      value={ns.id}
+                      className="!ml-0 flex min-w-0 items-center"
+                    >
+                      <span className="inline-block max-w-[180px] truncate align-bottom" title={ns.name}>
+                        {ns.name}
+                      </span>
+                    </Checkbox>
+                  ))}
+                </Checkbox.Group>
+              )}
+            </Form.Item>
+          </>
+        )}
         <Form.Item
           name="tag"
           label={t('dataSource.tag')}
@@ -1005,10 +1379,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
           ]}
         >
           <Checkbox.Group
-            options={getChartTypeList().map((item) => ({
-              label: t(item.label),
-              value: item.value,
-            }))}
+            options={chartTypeOptions}
           />
         </Form.Item>
         <Form.Item
@@ -1033,56 +1404,297 @@ const OperateModal: React.FC<OperateModalProps> = ({
             placeholder={`${t('common.inputMsg')} ${t('dataSource.describe')}`}
           />
         </Form.Item>
-        <div style={{ margin: '0 0 0 66px' }}>
-          <div
-            style={{
-              marginBottom: '8px',
-              color: 'var(--color-text-1)',
-              fontSize: '14px',
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center',
-            }}
-          >
-            <span>{t('dataSource.params')}：</span>
-            <Button
-              type="dashed"
-              size="small"
-              icon={<PlusCircleOutlined />}
-              onClick={() => setParams([...params, createDefaultParam()])}
-            >
-              {t('dataSource.addParam')}
-            </Button>
-          </div>
-          {params.length > 0 ? (
-            <CustomTable
-              rowKey="id"
-              columns={columns}
-              dataSource={params}
-              pagination={false}
-            />
-          ) : (
-            <Empty
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-              description={t('common.noData')}
-            />
-          )}
-          {duplicateNames.length > 0 && (
+        {isRestApiSource && (
+          <Form.Item label={t('dataSource.connectionConfig')}>
+            <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-3 pb-0 pt-3">
+              <div className="grid grid-cols-2 gap-x-3">
+                <Form.Item
+                  name={['connection_config', 'url']}
+                  label={t('dataSource.url')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input placeholder="https://example.com/api" />
+                </Form.Item>
+                <Form.Item
+                  name={['connection_config', 'method']}
+                  label={t('dataSource.method')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  initialValue="GET"
+                >
+                  <Select
+                    options={[
+                      { label: 'GET', value: 'GET' },
+                      { label: 'POST', value: 'POST' },
+                    ]}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name={['connection_config', 'timeout']}
+                  label={t('dataSource.timeout')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  initialValue={10}
+                >
+                  <InputNumber min={1} max={30} style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item
+                  name={['query_config', 'response_path']}
+                  label={t('dataSource.responsePath')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                >
+                  <Input placeholder="data.items" />
+                </Form.Item>
+              </div>
+              <Form.Item
+                name={['connection_config', 'headersText']}
+                label={t('dataSource.headers')}
+                labelCol={{ span: 24 }}
+                wrapperCol={{ span: 24 }}
+                className="!mb-2"
+              >
+                <Input.TextArea rows={3} placeholder='{"Authorization":"Bearer ..."}' />
+              </Form.Item>
+              <Form.Item
+                name={['query_config', 'paramsText']}
+                label={t('dataSource.queryParams')}
+                labelCol={{ span: 24 }}
+                wrapperCol={{ span: 24 }}
+                className="!mb-2"
+              >
+                <Input.TextArea rows={3} placeholder='{"page":1}' />
+              </Form.Item>
+              <Form.Item
+                name={['query_config', 'bodyText']}
+                label={t('dataSource.requestBody')}
+                labelCol={{ span: 24 }}
+                wrapperCol={{ span: 24 }}
+                className="!mb-2"
+              >
+                <Input.TextArea rows={3} placeholder='{"limit":50}' />
+              </Form.Item>
+            </div>
+          </Form.Item>
+        )}
+        {isDatabaseSource && (
+          <Form.Item label={t('dataSource.connectionConfig')}>
+            <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-3 pb-0 pt-3">
+              <div className="grid grid-cols-2 gap-x-3">
+                <Form.Item
+                  name={['connection_config', 'host']}
+                  label={t('dataSource.host')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input placeholder="127.0.0.1" />
+                </Form.Item>
+                <Form.Item
+                  name={['connection_config', 'port']}
+                  label={t('dataSource.port')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                </Form.Item>
+                <Form.Item
+                  name={['connection_config', 'database']}
+                  label={t('dataSource.database')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input />
+                </Form.Item>
+                <Form.Item
+                  name={['connection_config', 'username']}
+                  label={t('dataSource.username')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input />
+                </Form.Item>
+                <Form.Item
+                  name={['connection_config', 'password']}
+                  label={t('dataSource.password')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                >
+                  <Input.Password
+                    autoComplete="new-password"
+                    onFocus={handlePasswordFocus}
+                    onBlur={handlePasswordBlur}
+                  />
+                </Form.Item>
+                <Form.Item
+                  name={['query_config', 'table']}
+                  label={t('dataSource.tableName')}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                >
+                  <Input />
+                </Form.Item>
+              </div>
+              <Form.Item
+                name={['query_config', 'sql']}
+                label={t('dataSource.sql')}
+                labelCol={{ span: 24 }}
+                wrapperCol={{ span: 24 }}
+                className="!mb-2"
+              >
+                <Input.TextArea rows={3} placeholder="SELECT * FROM table_name" />
+              </Form.Item>
+            </div>
+          </Form.Item>
+        )}
+        {isExcelSource && (
+          <Form.Item label={t('dataSource.excelImport')}>
+            <div>
+              <Upload
+                accept=".xlsx"
+                maxCount={1}
+                beforeUpload={(file) => {
+                  setExcelFile(file);
+                  setExcelFileList([file]);
+                  setPreviewData(null);
+                  setSchemaFields([]);
+                  return false;
+                }}
+                onRemove={() => {
+                  setExcelFile(null);
+                  setExcelFileList([]);
+                  setPreviewData(null);
+                  setSchemaFields([]);
+                }}
+                fileList={excelFileList}
+              >
+                <Button icon={<UploadOutlined />}>
+                  {t('dataSource.selectExcelFile')}
+                </Button>
+              </Upload>
+            </div>
+          </Form.Item>
+        )}
+        {!isNatsSource && (
+          <div style={{ margin: '24px 0 0 42px' }}>
             <div
               style={{
-                color: 'var(--color-fail)',
-                fontSize: '12px',
-                marginTop: '2px',
-                padding: '2px 8px',
+                marginBottom: 8,
+                color: 'var(--color-text-1)',
+                fontSize: 14,
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
               }}
             >
-              {t('dataSource.duplicateParamNames')}
-              {duplicateNames.join('、')}
+              <span>{t('dataSource.previewData')}：</span>
+              <div>
+                {previewData?.fields?.length ? (
+                  <Button
+                    type="link"
+                    size="small"
+                    onClick={handleApplyPreviewFields}
+                    style={{ paddingInline: 4 }}
+                  >
+                    {t('dataSource.applyPreviewFields')}
+                  </Button>
+                ) : null}
+                <Button
+                  type="primary"
+                  size="small"
+                  loading={previewLoading}
+                  onClick={handlePreview}
+                  style={{ marginLeft: 10 }}
+                >
+                  {t('dataSource.samplePreview')}
+                </Button>
+              </div>
             </div>
-          )}
-        </div>
+            {previewData?.items?.length ? (
+              <CustomTable
+                rowKey={(_, index) => String(index)}
+                columns={previewColumns}
+                dataSource={previewData.items}
+                pagination={false}
+                scroll={{ x: 'max-content', y: 240 }}
+                size="small"
+              />
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t('common.noData')}
+              />
+            )}
+          </div>
+        )}
+        {isNatsSource && (
+          <div style={{ margin: '0 0 0 42px' }}>
+            <div
+              style={{
+                marginBottom: '8px',
+                color: 'var(--color-text-1)',
+                fontSize: '14px',
+                display: 'flex',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+              }}
+            >
+              <span>{t('dataSource.params')}：</span>
+              <Button
+                type="dashed"
+                size="small"
+                icon={<PlusCircleOutlined />}
+                onClick={() => setParams([...params, createDefaultParam()])}
+              >
+                {t('dataSource.addParam')}
+              </Button>
+            </div>
+            {params.length > 0 ? (
+              <CustomTable
+                rowKey="id"
+                columns={columns}
+                dataSource={params}
+                pagination={false}
+              />
+            ) : (
+              <Empty
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+                description={t('common.noData')}
+              />
+            )}
+            {duplicateNames.length > 0 && (
+              <div
+                style={{
+                  color: 'var(--color-fail)',
+                  fontSize: '12px',
+                  marginTop: '2px',
+                  padding: '2px 8px',
+                }}
+              >
+                {t('dataSource.duplicateParamNames')}
+                {duplicateNames.join('、')}
+              </div>
+            )}
+          </div>
+        )}
         {showSchemaConfig && (
-          <div style={{ margin: '24px 0 0 66px' }}>
+          <div style={{ margin: '24px 0 0 42px' }}>
             <div
               style={{
                 marginBottom: '8px',

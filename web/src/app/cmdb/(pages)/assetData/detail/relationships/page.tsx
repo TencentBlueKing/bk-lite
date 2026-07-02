@@ -12,7 +12,6 @@ import { useTranslation } from '@/utils/i18n';
 import AssoList from './list';
 import Topo from './topo';
 import NetworkTopo from './networkTopo';
-import IpamMatrix from './ipamMatrix';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
 import ApplicationResourceOverview from './applicationResourceOverview';

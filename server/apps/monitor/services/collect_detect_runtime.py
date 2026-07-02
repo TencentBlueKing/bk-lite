@@ -5,6 +5,7 @@ from apps.monitor.utils.plugin_controller import Controller
 
 
 DEFAULT_OUTPUT_LIMIT = 8192
+TELEGRAF_BIN = "/opt/fusion-collectors/bin/telegraf"
 _OUTPUT_BLOCK_PATTERN = re.compile(r"(?ms)^\s*\[\[outputs\.[^\]]+\]\].*?(?=^\s*\[\[|\Z)")
 _SECRET_ASSIGNMENT_PATTERN = re.compile(
     r"(?i)\b(password|passwd|token|secret|private_key|passphrase)\s*=\s*([^\s,;]+)"
@@ -37,27 +38,41 @@ def disable_real_outputs(config_content: str) -> str:
 
 def build_telegraf_once_command(config_path: str) -> str:
     quoted_path = shlex.quote(config_path)
+    quoted_telegraf = shlex.quote(TELEGRAF_BIN)
     return (
         "set -e\n"
         f"trap 'rm -f {quoted_path}' EXIT\n"
-        f"telegraf --once --config {quoted_path}"
+        f"{quoted_telegraf} --once --config {quoted_path}"
     )
 
 
 def build_write_config_and_telegraf_command(config_path: str, config_content: str) -> str:
     quoted_path = shlex.quote(config_path)
+    quoted_telegraf = shlex.quote(TELEGRAF_BIN)
     return (
         "set -e\n"
         f"trap 'rm -f {quoted_path}' EXIT\n"
         f"cat > {quoted_path} <<'BK_LITE_TELEGRAF_PREFLIGHT_EOF'\n"
         f"{config_content}\n"
         "BK_LITE_TELEGRAF_PREFLIGHT_EOF\n"
-        f"telegraf --once --config {quoted_path}"
+        f"{quoted_telegraf} --once --config {quoted_path}"
     )
 
 
-def sanitize_execution_result(raw_result: dict, sensitive_values=None, output_limit=DEFAULT_OUTPUT_LIMIT) -> dict:
+def sanitize_execution_result(raw_result, sensitive_values=None, output_limit=DEFAULT_OUTPUT_LIMIT) -> dict:
     sensitive_values = [str(item) for item in (sensitive_values or []) if item not in (None, "")]
+    if not isinstance(raw_result, dict):
+        stdout, stdout_truncated = _redact_and_truncate(raw_result, sensitive_values, output_limit)
+        return {
+            "success": True,
+            "stdout": stdout,
+            "stderr": "",
+            "exit_code": 0,
+            "code": "",
+            "stdout_truncated": stdout_truncated,
+            "stderr_truncated": False,
+        }
+
     stdout = raw_result.get("stdout", raw_result.get("result", ""))
     stderr = raw_result.get("stderr", raw_result.get("error", ""))
     stdout, stdout_truncated = _redact_and_truncate(stdout, sensitive_values, output_limit)

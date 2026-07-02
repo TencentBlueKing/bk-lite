@@ -347,6 +347,7 @@
         "networkTopo": "网络拓扑",
         "applicationResourceOverview": "应用拓扑",
         "ipView": "IP 视图",
+        "ipViewEmptyHint": "请先补全子网网段与子网掩码",
         "ipViewCapacity": "总量",
         "ipViewUsed": "已用",
         "ipViewAvailable": "可用",

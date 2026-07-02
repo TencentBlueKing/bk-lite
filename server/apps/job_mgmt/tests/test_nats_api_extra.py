@@ -20,13 +20,39 @@ class TestModuleData:
 
     def test_module_data_script(self):
         Script.objects.create(name="s1", content="echo", script_type="shell", team=[1])
-        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, 1)
+        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, 1, team=[1])
         assert out["count"] == 1 and out["items"][0]["name"] == "s1"
 
     def test_module_data_system_child(self):
         DangerousRule.objects.create(name="r1", pattern="rm", level=DangerousLevel.CONFIRM, team=[1])
-        out = nats_api.get_job_mgmt_module_data("system", "dangerous_rule", 1, 10, 1)
+        out = nats_api.get_job_mgmt_module_data("system", "dangerous_rule", 1, 10, 1, team=[1])
         assert out["count"] == 1
+
+    def test_module_data_rejects_unknown_module(self):
+        out = nats_api.get_job_mgmt_module_data("unknown", None, 1, 10, 1, team=[1])
+        assert out["result"] is False
+        assert "module" in out["message"]
+
+    def test_module_data_rejects_unknown_system_child(self):
+        out = nats_api.get_job_mgmt_module_data("system", "unknown", 1, 10, 1, team=[1])
+        assert out["result"] is False
+        assert "child_module" in out["message"]
+
+    def test_module_data_requires_authorized_team(self):
+        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, 1)
+        assert out["result"] is False
+        assert "team" in out["message"]
+
+    def test_module_data_rejects_cross_team_group_id(self):
+        Script.objects.create(name="s2", content="echo", script_type="shell", team=[2])
+        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, 2, team=[1])
+        assert out["result"] is False
+        assert "无权" in out["message"]
+
+    def test_module_data_rejects_invalid_group_id(self):
+        out = nats_api.get_job_mgmt_module_data("script", None, 1, 10, "bad", team=[1])
+        assert out["result"] is False
+        assert "group_id" in out["message"]
 
 
 def _exec(**over):

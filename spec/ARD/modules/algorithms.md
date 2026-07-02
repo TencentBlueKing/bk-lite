@@ -28,6 +28,7 @@
 - 端口 :3000（`make serving` → `bentoml serve ...`，BentoML 默认端口，Makefile 未显式绑定）。
 - **打包配置不一致**：仅 `classify_object_detection_server/bentofile.yaml` 存在，其余 5 个服务无 `bentofile.yaml`（均有 `pyproject.toml`）【已实现，技术债】。
 - 训练数据策略（见 `CLAUDE.md`）：传统 ML 合并 train+val 再训练；深度学习（图像/目标检测）保持 train/val 分离（YOLO 要求）。
+- 安全与稳健性补强【已实现/已存在】：多服务在 `serving/service.py` 与 `serving/schemas/api_schema.py` 增加输入边界校验、模型文件 checksum 校验、训练脚本 shell 安全保护，以及日志最小披露。文本分类服务不再记录原始文本内容，改记录批次摘要，并在可用时提取真实特征重要性（`classify_text_classification_server/.../serving/service.py:132-152,255-260`）。
 
 ## 4. 集成关系【已实现/已存在 / 推断】
 - 后端 `apps/mlops` 通过 MLflow + AlgorithmConfig（Docker 镜像）管理训练；推理 serving_url 指向本服务【推断】。
@@ -42,3 +43,4 @@
 - serving 稳定子结构：`serving/schemas/api_schema.py:93`（`class PredictResponse`）、`serving/config/model_config.py:9`（`class ModelConfig`）、`serving/models/dummy_model.py`、`serving/exceptions.py`、`cli/bootstrap.py`（均以 `classify_anomaly_server` 双层包为例）。
 - `MLFlowUtils` 类静态方法：`algorithms/classify_anomaly_server/classify_anomaly_server/training/mlflow_utils.py:24`（`class MLFlowUtils`）、`:28`（`setup_experiment`）、`:108`（`log_params_batch`）、`:167`（`log_metrics_batch`）、`:193`（`log_artifact`）、`:209`/`:352`/`:409`/`:468` 等（`plot_*`）。
 - 其余：`algorithms/classify_*_server/.../serving/metrics.py`、`bentofile.yaml`、`pyproject.toml`；`algorithms/{AGENTS.md,DESIGN_GUIDE.md}`；`config/components/mlflow.py`。
+- 本轮安全改动样例：`algorithms/classify_text_classification_server/classify_text_classification_server/serving/service.py:132-152,255-260`；同类约束与测试同时覆盖 `classify_anomaly_server`、`classify_log_server`、`classify_timeseries_server`、`classify_image_classification_server` 等服务的 loader / schema / train script。

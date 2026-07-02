@@ -167,6 +167,7 @@
         "networkTopo": "Network Topology",
         "applicationResourceOverview": "Application Topology",
         "ipView": "IP View",
+        "ipViewEmptyHint": "Please fill in the subnet CIDR and mask first",
         "ipViewCapacity": "Capacity",
         "ipViewUsed": "Used",
         "ipViewAvailable": "Available",
