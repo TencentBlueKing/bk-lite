@@ -13,13 +13,14 @@ export const nodeConfig = {
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
   enterprise_wechat: { icon: 'qiwei2', color: 'green' as const },
+  enterprise_wechat_aibot: { icon: 'qiwei2', color: 'green' as const },
   dingtalk: { icon: 'dingding', color: 'blue' as const },
   wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
   memory_read: { icon: 'zhishiku2', color: 'teal' as const },
   memory_write: { icon: 'bianji', color: 'indigo' as const },
 } as const;
 
-export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
+export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'enterprise_wechat_aibot', 'dingtalk', 'wechat_official'] as const;
 
 export const handleColorClasses = {
   green: 'bg-green-500!',
@@ -112,6 +113,20 @@ export const getDefaultConfig = (nodeType: string) => {
         aes_key: '',
         corp_id: '',
         agent_id: ''
+      };
+    case 'enterprise_wechat_aibot':
+      return {
+        ...baseConfig,
+        connectionMode: 'webhook',
+        webhook: {
+          token: '',
+          encodingAESKey: '',
+          aibotid: ''
+        },
+        websocket: {
+          botId: '',
+          secret: ''
+        }
       };
     case 'web_chat':
       return {

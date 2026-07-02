@@ -311,10 +311,9 @@ class TestCeleryTaskConfiguration:
         """
         from apps.opspilot import tasks
 
-        source = inspect.getsource(tasks.process_wechat_official_message)
+        source = inspect.getsource(tasks._run_channel_message)
 
-        assert "_run_channel_message" in source, "Task must delegate to _run_channel_message"
-        assert "WechatOfficialChatFlowUtils" in source, "Task must pass WechatOfficialChatFlowUtils to the runner"
+        assert "handler.async_process_and_reply(" in source, "Shared channel runner must call async_process_and_reply method"
 
     def test_all_channel_tasks_exist(self):
         """TC-CELERY-04: All channels must have corresponding Celery tasks."""

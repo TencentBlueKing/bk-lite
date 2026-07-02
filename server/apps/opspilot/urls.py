@@ -21,8 +21,8 @@ from apps.opspilot.viewsets import (
     OCRProviderViewSet,
     QAPairsViewSet,
     RasaModelViewSet,
-    SkillPackageViewSet,
     RerankProviderViewSet,
+    SkillPackageViewSet,
     SkillRequestLogViewSet,
     SkillToolsViewSet,
     WebPageKnowledgeViewSet,
@@ -135,6 +135,11 @@ urlpatterns += [
         r"bot_mgmt/execute_chat_flow_wechat/<int:bot_id>/",
         views.execute_chat_flow_wechat,
         name="execute_chat_flow_wechat",
+    ),
+    path(
+        r"bot_mgmt/execute_chat_flow_enterprise_wechat_aibot/<int:bot_id>/",
+        views.execute_chat_flow_enterprise_wechat_aibot,
+        name="execute_chat_flow_enterprise_wechat_aibot",
     ),
     path(
         r"bot_mgmt/execute_chat_flow_wechat_official/<int:bot_id>/",
