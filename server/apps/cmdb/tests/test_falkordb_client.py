@@ -325,6 +325,22 @@ def test_set_entity_properties_model_fills_defaults():
     assert "SET" in c._graph.last_query.upper()
 
 
+def test_set_entity_properties_model_tolerates_legacy_option_type():
+    attrs = [{"attr_id": "ip_status", "attr_type": "str", "option": [{"id": "online", "name": "在线"}]}]
+    updated = FakeNode(1, ["model"], {"model_id": "ip"})
+    c = _client(_entity_result([updated]))
+    c.set_entity_properties(
+        label="model",
+        entity_ids=[1],
+        properties={"attrs": json.dumps(attrs, ensure_ascii=False)},
+        check_attr_map={},
+        exist_items=[],
+        check=False,
+    )
+    saved_attrs = json.loads(c._graph.last_params["val0"])
+    assert saved_attrs[0]["option"]["validation_type"] == "unrestricted"
+
+
 def test_batch_update_node_properties_empty_props_raises():
     c = _client()
     with pytest.raises(BaseAppException):
