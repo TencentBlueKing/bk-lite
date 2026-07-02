@@ -129,6 +129,11 @@ class TestLLMClientFactoryTimeout:
             "llm_client_factory.py 未使用 LLM_INVOKE_TIMEOUT 环境变量。" "client-level timeout 应与 future.result() 超时保持一致。"
         )
 
+    def test_llm_client_factory_default_timeout_is_300_seconds(self, factory_src):
+        """未显式传入 timeout 时，LLM client 底座默认超时应为 300 秒。"""
+        assert 'os.getenv("LLM_INVOKE_TIMEOUT", "300")' in factory_src
+        assert "timeout=15" not in factory_src
+
     def test_os_is_imported_in_factory(self, factory_src):
         """os 模块必须被 import，用于 os.getenv()"""
         assert "import os" in factory_src, "llm_client_factory.py 缺少 import os，无法调用 os.getenv()"

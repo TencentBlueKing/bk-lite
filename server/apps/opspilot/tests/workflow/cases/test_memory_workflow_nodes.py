@@ -986,6 +986,35 @@ def create_test_llm_model(db):
 
 
 @pytest.mark.django_db
+class TestBuildMemoryWriteClientTimeout:
+    """Test memory write LLM client timeout configuration."""
+
+    def test_memory_write_client_uses_600_seconds_timeout_by_default(self, monkeypatch):
+        from apps.opspilot.tasks import _build_memory_write_client
+
+        monkeypatch.delenv("MEMORY_WRITE_LLM_TIMEOUT", raising=False)
+        llm_model = create_test_llm_model(None)
+
+        with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client") as mock_create:
+            _build_memory_write_client(llm_model.id)
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["timeout"] == 600
+
+    def test_memory_write_client_timeout_can_be_overridden_by_env(self, monkeypatch):
+        from apps.opspilot.tasks import _build_memory_write_client
+
+        monkeypatch.setenv("MEMORY_WRITE_LLM_TIMEOUT", "900")
+        llm_model = create_test_llm_model(None)
+
+        with patch("apps.opspilot.metis.llm.common.llm_client_factory.LLMClientFactory.create_client") as mock_create:
+            _build_memory_write_client(llm_model.id)
+
+        mock_create.assert_called_once()
+        assert mock_create.call_args.kwargs["timeout"] == 900
+
+
+@pytest.mark.django_db
 class TestProcessMemoryWriteWithLLM:
     """Test process_memory_write with LLM decision making."""
 
