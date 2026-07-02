@@ -3853,6 +3853,9 @@ monitor_object_plugin:
   Wireless Airspan SNMP:
     name: Airspan（Telegraf）
     desc: Airspan 4G/5G 无线接入设备 SNMP 基线子模板，适用于 Airspan 企业号 PEN 1803 下的设备。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料只确认无线接入产品面和企业根，未证明稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
+  Wireless ACKSYS SNMP:
+    name: ACKSYS（Telegraf）
+    desc: ACKSYS AirLink / WaveOS 工业无线设备 SNMP 基线子模板。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料已确认 AirLink 工业无线对象面、SNMP v1/v2c/v3 管理能力与官方 MIB 下载面，但未证明稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
   Wireless Grandstream SNMP:
     name: Grandstream（Telegraf）
     desc: Grandstream GWN 无线设备 SNMP 采集基线模板（接口流量 + 运行时长，企业号 PEN 42397）。采集 IF-MIB 64 位 HC 接口流量计数器（ifHCInOctets/ifHCOutOctets，ifXTable）速率与设备运行时长（sysUpTime）。GRANDSTREAM-GWN-MIB 以无线射频统计与连接客户端信息为主，仅暴露 gwnDeviceUptime 这一标量系统量，无 CPU/内存/温度对象；关联客户端数仅以按 MAC 索引的 gwnClientTable 逐行呈现，无标量计数对象，telegraf inputs.snmp 无法行级聚合。故 CPU/内存/温度/客户端数/信道利用率为 N/A，不伪造。适用品牌型号——Grandstream GWN76xx/GWN78xx Wi-Fi 接入点与控制器（企业号 PEN 42397）及其他遵循 IF-MIB 标准的无线 AP 设备。
