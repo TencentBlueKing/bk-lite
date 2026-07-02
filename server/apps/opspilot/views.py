@@ -35,6 +35,7 @@ from apps.opspilot.services.workflow_attachment_service import resolve_signed_at
 from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.execution_interrupt import request_interrupt
 from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
@@ -557,13 +558,7 @@ def get_token_consumption_overview(request):
     # 先初始化日期骨架（保证无数据日仍有 0 占位）
     daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
     # DB 层按日期聚合 token 总量，不再全量拉取行到 Python
-    rows = (
-        _annotate_token_fields(queryset)
-        .annotate(date=TruncDate("created_at"))
-        .values("date")
-        .annotate(tokens=Sum("_total"))
-        .order_by("date")
-    )
+    rows = _annotate_token_fields(queryset).annotate(date=TruncDate("created_at")).values("date").annotate(tokens=Sum("_total")).order_by("date")
     for row in rows:
         date_key = row["date"].strftime("%Y-%m-%d")
         daily_totals[date_key] = (daily_totals.get(date_key) or 0) + (row["tokens"] or 0)
@@ -1037,6 +1032,12 @@ def execute_chat_flow_wechat(request, bot_id):
 
     # 6. 处理POST请求（消息处理）
     return wechat_utils.handle_wechat_message(request, crypto, bot_chat_flow, wechat_config)
+
+
+@api_exempt
+def execute_chat_flow_enterprise_wechat_aibot(request, bot_id):
+    """企微智能机器人短连接 ChatFlow 执行入口。"""
+    return EnterpriseWechatAibotChatFlowUtils(bot_id).handle_request(request)
 
 
 @api_exempt

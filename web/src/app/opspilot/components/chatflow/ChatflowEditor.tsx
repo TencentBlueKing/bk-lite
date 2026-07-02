@@ -36,6 +36,7 @@ import {
   IntentClassificationNode,
   NotificationNode,
   EnterpriseWechatNode,
+  EnterpriseWechatAibotNode,
   DingtalkNode,
   WechatOfficialNode,
   WebChatNode,
@@ -291,6 +292,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
       http: createNodeComponent(HttpRequestNode),
       notification: createNodeComponent(NotificationNode),
       enterprise_wechat: createNodeComponent(EnterpriseWechatNode),
+      enterprise_wechat_aibot: createNodeComponent(EnterpriseWechatAibotNode),
       dingtalk: createNodeComponent(DingtalkNode),
       wechat_official: createNodeComponent(WechatOfficialNode),
       memory_read: createNodeComponent(MemoryReadNode),
@@ -335,7 +337,7 @@ const ChatflowEditor = forwardRef<ChatflowEditorRef, ChatflowEditorProps>(({ onS
 
           if (targetNodeId && targetNodeId !== sourceNodeId) {
             const targetNodeData = nodes.find(n => n.id === targetNodeId);
-            const noInputTypes = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'];
+            const noInputTypes = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'enterprise_wechat_aibot', 'dingtalk', 'wechat_official'];
             const nodeType = targetNodeData?.data?.type as string;
             const hasInputHandle = nodeType && !noInputTypes.includes(nodeType);
 
