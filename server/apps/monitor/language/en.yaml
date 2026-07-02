@@ -1,125 +1,4 @@
 monitor_object_metric:
-  IBMMQ:
-    ibmmq_qmgr_status_gauge:
-      name: Queue Manager Status
-      desc: Queue manager status. 0 means the exporter cannot connect (stopped/unavailable), 1 starting, 2 running, 3 quiescing, 4 standby.
-    ibmmq_qmgr_channel_initiator_status_gauge:
-      name: Channel Initiator Status
-      desc: Status of the channel initiator of the queue manager.
-    ibmmq_qmgr_command_server_status_gauge:
-      name: Command Server Status
-      desc: Status of the command server of the queue manager.
-    ibmmq_qmgr_uptime_gauge:
-      name: Uptime
-      desc: How long the queue manager has been running, in seconds.
-    ibmmq_qmgr_connection_count_gauge:
-      name: Connection Count
-      desc: Number of active connections to the queue manager.
-    ibmmq_qmgr_active_listeners_gauge:
-      name: Active Listeners
-      desc: Number of active listeners on the queue manager.
-    ibmmq_qmgr_concurrent_connections_high_water_mark_gauge:
-      name: Concurrent Connections High-Water Mark
-      desc: Peak number of concurrent connections to the queue manager.
-    ibmmq_qmgr_expired_message_count_gauge:
-      name: Expired Message Count
-      desc: Number of expired messages on the queue manager during the interval.
-    ibmmq_qmgr_commit_count_gauge:
-      name: Commit Count
-      desc: Number of commit operations on the queue manager during the interval.
-    ibmmq_qmgr_rollback_count_gauge:
-      name: Rollback Count
-      desc: Number of rollback operations on the queue manager during the interval.
-    ibmmq_qmgr_exporter_collection_time_gauge:
-      name: Exporter Collection Time
-      desc: Time the exporter spent on the last collection cycle, in milliseconds.
-    ibmmq_qmgr_cpu_load_one_minute_average_percentage_gauge:
-      name: CPU Load 1m Average
-      desc: One-minute average CPU load percentage of the queue manager host.
-    ibmmq_qmgr_cpu_load_five_minute_average_percentage_gauge:
-      name: CPU Load 5m Average
-      desc: Five-minute average CPU load percentage of the queue manager host.
-    ibmmq_qmgr_user_cpu_time_percentage_gauge:
-      name: User CPU Time
-      desc: User-space CPU time percentage of the queue manager host.
-    ibmmq_qmgr_system_cpu_time_percentage_gauge:
-      name: System CPU Time
-      desc: System (kernel) CPU time percentage of the queue manager host.
-    ibmmq_qmgr_ram_free_percentage_gauge:
-      name: RAM Free
-      desc: Percentage of free RAM on the queue manager host.
-    ibmmq_qmgr_ram_total_bytes_gauge:
-      name: RAM Total
-      desc: Total RAM on the queue manager host, in bytes.
-    ibmmq_qmgr_queue_manager_file_system_free_space_percentage_gauge:
-      name: Queue Manager FS Free Space
-      desc: Percentage of free space in the queue manager file system.
-    ibmmq_qmgr_queue_manager_file_system_in_use_bytes_gauge:
-      name: Queue Manager FS In Use
-      desc: Bytes in use in the queue manager file system.
-    ibmmq_qmgr_log_in_use_bytes_gauge:
-      name: Log In Use
-      desc: Bytes of recovery log currently in use.
-    ibmmq_qmgr_log_max_bytes_gauge:
-      name: Log Max
-      desc: Maximum size of the recovery log, in bytes.
-    ibmmq_qmgr_log_current_primary_space_in_use_percentage_gauge:
-      name: Log Primary Space In Use
-      desc: Percentage of the current primary log space in use.
-    ibmmq_qmgr_log_workload_primary_space_utilization_percentage_gauge:
-      name: Log Workload Primary Space Utilization
-      desc: Workload utilization of the primary log space, as a percentage.
-    ibmmq_qmgr_log_write_latency_seconds_gauge:
-      name: Log Write Latency
-      desc: Average log write latency, in seconds.
-    ibmmq_qmgr_log_file_system_in_use_bytes_gauge:
-      name: Log FS In Use
-      desc: Bytes in use in the log file system.
-    ibmmq_qmgr_log_file_system_max_bytes_gauge:
-      name: Log FS Max
-      desc: Maximum size of the log file system, in bytes.
-    ibmmq_queue_depth_gauge:
-      name: Queue Depth
-      desc: Current number of messages on the queue.
-    ibmmq_queue_attribute_max_depth_gauge:
-      name: Queue Max Depth
-      desc: Maximum number of messages allowed on the queue.
-    ibmmq_queue_oldest_message_age_gauge:
-      name: Oldest Message Age
-      desc: Age of the oldest message on the queue, in seconds.
-    ibmmq_queue_uncommitted_messages_gauge:
-      name: Uncommitted Messages
-      desc: Number of uncommitted messages on the queue.
-    ibmmq_queue_input_handles_gauge:
-      name: Input Handles
-      desc: Number of open input handles on the queue.
-    ibmmq_queue_output_handles_gauge:
-      name: Output Handles
-      desc: Number of open output handles on the queue.
-    ibmmq_queue_qtime_short_gauge:
-      name: Short Queue Time
-      desc: Short-period average time messages spent on the queue, in seconds.
-    ibmmq_queue_qtime_long_gauge:
-      name: Long Queue Time
-      desc: Long-period average time messages spent on the queue, in seconds.
-    ibmmq_topic_publisher_count_gauge:
-      name: Publisher Count
-      desc: Number of active publishers on the topic.
-    ibmmq_topic_subscriber_count_gauge:
-      name: Subscriber Count
-      desc: Number of active subscribers on the topic.
-    ibmmq_topic_messages_received_gauge:
-      name: Messages Received
-      desc: Number of messages received on the topic during the interval.
-    ibmmq_topic_time_since_msg_received_gauge:
-      name: Time Since Message Received
-      desc: Seconds since the last message was received on the topic.
-    ibmmq_subscription_messsages_received_gauge:
-      name: Subscription Messages Received
-      desc: Number of messages received by the subscription during the interval.
-    ibmmq_subscription_time_since_message_published_gauge:
-      name: Time Since Message Published
-      desc: Seconds since the last message was published to the subscription.
   Wireless:
     snmp_uptime: &id001
       name: System Uptime
@@ -1855,123 +1734,6 @@ monitor_object_metric:
     api_volume_resp_t_w:
       name: Volume Write Response Time
       desc: Average write response time of each volume in milliseconds
-    pure_volume_count:
-      name: Number of Volumes
-      desc: Total number of volumes in the Pure Storage array
-    pure_array_read_iops:
-      name: Array Read IOPS
-      desc: Read I/O operations per second for the Pure Storage array
-    pure_array_write_iops:
-      name: Array Write IOPS
-      desc: Write I/O operations per second for the Pure Storage array
-    pure_array_read_bandwidth:
-      name: Array Read Throughput
-      desc: Read throughput for the Pure Storage array in bytes per second
-    pure_array_write_bandwidth:
-      name: Array Write Throughput
-      desc: Write throughput for the Pure Storage array in bytes per second
-    pure_array_read_latency:
-      name: Array Read Latency
-      desc: Average read latency for the Pure Storage array in milliseconds
-    pure_array_write_latency:
-      name: Array Write Latency
-      desc: Average write latency for the Pure Storage array in milliseconds
-    pure_array_queue_depth:
-      name: Array Queue Depth
-      desc: Current queue depth reported by the Pure Storage array
-    pure_array_capacity_bytes:
-      name: Array Capacity
-      desc: Total physical capacity of the Pure Storage array
-    pure_array_used_bytes:
-      name: Array Used Capacity
-      desc: Used physical capacity of the Pure Storage array
-    pure_array_volumes_bytes:
-      name: Array Volume Capacity
-      desc: Capacity consumed by volumes on the Pure Storage array
-    pure_array_snapshots_bytes:
-      name: Array Snapshot Capacity
-      desc: Capacity consumed by snapshots on the Pure Storage array
-    pure_array_shared_space_bytes:
-      name: Array Shared Space
-      desc: Shared capacity reported by the Pure Storage array
-    pure_array_data_reduction:
-      name: Array Data Reduction
-      desc: Data reduction ratio reported by the Pure Storage array
-    pure_array_total_reduction:
-      name: Array Total Reduction
-      desc: Total reduction ratio reported by the Pure Storage array
-    pure_volume_read_iops:
-      name: Volume Read IOPS
-      desc: Read I/O operations per second of each Pure Storage volume
-    pure_volume_write_iops:
-      name: Volume Write IOPS
-      desc: Write I/O operations per second of each Pure Storage volume
-    pure_volume_read_bandwidth:
-      name: Volume Read Throughput
-      desc: Read throughput of each Pure Storage volume in bytes per second
-    pure_volume_write_bandwidth:
-      name: Volume Write Throughput
-      desc: Write throughput of each Pure Storage volume in bytes per second
-    pure_volume_read_latency:
-      name: Volume Read Latency
-      desc: Average read latency of each Pure Storage volume in milliseconds
-    pure_volume_write_latency:
-      name: Volume Write Latency
-      desc: Average write latency of each Pure Storage volume in milliseconds
-    pure_volume_size_bytes:
-      name: Volume Size
-      desc: Provisioned size of each Pure Storage volume
-    pure_volume_used_bytes:
-      name: Volume Used Capacity
-      desc: Used capacity of each Pure Storage volume
-    infinibox_pool_count:
-      name: Number of Pools
-      desc: Total number of storage pools in the InfiniBox system
-    infinibox_volume_count:
-      name: Number of Volumes
-      desc: Total number of volumes in the InfiniBox system
-    infinibox_pool_physical_capacity_bytes:
-      name: Pool Physical Capacity
-      desc: Physical capacity of each InfiniBox pool
-    infinibox_pool_allocated_physical_bytes:
-      name: Pool Allocated Physical Capacity
-      desc: Allocated physical capacity of each InfiniBox pool
-    infinibox_pool_free_physical_bytes:
-      name: Pool Free Physical Capacity
-      desc: Free physical capacity of each InfiniBox pool
-    infinibox_pool_virtual_capacity_bytes:
-      name: Pool Virtual Capacity
-      desc: Virtual capacity of each InfiniBox pool
-    infinibox_pool_allocated_virtual_bytes:
-      name: Pool Allocated Virtual Capacity
-      desc: Allocated virtual capacity of each InfiniBox pool
-    infinibox_volume_read_iops:
-      name: Volume Read IOPS
-      desc: Read I/O operations per second of each InfiniBox volume
-    infinibox_volume_write_iops:
-      name: Volume Write IOPS
-      desc: Write I/O operations per second of each InfiniBox volume
-    infinibox_volume_read_bandwidth:
-      name: Volume Read Throughput
-      desc: Read throughput of each InfiniBox volume in bytes per second
-    infinibox_volume_write_bandwidth:
-      name: Volume Write Throughput
-      desc: Write throughput of each InfiniBox volume in bytes per second
-    infinibox_volume_read_latency:
-      name: Volume Read Latency
-      desc: Average read latency of each InfiniBox volume in milliseconds
-    infinibox_volume_write_latency:
-      name: Volume Write Latency
-      desc: Average write latency of each InfiniBox volume in milliseconds
-    infinibox_volume_latency:
-      name: Volume Average Latency
-      desc: Average I/O latency of each InfiniBox volume in milliseconds
-    infinibox_volume_size_bytes:
-      name: Volume Size
-      desc: Provisioned size of each InfiniBox volume
-    infinibox_volume_used_bytes:
-      name: Volume Used Capacity
-      desc: Used capacity of each InfiniBox volume
   Docker Container:
     docker_container_status:
       name: Container Status
@@ -3996,14 +3758,6 @@ monitor_object_metric:
       name: Runtime Heap Allocation
       desc: Current size of memory allocated and in use on the Go runtime heap.
 monitor_object_metric_group:
-  IBMMQ:
-    Base: Base
-    Status: Status
-    Resource: Resource
-    Log: Log
-    Queue: Queue
-    Topic: Topic
-    Subscription: Subscription
   Wireless:
     Base: Base
     Traffic: Traffic
@@ -4230,19 +3984,12 @@ monitor_object_metric_group:
     Pool IOPS: Pool IOPS
     Pool Throughput: Pool Throughput
     Pool Latency: Pool Latency
-    Pool Capacity: Pool Capacity
     Drive IOPS: Drive IOPS
     Drive Throughput: Drive Throughput
     Drive Latency: Drive Latency
-    Array IOPS: Array IOPS
-    Array Throughput: Array Throughput
-    Array Latency: Array Latency
-    Array Capacity: Array Capacity
-    Array Reduction: Array Reduction
     Volume IOPS: Volume IOPS
     Volume Throughput: Volume Throughput
     Volume Latency: Volume Latency
-    Volume Capacity: Volume Capacity
   WebLogic-JMX:
     Threadpool: Thread Pool
     Application: Application
@@ -4416,12 +4163,6 @@ monitor_object_metric_group:
     写入稳定性: Write Stability
     运行时: Runtime
 monitor_object_plugin:
-  IBM-MQ-Exporter:
-    name: IBM MQ(Exporter)
-    desc: Through the IBM MQ Exporter collector, connect to the queue manager over an MQI client connection and regularly gather queue manager, queue, topic and subscription status, backlog and resource metrics to help monitor message queue availability and performance. Requires the IBM MQ redistributable client (/opt/mqm) on the node.
-  IBMMQ:
-    name: IBM MQ(Exporter)
-    desc: Through the IBM MQ Exporter collector, connect to the queue manager over an MQI client connection and regularly gather queue manager, queue, topic and subscription status, backlog and resource metrics to help monitor message queue availability and performance. Requires the IBM MQ redistributable client (/opt/mqm) on the node.
   Wireless Cambium SNMP:
     name: Wireless Cambium SNMP
     desc: Baseline SNMP collection template for wireless devices (interface traffic + uptime). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). Wireless health metrics (signal strength/SNR/associated clients) use Cambium private per-row indexed MIBs requiring row-level filtering not supported by telegraf inputs.snmp, so they are N/A. Applicable to Cambium Networks wireless devices (cnPilot/ePMP/PMP, enterprise OID 17713) and other IF-MIB compliant wireless AP/bridges.
@@ -4452,6 +4193,9 @@ monitor_object_plugin:
   Wireless Airspan SNMP:
     name: Airspan (Telegraf)
     desc: Airspan 4G and 5G wireless access SNMP baseline child template for devices under Airspan PEN 1803. This child template relies on the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the wireless access product surface and enterprise root only, but do not prove stable shared CPU, memory, temperature, fan, power or RF-health leaf OIDs, so private wireless business objects are not promoted into shared device-health metrics.
+  Wireless ACKSYS SNMP:
+    name: ACKSYS (Telegraf)
+    desc: ACKSYS AirLink and WaveOS industrial wireless SNMP baseline child template. This child template relies on the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the AirLink industrial wireless product surface, SNMP v1/v2c/v3 management and an official MIB download surface, but do not prove stable shared CPU, memory, temperature, fan, power or RF-health leaf OIDs, so private wireless business objects are not promoted into shared device-health metrics.
   Wireless Grandstream SNMP:
     name: Grandstream (Telegraf)
     desc: Baseline SNMP collection template for Grandstream GWN wireless devices (interface traffic + uptime, enterprise PEN 42397). Collects IF-MIB 64-bit HC interface counters (ifHCInOctets/ifHCOutOctets, ifXTable) rates and device uptime (sysUpTime). The GRANDSTREAM-GWN-MIB is oriented to wireless radio statistics and per-client information, exposing only gwnDeviceUptime as a scalar system object with no CPU/memory/temperature objects, while associated clients appear only as the per-MAC gwnClientTable with no scalar count that telegraf inputs.snmp cannot aggregate row-wise. CPU/memory/temperature/client-count/channel-utilization are therefore N/A and not faked. Applicable to Grandstream GWN76xx/GWN78xx Wi-Fi access points and controllers (enterprise PEN 42397) and other IF-MIB compliant wireless AP devices.
@@ -4520,6 +4264,9 @@ monitor_object_plugin:
   Transmission DragonWave SNMP:
     name: DragonWave (Telegraf)
     desc: DragonWave microwave transmission SNMP baseline child template for devices under DragonWave PEN 7262. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts prove the public enterprise root and airPair/horizon product subtrees, but no verified vendor MIB package or device walk proves stable private CPU, memory, temperature, fan or power health scalars, so this brand metrics.json declares no vendor-specific deltas and the private enterprise tree is not collected.
+  Transmission Ericsson SNMP:
+    name: Ericsson (Telegraf)
+    desc: Ericsson microwave and carrier transmission SNMP baseline child template for devices under Ericsson PEN 193. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts prove the public enterprise root and Ericsson child subtrees, but no verified vendor MIB package or device walk proves stable private CPU, memory, temperature, fan or power health scalars, so this brand metrics.json declares no vendor-specific deltas and the private enterprise tree is not collected.
   Transmission Ekinops SNMP:
     name: Ekinops (Telegraf)
     desc: Ekinops WDM, CWDM and DWDM transmission SNMP baseline child template for devices under Ekinops PEN 20044. The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.
@@ -4730,12 +4477,6 @@ monitor_object_plugin:
     desc: Through the Telegraf collector, utilize the DeviceManager REST API to regularly
       collect performance metrics from Huawei OceanStor storage pools, drives, and
       LUN volumes, including IOPS, throughput, and response time.
-  Pure:
-    name: Pure Storage (Stargazer)
-    desc: Telegraf periodically scrapes the Stargazer collection endpoint, and Stargazer calls the Pure Storage FlashArray REST API to collect array and volume IOPS, throughput, latency, capacity, and reduction metrics.
-  InfiniBox:
-    name: InfiniBox Storage (Stargazer)
-    desc: Telegraf periodically scrapes the Stargazer collection endpoint, and Stargazer calls the InfiniBox REST API to collect pool capacity, volume capacity, and volume IOPS, throughput, and latency metrics calculated from sampled counters.
   Tencent Cloud:
     name: Tencent Cloud
     desc: Real-time collection of Tencent Cloud monitoring metrics spans dimensions
@@ -5078,6 +4819,12 @@ monitor_object_plugin:
   Switch Antaira SNMP:
     name: Antaira (Telegraf)
     desc: Baseline SNMP child template for Antaira industrial managed Ethernet switches (enterprise PEN 38477). The available state confirms Antaira managed switch SNMP v1/v2c/v3 support and enterprise identity, but no verified public vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power-supply health OIDs. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the Antaira collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Antaira industrial managed Ethernet switches such as LMX series.
+  Switch XikeStor SNMP:
+    name: XikeStor (Telegraf)
+    desc: Baseline SNMP child template for XikeStor managed Ethernet switches under enterprise PEN 242853. The available state confirms the XikeStor switch product surface, a public enterprise root and an official support/download surface, but no verified public vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power-supply health OIDs. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the XikeStor collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — XikeStor managed Ethernet switches such as SKS8300 series.
+  Switch RubyTech SNMP:
+    name: RubyTech (Telegraf)
+    desc: Baseline SNMP child template for RubyTech managed Ethernet and industrial switches (enterprise PEN 5205). The available state confirms RubyTech managed switch product families and public switch product subtrees, but no verified public vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power-supply health OIDs. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the RubyTech collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — RubyTech IGS/IPGS industrial switches and related L2/L3 managed switch families.
   Switch Kyland SNMP:
     name: Kyland (Telegraf)
     desc: Baseline SNMP child template for Kyland industrial managed Ethernet switches under enterprise PEN 26067. The available state confirms the Kyland enterprise root, SICOM and KIEN industrial managed switch product surface, and an official MIB entry page, but no verified public vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power-supply health OIDs. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. This template only provides the Kyland collect_type, UI form and Telegraf child collection config. CPU, memory, temperature, fan and power-supply state are not collected (N/A). Supported brands/models — Kyland SICOM, KIEN and related industrial managed Ethernet switches.
@@ -5197,6 +4944,21 @@ monitor_object_plugin:
   Switch AsterFusion SNMP:
     name: AsterFusion (Telegraf)
     desc: AsterFusion open-network switch SNMP baseline collection (enterprise 55955). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm AsterNOS SNMP v1/v2c/v3 support and private-node entry points for RoCE, BGP and RIB data, but they do not prove stable shared CPU, memory, temperature, fan or power health scalars with conservative status semantics, so service or fabric indicators are not promoted into device-health metrics. Supported brands/models — AsterFusion AsterNOS open-network switches.
+  Switch ATOP SNMP:
+    name: ATOP (Telegraf)
+    desc: ATOP industrial Ethernet switch SNMP baseline collection (enterprise 3755). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm ATOP managed switch products, the ATOP enterprise root, and official SNMP-based management tooling, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics. Supported brands/models — ATOP industrial managed switches.
+  Switch Comtrol RocketLinx SNMP:
+    name: Comtrol RocketLinx (Telegraf)
+    desc: Comtrol RocketLinx industrial Ethernet switch SNMP baseline collection (enterprise 11545). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm RocketLinx managed switch products, the Pepperl+Fuchs Comtrol enterprise root, and an official SNMP MIB file download, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics. Supported brands/models — Comtrol RocketLinx industrial managed switches.
+  Switch WoMaster SNMP:
+    name: WoMaster (Telegraf)
+    desc: WoMaster industrial Ethernet switch SNMP baseline collection. This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm WoMaster industrial managed switch products and official switch MIB downloads, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics. Supported brands/models — WoMaster industrial managed switches.
+  Switch Murrelektronik SNMP:
+    name: Murrelektronik (Telegraf)
+    desc: Murrelektronik industrial Ethernet switch SNMP baseline collection (enterprise 47330). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm Murrelektronik industrial managed switch products, SNMPv1/v2c/v3 support, RMON support, and the enterprise root, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics. Supported brands/models — Murrelektronik industrial managed switches.
+  Switch InHand Networks SNMP:
+    name: InHand Networks (Telegraf)
+    desc: InHand Networks industrial Ethernet switch SNMP baseline collection (enterprise 144629). This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm InHand Networks industrial managed switch products, SNMPv1/v2c/v3, MIB-II, SMIv2, RMON, Ping MIB support, and the enterprise root, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics. Supported brands/models — InHand Networks industrial managed switches.
   Switch Phoenix Contact SNMP:
     name: Phoenix Contact (Telegraf)
     desc: Baseline SNMP collection template for Phoenix Contact FL SWITCH industrial Ethernet switches (enterprise PEN 4346). Based on standard MIB-II / IF-MIB, it collects device uptime and 64-bit HC interface traffic, per-interface incoming/outgoing error and discard rates, interface admin/oper status and bandwidth, plus device-aggregated total incoming/outgoing traffic rates. The FL SWITCH temperature, redundant power-supply inputs (P1/P2) and alarm-contact objects live in product-family-specific private MIBs (PEN 4346) shipped inside the firmware package and are not exposed as row-filter-free pollable scalars across the GHS/MM/SMN/SMCS/EP74/2000 ranges, so CPU, memory, temperature, fan and power are N/A and not faked. Supported brands/models — Phoenix Contact FL SWITCH industrial Ethernet switches (FL SWITCH GHS/MM/SMN/SMCS/EP74/2000 families; enterprise PEN 4346).
@@ -5778,7 +5540,6 @@ monitor_object_plugin:
     name: Kafka(Exporter)
     desc: Through the Kafka Exporter collector, regularly gather metrics from Kafka clusters, including topic statistics, partition counts, consumer group status, and more, to help monitor the health and performance of Kafka clusters.
 monitor_object:
-  IBMMQ: IBM MQ
   Wireless: Wireless
   Transmission: Transmission
   Access: Access

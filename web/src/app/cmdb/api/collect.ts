@@ -63,6 +63,9 @@ export const useCollectApi = () => {
   const getCollectTaskNames = () =>
     get('/cmdb/api/collect/collect_task_names/');
 
+  const getNetworkConfigBrands = () =>
+    get('/cmdb/api/collect/network_config_file_supported_brands/');
+
   return {
     getCollectList,
     getCollectDetail,
@@ -79,5 +82,6 @@ export const useCollectApi = () => {
     getTaskStatus,
     getTaskOverview,
     getCollectTaskNames,
+    getNetworkConfigBrands,
   };
 };

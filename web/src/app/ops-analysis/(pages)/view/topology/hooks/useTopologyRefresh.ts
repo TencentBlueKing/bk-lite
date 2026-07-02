@@ -1,5 +1,6 @@
 import { useCallback, useEffect } from 'react';
 import type React from 'react';
+import type { Graph } from '@antv/x6';
 import { buildDefaultFilterBindings } from '@/app/ops-analysis/utils/widgetDataTransform';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
 import type {
@@ -31,7 +32,7 @@ interface PostMutationPayload {
 }
 
 interface UseTopologyRefreshControllerParams {
-  graphInstance: unknown;
+  graphInstance: Graph | null;
   namespaceOptions: NamespaceOption[];
   refreshTimerRef: React.MutableRefObject<NodeJS.Timeout | null>;
   dataSources: DatasourceItem[];
@@ -269,7 +270,7 @@ export const useTopologyRefresh = ({
       }
 
       const namespaceIds = Array.from(
-        collectTopologyNamespaceIds(graphInstance as any, canvasDataSources),
+        collectTopologyNamespaceIds(graphInstance, canvasDataSources),
       );
       return namespaceIds[0];
     },
@@ -280,7 +281,7 @@ export const useTopologyRefresh = ({
     (callback?: (payload: PostMutationPayload) => void) => {
       setTimeout(() => {
         const newDefinitions = buildFiltersFromNodes(
-          graphInstance as any,
+          graphInstance,
           dataSources,
           definitions,
         );

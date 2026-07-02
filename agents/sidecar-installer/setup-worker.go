@@ -439,20 +439,64 @@ func runLinuxInstaller(cfg *Config) error {
 	if err := os.Chmod(installScript, 0755); err != nil {
 		return err
 	}
+
+	apiTokenArg, apiTokenEnv, cleanup, err := linuxInstallerAPITokenInputs(cfg.InstallDir, cfg.APIToken)
+	if err != nil {
+		return err
+	}
+	defer cleanup()
+
 	cmd := exec.Command(
 		installScript,
 		cfg.ServerURL,
-		cfg.APIToken,
+		apiTokenArg,
 		cfg.ZoneID,
 		cfg.GroupID,
 		cfg.NodeName,
 		cfg.NodeID,
 		cfg.Package.CPUArchitecture,
 	)
+	if apiTokenEnv != "" {
+		cmd.Env = append(os.Environ(), apiTokenEnv)
+	}
 	cmd.Dir = cfg.InstallDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 	return cmd.Run()
+}
+
+func linuxInstallerAPITokenInputs(installDir, apiToken string) (string, string, func(), error) {
+	cleanup := func() {}
+	if apiToken == "" {
+		return "", "", cleanup, nil
+	}
+
+	file, err := os.CreateTemp(installDir, ".server-api-token-*")
+	if err != nil {
+		return "", "", cleanup, fmt.Errorf("create API token file: %w", err)
+	}
+	tokenFile := file.Name()
+	cleanup = func() {
+		_ = os.Remove(tokenFile)
+	}
+	defer func() {
+		_ = file.Close()
+	}()
+
+	if err := file.Chmod(0600); err != nil {
+		cleanup()
+		return "", "", cleanup, fmt.Errorf("restrict API token file: %w", err)
+	}
+	if _, err := file.WriteString(apiToken); err != nil {
+		cleanup()
+		return "", "", cleanup, fmt.Errorf("write API token file: %w", err)
+	}
+	if err := file.Close(); err != nil {
+		cleanup()
+		return "", "", cleanup, fmt.Errorf("close API token file: %w", err)
+	}
+
+	return "", "BK_LITE_SERVER_API_TOKEN_FILE=" + tokenFile, cleanup, nil
 }
 
 func printConfig(cfg *Config) {

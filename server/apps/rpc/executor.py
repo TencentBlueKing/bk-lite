@@ -38,7 +38,7 @@ class Executor(object):
         return_data = self.health_check_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def execute_local(self, command, timeout=60, shell=None):
+    def execute_local(self, command, timeout=60, shell=None, env=None):
         """
         执行本地命令
         :param command: 要执行的命令
@@ -49,10 +49,12 @@ class Executor(object):
         request_data = {"command": command, "execute_timeout": timeout}
         if shell:
             request_data["shell"] = shell
+        if env:
+            request_data["env"] = env
         return_data = self.local_client.run(self.instance_id, request_data, _timeout=timeout)
         return return_data
 
-    def execute_local_stream(self, command, timeout=60, shell=None, execution_id=None, stream_log_topic=None):
+    def execute_local_stream(self, command, timeout=60, shell=None, execution_id=None, stream_log_topic=None, env=None):
         """
         执行本地命令（流式）：在阻塞返回全量结果的同时，agent 按行 publish stdout/stderr
         到 stream_log_topic。返回值与 execute_local 一致。
@@ -67,6 +69,8 @@ class Executor(object):
         request_data = {"command": command, "execute_timeout": timeout, "stream_logs": True}
         if shell:
             request_data["shell"] = shell
+        if env:
+            request_data["env"] = env
         if execution_id:
             request_data["execution_id"] = execution_id
         if stream_log_topic:

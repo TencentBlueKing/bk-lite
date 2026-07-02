@@ -21,7 +21,6 @@ import { useTomcatConfig } from './objects/middleware/tomcat';
 import { useMinioBkpullConfig } from './objects/middleware/minio';
 import { useJettyJmxConfig } from './objects/middleware/jetty';
 import { useRabbitMQConfig } from './objects/middleware/rabbitMQ';
-import { useIBMMQConfig } from './objects/middleware/ibmmq';
 import { useRouterConfig } from './objects/networkDevice/router';
 import { useLoadbalanceConfig } from './objects/networkDevice/loadbalance';
 import { useSwitchConfig } from './objects/networkDevice/switch';
@@ -122,7 +121,6 @@ export const useMonitorConfig = () => {
   const tongWebConfig = useTongWebConfig();
   const jbossConfig = useJbossConfig();
   const kafkaConfig = useKafkaConfig();
-  const ibmmqConfig = useIBMMQConfig();
   const mssqlConfig = useMssqlConfig();
   const clusterConfig = useClusterConfig();
   const podConfig = usePodConfig();
@@ -182,7 +180,6 @@ export const useMonitorConfig = () => {
       TongWeb: tongWebConfig,
       JBoss: jbossConfig,
       Kafka: kafkaConfig,
-      IBMMQ: ibmmqConfig,
       MSSQL: mssqlConfig,
       Cluster: clusterConfig,
       Pod: podConfig,

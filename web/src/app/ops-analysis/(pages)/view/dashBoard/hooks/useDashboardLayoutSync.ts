@@ -2,6 +2,7 @@ import { useCallback } from 'react';
 
 import type {
   DashboardLayoutItem,
+  DashboardWidgetLayoutItem,
   FilterBindings,
   FilterValue,
   UnifiedFilterDefinition,
@@ -17,8 +18,10 @@ import {
 } from '@/app/ops-analysis/utils/widgetDataTransform';
 import {
   buildRelativeTimeRangeFilterValue,
-  normalizeTimeRangeFilterValue,
 } from '@/app/ops-analysis/utils/filterValue';
+import {
+  syncFilterValuesWithDefinitions as syncFilterValuesForDefinitions,
+} from '@/app/ops-analysis/utils/unifiedFilterState';
 import {
   collectDashboardNamespaceIds,
 } from '@/app/ops-analysis/utils/canvasResources';
@@ -27,7 +30,7 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGroups';
 
 export const resolveWidgetBindableParams = (
-  valueConfig: DashboardLayoutItem['valueConfig'] | undefined,
+  valueConfig: DashboardWidgetLayoutItem['valueConfig'] | undefined,
   dataSource?: DatasourceItem,
 ) => {
   const widgetParams = valueConfig?.dataSourceParams;
@@ -137,41 +140,6 @@ export const buildFiltersFromDashboardLayout = ({
     if (orderDiff !== 0) return orderDiff;
     return a.id.localeCompare(b.id);
   });
-};
-
-export const syncFilterValuesForDefinitions = (
-  nextDefinitions: UnifiedFilterDefinition[],
-  currentValues: Record<string, FilterValue>,
-): Record<string, FilterValue> => {
-  const allowedIds = new Set(nextDefinitions.map((definition) => definition.id));
-  const updatedValues = Object.entries(currentValues).reduce<
-    Record<string, FilterValue>
-  >((acc, [filterId, value]) => {
-    if (allowedIds.has(filterId)) {
-      acc[filterId] = value;
-    }
-    return acc;
-  }, {});
-
-  nextDefinitions.forEach((def) => {
-    if (
-      def.enabled &&
-      def.defaultValue !== null &&
-      def.defaultValue !== undefined &&
-      (updatedValues[def.id] === undefined || updatedValues[def.id] === null)
-    ) {
-      if (def.type === 'timeRange') {
-        const normalizedValue = normalizeTimeRangeFilterValue(def.defaultValue);
-        if (normalizedValue) {
-          updatedValues[def.id] = normalizedValue;
-        }
-      } else {
-        updatedValues[def.id] = def.defaultValue;
-      }
-    }
-  });
-
-  return updatedValues;
 };
 
 export const useDashboardLayoutSync = ({

@@ -4,17 +4,26 @@
  */
 import { useCallback, useState, useRef } from 'react';
 import type { Graph as X6Graph, Node, Edge, Cell } from '@antv/x6';
+import type { Attr } from '@antv/x6/es/registry/attr';
 import { COLORS } from '../constants/nodeDefaults';
 import { addEdgeTools } from '../utils/topologyUtils';
 
 const OPERATION_HISTORY_LIMIT = 50; // 操作历史记录最大数量
 const UNDO_REDO_DEBOUNCE = 50; // 撤销/重做防抖时间（ms）
 
+interface OperationSnapshot extends Record<string, unknown> {
+  attrs?: Attr.CellAttrs;
+  data?: unknown;
+  size?: { width: number; height: number };
+  position?: { x: number; y: number };
+  vertices?: Array<{ x: number; y: number }>;
+}
+
 interface OperationRecord {
   action: 'add' | 'delete' | 'update' | 'move';
   data: {
-    before?: Record<string, unknown>;
-    after?: Record<string, unknown>;
+    before?: OperationSnapshot;
+    after?: OperationSnapshot;
   };
   cellType: 'node' | 'edge';
   cellId: string;
@@ -152,7 +161,7 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
           const updatedCell = graphInstance.getCellById(operation.cellId);
           if (updatedCell && operation.data.before) {
             if (operation.data.before.attrs) {
-              updatedCell.setAttrs(operation.data.before.attrs as any);
+              updatedCell.setAttrs(operation.data.before.attrs);
             }
             if (operation.data.before.data) {
               updatedCell.setData(operation.data.before.data);
@@ -220,7 +229,7 @@ export const useGraphHistory = (graphInstance: X6Graph | null) => {
           const cellToUpdate = graphInstance.getCellById(operation.cellId);
           if (cellToUpdate && operation.data.after) {
             if (operation.data.after.attrs) {
-              cellToUpdate.setAttrs(operation.data.after.attrs as any);
+              cellToUpdate.setAttrs(operation.data.after.attrs);
             }
             if (operation.data.after.data) {
               cellToUpdate.setData(operation.data.after.data);

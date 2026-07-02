@@ -56,6 +56,33 @@ fn is_allowed_host(url: &str) -> bool {
     false
 }
 
+fn is_sensitive_header(name: &str) -> bool {
+    matches!(
+        name.to_ascii_lowercase().as_str(),
+        "authorization"
+            | "proxy-authorization"
+            | "cookie"
+            | "set-cookie"
+            | "api-authorization"
+            | "x-api-key"
+            | "api-key"
+    )
+}
+
+fn redact_headers_for_log(headers: &HashMap<String, String>) -> HashMap<String, String> {
+    headers
+        .iter()
+        .map(|(key, value)| {
+            let value = if is_sensitive_header(key) {
+                "<redacted>".to_string()
+            } else {
+                value.clone()
+            };
+            (key.clone(), value)
+        })
+        .collect()
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ApiRequest {
     pub url: String,
@@ -140,7 +167,11 @@ pub async fn api_proxy(request: ApiRequest) -> Result<ApiResponse, ApiError> {
 
     // 添加请求头
     if let Some(headers) = &request.headers {
-        log::info!("📨 [Tauri-API-{}] Headers: {:?}", request_id, headers);
+        log::info!(
+            "📨 [Tauri-API-{}] Headers: {:?}",
+            request_id,
+            redact_headers_for_log(headers)
+        );
         for (key, value) in headers {
             req_builder = req_builder.header(key, value);
         }
@@ -533,8 +564,8 @@ pub async fn cancel_stream(
 
 #[cfg(test)]
 mod tests {
-    use super::is_allowed_host;
-    use std::env;
+    use super::{is_allowed_host, redact_headers_for_log};
+    use std::{collections::HashMap, env};
 
     /// 辅助：在测试中临时设置 / 清除环境变量（串行执行，避免并发干扰）
     fn with_env<F: FnOnce()>(key: &str, val: Option<&str>, f: F) {
@@ -620,5 +651,28 @@ mod tests {
             assert!(!is_allowed_host("not-a-url"));
             assert!(!is_allowed_host(""));
         });
+    }
+
+    #[test]
+    fn test_redact_headers_for_log_masks_sensitive_headers_case_insensitively() {
+        let mut headers = HashMap::new();
+        headers.insert("Authorization".to_string(), "Bearer secret-token".to_string());
+        headers.insert("cookie".to_string(), "sessionid=secret".to_string());
+        headers.insert("Set-Cookie".to_string(), "refresh=secret".to_string());
+        headers.insert("X-Api-Key".to_string(), "api-key-secret".to_string());
+        headers.insert("Content-Type".to_string(), "application/json".to_string());
+
+        let redacted = redact_headers_for_log(&headers);
+
+        assert_eq!(redacted.get("Authorization").map(String::as_str), Some("<redacted>"));
+        assert_eq!(redacted.get("cookie").map(String::as_str), Some("<redacted>"));
+        assert_eq!(redacted.get("Set-Cookie").map(String::as_str), Some("<redacted>"));
+        assert_eq!(redacted.get("X-Api-Key").map(String::as_str), Some("<redacted>"));
+        assert_eq!(
+            redacted.get("Content-Type").map(String::as_str),
+            Some("application/json")
+        );
+
+        assert_eq!(headers.get("Authorization").map(String::as_str), Some("Bearer secret-token"));
     }
 }
