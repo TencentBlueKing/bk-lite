@@ -13,17 +13,21 @@
 | AlertAssignment / AlertShield / AlertReminderTask / AlertEscalationTask / AlarmStrategy / NotifyResult | `models/alert_operator.py` | 分派/抑制/提醒/升级/降噪策略/通知审计 |
 | OperatorLog | `models/operator_log.py`（operator_log.py:10） | 操作审计 |
 | SystemSetting | `models/sys_setting.py`（sys_setting.py:11） | 配置开关（如 `alert_enrich`，键常量 INIT_ALERT_ENRICH） |
+| EnrichmentRule | `models/enrichment.py:8` | 声明式 Lookup 富化规则模型，供富化引擎批量执行并写回 Alert/Event enrichment 结果 |
+| ActionRule / ActionExecution | `models/action.py:8,29` | 告警动作规则与执行记录，承载动作匹配、执行状态与回调链路 |
 
 ## 3. 接口【已实现/已存在】
 所有 ViewSet 路由组均以 `router.register(r"api/<name>", ...)` 注册（urls.py:27-44），故完整路径统一带 `api/` 段，例如 `api/v1/alerts/api/alert_source/`。路由组：`api/alert_source`/`api/alerts`/`api/events`/`api/level`/`api/settings`/`api/assignment`/`api/shield`/`api/incident`(+`/(?P<incident_pk>\d+)/updates`)/`api/alarm_strategy`/`api/log`；开放端点 `open_api/k8s`（urls.py:44）。
 path 端点（urls.py:47-49）：`api/test/`（request_test，receiver.py:107）、`api/receiver_data/`（receiver_data）、`api/source/<str:source_id>/webhook/`（receiver_source_data）。完整路径分别为 `api/v1/alerts/api/test/` 等。
+动作规则与执行记录接口已纳入路由：`action_rule`、`action_execution` 与 `action_callback`，并包含供 job_mgmt 调用的 action job scripts 入口（证据：`urls.py:54-61`、`views/action.py:65,100,182`）。
 
 ## 4. 接入与富化【已实现/已存在】
 - 适配器 `common/source_adapter/`：Prometheus / Zabbix / NATS / webhook / monitor / restful；基类 `base.py` 负责字段映射、恢复检测、屏蔽校验、富化开关（`enable_rich_event`）。
 - `main()` 执行顺序【已实现/已存在】（`base.py:552-568`）：① `event_operator(bulk_events)`（屏蔽写入） → ② `InstantAlertDispatcher.dispatch(bulk_events)`（即时旁路） → ③ `handle_recovery_events()`（聚合/恢复）。屏蔽必须先于即时旁路执行，确保即时旁路按库内最新屏蔽状态过滤；本次调整将 `event_operator` 从即时旁路之后前移至之前（`base.py:557`）。
 - 聚合主路径显式排除已屏蔽事件【已实现/已存在】：`AggregationProcessor.get_events_for_strategy()` 查询时追加 `.exclude(status=EventStatus.SHIELD)`（`aggregation/processor/aggregation_processor.py:136`），被屏蔽事件不参与指纹聚合也不产出告警。
 - 即时旁路新增前置屏蔽过滤【已实现/已存在】：`InstantAlertDispatcher.dispatch()` 在收集命中规则之前调用 `_exclude_shielded(events)` 静态方法（`instant_dispatcher.py:273,310`），该方法按 `event_id` 查库过滤 `status=SHIELD` 的事件；内存中 `Event` 对象的状态可能滞后，故以库内当前值为准。
-- 富化经 `apps.rpc.cmdb.CMDB` 获取资源元数据。
+- 声明式富化已落地为 `EnrichmentRule` + 批量引擎：`enrichment/engine.py:21` 执行规则，`common/source_adapter/base.py:26,198` 接入事件处理链路，聚合构建器在 `aggregation/builder/alert_builder.py:122` 写回 Alert/Event enrichment 结果；不再按“源码缺失”处理。
+- 富化仍可经 `apps.rpc.cmdb.CMDB` 获取资源元数据。
 - 聚合 `aggregation/` 子目录：`processor` / `strategy`（指纹分组）/ `builder` / `recovery`（超时恢复）/ `window` / `core` / `engine` / `query` / `templates`【已实现/已存在，目录均存在】。
 
 ## 5. 任务与 NATS【已实现/已存在】
@@ -33,10 +37,15 @@ path 端点（urls.py:47-49）：`api/test/`（request_test，receiver.py:107）
 - 缺失检测告警自动分派【已实现/已存在】：`_trigger_missing_alert()` 创建告警后，通过 `transaction.on_commit(lambda: self._schedule_auto_assignment([alert_id]))` 延迟到事务提交后再触发自动分派（`aggregation_processor.py:419`）。延迟调度原因：该方法在 `select_for_update` 事务内执行，提交前调度可能因回滚造成空跑；`on_commit` 保证仅在事务成功持久化后才将 alert_id 送入分派链路，使缺失检测合成告警与常规聚合/即时告警一致进入自动分派。
 - NATS（`nats/nats.py`）：`receive_alert_events` 接收事件（nats.py:532）；测试桩 `alert_test`（nats.py:675）。统计类 handler：`get_alert_trend_data`（:188）、`get_alert_source_event_top`（:265）、`get_alert_source_statistics`（:297）、`get_notification_statistics`（:350）、`get_notification_channel_stats`（:404）、`get_alert_data_quality`（:457）、`get_alert_statistics`（:684）、`get_alert_level_distribution`（:741）、`get_active_alert_top`（:782）供运营分析。
 - 通知经 `utils/system_mgmt_util.py:SystemMgmtUtils.send_msg_with_channel()`（委托 system_mgmt 渠道）。
+- 告警动作链路【已实现/已存在】：`tasks/action_tasks.py:10` 注册动作处理任务，`action/engine.py:13` 执行动作规则匹配与派发；动作回调与 job_mgmt 脚本执行入口由 `views/action.py` 与 `urls.py:54-61` 暴露。
+
+## 2026-07-01 Code-ARD 校准
+- `[alerts#20260701-002]` webhook 路由证据路径已更新为当前 `server/apps/alerts/urls.py` 与本 ARD 的接口段，避免沿用漂移行号。
+- `[alerts#20260701-008]` 移除“声明式 Lookup 富化源码缺失”的旧结论，改为记录 EnrichmentRule、Engine、接口和 Alert/Event enrichment 写回链路已存在。
+- `[alerts#20260701-009]` 补录动作规则、执行记录、Celery 任务、ActionEngine 与 job_mgmt 回调入口。
 
 ## 6. 风险 / 待确认
 - 与 monitor/log 各自产生的 Alert 如何统一收敛到本模块【待确认】。
-- 富化逻辑实现位置【已实现/已存在】：本分支（rogerly）`enrichment/` 目录下无任何 `.py` 源码，仅残留 `__pycache__`（engine/matcher/keys/projection 的 `.pyc`）及一个同样仅含 `__pycache__` 的 `providers/` 子目录（base/cmdb 的 `.pyc`），整目录 git 未跟踪；`apps.alerts.enrichment.matcher` 等模块实测无法 import（ModuleNotFoundError）。生产代码中无任何 `import apps.alerts.enrichment`；仅有未纳入 git 跟踪的测试文件引用，且这些测试均无法通过：6 个 `tests/test_enrichment_*.py`（keys/engine/projection/matcher/provider_cmdb/provider_base）直接 `import apps.alerts.enrichment.*`，因源码缺失在收集期即 ModuleNotFoundError；另一未跟踪测试 `tests/test_alert_builder_enrichment.py` 不引用 enrichment 包，而是 import 现存的 `apps.alerts.aggregation.builder.alert_builder.AlertBuilder` 并断言其 `_merge_enrichment` 方法，但该方法在 `alert_builder.py` 中不存在，故 3 个用例均 AttributeError 失败（实测 pytest：3 failed）。即"声明式 Lookup 富化引擎"模块在本分支并未落地为源码，配套合并逻辑 `_merge_enrichment` 亦未实现。实际生效的富化逻辑在 `common/source_adapter/base.py`：`enable_enrich()`（@staticmethod，base.py:48-57）读取 `SystemSetting`（键 `alert_enrich`，常量 INIT_ALERT_ENRICH），无该行或 `value.enable` 缺省时返回 False；实例属性 `enable_rich_event` 在构造时由其赋值（base.py:44），并在 `rich_event()`（def base.py:432）入口处作为开关判断（`if not self.enable_rich_event` 直接 return，base.py:434）；开关通过时 `rich_event()` 调用 `enrich_event()`（def base.py:442），后者经 `apps.rpc.cmdb.CMDB().search_instances` 取资源元数据（base.py:462）。内置初始化数据为该键播种 `value.enable=True`（constants/init_data.py:124-130）。
 
 ## 7. 证据来源
-`server/apps/alerts/{urls.py:27-49, models/operator_log.py:10, models/sys_setting.py:11, models/models.py, models/alert_source.py, models/alert_operator.py, common/source_adapter/*（base.py:44,48-57,432,434,442,462,552-568,557）, aggregation/processor/aggregation_processor.py:136,419, aggregation/processor/instant_dispatcher.py:273,310,315, aggregation/{strategy,builder,recovery,window,core,engine,query,templates}/, tasks/tasks.py:17,132,154-157,198-202, nats/nats.py:188,265,297,350,404,457,532,675,684,741,782, views/receiver.py:107, constants/init_data.py:108,124-130, utils/system_mgmt_util.py}`；enrichment 目录现状见 `server/apps/alerts/enrichment/`（仅 `__pycache__` 与同样仅含 `__pycache__` 的 `providers/`，无 `.py` 源码，git 未跟踪）；直接 import 该包的未跟踪测试见 `tests/test_enrichment_*.py`（6 个，ModuleNotFoundError）；另 `tests/test_alert_builder_enrichment.py` 不引用该包，断言 `aggregation/builder/alert_builder.py` 中未实现的 `AlertBuilder._merge_enrichment`，实测 3 用例 AttributeError 失败。
+`server/apps/alerts/{urls.py:27-61, models/operator_log.py:10, models/sys_setting.py:11, models/models.py, models/alert_source.py, models/alert_operator.py, models/enrichment.py:8, models/action.py:8,29, common/source_adapter/*（base.py:26,44,48-57,198,432,434,442,462,552-568,557）, enrichment/engine.py:21, aggregation/builder/alert_builder.py:122, aggregation/processor/aggregation_processor.py:136,419, aggregation/processor/instant_dispatcher.py:273,310,315, aggregation/{strategy,builder,recovery,window,core,engine,query,templates}/, tasks/tasks.py:17,132,154-157,198-202, tasks/action_tasks.py:10, action/engine.py:13, nats/nats.py:188,265,297,350,404,457,532,675,684,741,782, views/receiver.py:107, views/action.py:65,100,182, constants/init_data.py:108,124-130, utils/system_mgmt_util.py}`。

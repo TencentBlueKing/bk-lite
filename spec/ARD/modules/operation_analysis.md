@@ -22,6 +22,8 @@
 关键自定义动作【已实现/已存在】：
 - `data_source` 的 `get_source_data/{pk}`（POST）：组件运行时取数对外入口，是整个取数链路的起点（`views/datasource_view.py:337`）。
 - `directory` 的 `tree`（GET）：返回目录树（`views/view.py:148`）。
+- `scene_widgets/network_status_topology`：网络状态拓扑接口，复用 CMDB network_topology/实例权限并汇总 Alerts 活跃告警，权限动作 `view`（证据：`urls.py:23`、`views/scene_widget_view.py:10,12`、`services/network_status_topology.py:5,65,87`）。
+- `open_api/import_export`：开放导入导出 API 通过 `api_pass`/API Token 校验，支持 `export`、`precheck_import`、`submit_import` 三类动作；授权服务解析组织、计算导入导出权限矩阵，并在实例/组织维度过滤对象（证据：`views/openapi_import_export_view.py:34,48,118,190,280`、`services/import_export/authorization_service.py:24,71,87,180`）。
 
 安全说明【已实现/已存在】：`NameSpace` 密码使用 AES（`PasswordCrypto`）加解密，密钥取自 `constants.constants.SECRET_KEY`；该密钥已移除源码内置硬编码值，仅从环境变量 `SECRET_KEY` 读取，未配置时为空串（`constants/constants.py:51-53`）。
 
@@ -86,8 +88,12 @@
 - 数据源为外部 REST/NATS，运营分析本身不落原始数据；数据一致性与缓存策略【待确认】。
 - 无 Celery 后台任务【已实现】：任务文件已由顶层 `tasks.py` 调整为包形式 `tasks/tasks.py`，文件仍不含任何 Celery 任务（`tasks/tasks.py:1-4`，仅文件头注释）。
 
+## 2026-07-01 Code-ARD 校准
+- `[operation_analysis#20260701-013]` 补录 `api/scene_widgets/network_status_topology` 路由、view 权限、CMDB 拓扑/实例权限复用和 Alerts 活跃告警汇总边界。
+- `[operation_analysis#20260701-014]` 补录开放导入导出 API Token 认证、组织解析、权限矩阵与实例/组织过滤。
+
 ## 6. 证据来源
-`server/apps/operation_analysis/{urls.py,models/*,views/datasource_view.py,views/view.py,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`。
+`server/apps/operation_analysis/{urls.py:23,models/*,views/datasource_view.py,views/view.py,views/scene_widget_view.py:10,12,views/openapi_import_export_view.py:34,48,118,190,280,nats/nats.py,common/get_nats_source_data.py,constants/constants.py,tasks/tasks.py,management/commands/*,services/*,services/network_status_topology.py:5,65,87,services/import_export/authorization_service.py:24,71,87,180}`、`apps/operation_analysis/migrations/0010_remove_namespace_groups.py`、`apps/rpc/base.py:OperationAnalysisRpc`。
 
 前端层新增证据：
 - `web/src/app/ops-analysis/components/widgetRegistry.ts:14-25`（组件注册表全量映射）
