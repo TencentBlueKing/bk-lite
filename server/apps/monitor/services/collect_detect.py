@@ -26,6 +26,9 @@ SENSITIVE_KEYS = {
     "priv_password",
 }
 
+DEFAULT_TIMEOUT_SECONDS = 60
+MAX_TIMEOUT_SECONDS = 600
+
 
 class CollectDetectService:
     @classmethod
@@ -36,7 +39,7 @@ class CollectDetectService:
         runtime_payload = {
             "instance": instance,
             "env": env,
-            "timeout": int(payload.get("timeout") or 60),
+            "timeout": cls._normalize_timeout(payload.get("timeout")),
         }
 
         task = CollectDetectTask.objects.create(
@@ -194,6 +197,16 @@ class CollectDetectService:
     def _is_sensitive_key(key):
         key_lower = str(key).lower()
         return any(item in key_lower for item in SENSITIVE_KEYS)
+
+    @staticmethod
+    def _normalize_timeout(timeout):
+        try:
+            normalized = int(timeout or DEFAULT_TIMEOUT_SECONDS)
+        except (TypeError, ValueError):
+            normalized = DEFAULT_TIMEOUT_SECONDS
+        if normalized < 1:
+            return DEFAULT_TIMEOUT_SECONDS
+        return min(normalized, MAX_TIMEOUT_SECONDS)
 
     @classmethod
     def _fingerprint(cls, plugin_id, node_id, instance):
