@@ -10,7 +10,6 @@ import ActiveMQDashboard from './objects/activemq';
 import ApacheDashboard from './objects/apache';
 import ConsulDashboard from './objects/consul';
 import RabbitMQDashboard from './objects/rabbitmq';
-import IBMMQDashboard from './objects/ibmmq';
 import TomcatDashboard from './objects/tomcat';
 import ZookeeperDashboard from './objects/zookeeper';
 import PingDashboard from './objects/ping';
@@ -31,7 +30,6 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
-import StorageDashboard from './objects/storage';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -125,15 +123,6 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'RabbitMQ',
     inheritedPermissionPath: '/monitor/view',
     component: RabbitMQDashboard
-  },
-  {
-    key: 'ibmmq',
-    aliases: ['ibm_mq'],
-    groupKey: 'middleware',
-    objectName: 'IBMMQ',
-    objectDisplayName: 'IBM MQ',
-    inheritedPermissionPath: '/monitor/view',
-    component: IBMMQDashboard
   },
   {
     key: 'tomcat',
@@ -293,15 +282,6 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: '语音网关',
     inheritedPermissionPath: '/monitor/view',
     component: VoiceGatewayDashboard
-  },
-  {
-    key: 'storage',
-    aliases: ['存储', 'Pure', 'InfiniBox'],
-    groupKey: 'hardware',
-    objectName: 'Storage',
-    objectDisplayName: '存储',
-    inheritedPermissionPath: '/monitor/view',
-    component: StorageDashboard
   },
   {
     key: 'k8s-cluster',

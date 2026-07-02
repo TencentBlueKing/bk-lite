@@ -3,72 +3,121 @@ export const useStorageConfig = () => {
     instance_type: 'storage',
     dashboardDisplay: [
       {
-        indexId: 'pure_array_capacity_bytes_gauge',
+        indexId: 'device_cpu_usage',
         displayType: 'single',
         sortIndex: 0,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '19%'
+          width: '24%'
         }
       },
       {
-        indexId: 'pure_array_used_bytes_gauge',
+        indexId: 'device_memory_usage',
         displayType: 'single',
         sortIndex: 1,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '19%'
+          width: '24%'
         }
       },
       {
-        indexId: 'pure_array_read_iops_gauge',
+        indexId: 'device_total_incoming_traffic',
         displayType: 'single',
         sortIndex: 2,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '19%'
+          width: '24%'
         }
       },
       {
-        indexId: 'infinibox_pool_physical_capacity_bytes_gauge',
+        indexId: 'device_total_outgoing_traffic',
         displayType: 'single',
         sortIndex: 3,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '19%'
+          width: '24%'
         }
       },
       {
-        indexId: 'infinibox_volume_read_iops_gauge',
-        displayType: 'single',
+        indexId: 'snmp_uptime',
+        displayType: 'lineChart',
         sortIndex: 4,
         displayDimension: [],
         style: {
           height: '200px',
-          width: '19%'
-        }
-      },
-      {
-        indexId: 'pure_array_used_bytes_gauge',
-        displayType: 'lineChart',
-        sortIndex: 5,
-        displayDimension: [],
-        style: {
-          height: '220px',
           width: '49%'
         }
       },
       {
-        indexId: 'infinibox_pool_physical_capacity_bytes_gauge',
+        indexId: 'device_temperature_celsius',
         displayType: 'lineChart',
-        sortIndex: 6,
-        displayDimension: ['pool'],
+        sortIndex: 5,
+        displayDimension: ['descr'],
         style: {
-          height: '220px',
+          height: '200px',
+          width: '49%'
+        }
+      },
+      {
+        indexId: 'interfaces',
+        displayType: 'multipleIndexsTable',
+        sortIndex: 6,
+        displayDimension: [
+          'ifOperStatus',
+          'ifHighSpeed',
+          'ifInErrors',
+          'ifOutErrors',
+          'ifInUcastPkts',
+          'ifOutUcastPkts',
+          'ifInOctets',
+          'ifOutOctets'
+        ],
+        style: {
+          height: '400px',
+          width: '100%'
+        }
+      },
+      {
+        indexId: 'device_fan_state',
+        displayType: 'lineChart',
+        sortIndex: 7,
+        displayDimension: ['descr'],
+        style: {
+          height: '200px',
+          width: '49%'
+        }
+      },
+      {
+        indexId: 'device_psu_state',
+        displayType: 'lineChart',
+        sortIndex: 8,
+        displayDimension: ['descr'],
+        style: {
+          height: '200px',
+          width: '49%'
+        }
+      },
+      {
+        indexId: 'device_disk_state',
+        displayType: 'lineChart',
+        sortIndex: 9,
+        displayDimension: ['descr'],
+        style: {
+          height: '200px',
+          width: '49%'
+        }
+      },
+      {
+        indexId: 'device_raid_state',
+        displayType: 'lineChart',
+        sortIndex: 10,
+        displayDimension: ['descr'],
+        style: {
+          height: '200px',
           width: '49%'
         }
       }
@@ -90,8 +139,6 @@ export const useStorageConfig = () => {
       'Storage Dell SC8000 SNMP': 'snmp_dellsc8000',
       'Storage Dell PowerVault SNMP': 'snmp_dellpowervault',
       'Storage Hikvision SNMP': 'snmp_hikvision',
-      Pure: 'pure',
-      InfiniBox: 'infinibox',
     },
   };
 };

@@ -14,6 +14,7 @@ export const useDataSourceManager = () => {
     dataSources,
     dataSourcesLoading,
     fetchDataSources,
+    loadCanvasDataSources,
   } = useOpsAnalysis();
   const { getDataSourceDetail } = useDataSourceApi();
 
@@ -123,6 +124,7 @@ export const useDataSourceManager = () => {
     selectedDataSource,
     setSelectedDataSource,
     fetchDataSources,
+    loadCanvasDataSources,
     findDataSource,
     ensureDataSource,
     setDefaultParamValues,

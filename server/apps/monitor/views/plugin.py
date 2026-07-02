@@ -121,10 +121,17 @@ class MonitorPluginViewSet(viewsets.ModelViewSet):
                 {
                     "ui_template": ui_template.content,
                     "node_selector": plugin.node_selector or {},
+                    "support_collect_detect": plugin.support_collect_detect,
                 }
             )
         except MonitorPluginUITemplate.DoesNotExist:
-            return WebUtils.response_success({"ui_template": {}, "node_selector": plugin.node_selector or {}})
+            return WebUtils.response_success(
+                {
+                    "ui_template": {},
+                    "node_selector": plugin.node_selector or {},
+                    "support_collect_detect": plugin.support_collect_detect,
+                }
+            )
 
     @action(methods=["get"], detail=False, url_path="ui_template_by_params")
     def get_ui_template_by_params(self, request):

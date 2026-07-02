@@ -12,12 +12,12 @@ import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { useTranslation } from '@/utils/i18n';
 import { useTopologyApi } from '@/app/ops-analysis/api/topology';
 import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import {
+import type {
+  EdgeConnectionType,
+  EdgeCreationData,
   TopologyNodeData,
   SerializedEdge,
-  TopologyPresentationConfig,
   TopologyViewSets,
-  TopologyViewportConfig,
 } from '@/app/ops-analysis/types/topology';
 import type { ValueConfig, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
@@ -30,25 +30,41 @@ const DEFAULT_TABLE_QUERY_PARAMS = {
   page_size: 20,
 };
 
+type TableQueryParams = Record<string, unknown>;
+
 const isTableLikeChartType = (chartType?: string) =>
   chartType === 'table' || chartType === 'eventTable';
 
-const CHROME_PRESENTATION_ROLES = new Set([
-  'decorative-frame',
-  'screen-title',
-  'screen-clock',
-]);
+type LoadedEdgeData = EdgeCreationData & {
+  arrowDirection: EdgeConnectionType;
+  vertices: SerializedEdge['vertices'];
+  styleConfig: SerializedEdge['styleConfig'];
+};
 
-const isChromePresentationRole = (
-  role: unknown
-): role is NonNullable<TopologyNodeData['presentationRole']> =>
-  typeof role === 'string' && CHROME_PRESENTATION_ROLES.has(role);
+const normalizeEdgeLineType = (
+  lineType: SerializedEdge['lineType'],
+): EdgeCreationData['lineType'] =>
+  lineType === 'network_line' ? 'network_line' : 'common_line';
+
+const isTopologyRecord = (value: unknown): value is Record<string, unknown> =>
+  typeof value === 'object' && value !== null && !Array.isArray(value);
+
+const createLoadedEdgeData = (edgeConfig: SerializedEdge): LoadedEdgeData => ({
+  lineType: normalizeEdgeLineType(edgeConfig.lineType),
+  lineName: edgeConfig.lineName,
+  arrowDirection: edgeConfig.arrowDirection || 'single',
+  sourceInterface: edgeConfig.sourceInterface,
+  targetInterface: edgeConfig.targetInterface,
+  vertices: edgeConfig.vertices || [],
+  styleConfig: edgeConfig.styleConfig,
+  config: isTopologyRecord(edgeConfig.config) ? edgeConfig.config : undefined,
+});
 
 const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Record<string, unknown> | undefined => {
   const styleConfigMapping: Record<string, string[]> = {
-    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'renderEffect', 'nameColor', 'nameFontSize', 'thresholdColors'],
-    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType', 'renderEffect', 'frameVariant'],
-    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'renderEffect', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
+    'single-value': ['textColor', 'fontSize', 'backgroundColor', 'borderColor', 'nameColor', 'nameFontSize', 'thresholdColors'],
+    'basic-shape': ['width', 'height', 'backgroundColor', 'borderColor', 'borderWidth', 'lineType', 'shapeType'],
+    icon: ['width', 'height', 'backgroundColor', 'borderColor', 'fontSize', 'textColor', 'iconPadding', 'textDirection'],
     text: ['width', 'height', 'fontSize', 'fontWeight', 'textColor', 'backgroundColor', 'borderColor'],
     chart: ['width', 'height'],
   };
@@ -77,11 +93,11 @@ export const useGraphData = (
   const { saveTopology, getTopologyDetail } = useTopologyApi();
   const { getSourceDataByApiId } = useDataSourceApi();
   
-  const tableQueryParamsRef = useRef<Map<string, Record<string, any>>>(new Map());
+  const tableQueryParamsRef = useRef<Map<string, TableQueryParams>>(new Map());
 
   const getEffectiveTableQueryParams = useCallback((
     valueConfig: ValueConfig,
-    queryParams?: Record<string, any>,
+    queryParams?: TableQueryParams,
   ) => {
     if (!isTableLikeChartType(valueConfig.chartType)) {
       return queryParams;
@@ -97,10 +113,6 @@ export const useGraphData = (
       const nodeData = node.getData();
       const position = node.getPosition();
       const zIndex = node.getZIndex();
-      const presentationRole = isChromePresentationRole(nodeData.presentationRole)
-        ? nodeData.presentationRole
-        : undefined;
-
       const serializedNode: TopologyNodeData = {
         id: nodeData.id,
         type: nodeData.type,
@@ -117,10 +129,6 @@ export const useGraphData = (
         valueConfig: nodeData.valueConfig,
         styleConfig: serializeNodeConfig(nodeData, nodeData.type),
       };
-
-      if (presentationRole) {
-        serializedNode.presentationRole = presentationRole;
-      }
 
       return serializedNode;
     });
@@ -155,8 +163,6 @@ export const useGraphData = (
   const handleSaveTopology = useCallback(async (
     selectedTopology: DirItem,
     filters?: UnifiedFilterDefinition[],
-    viewport?: TopologyViewportConfig | null,
-    presentation?: TopologyPresentationConfig | null,
   ) => {
     if (!selectedTopology?.data_id) {
       message.error(t('topology.saveTopologySelectMsg'));
@@ -172,8 +178,6 @@ export const useGraphData = (
           nodes: topologyData.nodes,
           edges: topologyData.edges,
           ...(filters && filters.length > 0 ? { filters } : {}),
-          ...(viewport ? { viewport } : {}),
-          ...(presentation ? { presentation } : {}),
         },
       };
 
@@ -194,7 +198,7 @@ export const useGraphData = (
     filterDefinitions?: UnifiedFilterDefinition[],
     dataSource?: DatasourceItem,
     namespaceId?: number,
-    tableQueryParams?: Record<string, any>
+    tableQueryParams?: TableQueryParams
   ) => {
     if (!graphInstance || !valueConfig.dataSource) return;
 
@@ -205,7 +209,7 @@ export const useGraphData = (
       const effectiveFilterBindings = valueConfig.filterBindings || 
         buildDefaultFilterBindings(valueConfig.dataSourceParams || [], filterDefinitions || [], undefined);
       
-      const extraParams: Record<string, any> = {};
+      const extraParams: TableQueryParams = {};
       if (namespaceId !== undefined) {
         extraParams.namespace_id = namespaceId;
       }
@@ -246,7 +250,7 @@ export const useGraphData = (
 
   const handleTableQueryChange = useCallback((
     nodeId: string,
-    queryParams: Record<string, any>,
+    queryParams: TableQueryParams,
     unifiedFilterValues?: Record<string, FilterValue>,
     filterDefinitions?: UnifiedFilterDefinition[],
     dataSources?: DatasourceItem[],
@@ -300,7 +304,7 @@ export const useGraphData = (
     dataSources?: DatasourceItem[],
     namespaceId?: number
   ) => {
-    return (nodeId: string, queryParams: Record<string, any>) => {
+    return (nodeId: string, queryParams: TableQueryParams) => {
       handleTableQueryChange(nodeId, queryParams, unifiedFilterValues, filterDefinitions, dataSources, namespaceId);
     };
   }, [handleTableQueryChange]);
@@ -329,7 +333,7 @@ export const useGraphData = (
       } else if (nodeConfig.type === 'single-value' && valueConfig?.dataSource && valueConfig?.selectedFields?.length) {
         nodeData = createNodeByType(nodeConfig);
         // Mark single-value nodes as loading; actual data fetch deferred to after filters are ready
-        graphInstance.addNode(nodeData as any);
+        graphInstance.addNode(nodeData);
         const addedNode = graphInstance.getCellById(nodeConfig.id!);
         if (addedNode && addedNode.isNode()) {
           startLoadingAnimation(addedNode as Node);
@@ -339,7 +343,7 @@ export const useGraphData = (
         nodeData = createNodeByType(nodeConfig);
       }
 
-      graphInstance.addNode(nodeData as any);
+      graphInstance.addNode(nodeData);
     });
 
     (data.edges || [])
@@ -348,17 +352,8 @@ export const useGraphData = (
         nodeIds.has(edgeConfig.target)
       ))
       .forEach((edgeConfig) => {
-        const connectionType = (edgeConfig as any).arrowDirection || 'single';
-        const edgeData: any = {
-          lineType: edgeConfig.lineType as 'common_line' | 'network_line',
-          lineName: edgeConfig.lineName,
-          arrowDirection: connectionType,
-          sourceInterface: edgeConfig.sourceInterface,
-          targetInterface: edgeConfig.targetInterface,
-          vertices: edgeConfig.vertices || [],
-          styleConfig: edgeConfig.styleConfig,
-          config: edgeConfig.config,
-        };
+        const edgeData = createLoadedEdgeData(edgeConfig);
+        const connectionType = edgeData.arrowDirection;
 
         const edgeStyle = getEdgeStyleWithLabel(edgeData, connectionType, edgeConfig.styleConfig);
 
@@ -384,14 +379,10 @@ export const useGraphData = (
 
   const handleLoadTopology = useCallback(async (topologyId: string | number): Promise<{
     filters: UnifiedFilterDefinition[];
-    viewport: TopologyViewportConfig | null;
-    presentation: TopologyPresentationConfig | null;
   }> => {
     if (!graphInstance) {
       return {
         filters: [],
-        viewport: null,
-        presentation: null,
       };
     }
 
@@ -405,25 +396,13 @@ export const useGraphData = (
 
       const rawFilters = viewSets.filters;
       const loadedFilters: UnifiedFilterDefinition[] = Array.isArray(rawFilters) ? rawFilters : [];
-      const rawViewport = viewSets.viewport;
-      const loadedViewport = rawViewport && typeof rawViewport === 'object'
-        ? (rawViewport as TopologyViewportConfig)
-        : null;
-      const rawPresentation = viewSets.presentation;
-      const loadedPresentation = rawPresentation && typeof rawPresentation === 'object'
-        ? (rawPresentation as TopologyPresentationConfig)
-        : null;
       return {
         filters: loadedFilters,
-        viewport: loadedViewport,
-        presentation: loadedPresentation,
       };
     } catch (error) {
       console.error('加载拓扑图失败:', error);
       return {
         filters: [],
-        viewport: null,
-        presentation: null,
       };
     } finally {
       setLoading(false);

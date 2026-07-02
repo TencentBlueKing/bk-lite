@@ -5,6 +5,8 @@ import (
 	"errors"
 	"io"
 	"os"
+	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -86,4 +88,101 @@ func TestClassifyDownloadErrorDetectsIOTimeout(t *testing.T) {
 	if got := classifyDownloadError(errors.New("Download failed: read pipe: i/o timeout")); got != "timeout" {
 		t.Fatalf("expected timeout, got %q", got)
 	}
+}
+
+func TestRunLinuxInstallerDoesNotExposeAPITokenInArgv(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("shell script test is only for Unix-like systems")
+	}
+
+	installDir := t.TempDir()
+	token := "issue-3842-secret-token"
+	installScript := filepath.Join(installDir, "install.sh")
+	script := `#!/bin/sh
+set -eu
+for arg in "$@"; do
+    printf '<%s>\n' "$arg"
+done > argv.txt
+printf '%s' "$BK_LITE_SERVER_API_TOKEN_FILE" > token-file-path.txt
+stat -f '%Lp' "$BK_LITE_SERVER_API_TOKEN_FILE" > token-file-mode.txt 2>/dev/null || stat -c '%a' "$BK_LITE_SERVER_API_TOKEN_FILE" > token-file-mode.txt
+cat "$BK_LITE_SERVER_API_TOKEN_FILE" > token-value.txt
+`
+	if err := os.WriteFile(installScript, []byte(script), 0644); err != nil {
+		t.Fatalf("write install.sh: %v", err)
+	}
+
+	cfg := &Config{
+		ServerURL:  "https://bk.example",
+		APIToken:   token,
+		ZoneID:     "zone-a",
+		GroupID:    "group-a",
+		NodeName:   "node-a",
+		NodeID:     "node-1",
+		InstallDir: installDir,
+		Package: PackageConfig{
+			CPUArchitecture: "x86_64",
+		},
+	}
+
+	if err := runLinuxInstaller(cfg); err != nil {
+		t.Fatalf("runLinuxInstaller: %v", err)
+	}
+
+	argv := readTestFile(t, filepath.Join(installDir, "argv.txt"))
+	if strings.Contains(argv, token) {
+		t.Fatalf("API token leaked through argv: %q", argv)
+	}
+
+	args := strings.Split(strings.TrimSpace(argv), "\n")
+	wantArgs := []string{"<https://bk.example>", "<>", "<zone-a>", "<group-a>", "<node-a>", "<node-1>", "<x86_64>"}
+	if !equalStringSlices(args, wantArgs) {
+		t.Fatalf("unexpected argv\nwant: %#v\n got: %#v", wantArgs, args)
+	}
+
+	if got := readTestFile(t, filepath.Join(installDir, "token-value.txt")); got != token {
+		t.Fatalf("install script did not receive API token, got %q", got)
+	}
+	tokenFilePath := readTestFile(t, filepath.Join(installDir, "token-file-path.txt"))
+	if strings.Contains(tokenFilePath, token) {
+		t.Fatalf("token file path contains token: %q", tokenFilePath)
+	}
+	if _, err := os.Stat(tokenFilePath); !os.IsNotExist(err) {
+		t.Fatalf("expected token file to be cleaned up, stat error: %v", err)
+	}
+	mode := readTestFile(t, filepath.Join(installDir, "token-file-mode.txt"))
+	if mode != "600" {
+		t.Fatalf("expected token file mode 600, got %q", mode)
+	}
+}
+
+func TestLinuxInstallerAPITokenInputsKeepsEmptyTokenOnArgv(t *testing.T) {
+	arg, env, cleanup, err := linuxInstallerAPITokenInputs(t.TempDir(), "")
+	if err != nil {
+		t.Fatalf("linuxInstallerAPITokenInputs: %v", err)
+	}
+	defer cleanup()
+	if arg != "" || env != "" {
+		t.Fatalf("empty token should not create env/file inputs, got arg=%q env=%q", arg, env)
+	}
+}
+
+func readTestFile(t *testing.T, path string) string {
+	t.Helper()
+	content, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	return string(content)
+}
+
+func equalStringSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

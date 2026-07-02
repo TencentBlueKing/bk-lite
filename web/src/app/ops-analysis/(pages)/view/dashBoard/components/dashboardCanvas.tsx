@@ -30,7 +30,7 @@ import {
 } from '@/app/ops-analysis/utils/dashboardGridStack';
 
 import GroupHeader from './groupHeader';
-import WidgetWrapper from './widgetWrapper';
+import WidgetWrapper from '@/app/ops-analysis/components/widgetDataRenderer';
 
 import 'gridstack/dist/gridstack.min.css';
 
