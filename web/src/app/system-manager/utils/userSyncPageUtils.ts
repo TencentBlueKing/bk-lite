@@ -87,3 +87,81 @@ export function getScheduleSummary(
   return t('system.user.userSyncPage.scheduleSummaryInterval')
     .replace('{{hours}}', String(scheduleConfig.interval_hours || '--'));
 }
+
+function formatTemplate(
+  template: string,
+  replacements: Record<string, string | number>
+): string {
+  return Object.entries(replacements).reduce(
+    (text, [key, value]) => text.replaceAll(`{{${key}}}`, String(value)),
+    template
+  );
+}
+
+export function getUserSyncRunSummary(
+  record: Pick<RecordRow, 'status' | 'summary' | 'synced_user_count' | 'synced_group_count' | 'payload'>,
+  t: (key: string, fallback?: string) => string
+): string {
+  const payload = (record.payload || {}) as {
+    errors?: Array<{ message?: string }>;
+    conflict_usernames?: string[];
+    conflict_user_count?: number;
+    input_summary?: {
+      fetched_user_count?: number;
+      fetched_group_count?: number;
+    };
+  };
+  const conflictUsernames = Array.isArray(payload.conflict_usernames) ? payload.conflict_usernames : [];
+  const conflictCount = Number(payload.conflict_user_count ?? conflictUsernames.length ?? 0);
+  const firstErrorMessage = payload.errors?.[0]?.message || '';
+  const externalSummary = formatTemplate(t('system.user.userSyncPage.runSummary.externalCounts'), {
+    users: payload.input_summary?.fetched_user_count ?? '--',
+    groups: payload.input_summary?.fetched_group_count ?? '--',
+  });
+
+  if (record.status === 'success') {
+    return formatTemplate(t('system.user.userSyncPage.runSummary.success'), {
+      external: externalSummary,
+      users: record.synced_user_count,
+      groups: record.synced_group_count,
+    });
+  }
+
+  if (record.status === 'partial') {
+    if (conflictUsernames.length > 0) {
+      return formatTemplate(t('system.user.userSyncPage.runSummary.partialWithUsers'), {
+        external: externalSummary,
+        users: record.synced_user_count,
+        groups: record.synced_group_count,
+        conflicts: conflictCount,
+        usernames: conflictUsernames.join('、'),
+      });
+    }
+    return formatTemplate(t('system.user.userSyncPage.runSummary.partial'), {
+      external: externalSummary,
+      users: record.synced_user_count,
+      groups: record.synced_group_count,
+      conflicts: conflictCount,
+    });
+  }
+
+  if (record.status === 'failed') {
+    if (firstErrorMessage) {
+      return formatTemplate(t('system.user.userSyncPage.runSummary.failed'), {
+        external: externalSummary,
+        reason: firstErrorMessage,
+      });
+    }
+    if (conflictUsernames.length > 0) {
+      return formatTemplate(t('system.user.userSyncPage.runSummary.failedConflict'), {
+        external: externalSummary,
+        users: record.synced_user_count,
+        groups: record.synced_group_count,
+        conflicts: conflictCount,
+        usernames: conflictUsernames.join('、'),
+      });
+    }
+  }
+
+  return `同步结果：${externalSummary}；${record.summary}`;
+}

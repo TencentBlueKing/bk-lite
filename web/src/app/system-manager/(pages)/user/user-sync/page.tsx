@@ -104,6 +104,7 @@ const UserSyncPage: React.FC = () => {
     total: 0,
     pageSize: 10,
   });
+  const [recordsSearch, setRecordsSearch] = useState('');
 
   const fetchSources = async () => {
     setLoading(true);
@@ -388,10 +389,14 @@ const UserSyncPage: React.FC = () => {
     }
   };
 
-  const fetchRecords = useCallback(async (current = 1, pageSize = recordsPagination.pageSize) => {
+  const fetchRecords = useCallback(async (
+    current = 1,
+    pageSize = recordsPagination.pageSize,
+    search = recordsSearch
+  ) => {
     setRecordsLoading(true);
     try {
-      const data = await getPagedRecords({ page: current, page_size: pageSize });
+      const data = await getPagedRecords({ page: current, page_size: pageSize, search });
       setRecords(data.items as RecordRow[]);
       setRecordsPagination((prev) => ({
         ...prev,
@@ -404,21 +409,28 @@ const UserSyncPage: React.FC = () => {
     } finally {
       setRecordsLoading(false);
     }
-  }, [getPagedRecords, recordsPagination.pageSize]);
+  }, [getPagedRecords, recordsPagination.pageSize, recordsSearch]);
 
   const openRecords = async () => {
     setRecordsOpen(true);
     setRecords([]);
+    setRecordsSearch('');
     setRecordsPagination((prev) => ({
       ...prev,
       current: 1,
     }));
-    await fetchRecords(1, recordsPagination.pageSize);
+    await fetchRecords(1, recordsPagination.pageSize, '');
   };
 
   const handleRecordsPageChange = useCallback((current: number, pageSize: number) => {
     const nextPage = pageSize !== recordsPagination.pageSize ? 1 : current;
     fetchRecords(nextPage, pageSize);
+  }, [fetchRecords, recordsPagination.pageSize]);
+
+  const handleRecordsSearch = useCallback((value: string) => {
+    const nextSearch = value.trim();
+    setRecordsSearch(nextSearch);
+    fetchRecords(1, recordsPagination.pageSize, nextSearch);
   }, [fetchRecords, recordsPagination.pageSize]);
 
   const operateSection = useMemo(() => (
@@ -518,6 +530,8 @@ const UserSyncPage: React.FC = () => {
         pagination={recordsPagination}
         t={t}
         onPageChange={handleRecordsPageChange}
+        onRefresh={() => fetchRecords(recordsPagination.current, recordsPagination.pageSize, recordsSearch)}
+        onSearch={handleRecordsSearch}
         onClose={() => setRecordsOpen(false)}
       />
     </>

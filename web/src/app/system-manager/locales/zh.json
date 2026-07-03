@@ -276,6 +276,14 @@
           "syncedGroups": "同步分组",
           "summary": "摘要"
         },
+        "runSummary": {
+          "success": "同步成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织",
+          "partial": "部分成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突",
+          "partialWithUsers": "部分成功：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突（冲突用户：{{usernames}}）",
+          "failed": "同步失败：{{external}}；{{reason}}",
+          "failedConflict": "同步失败：{{external}}；已同步 {{users}} 个用户、{{groups}} 个组织，{{conflicts}} 个冲突用户（冲突用户：{{usernames}}）",
+          "externalCounts": "外部用户共 {{users}} 人，外部组织共 {{groups}} 个"
+        },
         "basicConfigDesc": "选择系统并填写根组织",
         "pageDesc": "用户同步定义平台如何接入主身份数据。这里支持多个用户源并存，用于不同组织目录、补充目录或活动导入目录协同工作。",
         "rootGroupNameImmutable": "根组名创建后不可修改",

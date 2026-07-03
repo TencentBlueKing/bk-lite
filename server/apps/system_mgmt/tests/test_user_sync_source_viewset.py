@@ -428,6 +428,42 @@ def test_detail_records_returns_latest_runs(api_client, authenticated_user, user
 
 
 @pytest.mark.django_db
+def test_list_records_supports_search_by_source_name(api_client, authenticated_user, ready_integration_instance):
+    authenticated_user.is_superuser = True
+    authenticated_user.permission = {"system-manager": {"user_sync-View"}}
+    authenticated_user.save(update_fields=["is_superuser"])
+
+    source_a = UserSyncSource.objects.create(
+        name="alpha-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Alpha Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"mode": "disabled", "timezone": "Asia/Shanghai"},
+    )
+    source_b = UserSyncSource.objects.create(
+        name="beta-source",
+        integration_instance=ready_integration_instance,
+        enabled=True,
+        root_group_name="Beta Root",
+        business_config={"root_department_id": "0"},
+        field_mapping={},
+        schedule_config={"mode": "disabled", "timezone": "Asia/Shanghai"},
+    )
+    UserSyncRun.objects.create(source=source_a, status="success", summary="alpha", started_at=timezone.now())
+    UserSyncRun.objects.create(source=source_b, status="success", summary="beta", started_at=timezone.now())
+
+    response = api_client.get(
+        "/api/v1/system_mgmt/user_sync_source/records/",
+        {"page": 1, "page_size": 10, "search": "alpha"},
+    )
+
+    assert response.status_code == 200
+    assert response.data["count"] == 1
+    assert response.data["items"][0]["source_name"] == "alpha-source"
+
+@pytest.mark.django_db
 def test_list_prefetches_only_latest_run_per_source(api_client, authenticated_user, ready_integration_instance):
     authenticated_user.is_superuser = True
     authenticated_user.permission = {"system-manager": {"user_sync-View"}}

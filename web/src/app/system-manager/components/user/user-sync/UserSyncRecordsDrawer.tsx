@@ -1,11 +1,13 @@
 import React from 'react';
-import { Drawer, Tag } from 'antd';
+import { ReloadOutlined } from '@ant-design/icons';
+import { Button, Drawer, Input, Space, Tag, Tooltip } from 'antd';
 import CustomTable from '@/components/custom-table';
 import { useLocalizedTime } from "@/hooks/useLocalizedTime";
 
 import type { RunStatus } from '@/app/system-manager/types/user-sync';
 import {
   type RecordRow,
+  getUserSyncRunSummary,
   RUN_STATUS_TEXT_STYLE,
 } from '@/app/system-manager/utils/userSyncPageUtils';
 
@@ -20,6 +22,8 @@ interface UserSyncRecordsDrawerProps {
   };
   t: (key: string, fallback?: string) => string;
   onPageChange: (current: number, pageSize: number) => void;
+  onRefresh: () => void;
+  onSearch: (value: string) => void;
   onClose: () => void;
 }
 
@@ -30,6 +34,8 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
   pagination,
   t,
   onPageChange,
+  onRefresh,
+  onSearch,
   onClose,
 }) => {
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -74,6 +80,14 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
       dataIndex: 'summary',
       key: 'summary',
       ellipsis: true,
+      render: (_: string, record: RecordRow) => {
+        const summary = getUserSyncRunSummary(record, t);
+        return (
+          <Tooltip title={summary}>
+            <span>{summary}</span>
+          </Tooltip>
+        );
+      },
     },
   ];
 
@@ -84,9 +98,28 @@ const UserSyncRecordsDrawer: React.FC<UserSyncRecordsDrawerProps> = ({
       onClose={onClose}
       width={980}
     >
+      <div className="mb-4 flex items-center justify-end gap-2">
+        <Space.Compact>
+          <Input.Search
+            size="middle"
+            allowClear
+            enterButton
+            placeholder={`${t('common.search')}...`}
+            className="w-60"
+            onSearch={onSearch}
+          />
+        </Space.Compact>
+        <Button
+          type="text"
+          icon={<ReloadOutlined />}
+          onClick={onRefresh}
+          loading={loading}
+          aria-label={t('common.refresh')}
+        />
+      </div>
       <CustomTable
         rowKey="id"
-        scroll={{ x: '100%', y: 'calc(100vh - 220px)' }}
+        scroll={{ x: '100%', y: 'calc(100vh - 280px)' }}
         dataSource={records}
         columns={columns}
         loading={loading}

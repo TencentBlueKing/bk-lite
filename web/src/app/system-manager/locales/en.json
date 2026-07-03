@@ -276,6 +276,14 @@
           "syncedGroups": "Synced Groups",
           "summary": "Summary"
         },
+        "runSummary": {
+          "success": "Sync succeeded: {{external}}; synced {{users}} users, {{groups}} groups",
+          "partial": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts",
+          "partialWithUsers": "Partial success: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicts (conflict users: {{usernames}})",
+          "failed": "Sync failed: {{external}}; {{reason}}",
+          "failedConflict": "Sync failed: {{external}}; synced {{users}} users, {{groups}} groups, {{conflicts}} conflicting users (conflict users: {{usernames}})",
+          "externalCounts": "External users: {{users}}, external groups: {{groups}}"
+        },
         "basicConfigDesc": "Select a system and enter the root organization",
         "pageDesc": "User synchronization defines how the platform integrates with primary identity data. It supports multiple user sources simultaneously, enabling collaboration across different organizational directories, supplementary directories, or active import directories.",
         "rootGroupNameImmutable": "Root group name cannot be changed after creation",

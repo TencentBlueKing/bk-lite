@@ -53,7 +53,7 @@ export const useUserSyncApi = () => {
   }
 
   async function getPagedRecords(
-    params: { page: number; page_size: number }
+    params: { page: number; page_size: number; search?: string }
   ): Promise<{ count: number; items: Array<UserSyncRun & { source_name: string }> }> {
     return await get('/system_mgmt/user_sync_source/records/', { params });
   }

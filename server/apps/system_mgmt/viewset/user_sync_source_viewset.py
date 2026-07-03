@@ -1,6 +1,6 @@
 from copy import copy
 
-from django.db.models import Prefetch
+from django.db.models import Prefetch, Q
 from django.http import JsonResponse
 from rest_framework.decorators import action
 from rest_framework.response import Response
@@ -141,9 +141,13 @@ class UserSyncSourceViewSet(MaintainerViewSet):
     @action(methods=["GET"], detail=False, url_path="records")
     @HasPermission("user_sync-View")
     def list_records(self, request, *args, **kwargs):
+        search = str(request.query_params.get("search") or "").strip()
         source_queryset = self.filter_queryset(self.get_queryset())
         visible_sources = self.get_queryset_by_permission(request, source_queryset)
-        queryset = UserSyncRun.objects.select_related("source").filter(source__in=visible_sources).order_by("-started_at", "-id")
+        queryset = UserSyncRun.objects.select_related("source").filter(source__in=visible_sources)
+        if search:
+            queryset = queryset.filter(Q(source__name__icontains=search) | Q(summary__icontains=search))
+        queryset = queryset.order_by("-started_at", "-id")
 
         page = self.paginate_queryset(queryset)
         if page is not None:
