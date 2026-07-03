@@ -671,18 +671,17 @@ export const getAssetColumns = (config: {
         return {
           ...columnItem,
           render: (_: unknown, record: any) => {
-            const cloudOptions = useAssetDataStore.getState().cloud_list;
             const modelId = record.model_id;
-            if (attrId === 'cloud' && modelId === 'host') {
-              const cloudId = +record[attrId];
-              const cloudName = cloudOptions.find(
-                (option: any) => option.proxy_id === cloudId
-              );
-              const displayText = cloudName ? cloudName.proxy_name : (cloudName || '--');
+            const displayText = getCloudRegionDisplayName(
+              attrId,
+              modelId,
+              record[attrId],
+            );
+            if (displayText !== null) {
               return (
                 <EllipsisWithTooltip
                   className="whitespace-nowrap overflow-hidden text-ellipsis"
-                  text={displayText as string}
+                  text={displayText}
                 ></EllipsisWithTooltip>
               );
             }
@@ -703,6 +702,32 @@ export const getAssetColumns = (config: {
   });
 };
 
+const getCloudRegionDisplayName = (
+  attrId: string,
+  modelId: string,
+  value: unknown,
+) => {
+  const cloudOptions = useAssetDataStore.getState().cloud_list || [];
+  const normalizedValue = String(value ?? '').trim();
+  if (!normalizedValue) {
+    return '--';
+  }
+
+  if (
+    !(
+      (attrId === 'cloud' && modelId === 'host') ||
+      (attrId === 'cloud_id' && modelId === 'subnet')
+    )
+  ) {
+    return null;
+  }
+
+  const matched = cloudOptions.find(
+    (option: any) => String(option.proxy_id) === normalizedValue,
+  );
+  return matched?.proxy_name || normalizedValue;
+};
+
 
 export const getFieldItem = (config: {
   fieldItem: AttrFieldType;
@@ -718,6 +743,31 @@ export const getFieldItem = (config: {
 }) => {
   const { disabled, placeholder } = config;
   if (config.isEdit) {
+    if (
+      (config.fieldItem.attr_id === 'cloud' && config.modelId === 'host') ||
+      (config.fieldItem.attr_id === 'cloud_id' && config.modelId === 'subnet')
+    ) {
+      const cloudOptions = useAssetDataStore.getState().cloud_list || [];
+      return (
+        <Select
+          showSearch
+          disabled={disabled}
+          placeholder={placeholder}
+          filterOption={(input, opt: any) => {
+            if (typeof opt?.children === 'string') {
+              return opt.children.toLowerCase().includes(input.toLowerCase());
+            }
+            return true;
+          }}
+        >
+          {cloudOptions.map((opt: any) => (
+            <Select.Option key={String(opt.proxy_id)} value={String(opt.proxy_id)}>
+              {opt.proxy_name}
+            </Select.Option>
+          ))}
+        </Select>
+      );
+    }
     if (config.fieldItem.attr_id === 'collect_task') {
       return (
         <CollectTaskTreeSelect
@@ -914,6 +964,16 @@ export const getFieldItem = (config: {
         '--'
       );
     case 'str':
+      if (config.modelId) {
+        const cloudDisplayName = getCloudRegionDisplayName(
+          config.fieldItem.attr_id,
+          config.modelId,
+          config.value,
+        );
+        if (cloudDisplayName !== null) {
+          return cloudDisplayName;
+        }
+      }
       if (config.fieldItem.attr_id === 'collect_task') {
         // Given 详情页字段为只读展示，When collect_task 可解析路由，Then 渲染可点击新标签链接。
         const meta = getCollectTaskLinkMeta(config.value);

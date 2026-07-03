@@ -15,6 +15,7 @@ import NetworkTopo from './networkTopo';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
 import DeviceDetailDrawer from './deviceDetailDrawer';
+import IpamMatrix from '../ipView/ipamMatrix';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
 import { useCommon } from '@/app/cmdb/context/common';

@@ -38,7 +38,7 @@ const IP_TASK_INITIAL_VALUES = {
   intervalValue: 60,
   scanMethod: 'icmp',
   tcpPorts: '22,80,443,3389',
-  timeout: 300,
+  timeout: 5,
   cleanupStrategy: 'no_cleanup',
   cleanupDays: 3,
 };

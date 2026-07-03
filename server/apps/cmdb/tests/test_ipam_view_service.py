@@ -33,3 +33,11 @@ class TestBuildIpamView:
             out = build_ipam_view(SUBNET)
         addrs = {ip["ip_addr"] for ip in out["ips"]}
         assert "10.0.1.10" in addrs
+
+    def test_优先查关联并兼容字段兜底(self):
+        assoc_ips = [IPS[0]]
+        fallback_ips = [IPS[0], IPS[1]]
+        with patch("apps.cmdb.services.ipam_view._query_subnet_ips_by_association", return_value=assoc_ips), \
+             patch("apps.cmdb.services.ipam_view._query_subnet_ips_by_field", return_value=fallback_ips):
+            out = build_ipam_view(SUBNET)
+        assert {ip["_id"] for ip in out["ips"]} == {101, 102}

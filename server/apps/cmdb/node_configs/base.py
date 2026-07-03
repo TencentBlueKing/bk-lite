@@ -19,6 +19,7 @@ class BaseNodeParams(metaclass=ABCMeta):
     # 同一个 model（例如 physcial_server）可以同时存在 SSH/job 和 IPMI/protocol 两条下发链路。
     _registry = {}  # 自动收集支持的 model_id 对应的子类
     interval = 300  # 默认的采集间隔时间（秒）
+    MIN_INTERVAL_SECONDS = 60
 
     @classmethod
     def build_registry_key(cls, model_id, driver_type=None):
@@ -202,6 +203,20 @@ class BaseNodeParams(metaclass=ABCMeta):
         """
         return f"cmdb_{self.instance.id}"
 
+    @property
+    def resolved_interval(self) -> int:
+        """节点侧采集间隔：优先跟随任务周期，异常时回退类默认值。"""
+        cycle_value_type = getattr(self.instance, "cycle_value_type", "")
+        cycle_value = getattr(self.instance, "cycle_value", None)
+        if cycle_value_type == "cycle":
+            try:
+                interval_seconds = int(cycle_value) * 60
+            except (TypeError, ValueError):
+                interval_seconds = 0
+            if interval_seconds >= self.MIN_INTERVAL_SECONDS:
+                return interval_seconds
+        return self.interval
+
     def push_params(self):
         """
         生成节点管理创建配置的参数
@@ -213,7 +228,7 @@ class BaseNodeParams(metaclass=ABCMeta):
         node = self.instance.access_point[0]
         content = {
             "instance_id": self._instance_id,
-            "interval": self.interval,
+            "interval": self.resolved_interval,
             "instance_type": self.get_instance_type,
             "timeout": self.timeout,
             "response_timeout": self.response_timeout,
