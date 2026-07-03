@@ -3856,6 +3856,9 @@ monitor_object_plugin:
   Wireless ACKSYS SNMP:
     name: ACKSYS（Telegraf）
     desc: ACKSYS AirLink / WaveOS 工业无线设备 SNMP 基线子模板。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料已确认 AirLink 工业无线对象面、SNMP v1/v2c/v3 管理能力与官方 MIB 下载面，但未证明稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
+  Wireless Xirrus SNMP:
+    name: Xirrus（Telegraf）
+    desc: Xirrus 企业级 Wi-Fi 阵列设备 SNMP 基线子模板（企业号 PEN 21013）。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。LibreNMS 已把 XirrusAos 列为正式 OS class 并公开 XIRRUS-MIB raw 文件，企业根 PEN 21013 与 oid-base 产品子树 1.3.6.1.4.1.21013.1 也已坐实；当前工作树未补到稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
   Wireless ProSoft Technology SNMP:
     name: ProSoft Technology（Telegraf）
     desc: ProSoft Technology RadioLinx / RLX 工业无线与 ICX 蜂窝网关 SNMP 基线子模板。该 child 模板依赖通用 Wireless SNMP 底座采集 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量。当前公开资料已确认工业无线产品面与官方 MIB 下载面，但未证明稳定共享 CPU、内存、温度、风扇、电源或射频健康叶子 OID，因此本轮不把私有无线业务对象提升为共享设备健康指标。
