@@ -1,0 +1,18 @@
+{
+  "object": "Switch",
+  "plugin": "Switch IP Infusion SNMP",
+  "templates": [
+  {
+    "name": "IP Infusion交换机PSU温度过高",
+    "alert_name": "交换机${resource_name} 电源温度过高",
+    "description": "监控 IP Infusion (OcNOS) 设备机箱级 PSU 1 温度传感器读数（IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1），当温度超过安全阈值时触发告警，提示可能存在散热不良、风扇故障或环境过热，避免触发热保护或硬件损坏。",
+    "metric_name": "device_psu_temperature_celsius",
+    "algorithm": "last_over_time",
+    "threshold": [
+        { "level": "critical", "value": 75, "method": ">" },
+        { "level": "error", "value": 65, "method": ">" },
+        { "level": "warning", "value": 55, "method": ">" }
+    ]
+  }
+  ]
+}

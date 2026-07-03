@@ -132,7 +132,8 @@ export const getDefaultConfig = (nodeType: string) => {
         ...baseConfig,
         notificationType: 'email',
         notificationMethod: '',
-        notificationChannels: []
+        notificationChannels: [],
+        llmOptimizeModel: 0
       };
     case 'agui':
       return {

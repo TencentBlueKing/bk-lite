@@ -69,6 +69,8 @@ export interface NotificationNodeConfigProps extends BaseNodeConfigProps {
   notificationChannels: Array<{ id: string; name: string }>;
   loadingChannels: boolean;
   loadChannels: (type: string) => void;
+  llmModels: LlmModel[];
+  loadingLlmModels: boolean;
   allUsers: Array<{ id: string; username: string; name?: string; display_name?: string }>;
   loadingUsers: boolean;
   form: FormInstance;

@@ -405,12 +405,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 
   const fetchDataRef = useRef<
-    (params: Record<string, any>, key: string) => Promise<void>
+    (key: string) => Promise<void>
       >(undefined!);
-  fetchDataRef.current = async (
-    nextRequestParams: Record<string, any>,
-    requestKey: string,
-  ) => {
+  fetchDataRef.current = async (requestKey: string) => {
     if (!normalizedDataSourceId) {
       return;
     }
@@ -618,7 +615,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    fetchDataRef.current(requestParams, requestKey);
+    fetchDataRef.current(requestKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     requestEnabled,

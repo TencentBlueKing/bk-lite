@@ -84,7 +84,6 @@ const serializeNodeConfig = (nodeData: TopologyNodeData, nodeType: string): Reco
 
 export const useGraphData = (
   graphInstance: X6Graph | null,
-  updateSingleNodeData: (nodeConfig: TopologyNodeData) => void,
   startLoadingAnimation: (node: Node) => void,
   handleSaveCallback?: () => void
 ) => {

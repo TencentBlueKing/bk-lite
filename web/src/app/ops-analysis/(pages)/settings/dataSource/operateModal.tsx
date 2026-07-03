@@ -1,33 +1,23 @@
-'use client';
+"use client";
 
-import React, { useEffect } from 'react';
-import dayjs, { Dayjs } from 'dayjs';
-import CustomTable from '@/components/custom-table';
-import TimeSelector from '@/components/time-selector';
-import GroupTreeSelect from '@/components/group-tree-select';
-import { v4 as uuidv4 } from 'uuid';
-import { getChartTypeList } from '@/app/ops-analysis/constants/common';
-import {
-  PlusCircleOutlined,
-  MinusCircleOutlined,
-  QuestionCircleOutlined,
-  UploadOutlined,
-} from '@ant-design/icons';
-import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { useOpsAnalysis } from '@/app/ops-analysis/context/common';
-import { useNamespaceApi } from '@/app/ops-analysis/api/namespace';
-import { useUserInfoContext } from '@/context/userInfo';
-import { useTranslation } from '@/utils/i18n';
-import useUnsavedConfirm from '@/hooks/useUnsavedConfirm';
-import { formatOpsRequestTime } from '@/app/ops-analysis/utils/dateTime';
+import React, { useEffect } from "react";
+import GroupTreeSelect from "@/components/group-tree-select";
+import { v4 as uuidv4 } from "uuid";
+import { getChartTypeList } from "@/app/ops-analysis/constants/common";
+import { UploadOutlined } from "@ant-design/icons";
+import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
+import { useOpsAnalysis } from "@/app/ops-analysis/context/common";
+import { useNamespaceApi } from "@/app/ops-analysis/api/namespace";
+import { useUserInfoContext } from "@/context/userInfo";
+import { useTranslation } from "@/utils/i18n";
+import useUnsavedConfirm from "@/hooks/useUnsavedConfirm";
 import {
   DataSourcePreviewResult,
   DataSourceSourceType,
   OperateModalProps,
   ParamItem,
-  ResponseFieldDefinition,
-} from '@/app/ops-analysis/types/dataSource';
-import { NamespaceItem, TagItem } from '@/app/ops-analysis/types/namespace';
+} from "@/app/ops-analysis/types/dataSource";
+import { NamespaceItem, TagItem } from "@/app/ops-analysis/types/namespace";
 import {
   Drawer,
   Form,
@@ -36,100 +26,29 @@ import {
   Select,
   Button,
   Upload,
-  DatePicker,
-  Switch,
   Checkbox,
   Spin,
   message,
-  Empty,
-  Tooltip,
   Radio,
-} from 'antd';
-import type { UploadFile } from 'antd/es/upload/interface';
-
-const SOURCE_TYPE_NATS: DataSourceSourceType = 'nats';
-const SOURCE_TYPE_MYSQL: DataSourceSourceType = 'mysql';
-const SOURCE_TYPE_POSTGRESQL: DataSourceSourceType = 'postgresql';
-const SOURCE_TYPE_REST_API: DataSourceSourceType = 'rest_api';
-const SOURCE_TYPE_EXCEL: DataSourceSourceType = 'excel';
-const TABLE_CHART_TYPE = 'table';
-const PASSWORD_PLACEHOLDER = '******';
-
-const formatJsonText = (value: unknown) => {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return '';
-  }
-  return JSON.stringify(value, null, 2);
-};
-
-const parseJsonObject = (value: string | undefined, errorMessage: string) => {
-  const text = (value || '').trim();
-  if (!text) return {};
-  try {
-    const parsed = JSON.parse(text);
-    if (parsed && typeof parsed === 'object' && !Array.isArray(parsed)) {
-      return parsed;
-    }
-  } catch {
-    // fall through to a unified validation error
-  }
-  throw new Error(errorMessage);
-};
-
-const FormTimeSelector: React.FC<{
-  value?: any;
-  onChange?: (value: any) => void;
-}> = ({ value, onChange }) => {
-  const [selectValue, setSelectValue] = React.useState(10080);
-  const [rangeValue, setRangeValue] = React.useState<any>(null);
-
-  React.useEffect(() => {
-    if (value !== undefined) {
-      if (Array.isArray(value)) {
-        setSelectValue(0);
-        setRangeValue(value);
-      } else {
-        setSelectValue(value);
-        setRangeValue(null);
-      }
-    } else {
-      onChange?.(10080);
-    }
-  }, [value, onChange]);
-
-  const handleChange = (range: number[], originValue: number | null) => {
-    if (originValue === 0) {
-      setSelectValue(0);
-      setRangeValue(range);
-      onChange?.(range);
-    } else if (originValue !== null) {
-      setSelectValue(originValue);
-      setRangeValue(null);
-      onChange?.(originValue);
-    }
-  };
-
-  const formatRangeValue = (value: any): [dayjs.Dayjs, dayjs.Dayjs] | null => {
-    if (Array.isArray(value) && value.length === 2) {
-      return [dayjs(value[0]), dayjs(value[1])];
-    }
-    return null;
-  };
-
-  return (
-    <div className="w-full">
-      <TimeSelector
-        onlyTimeSelect
-        className="w-full"
-        defaultValue={{
-          selectValue: selectValue,
-          rangePickerVaule: formatRangeValue(rangeValue),
-        }}
-        onChange={handleChange}
-      />
-    </div>
-  );
-};
+} from "antd";
+import type { UploadFile } from "antd/es/upload/interface";
+import ParamTable, { ParamTableRef } from "./paramTable";
+import FieldSchemaTable, { FieldSchemaTableRef } from "./fieldSchemaTable";
+import PreviewPanel from "./previewPanel";
+import {
+  buildConnectorPayload,
+  formatJsonText,
+  normalizeFieldSchema,
+  normalizeParams,
+  PASSWORD_PLACEHOLDER,
+  SchemaField,
+  SOURCE_TYPE_EXCEL,
+  SOURCE_TYPE_MYSQL,
+  SOURCE_TYPE_NATS,
+  SOURCE_TYPE_POSTGRESQL,
+  SOURCE_TYPE_REST_API,
+  TABLE_CHART_TYPE,
+} from "./operateModalUtils";
 
 const OperateModal: React.FC<OperateModalProps> = ({
   open,
@@ -144,16 +63,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const { selectedGroup } = useUserInfoContext();
   const [params, setParams] = React.useState<ParamItem[]>([]);
   const [loading, setLoading] = React.useState(false);
-  const [duplicateNames, setDuplicateNames] = React.useState<string[]>([]);
-  const [emptyNames, setEmptyNames] = React.useState<string[]>([]);
-  const [emptyAliases, setEmptyAliases] = React.useState<string[]>([]);
-  const [schemaFields, setSchemaFields] = React.useState<
-    (ResponseFieldDefinition & { id: string })[]
-      >([]);
-  const [duplicateFieldKeys, setDuplicateFieldKeys] = React.useState<string[]>(
-    [],
-  );
-  const [emptyFieldKeys, setEmptyFieldKeys] = React.useState<string[]>([]);
+  const [schemaFields, setSchemaFields] = React.useState<SchemaField[]>([]);
   const [showSchemaConfig, setShowSchemaConfig] = React.useState(true);
   const [tagList, setTagList] = React.useState<TagItem[]>([]);
   const [tagsLoading, setTagsLoading] = React.useState(false);
@@ -165,11 +75,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
   const previousSourceTypeRef = React.useRef<DataSourceSourceType | undefined>(
     undefined,
   );
-  const {
-    namespaceList,
-    namespacesLoading,
-    refreshNamespaces,
-  } = useOpsAnalysis();
+  const paramTableRef = React.useRef<ParamTableRef>(null);
+  const fieldSchemaTableRef = React.useRef<FieldSchemaTableRef>(null);
+  const { namespaceList, namespacesLoading, refreshNamespaces } =
+    useOpsAnalysis();
   const {
     createDataSource,
     updateDataSource,
@@ -178,55 +87,15 @@ const OperateModal: React.FC<OperateModalProps> = ({
   } = useDataSourceApi();
   const { getTagList } = useNamespaceApi();
   const sourceType =
-    (Form.useWatch('source_type', form) as DataSourceSourceType | undefined) ||
+    (Form.useWatch("source_type", form) as DataSourceSourceType | undefined) ||
     SOURCE_TYPE_NATS;
 
-  const paramTypeOptions = [
-    { label: t('dataSource.paramTypes.string'), value: 'string' },
-    { label: t('dataSource.paramTypes.number'), value: 'number' },
-    { label: t('dataSource.paramTypes.boolean'), value: 'boolean' },
-    { label: t('dataSource.paramTypes.date'), value: 'date' },
-    { label: t('dataSource.paramTypes.timeRange'), value: 'timeRange' },
-  ];
-
-  const filterTypeOptions = [
-    { label: t('dataSource.filterTypes.filter'), value: 'filter' },
-    { label: t('dataSource.filterTypes.fixed'), value: 'fixed' },
-    { label: t('dataSource.filterTypes.params'), value: 'params' },
-  ];
-
-  const createDefaultParam = (): ParamItem => ({
-    id: uuidv4(),
-    name: '',
-    value: '',
-    type: 'string',
-    filterType: 'fixed',
-    alias_name: '',
-  });
-
-  const createDefaultSchemaField = (): ResponseFieldDefinition & {
-    id: string;
-  } => ({
-    id: uuidv4(),
-    key: '',
-    title: '',
-    value_type: 'string',
-    description: '',
-  });
-
-  const valueTypeOptions = [
-    { label: t('dataSource.valueTypes.string'), value: 'string' },
-    { label: t('dataSource.valueTypes.number'), value: 'number' },
-    { label: t('dataSource.valueTypes.boolean'), value: 'boolean' },
-    { label: t('dataSource.valueTypes.datetime'), value: 'datetime' },
-  ];
-
   const sourceTypeOptions = [
-    { label: t('dataSource.sourceTypes.nats'), value: SOURCE_TYPE_NATS },
-    { label: 'MySQL', value: SOURCE_TYPE_MYSQL },
-    { label: 'PostgreSQL', value: SOURCE_TYPE_POSTGRESQL },
-    { label: 'REST API', value: SOURCE_TYPE_REST_API },
-    { label: 'Excel', value: SOURCE_TYPE_EXCEL },
+    { label: t("dataSource.sourceTypes.nats"), value: SOURCE_TYPE_NATS },
+    { label: "MySQL", value: SOURCE_TYPE_MYSQL },
+    { label: "PostgreSQL", value: SOURCE_TYPE_POSTGRESQL },
+    { label: "REST API", value: SOURCE_TYPE_REST_API },
+    { label: "Excel", value: SOURCE_TYPE_EXCEL },
   ];
 
   const isNatsSource = sourceType === SOURCE_TYPE_NATS;
@@ -250,7 +119,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
         const response = await getTagList({ page_size: -1 });
         setTagList(Array.isArray(response) ? response : []);
       } catch (error) {
-        console.error('获取标签列表失败:', error);
+        console.error("获取标签列表失败:", error);
         setTagList([]);
       } finally {
         setTagsLoading(false);
@@ -258,18 +127,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
     };
 
     form.resetFields();
-    setDuplicateNames([]);
-    setEmptyNames([]);
-    setEmptyAliases([]);
     setSchemaFields([]);
-    setDuplicateFieldKeys([]);
-    setEmptyFieldKeys([]);
+    paramTableRef.current?.clearValidation();
+    fieldSchemaTableRef.current?.clearValidation();
     setShowSchemaConfig(true);
     setPreviewData(null);
     setExcelFile(null);
     setExcelFileList([]);
-    previousSourceTypeRef.current =
-      currentRow?.source_type || SOURCE_TYPE_NATS;
+    previousSourceTypeRef.current = currentRow?.source_type || SOURCE_TYPE_NATS;
     void refreshNamespaces();
     void fetchTags();
 
@@ -278,14 +143,14 @@ const OperateModal: React.FC<OperateModalProps> = ({
       form.setFieldsValue({
         source_type: SOURCE_TYPE_NATS,
         connection_config: {
-          method: 'GET',
+          method: "GET",
           timeout: 10,
         },
         query_config: {},
       });
       // 新增时，如果用户有选中的分组，则设置为默认值
       if (selectedGroup) {
-        form.setFieldValue('groups', [selectedGroup.id]);
+        form.setFieldValue("groups", [selectedGroup.id]);
       }
       return;
     }
@@ -320,7 +185,9 @@ const OperateModal: React.FC<OperateModalProps> = ({
     ) {
       setPreviewData({
         items: queryConfig.imported_items,
-        count: Number(queryConfig.imported_count) || queryConfig.imported_items.length,
+        count:
+          Number(queryConfig.imported_count) ||
+          queryConfig.imported_items.length,
         fields: Array.isArray(queryConfig.imported_fields)
           ? queryConfig.imported_fields
           : [],
@@ -345,12 +212,12 @@ const OperateModal: React.FC<OperateModalProps> = ({
       setParams(
         currentRow.params.map((param: any) => ({
           ...param,
-          type: param.type || 'string',
+          type: param.type || "string",
           filterType:
             param.filterType ||
-            (param.type === 'timeRange' ? 'filter' : 'fixed'),
+            (param.type === "timeRange" ? "filter" : "fixed"),
           id: param.id || uuidv4(),
-        }))
+        })),
       );
     } else {
       setParams([]);
@@ -362,7 +229,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       return;
     }
 
-    const currentNamespaceValues = form.getFieldValue('namespaces');
+    const currentNamespaceValues = form.getFieldValue("namespaces");
     if (
       Array.isArray(currentNamespaceValues) &&
       currentNamespaceValues.length > 0
@@ -387,657 +254,37 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
     if (previousSourceType !== sourceType) {
       if (sourceType !== SOURCE_TYPE_NATS) {
-        form.setFieldValue('chart_type', [TABLE_CHART_TYPE]);
+        form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
       }
       setPreviewData(null);
       setExcelFile(null);
       setExcelFileList([]);
       setSchemaFields([]);
-      setDuplicateFieldKeys([]);
-      setEmptyFieldKeys([]);
+      fieldSchemaTableRef.current?.clearValidation();
       previousSourceTypeRef.current = sourceType;
     }
   }, [open, sourceType, form]);
 
-  const checkDuplicateNames = (currentParams: ParamItem[]) => {
-    const nameCount: { [key: string]: number } = {};
-    const duplicates: string[] = [];
-
-    currentParams.forEach((param) => {
-      if (param.name && param.name.trim()) {
-        nameCount[param.name] = (nameCount[param.name] || 0) + 1;
-      }
-    });
-
-    Object.keys(nameCount).forEach((name) => {
-      if (nameCount[name] > 1) {
-        duplicates.push(name);
-      }
-    });
-
-    setDuplicateNames(duplicates);
-    return duplicates.length === 0;
-  };
-
-  const checkEmptyValues = (currentParams: ParamItem[]) => {
-    const emptyNameList: string[] = [];
-    const emptyAliasList: string[] = [];
-
-    currentParams.forEach((param) => {
-      if (!param.name || !param.name.trim()) {
-        emptyNameList.push(param.id!);
-      }
-      if (!param.alias_name || !param.alias_name.trim()) {
-        emptyAliasList.push(param.id!);
-      }
-    });
-
-    setEmptyNames(emptyNameList);
-    setEmptyAliases(emptyAliasList);
-
-    return emptyNameList.length === 0 && emptyAliasList.length === 0;
-  };
-
-  const handleAliasChange = (val: string, id: string) => {
-    setParams((prev: ParamItem[]) =>
-      prev.map((item) => (item.id === id ? { ...item, alias_name: val } : item))
-    );
-  };
-
-  const handleAliasBlur = (val: string, id: string) => {
-    const newParams = params.map((item) => {
-      if (item.id === id) {
-        return { ...item, alias_name: val.trim() };
-      }
-      return item;
-    });
-    setParams(newParams);
-    checkEmptyValues(newParams);
-  };
-
-  const handleDefaultChange = (val: any, id: string, type: string) => {
-    setParams((prev: ParamItem[]) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        let newValue = val;
-        if (type === 'boolean') {
-          newValue = val;
-        } else if (type === 'number') {
-          newValue = Number(val);
-        } else if (type === 'date') {
-          if (!val) {
-            newValue = '';
-          } else if (val.format) {
-            newValue = formatOpsRequestTime(val);
-          } else {
-            newValue = val;
-          }
-        } else if (type === 'timeRange') {
-          newValue = val;
-        }
-        return { ...item, value: newValue };
-      })
-    );
-  };
-
-  const handleTypeChange = (val: string, id: string) => {
-    setParams((prev: ParamItem[]) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        let newValue: any = '';
-        const newFilterType = item.filterType;
-
-        if (val === 'boolean') {
-          newValue = false;
-        } else if (val === 'number') {
-          newValue = 0;
-        } else if (val === 'date') {
-          newValue = '';
-        } else if (val === 'timeRange') {
-          newValue = 10080;
-        } else {
-          newValue = '';
-        }
-
-        return {
-          ...item,
-          type: val,
-          value: newValue,
-          filterType: newFilterType,
-        };
-      })
-    );
-  };
-
-  const handleFilterTypeChange = (val: string, id: string) => {
-    setParams((prev: ParamItem[]) =>
-      prev.map((item) => {
-        if (item.id !== id) return item;
-        return { ...item, filterType: val };
-      })
-    );
-  };
-
-  const handleAddParamAfter = (index: number) => {
-    const newParam = createDefaultParam();
-    const newParams = [...params];
-    newParams.splice(index + 1, 0, newParam);
-    setParams(newParams);
-  };
-
-  const handleDeleteParam = (id: string) => {
-    const newParams = params.filter((item) => item.id !== id);
-    setParams(newParams);
-    checkDuplicateNames(newParams);
-    checkEmptyValues(newParams);
-  };
-
-  const handleParamNameChange = (val: string, id: string) => {
-    const newParams = params.map((item) => {
-      if (item.id === id) {
-        return {
-          ...item,
-          name: val,
-        };
-      }
-      return item;
-    });
-    setParams(newParams);
-  };
-
-  const handleParamNameBlur = (val: string, id: string) => {
-    const newParams = params.map((item) => {
-      if (item.id === id) {
-        return { ...item, name: val.trim() };
-      }
-      return item;
-    });
-    setParams(newParams);
-    checkDuplicateNames(newParams);
-    checkEmptyValues(newParams);
-  };
-
-  const checkDuplicateFieldKeys = (
-    fields: (ResponseFieldDefinition & { id: string })[],
-  ) => {
-    const keyCount: { [key: string]: number } = {};
-    const duplicates: string[] = [];
-
-    fields.forEach((field) => {
-      if (field.key && field.key.trim()) {
-        keyCount[field.key] = (keyCount[field.key] || 0) + 1;
-      }
-    });
-
-    Object.keys(keyCount).forEach((key) => {
-      if (keyCount[key] > 1) {
-        duplicates.push(key);
-      }
-    });
-
-    setDuplicateFieldKeys(duplicates);
-    return duplicates.length === 0;
-  };
-
-  const checkEmptyFieldKeys = (
-    fields: (ResponseFieldDefinition & { id: string })[],
-  ) => {
-    const emptyKeys = fields
-      .filter((f) => !f.key || !f.key.trim())
-      .map((f) => f.id);
-    setEmptyFieldKeys(emptyKeys);
-    return emptyKeys.length === 0;
-  };
-
-  const handleSchemaFieldChange = (
-    id: string,
-    fieldName: keyof ResponseFieldDefinition,
-    value: string,
-  ) => {
-    const newFields = schemaFields.map((f) =>
-      f.id === id ? { ...f, [fieldName]: value } : f,
-    );
-    setSchemaFields(newFields);
-    if (fieldName === 'key') {
-      checkDuplicateFieldKeys(newFields);
-      checkEmptyFieldKeys(newFields);
-    }
-  };
-
-  const handleAddSchemaField = (index: number) => {
-    const newField = createDefaultSchemaField();
-    const newFields = [...schemaFields];
-    newFields.splice(index + 1, 0, newField);
-    setSchemaFields(newFields);
-  };
-
-  const handleDeleteSchemaField = (id: string) => {
-    const newFields = schemaFields.filter((f) => f.id !== id);
-    setSchemaFields(newFields);
-    checkDuplicateFieldKeys(newFields);
-    checkEmptyFieldKeys(newFields);
-  };
-
-  const handleSchemaFieldDragEnd = (
-    targetTableData: (ResponseFieldDefinition & { id: string })[],
-  ) => {
-    const nextFields = (targetTableData || []).map((field) => ({
-      ...field,
-    }));
-    setSchemaFields(nextFields);
-    checkDuplicateFieldKeys(nextFields);
-    checkEmptyFieldKeys(nextFields);
-  };
-
-  const schemaFieldColumns = [
-    {
-      title: t('dataSource.fieldKey'),
-      dataIndex: 'key',
-      key: 'key',
-      width: 140,
-      render: (
-        _: unknown,
-        record: ResponseFieldDefinition & { id: string },
-      ) => (
-        <Input
-          value={record.key}
-          placeholder={t('dataSource.fieldKey')}
-          onChange={(e) =>
-            handleSchemaFieldChange(record.id, 'key', e.target.value)
-          }
-          status={
-            duplicateFieldKeys.includes(record.key) ||
-            emptyFieldKeys.includes(record.id)
-              ? 'error'
-              : undefined
-          }
-        />
-      ),
-    },
-    {
-      title: t('dataSource.fieldTitle'),
-      dataIndex: 'title',
-      key: 'title',
-      width: 140,
-      render: (
-        _: unknown,
-        record: ResponseFieldDefinition & { id: string },
-      ) => (
-        <Input
-          value={record.title}
-          placeholder={t('dataSource.fieldTitle')}
-          onChange={(e) =>
-            handleSchemaFieldChange(record.id, 'title', e.target.value)
-          }
-        />
-      ),
-    },
-    {
-      title: t('dataSource.fieldValueType'),
-      dataIndex: 'value_type',
-      key: 'value_type',
-      width: 120,
-      render: (
-        _: unknown,
-        record: ResponseFieldDefinition & { id: string },
-      ) => (
-        <Select
-          value={record.value_type}
-          options={valueTypeOptions}
-          style={{ width: '100%' }}
-          onChange={(val) =>
-            handleSchemaFieldChange(
-              record.id,
-              'value_type',
-              val as ResponseFieldDefinition['value_type'],
-            )
-          }
-        />
-      ),
-    },
-    {
-      title: t('dataSource.fieldDescription'),
-      dataIndex: 'description',
-      key: 'description',
-      width: 160,
-      render: (
-        _: unknown,
-        record: ResponseFieldDefinition & { id: string },
-      ) => (
-        <Input
-          value={record.description || ''}
-          placeholder={t('dataSource.fieldDescription')}
-          onChange={(e) =>
-            handleSchemaFieldChange(record.id, 'description', e.target.value)
-          }
-        />
-      ),
-    },
-    {
-      title: t('dataSource.operation'),
-      key: 'action',
-      width: 80,
-      render: (
-        _: unknown,
-        record: ResponseFieldDefinition & { id: string },
-        index: number,
-      ) => (
-        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-          <Button
-            type="text"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={() => handleAddSchemaField(index)}
-            style={{ border: 'none', padding: '4px' }}
-          />
-          <Button
-            type="text"
-            size="small"
-            icon={<MinusCircleOutlined />}
-            onClick={() => handleDeleteSchemaField(record.id)}
-            style={{ border: 'none', padding: '4px' }}
-          />
-        </div>
-      ),
-    },
-  ];
-
-  const columns = [
-    {
-      title: t('dataSource.name'),
-      dataIndex: 'name',
-      key: 'name',
-      width: 120,
-      render: (_: any, record: ParamItem) => (
-        <Input
-          value={record.name}
-          placeholder={t('dataSource.name')}
-          onChange={(e) => handleParamNameChange(e.target.value, record.id!)}
-          onBlur={(e) => handleParamNameBlur(e.target.value, record.id!)}
-          status={
-            duplicateNames.includes(record.name) ||
-            emptyNames.includes(record.id!)
-              ? 'error'
-              : undefined
-          }
-        />
-      ),
-    },
-    {
-      title: t('dataSource.aliasName'),
-      dataIndex: 'alias_name',
-      key: 'alias_name',
-      width: 120,
-      render: (_: any, record: ParamItem) => (
-        <Input
-          value={record.alias_name || ''}
-          placeholder={t('dataSource.aliasName')}
-          onChange={(e) => handleAliasChange(e.target.value, record.id!)}
-          onBlur={(e) => handleAliasBlur(e.target.value, record.id!)}
-          status={emptyAliases.includes(record.id!) ? 'error' : undefined}
-        />
-      ),
-    },
-    {
-      title: t('dataSource.paramType'),
-      dataIndex: 'type',
-      key: 'type',
-      width: 110,
-      render: (_: any, record: ParamItem) => (
-        <Select
-          value={record.type || 'string'}
-          options={paramTypeOptions}
-          style={{ width: '100%' }}
-          onChange={(val) => handleTypeChange(val, record.id!)}
-        />
-      ),
-    },
-    {
-      title: t('dataSource.filterType'),
-      dataIndex: 'filterType',
-      key: 'filterType',
-      width: 100,
-      render: (_: any, record: ParamItem) => {
-        return (
-          <Select
-            value={record.filterType || 'fixed'}
-            options={filterTypeOptions}
-            style={{ width: '100%' }}
-            onChange={(val) => handleFilterTypeChange(val, record.id!)}
-          />
-        );
-      },
-    },
-    {
-      title: t('dataSource.defaultValue'),
-      dataIndex: 'value',
-      key: 'value',
-      width: 200,
-      render: (text: any, record: ParamItem) => {
-        const type = record.type || 'string';
-        const isFixed = record.name && record.filterType === 'fixed';
-        const commonProps = {
-          style: {
-            width: '100%',
-            ...(isFixed && !text && text !== 0 && text !== false
-              ? { borderColor: 'var(--color-fail)' }
-              : {}),
-          },
-        };
-
-        if (type === 'date') {
-          return (
-            <DatePicker
-              showTime
-              value={text ? dayjs(text) : undefined}
-              onChange={(date: Dayjs | null) =>
-                handleDefaultChange(date, record.id!, 'date')
-              }
-              style={{ width: '100%' }}
-              format="YYYY-MM-DD HH:mm:ss"
-            />
-          );
-        }
-        if (type === 'timeRange') {
-          return (
-            <FormTimeSelector
-              value={text}
-              onChange={(val: any) =>
-                handleDefaultChange(val, record.id!, 'timeRange')
-              }
-            />
-          );
-        }
-        if (type === 'boolean') {
-          return (
-            <Switch
-              checked={!!text}
-              onChange={(val: boolean) =>
-                handleDefaultChange(val, record.id!, 'boolean')
-              }
-            />
-          );
-        }
-        if (type === 'number') {
-          return (
-            <Input
-              type="number"
-              value={text}
-              placeholder={
-                isFixed
-                  ? t('dataSource.required')
-                  : t('dataSource.defaultValue')
-              }
-              onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-                handleDefaultChange(e.target.value, record.id!, 'number')
-              }
-              {...commonProps}
-            />
-          );
-        }
-        return (
-          <Input
-            value={text}
-            placeholder={
-              isFixed ? t('dataSource.required') : t('dataSource.defaultValue')
-            }
-            onChange={(e: React.ChangeEvent<HTMLInputElement>) =>
-              handleDefaultChange(e.target.value, record.id!, 'string')
-            }
-            {...commonProps}
-          />
-        );
-      },
-    },
-    {
-      title: t('dataSource.operation'),
-      key: 'action',
-      width: 80,
-      render: (_: any, record: ParamItem, index: number) => (
-        <div style={{ display: 'flex', gap: '4px', justifyContent: 'center' }}>
-          <Button
-            type="text"
-            size="small"
-            icon={<PlusCircleOutlined />}
-            onClick={() => handleAddParamAfter(index)}
-            style={{
-              border: 'none',
-              padding: '4px',
-            }}
-          />
-          <Button
-            type="text"
-            size="small"
-            icon={<MinusCircleOutlined />}
-            onClick={() => handleDeleteParam(record.id!)}
-            style={{
-              border: 'none',
-              padding: '4px',
-            }}
-          />
-        </div>
-      ),
-    },
-  ];
-
-  const buildConnectorPayload = (values: any) => {
-    const currentSourceType =
-      (values.source_type as DataSourceSourceType) || SOURCE_TYPE_NATS;
-    const connectionConfig = values.connection_config || {};
-    const queryConfig = values.query_config || {};
-
-    if (currentSourceType === SOURCE_TYPE_REST_API) {
-      return {
-        source_type: currentSourceType,
-        connection_config: {
-          url: connectionConfig.url,
-          method: connectionConfig.method || 'GET',
-          timeout: connectionConfig.timeout || 10,
-          headers: parseJsonObject(
-            connectionConfig.headersText,
-            `${t('dataSource.headers')}${t('dataSource.jsonObjectRequired')}`,
-          ),
-        },
-        query_config: {
-          response_path: queryConfig.response_path || '',
-          params: parseJsonObject(
-            queryConfig.paramsText,
-            `${t('dataSource.queryParams')}${t('dataSource.jsonObjectRequired')}`,
-          ),
-          body: parseJsonObject(
-            queryConfig.bodyText,
-            `${t('dataSource.requestBody')}${t('dataSource.jsonObjectRequired')}`,
-          ),
-        },
-      };
-    }
-
-    if (
-      currentSourceType === SOURCE_TYPE_MYSQL ||
-      currentSourceType === SOURCE_TYPE_POSTGRESQL
-    ) {
-      return {
-        source_type: currentSourceType,
-        connection_config: {
-          host: connectionConfig.host,
-          port: connectionConfig.port,
-          database: connectionConfig.database,
-          username: connectionConfig.username,
-          password: connectionConfig.password,
-        },
-        query_config: {
-          table: queryConfig.table || '',
-          sql: queryConfig.sql || '',
-        },
-      };
-    }
-
-    if (currentSourceType === SOURCE_TYPE_EXCEL) {
-      return {
-        source_type: currentSourceType,
-        connection_config: {
-          filename: excelFile?.name || connectionConfig.filename || '',
-        },
-        query_config: {
-          imported_items: previewData?.items || queryConfig.imported_items || [],
-          imported_fields: previewData?.fields || queryConfig.imported_fields || [],
-          imported_count:
-            previewData?.count || queryConfig.imported_count || previewData?.items?.length || 0,
-        },
-      };
-    }
-
-    return {
-      source_type: currentSourceType,
-      connection_config: {},
-      query_config: {},
-    };
-  };
-
   const getPreviewFieldNames = (): (string | (string | number)[])[] => {
     if (isRestApiSource) {
       return [
-        'source_type',
-        ['connection_config', 'url'],
-        ['connection_config', 'method'],
+        "source_type",
+        ["connection_config", "url"],
+        ["connection_config", "method"],
       ];
     }
     if (isDatabaseSource) {
       return [
-        'source_type',
-        ['connection_config', 'host'],
-        ['connection_config', 'port'],
-        ['connection_config', 'database'],
-        ['connection_config', 'username'],
-        ['connection_config', 'password'],
+        "source_type",
+        ["connection_config", "host"],
+        ["connection_config", "port"],
+        ["connection_config", "database"],
+        ["connection_config", "username"],
+        ["connection_config", "password"],
       ];
     }
-    return ['source_type'];
+    return ["source_type"];
   };
-
-  const previewColumns = React.useMemo(() => {
-    const fields =
-      previewData?.fields?.length
-        ? previewData.fields
-        : Object.keys(previewData?.items?.[0] || {}).map((key) => ({
-          key,
-          title: key,
-          value_type: 'string' as ResponseFieldDefinition['value_type'],
-        }));
-
-    return fields.map((field) => ({
-      title: field.title || field.key,
-      dataIndex: field.key,
-      key: field.key,
-      width: 160,
-      ellipsis: true,
-      render: (value: unknown) => {
-        if (value === null || value === undefined || value === '') return '-';
-        if (typeof value === 'object') return JSON.stringify(value);
-        return String(value);
-      },
-    }));
-  }, [previewData]);
 
   const handlePreview = async () => {
     if (isNatsSource) return;
@@ -1050,17 +297,21 @@ const OperateModal: React.FC<OperateModalProps> = ({
 
       if (isExcelSource) {
         if (!excelFile) {
-          message.error(t('dataSource.excelFileRequired'));
+          message.error(t("dataSource.excelFileRequired"));
           return;
         }
         const formData = new FormData();
-        formData.append('source_type', SOURCE_TYPE_EXCEL);
-        formData.append('limit', '1000');
-        formData.append('file', excelFile);
+        formData.append("source_type", SOURCE_TYPE_EXCEL);
+        formData.append("limit", "1000");
+        formData.append("file", excelFile);
         response = await previewDataSourceConfig(formData);
       } else {
         const payload = {
-          ...buildConnectorPayload(values),
+          ...buildConnectorPayload(values, {
+            excelFileName: excelFile?.name,
+            previewData,
+            t,
+          }),
           limit: 50,
         };
         response = currentRow
@@ -1069,7 +320,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       }
 
       setPreviewData(response);
-      message.success(t('dataSource.previewSuccess'));
+      message.success(t("dataSource.previewSuccess"));
     } catch (error: any) {
       if (error?.errorFields) return;
     } finally {
@@ -1087,21 +338,23 @@ const OperateModal: React.FC<OperateModalProps> = ({
       })),
     );
     setShowSchemaConfig(true);
-    setDuplicateFieldKeys([]);
-    setEmptyFieldKeys([]);
+    fieldSchemaTableRef.current?.clearValidation();
   };
 
   const handlePasswordFocus = (event: React.FocusEvent<HTMLInputElement>) => {
     if (!currentRow) return;
     if (event.target.value === PASSWORD_PLACEHOLDER) {
-      form.setFieldValue(['connection_config', 'password'], '');
+      form.setFieldValue(["connection_config", "password"], "");
     }
   };
 
   const handlePasswordBlur = (event: React.FocusEvent<HTMLInputElement>) => {
     if (!currentRow) return;
     if (!event.target.value?.trim()) {
-      form.setFieldValue(['connection_config', 'password'], PASSWORD_PLACEHOLDER);
+      form.setFieldValue(
+        ["connection_config", "password"],
+        PASSWORD_PLACEHOLDER,
+      );
     }
   };
 
@@ -1109,98 +362,59 @@ const OperateModal: React.FC<OperateModalProps> = ({
     try {
       setLoading(true);
 
-      const validParams = params.filter(
-        (param) => param.name && param.name.trim(),
-      );
-
       if (isNatsSource) {
-        // 检查参数名称和别名是否为空
-        if (!checkEmptyValues(params)) {
-          setLoading(false);
-          return;
-        }
-        if (!checkDuplicateNames(validParams)) {
-          setLoading(false);
-          return;
-        }
-
-        // 检查fixed类型的参数是否有默认值
-        const hasEmptyFixedValue = validParams.some((param) => {
-          if (param.filterType === 'fixed') {
-            const value = param.value;
-            return value === '' || value === null || value === undefined;
-          }
-          return false;
-        });
-        if (hasEmptyFixedValue) {
+        if (!paramTableRef.current?.validate()) {
           setLoading(false);
           return;
         }
       }
 
       if (isExcelSource && !previewData?.items?.length) {
-        message.error(t('dataSource.excelPreviewRequired'));
+        message.error(t("dataSource.excelPreviewRequired"));
         setLoading(false);
         return;
       }
 
       // 检查表格字段配置
       if (schemaFields.length > 0) {
-        if (!checkEmptyFieldKeys(schemaFields)) {
-          setLoading(false);
-          return;
-        }
-        if (!checkDuplicateFieldKeys(schemaFields)) {
+        if (!fieldSchemaTableRef.current?.validate()) {
           setLoading(false);
           return;
         }
       }
 
-      const fieldSchema = schemaFields.map(
-        ({ key, title, value_type, description }) => ({
-          key: key.trim(),
-          title: title.trim(),
-          value_type,
-          description: description?.trim() || '',
-        }),
-      );
-      const connectorPayload = buildConnectorPayload(values);
+      const fieldSchema = normalizeFieldSchema(schemaFields);
+      const connectorPayload = buildConnectorPayload(values, {
+        excelFileName: excelFile?.name,
+        previewData,
+        t,
+      });
 
       const submitData = {
         ...connectorPayload,
-        rest_api: isNatsSource ? values.rest_api : '',
+        rest_api: isNatsSource ? values.rest_api : "",
         name: values.name.trim(),
-        desc: values.desc ? values.desc.trim() : '',
+        desc: values.desc ? values.desc.trim() : "",
         namespaces: isNatsSource ? values.namespaces || [] : [],
         tag: values.tag || [],
         chart_type: isNatsSource ? values.chart_type || [] : [TABLE_CHART_TYPE],
         groups: values.groups || [],
         field_schema: fieldSchema,
-        params: isNatsSource
-          ? params
-            .filter((param) => param.name && param.name.trim())
-            .map((param) => ({
-              name: param.name,
-              alias_name: param.alias_name,
-              type: param.type,
-              filterType: param.filterType,
-              value: param.value,
-            }))
-          : [],
+        params: isNatsSource ? normalizeParams(params) : [],
       };
 
       if (currentRow) {
         await updateDataSource(currentRow.id, submitData);
-        message.success(t('dataSource.updateDataSourceSuccess'));
+        message.success(t("dataSource.updateDataSourceSuccess"));
       } else {
         await createDataSource(submitData);
-        message.success(t('dataSource.createDataSourceSuccess'));
+        message.success(t("dataSource.createDataSourceSuccess"));
       }
 
       onClose();
       onSuccess && onSuccess();
     } catch (error: any) {
-      message.error(error.message || t('dataSource.operationFailed'));
+      message.error(error.message || t("dataSource.operationFailed"));
     } finally {
       setLoading(false);
     }
@@ -1210,8 +424,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
     <Drawer
       title={
         currentRow
-          ? `${t('common.edit')}${t('dataSource.title')} - ${currentRow.name}`
-          : `${t('common.add')}${t('dataSource.title')}`
+          ? `${t("common.edit")}${t("dataSource.title")} - ${currentRow.name}`
+          : `${t("common.add")}${t("dataSource.title")}`
       }
       placement="right"
       width={900}
@@ -1219,16 +433,16 @@ const OperateModal: React.FC<OperateModalProps> = ({
       maskClosable={false}
       onClose={handleClose}
       footer={
-        <div style={{ textAlign: 'right' }}>
+        <div style={{ textAlign: "right" }}>
           <Button
             type="primary"
             loading={loading}
             onClick={() => form.submit()}
           >
-            {t('common.confirm')}
+            {t("common.confirm")}
           </Button>
           <Button style={{ marginLeft: 8 }} onClick={handleClose}>
-            {t('common.cancel')}
+            {t("common.cancel")}
           </Button>
         </div>
       }
@@ -1241,8 +455,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
       >
         <Form.Item
           name="source_type"
-          label={t('dataSource.sourceType')}
-          rules={[{ required: true, message: t('common.inputMsg') }]}
+          label={t("dataSource.sourceType")}
+          rules={[{ required: true, message: t("common.inputMsg") }]}
         >
           <Radio.Group
             optionType="button"
@@ -1251,67 +465,67 @@ const OperateModal: React.FC<OperateModalProps> = ({
             onChange={(event) => {
               const nextSourceType = event.target.value as DataSourceSourceType;
               if (nextSourceType === SOURCE_TYPE_MYSQL) {
-                form.setFieldValue(['connection_config', 'port'], 3306);
+                form.setFieldValue(["connection_config", "port"], 3306);
               }
               if (nextSourceType === SOURCE_TYPE_POSTGRESQL) {
-                form.setFieldValue(['connection_config', 'port'], 5432);
+                form.setFieldValue(["connection_config", "port"], 5432);
               }
               if (nextSourceType === SOURCE_TYPE_REST_API) {
                 form.setFieldsValue({
                   connection_config: {
-                    ...form.getFieldValue('connection_config'),
-                    method: 'GET',
+                    ...form.getFieldValue("connection_config"),
+                    method: "GET",
                     timeout: 10,
                   },
                 });
               }
               if (nextSourceType !== SOURCE_TYPE_NATS) {
-                form.setFieldValue('chart_type', [TABLE_CHART_TYPE]);
+                form.setFieldValue("chart_type", [TABLE_CHART_TYPE]);
               }
             }}
           />
         </Form.Item>
         <Form.Item
           name="name"
-          label={t('dataSource.name')}
-          rules={[{ required: true, message: t('common.inputMsg') }]}
+          label={t("dataSource.name")}
+          rules={[{ required: true, message: t("common.inputMsg") }]}
         >
-          <Input placeholder={t('common.inputMsg')} />
+          <Input placeholder={t("common.inputMsg")} />
         </Form.Item>
         {isNatsSource && (
           <>
             <Form.Item
               name="rest_api"
               label="NATS"
-              rules={[{ required: true, message: t('common.inputMsg') }]}
+              rules={[{ required: true, message: t("common.inputMsg") }]}
             >
-              <Input placeholder={t('common.inputMsg')} />
+              <Input placeholder={t("common.inputMsg")} />
             </Form.Item>
             <Form.Item
               name="namespaces"
-              label={t('namespace.title')}
+              label={t("namespace.title")}
               rules={[
                 {
                   required: true,
-                  type: 'array',
+                  type: "array",
                   min: 1,
-                  message: t('common.selectMsg'),
+                  message: t("common.selectMsg"),
                 },
               ]}
             >
               {namespacesLoading ? (
-                <div style={{ textAlign: 'center', padding: '8px 0' }}>
+                <div style={{ textAlign: "center", padding: "8px 0" }}>
                   <Spin size="small" />
                 </div>
               ) : namespaceList.length === 0 ? (
                 <div
                   style={{
-                    paddingLeft: '4px',
-                    color: 'var(--color-text-4)',
-                    fontSize: '13px',
+                    paddingLeft: "4px",
+                    color: "var(--color-text-4)",
+                    fontSize: "13px",
                   }}
                 >
-                  {t('common.noData')}
+                  {t("common.noData")}
                 </div>
               ) : (
                 <Checkbox.Group className="grid grid-cols-3 gap-x-4 gap-y-2 pt-1">
@@ -1321,7 +535,10 @@ const OperateModal: React.FC<OperateModalProps> = ({
                       value={ns.id}
                       className="!ml-0 flex min-w-0 items-center"
                     >
-                      <span className="inline-block max-w-[180px] truncate align-bottom" title={ns.name}>
+                      <span
+                        className="inline-block max-w-[180px] truncate align-bottom"
+                        title={ns.name}
+                      >
                         {ns.name}
                       </span>
                     </Checkbox>
@@ -1333,29 +550,29 @@ const OperateModal: React.FC<OperateModalProps> = ({
         )}
         <Form.Item
           name="tag"
-          label={t('dataSource.tag')}
+          label={t("dataSource.tag")}
           rules={[
             {
               required: true,
-              type: 'array',
+              type: "array",
               min: 1,
-              message: t('common.selectMsg'),
+              message: t("common.selectMsg"),
             },
           ]}
         >
           {tagsLoading ? (
-            <div style={{ textAlign: 'center', padding: '8px 0' }}>
+            <div style={{ textAlign: "center", padding: "8px 0" }}>
               <Spin size="small" />
             </div>
           ) : tagList.length === 0 ? (
             <div
               style={{
-                paddingLeft: '4px',
-                color: 'var(--color-text-4)',
-                fontSize: '13px',
+                paddingLeft: "4px",
+                color: "var(--color-text-4)",
+                fontSize: "13px",
               }}
             >
-              {t('common.noData')}
+              {t("common.noData")}
             </div>
           ) : (
             <Checkbox.Group
@@ -1368,59 +585,57 @@ const OperateModal: React.FC<OperateModalProps> = ({
         </Form.Item>
         <Form.Item
           name="chart_type"
-          label={t('dataSource.chartType')}
+          label={t("dataSource.chartType")}
           rules={[
             {
               required: true,
-              type: 'array',
+              type: "array",
               min: 1,
-              message: t('common.selectMsg'),
+              message: t("common.selectMsg"),
             },
           ]}
         >
-          <Checkbox.Group
-            options={chartTypeOptions}
-          />
+          <Checkbox.Group options={chartTypeOptions} />
         </Form.Item>
         <Form.Item
           name="groups"
-          label={t('common.group')}
+          label={t("common.group")}
           rules={[
             {
               required: true,
-              message: `${t('common.selectMsg')}${t('common.group')}`,
+              message: `${t("common.selectMsg")}${t("common.group")}`,
             },
           ]}
         >
           <GroupTreeSelect
-            placeholder={`${t('common.selectMsg')}${t('common.group')}`}
+            placeholder={`${t("common.selectMsg")}${t("common.group")}`}
             multiple={true}
             mode="ownership"
           />
         </Form.Item>
-        <Form.Item name="desc" label={t('dataSource.describe')}>
+        <Form.Item name="desc" label={t("dataSource.describe")}>
           <Input.TextArea
             rows={3}
-            placeholder={`${t('common.inputMsg')} ${t('dataSource.describe')}`}
+            placeholder={`${t("common.inputMsg")} ${t("dataSource.describe")}`}
           />
         </Form.Item>
         {isRestApiSource && (
-          <Form.Item label={t('dataSource.connectionConfig')}>
+          <Form.Item label={t("dataSource.connectionConfig")}>
             <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-3 pb-0 pt-3">
               <div className="grid grid-cols-2 gap-x-3">
                 <Form.Item
-                  name={['connection_config', 'url']}
-                  label={t('dataSource.url')}
+                  name={["connection_config", "url"]}
+                  label={t("dataSource.url")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
-                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
                   <Input placeholder="https://example.com/api" />
                 </Form.Item>
                 <Form.Item
-                  name={['connection_config', 'method']}
-                  label={t('dataSource.method')}
+                  name={["connection_config", "method"]}
+                  label={t("dataSource.method")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
@@ -1428,24 +643,24 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 >
                   <Select
                     options={[
-                      { label: 'GET', value: 'GET' },
-                      { label: 'POST', value: 'POST' },
+                      { label: "GET", value: "GET" },
+                      { label: "POST", value: "POST" },
                     ]}
                   />
                 </Form.Item>
                 <Form.Item
-                  name={['connection_config', 'timeout']}
-                  label={t('dataSource.timeout')}
+                  name={["connection_config", "timeout"]}
+                  label={t("dataSource.timeout")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
                   initialValue={10}
                 >
-                  <InputNumber min={1} max={30} style={{ width: '100%' }} />
+                  <InputNumber min={1} max={30} style={{ width: "100%" }} />
                 </Form.Item>
                 <Form.Item
-                  name={['query_config', 'response_path']}
-                  label={t('dataSource.responsePath')}
+                  name={["query_config", "response_path"]}
+                  label={t("dataSource.responsePath")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
@@ -1454,17 +669,20 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 </Form.Item>
               </div>
               <Form.Item
-                name={['connection_config', 'headersText']}
-                label={t('dataSource.headers')}
+                name={["connection_config", "headersText"]}
+                label={t("dataSource.headers")}
                 labelCol={{ span: 24 }}
                 wrapperCol={{ span: 24 }}
                 className="!mb-2"
               >
-                <Input.TextArea rows={3} placeholder='{"Authorization":"Bearer ..."}' />
+                <Input.TextArea
+                  rows={3}
+                  placeholder='{"Authorization":"Bearer ..."}'
+                />
               </Form.Item>
               <Form.Item
-                name={['query_config', 'paramsText']}
-                label={t('dataSource.queryParams')}
+                name={["query_config", "paramsText"]}
+                label={t("dataSource.queryParams")}
                 labelCol={{ span: 24 }}
                 wrapperCol={{ span: 24 }}
                 className="!mb-2"
@@ -1472,8 +690,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 <Input.TextArea rows={3} placeholder='{"page":1}' />
               </Form.Item>
               <Form.Item
-                name={['query_config', 'bodyText']}
-                label={t('dataSource.requestBody')}
+                name={["query_config", "bodyText"]}
+                label={t("dataSource.requestBody")}
                 labelCol={{ span: 24 }}
                 wrapperCol={{ span: 24 }}
                 className="!mb-2"
@@ -1484,56 +702,56 @@ const OperateModal: React.FC<OperateModalProps> = ({
           </Form.Item>
         )}
         {isDatabaseSource && (
-          <Form.Item label={t('dataSource.connectionConfig')}>
+          <Form.Item label={t("dataSource.connectionConfig")}>
             <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-2)] px-3 pb-0 pt-3">
               <div className="grid grid-cols-2 gap-x-3">
                 <Form.Item
-                  name={['connection_config', 'host']}
-                  label={t('dataSource.host')}
+                  name={["connection_config", "host"]}
+                  label={t("dataSource.host")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
-                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
                   <Input placeholder="127.0.0.1" />
                 </Form.Item>
                 <Form.Item
-                  name={['connection_config', 'port']}
-                  label={t('dataSource.port')}
+                  name={["connection_config", "port"]}
+                  label={t("dataSource.port")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
-                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
-                  <InputNumber min={1} max={65535} style={{ width: '100%' }} />
+                  <InputNumber min={1} max={65535} style={{ width: "100%" }} />
                 </Form.Item>
                 <Form.Item
-                  name={['connection_config', 'database']}
-                  label={t('dataSource.database')}
+                  name={["connection_config", "database"]}
+                  label={t("dataSource.database")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
-                  rules={[{ required: true, message: t('common.inputMsg') }]}
-                >
-                  <Input />
-                </Form.Item>
-                <Form.Item
-                  name={['connection_config', 'username']}
-                  label={t('dataSource.username')}
-                  labelCol={{ span: 24 }}
-                  wrapperCol={{ span: 24 }}
-                  className="!mb-2"
-                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
                   <Input />
                 </Form.Item>
                 <Form.Item
-                  name={['connection_config', 'password']}
-                  label={t('dataSource.password')}
+                  name={["connection_config", "username"]}
+                  label={t("dataSource.username")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
-                  rules={[{ required: true, message: t('common.inputMsg') }]}
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
+                >
+                  <Input />
+                </Form.Item>
+                <Form.Item
+                  name={["connection_config", "password"]}
+                  label={t("dataSource.password")}
+                  labelCol={{ span: 24 }}
+                  wrapperCol={{ span: 24 }}
+                  className="!mb-2"
+                  rules={[{ required: true, message: t("common.inputMsg") }]}
                 >
                   <Input.Password
                     autoComplete="new-password"
@@ -1542,8 +760,8 @@ const OperateModal: React.FC<OperateModalProps> = ({
                   />
                 </Form.Item>
                 <Form.Item
-                  name={['query_config', 'table']}
-                  label={t('dataSource.tableName')}
+                  name={["query_config", "table"]}
+                  label={t("dataSource.tableName")}
                   labelCol={{ span: 24 }}
                   wrapperCol={{ span: 24 }}
                   className="!mb-2"
@@ -1552,19 +770,22 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 </Form.Item>
               </div>
               <Form.Item
-                name={['query_config', 'sql']}
-                label={t('dataSource.sql')}
+                name={["query_config", "sql"]}
+                label={t("dataSource.sql")}
                 labelCol={{ span: 24 }}
                 wrapperCol={{ span: 24 }}
                 className="!mb-2"
               >
-                <Input.TextArea rows={3} placeholder="SELECT * FROM table_name" />
+                <Input.TextArea
+                  rows={3}
+                  placeholder="SELECT * FROM table_name"
+                />
               </Form.Item>
             </div>
           </Form.Item>
         )}
         {isExcelSource && (
-          <Form.Item label={t('dataSource.excelImport')}>
+          <Form.Item label={t("dataSource.excelImport")}>
             <div>
               <Upload
                 accept=".xlsx"
@@ -1585,182 +806,33 @@ const OperateModal: React.FC<OperateModalProps> = ({
                 fileList={excelFileList}
               >
                 <Button icon={<UploadOutlined />}>
-                  {t('dataSource.selectExcelFile')}
+                  {t("dataSource.selectExcelFile")}
                 </Button>
               </Upload>
             </div>
           </Form.Item>
         )}
         {!isNatsSource && (
-          <div style={{ margin: '24px 0 0 42px' }}>
-            <div
-              style={{
-                marginBottom: 8,
-                color: 'var(--color-text-1)',
-                fontSize: 14,
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span>{t('dataSource.previewData')}：</span>
-              <div>
-                {previewData?.fields?.length ? (
-                  <Button
-                    type="link"
-                    size="small"
-                    onClick={handleApplyPreviewFields}
-                    style={{ paddingInline: 4 }}
-                  >
-                    {t('dataSource.applyPreviewFields')}
-                  </Button>
-                ) : null}
-                <Button
-                  type="primary"
-                  size="small"
-                  loading={previewLoading}
-                  onClick={handlePreview}
-                  style={{ marginLeft: 10 }}
-                >
-                  {t('dataSource.samplePreview')}
-                </Button>
-              </div>
-            </div>
-            {previewData?.items?.length ? (
-              <CustomTable
-                rowKey={(_, index) => String(index)}
-                columns={previewColumns}
-                dataSource={previewData.items}
-                pagination={false}
-                scroll={{ x: 'max-content', y: 240 }}
-                size="small"
-              />
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t('common.noData')}
-              />
-            )}
-          </div>
+          <PreviewPanel
+            previewData={previewData}
+            previewLoading={previewLoading}
+            onPreview={handlePreview}
+            onApplyPreviewFields={handleApplyPreviewFields}
+          />
         )}
         {isNatsSource && (
-          <div style={{ margin: '0 0 0 42px' }}>
-            <div
-              style={{
-                marginBottom: '8px',
-                color: 'var(--color-text-1)',
-                fontSize: '14px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span>{t('dataSource.params')}：</span>
-              <Button
-                type="dashed"
-                size="small"
-                icon={<PlusCircleOutlined />}
-                onClick={() => setParams([...params, createDefaultParam()])}
-              >
-                {t('dataSource.addParam')}
-              </Button>
-            </div>
-            {params.length > 0 ? (
-              <CustomTable
-                rowKey="id"
-                columns={columns}
-                dataSource={params}
-                pagination={false}
-              />
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t('common.noData')}
-              />
-            )}
-            {duplicateNames.length > 0 && (
-              <div
-                style={{
-                  color: 'var(--color-fail)',
-                  fontSize: '12px',
-                  marginTop: '2px',
-                  padding: '2px 8px',
-                }}
-              >
-                {t('dataSource.duplicateParamNames')}
-                {duplicateNames.join('、')}
-              </div>
-            )}
-          </div>
+          <ParamTable
+            ref={paramTableRef}
+            params={params}
+            onChange={setParams}
+          />
         )}
         {showSchemaConfig && (
-          <div style={{ margin: '24px 0 0 42px' }}>
-            <div
-              style={{
-                marginBottom: '8px',
-                color: 'var(--color-text-1)',
-                fontSize: '14px',
-                display: 'flex',
-                justifyContent: 'space-between',
-                alignItems: 'center',
-              }}
-            >
-              <span
-                style={{ display: 'inline-flex', alignItems: 'center', gap: 6 }}
-              >
-                <span>{t('dataSource.responseFieldSchemaConfig')}</span>
-                <Tooltip title={t('dataSource.schemaOptionalAutoGenTip')}>
-                  <QuestionCircleOutlined
-                    style={{ color: 'var(--color-text-3)', fontSize: 14 }}
-                  />
-                </Tooltip>
-              </span>
-              <Button
-                type="dashed"
-                size="small"
-                icon={<PlusCircleOutlined />}
-                onClick={() =>
-                  setSchemaFields([...schemaFields, createDefaultSchemaField()])
-                }
-              >
-                {t('dataSource.addField')}
-              </Button>
-            </div>
-            {schemaFields.length > 0 ? (
-              <CustomTable
-                rowKey="id"
-                columns={schemaFieldColumns}
-                dataSource={schemaFields}
-                pagination={false}
-                rowDraggable
-                onRowDragEnd={(targetTableData) =>
-                  handleSchemaFieldDragEnd(
-                    (targetTableData || []) as (ResponseFieldDefinition & {
-                      id: string;
-                    })[],
-                  )
-                }
-              />
-            ) : (
-              <Empty
-                image={Empty.PRESENTED_IMAGE_SIMPLE}
-                description={t('common.noData')}
-              />
-            )}
-            {duplicateFieldKeys.length > 0 && (
-              <div
-                style={{
-                  color: 'var(--color-fail)',
-                  fontSize: '12px',
-                  marginTop: '2px',
-                  padding: '2px 8px',
-                }}
-              >
-                {t('dataSource.duplicateFieldKeys')}
-                {duplicateFieldKeys.join('、')}
-              </div>
-            )}
-          </div>
+          <FieldSchemaTable
+            ref={fieldSchemaTableRef}
+            schemaFields={schemaFields}
+            onChange={setSchemaFields}
+          />
         )}
       </Form>
     </Drawer>

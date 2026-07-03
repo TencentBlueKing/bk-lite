@@ -65,7 +65,8 @@ export const useWirelessConfig = () => {
       'Wireless Mimosa SNMP': 'snmp_mimosa',
       'Wireless Airspan SNMP': 'snmp_airspan',
       'Wireless ACKSYS SNMP': 'snmp_acksys',
-      'Wireless ProSoft Technology SNMP': 'snmp_prosoft'
+      'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
+      'Wireless Xirrus SNMP': 'snmp_xirrus'
     }
   };
 };

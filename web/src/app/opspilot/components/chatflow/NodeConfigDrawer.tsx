@@ -50,7 +50,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
   // 状态管理
   const [frequency, setFrequency] = useState('daily');
   const [uploadedFiles, setUploadedFiles] = useState<UploadFile[]>([]);
-  const [notificationType, setNotificationType] = useState<'email' | 'enterprise_wechat_bot'>('email');
+  const [notificationType, setNotificationType] = useState<string>('email');
 
   // 使用自定义 Hooks
   const {
@@ -122,14 +122,14 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         loadSkills();
       }
 
-      // 加载模型列表（意图分类节点、记忆写入节点）
-      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write') {
+      // 加载模型列表（意图分类节点、记忆写入节点、通知节点邮件优化）
+      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write' || node.data.type === 'notification') {
         loadLlmModels();
       }
 
       // 加载通知渠道和用户
       if (node.data.type === 'notification') {
-        const type = (config.notificationType || 'email') as 'email' | 'enterprise_wechat_bot';
+        const type = config.notificationType || 'email';
         setNotificationType(type);
         loadChannels(type);
         loadUsers();
