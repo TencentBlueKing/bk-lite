@@ -3963,7 +3963,7 @@ monitor_object_plugin:
     desc: Casa Systems CMTS 与宽带接入设备 SNMP 基线子模板。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；当前公开 OID 线索仅确认 Casa 企业根、casaMgmt 子树和 casaModuleCpuMemMib 模块方向，尚未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康叶子 OID 或枚举语义，因此不提升为共享设备健康指标。
   Access Topvision SNMP:
     name: Topvision（Telegraf）
-    desc: Topvision（Sumavision 数码视讯）CMTS 与 DOCSIS 接入设备 SNMP 基线子模板（企业号 PEN 32285）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；公开 OID 线索确认 Sumavision 企业根、LibreNMS Topvision OS class 与真实 sysObjectID，但 LibreNMS Topvision.php 仅采集 HM800 RAID 借用表（Hitachi RAID MIB，与 CMTS 语义错位，不采）与少量 scalar 资产信息，未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康叶子 OID，因此不提升为共享设备健康指标。DOCS-IF-MIB 上行信道/SNR 等公共对象走通用 Access 共享盘。适用品牌型号——Topvision（Sumavision 数码视讯）CC8800D-E 等 CMTS 设备及其余 IF-MIB 标准 DOCSIS 接入设备。
+    desc: Topvision（Sumavision 数码视讯）CMTS 与 DOCSIS 接入设备 SNMP 基线子模板（企业号 PEN 32285）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；公开 OID 线索确认 Sumavision 企业根、Topvision 公开 OS class 注册与真实 sysObjectID，但 Topvision 公开处理程序仅采集 HM800 RAID 借用表（Hitachi RAID MIB，与 CMTS 语义错位，不采）与少量 scalar 资产信息，未证明稳定的私有 CPU、内存、温度、风扇、电源共享健康叶子 OID，因此不提升为共享设备健康指标。DOCS-IF-MIB 上行信道/SNR 等公共对象走通用 Access 共享盘。适用品牌型号——Topvision（Sumavision 数码视讯）CC8800D-E 等 CMTS 设备及其余 IF-MIB 标准 DOCSIS 接入设备。
   Access Nateks SNMP:
     name: Nateks（Telegraf）
     desc: Nateks Megatrans/Orion 接入设备 SNMP 子模板（企业号 PEN 4249）。通用 Access SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；本模板额外采集 NATEKS-MIB 温度传感器值（1/1000 摄氏度归一为摄氏度）与本地电源可用性状态。CPU、内存、风扇、SFP DDM、数字输入输出、告警与 TLM 表属于未确认共享健康或业务/端口对象，不提升为共享设备健康指标。
