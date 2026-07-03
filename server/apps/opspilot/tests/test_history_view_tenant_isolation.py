@@ -22,8 +22,6 @@ pytestmark = pytest.mark.django_db
 
 def _make_request(request_factory, body, current_team, user=None):
     """Build a POST request with cookies for current_team."""
-    from django.test import RequestFactory
-
     req = request_factory.post(
         "/api/v1/opspilot/bot_mgmt/history/get_log_detail/",
         data=json.dumps(body),
@@ -43,6 +41,21 @@ def _make_request(request_factory, body, current_team, user=None):
     req.user = user
     return req
 
+
+def _make_get_request(request_factory, params, current_team, user=None):
+    """Build a GET request with cookies for current_team."""
+    req = request_factory.get(
+        "/api/v1/opspilot/bot_mgmt/history/get_tag_detail/",
+        data=params,
+    )
+    req.COOKIES["current_team"] = str(current_team)
+    if user is None:
+        user = MagicMock()
+        user.is_superuser = False
+        user.group_list = [{"id": current_team}]
+        user.permission = {"opspilot": {"bot_conversation_log-View"}}
+    req.user = user
+    return req
 
 
 class TestGetLogDetailTenantIsolation:
@@ -137,3 +150,82 @@ class TestGetLogDetailTenantIsolation:
 
         with pytest.raises(PermissionDenied):
             viewset.get_log_detail(request)
+
+
+class TestGetTagDetailTenantIsolation:
+    """get_tag_detail 必须按 ConversationTag.answer.bot.team 做租户隔离（Issue #3438）。"""
+
+    def _make_bot(self, team_ids):
+        from apps.opspilot.models import Bot
+
+        return Bot.objects.create(name=f"bot-{team_ids}", team=team_ids, usage_team=team_ids)
+
+    def _make_history(self, bot, role, text):
+        from apps.opspilot.models import BotConversationHistory
+
+        return BotConversationHistory.objects.create(bot=bot, conversation_role=role, conversation=text)
+
+    def _make_tag(self, history, question, content, knowledge_base_id=10):
+        from apps.opspilot.models import ConversationTag
+
+        return ConversationTag.objects.create(
+            answer=history,
+            question=question,
+            content=content,
+            knowledge_base_id=knowledge_base_id,
+            knowledge_document_id=20,
+        )
+
+    def test_cross_tenant_tag_returns_404(self, request_factory):
+        """team=1 用户用其他租户 tag_id 查询时，必须 404 且不泄漏标注内容。"""
+        from django.http import Http404
+
+        from apps.opspilot.viewsets.history_view import HistoryViewSet
+
+        other_bot = self._make_bot([2])
+        answer = self._make_history(other_bot, "bot", "secret answer")
+        tag = self._make_tag(answer, "secret question", "secret content")
+
+        request = _make_get_request(request_factory, params={"tag_id": tag.id}, current_team=1)
+        viewset = HistoryViewSet()
+        viewset.format_kwarg = None
+
+        with pytest.raises(Http404):
+            viewset.get_tag_detail(request)
+
+    def test_same_tenant_tag_is_returned(self, request_factory):
+        """team=1 用户查询本租户 tag_id 时，正常返回标注详情。"""
+        from apps.opspilot.viewsets.history_view import HistoryViewSet
+
+        my_bot = self._make_bot([1])
+        answer = self._make_history(my_bot, "bot", "answer")
+        tag = self._make_tag(answer, "question", "content", knowledge_base_id=99)
+
+        request = _make_get_request(request_factory, params={"tag_id": tag.id}, current_team=1)
+        viewset = HistoryViewSet()
+        viewset.format_kwarg = None
+
+        response = viewset.get_tag_detail(request)
+        data = json.loads(response.content)
+
+        assert data == {
+            "result": True,
+            "data": {
+                "knowledge_base_id": 99,
+                "content": "content",
+                "question": "question",
+            },
+        }
+
+    def test_unknown_tag_returns_404(self, request_factory):
+        """不存在的 tag_id 和非本租户 tag_id 一样返回 404，避免存在性枚举。"""
+        from django.http import Http404
+
+        from apps.opspilot.viewsets.history_view import HistoryViewSet
+
+        request = _make_get_request(request_factory, params={"tag_id": 999999}, current_team=1)
+        viewset = HistoryViewSet()
+        viewset.format_kwarg = None
+
+        with pytest.raises(Http404):
+            viewset.get_tag_detail(request)
