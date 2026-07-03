@@ -91,9 +91,13 @@ export interface WechatOfficialNodeConfig extends BaseNodeConfig {
 
 /** 通知节点配置 */
 export interface NotificationNodeConfig extends BaseNodeConfig {
-  notificationType: 'email' | 'wechat_bot';
+  notificationType: 'email' | 'enterprise_wechat_bot' | 'feishu_bot' | 'dingtalk_bot' | 'custom_webhook';
   notificationMethod: string;
   notificationChannels: Array<{ id: string; name: string }>;
+  notificationRecipients?: Array<string | number>;
+  notificationTitle?: string;
+  notificationContent?: string;
+  llmOptimizeModel?: number;
 }
 
 /** Web Chat 节点配置 */
