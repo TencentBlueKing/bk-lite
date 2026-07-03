@@ -27,6 +27,7 @@ from apps.cmdb.services.application_resource_overview import ApplicationResource
 from apps.cmdb.serializers.application_resource_overview import (
     ApplicationResourceTopologyQuerySerializer,
     ApplicationResourceEntrySerializer,
+    ApplicationResourceNodeIdsSerializer,
 )
 from apps.cmdb.utils.permission_util import CmdbRulesFormatUtil
 from apps.cmdb.views.mixins import CmdbPermissionMixin
@@ -1079,6 +1080,67 @@ class InstanceViewSet(CmdbPermissionMixin, viewsets.ViewSet):
             user=request.user,
         )
         return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"application_resource_instances/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def application_resource_instances(self, request, model_id: str, inst_id: int):
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        serializer = ApplicationResourceNodeIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        result = ApplicationResourceOverviewService.build_topology_instance_groups(
+            node_ids=serializer.validated_data["node_ids"],
+            permission_map=permissions_map,
+            user=request.user,
+        )
+        return WebUtils.response_success(result)
+
+    @action(
+        detail=False,
+        methods=["post"],
+        url_path=r"application_resource_export/(?P<model_id>.+?)/(?P<inst_id>.+?)",
+    )
+    @HasPermission("asset_info-View")
+    def application_resource_export(self, request, model_id: str, inst_id: int):
+        instance = InstanceManage.query_entity_by_id(int(inst_id))
+        if not instance:
+            return WebUtils.response_error("实例不存在", status_code=status.HTTP_404_NOT_FOUND)
+
+        permission_error = self.require_instance_permission(request, instance, operator=VIEW)
+        if permission_error:
+            return permission_error
+
+        serializer = ApplicationResourceNodeIdsSerializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+
+        permissions_map = CmdbRulesFormatUtil.format_user_groups_permissions(
+            request=request, model_id=instance["model_id"]
+        )
+        content = ApplicationResourceOverviewService.export_topology_instance_groups_excel(
+            node_ids=serializer.validated_data["node_ids"],
+            permission_map=permissions_map,
+            user=request.user,
+        )
+        response = HttpResponse(
+            content,
+            content_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        )
+        response["Content-Disposition"] = 'attachment; filename="application_topology_instances.xlsx"'
+        return response
 
     @action(detail=False, methods=["get"], url_path=r"ipam_view/(?P<inst_id>.+?)")
     def ipam_view(self, request, inst_id: str):
