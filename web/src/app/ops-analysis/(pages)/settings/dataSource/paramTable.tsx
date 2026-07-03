@@ -215,9 +215,9 @@ const ParamTable = React.forwardRef<ParamTableRef, ParamTableProps>(
         params.map((item) =>
           item.id === id
             ? {
-                ...item,
-                name: val,
-              }
+              ...item,
+              name: val,
+            }
             : item,
         ),
       );
