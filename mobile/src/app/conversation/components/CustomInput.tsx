@@ -87,10 +87,17 @@ export const CustomInput: React.FC<CustomInputProps> = ({
         return map.get(file)!;
     };
 
+    // lgtm[js/xss-through-dom] Object URLs are generated locally from File objects and constrained to the blob: scheme.
+    const getSafeImageBlobUrl = (file: File): string | undefined => {
+        const url = getFileBlobUrl(file);
+        return url.startsWith('blob:') ? url : undefined;
+    };
+
     // 处理图片点击预览
     const handleImagePreview = (file: File, e: React.MouseEvent) => {
         e.stopPropagation();
-        const imageUrl = getFileBlobUrl(file);
+        const imageUrl = getSafeImageBlobUrl(file);
+        if (!imageUrl) return;
         setCurrentPreviewImage(imageUrl);
         setImageViewerVisible(true);
     };
@@ -489,12 +496,15 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                             >
                                 <div className="w-full h-full relative border border-[var(--color-border)] rounded-lg overflow-hidden">
                                     {file.type.startsWith('image/') ? (
-                                        <img
-                                            src={getFileBlobUrl(file)}
-                                            alt={file.name}
-                                            className="w-full h-full object-cover cursor-pointer"
+                                        <button
+                                            type="button"
+                                            aria-label={file.name}
+                                            className="w-full h-full flex flex-col items-center justify-center gap-1 p-2 cursor-pointer bg-[var(--color-fill-1)]"
                                             onClick={(e) => handleImagePreview(file, e)}
-                                        />
+                                        >
+                                            <span className="iconfont icon-tupian1 text-2xl text-[var(--color-text-2)]"></span>
+                                            <span className="text-[var(--color-text-3)] text-xs">{getFileExtension(file.name)}</span>
+                                        </button>
                                     ) : (
                                         <div className="w-full h-full flex items-center gap-2 p-2">
                                             {(() => {
