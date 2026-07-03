@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Icotera">
+  <rect width="1024" height="1024" rx="112" fill="#0B3B5C"/>
+  <circle cx="512" cy="420" r="190" fill="none" stroke="#7DD3FC" stroke-width="46"/>
+  <circle cx="512" cy="420" r="92" fill="#7DD3FC"/>
+  <path d="M180 660 L512 540 L844 660" stroke="#22C55E" stroke-width="46" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M280 770 L512 660 L744 770" stroke="#F59E0B" stroke-width="42" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M380 870 L512 780 L644 870" stroke="#F8FAFC" stroke-width="38" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>
