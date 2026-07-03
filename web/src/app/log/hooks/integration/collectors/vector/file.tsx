@@ -2,7 +2,10 @@ import React from 'react';
 import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
 import { useFileVectorFormItems } from '../../common/fileVectorFormItems';
-import { cloneDeep } from 'lodash';
+import {
+  getVectorFileDefaultForm,
+  getVectorFileParams
+} from './fileDefaults';
 
 export const useVectorConfig = () => {
   const commonFormItems = useFileVectorFormItems();
@@ -49,10 +52,11 @@ export const useVectorConfig = () => {
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
-            const dataSource = cloneDeep(config.dataSource || []);
-            const formDataCopy = cloneDeep(row);
+            // auto 模式保留旧实现：它构造的是一个数组项（configs: [content]），
+            // 与 edit 模式的 child.content 结构不同，不复用 getVectorFileParams。
+            const dataSource = config.dataSource || [];
+            const formDataCopy = { ...row };
 
-            // 构建 content
             const content: Record<string, unknown> = {
               include: formDataCopy.include || [],
               exclude: formDataCopy.exclude || [],
@@ -61,12 +65,10 @@ export const useVectorConfig = () => {
               encoding_charset: formDataCopy.encoding_charset
             };
 
-            // 处理 parser_type
             if (formDataCopy.parser_type) {
               content.parser_type = formDataCopy.parser_type;
             }
 
-            // 处理 multiline
             if (formDataCopy.multiline?.enabled) {
               content.multiline = {
                 condition_pattern: formDataCopy.multiline.condition_pattern,
@@ -91,66 +93,9 @@ export const useVectorConfig = () => {
         },
         edit: {
           formItems,
-          getDefaultForm: (formData: TableDataItem) => {
-            const content = formData?.child?.content || {};
-
-            // Vector 的数据结构: content.sources.file_xxx
-            const sources = content.sources || {};
-            const sourceKey =
-              Object.keys(sources).find((key) => key.startsWith('file_')) || '';
-            const sourceData = sources[sourceKey] || {};
-
-            return {
-              include: sourceData.include || [],
-              exclude: sourceData.exclude || [],
-              read_from: sourceData.read_from || 'beginning',
-              ignore_older_secs: sourceData.ignore_older_secs || 86400,
-              encoding_charset: sourceData.encoding_charset || 'utf-8',
-              parser_type: sourceData.parser_type || '',
-              multiline: {
-                enabled: !!sourceData.multiline?.mode,
-                mode: sourceData.multiline?.mode || 'continue_through',
-                start_pattern: sourceData.multiline?.start_pattern || '',
-                timeout_ms: sourceData.multiline?.timeout_ms || 1000,
-                condition_pattern: sourceData.multiline?.condition_pattern || ''
-              }
-            };
-          },
-          getParams: (formData: TableDataItem, configForm: TableDataItem) => {
-            const originalChild = cloneDeep(configForm?.child || {});
-            const formDataCopy = cloneDeep(formData);
-
-            // 构建 content 对象
-            const content: Record<string, unknown> = {
-              include: formDataCopy.include || [],
-              exclude: formDataCopy.exclude || [],
-              read_from: formDataCopy.read_from,
-              ignore_older_secs: formDataCopy.ignore_older_secs,
-              encoding_charset: formDataCopy.encoding_charset
-            };
-
-            // 处理 parser_type
-            if (formDataCopy.parser_type) {
-              content.parser_type = formDataCopy.parser_type;
-            }
-
-            // 处理 multiline
-            if (formDataCopy.multiline?.enabled) {
-              content.multiline = {
-                condition_pattern: formDataCopy.multiline.condition_pattern,
-                mode: formDataCopy.multiline.mode,
-                start_pattern: formDataCopy.multiline.start_pattern,
-                timeout_ms: formDataCopy.multiline.timeout_ms
-              };
-            }
-
-            return {
-              child: {
-                ...originalChild,
-                content
-              }
-            };
-          }
+          // 从 ./fileDefaults 导入的纯函数 —— 与 getVectorFileParams 写入结构一致
+          getDefaultForm: getVectorFileDefaultForm,
+          getParams: getVectorFileParams
         },
         manual: {
           defaultForm: {},
