@@ -3,9 +3,6 @@
 nats handler 直接可调用（@nats_client.register 返回原函数）。
 只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
 """
-import types
-from unittest.mock import MagicMock, patch
-
 import nats_client
 import pytest
 
@@ -17,7 +14,6 @@ from apps.system_mgmt.models import (
     GroupDataRule,
     Menu,
     Role,
-    SystemSettings,
     User,
 )
 from apps.system_mgmt.models.channel import ChannelChoices
@@ -153,7 +149,7 @@ def test_get_client_superuser_sees_all():
 
 
 def test_get_client_detail_found_and_missing():
-    app = App.objects.create(name="dc", display_name="DC", description="d", description_cn="中文", url="/dc")
+    App.objects.create(name="dc", display_name="DC", description="d", description_cn="中文", url="/dc")
     ok = nats_api.get_client_detail("dc")
     assert ok["result"] is True
     assert ok["data"]["name"] == "dc"
