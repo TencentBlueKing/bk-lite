@@ -47,27 +47,33 @@ def test_validate_selected_groups_accepts_selection_with_normal_group():
 
 @pytest.mark.django_db
 def test_system_mgmt_exports_provider_and_integration_instance_models():
-    from apps.system_mgmt.models import IntegrationInstance, Provider
+    from apps.system_mgmt.models import IntegrationInstance
+    from apps.system_mgmt.providers import get_provider_registry
+    from apps.system_mgmt.providers.registry import ProviderRegistry
 
-    assert Provider._meta.model_name == "provider"
+    assert isinstance(get_provider_registry(), ProviderRegistry)
     assert IntegrationInstance._meta.model_name == "integrationinstance"
 
 
 @pytest.mark.django_db
-def test_integration_instance_encrypts_shared_app_secret():
-    from apps.system_mgmt.models import IntegrationInstance, Provider
+def test_integration_instance_encrypts_config_secret_field_roundtrip():
+    """IntegrationInstance 通过 EncryptMixin 手动加密 config 中的 secret 字段。
 
-    provider = Provider.objects.create(
-        provider_key="feishu",
-        display_name="Feishu",
-        capabilities=["login_auth", "user_sync", "im_notification"],
-        manifest={},
-    )
+    Provider 在 feature-lz 重构后不再是 Django Model,而是 ProviderRegistry
+    注册表;IntegrationInstance 的 config 字段不再由 ORM 自动加密,
+    而是由调用方在写入前调用 encrypt_field,读取时调用 decrypt_field。
+    这里验证 encrypt/decrypt 是互逆的、且加密后密文不再等于明文。
+    """
+    from apps.system_mgmt.models import IntegrationInstance
 
-    instance = IntegrationInstance.objects.create(
-        provider=provider,
-        name="feishu-default",
-        config={"app_secret": "plain-secret", "tenant_key": "tenant-key"},
-    )
+    instance = IntegrationInstance(provider_key="feishu", config={})
+    config = {"app_secret": "plain-secret", "tenant_key": "tenant-key"}
 
-    assert instance.config["app_secret"] != "plain-secret"
+    instance.encrypt_field("app_secret", config)
+
+    assert config["app_secret"] != "plain-secret"
+    assert config["tenant_key"] == "tenant-key"
+
+    instance.decrypt_field("app_secret", config)
+
+    assert config["app_secret"] == "plain-secret"
