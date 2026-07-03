@@ -227,6 +227,90 @@
     "attemptsRemaining": "Remaining attempts: {remaining}",
     "verifyCodeSuccess": "Email verification successful, click the 'Save' button at the bottom of the page to save changes"
   },
+  "signin": {
+    "errors": {
+      "default": "Unable to sign in.",
+      "signin": "Try signing in with a different account.",
+      "oauthSignin": "Try signing in with a different account.",
+      "oauthCallbackError": "Try signing in with a different account.",
+      "oauthCreateAccount": "Try signing in with a different account.",
+      "emailCreateAccount": "Try signing in with a different account.",
+      "callback": "Try signing in with a different account.",
+      "oauthAccountNotLinked": "To confirm your identity, sign in with the same account you used originally.",
+      "sessionRequired": "Please sign in to access this page.",
+      "popupBlocked": "Unable to open login popup. Please allow popups and try again.",
+      "loginFailed": "Login failed",
+      "loginError": "An error occurred during login",
+      "authenticationFailed": "Authentication failed",
+      "wechatUnavailable": "WeChat login is not available.",
+      "passwordMismatch": "Passwords do not match",
+      "passwordTooShort": "Password must be at least 8 characters long",
+      "passwordResetFailed": "Password reset failed",
+      "unknown": "An unknown error occurred",
+      "otpRequired": "Please enter the OTP code",
+      "invalidSession": "Invalid session. Please try logging in again.",
+      "invalidOtp": "Invalid OTP code",
+      "otpVerifyFailed": "Failed to verify OTP code"
+    },
+    "form": {
+      "domain": "Domain",
+      "loadingDomains": "Loading domains...",
+      "selectDomain": "Select a domain",
+      "loading": "Loading...",
+      "noDomains": "No domains available",
+      "username": "Username",
+      "usernamePlaceholder": "Enter your username",
+      "password": "Password",
+      "passwordPlaceholder": "Enter your password",
+      "signingIn": "Signing in...",
+      "signIn": "Sign In"
+    },
+    "pageTitle": {
+      "login": "Sign In",
+      "resetPassword": "Reset Password",
+      "otpVerification": "Verify Identity"
+    },
+    "pageDescription": {
+      "login": "Enter your credentials to continue",
+      "resetPassword": "Create a new password to secure your account",
+      "otpVerification": "Complete the verification process"
+    },
+    "passwordReset": {
+      "title": "Reset",
+      "description": "You are using a temporary password. Please create a new password to continue.",
+      "newPassword": "New Password",
+      "newPasswordPlaceholder": "Enter new password",
+      "confirmPassword": "Confirm Password",
+      "confirmPasswordPlaceholder": "Confirm new password",
+      "submit": "Reset Password"
+    },
+    "otp": {
+      "title": "OTP Verification",
+      "description": "Please enter the verification code to complete your login.",
+      "installAppsStep": "1. Install one of the following apps on your device:",
+      "scanQrStep": "2. Scan the QR code with your authenticator app:",
+      "qrAlt": "QR Code",
+      "verificationCode": "Verification Code",
+      "codePlaceholder": "Enter 6-digit code",
+      "verifying": "Verifying...",
+      "verifyCode": "Verify Code"
+    },
+    "thirdParty": {
+      "orContinueWith": "Or continue with",
+      "wechat": "Sign in with WeChat",
+      "blueking": "Sign in with BlueKing",
+      "wechatBrowserTip": "You are using WeChat browser, for best experience use the WeChat login.",
+      "wechatScanTitle": "Scan with WeChat to sign in",
+      "back": "Back"
+    },
+    "wechatQr": {
+      "unavailable": "WeChat login is not available.",
+      "settingsFailed": "Failed to load WeChat login settings",
+      "qrLoadFailed": "Failed to load WeChat QR code",
+      "loading": "Loading QR code...",
+      "unableToDisplay": "Unable to display QR code"
+    }
+  },
   "system": {
     "zoneinfo": {
       "PacificHonolulu": "Pacific/Honolulu (UTC-10)",

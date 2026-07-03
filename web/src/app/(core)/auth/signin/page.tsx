@@ -7,15 +7,15 @@ import { buildThirdLoginCallbackUrl, resolveThirdLoginFlag } from "@/utils/authR
 import PopupAuthBridge from "./PopupAuthBridge";
 
 const signinErrors: Record<string | "default", string> = {
-  default: "Unable to sign in.",
-  signin: "Try signing in with a different account.",
-  oauthsignin: "Try signing in with a different account.",
-  oauthcallbackerror: "Try signing in with a different account.",
-  oauthcreateaccount: "Try signing in with a different account.",
-  emailcreateaccount: "Try signing in with a different account.",
-  callback: "Try signing in with a different account.",
-  oauthaccountnotlinked: "To confirm your identity, sign in with the same account you used originally.",
-  sessionrequired: "Please sign in to access this page.",
+  default: "signin.errors.default",
+  signin: "signin.errors.signin",
+  oauthsignin: "signin.errors.oauthSignin",
+  oauthcallbackerror: "signin.errors.oauthCallbackError",
+  oauthcreateaccount: "signin.errors.oauthCreateAccount",
+  emailcreateaccount: "signin.errors.emailCreateAccount",
+  callback: "signin.errors.callback",
+  oauthaccountnotlinked: "signin.errors.oauthAccountNotLinked",
+  sessionrequired: "signin.errors.sessionRequired",
 };
 
 interface SignInPageProp {
