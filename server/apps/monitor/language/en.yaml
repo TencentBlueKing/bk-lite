@@ -4196,6 +4196,9 @@ monitor_object_plugin:
   Wireless ACKSYS SNMP:
     name: ACKSYS (Telegraf)
     desc: ACKSYS AirLink and WaveOS industrial wireless SNMP baseline child template. This child template relies on the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the AirLink industrial wireless product surface, SNMP v1/v2c/v3 management and an official MIB download surface, but do not prove stable shared CPU, memory, temperature, fan, power or RF-health leaf OIDs, so private wireless business objects are not promoted into shared device-health metrics.
+  Wireless Xirrus SNMP:
+    name: Xirrus (Telegraf)
+    desc: Xirrus enterprise Wi-Fi array SNMP baseline child template for devices under Xirrus PEN 21013. This child template relies on the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. LibreNMS lists XirrusAos as an official OS class with a public XIRRUS-MIB raw file, and the Xirrus enterprise root PEN 21013 with oid-base products subtree 1.3.6.1.4.1.21013.1 is confirmed. This workspace has not added stable shared CPU, memory, temperature, fan, power or RF-health leaf OIDs, so private wireless business objects are not promoted into shared device-health metrics.
   Wireless ProSoft Technology SNMP:
     name: ProSoft Technology (Telegraf)
     desc: ProSoft Technology RadioLinx / RLX industrial wireless and ICX cellular gateway SNMP baseline child template. This child template relies on the shared Wireless SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the industrial wireless product surface and official MIB download surface, but do not prove stable shared CPU, memory, temperature, fan, power or RF-health leaf OIDs, so private wireless business objects are not promoted into shared device-health metrics.

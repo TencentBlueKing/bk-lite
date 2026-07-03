@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_xirrus",
+  "plugin": "Wireless Xirrus SNMP",
+  "plugin_desc": "Xirrus enterprise Wi-Fi array SNMP baseline collection for devices under Xirrus PEN 21013. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. No stable public private device-health leaf OIDs are collected in this pass.",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_xirrus'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}
