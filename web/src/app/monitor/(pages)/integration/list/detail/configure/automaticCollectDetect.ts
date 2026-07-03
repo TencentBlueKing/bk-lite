@@ -70,3 +70,23 @@ export const getCollectDetectResultPresentation = (
     titleKey: 'monitor.integrations.collectDetectRunning',
   };
 };
+
+export type CollectDetectMode = 'single' | 'batch';
+
+/**
+ * 测试完成时是否自动弹出结果窗口的策略。
+ *
+ * 产品决策（2026-07-XX）：测试完成后不主动弹窗，由用户点击列表里的状态标签自行查看。
+ * 启动时的 toast 提示（"批量测试已启动 N 条"）保留，因为它属于开始反馈，不算完成态。
+ *
+ * 拆为独立函数而非内联常量，便于后续产品调整策略时只改一处。
+ */
+export const shouldAutoShowCollectDetectResultOnComplete = (
+  mode: CollectDetectMode
+): boolean => {
+  switch (mode) {
+    case 'single':
+    case 'batch':
+      return false;
+  }
+};
