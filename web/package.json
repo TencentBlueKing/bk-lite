@@ -19,6 +19,7 @@
     "test:log-group-field-bootstrap": "pnpm exec tsx scripts/log-group-field-bootstrap-test.ts",
     "test:log-terminal-token": "pnpm exec tsx scripts/log-terminal-token-test.ts",
     "test:log-policy-form": "pnpm exec tsx scripts/log-policy-form-state-test.ts",
+    "test:log-vector-config": "pnpm exec tsx scripts/log-vector-config-test.ts",
     "test:monitor-search-plugin-scope": "pnpm exec tsx scripts/monitor-search-plugin-scope-test.ts",
     "test:monitor-query-step": "pnpm exec tsx scripts/monitor-query-step-test.ts",
     "test:monitor-strategy-aggregation-designer": "pnpm exec tsx scripts/monitor-strategy-aggregation-designer-story-test.ts",
