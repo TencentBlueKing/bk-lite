@@ -19,6 +19,7 @@ from apps.monitor.models.plugin import MonitorPlugin
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.display_fields_metrics import (
     display_field_key,
+    extract_field_bindings,
     extract_metric_bindings,
 )
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
@@ -183,7 +184,7 @@ class MonitorObjectService:
 
     @staticmethod
     def _query_metric_values(metric_obj, target_instances):
-        """对 target_instances 跑该指标的 VM 查询,返回 {instance_id: value}(同实例多值取最大)。"""
+        """对 target_instances 跑该指标的 VM 查询,返回 {instance_id: value}。"""
         target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
         query_parts = []
         for i, key in enumerate(metric_obj.instance_id_keys):
@@ -195,19 +196,114 @@ class MonitorObjectService:
             query_parts.append(f'{key}=~"{values}"')
 
         query = metric_obj.query.replace("__$labels__", f"{', '.join(query_parts)}")
-        metrics = VictoriaMetricsAPI().query(query)
-        value_map = {}
-        for metric in metrics.get("data", {}).get("result", []):
+        vm_api = VictoriaMetricsAPI()
+        metrics = vm_api.query(query)
+        metric_results = metrics.get("data", {}).get("result", [])
+        timestamp_map = MonitorObjectService._query_enum_metric_sample_timestamps(
+            vm_api, query, metric_obj, metric_results
+        )
+        selected_map = {}
+        for metric in metric_results:
             instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
             value = metric["value"][1]
-            if instance_id not in value_map:
-                value_map[instance_id] = value
+            sample_time = timestamp_map.get((instance_id, MonitorObjectService._vm_metric_signature(metric)))
+            if MonitorObjectService._should_replace_display_metric_value(
+                selected_map.get(instance_id), value, sample_time
+            ):
+                selected_map[instance_id] = {"value": value, "sample_time": sample_time}
+        return {instance_id: item["value"] for instance_id, item in selected_map.items()}
+
+    @staticmethod
+    def _query_enum_metric_sample_timestamps(vm_api, query, metric_obj, metric_results):
+        if (getattr(metric_obj, "data_type", "") or "").lower() != "enum":
+            return {}
+        instance_counts = {}
+        for metric in metric_results:
+            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            instance_counts[instance_id] = instance_counts.get(instance_id, 0) + 1
+        if not any(count > 1 for count in instance_counts.values()):
+            return {}
+
+        timestamp_metrics = vm_api.query(f"timestamp({query})")
+        timestamp_map = {}
+        for metric in timestamp_metrics.get("data", {}).get("result", []):
+            instance_id = str(tuple([metric["metric"].get(i) for i in metric_obj.instance_id_keys]))
+            try:
+                timestamp = float(metric["value"][1])
+            except (IndexError, TypeError, ValueError):
+                continue
+            timestamp_map[(instance_id, MonitorObjectService._vm_metric_signature(metric))] = timestamp
+        return timestamp_map
+
+    @staticmethod
+    def _vm_metric_signature(metric):
+        return tuple(sorted((key, value) for key, value in metric.get("metric", {}).items() if key != "__name__"))
+
+    @staticmethod
+    def _should_replace_display_metric_value(current, new_value, new_sample_time):
+        if current is None:
+            return True
+        current_sample_time = current.get("sample_time")
+        if new_sample_time is not None or current_sample_time is not None:
+            if current_sample_time is None:
+                return True
+            if new_sample_time is None:
+                return False
+            if new_sample_time != current_sample_time:
+                return new_sample_time > current_sample_time
+
+        try:
+            return float(new_value) > float(current["value"])
+        except (ValueError, TypeError):
+            return False
+
+    @staticmethod
+    def _query_metric_field_values(metric_obj, target_instances, field):
+        """对 target_instances 查询指标,返回 VM label 字段值 {instance_id: field_value}。"""
+        target_ids = [parse_instance_id(inst["instance_id"]) for inst in target_instances]
+        query_parts = []
+        for i, key in enumerate(metric_obj.instance_id_keys):
+            values_set = {re.escape(str(item[i])) for item in target_ids if len(item) > i and item[i] is not None}
+            if not values_set:
+                continue
+            values = MonitorObjectService._escape_promql_label_value("|".join(sorted(values_set)))
+            query_parts.append(f'{key}=~"{values}"')
+
+        labels_str = f"{', '.join(query_parts)}"
+        query_template = (getattr(metric_obj, "query", "") or "").strip()
+        if "__$labels__" in query_template:
+            query = query_template.replace("__$labels__", labels_str)
+        else:
+            metric_name = (getattr(metric_obj, "name", "") or "").strip()
+            if metric_name:
+                query = f"{metric_name}{{{labels_str}}}" if labels_str else metric_name
             else:
-                try:
-                    if float(value) > float(value_map[instance_id]):
-                        value_map[instance_id] = value
-                except (ValueError, TypeError):
-                    pass
+                query = query_template
+        metrics = VictoriaMetricsAPI().query(query)
+        target_instance_ids = {inst["instance_id"] for inst in target_instances}
+        value_map = {}
+        time_map = {}
+        for metric in metrics.get("data", {}).get("result", []):
+            labels = metric.get("metric", {})
+            field_value = labels.get(field)
+            if field_value in (None, ""):
+                continue
+            label_values = tuple([labels.get(i) for i in metric_obj.instance_id_keys])
+            instance_id = str(label_values)
+            if instance_id not in target_instance_ids:
+                for value in label_values:
+                    value_str = str(value)
+                    if value_str in target_instance_ids:
+                        instance_id = value_str
+                        break
+                    parsed_key = str(parse_instance_id(value_str))
+                    if parsed_key in target_instance_ids:
+                        instance_id = parsed_key
+                        break
+            timestamp = metric.get("value", [0])[0]
+            if instance_id not in value_map or timestamp >= time_map.get(instance_id, 0):
+                value_map[instance_id] = field_value
+                time_map[instance_id] = timestamp
         return value_map
 
     @staticmethod
@@ -221,9 +317,11 @@ class MonitorObjectService:
         - 兼容:绑定缺 plugin(遗留配置)时按指标名匹配、不做隔离、用裸指标名回填;display_fields
           为空时退回 supplementary_indicators(裸指标名,不区分插件)。
         """
-        bindings = extract_metric_bindings(obj_metric_map.get("display_fields", []))
+        display_fields = obj_metric_map.get("display_fields", [])
+        bindings = extract_metric_bindings(display_fields)
+        field_bindings = extract_field_bindings(display_fields)
 
-        if not bindings:
+        if not bindings and not field_bindings:
             supplementary = obj_metric_map.get("supplementary_indicators", [])
             if not supplementary:
                 return
@@ -281,7 +379,7 @@ class MonitorObjectService:
         metric_by_name = {}
         for metric_obj in Metric.objects.filter(
             monitor_object_id=monitor_object_id,
-            name__in=[b["metric"] for b in bindings],
+            name__in=[b["metric"] for b in bindings + field_bindings],
         ).select_related("monitor_plugin"):
             plugin_name = metric_obj.monitor_plugin.name if metric_obj.monitor_plugin_id else ""
             metric_by_plugin[(plugin_name, metric_obj.name)] = metric_obj
@@ -322,6 +420,23 @@ class MonitorObjectService:
                 out_key = display_field_key(plugin_name, metric_name)
                 for instance in eligible:
                     instance[out_key] = value_map.get(instance["instance_id"])
+
+        for binding in field_bindings:
+            plugin_name, metric_name, field = binding["plugin"], binding["metric"], binding["field"]
+            if plugin_name:
+                metric_obj = metric_by_plugin.get((plugin_name, metric_name))
+                eligible = [
+                    inst for inst in result if plugin_name in instance_plugin_map.get(inst["instance_id"], set())
+                ]
+            else:
+                metric_obj = metric_by_name.get(metric_name)
+                eligible = result
+            if not metric_obj or not eligible:
+                continue
+            value_map = MonitorObjectService._query_metric_field_values(metric_obj, eligible, field)
+            out_key = display_field_key(plugin_name, metric_name, field)
+            for instance in eligible:
+                instance[out_key] = value_map.get(instance["instance_id"])
 
     @staticmethod
     def _serialize_instance_list_item(obj, instance_map, org_map):

@@ -111,6 +111,7 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   const baseRef = useRef<BaseTaskRef>(null as any);
   const localeContext = useLocale();
   const instanceApi = useInstanceApi();
+  const instanceApiRef = useRef(instanceApi);
   const { copyTaskData, setCopyTaskData } = useAssetManageStore();
   const { model_id: modelId } = modelItem;
 
@@ -123,14 +124,19 @@ const IpTask: React.FC<IpTaskFormProps> = ({
   const [selectedSubnetMeta, setSelectedSubnetMeta] = useState<any[]>([]);
   const [pendingSubmit, setPendingSubmit] = useState<null | (() => void)>(null);
 
-  const fetchSubnets = useCallback(async () => {
+  useEffect(() => {
+    instanceApiRef.current = instanceApi;
+  }, [instanceApi]);
+
+  const fetchSubnets = useCallback(async (isActive: () => boolean) => {
     try {
       setSubnetLoading(true);
-      const res = await instanceApi.searchInstances({
+      const res = await instanceApiRef.current.searchInstances({
         model_id: SUBNET_MODEL_ID,
         page: 1,
         page_size: 10000,
       });
+      if (!isActive()) return;
       const opts = (res.insts || []).map((s: any) => ({
         label: s.inst_name || s.subnet_address || s._id,
         value: Number(s._id),
@@ -139,14 +145,22 @@ const IpTask: React.FC<IpTaskFormProps> = ({
       }));
       setSubnetOptions(opts);
     } catch (err) {
-      console.error('Failed to fetch subnets:', err);
+      if (isActive()) {
+        console.error('Failed to fetch subnets:', err);
+      }
     } finally {
-      setSubnetLoading(false);
+      if (isActive()) {
+        setSubnetLoading(false);
+      }
     }
-  }, [instanceApi]);
+  }, []);
 
   useEffect(() => {
-    fetchSubnets();
+    let active = true;
+    fetchSubnets(() => active);
+    return () => {
+      active = false;
+    };
   }, [fetchSubnets]);
 
   // Keep selectedSubnetMeta in sync with selectedSubnetIds for address counting

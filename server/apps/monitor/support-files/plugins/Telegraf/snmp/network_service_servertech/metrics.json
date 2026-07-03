@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_servertech",
+  "plugin": "NetworkService Server Technology Sentry3 SNMP",
+  "plugin_desc": "Server Technology Sentry3 network-service SNMP collection for remote power, PDU and environmental monitor devices under Server Technology PEN 1718.3. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The current MIB facts identify Sentry3 tower, infeed, outlet, temperature/humidity sensor, contact-closure and branch tables, but do not prove a stable shared scalar mapping for CPU, memory, fan or power health, so private health and PDU business counters are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_servertech'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

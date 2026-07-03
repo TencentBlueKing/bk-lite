@@ -59,3 +59,9 @@ class VictoriaMetricsAPI:
             "/api/v1/query_range",
             {"query": query, "start": start, "end": end, "step": step},
         )
+
+    def labels(self, match=None):
+        params = {}
+        if match:
+            params["match[]"] = match
+        return self._do_get("/api/v1/labels", params)

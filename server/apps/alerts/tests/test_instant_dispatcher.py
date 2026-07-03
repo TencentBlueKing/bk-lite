@@ -49,10 +49,21 @@ def test_fingerprint_namespace_isolation():
 # --------------------------------------------------------------------------
 
 @pytest.fixture(autouse=True)
-def _reset_cache():
+def _reset_cache(settings):
+    settings.CACHES = {
+        "default": {
+            "BACKEND": "django.core.cache.backends.locmem.LocMemCache",
+            "LOCATION": "instant-strategy-cache-test",
+        }
+    }
+    from django.core.cache import cache as django_cache
+
+    django_cache.close()
     InstantStrategyCache.cache_clear()
     yield
     InstantStrategyCache.cache_clear()
+    django_cache.clear()
+    django_cache.close()
 
 
 @pytest.fixture
@@ -114,6 +125,20 @@ def test_cache_clear_refreshes(instant_strategy):
     instant_strategy.save()
     # save 钩子已通过 signal 清缓存
     assert len(InstantStrategyCache.get()) == 0
+
+
+@pytest.mark.django_db
+def test_cache_survives_local_memory_reset(instant_strategy, monkeypatch):
+    strategies = InstantStrategyCache.get()
+    assert [strategy.id for strategy in strategies] == [instant_strategy.id]
+
+    AlarmStrategy.objects.filter(pk=instant_strategy.pk).update(is_active=False)
+    monkeypatch.setattr(InstantStrategyCache, "_value", None, raising=False)
+    monkeypatch.setattr(InstantStrategyCache, "_cached_at", 0, raising=False)
+
+    cached_strategies = InstantStrategyCache.get()
+
+    assert [strategy.id for strategy in cached_strategies] == [instant_strategy.id]
 
 
 # --------------------------------------------------------------------------
@@ -188,6 +213,35 @@ def test_non_created_action_ignored(source, instant_strategy):
     evt.save()
     InstantAlertDispatcher.dispatch([[evt]])
     assert Alert.objects.count() == 0
+
+
+@pytest.mark.django_db
+def test_non_created_action_does_not_read_strategy_cache(source, instant_strategy):
+    evt = _make_event(source)
+    evt.action = EventAction.RECOVERY
+    evt.save()
+
+    with mock.patch.object(InstantStrategyCache, "get", wraps=InstantStrategyCache.get) as cache_get:
+        InstantAlertDispatcher.dispatch([[evt]])
+
+    cache_get.assert_not_called()
+
+
+@pytest.mark.django_db
+def test_shielded_filter_queries_once(source, instant_strategy):
+    evt = _make_event(source)
+
+    with (
+        mock.patch.object(InstantAlertDispatcher, "_collect_hits", return_value=[]),
+        mock.patch.object(Event.objects, "filter", wraps=Event.objects.filter) as event_filter,
+    ):
+        InstantAlertDispatcher.dispatch([[evt]])
+
+    shield_queries = [
+        call for call in event_filter.call_args_list
+        if call.kwargs.get("status") == id_mod.EventStatus.SHIELD
+    ]
+    assert len(shield_queries) == 1
 
 
 @pytest.mark.django_db

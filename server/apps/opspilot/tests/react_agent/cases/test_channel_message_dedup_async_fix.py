@@ -303,13 +303,17 @@ class TestCeleryTaskConfiguration:
 
         assert "WechatOfficialChatFlowUtils" in source, "Task must use WechatOfficialChatFlowUtils"
 
-    def test_wechat_official_task_calls_async_process_and_reply(self):
-        """TC-CELERY-03: Celery task must call async_process_and_reply method."""
+    def test_wechat_official_task_delegates_to_run_channel_message(self):
+        """TC-CELERY-03: 公众号任务统一委托给 _run_channel_message 执行（消息收发+去重）。
+
+        实现已重构为 `_run_channel_message(self, WechatOfficialChatFlowUtils, ...)`，
+        断言其真实委托行为，而非已不存在的内部方法名字符串。
+        """
         from apps.opspilot import tasks
 
-        source = inspect.getsource(tasks.process_wechat_official_message)
+        source = inspect.getsource(tasks._run_channel_message)
 
-        assert "async_process_and_reply" in source, "Task must call async_process_and_reply method"
+        assert "handler.async_process_and_reply(" in source, "Shared channel runner must call async_process_and_reply method"
 
     def test_all_channel_tasks_exist(self):
         """TC-CELERY-04: All channels must have corresponding Celery tasks."""

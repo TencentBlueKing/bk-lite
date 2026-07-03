@@ -1,33 +1,16 @@
-import { EdgeCreationData } from '@/app/ops-analysis/types/topology';
+import type {
+  EdgeConnectionType,
+  EdgeCreationData,
+  EdgeStyleConfig,
+  TopologyEdgeVisual,
+  TopologyPortConfig,
+} from '@/app/ops-analysis/types/topology';
 import { NODE_DEFAULTS, PORT_DEFAULTS, COLORS, SPACING } from '../constants/nodeDefaults';
 import type { Node, Edge, Graph } from '@antv/x6';
 import {
   getTopologyEdgeLabelVisual,
   getTopologyEdgeVisual,
 } from './topologyVisualStyles';
-
-// 通用工具函数
-export const getValueByPath = (obj: unknown, path: string): unknown => {
-  if (!obj || !path) return undefined;
-
-  return path.split('.').reduce((current, key) => {
-    if (current === null || current === undefined) return undefined;
-
-    // 处理数组索引
-    if (Array.isArray(current)) {
-      const index = parseInt(key, 10);
-      if (!isNaN(index) && index >= 0 && index < current.length) {
-        return current[index];
-      }
-      // 如果key不是数字，尝试在数组的每个元素中查找
-      return current.length > 0 && current[0] && typeof current[0] === 'object'
-        ? (current[0] as Record<string, unknown>)[key]
-        : undefined;
-    }
-
-    return (current as Record<string, unknown>)[key];
-  }, obj);
-};
 
 export const formatDisplayValue = (
   value: unknown,
@@ -160,9 +143,12 @@ const createPortGroup = (positionName: string, fillColor = PORT_DEFAULTS.FILL_CO
 });
 
 // 创建标准端口配置的通用函数 - 根据节点尺寸动态生成密集端口
-export const createPortConfig = (fillColor = PORT_DEFAULTS.FILL_COLOR, nodeSize = { width: 120, height: 80 }) => {
-  const portGroups: any = {};
-  const portItems: any[] = [];
+export const createPortConfig = (
+  fillColor = PORT_DEFAULTS.FILL_COLOR,
+  nodeSize = { width: 120, height: 80 },
+): TopologyPortConfig => {
+  const portGroups: TopologyPortConfig['groups'] = {};
+  const portItems: TopologyPortConfig['items'] = [];
 
   // 主要的四个端口（可见）
   const mainPorts = ['top', 'bottom', 'left', 'right'];
@@ -252,27 +238,17 @@ export const createEdgeLabel = (text: string = '') => {
 
 // 根据样式配置获取边线样式
 export const getEdgeStyleWithConfig = (
-  connectionType: 'none' | 'single' | 'double' = 'single',
-  styleConfig?: {
-    lineColor?: string;
-    lineWidth?: number;
-    lineStyle?: 'line' | 'dotted' | 'point';
-    enableAnimation?: boolean;
-  }
+  connectionType: EdgeConnectionType = 'single',
+  styleConfig?: EdgeStyleConfig,
 ) => {
   return getTopologyEdgeVisual(connectionType, styleConfig);
 };
 
 export const getEdgeStyleWithLabel = (
   edgeData: EdgeCreationData,
-  connectionType: 'none' | 'single' | 'double' = 'single',
-  styleConfig?: {
-    lineColor?: string;
-    lineWidth?: number;
-    lineStyle?: 'line' | 'dotted' | 'point';
-    enableAnimation?: boolean;
-  }
-): any => {
+  connectionType: EdgeConnectionType = 'single',
+  styleConfig?: EdgeStyleConfig,
+): TopologyEdgeVisual => {
   // 如果没有提供样式配置，使用默认配置
   const defaultStyleConfig = {
     lineColor: COLORS.EDGE.DEFAULT,
@@ -283,13 +259,13 @@ export const getEdgeStyleWithLabel = (
 
   const baseStyle = getEdgeStyleWithConfig(connectionType, styleConfig || defaultStyleConfig);
 
-  if (edgeData.lineType === 'common_line' && edgeData.lineName) {
-    (baseStyle as any).labels = [createEdgeLabel(edgeData.lineName)];
-  } else {
-    (baseStyle as any).labels = [];
-  }
-
-  return baseStyle;
+  return {
+    ...baseStyle,
+    labels:
+      edgeData.lineType === 'common_line' && edgeData.lineName
+        ? [createEdgeLabel(edgeData.lineName)]
+        : [],
+  };
 };
 
 // 创建边工具配置的通用函数

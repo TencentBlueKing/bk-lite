@@ -43,7 +43,7 @@ import { useTranslation } from '@/utils/i18n';
 
 import styles from '../index.module.scss';
 
-type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'vm' | 'cloud' | 'ipmi';
+type CredentialShape = 'ssh' | 'sql' | 'snmp' | 'config_file' | 'network_config_file' | 'vm' | 'cloud' | 'ipmi';
 
 const IPMI_PRIVILEGE_OPTIONS = [
   { label: 'callback', value: 'callback' },
@@ -145,7 +145,7 @@ function getPreviewFields(
   }
 
   const username = shape === 'sql' ? item.user : item.username;
-  return [
+  const fields = [
     { label: shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.username', '用户') : t('user', '用户'), value: username || '--' },
     {
       label: shape === 'sql' || shape === 'vm' ? t('Collection.VMTask.password', '密码') : t('password', '密码'),
@@ -154,6 +154,16 @@ function getPreviewFields(
     },
     { label: t('Collection.port', '端口'), value: String(item.port || (shape === 'sql' ? '3306' : shape === 'vm' ? '443' : shape === 'ipmi' ? '623' : '22')) },
   ];
+  if (shape === 'network_config_file') {
+    fields.push({
+      label: '特权密码',
+      value: passwordVisible && item.enable_password && item.enable_password !== PASSWORD_PLACEHOLDER
+        ? item.enable_password
+        : getMaskedSecret(item.enable_password),
+      isSecret: true,
+    });
+  }
+  return fields;
 }
 
 function CredentialMetaField({
@@ -465,6 +475,16 @@ function renderCredentialFields({
           <Switch
             checked={Boolean(item.ssl)}
             onChange={(checked) => updateItem(index, { ssl: checked })}
+          />
+        </InputRow>
+      )}
+      {shape === 'network_config_file' && (
+        <InputRow label="特权密码" required={false}>
+          <SecretInput
+            value={item.enable_password}
+            placeholder={t('common.inputTip', '请输入')}
+            editMode={editMode}
+            onChange={(nextValue) => updateItem(index, { enable_password: nextValue })}
           />
         </InputRow>
       )}

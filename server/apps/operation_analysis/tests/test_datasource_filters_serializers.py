@@ -6,10 +6,10 @@ field_schema 列定义需 key 非空且不重复。
 
 import pytest
 from rest_framework import serializers
+from rest_framework.test import APIRequestFactory, force_authenticate
 
 from apps.operation_analysis.filters.datasource_filters import DataSourceAPIModelFilter
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag
-
 
 # --------------------------------------------------------------------------
 # DataSourceAPIModelFilter
@@ -59,9 +59,7 @@ def _validate_field_schema(value):
     from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
 
     # validate_field_schema 不依赖 self，直接通过未初始化实例调用
-    return DataSourceAPIModelSerializer.validate_field_schema(
-        DataSourceAPIModelSerializer.__new__(DataSourceAPIModelSerializer), value
-    )
+    return DataSourceAPIModelSerializer.validate_field_schema(DataSourceAPIModelSerializer.__new__(DataSourceAPIModelSerializer), value)
 
 
 def test_validate_field_schema_empty_passes():
@@ -86,6 +84,119 @@ def test_validate_field_schema_duplicate_key_rejected():
 def test_validate_field_schema_valid():
     value = [{"key": "a"}, {"key": "b"}]
     assert _validate_field_schema(value) == value
+
+
+def _serializer_request(user):
+    request = APIRequestFactory().post("/operation_analysis/api/data_source/", data={}, format="json")
+    request.COOKIES["current_team"] = "1"
+    request.COOKIES["include_children"] = "0"
+    request.user = user
+    force_authenticate(request, user=user)
+    return request
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_accepts_rest_api_connector_config(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "外部订单 API",
+            "rest_api": "",
+            "source_type": "rest_api",
+            "connection_config": {
+                "url": "https://example.com/orders",
+                "method": "GET",
+                "headers": {"Authorization": "Bearer token"},
+                "timeout": 10,
+            },
+            "query_config": {"response_path": "data.items", "limit": 100},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_rejects_unknown_source_type(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    serializer = DataSourceAPIModelSerializer(
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "bad",
+            "rest_api": "",
+            "source_type": "ftp",
+            "connection_config": {},
+            "query_config": {},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert not serializer.is_valid()
+    assert "source_type" in serializer.errors
+
+
+@pytest.mark.django_db
+def test_datasource_serializer_preserves_redacted_connection_secret(authenticated_user):
+    from apps.operation_analysis.serializers.datasource_serializers import DataSourceAPIModelSerializer
+
+    datasource = DataSourceAPIModel.objects.create(
+        name="db-source",
+        rest_api="",
+        source_type="mysql",
+        connection_config={
+            "host": "127.0.0.1",
+            "port": 3306,
+            "username": "root",
+            "password": "real-password",
+        },
+        query_config={"table": "orders"},
+        params=[],
+        chart_type=["table"],
+        field_schema=[],
+        groups=[1],
+        created_by="s",
+        updated_by="s",
+    )
+
+    serializer = DataSourceAPIModelSerializer(
+        datasource,
+        context={"request": _serializer_request(authenticated_user)},
+        data={
+            "name": "db-source",
+            "rest_api": "",
+            "source_type": "mysql",
+            "connection_config": {
+                "host": "127.0.0.1",
+                "port": 3306,
+                "username": "root",
+                "password": "******",
+            },
+            "query_config": {"table": "orders"},
+            "params": [],
+            "chart_type": ["table"],
+            "field_schema": [],
+            "groups": [1],
+            "namespaces": [],
+            "tag": [],
+        },
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["connection_config"]["password"] == "real-password"
 
 
 # --------------------------------------------------------------------------
@@ -122,7 +233,7 @@ def test_count_objects():
     from apps.operation_analysis.schemas.import_export_schema import YAMLDocument, count_objects
 
     doc = YAMLDocument(
-        meta={"schema_version": "1.0.0"},
+        meta={"schema_version": "1.1.0"},
         namespaces=[{"key": "n", "name": "n", "domain": "d", "account": "a", "password": "p"}],
     )
     counts = count_objects(doc)

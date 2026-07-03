@@ -21,7 +21,7 @@ class LLMClientFactory:
     """LLM客户端工厂"""
 
     @staticmethod
-    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False) -> BaseChatModel:
+    def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None) -> BaseChatModel:
         """
         创建LLM客户端
 
@@ -29,20 +29,22 @@ class LLMClientFactory:
             request: LLM请求对象
             disable_stream: 是否禁用流式输出
             isolated: 是否创建独立客户端(不被LangGraph跟踪),用于内部调用如问题改写
+            timeout: 可选，单次 LLM 调用超时（秒）；不传时使用 LLM_INVOKE_TIMEOUT，默认 300 秒
 
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
+        timeout = LLMClientFactory._resolve_timeout(timeout)
         capabilities = build_anthropic_runtime_capabilities(
             getattr(request, "vendor_type", ""),
             request.protocol_type,
         )
         if capabilities.use_anthropic_compatible_adapter:
-            llm = LLMClientFactory._create_anthropic_compatible_client(request, disable_stream)
+            llm = LLMClientFactory._create_anthropic_compatible_client(request, disable_stream, timeout)
         elif request.protocol_type == "anthropic":
-            llm = LLMClientFactory._create_anthropic_client(request, disable_stream)
+            llm = LLMClientFactory._create_anthropic_client(request, disable_stream, timeout)
         else:
-            llm = LLMClientFactory._create_openai_client(request, disable_stream)
+            llm = LLMClientFactory._create_openai_client(request, disable_stream, timeout)
 
         # 如果需要隔离,则禁用callbacks以避免被LangGraph捕获
         if isolated:
@@ -51,7 +53,13 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool) -> ChatOpenAI:
+    def _resolve_timeout(timeout=None) -> int:
+        if timeout is not None:
+            return int(timeout)
+        return int(os.getenv("LLM_INVOKE_TIMEOUT", "300"))
+
+    @staticmethod
+    def _create_openai_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatOpenAI:
         """创建 OpenAI 兼容客户端"""
         # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
         base_url = request.openai_api_base
@@ -64,7 +72,7 @@ class LLMClientFactory:
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=int(os.getenv("LLM_INVOKE_TIMEOUT", "60")),
+            timeout=LLMClientFactory._resolve_timeout(timeout),
         )
 
         if llm.extra_body is None:
@@ -84,7 +92,7 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_anthropic_client(request: BasicLLMRequest, disable_stream: bool) -> ChatAnthropic:
+    def _create_anthropic_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatAnthropic:
         """创建 Anthropic 客户端"""
         # Anthropic API base URL 处理
         base_url = request.openai_api_base
@@ -110,7 +118,7 @@ class LLMClientFactory:
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=int(os.getenv("LLM_INVOKE_TIMEOUT", "60")),
+            timeout=LLMClientFactory._resolve_timeout(timeout),
             model_kwargs=model_kwargs if model_kwargs else None,
         )
 
@@ -119,7 +127,7 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _create_anthropic_compatible_client(request: BasicLLMRequest, disable_stream: bool) -> AnthropicCompatibleChatClient:
+    def _create_anthropic_compatible_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> AnthropicCompatibleChatClient:
         """Create a thin runtime client for Anthropic-compatible vendors."""
         base_url = request.openai_api_base
         if not base_url or base_url == "https://api.openai.com":
@@ -139,7 +147,7 @@ class LLMClientFactory:
             api_base=base_url,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=15,
+            timeout=LLMClientFactory._resolve_timeout(timeout),
             vendor_type=getattr(request, "vendor_type", ""),
         )
 

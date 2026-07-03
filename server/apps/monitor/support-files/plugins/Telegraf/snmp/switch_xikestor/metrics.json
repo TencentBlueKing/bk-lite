@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_xikestor",
+  "plugin": "Switch XikeStor SNMP",
+  "plugin_desc": "Baseline SNMP child template for XikeStor managed switches (enterprise PEN 242853). The available state confirms XikeStor managed switch products, a public enterprise root and a support/download surface, but no verified public vendor MIB package or device walk confirms row-filter-free scalar CPU, memory, temperature, fan or power-supply health OIDs. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Switch SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — XikeStor managed Ethernet switches such as SKS8300 series.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_xikestor'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-xikestor_xikestor",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

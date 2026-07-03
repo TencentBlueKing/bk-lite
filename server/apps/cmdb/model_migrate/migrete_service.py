@@ -565,6 +565,11 @@ class ModelMigrate:
     def _merge_existing_attr_config(existing_attr: dict, incoming_attr: dict) -> bool:
         changed = False
 
+        incoming_attr_type = incoming_attr.get("attr_type")
+        if incoming_attr_type and existing_attr.get("attr_type") != incoming_attr_type:
+            existing_attr["attr_type"] = incoming_attr_type
+            changed = True
+
         attr_name = str(incoming_attr.get("attr_name", "")).strip()
         if attr_name and existing_attr.get("attr_name") != attr_name:
             existing_attr["attr_name"] = attr_name

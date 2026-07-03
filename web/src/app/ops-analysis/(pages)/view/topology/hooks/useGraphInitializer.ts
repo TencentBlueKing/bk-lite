@@ -19,6 +19,17 @@ import {
 } from '../utils/topologyUtils';
 import type { useGraphHistory } from './useGraphHistory';
 import type { useTopologyState } from './useTopologyState';
+import type { TopologyNodeData } from '@/app/ops-analysis/types/topology';
+
+type NodePositionSnapshot = ReturnType<Node['getPosition']>;
+type EdgeVerticesSnapshot = ReturnType<Edge['getVertices']>;
+type NodeSizeSnapshot = ReturnType<Node['getSize']>;
+
+interface NodeResizeSnapshot {
+  size: NodeSizeSnapshot;
+  data: TopologyNodeData;
+  attrs: ReturnType<Node['getAttrs']>;
+}
 
 interface UseGraphInitializerParams {
   containerRef: React.RefObject<HTMLDivElement | null>;
@@ -137,8 +148,8 @@ export const useGraphInitializer = ({
       });
     };
 
-    const nodePositions = new Map<string, any>();
-    const edgeVertices = new Map<string, any>();
+    const nodePositions = new Map<string, NodePositionSnapshot>();
+    const edgeVertices = new Map<string, EdgeVerticesSnapshot>();
 
     const handleNodeMoveStart = ({ node }: { node: Node }) => {
       nodePositions.set(node.id, node.getPosition());
@@ -429,9 +440,9 @@ export const useGraphInitializer = ({
       hideAllEdgeTools(graph);
     });
 
-    const nodeOriginalSizes = new Map<string, any>();
+    const nodeOriginalSizes = new Map<string, NodeResizeSnapshot>();
 
-    const recordResizeIfChanged = (node: Node, updatedConfig: any) => {
+    const recordResizeIfChanged = (node: Node, updatedConfig: TopologyNodeData) => {
       const originalState = nodeOriginalSizes.get(node.id);
       if (!originalState) return;
 
@@ -462,7 +473,7 @@ export const useGraphInitializer = ({
     };
 
     const handleNodeSizeUpdate = (node: Node, isRealtime = false) => {
-      const nodeData = node.getData();
+      const nodeData = node.getData() as TopologyNodeData;
       const size = node.getSize();
 
       if (isRealtime && !nodeOriginalSizes.has(node.id)) {
@@ -523,7 +534,10 @@ export const useGraphInitializer = ({
       container: containerRef.current,
       width: containerRef.current.clientWidth,
       height: containerRef.current.clientHeight,
-      grid: true,
+      grid: {
+        size: 20,
+        visible: false,
+      },
       panning: true,
       autoResize: true,
       mousewheel: {

@@ -30,7 +30,3 @@ export const setWidgetRequestFailureCache = (
     },
   });
 };
-
-export const clearWidgetRequestCache = () => {
-  widgetRequestCache.clear();
-};

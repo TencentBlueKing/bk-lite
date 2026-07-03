@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_radwin",
+  "plugin": "Wireless Radwin SNMP",
+  "plugin_desc": "Radwin wireless broadband PtP and PtMP SNMP child template for devices under enterprise PEN 4458. The current MIB facts confirm RADWIN-MIB-WINLINK1000 and Radwin enterprise identity, but this production pass has no stable row-filter-free CPU, memory, temperature, fan or power-supply health OID to promote into shared device health. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the Radwin collect_type, UI and Telegraf child template.",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_radwin'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-radwin_radwin",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

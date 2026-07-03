@@ -59,7 +59,14 @@ export const useWirelessConfig = () => {
       'Wireless Aerohive SNMP': 'snmp_aerohive',
       'Wireless Grandstream SNMP': 'snmp_grandstream',
       'Wireless ASCOM SNMP': 'snmp_ascom',
-      'Wireless Albentia SNMP': 'snmp_albentia'
+      'Wireless Albentia SNMP': 'snmp_albentia',
+      'Wireless LigoWave SNMP': 'snmp_ligowave',
+      'Wireless Radwin SNMP': 'snmp_radwin',
+      'Wireless Mimosa SNMP': 'snmp_mimosa',
+      'Wireless Airspan SNMP': 'snmp_airspan',
+      'Wireless ACKSYS SNMP': 'snmp_acksys',
+      'Wireless ProSoft Technology SNMP': 'snmp_prosoft',
+      'Wireless Xirrus SNMP': 'snmp_xirrus'
     }
   };
 };

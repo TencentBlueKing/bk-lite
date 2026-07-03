@@ -1,5 +1,5 @@
 import React from 'react';
-import { Button, Tag, Tooltip } from 'antd';
+import { Button, Tooltip } from 'antd';
 import {
   DownloadOutlined,
   EditOutlined,
@@ -54,31 +54,7 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
   const { t } = useTranslation();
 
   return (
-    <div className="w-full mb-2 flex items-center justify-between bg-(--color-bg-1) px-4 py-2 border-b border-(--color-border-2)">
-      <div className="flex-1 mr-8">
-        {selectedDashboard && (
-          <div>
-            <h2 className="text-base leading-6 font-semibold text-(--color-text-1)">
-              {selectedDashboard.name}
-              {selectedDashboard.is_build_in && (
-                <Tag
-                  color="blue"
-                  className="ml-2 text-xs align-middle rounded-full! px-2! py-0.5!"
-                >
-                  {t('common.builtIn')}
-                </Tag>
-              )}
-            </h2>
-            {selectedDashboard.desc && (
-              <p className="text-xs leading-4 text-(--color-text-3) mt-0.5">
-                {selectedDashboard.desc}
-              </p>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="flex items-center gap-1.5" data-export-hidden="true">
+    <div className="flex items-center gap-1.5" data-export-hidden="true">
         <Tooltip title={t('common.refresh')}>
           <Button
             type="text"
@@ -192,7 +168,6 @@ const DashboardToolbar: React.FC<DashboardToolbarProps> = ({
             </div>
           )}
         </PermissionWrapper>
-      </div>
     </div>
   );
 };

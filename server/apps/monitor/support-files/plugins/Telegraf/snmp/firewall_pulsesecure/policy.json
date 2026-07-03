@@ -24,7 +24,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Pulse Secure防火墙内存使用率过高",
@@ -48,7 +49,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口接收错误包过高",
@@ -72,7 +74,8 @@
           "value": 10,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口发送错误包过高",
@@ -96,7 +99,8 @@
           "value": 10,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口接收丢包数过高",
@@ -120,7 +124,8 @@
           "value": 10,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "接口发送丢包数过高",
@@ -144,7 +149,8 @@
           "value": 10,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Pulse Secure网关Swap使用率过高",
@@ -168,7 +174,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Pulse Secure网关磁盘使用率过高",
@@ -192,7 +199,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Pulse Secure网关温度过高",
@@ -216,7 +224,8 @@
           "value": 55,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

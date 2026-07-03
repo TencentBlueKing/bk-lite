@@ -80,9 +80,9 @@ const ViewHive: React.FC<ViewListProps> = ({ objects, objectId }) => {
     if (objectId && objects?.length && mertics?.length) {
       const target = objects.find((item) => item.id === objectId);
       const metricNames = new Set(
-        (target?.display_fields || []).flatMap((col) =>
-          (col.metrics || []).map((binding) => binding.metric)
-        )
+        (target?.display_fields || [])
+          .filter((col) => col.type !== 'field')
+          .flatMap((col) => (col.metrics || []).map((binding) => binding.metric))
       );
       return mertics.filter((metric) => metricNames.has(metric.name));
     }

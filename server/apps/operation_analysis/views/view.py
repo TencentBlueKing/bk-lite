@@ -9,12 +9,21 @@ from rest_framework.response import Response
 from apps.core.decorators.api_permission import HasPermission
 from apps.core.utils.viewset_utils import AuthViewSet
 from apps.operation_analysis.common.audit_log import get_response_name, log_ops_analysis_success
-from apps.operation_analysis.filters.filters import ArchitectureModelFilter, DashboardModelFilter, DirectoryModelFilter, TopologyModelFilter
-from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Topology
+from apps.operation_analysis.filters.filters import (
+    ArchitectureModelFilter,
+    DashboardModelFilter,
+    DirectoryModelFilter,
+    ReportModelFilter,
+    ScreenModelFilter,
+    TopologyModelFilter,
+)
+from apps.operation_analysis.models.models import Architecture, Dashboard, Directory, Report, Screen, Topology
 from apps.operation_analysis.serializers.directory_serializers import (
     ArchitectureModelSerializer,
     DashboardModelSerializer,
     DirectoryModelSerializer,
+    ReportModelSerializer,
+    ScreenModelSerializer,
     TopologyModelSerializer,
 )
 from apps.operation_analysis.services.directory_service import DictDirectoryService
@@ -333,3 +342,82 @@ class ArchitectureModelViewSet(BuiltinVisibleMixin, AuthViewSet):
         response = super(ArchitectureModelViewSet, self).destroy(request, *args, **kwargs)
         log_ops_analysis_success(request, response, "delete", f"删除架构图: {name}")
         return response
+
+
+class CanvasModelViewSet(BuiltinVisibleMixin, AuthViewSet):
+    """
+    新增画布类型的轻量共享 ViewSet。
+    现有 Dashboard/Topology/Architecture 保持原样，避免本次变更扩大行为面。
+    """
+
+    ordering_fields = ["id"]
+    ordering = ["id"]
+    pagination_class = CustomPageNumberPagination
+    ORGANIZATION_FIELD = "groups"
+    canvas_label = "画布"
+
+    @HasPermission("view-View")
+    def retrieve(self, request, *args, **kwargs):
+        return super(CanvasModelViewSet, self).retrieve(request, *args, **kwargs)
+
+    @HasPermission("view-View")
+    def list(self, request, *args, **kwargs):
+        return super(CanvasModelViewSet, self).list(request, *args, **kwargs)
+
+    @HasPermission("view-AddChart")
+    def create(self, request, *args, **kwargs):
+        response = _execute_with_clean_validation_error(lambda: super(CanvasModelViewSet, self).create(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", ""))
+        log_ops_analysis_success(request, response, "create", f"新增{self.canvas_label}: {name}")
+        return response
+
+    @HasPermission("view-EditChart")
+    def update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        response = _execute_with_clean_validation_error(lambda: super(CanvasModelViewSet, self).update(request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑{self.canvas_label}: {name}")
+        return response
+
+    @HasPermission("view-EditChart")
+    def partial_update(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "编辑")
+        response = _execute_with_clean_validation_error(lambda: _partial_update_with_auth(self, request, *args, **kwargs))
+        name = get_response_name(response, request.data.get("name", instance.name))
+        log_ops_analysis_success(request, response, "update", f"编辑{self.canvas_label}: {name}")
+        return response
+
+    @HasPermission("view-DeleteChart")
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        _raise_if_builtin(instance, "删除")
+        name = instance.name
+        response = super(CanvasModelViewSet, self).destroy(request, *args, **kwargs)
+        log_ops_analysis_success(request, response, "delete", f"删除{self.canvas_label}: {name}")
+        return response
+
+
+class ScreenModelViewSet(CanvasModelViewSet):
+    """
+    大屏
+    """
+
+    queryset = Screen.objects.all()
+    serializer_class = ScreenModelSerializer
+    filterset_class = ScreenModelFilter
+    permission_key = "directory.screen"
+    canvas_label = "大屏"
+
+
+class ReportModelViewSet(CanvasModelViewSet):
+    """
+    报表
+    """
+
+    queryset = Report.objects.all()
+    serializer_class = ReportModelSerializer
+    filterset_class = ReportModelFilter
+    permission_key = "directory.report"
+    canvas_label = "报表"

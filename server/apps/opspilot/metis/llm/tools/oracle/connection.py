@@ -6,6 +6,22 @@ from langchain_core.runnables import RunnableConfig
 
 from apps.opspilot.metis.llm.tools.common.credentials import CredentialItem, CredentialValidationError, NormalizedCredentials, normalize_credentials
 
+if not hasattr(oracledb, "makedsn"):
+    def _compat_oracle_makedsn(host, port, service_name=None, sid=None, **_kwargs):
+        if service_name:
+            return f"{host}:{port}/{service_name}"
+        if sid:
+            return f"{host}:{port}:{sid}"
+        return f"{host}:{port}"
+
+    oracledb.makedsn = _compat_oracle_makedsn
+
+if not hasattr(oracledb, "connect"):
+    def _missing_oracle_connect(*_args, **_kwargs):
+        raise RuntimeError("oracledb.connect is unavailable in the installed Oracle driver")
+
+    oracledb.connect = _missing_oracle_connect
+
 ORACLE_INSTANCE_FIELDS = (
     "id",
     "name",

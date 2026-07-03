@@ -3,6 +3,7 @@ import { Form, Input, Select, Radio, Typography } from 'antd';
 import { PlusOutlined } from '@ant-design/icons';
 import Link from 'next/link';
 import type { NotificationNodeConfigProps } from './types';
+import { filterModelOption, getModelOptionText, renderModelOptionLabel } from '@/app/opspilot/utils/modelOption';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -14,6 +15,8 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
   notificationChannels,
   loadingChannels,
   loadChannels,
+  llmModels,
+  loadingLlmModels,
   allUsers,
   loadingUsers,
   form,
@@ -61,6 +64,22 @@ export const NotificationNodeConfig: React.FC<NotificationNodeConfigProps> = ({
               optionFilterProp="label"
             >
               {allUsers.map((u) => <Option key={u.id} value={u.id} label={`${u.display_name || u.name}(${u.username})`}>{u.display_name || u.name}({u.username})</Option>)}
+            </Select>
+          </Form.Item>
+          <Form.Item name="llmOptimizeModel" label={t('chatflow.llmOptimize')} initialValue={0}>
+            <Select
+              placeholder={t('chatflow.selectLlmOptimizeModel')}
+              loading={loadingLlmModels}
+              showSearch
+              allowClear
+              filterOption={filterModelOption}
+            >
+              <Option value={0}>{t('chatflow.none')}</Option>
+              {llmModels.map((model) => (
+                <Option key={model.id} value={model.id} disabled={!model.enabled} title={getModelOptionText(model)}>
+                  {renderModelOptionLabel(model)}
+                </Option>
+              ))}
             </Select>
           </Form.Item>
           <Form.Item name="notificationTitle" label={t('chatflow.notificationTitle')} rules={[{ required: true }]}>

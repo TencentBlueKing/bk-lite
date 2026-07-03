@@ -1,7 +1,12 @@
 import React, { useEffect } from 'react';
 import { useTranslation } from '@/utils/i18n';
 import { COLORS } from '../constants/nodeDefaults';
-import { EdgeConfigPanelProps } from '@/app/ops-analysis/types/topology';
+import type {
+  EdgeConfigPanelProps,
+  EdgeData,
+  InterfaceConfig,
+} from '@/app/ops-analysis/types/topology';
+import { normalizeColorPickerValue } from '../utils/formColorUtils';
 import {
   Drawer,
   Form,
@@ -16,6 +21,19 @@ import {
   Switch,
 } from 'antd';
 
+interface EdgeConfigFormValues {
+  lineType: EdgeData['lineType'];
+  lineName?: string;
+  lineColor?: unknown;
+  lineWidth?: number;
+  lineStyle?: NonNullable<EdgeData['styleConfig']>['lineStyle'];
+  enableAnimation?: boolean;
+  sourceInterfaceType?: InterfaceConfig['type'];
+  sourceInterfaceValue?: string;
+  targetInterfaceType?: InterfaceConfig['type'];
+  targetInterfaceValue?: string;
+}
+
 const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
   visible,
   readonly = false,
@@ -25,7 +43,7 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
 }) => {
   const [form] = Form.useForm();
   const { t } = useTranslation();
-  const interfacesList: any = [];
+  const interfacesList: Array<{ label: string; value: string }> = [];
 
   useEffect(() => {
     if (edgeData) {
@@ -45,26 +63,25 @@ const EdgeConfigPanel: React.FC<EdgeConfigPanelProps> = ({
     }
   }, [edgeData, form]);
 
-  const handleFinish = (values: any) => {
-    if (onConfirm) {
-      const result = {
-        ...values,
+  const handleFinish = (values: EdgeConfigFormValues) => {
+    if (onConfirm && edgeData) {
+      const result: EdgeData = {
+        ...edgeData,
+        lineType: values.lineType,
+        lineName: values.lineName,
         styleConfig: {
-          lineColor:
-            typeof values.lineColor === 'object'
-              ? values.lineColor.toHexString()
-              : values.lineColor || COLORS.EDGE.DEFAULT,
+          lineColor: normalizeColorPickerValue(values.lineColor) || COLORS.EDGE.DEFAULT,
           lineWidth: values.lineWidth || 1,
           lineStyle: values.lineStyle || 'line',
           enableAnimation: values.enableAnimation || false,
         },
         sourceInterface: {
-          type: values.sourceInterfaceType,
-          value: values.sourceInterfaceValue,
+          type: values.sourceInterfaceType || 'existing',
+          value: values.sourceInterfaceValue || '',
         },
         targetInterface: {
-          type: values.targetInterfaceType,
-          value: values.targetInterfaceValue,
+          type: values.targetInterfaceType || 'existing',
+          value: values.targetInterfaceValue || '',
         },
       };
       onConfirm(result);

@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_prosoft",
+  "plugin": "Wireless ProSoft Technology SNMP",
+  "plugin_desc": "ProSoft Technology industrial wireless and cellular gateway SNMP baseline collection for RadioLinx / RLX and ICX devices. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public facts confirm the industrial wireless product surface and official MIB download surface, but do not prove stable shared CPU, memory, temperature, fan, power or RF-health leaf OIDs, so private wireless business objects are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_prosoft'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

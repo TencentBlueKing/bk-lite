@@ -18,6 +18,8 @@ class ImportExportAuthorizationService:
         ObjectType.DASHBOARD,
         ObjectType.TOPOLOGY,
         ObjectType.ARCHITECTURE,
+        ObjectType.SCREEN,
+        ObjectType.REPORT,
         ObjectType.DATASOURCE,
     }
 
@@ -25,6 +27,8 @@ class ImportExportAuthorizationService:
         ObjectType.DASHBOARD: {"permission": "view-View", "permission_key": "directory.dashboard"},
         ObjectType.TOPOLOGY: {"permission": "view-View", "permission_key": "directory.topology"},
         ObjectType.ARCHITECTURE: {"permission": "view-View", "permission_key": "directory.architecture"},
+        ObjectType.SCREEN: {"permission": "view-View", "permission_key": "directory.screen"},
+        ObjectType.REPORT: {"permission": "view-View", "permission_key": "directory.report"},
         ObjectType.DATASOURCE: {"permission": "data_source-View", "permission_key": "datasource"},
         ObjectType.NAMESPACE: {"permission": "namespace-View", "permission_key": None},
     }
@@ -33,6 +37,8 @@ class ImportExportAuthorizationService:
         ObjectType.DASHBOARD: {"create": "view-AddChart", "overwrite": "view-EditChart"},
         ObjectType.TOPOLOGY: {"create": "view-AddChart", "overwrite": "view-EditChart"},
         ObjectType.ARCHITECTURE: {"create": "view-AddChart", "overwrite": "view-EditChart"},
+        ObjectType.SCREEN: {"create": "view-AddChart", "overwrite": "view-EditChart"},
+        ObjectType.REPORT: {"create": "view-AddChart", "overwrite": "view-EditChart"},
         ObjectType.DATASOURCE: {"create": "data_source-Add", "overwrite": "data_source-Edit"},
         ObjectType.NAMESPACE: {"create": "namespace-Add", "overwrite": "namespace-Edit"},
     }
@@ -242,11 +248,13 @@ class ImportExportAuthorizationService:
 
     @classmethod
     def iter_import_items(cls, doc: YAMLDocument):
-        yield ObjectType.NAMESPACE, doc.namespaces
-        yield ObjectType.DATASOURCE, doc.datasources
-        yield ObjectType.DASHBOARD, doc.dashboards
-        yield ObjectType.TOPOLOGY, doc.topologies
-        yield ObjectType.ARCHITECTURE, doc.architectures
+        yield ObjectType.NAMESPACE, getattr(doc, "namespaces", [])
+        yield ObjectType.DATASOURCE, getattr(doc, "datasources", [])
+        yield ObjectType.DASHBOARD, getattr(doc, "dashboards", [])
+        yield ObjectType.TOPOLOGY, getattr(doc, "topologies", [])
+        yield ObjectType.ARCHITECTURE, getattr(doc, "architectures", [])
+        yield ObjectType.SCREEN, getattr(doc, "screens", [])
+        yield ObjectType.REPORT, getattr(doc, "reports", [])
 
     @classmethod
     def build_permission_error(cls, object_type: ObjectType, item, required_permissions: list[str], message: str) -> dict:
@@ -262,7 +270,7 @@ class ImportExportAuthorizationService:
     @classmethod
     def get_existing_object(cls, object_type: ObjectType, item):
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
 
         if object_type == ObjectType.DASHBOARD:
             return Dashboard.objects.filter(name=item.name).first()
@@ -270,6 +278,10 @@ class ImportExportAuthorizationService:
             return Topology.objects.filter(name=item.name).first()
         if object_type == ObjectType.ARCHITECTURE:
             return Architecture.objects.filter(name=item.name).first()
+        if object_type == ObjectType.SCREEN:
+            return Screen.objects.filter(name=item.name).first()
+        if object_type == ObjectType.REPORT:
+            return Report.objects.filter(name=item.name).first()
         if object_type == ObjectType.DATASOURCE:
             return DataSourceAPIModel.objects.filter(name=item.name, rest_api=item.rest_api).first()
         if object_type == ObjectType.NAMESPACE:
@@ -280,7 +292,7 @@ class ImportExportAuthorizationService:
     def get_existing_objects_batch(cls, object_type: ObjectType, items) -> dict:
         """批量查询一组 items 对应的已存在对象，返回 {lookup_key: object} 字典，消除 N+1 查询。"""
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, NameSpace
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
 
         if not items:
             return {}
@@ -297,6 +309,8 @@ class ImportExportAuthorizationService:
             ObjectType.DASHBOARD: Dashboard,
             ObjectType.TOPOLOGY: Topology,
             ObjectType.ARCHITECTURE: Architecture,
+            ObjectType.SCREEN: Screen,
+            ObjectType.REPORT: Report,
             ObjectType.NAMESPACE: NameSpace,
         }
         model = model_map.get(object_type)
@@ -417,12 +431,14 @@ class ImportExportAuthorizationService:
     @staticmethod
     def _get_org_scoped_model(object_type: ObjectType):
         from apps.operation_analysis.models.datasource_models import DataSourceAPIModel
-        from apps.operation_analysis.models.models import Architecture, Dashboard, Topology
+        from apps.operation_analysis.models.models import Architecture, Dashboard, Report, Screen, Topology
 
         return {
             ObjectType.DASHBOARD: Dashboard,
             ObjectType.TOPOLOGY: Topology,
             ObjectType.ARCHITECTURE: Architecture,
+            ObjectType.SCREEN: Screen,
+            ObjectType.REPORT: Report,
             ObjectType.DATASOURCE: DataSourceAPIModel,
         }.get(object_type)
 

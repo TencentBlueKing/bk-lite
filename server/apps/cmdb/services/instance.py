@@ -798,12 +798,9 @@ class InstanceManage(object):
             roles=roles,
         )
 
-        with GraphClient() as ag:
-            ag.batch_delete_entity(INSTANCE, inst_ids)
-
-        # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
-        get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
-
+        # 先写 PG 变更记录，再删图数据库节点。
+        # 若 PG 写入失败则直接抛出，图删除不执行，两侧保持一致；
+        # 反之若先删图再写 PG，图删除提交后无法回滚，PG 失败会导致审计日志丢失（#3665）。
         change_records = [
             dict(
                 inst_id=i["_id"],
@@ -815,6 +812,12 @@ class InstanceManage(object):
             for i in inst_list
         ]
         batch_create_change_record(INSTANCE, DELETE_INST, change_records, operator=operator)
+
+        with GraphClient() as ag:
+            ag.batch_delete_entity(INSTANCE, inst_ids)
+
+        # 企业版：实例删除后把其附件/图片文件标记为待回收（批量单次处理）
+        get_instance_enterprise_extension().on_instances_delete([item["_id"] for item in inst_list])
 
         from apps.cmdb.services.auto_relation_reconcile import schedule_incoming_rule_full_sync_by_model_ids
 
@@ -1061,14 +1064,25 @@ class InstanceManage(object):
             f"目标模型ID: {dst_info.get('model_id', '')} 目标模型实例: "
             f"{dst_info.get('inst_name') or dst_info.get('ip_addr', '')}"
         )
-        create_change_record_by_asso(
-            INSTANCE_ASSOCIATION,
-            CREATE_INST_ASST,
-            asso_info,
-            message=message,
-            operator=operator,
-            scenario=scenario,
-        )
+        # 关联关系需先创建图边才能取到 edge._id / asso_info，无法在图写之前先写 PG。
+        # 用 try/except 兜底：变更记录写入失败时记录错误日志但不影响关联创建结果，
+        # 避免异常向上传播让调用方误判关联创建失败而重试（可能触发"edge already exists"重复异常）。
+        # 若需更强一致性保障，可改为 Celery 异步投递（至少一次）——见 #3665。
+        try:
+            create_change_record_by_asso(
+                INSTANCE_ASSOCIATION,
+                CREATE_INST_ASST,
+                asso_info,
+                message=message,
+                operator=operator,
+                scenario=scenario,
+            )
+        except Exception as e:  # noqa: 变更记录写入失败不影响关联创建，但必须记录以便排查审计缺失
+            logger.error(
+                "[instance_association_create] 变更记录写入失败，关联已创建但审计日志可能缺失: "
+                "edge_id=%s, operator=%s, error=%s",
+                edge.get("_id"), operator, e,
+            )
 
         return edge
 

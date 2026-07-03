@@ -104,6 +104,15 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     return str(content)[:max_len]
 
 
+def _tool_call_signature(tool_name: str, tool_args: Dict[str, Any]) -> str:
+    """Build a stable signature for duplicate tool-call detection."""
+    try:
+        args_payload = json.dumps(tool_args or {}, ensure_ascii=False, sort_keys=True, default=str)
+    except TypeError:
+        args_payload = repr(tool_args)
+    return f"{tool_name}:{args_payload}"
+
+
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
     """
     规范化消息列表，确保兼容 Qwen 等对消息顺序有严格要求的模型。
@@ -1201,8 +1210,6 @@ class ToolsNodes(BasicNode):
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
             import uuid
 
-            from langchain_core.callbacks import dispatch_custom_event
-
             report_id = str(uuid.uuid4())[:8]
 
             report_data = build_config_diff_report_payload(title=title, cluster_name=cluster_name, items=items)
@@ -1273,8 +1280,6 @@ class ToolsNodes(BasicNode):
         ) -> str:
             import uuid
             from itertools import groupby as _groupby
-
-            from langchain_core.callbacks import dispatch_custom_event
 
             group_by = self._normalize_repair_group_by(group_by)
 
@@ -1928,6 +1933,7 @@ class ToolsNodes(BasicNode):
         reflection_tracker = {
             "consecutive_failures": 0,  # 连续失败计数
             "tool_call_history": [],  # 最近的工具调用名称列表
+            "duplicate_call_counts": {},  # tool signature -> executed count
         }
         # 动态工具选择相关
         dynamic_mode = self._dynamic_mode
@@ -2464,6 +2470,27 @@ class ToolsNodes(BasicNode):
             response = self._sanitize_duplicate_config_analysis_text(response, _analysis_cache)
             tool_calls = getattr(response, "tool_calls", None) or []
 
+            duplicate_cfg = graph_request.reflection_config
+            if getattr(duplicate_cfg, "duplicate_call_hard_enabled", False) and tool_calls:
+                seen_signatures = set()
+                deduped_tool_calls = []
+                for ntc in normalize_tool_calls(tool_calls):
+                    signature = _tool_call_signature(ntc.name, ntc.args)
+                    if signature in seen_signatures:
+                        logger.info(
+                            f"[{trace_id}] agent_node: 同批重复工具调用已去重, "
+                            f"tool={ntc.name}, tool_call_id={ntc.id}"
+                        )
+                        continue
+                    seen_signatures.add(signature)
+                    deduped_tool_calls.append(ntc.raw)
+                if len(deduped_tool_calls) != len(tool_calls):
+                    tool_calls = deduped_tool_calls
+                    try:
+                        response.tool_calls = deduped_tool_calls
+                    except Exception:
+                        object.__setattr__(response, "tool_calls", deduped_tool_calls)
+
             # ========== done tool 拦截：在 agent_node 中直接处理，避免进入 tools_node ==========
             if done_tool_name and tool_calls:
                 for tc in tool_calls:
@@ -2761,12 +2788,6 @@ class ToolsNodes(BasicNode):
             norm_calls = normalize_tool_calls(tool_calls)
             logger.info(f"[{trace_id}] ReAct tools_node 开始执行, tool_call_count={len(tool_calls)}, tool_calls={tool_calls}")
 
-            # ========== 防护：记录大体积工具调用（执行后截断内容）==========
-            YAML_TOOL_NAME = "get_kubernetes_resource_yaml"
-            MAX_YAML_PER_STEP = 1
-            MAX_YAML_CONTENT_LEN = 2000  # 每个保留 YAML 结果最大字符数
-            yaml_call_ids = [ntc.id for ntc in norm_calls if ntc.name == YAML_TOOL_NAME]
-
             # ========== 中断检查：工具执行前检查是否被请求中断 ==========
             execution_id = config["configurable"].get("execution_id", "")
             if execution_id and await is_interrupt_requested_async(execution_id):
@@ -2793,6 +2814,53 @@ class ToolsNodes(BasicNode):
                         logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，并发拦截可能失效")
                 tool_calls = _filtered_tool_calls
                 norm_calls = normalize_tool_calls(tool_calls)
+
+            # ========== 硬拦截：同名同参工具调用累计达阈值后不再真实执行 ==========
+            blocked_duplicate_messages = []
+            restore_tool_calls_after_invoke = None
+            duplicate_cfg = graph_request.reflection_config
+            if getattr(duplicate_cfg, "duplicate_call_hard_enabled", False) and norm_calls:
+                hard_limit = max(1, int(getattr(duplicate_cfg, "duplicate_call_hard_limit", 3) or 3))
+                duplicate_counts = reflection_tracker.setdefault("duplicate_call_counts", {})
+                executable_norm_calls = []
+                executable_raw_calls = []
+                for ntc in norm_calls:
+                    signature = _tool_call_signature(ntc.name, ntc.args)
+                    executed_count = duplicate_counts.get(signature, 0)
+                    if executed_count >= hard_limit:
+                        blocked_duplicate_messages.append(
+                            ToolMessage(
+                                content=(
+                                    f"[已拦截] 工具 {ntc.name} 使用相同参数已执行 {executed_count} 次，"
+                                    f"达到上限 {hard_limit}，本次不再重复执行。"
+                                ),
+                                tool_call_id=ntc.id,
+                            )
+                        )
+                        logger.warning(
+                            f"[{trace_id}] logged_tool_node: 硬拦截重复工具调用, "
+                            f"tool={ntc.name}, tool_call_id={ntc.id}, executed_count={executed_count}, limit={hard_limit}"
+                        )
+                        continue
+                    duplicate_counts[signature] = executed_count + 1
+                    executable_norm_calls.append(ntc)
+                    executable_raw_calls.append(ntc.raw)
+
+                if blocked_duplicate_messages:
+                    tool_calls = executable_raw_calls
+                    norm_calls = executable_norm_calls
+                    if tool_calls:
+                        restore_tool_calls_after_invoke = getattr(last_message, "tool_calls", None)
+                        try:
+                            last_message.tool_calls = tool_calls
+                        except Exception:
+                            object.__setattr__(last_message, "tool_calls", tool_calls)
+
+            # ========== 防护：记录大体积工具调用（执行后截断内容）==========
+            YAML_TOOL_NAME = "get_kubernetes_resource_yaml"
+            MAX_YAML_PER_STEP = 1
+            MAX_YAML_CONTENT_LEN = 2000  # 每个保留 YAML 结果最大字符数
+            yaml_call_ids = [ntc.id for ntc in norm_calls if ntc.name == YAML_TOOL_NAME]
 
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config
@@ -2844,17 +2912,31 @@ class ToolsNodes(BasicNode):
             _has_interactive_tool = bool(_interactive_tools & set(tool_names))
             _effective_step_timeout = None if _has_interactive_tool else step_timeout
 
-            try:
-                if _effective_step_timeout:
-                    result = await asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=_effective_step_timeout)
-                else:
-                    result = await tool_node.ainvoke(state, config=config)
-            except asyncio.TimeoutError:
-                logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
-                # 返回超时错误 ToolMessage
-                timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
-                return {"messages": timeout_msgs}
-            result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            if norm_calls:
+                try:
+                    try:
+                        if _effective_step_timeout:
+                            result = await asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=_effective_step_timeout)
+                        else:
+                            result = await tool_node.ainvoke(state, config=config)
+                    finally:
+                        if restore_tool_calls_after_invoke is not None:
+                            try:
+                                last_message.tool_calls = restore_tool_calls_after_invoke
+                            except Exception:
+                                object.__setattr__(last_message, "tool_calls", restore_tool_calls_after_invoke)
+                except asyncio.TimeoutError:
+                    logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
+                    # 返回超时错误 ToolMessage
+                    timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
+                    return {"messages": timeout_msgs + blocked_duplicate_messages}
+                result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            else:
+                result = {"messages": []}
+                result_messages = []
+            if blocked_duplicate_messages:
+                result_messages.extend(blocked_duplicate_messages)
+                result = {"messages": result_messages}
 
             # ========== 缓存分析结果：供 generate_repair_report 自动生成使用 ==========
             for _rm in result_messages:

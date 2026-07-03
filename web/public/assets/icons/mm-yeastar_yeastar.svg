@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Yeastar">
+  <rect width="64" height="64" rx="12" fill="#ffffff"/>
+  <path d="M13 16h38v8H13z" fill="#f97316"/>
+  <path d="M18 29h28v7H18z" fill="#2563eb"/>
+  <path d="M25 40h14v8H25z" fill="#1f2937"/>
+  <circle cx="18" cy="48" r="3" fill="#22c55e"/>
+  <circle cx="46" cy="48" r="3" fill="#22c55e"/>
+</svg>

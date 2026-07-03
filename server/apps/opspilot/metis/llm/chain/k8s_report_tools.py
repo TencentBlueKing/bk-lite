@@ -495,6 +495,17 @@ def build_repair_mode_choice_args(parsed: Dict[str, Any]) -> Dict[str, Any]:
     if problematic_count <= 10 or len(issues) <= 2:
         options.append("全部一次性展示" if problematic_count > 1 else "直接展示单个修复对比（推荐）")
 
+    # issues_detail/workloads may be summarized or truncated. For large scans,
+    # keep the grouped display modes available even when the summary only lists
+    # one issue/workload exemplar.
+    if problematic_count > 10:
+        existing_prefixes = {option.split("（", 1)[0] for option in options}
+        if "按问题类别聚合" not in existing_prefixes:
+            options.insert(0, "按问题类别聚合")
+        if "按工作负载聚合" not in existing_prefixes:
+            insert_at = 1 if options and options[0].startswith("按问题类别聚合") else len(options)
+            options.insert(insert_at, "按工作负载聚合")
+
     if not options:
         options.append("按问题类别聚合（推荐：先处理共性问题）")
         options.append("按工作负载聚合")

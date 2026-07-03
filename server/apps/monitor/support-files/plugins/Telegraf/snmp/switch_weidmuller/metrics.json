@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_weidmuller",
+  "plugin": "Switch Weidmuller SNMP",
+  "plugin_desc": "Baseline SNMP child template for Weidmuller industrial managed Ethernet switches under enterprise PEN 38187. Current public facts confirm the enterprise root, industrial Ethernet product surface and official support center, but do not prove stable shared CPU, memory, temperature, fan or power-supply health leaf OIDs. This brand metrics.json declares no vendor-specific metric deltas; system uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic are supplied by the shared Switch SNMP floor. Supported brands/models — Weidmuller industrial managed Ethernet switches and other IF-MIB compliant Weidmuller switches.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_weidmuller'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-weidmuller_weidmuller",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

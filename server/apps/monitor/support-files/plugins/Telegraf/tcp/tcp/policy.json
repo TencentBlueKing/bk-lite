@@ -14,7 +14,8 @@
           "value": 1,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "TCP 响应时间过高",
@@ -38,7 +39,8 @@
           "value": 200,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

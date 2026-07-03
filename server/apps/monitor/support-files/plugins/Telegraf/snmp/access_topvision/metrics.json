@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_topvision",
+  "plugin": "Access Topvision SNMP",
+  "plugin_desc": "Baseline SNMP child template for Topvision (Sumavision) CMTS and DOCSIS cable-modem termination devices. The public OID facts confirm the Sumavision enterprise root under IANA PEN 32285 and the public OS-class registration for Topvision with a real sysObjectID, but no stable shared CPU, memory, temperature, fan or power-supply health leaf OID is confirmed in this pass. The borrowed HM800MIB RAID table is a Hitachi RAID MIB and does not match CMTS semantics, so it is intentionally not collected. This child declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB/ifXTable interface metrics including 64-bit ifHCInOctets and ifHCOutOctets, and aggregate device traffic. Supported brands/models - Topvision (Sumavision) CC8800D-E and other CMTS devices that expose standard IF-MIB.",
+  "status_query": "any({instance_type='access', collect_type='snmp_topvision'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

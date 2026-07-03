@@ -2,27 +2,45 @@
   "object": "Switch",
   "plugin": "Switch EtherWAN SNMP",
   "templates": [
-  {
-    "name": "EtherWAN交换机温度过高",
-    "alert_name": "交换机${resource_name} 温度过高",
-    "description": "监控 EtherWAN 设备机箱温度（ewnSensorTempValue，原始值÷10=摄氏度），当超过阈值时触发告警，提示机柜散热故障或风道堵塞，防止热损坏。",
-    "metric_name": "device_temperature_celsius",
-    "algorithm": "last_over_time",
-    "threshold": [
-        { "level": "critical", "value": 70, "method": ">" },
-        { "level": "error", "value": 60, "method": ">" },
-        { "level": "warning", "value": 50, "method": ">" }
-    ]
-  },
-  {
-    "name": "EtherWAN交换机电源告警",
-    "alert_name": "交换机${resource_name} 电源状态异常",
-    "description": "监控 EtherWAN 设备双路电源输入状态（ewnPowerSupplyStatus，归一后 1=正常，>1=异常），当任一路电源失电或缺省时提示电源异常。",
-    "metric_name": "device_psu_state",
-    "algorithm": "last_over_time",
-    "threshold": [
-        { "level": "critical", "value": 1, "method": ">" }
-    ]
-  }
+    {
+      "name": "EtherWAN交换机温度过高",
+      "alert_name": "交换机${resource_name} 温度过高",
+      "description": "监控 EtherWAN 设备机箱温度（ewnSensorTempValue，原始值÷10=摄氏度），当超过阈值时触发告警，提示机柜散热故障或风道堵塞，防止热损坏。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "EtherWAN交换机电源告警",
+      "alert_name": "交换机${resource_name} 电源状态异常",
+      "description": "监控 EtherWAN 设备双路电源输入状态（ewnPowerSupplyStatus，归一后 1=正常，>1=异常），当任一路电源失电或缺省时提示电源异常。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
   ]
 }

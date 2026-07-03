@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Avocent">
+  <rect width="1024" height="1024" rx="160" fill="#14213d"/>
+  <path d="M184 740 512 172l328 568H694l-58-104H388l-58 104H184Zm266-222h124l-62-116-62 116Z" fill="#f5f7fb"/>
+  <path d="M374 820h276" stroke="#2ec4b6" stroke-width="64" stroke-linecap="round"/>
+</svg>

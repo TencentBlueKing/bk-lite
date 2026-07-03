@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="XikeStor">
+  <rect width="64" height="64" rx="12" fill="#1d4ed8"/>
+  <path d="M17 16h9l6 9 6-9h9L36.5 31.5 48 48h-9.5L32 38l-6.5 10H16l11.5-16.5L17 16Z" fill="#eff6ff"/>
+  <path d="M18 52h28" stroke="#93c5fd" stroke-width="4" stroke-linecap="round"/>
+</svg>

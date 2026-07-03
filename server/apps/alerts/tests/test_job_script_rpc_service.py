@@ -21,7 +21,7 @@ def test_list_scripts_returns_team_scripts_via_local_rpc():
     # 另一团队的脚本不应出现
     Script.objects.create(name="别人家的脚本", script_type="shell", content="echo no", params=[], timeout=60, team=[99])
 
-    result = JobMgmt(is_local_client=True).list_scripts(group_id=7)
+    result = JobMgmt(is_local_client=True).list_scripts(group_id=7, team=[7])
 
     names = [it["name"] for it in result["items"]]
     assert "重启nginx" in names

@@ -30,6 +30,22 @@ from apps.system_mgmt.serializers.user_serializer import UserSerializer
 from apps.system_mgmt.tasks import check_password_expiry_and_notify
 
 
+def _enterprise_mask_available():
+    """敏感信息脱敏属于企业版能力，社区版缺少 enterprise.sensitive_info 模块时脱敏为 no-op。
+
+    用于跳过依赖企业版脱敏实现的断言，避免在社区版环境出现误报失败。
+    """
+    from apps.system_mgmt.viewset import user_viewset
+
+    return getattr(user_viewset, "apply_sensitive_info_mask", None) is not None
+
+
+requires_enterprise_mask = pytest.mark.skipif(
+    not _enterprise_mask_available(),
+    reason="社区版缺少 enterprise.sensitive_info 脱敏实现，脱敏断言不适用",
+)
+
+
 def _build_authenticated_request_user(**overrides):
     defaults = {
         "username": "system-settings-admin",
@@ -552,6 +568,7 @@ def test_user_viewset_search_user_list_keeps_plaintext_when_sensitive_info_prote
     assert returned_user["phone"] == "13800001111"
 
 
+@requires_enterprise_mask
 @pytest.mark.django_db
 # 验证保护开启时，未获授权的超级管理员在用户列表中仍只能看到脱敏后的敏感字段。
 def test_user_viewset_search_user_list_masks_sensitive_fields_for_unauthorized_superuser_when_enabled():
@@ -581,6 +598,7 @@ def test_user_viewset_search_user_list_masks_sensitive_fields_for_unauthorized_s
     assert returned_user["phone"] == "138****2222"
 
 
+@requires_enterprise_mask
 @pytest.mark.django_db
 # 验证用户列表查询会返回用户所属同步源标识，供前端删除控制使用。
 def test_user_viewset_search_user_list_includes_sync_source_identifier():

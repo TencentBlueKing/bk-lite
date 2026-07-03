@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_raritan",
+  "plugin": "ConsoleServer Raritan SX SNMP",
+  "plugin_desc": "Raritan Dominion SX console-server SNMP baseline child template for devices under Raritan PEN 13742. The shared ConsoleServer SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current public MIB facts confirm the SX product subtree but do not prove stable shared CPU, memory, temperature, fan or power-supply health scalars, so this child template does not promote private objects into shared health metrics.",
+  "status_query": "any({instance_type='console_server', collect_type='snmp_raritan'}) by (instance_id)",
+  "name": "ConsoleServer",
+  "icon": "mm-console_server_控制台服务器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='console_server'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}
