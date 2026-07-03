@@ -1,26 +1,14 @@
-import { COLORS, NODE_DEFAULTS, SPACING } from '../constants/nodeDefaults';
-
-type ConnectionType = 'none' | 'single' | 'double';
-
-interface EdgeStyleConfig {
-  lineColor?: string;
-  lineWidth?: number;
-  lineStyle?: 'line' | 'dotted' | 'point';
-  enableAnimation?: boolean;
-}
-
-export const getTopologyDeviceNodeVisual = () => ({
-  width: NODE_DEFAULTS.ICON_NODE.width,
-  height: NODE_DEFAULTS.ICON_NODE.height,
-  borderRadius: NODE_DEFAULTS.ICON_NODE.borderRadius,
-  iconSize: 70,
-  labelDirection: 'bottom' as const,
-});
+import { COLORS, SPACING } from '../constants/nodeDefaults';
+import type {
+  EdgeConnectionType,
+  EdgeStyleConfig,
+  TopologyEdgeVisual,
+} from '@/app/ops-analysis/types/topology';
 
 export const getTopologyEdgeVisual = (
-  connectionType: ConnectionType = 'single',
+  connectionType: EdgeConnectionType = 'single',
   styleConfig?: EdgeStyleConfig
-) => {
+) : TopologyEdgeVisual => {
   const marker = { name: 'block', size: 8 };
   const markers = {
     none: { sourceMarker: null, targetMarker: null },
@@ -28,7 +16,7 @@ export const getTopologyEdgeVisual = (
     double: { sourceMarker: marker, targetMarker: marker },
   };
 
-  const lineAttrs: Record<string, any> = {
+  const lineAttrs: TopologyEdgeVisual['attrs']['line'] = {
     stroke: styleConfig?.lineColor || COLORS.EDGE.DEFAULT,
     strokeWidth: styleConfig?.lineWidth || SPACING.STROKE_WIDTH.THIN,
     ...markers[connectionType],

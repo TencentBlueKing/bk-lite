@@ -70,6 +70,77 @@ def test_reference_signal_and_communities():
 
 
 @pytest.mark.django_db
+def test_reference_signal_uses_canonical_title_aliases():
+    from apps.opspilot.services.wiki.graph_service import analyze_graph
+
+    kb = _kb()
+    kb.generation_rules = {"title_aliases": [{"canonical": "配置平台", "aliases": ["CMDB"]}]}
+    kb.save(update_fields=["generation_rules"])
+    source = _page(kb, "业务系统", body="依赖 [[CMDB]] 提供配置数据。", page_type="system")
+    target = _page(kb, "配置平台", page_type="platform")
+
+    graph = analyze_graph(kb)
+
+    edge = next(edge for edge in graph["edges"] if {edge["from"], edge["to"]} == {source.id, target.id})
+    assert edge["signals"]["reference"] == 1
+
+
+@pytest.mark.django_db
+def test_graph_analysis_collapses_alias_nodes_to_canonical_title():
+    from apps.opspilot.services.wiki.graph_service import analyze_graph
+
+    kb = _kb()
+    kb.generation_rules = {"title_aliases": [{"canonical": "配置平台", "aliases": ["CMDB"]}]}
+    kb.save(update_fields=["generation_rules"])
+    alias = _page(kb, "CMDB", page_type="platform")
+    canonical = _page(kb, "配置平台", page_type="platform")
+    source = _page(kb, "业务系统", body="依赖 [[CMDB]] 提供配置数据。", page_type="system")
+
+    graph = analyze_graph(kb)
+
+    titles = {node["title"] for node in graph["nodes"]}
+    assert "CMDB" not in titles
+    assert "配置平台" in titles
+    canonical_node = next(node for node in graph["nodes"] if node["title"] == "配置平台")
+    assert canonical_node["id"] == canonical.id
+    assert canonical_node["page_ids"] == [alias.id, canonical.id]
+    assert canonical_node["aliases"] == ["CMDB"]
+    assert graph["insights"]["node_count"] == 2
+    edge = next(edge for edge in graph["edges"] if {edge["from"], edge["to"]} == {source.id, canonical.id})
+    assert edge["signals"]["reference"] == 1
+
+
+@pytest.mark.django_db
+def test_graph_analysis_reports_strong_edges_between_communities():
+    from apps.opspilot.services.wiki.graph_service import SIGNAL_WEIGHTS, analyze_graph
+
+    kb = _kb()
+    material_a = _material(kb, "source-a")
+    material_b = _material(kb, "source-b")
+    a1 = _page(kb, "A1", page_type="group-a", tags=["group-a"])
+    a2 = _page(kb, "A2", page_type="group-a", tags=["group-a"])
+    a3 = _page(kb, "A3", body="跨域依赖 [[B1]]。", page_type="group-a", tags=["group-a", "handoff"])
+    b1 = _page(kb, "B1", page_type="group-b", tags=["group-b", "handoff"])
+    b2 = _page(kb, "B2", page_type="group-b", tags=["group-b"])
+    b3 = _page(kb, "B3", page_type="group-b", tags=["group-b"])
+    for page in [a1, a2, a3]:
+        _evi(page, material_a)
+    for page in [b1, b2, b3]:
+        _evi(page, material_b)
+
+    graph = analyze_graph(kb)
+
+    cross_edges = graph["insights"]["cross_community_edges"]
+    assert len(cross_edges) == 1
+    cross = cross_edges[0]
+    assert {cross["from"], cross["to"]} == {a3.id, b1.id}
+    assert cross["from_community"] != cross["to_community"]
+    assert cross["signals"] == {"shared_tags": 1, "reference": 1}
+    expected_weight = SIGNAL_WEIGHTS["shared_tags"] + SIGNAL_WEIGHTS["reference"]
+    assert cross["weight"] == round(expected_weight, 3)
+
+
+@pytest.mark.django_db
 class TestGraphAnalysisView:
     def test_endpoint(self, api_client):
         kb = _kb()

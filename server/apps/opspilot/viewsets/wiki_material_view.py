@@ -1,12 +1,16 @@
+from django.db import transaction
 from django.http import JsonResponse
 from rest_framework.decorators import action
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.opspilot.models import Material
+from apps.opspilot.models import KnowledgePage, Material, MaterialVersion, PageEvidence
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
 from apps.opspilot.services.wiki.build_service import build_from_material
+from apps.opspilot.services.wiki.embedding_service import index_version, reindex_page_chunks
+from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
 from apps.opspilot.services.wiki.material_service import ingest_material
-from apps.opspilot.services.wiki.update_service import handle_material_deletion, propose_update
+from apps.opspilot.services.wiki.update_service import handle_material_deletion, preview_material_deletion, preview_material_update, propose_update
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -73,6 +77,18 @@ class WikiMaterialViewSet(AuthViewSet):
         log_operation(request, "delete", "opspilot", f"删除资料: {name}")
         return JsonResponse({"result": True, "data": {"pending_review": build.counts.get("pending_review", 0)}})
 
+    @action(methods=["GET"], detail=True)
+    def delete_impact(self, request, pk=None):
+        """删除资料前的只读影响预览:受影响页面、会失去来源页面、共享来源保护页面。"""
+        material = self.get_object()
+        return JsonResponse({"result": True, "data": preview_material_deletion(material)})
+
+    @action(methods=["GET"], detail=True)
+    def update_impact(self, request, pk=None):
+        """资料更新前的只读影响预览:受影响页面预计统一进入人工审核。"""
+        material = self.get_object()
+        return JsonResponse({"result": True, "data": preview_material_update(material)})
+
     @action(methods=["POST"], detail=True)
     def ingest(self, request, pk=None):
         """手动触发资料解析(异步:抽取文本 + AI 摘要)。资料置「解析中」,前端轮询出结果。"""
@@ -110,12 +126,98 @@ class WikiMaterialViewSet(AuthViewSet):
         )
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
+    @action(methods=["POST"], detail=True)
+    def reindex(self, request, pk=None):
+        """按资料重建其贡献页面的索引,只处理仍启用的知识页面。"""
+        material = self.get_object()
+        kb = material.knowledge_base
+        if not kb.embed_provider_id:
+            return JsonResponse({"result": False, "message": "知识库未配置向量模型,无法重建索引"}, status=400)
+
+        evidences = (
+            PageEvidence.objects.filter(material=material, page__status="active").select_related("page", "page__current_version").order_by("page_id")
+        )
+        pages = []
+        seen = set()
+        for evidence in evidences:
+            if evidence.page_id in seen:
+                continue
+            pages.append(evidence.page)
+            seen.add(evidence.page_id)
+        record = rebuild_page_indexes(
+            kb,
+            pages,
+            trigger="material_reindex",
+            event="material_reindex",
+            operator=getattr(request.user, "username", ""),
+            inputs={"material_id": material.id, "material_name": material.name},
+            index_fn=index_version,
+            chunk_index_fn=reindex_page_chunks,
+        )
+        log_operation(request, "execute", "opspilot", f"重建资料关联索引: {material.name}")
+        return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
+
+    @action(methods=["POST"], detail=False, url_path="batch_create")
+    def batch_create(self, request):
+        """批量创建资料(支持多文件):每条独立处理,返回 items + errors 汇总,失败不影响其他记录创建。
+
+        POST 表单字段:
+        - knowledge_base: int (必填)
+        - ocr_enhance: bool (默认 False,仅 file 生效)
+        - files: File[] (multipart,多文件)
+
+        返回 {result, data: {items: [Material...], errors: [{name, error}]}}。
+        """
+        kb_id = request.data.get("knowledge_base")
+        if not kb_id:
+            return JsonResponse({"result": False, "message": "knowledge_base 必填"}, status=400)
+
+        ocr_enhance = str(request.data.get("ocr_enhance", "")).lower() in ("1", "true", "yes")
+        files = request.FILES.getlist("files")
+        if not files:
+            return JsonResponse({"result": False, "message": "files 必填,至少上传一个文件"}, status=400)
+
+        items = []
+        errors = []
+        for f in files:
+            try:
+                # 每条记录包在独立 savepoint 中:失败只回滚当前 savepoint,不污染整批事务
+                with transaction.atomic():
+                    material = Material.objects.create(
+                        knowledge_base_id=kb_id,
+                        name=f.name,
+                        material_type="file",
+                        file=f,
+                        ocr_enhance=ocr_enhance,
+                        status="parsing",
+                    )
+            except Exception as exc:  # noqa: BLE001 - 批量任务逐条隔离失败
+                logger.exception("wiki batch_create 失败 file=%s kb=%s", f.name, kb_id)
+                errors.append({"name": f.name, "error": str(exc)})
+                continue
+            # 投递异步解析(loader/OCR/LLM 较重);任务投递失败不阻塞记录创建
+            try:
+                from apps.opspilot.tasks import wiki_ingest_material_task
+
+                wiki_ingest_material_task.delay(material.id, material.knowledge_base.llm_model_id)
+            except Exception:  # noqa: BLE001
+                logger.exception("wiki batch_create 投递解析任务失败 material_id=%s", material.id)
+            items.append(MaterialSerializer(material).data)
+        log_operation(
+            request,
+            "create",
+            "opspilot",
+            f"批量新增资料: 成功 {len(items)} 条,失败 {len(errors)} 条",
+        )
+        return JsonResponse(
+            {"result": True, "data": {"items": items, "errors": errors}},
+            status=201 if items and not errors else 200,
+        )
+
     @action(methods=["GET"], detail=True)
     def info(self, request, pk=None):
         """资料详情(spec 4.2):原文/文件链接、AI 解读、版本、贡献的知识页面。"""
         material = self.get_object()
-        from apps.opspilot.models import KnowledgePage, MaterialVersion, PageEvidence
-
         versions = [
             {
                 "id": v.id,

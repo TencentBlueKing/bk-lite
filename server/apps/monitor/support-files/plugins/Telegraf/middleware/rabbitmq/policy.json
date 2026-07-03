@@ -14,14 +14,15 @@
           "value": 60,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "磁盘空间告警",
       "alert_name": "RabbitMQ节点 ${resource_name} 磁盘将满",
       "description": "监控剩余磁盘空间，写满会导致消息持久化失败。需清理队列或扩容存储。",
       "metric_name": "rabbitmq_node_disk_free",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -38,7 +39,8 @@
           "value": 20,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     },
     {
       "name": "就绪消息堆积",
@@ -62,14 +64,15 @@
           "value": 10000,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "发布速率突增",
       "alert_name": "RabbitMQ交换器 ${resource_name} 写入过载",
       "description": "检测消息发布速率，异常增长可能导致积压。需评估生产者流量。",
       "metric_name": "rabbitmq_overview_messages_published_rate",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -86,14 +89,15 @@
           "value": 200,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     },
     {
       "name": "内存压力预警",
       "alert_name": "RabbitMQ节点 ${resource_name} GC压力",
       "description": "检测内存使用与限制的比例，接近阈值会触发流控。",
       "metric_name": "rabbitmq_fd_usage_ratio",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -110,7 +114,8 @@
           "value": 70,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120">
+  <defs>
+    <linearGradient id="albentiaBlue" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#0ea5e9"/>
+      <stop offset="1" stop-color="#1d4ed8"/>
+    </linearGradient>
+  </defs>
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="url(#albentiaBlue)"/>
+  <path d="M32 74c15-18 41-18 56 0" fill="none" stroke="#ffffff" stroke-width="9" stroke-linecap="round"/>
+  <path d="M43 58c9-10 25-10 34 0" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" opacity=".86"/>
+  <circle cx="60" cy="82" r="7" fill="#ffffff"/>
+</svg>

@@ -1,0 +1,121 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_nokia",
+  "plugin": "Switch Nokia SNMP",
+  "plugin_desc": "Nokia（原 Alcatel-Lucent Enterprise）OmniSwitch 系列以太网交换机专用 SNMP 采集模板（ALCATEL-IND1-HEALTH-MIB / ALCATEL-IND1-CHASSIS-MIB，企业号 6486）。除标准 IF-MIB 64 位 HC 接口流量外，额外采集 Nokia 私有 OID 的设备健康指标——CPU 使用率与内存使用率（healthModuleTable，均以百分比直接上报）、机箱温度（chasChassisTemp，℃）、风扇状态与电源状态（chasEntPhysOperStatus，经 telegraf processors.enum 归一为 1=正常/2=异常）。适用品牌型号——Nokia/ALE OmniSwitch 6/9 系列园区与数据中心交换机（企业号 6486）。",
+  "status_query": "any({instance_type='switch', collect_type='snmp_nokia'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the CPU utilisation percentage of the Nokia OmniSwitch (ALCATEL-IND1-HEALTH-MIB healthModuleCpuLatest), aggregated as the average across modules. Sustained high CPU can indicate control-plane overload, protocol churn, or abnormal traffic and may slow management response or forwarding."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCInOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifInOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='switch', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, measured in bytes per second, from the 64-bit IF-MIB ifHCOutOctets counter (ifXTable). The 64-bit counter avoids the rapid wrap of the 32-bit ifOutOctets on high-speed switch ports, keeping the rate accurate."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "内存使用率",
+      "query": "avg(device_memory_usage{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "This metric reports the memory utilisation percentage of the Nokia OmniSwitch (ALCATEL-IND1-HEALTH-MIB healthModuleMemoryLatest), reported directly as a percentage and aggregated as the average across modules. Sustained high memory may indicate a leak or resource pressure and can degrade device stability."
+    },
+    {
+      "metric_group": "Temperature",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_temperature_celsius",
+      "display_name": "设备温度",
+      "query": "max(device_temperature_celsius{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "celsius",
+      "data_type": "Number",
+      "description": "This metric reports the chassis temperature in degrees Celsius of the Nokia OmniSwitch (ALCATEL-IND1-CHASSIS-MIB chasChassisTemp), aggregated as the maximum across sensors. High temperatures can indicate cooling failure or airflow obstruction and risk thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_fan_state",
+      "display_name": "风扇状态",
+      "query": "max(device_fan_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "This metric reports the fan operational state of the Nokia OmniSwitch (ALCATEL-IND1-CHASSIS-MIB chasEntPhysOperStatus for fan entities), normalised via telegraf processors.enum to 1=normal / 2=abnormal. An abnormal fan reduces cooling capacity and raises the risk of thermal shutdown."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_psu_state",
+      "display_name": "电源状态",
+      "query": "max(device_psu_state{instance_type='switch', __$labels__}) by (instance_id)",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "data_type": "Enum",
+      "description": "This metric reports the power-supply state of the Nokia OmniSwitch (ALCATEL-IND1-CHASSIS-MIB chasEntPhysOperStatus for power-supply entities), normalised via telegraf processors.enum to 1=normal / 2=abnormal. A failed power supply removes redundancy and a single-supply failure can take the device offline."
+    }
+  ]
+}

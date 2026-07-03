@@ -86,6 +86,10 @@ export const useRouterConfig = () => {
       'Router MultiTech SNMP': 'snmp_multitech',
       'Router Avici SNMP': 'snmp_avici',
       'Router Unisphere SNMP': 'snmp_unisphere',
+      'Router 6WIND VSR SNMP': 'snmp_6wind',
+      'Router Robustel SNMP': 'snmp_robustel',
+      'Router Milesight SNMP': 'snmp_milesight',
+      'Router MikroTik SNMP': 'snmp_mikrotik_router',
       'Router Sierra Wireless SNMP': 'snmp_sierrawireless',
       'Router NEC SNMP': 'snmp_nec',
       'Router DrayTek SNMP': 'snmp_draytek',
@@ -99,6 +103,8 @@ export const useRouterConfig = () => {
       'Router OneAccess SNMP': 'snmp_oneaccess',
       'Router Harbour SNMP': 'snmp_harbour',
       'Router Aethra SNMP': 'snmp_aethra',
+      'Router VeloCloud SNMP': 'snmp_velocloud',
+      'Router Benu SNMP': 'snmp_benu',
       'Router Flow NetFlow': 'netflow',
       'Router Flow sFlow': 'sflow'
     }

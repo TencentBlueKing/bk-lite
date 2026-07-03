@@ -12,10 +12,27 @@ import logging
 
 from django.db import transaction
 
-from apps.opspilot.models import BuildRecord, KnowledgePage, Material, PageEvidence, PageVersion
-from apps.opspilot.services.wiki.build_service import _llm_generate_pages
+from apps.opspilot.models import BuildRecord, KnowledgePage, Material
+from apps.opspilot.services.wiki.build_service import (
+    _canonical_title,
+    _create_ai_page,
+    _existing_pages_by_title,
+    _invoke_llm,
+    _llm_extract_facts,
+    _llm_generate_pages,
+    _merge_ai_page,
+    _normalize_page_data_title,
+    _page_action_trace,
+    _source_chunk_trace,
+    _source_chunks_with_offsets,
+    _source_locator_for_page,
+    _title_alias_terms_for_enrichment,
+    _title_key,
+)
+from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import ensure_check
-from apps.opspilot.services.wiki.relation_service import rebuild_relations
+from apps.opspilot.services.wiki.material_service import load_parsed_markdown
+from apps.opspilot.services.wiki.wikilink_enrichment_service import enrich_pages_wikilinks
 
 logger = logging.getLogger("opspilot")
 
@@ -33,60 +50,132 @@ def _reconcile_existing(kb):
     return archived, flagged
 
 
-@transaction.atomic
-def rebuild_knowledge_base(kb, llm_model_id=None, operator="", generator=None):
-    """按当前 Schema 全量重建,返回 BuildRecord(trigger=rebuild)。"""
-    build = BuildRecord.objects.create(
+def running_build_record(kb):
+    return BuildRecord.objects.filter(knowledge_base=kb, status="running").order_by("-id").first()
+
+
+def create_rebuild_record(kb, operator=""):
+    return BuildRecord.objects.create(
         knowledge_base=kb,
         trigger="rebuild",
         operator=operator,
         inputs={"schema_len": len(kb.schema_md or "")},
-        stage="generating",
+        stage="queued",
         status="running",
     )
+
+
+def _mark_rebuild_generating(build, kb, operator):
+    build.operator = operator or build.operator
+    build.inputs = {"schema_len": len(kb.schema_md or ""), "source_trace": {"materials": []}}
+    build.stage = "generating"
+    build.status = "running"
+    build.progress = 0
+    build.errors = []
+    build.save(update_fields=["operator", "inputs", "stage", "status", "progress", "errors", "updated_at"])
+
+
+@transaction.atomic
+def rebuild_knowledge_base(kb, llm_model_id=None, operator="", generator=None, build=None):
+    """按当前 Schema 全量重建,返回 BuildRecord(trigger=rebuild)。"""
+    build = build or create_rebuild_record(kb, operator=operator)
+    _mark_rebuild_generating(build, kb, operator)
     try:
         archived, flagged = _reconcile_existing(kb)
 
-        def _default_gen(material):
-            text = (material.ai_summary or material.text_content or "").strip()
-            return _llm_generate_pages(kb, text, llm_model_id)
+        def _material_text(material):
+            return (load_parsed_markdown(material) or material.ai_summary or material.text_content or "").strip()
 
-        gen = generator or _default_gen
+        def _generate_pages(material, text):
+            if generator:
+                return generator(material) or []
+            facts = _llm_extract_facts(text, llm_model_id)
+            return _llm_generate_pages(kb, facts or text, llm_model_id)
+
         new_ids = []
+        cascade_ids = []
+        maintenance = {}
+        source_trace = {"materials": []}
+        existing_by_title = _existing_pages_by_title(kb)
         for material in Material.objects.filter(knowledge_base=kb):
-            for pd in gen(material) or []:
+            text = _material_text(material)
+            source_chunks = _source_chunks_with_offsets(text)
+            material_trace = {
+                "material_id": material.id,
+                "material_name": material.name,
+                "chunks": _source_chunk_trace(source_chunks),
+                "page_actions": [],
+            }
+            for pd in _generate_pages(material, text):
                 if not pd.get("title"):
                     continue
-                page = KnowledgePage.objects.create(
-                    knowledge_base=kb,
-                    page_type=pd.get("page_type", "concept"),
-                    title=pd["title"],
-                    tags=pd.get("tags", []) or [],
-                    contribution="ai",
-                    update_method="rebuild",
-                )
-                version = PageVersion.objects.create(
-                    page=page,
-                    no=1,
-                    body=pd.get("body", "") or "",
-                    change_type="rebuild",
-                    is_current=True,
-                    build_record=build,
-                )
-                page.current_version = version
-                page.save(update_fields=["current_version"])
-                PageEvidence.objects.create(page=page, material=material, material_version=material.current_version)
-                new_ids.append(page.id)
+                pd = _normalize_page_data_title(kb, pd)
+                key = _title_key(pd.get("title"), kb)
+                page = existing_by_title.get(key)
+                locator = _source_locator_for_page(material, text, pd, chunks=source_chunks)
+                if not page:
+                    page = _create_ai_page(
+                        kb,
+                        material,
+                        build,
+                        pd,
+                        update_method="rebuild",
+                        change_type="rebuild",
+                        operator=operator,
+                        locator=locator,
+                    )
+                    existing_by_title[key] = page
+                    new_ids.append(page.id)
+                    cascade_ids.append(page.id)
+                    action = "new"
+                elif page.contribution == "ai":
+                    action = _merge_ai_page(
+                        page,
+                        material,
+                        build,
+                        pd,
+                        operator=operator,
+                        update_method="rebuild",
+                        change_type="rebuild",
+                        locator=locator,
+                    )
+                    if action == "updated":
+                        cascade_ids.append(page.id)
+                elif ensure_check(kb, "cannot_merge", page, suggested_actions=["review", "rebuild_page"]):
+                    action = "pending_review"
+                    flagged.append(page.id)
+                else:
+                    action = "unchanged"
+                material_trace["page_actions"].append(_page_action_trace(page, action, locator))
+            source_trace["materials"].append(material_trace)
 
-        if new_ids:
-            rebuild_relations(kb)
+        if cascade_ids:
+            enriched_ids = enrich_pages_wikilinks(
+                kb,
+                cascade_ids,
+                llm_model_id,
+                _invoke_llm,
+                build_record=build,
+                operator=operator,
+                canonicalize=lambda value: _canonical_title(kb, value),
+                alias_terms_resolver=lambda value: _title_alias_terms_for_enrichment(kb, value),
+            )
+            cascade_ids = list(dict.fromkeys([*cascade_ids, *enriched_ids]))
+            maintenance = cascade(kb, cascade_ids, "build")
 
-        build.counts = {"new": len(new_ids), "archived": len(archived), "unchanged": 0, "pending_review": len(flagged)}
+        build.inputs = {**(build.inputs or {}), "source_trace": source_trace}
+        build.counts = {
+            "new": len(new_ids),
+            "archived": len(archived),
+            "unchanged": 0,
+            "pending_review": len(flagged),
+        }
         build.affected_pages = new_ids
+        build.maintenance = maintenance
         build.stage = "done"
         build.status = "success"
         build.progress = 100
-        build.save(update_fields=["counts", "affected_pages", "stage", "status", "progress", "updated_at"])
+        build.save(update_fields=["inputs", "counts", "affected_pages", "maintenance", "stage", "status", "progress", "updated_at"])
         return build
     except Exception as exc:
         logger.exception("wiki 全量重建失败 kb=%s", kb.id)

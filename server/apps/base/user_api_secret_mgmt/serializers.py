@@ -25,10 +25,19 @@ class UserAPISecretSerializer(BaseUserAPISecretSerializer):
         fields = ("id", "username", "domain", "team", "team_name", "created_at", "updated_at", "api_secret_preview")
 
     def get_api_secret_preview(self, instance):
-        return f"{instance.api_secret[:4]}********" if instance.api_secret else ""
+        return instance.get_api_secret_preview()
 
 
 class UserAPISecretCreateSerializer(BaseUserAPISecretSerializer):
+    api_secret = serializers.CharField(write_only=True)
+
     class Meta:
         model = UserAPISecret
         fields = "__all__"
+
+    def to_representation(self, instance):
+        data = super().to_representation(instance)
+        api_secret = getattr(instance, "_plain_api_secret", None)
+        if api_secret:
+            data["api_secret"] = api_secret
+        return data

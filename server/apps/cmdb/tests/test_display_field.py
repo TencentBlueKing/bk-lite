@@ -245,9 +245,15 @@ def test_get_exclude_fields_from_attrs():
 
 
 def test_exclude_fields_excludes_raw_file_but_not_display():
+    """展示型字段排除原值但保留 _display；附件型仅在装有企业版时才排除。
+
+    社区 worktree 无 attachment 文件类型（file_attr_types() 为空集），故附件断言
+    需按当前部署能力分支，避免在社区误判。
+    """
     import json
 
     from apps.cmdb.display_field.cache import ExcludeFieldsCache
+    from apps.cmdb.model_ops.extensions import file_attr_types
 
     models = [
         {
@@ -263,13 +269,19 @@ def test_exclude_fields_excludes_raw_file_but_not_display():
     ]
     exclude = ExcludeFieldsCache._build_exclude_fields(models)
 
-    # 原始文件字段 + 展示型字段被排除，普通 str 字段不排除
-    assert "doc" in exclude
+    # 展示型字段（enum）被排除，普通 str 字段不排除
     assert "status" in exclude
     assert "inst_name" not in exclude
-    # 冗余 _display 字段绝不能被排除 —— 否则文件名词干仍搜不到
-    assert "doc_display" not in exclude
+    # 冗余 _display 字段绝不能被排除 —— 否则展示名词干仍搜不到
     assert "status_display" not in exclude
+
+    # 附件型：仅当部署支持 attachment（企业版）时原值才排除，且 _display 绝不排除
+    if "attachment" in file_attr_types():
+        assert "doc" in exclude
+        assert "doc_display" not in exclude
+    else:
+        # 社区版无 attachment 文件类型，doc 不被识别为文件字段 → 不排除
+        assert "doc" not in exclude
 
 
 def test_every_excluded_type_has_display_generator():
@@ -282,9 +294,12 @@ def test_every_excluded_type_has_display_generator():
     from apps.cmdb.display_field.constants import DISPLAY_FIELD_TYPES
     from apps.cmdb.model_ops.extensions import file_attr_types
 
-    excluded_types = set(DISPLAY_FIELD_TYPES) | set(file_attr_types())
-    # 本环境装有 enterprise，应至少含 attachment/image
-    assert {"attachment", "image"} <= excluded_types
+    file_types = set(file_attr_types())
+    excluded_types = set(DISPLAY_FIELD_TYPES) | file_types
+    # 装有 enterprise 时文件型必含 attachment/image；社区版 file_attr_types() 为空集。
+    if file_types:
+        assert {"attachment", "image"} <= excluded_types
+    # 不变量对「当前部署实际排除的全部类型」都必须成立（社区/企业均覆盖）。
 
     for attr_type in sorted(excluded_types):
         attrs = [{"attr_id": "f", "attr_type": attr_type, "option": []}]

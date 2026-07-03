@@ -1,6 +1,13 @@
 import useApiClient from '@/utils/request';
 
-export type ObjectType = 'dashboard' | 'topology' | 'architecture' | 'datasource' | 'namespace';
+export type ObjectType =
+  | 'dashboard'
+  | 'topology'
+  | 'architecture'
+  | 'screen'
+  | 'report'
+  | 'datasource'
+  | 'namespace';
 export type ConflictAction = 'skip' | 'overwrite' | 'rename';
 
 export interface ExportRequest {
@@ -14,6 +21,8 @@ export interface ExportResponse {
     dashboards?: number;
     topologies?: number;
     architectures?: number;
+    screens?: number;
+    reports?: number;
     datasources?: number;
     namespaces?: number;
   };

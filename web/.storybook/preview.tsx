@@ -13,6 +13,9 @@ import { ClientProvider } from '@/context/client';
 import { PermissionsProvider } from '@/context/permissions';
 import { UserInfoProvider } from '@/context/userInfo';
 import AuthProvider from '@/context/auth';
+import { installMonitorDashboardRequestInterceptor } from './mocks/monitor-dashboard-request';
+
+installMonitorDashboardRequestInterceptor();
 
 const mockSession = {
   username: 'umr',

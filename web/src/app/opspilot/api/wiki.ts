@@ -1,17 +1,29 @@
 import useApiClient from '@/utils/request';
 import { LlmModel } from '@/app/opspilot/types/skill';
+import { Model } from '@/app/opspilot/types/provider';
 import {
+  BuildMaintenanceBatchRetryResult,
   BuildRecord,
   CheckItem,
   KnowledgePage,
+  MarkdownImportResult,
   Material,
+  MaterialBatchCreateResult,
+  MaterialDeleteImpact,
   MaterialInfo,
+  MaterialUpdateImpact,
   PageVersion,
   PurposeSchemaResult,
   PurposeSchemaTemplate,
+  SaveAnswerPageInput,
+  SaveAnswerPageResult,
+  WikiContextOptions,
+  WikiContextResult,
   WikiGraph,
   WikiKnowledgeBase,
   WikiOverview,
+  WikiPageSourcesResult,
+  WikiPreviewMergeResult,
   WikiQaResult,
   WikiSearchHit,
 } from '@/app/opspilot/types/wiki';
@@ -51,6 +63,10 @@ export const useWikiApi = () => {
   const fetchLlmModels = (): Promise<LlmModel[]> =>
     get('/opspilot/model_provider_mgmt/llm_model/', { params: { enabled: 1 } });
 
+  // EmbedProvider 用于 Wiki 语义索引/语义检索,管理入口同模型供应商页的"向量模型"。
+  const fetchEmbedProviders = (): Promise<Model[]> =>
+    get('/opspilot/model_provider_mgmt/embed_provider/', { params: { enabled: 1 } });
+
   const generatePurposeSchema = (data: {
     template_key?: string;
     description?: string;
@@ -75,8 +91,30 @@ export const useWikiApi = () => {
 
   const fetchOverview = (id: number): Promise<WikiOverview> => get(`${BASE}/knowledge_base/${id}/overview/`);
 
-  const buildContext = (kb_ids: number[], query: string, top_k = 5): Promise<unknown> =>
-    post(`${BASE}/knowledge_base/context/`, { kb_ids, query, top_k });
+  const buildContext = (kb_ids: number[], query: string, options: WikiContextOptions = {}): Promise<WikiContextResult> =>
+    post(`${BASE}/knowledge_base/context/`, {
+      kb_ids,
+      query,
+      top_k: options.top_k ?? 5,
+      token_budget: options.token_budget,
+      graph_hops: options.graph_hops,
+      retrieval_mode: options.retrieval_mode,
+    });
+
+  const reindexKnowledgeBase = (id: number): Promise<BuildRecord> =>
+    post(`${BASE}/knowledge_base/${id}/reindex/`, {});
+
+  const exportKnowledgeBaseMarkdown = (id: number): Promise<Blob> =>
+    get(`${BASE}/knowledge_base/${id}/export_markdown/`, { responseType: 'blob' });
+
+  const previewMergeKnowledgeBase = (id: number): Promise<WikiPreviewMergeResult> =>
+    get(`${BASE}/knowledge_base/${id}/preview_merge/`);
+
+  const importKnowledgeBaseMarkdown = (id: number, file: File): Promise<MarkdownImportResult> => {
+    const fd = new FormData();
+    fd.append('file', file);
+    return post(`${BASE}/knowledge_base/${id}/import_markdown/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  };
 
   const rebuildKnowledgeBase = (id: number): Promise<BuildRecord> => post(`${BASE}/knowledge_base/${id}/rebuild/`, {});
 
@@ -88,15 +126,36 @@ export const useWikiApi = () => {
 
   const fetchMaterialInfo = (id: number): Promise<MaterialInfo> => get(`${BASE}/material/${id}/info/`);
 
+  const fetchMaterialDeleteImpact = (id: number): Promise<MaterialDeleteImpact> =>
+    get(`${BASE}/material/${id}/delete_impact/`);
+
+  const fetchMaterialUpdateImpact = (id: number): Promise<MaterialUpdateImpact> =>
+    get(`${BASE}/material/${id}/update_impact/`);
+
   const createMaterial = (data: Partial<Material>): Promise<Material> => post(`${BASE}/material/`, data);
 
-  const createMaterialFile = (kbId: number, name: string, file: File): Promise<Material> => {
+  const createMaterialFile = (kbId: number, name: string, file: File, ocrEnhance = false): Promise<Material> => {
     const fd = new FormData();
     fd.append('knowledge_base', String(kbId));
     fd.append('name', name);
     fd.append('material_type', 'file');
     fd.append('file', file);
+    fd.append('ocr_enhance', String(ocrEnhance));
     return post(`${BASE}/material/`, fd, { headers: { 'Content-Type': 'multipart/form-data' } });
+  };
+
+  const batchCreateMaterials = (
+    kbId: number,
+    files: File[],
+    ocrEnhance = false
+  ): Promise<MaterialBatchCreateResult> => {
+    const fd = new FormData();
+    fd.append('knowledge_base', String(kbId));
+    fd.append('ocr_enhance', String(ocrEnhance));
+    files.forEach((file) => fd.append('files', file));
+    return post(`${BASE}/material/batch_create/`, fd, {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
   };
 
   const deleteMaterial = (id: number): Promise<{ pending_review: number }> => del(`${BASE}/material/${id}/`);
@@ -108,24 +167,42 @@ export const useWikiApi = () => {
 
   const proposeUpdate = (id: number): Promise<BuildRecord> => post(`${BASE}/material/${id}/propose_update/`, {});
 
+  const reindexMaterial = (id: number): Promise<BuildRecord> => post(`${BASE}/material/${id}/reindex/`, {});
+
   // ---- 页面 ----
   const fetchPages = (kbId: number, params?: Record<string, unknown>): Promise<Paged<KnowledgePage>> =>
     get(`${BASE}/page/`, { params: { ...params, knowledge_base: kbId } });
 
   const fetchPage = (id: number): Promise<KnowledgePage> => get(`${BASE}/page/${id}/`);
 
+  const fetchPageSources = (id: number): Promise<WikiPageSourcesResult> => get(`${BASE}/page/${id}/sources/`);
+
   const createPage = (data: Partial<KnowledgePage> & { body?: string }): Promise<KnowledgePage> =>
     post(`${BASE}/page/`, data);
+
+  const saveAnswerPage = (data: SaveAnswerPageInput): Promise<SaveAnswerPageResult> =>
+    post(`${BASE}/page/save_answer/`, data);
 
   const updatePage = (id: number, data: Partial<KnowledgePage> & { body?: string }): Promise<KnowledgePage> =>
     put(`${BASE}/page/${id}/`, data);
 
   const deletePage = (id: number): Promise<void> => del(`${BASE}/page/${id}/`);
 
+  const batchDeletePages = (
+    kbId: number,
+    ids: number[]
+  ): Promise<{ deleted: number; skipped: number; skipped_ids: number[] }> =>
+    post(`${BASE}/page/batch_delete/`, { knowledge_base: kbId, ids });
+
+  const reindexPage = (id: number): Promise<BuildRecord> => post(`${BASE}/page/${id}/reindex/`, {});
+
   const fetchPageVersions = (id: number): Promise<PageVersion[]> => get(`${BASE}/page/${id}/versions/`);
 
   const restorePageVersion = (id: number, version_id: number): Promise<KnowledgePage> =>
     post(`${BASE}/page/${id}/restore/`, { version_id });
+
+  const restorePageFromArchive = (id: number): Promise<KnowledgePage> =>
+    post(`${BASE}/page/${id}/restore_from_archive/`, {});
 
   const fetchPageDiff = (id: number, from: number, to: number): Promise<{ diff: string[] }> =>
     get(`${BASE}/page/${id}/diff/`, { params: { from, to } });
@@ -137,6 +214,16 @@ export const useWikiApi = () => {
   const fetchBuildRecord = (id: number): Promise<BuildRecord> => get(`${BASE}/build_record/${id}/`);
 
   const retryBuild = (id: number): Promise<{ async: boolean }> => post(`${BASE}/build_record/${id}/retry/`, {});
+
+  const retryBuildMaintenance = (id: number, stages?: string[]): Promise<BuildRecord> =>
+    post(`${BASE}/build_record/${id}/retry_maintenance/`, stages ? { stages } : {});
+
+  const batchRetryBuildMaintenance = (
+    kbId: number,
+    ids: number[],
+    stages?: string[]
+  ): Promise<BuildMaintenanceBatchRetryResult> =>
+    post(`${BASE}/build_record/batch_retry_maintenance/`, stages ? { knowledge_base: kbId, ids, stages } : { knowledge_base: kbId, ids });
 
   const cancelBuild = (id: number): Promise<BuildRecord> => post(`${BASE}/build_record/${id}/cancel/`, {});
 
@@ -150,6 +237,31 @@ export const useWikiApi = () => {
 
   const rejectCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/reject/`, {});
 
+  const mergeDuplicateCheck = (id: number): Promise<unknown> => post(`${BASE}/check_item/${id}/merge/`, {});
+
+  const resolveCheck = (id: number, note = ''): Promise<unknown> => post(`${BASE}/check_item/${id}/resolve/`, { note });
+
+  const batchAcceptChecks = (
+    ids: number[]
+  ): Promise<{ accepted: number; skipped: number; skipped_ids: number[] }> =>
+    post(`${BASE}/check_item/batch_accept/`, { ids });
+
+  const batchRejectChecks = (
+    ids: number[]
+  ): Promise<{ rejected: number; skipped: number; skipped_ids: number[] }> =>
+    post(`${BASE}/check_item/batch_reject/`, { ids });
+
+  const batchResolveChecks = (
+    ids: number[],
+    note = ''
+  ): Promise<{ resolved: number; skipped: number; skipped_ids: number[] }> =>
+    post(`${BASE}/check_item/batch_resolve/`, { ids, note });
+
+  const assignCheck = (
+    id: number,
+    payload: { assignee?: string; due_at?: string | null; action_type?: string }
+  ): Promise<CheckItem> => post(`${BASE}/check_item/${id}/assign/`, payload);
+
   return {
     fetchKnowledgeBases,
     fetchKnowledgeBase,
@@ -158,6 +270,7 @@ export const useWikiApi = () => {
     deleteKnowledgeBase,
     fetchTemplates,
     fetchLlmModels,
+    fetchEmbedProviders,
     generatePurposeSchema,
     search,
     qa,
@@ -168,31 +281,52 @@ export const useWikiApi = () => {
     fetchGraphAnalysis,
     fetchOverview,
     buildContext,
+    reindexKnowledgeBase,
+    exportKnowledgeBaseMarkdown,
+    importKnowledgeBaseMarkdown,
+    previewMergeKnowledgeBase,
     rebuildKnowledgeBase,
     fetchMaterials,
     fetchMaterial,
     fetchMaterialInfo,
+    fetchMaterialDeleteImpact,
+    fetchMaterialUpdateImpact,
     createMaterial,
     createMaterialFile,
+    batchCreateMaterials,
     deleteMaterial,
     ingestMaterial,
     buildMaterial,
     proposeUpdate,
+    reindexMaterial,
     fetchPages,
     fetchPage,
+    fetchPageSources,
     createPage,
+    saveAnswerPage,
     updatePage,
     deletePage,
+    batchDeletePages,
+    reindexPage,
     fetchPageVersions,
     restorePageVersion,
+    restorePageFromArchive,
     fetchPageDiff,
     fetchBuildRecords,
     fetchBuildRecord,
     retryBuild,
+    retryBuildMaintenance,
+    batchRetryBuildMaintenance,
     cancelBuild,
     fetchCheckItems,
     acceptCheck,
     rejectCheck,
+    mergeDuplicateCheck,
+    resolveCheck,
+    batchAcceptChecks,
+    batchRejectChecks,
+    batchResolveChecks,
+    assignCheck,
   };
 };
 

@@ -48,7 +48,11 @@ export const usePluginFromJson = () => {
         }
         const resolvedConfig =
           data && typeof data === 'object' && 'ui_template' in data
-            ? data.ui_template || {}
+            ? {
+              ...(data.ui_template || {}),
+              node_selector: data.node_selector || {},
+              support_collect_detect: !!data.support_collect_detect
+            }
             : data;
         setConfig(resolvedConfig);
         setCurrentPluginId(pluginId);

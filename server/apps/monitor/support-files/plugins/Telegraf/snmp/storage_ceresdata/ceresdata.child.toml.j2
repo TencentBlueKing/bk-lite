@@ -1,0 +1,102 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_ceresdata"
+        config_type = "ceresdata"
+        brand = "ceresdata"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- CeresData system-disk status (CeresData private MIB DiskInfoStatus, 每系统磁盘一行) ----
+    # CeresDataStorageDiskInfoStatus 1.3.6.1.4.1.25359.4.1.3，系统磁盘状态。normal(1)→1 正常，其余→2 异常。
+    # 共享盘 device_disk_state(1=正常,>1=异常) max() by instance_id 取最差磁盘行。
+    # ⚠️ 厂商枚举真值码未现网核验，保守仅 1→正常，其余→异常。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.25359.4.1"
+        name = "device_disk"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25359.4.1.3"
+        name = "state"
+    # ---- CeresData per-disk status (CeresData private MIB DiskState, 每磁盘一行) ----
+    # CeresDataStorageDiskState 1.3.6.1.4.1.25359.1.2.3，磁盘状态。normal(1)→1 正常，其余→2 异常。
+    # 与系统磁盘同归 device_disk_state，max() 取最差盘。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.25359.1.2"
+        name = "device_disk"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25359.1.2.3"
+        name = "state"
+    # ---- CeresData storage-pool health (CeresData private MIB PoolHealth, 每存储池一行) ----
+    # CeresDataPoolHealth 1.3.6.1.4.1.25359.1.1.3，存储池健康度。normal(1)→1 正常，其余→2 异常。
+    # 存储池即聚合阵列健康 → 共享盘 device_raid_state(1=正常,>1=异常) max() 取最差池。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.25359.1.1"
+        name = "device_raid"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.25359.1.1.3"
+        name = "state"
+# ---- 磁盘健康状态归一：normal(1)→1(正常)，其余→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_disk"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 存储池(阵列)健康状态归一：normal(1)→1(正常)，其余→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_raid"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- CPU/内存/温度/风扇/电源 N/A ----
+# CeresData 私有树本 profile 仅暴露磁盘/存储池/文件系统状态与容量计数，
+# 未发布控制器 CPU/内存利用率、机箱温度、风扇或电源状态 gauge → 上述全 N/A 不采（不臆造）。
+# 存储池/文件系统容量(.1.1.4/.5, .1.3.3/.4)、磁盘读写校验计数(.1.2.4/.5/.6)、smb/nfs 服务状态(.1.3.5/.6)
+# 为按行索引的容量/计数/服务量，非共享盘标准健康量 → 不采。

@@ -217,7 +217,14 @@ class SnapshotRecorder:
             return None
 
         try:
-            pre_alert_metrics = method(query, start_timestamp, end_timestamp, step, group_by)
+            pre_alert_metrics = method(
+                query,
+                start_timestamp,
+                end_timestamp,
+                step,
+                group_by,
+                getattr(self.policy, "group_algorithm", None),
+            )
         except Exception as e:
             logger.error(f"Failed to query pre-alert metrics for policy {self.policy.id}: {e}")
             return None

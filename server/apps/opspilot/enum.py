@@ -39,6 +39,7 @@ class WorkFlowExecuteType(models.TextChoices):
     RESTFUL = "restful", _("RESTful")
     CELERY = "celery", _("Celery")
     ENTERPRISE_WECHAT = "enterprise_wechat", _("Enterprise WeChat")
+    ENTERPRISE_WECHAT_AIBOT = "enterprise_wechat_aibot", _("Enterprise WeChat AI Bot")
     WECHAT_OFFICIAL_ACCOUNT = "wechat_official", _("WeChat Official Account")
     DINGTALK = "dingtalk", _("Ding Talk")
     EMBEDDED_CHAT = "embedded_chat", _("Embedded Chat")

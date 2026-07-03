@@ -7,7 +7,7 @@
 
 import pytest
 
-from apps.monitor.models import MonitorObject, MonitorPlugin
+from apps.monitor.models import CollectConfig, MonitorInstance, MonitorObject, MonitorPlugin
 from apps.monitor.models.monitor_metrics import Metric, MetricGroup
 from apps.monitor.services import monitor_object as mo
 from apps.monitor.services.monitor_object import MonitorObjectService
@@ -76,3 +76,45 @@ def test_fill_display_metrics_reported_instance_without_collectconfig(monkeypatc
 
     # 修复前:无 CollectConfig → 不命中插件 → 列值缺失(--);修复后:按上报插件命中 → 回填 7
     assert result[0].get("K8STEST::cluster_pod_count") == "7"
+
+
+@pytest.mark.django_db
+def test_fill_display_metrics_skips_status_query_when_all_collectconfig_covered(monkeypatch):
+    obj, plugin, metric = _build_k8s_like_object()
+    instance = MonitorInstance.objects.create(id="('host1',)", name="host1", monitor_object=obj)
+    CollectConfig.objects.create(
+        id="host1-cfg",
+        monitor_instance=instance,
+        monitor_plugin=plugin,
+        collector="K8S",
+        collect_type="k8s",
+        config_type="k8stest",
+        file_type="toml",
+        is_child=True,
+    )
+
+    status_calls = []
+
+    class StubVictoriaMetricsAPI:
+        def query(self, query, **kwargs):
+            if "instance_type='k8stest'" in query and "count(" not in query:
+                status_calls.append(query)
+                return {"data": {"result": []}}
+            if "some_kube_pod_info" in query:
+                return {"data": {"result": [{"metric": {"instance_id": "host1"}, "value": [0, "5"]}]}}
+            return {"data": {"result": []}}
+
+    monkeypatch.setattr(mo, "VictoriaMetricsAPI", StubVictoriaMetricsAPI)
+
+    result = [{"instance_id": "('host1',)", "instance_name": "host1"}]
+    obj_metric_map = {
+        "display_fields": [
+            {"name": "Pod Count", "metrics": [{"plugin": "K8STEST", "metric": "cluster_pod_count"}]}
+        ],
+        "supplementary_indicators": [],
+    }
+
+    MonitorObjectService._fill_display_metrics(obj.id, obj_metric_map, result)
+
+    assert status_calls == []
+    assert result[0].get("K8STEST::cluster_pod_count") == "5"

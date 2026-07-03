@@ -5,9 +5,10 @@
 """
 
 import pytest
+from pydantic import ValidationError
 from rest_framework.test import APIRequestFactory, force_authenticate
 
-from apps.operation_analysis.constants.import_export import ConflictAction
+from apps.operation_analysis.constants.import_export import YAML_SCHEMA_VERSION, ConflictAction
 from apps.operation_analysis.models.datasource_models import DataSourceAPIModel, DataSourceTag, NameSpace
 from apps.operation_analysis.models.models import Dashboard, Directory, Topology
 from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
@@ -16,7 +17,7 @@ from apps.operation_analysis.views import view as view_module
 
 
 def _doc(**sections):
-    data = {"meta": {"schema_version": "1.0.0"}}
+    data = {"meta": {"schema_version": YAML_SCHEMA_VERSION}}
     data.update(sections)
     return YAMLDocument(**data)
 
@@ -65,6 +66,40 @@ def _topology_section(key="topology::topo-a", name="topo-a", **over):
         "desc": "",
         "other": {},
         "view_sets": {"nodes": [], "edges": [], "filters": []},
+    }
+    base.update(over)
+    return base
+
+
+def _screen_section(key="screen::screen-a", name="screen-a", **over):
+    base = {
+        "key": key,
+        "name": name,
+        "desc": "",
+        "other": {},
+        "view_sets": {"viewport": {"width": 1920, "height": 1080}, "items": [], "decorations": {}},
+        "refs": {"datasource_keys": [], "namespace_keys": []},
+    }
+    base.update(over)
+    return base
+
+
+def test_import_screen_requires_view_sets_contract():
+    screen = _screen_section()
+    screen.pop("view_sets")
+
+    with pytest.raises(ValidationError, match="view_sets"):
+        _doc(screens=[screen])
+
+
+def _report_section(key="report::report-a", name="report-a", **over):
+    base = {
+        "key": key,
+        "name": name,
+        "desc": "",
+        "other": {},
+        "view_sets": {"time_range": None, "sections": []},
+        "refs": {"datasource_keys": [], "namespace_keys": []},
     }
     base.update(over)
     return base
@@ -236,6 +271,27 @@ def test_import_topology_into_target_directory_inherits_directory_groups_and_can
     response = view_module.TopologyModelViewSet.as_view({"patch": "partial_update"})(request, pk=str(topology.id))
 
     assert response.status_code == 200
+
+
+@pytest.mark.django_db
+def test_import_screen_and_report_into_target_directory():
+    from apps.operation_analysis.models.models import Report, Screen
+
+    directory = Directory.objects.create(name="展示输出目录", groups=[3], created_by="s")
+    doc = _doc(screens=[_screen_section()], reports=[_report_section()])
+
+    result = _service(doc, target_directory_id=directory.id, groups=[1]).execute()
+
+    assert result["success"] is True
+    assert result["summary"]["success"] == 2
+    screen = Screen.objects.get(name="screen-a")
+    report = Report.objects.get(name="report-a")
+    assert screen.directory_id == directory.id
+    assert screen.groups == [3]
+    assert screen.view_sets["viewport"]["width"] == 1920
+    assert report.directory_id == directory.id
+    assert report.groups == [3]
+    assert report.view_sets == {"time_range": None, "sections": []}
 
 
 @pytest.mark.django_db

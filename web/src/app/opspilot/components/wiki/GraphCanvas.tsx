@@ -7,22 +7,27 @@ import { GraphEdge, GraphNode } from '@/app/opspilot/types/wiki';
 // 社区配色:柔和的现代主题色,饱和度适中、不刺眼(导出供图例复用,保证颜色一致)
 export const GRAPH_PALETTE = ['#5B8FF9', '#5AD8A6', '#5D7092', '#F6BD16', '#E8684A', '#6DC8EC', '#9270CA', '#FF9D4D', '#269A99', '#FF99C3'];
 export const communityColor = (community: number) => GRAPH_PALETTE[community % GRAPH_PALETTE.length];
+export const graphEdgeId = (edge: GraphEdge, index: number) =>
+  `${edge.from}->${edge.to}:${edge.relation_type || 'relation'}:${index}`;
 
 export interface GraphCanvasHandle {
   zoomBy: (ratio: number) => void;
   resetView: () => void;
+  resizeToFit: () => void;
 }
 
 interface GraphCanvasProps {
   nodes: GraphNode[];
   edges: GraphEdge[];
+  visibleNodeIds: Set<string>;
+  visibleEdgeIds: Set<string>;
   height?: number | string; // 数值固定高;传 '100%' 由父容器(全幅/全屏)撑满
   nodeScale?: number; // 节点大小系数(过滤器「节点大小」滑块),默认 1
   linkDistance?: number; // 力导链接距离(过滤器「间距」滑块),默认 160
 }
 
 const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
-  ({ nodes, edges, height = 460, nodeScale = 1, linkDistance = 160 }, ref) => {
+  ({ nodes, edges, visibleNodeIds, visibleEdgeIds, height = 460, nodeScale = 1, linkDistance = 160 }, ref) => {
     const containerRef = useRef<HTMLDivElement | null>(null);
     const graphRef = useRef<Graph | null>(null);
     // 用 ref 持有最新的尺寸/间距,供「创建图」时读取,而不把它们放进创建 effect 的依赖(否则改滑块会整图重建+重排)
@@ -30,6 +35,26 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     nodeScaleRef.current = nodeScale;
     const linkDistanceRef = useRef(linkDistance);
     linkDistanceRef.current = linkDistance;
+    const allNodeIdsRef = useRef<string[]>([]);
+    const allEdgeIdsRef = useRef<string[]>([]);
+    const visibleNodeIdsRef = useRef<Set<string> | undefined>(visibleNodeIds);
+    const visibleEdgeIdsRef = useRef<Set<string> | undefined>(visibleEdgeIds);
+
+    const allNodeIds = useMemo(() => nodes.map((n) => String(n.id)), [nodes]);
+    const allEdgeIds = useMemo(() => edges.map((e, index) => graphEdgeId(e, index)), [edges]);
+    const visibleNodeIdsKey = useMemo(
+      () => (visibleNodeIds ? Array.from(visibleNodeIds).sort().join('|') : '__all__'),
+      [visibleNodeIds]
+    );
+    const visibleEdgeIdsKey = useMemo(
+      () => (visibleEdgeIds ? Array.from(visibleEdgeIds).sort().join('|') : '__all__'),
+      [visibleEdgeIds]
+    );
+
+    allNodeIdsRef.current = allNodeIds;
+    allEdgeIdsRef.current = allEdgeIds;
+    visibleNodeIdsRef.current = visibleNodeIds;
+    visibleEdgeIdsRef.current = visibleEdgeIds;
 
     // 连接度(决定节点大小层级),仅随 edges 变化
     const degree = useMemo(() => {
@@ -42,6 +67,41 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
     }, [edges]);
     const baseSize = useCallback((id: string) => Math.min(54, 26 + (degree.get(id) || 0) * 4), [degree]);
 
+    const fitGraphToContainer = useCallback(() => {
+      const graph = graphRef.current;
+      const container = containerRef.current;
+      if (!graph || !container) return;
+      try {
+        const { width, height: containerHeight } = container.getBoundingClientRect();
+        if (width > 0 && containerHeight > 0) {
+          graph.setSize(Math.floor(width), Math.floor(containerHeight));
+        }
+        graph.fitView({ when: 'always', direction: 'both' });
+      } catch {
+        /* 已销毁或布局尚未就绪时忽略 */
+      }
+    }, []);
+
+    const applyVisibility = useCallback(() => {
+      const graph = graphRef.current;
+      if (!graph) return;
+
+      const shownNodeIds = visibleNodeIdsRef.current ?? new Set(allNodeIdsRef.current);
+      const shownEdgeIds = visibleEdgeIdsRef.current ?? new Set(allEdgeIdsRef.current);
+      const visibility: Record<string, 'visible' | 'hidden'> = {};
+
+      allNodeIdsRef.current.forEach((id) => {
+        visibility[id] = shownNodeIds.has(id) ? 'visible' : 'hidden';
+      });
+      allEdgeIdsRef.current.forEach((id) => {
+        visibility[id] = shownEdgeIds.has(id) ? 'visible' : 'hidden';
+      });
+
+      void graph.setElementVisibility(visibility, false).catch(() => {
+        /* 图谱重建/销毁过程中忽略可见性同步失败 */
+      });
+    }, []);
+
     useImperativeHandle(
       ref,
       () => ({
@@ -53,14 +113,13 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
           }
         },
         resetView: () => {
-          try {
-            graphRef.current?.fitView({ when: 'always', direction: 'both' });
-          } catch {
-            /* 已销毁忽略 */
-          }
+          fitGraphToContainer();
+        },
+        resizeToFit: () => {
+          fitGraphToContainer();
         },
       }),
-      []
+      [fitGraphToContainer]
     );
 
     // 创建图:仅在 nodes/edges 变化时重建(滑块改尺寸/间距不在此触发,避免整图重排)
@@ -77,7 +136,7 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
             id: String(n.id),
             data: { label: n.title, community: n.community ?? 0, size: Math.round(baseSize(String(n.id)) * nodeScaleRef.current) },
           })),
-          edges: edges.map((e) => ({ source: String(e.from), target: String(e.to) })),
+          edges: edges.map((e, index) => ({ id: graphEdgeId(e, index), source: String(e.from), target: String(e.to) })),
         },
         node: {
           style: {
@@ -157,13 +216,21 @@ const GraphCanvas = forwardRef<GraphCanvasHandle, GraphCanvasProps>(
         }
       };
       graph.on('afterlayout', fit);
-      graph.render().then(fit);
+      graph.render().then(() => {
+        applyVisibility();
+        fit();
+      });
 
       return () => {
         graph.destroy();
         graphRef.current = null;
       };
-    }, [nodes, edges, baseSize]);
+    }, [nodes, edges, baseSize, applyVisibility]);
+
+    // 类型/孤立节点筛选:只切换元素可见性,不替换图数据、不重建 Graph、不重跑布局
+    useEffect(() => {
+      applyVisibility();
+    }, [visibleNodeIdsKey, visibleEdgeIdsKey]);
 
     // 「节点大小」滑块:原地更新尺寸,不重跑布局 → 位置不动,只是变大变小(跳过首渲染,避免与创建重复)
     const firstScale = useRef(true);

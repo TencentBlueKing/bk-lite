@@ -5,8 +5,9 @@
 """
 
 from django.db.models import Count
+from django.utils import timezone
 
-from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageEvidence, PageRelation
+from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, LLMSkill, Material, PageEvidence, PageRelation
 from apps.opspilot.services.wiki.graph_service import build_graph
 
 
@@ -17,8 +18,6 @@ def _group_count(queryset, field):
 def _agents_using(kb):
     """使用该知识库的智能体(LLMSkill.wiki_knowledge_bases);字段缺失时优雅返回空。"""
     try:
-        from apps.opspilot.models import LLMSkill
-
         return [{"id": s.id, "name": s.name} for s in LLMSkill.objects.filter(wiki_knowledge_bases=kb).order_by("id")[:20]]
     except Exception:
         return []
@@ -42,7 +41,7 @@ def get_overview(knowledge_base):
             "status": b.status,
             "stage": b.stage,
             "counts": b.counts,
-            "created_at": b.created_at.isoformat() if b.created_at else None,
+            "created_at": timezone.localtime(b.created_at).isoformat() if b.created_at else None,
         }
         for b in BuildRecord.objects.filter(knowledge_base=kb).order_by("-id")[:5]
     ]

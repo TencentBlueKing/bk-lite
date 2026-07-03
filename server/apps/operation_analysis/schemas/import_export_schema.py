@@ -13,6 +13,7 @@ from pydantic import BaseModel, Field, field_validator, model_validator
 
 from apps.operation_analysis.constants.import_export import (
     BUSINESS_KEY_SEPARATOR,
+    CANVAS_TYPES,
     OBJECT_TYPE_TO_SECTION,
     YAML_SCHEMA_VERSION,
     ImportExportErrorCode,
@@ -47,7 +48,7 @@ class YAMLMeta(BaseModel):
     """
     YAML顶层meta结构校验
 
-    schema_version: 固定为1.0.0，用于版本兼容性检查
+    schema_version: 固定为当前 YAML_SCHEMA_VERSION，用于版本兼容性检查
     exported_at: ISO 8601格式时间戳
     source: 导出来源信息
     object_counts: 各类型对象数量统计
@@ -222,6 +223,68 @@ class ArchitectureItem(BaseModel):
         return _normalize_canvas_view_sets_for_storage(v, ObjectType.ARCHITECTURE)
 
 
+class ScreenItem(BaseModel):
+    """大屏对象结构"""
+
+    key: str
+    name: str
+    desc: str = Field(default="")
+    other: dict = Field(default_factory=dict)
+    view_sets: dict
+    refs: CanvasRefs = Field(default_factory=CanvasRefs)
+
+    @field_validator("key", "name")
+    @classmethod
+    def validate_required_non_empty_fields(cls, v: Any, info) -> str:
+        value = "" if v is None else str(v).strip()
+        if not value:
+            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+        return value
+
+    @field_validator("desc", mode="before")
+    @classmethod
+    def normalize_desc(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator("view_sets", mode="before")
+    @classmethod
+    def normalize_view_sets(cls, v: Any) -> dict:
+        return _normalize_canvas_view_sets_for_storage(v, ObjectType.SCREEN)
+
+
+class ReportItem(BaseModel):
+    """报表对象结构"""
+
+    key: str
+    name: str
+    desc: str = Field(default="")
+    other: dict = Field(default_factory=dict)
+    view_sets: dict = Field(default_factory=dict)
+    refs: CanvasRefs = Field(default_factory=CanvasRefs)
+
+    @field_validator("key", "name")
+    @classmethod
+    def validate_required_non_empty_fields(cls, v: Any, info) -> str:
+        value = "" if v is None else str(v).strip()
+        if not value:
+            raise ValueError(f"字段 '{info.field_name}' 不能为空")
+        return value
+
+    @field_validator("desc", mode="before")
+    @classmethod
+    def normalize_desc(cls, v: Any) -> str:
+        if v is None:
+            return ""
+        return str(v)
+
+    @field_validator("view_sets", mode="before")
+    @classmethod
+    def normalize_view_sets(cls, v: Any) -> dict:
+        return _normalize_canvas_view_sets_for_storage(v, ObjectType.REPORT)
+
+
 class YAMLDocument(BaseModel):
     """
     完整YAML文档结构校验
@@ -233,6 +296,8 @@ class YAMLDocument(BaseModel):
     dashboards: list[DashboardItem] = Field(default_factory=list)
     topologies: list[TopologyItem] = Field(default_factory=list)
     architectures: list[ArchitectureItem] = Field(default_factory=list)
+    screens: list[ScreenItem] = Field(default_factory=list)
+    reports: list[ReportItem] = Field(default_factory=list)
     datasources: list[DatasourceItem] = Field(default_factory=list)
     namespaces: list[NamespaceItem] = Field(default_factory=list)
 
@@ -321,7 +386,7 @@ def validate_business_key_format(key: str, object_type: ObjectType) -> bool:
         return False
 
     # 画布类型的key必须以类型前缀开头
-    if object_type in (ObjectType.DASHBOARD, ObjectType.TOPOLOGY, ObjectType.ARCHITECTURE):
+    if object_type in CANVAS_TYPES:
         expected_prefix = f"{object_type.value}{BUSINESS_KEY_SEPARATOR}"
         if not key.startswith(expected_prefix):
             return False
@@ -337,11 +402,21 @@ def validate_business_key_format(key: str, object_type: ObjectType) -> bool:
 def count_objects(doc: YAMLDocument) -> dict:
     """统计YAML文档中各类型对象数量"""
     return {
-        "total": (len(doc.dashboards) + len(doc.topologies) + len(doc.architectures) + len(doc.datasources) + len(doc.namespaces)),
+        "total": (
+            len(doc.dashboards)
+            + len(doc.topologies)
+            + len(doc.architectures)
+            + len(doc.screens)
+            + len(doc.reports)
+            + len(doc.datasources)
+            + len(doc.namespaces)
+        ),
         "by_type": {
             ObjectType.DASHBOARD.value: len(doc.dashboards),
             ObjectType.TOPOLOGY.value: len(doc.topologies),
             ObjectType.ARCHITECTURE.value: len(doc.architectures),
+            ObjectType.SCREEN.value: len(doc.screens),
+            ObjectType.REPORT.value: len(doc.reports),
             ObjectType.DATASOURCE.value: len(doc.datasources),
             ObjectType.NAMESPACE.value: len(doc.namespaces),
         },

@@ -5,6 +5,7 @@ import { Form, Input, Modal, Select } from 'antd';
 import { useTranslation } from '@/utils/i18n';
 import GroupTreeSelect from '@/components/group-tree-select';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
+import { Model } from '@/app/opspilot/types/provider';
 import { PurposeSchemaTemplate, WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
 import { LlmModel } from '@/app/opspilot/types/skill';
 
@@ -23,15 +24,19 @@ const fillTemplate = (tpl: PurposeSchemaTemplate | undefined, intro: string) => 
 const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, onConfirm, initialValues }) => {
   const { t } = useTranslation();
   const [form] = Form.useForm();
-  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels } = useWikiApi();
+  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } = useWikiApi();
   const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
   const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
+  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
   const [confirmLoading, setConfirmLoading] = useState(false);
 
   useEffect(() => {
     if (!visible) return;
     fetchLlmModels()
       .then((models) => setLlmModels(models || []))
+      .catch(() => undefined);
+    fetchEmbedProviders()
+      .then((providers) => setEmbedProviders(providers || []))
       .catch(() => undefined);
     fetchTemplates()
       .then((tpls) => {
@@ -53,6 +58,8 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
             introduction: full.introduction,
             team: full.team,
             llm_model: full.llm_model,
+            embed_provider: full.embed_provider,
+            vision_model: full.vision_model,
             template_key: full.template_key || 'general',
             purpose_md: full.purpose_md,
             schema_md: full.schema_md,
@@ -88,6 +95,7 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
       onOk={handleOk}
       confirmLoading={confirmLoading}
       onCancel={onCancel}
+      maskClosable={false}
       width={560}
       destroyOnHidden
       // 表单较长:限制弹窗主体高度并内部滚动,确保任何视口下都不触底(前端规范:弹窗禁止触底)
@@ -112,6 +120,20 @@ const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, on
         >
           <Select
             placeholder={t('wiki.llmModelPlaceholder')}
+            options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
+          />
+        </Form.Item>
+        <Form.Item label={t('wiki.embedProvider')} name="embed_provider" tooltip={t('wiki.embedProviderTip')}>
+          <Select
+            allowClear
+            placeholder={t('wiki.embedProviderPlaceholder')}
+            options={embedProviders.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
+          />
+        </Form.Item>
+        <Form.Item label={t('wiki.visionModel')} name="vision_model" tooltip={t('wiki.visionModelTip')}>
+          <Select
+            allowClear
+            placeholder={t('wiki.visionModelPlaceholder')}
             options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
           />
         </Form.Item>

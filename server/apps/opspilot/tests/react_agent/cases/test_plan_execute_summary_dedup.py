@@ -55,7 +55,7 @@ def test_summary_node_reuses_existing_k8s_report_instead_of_generating_second_su
     )
     node.structured_output_parser._get_openai_client.return_value = fake_client
 
-    result = asyncio.get_event_loop().run_until_complete(node.summary_node(state, config))
+    result = asyncio.run(node.summary_node(state, config))
 
     assert result["final_response"] == existing_report
     assert result["messages"] == [AIMessage(content=existing_report)]

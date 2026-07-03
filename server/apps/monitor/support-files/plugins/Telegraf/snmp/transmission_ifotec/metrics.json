@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ifotec",
+  "plugin": "Transmission Ifotec SNMP",
+  "plugin_desc": "Baseline SNMP child template for Ifotec industrial fiber-optic transceiver and optical transmission devices (enterprise PEN 21362). The Ifotec enterprise root and the ifotecProductList / ifotecGeneral / ifotecModules sub-trees are publicly documented, but no stable, row-filter-free CPU, memory, temperature, fan or power-supply health scalars are proven for this vendor in the current MIB facts; therefore metrics.json declares no vendor metric deltas. The shared Transmission SNMP floor supplies MIB-II uptime, IF-MIB interface counters and IF-MIB/ifXTable 64-bit ifHCInOctets / ifHCOutOctets traffic. Supported brands/models - Ifotec industrial fiber-optic transceivers and optical transmission devices that expose standard IF-MIB.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_ifotec'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-ifotec_ifotec",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

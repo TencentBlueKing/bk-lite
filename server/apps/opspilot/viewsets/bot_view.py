@@ -22,6 +22,7 @@ from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.opspilot.utils.workflow_sensitive_config import merge_masked_workflow_sensitive_config
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -210,6 +211,7 @@ class BotViewSet(PinMixin, AuthViewSet):
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
             old_flow_json = flow.flow_json
+            workflow_data = merge_masked_workflow_sensitive_config(workflow_data, old_flow_json)
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
             flow.save()

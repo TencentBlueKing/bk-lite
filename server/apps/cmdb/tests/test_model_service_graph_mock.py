@@ -142,6 +142,58 @@ def test_create_model_attr(fake_graph, monkeypatch):
 
 
 @pytest.mark.django_db
+def test_create_model_attr_audit_log_uses_correct_attr(fake_graph, monkeypatch):
+    """回归 #3663：循环内 attr=attr 自赋值缺 break，变更日志属性张冠李戴。
+
+    当 attrs 有多个元素且目标属性不在最后时，enterprise_ext.build_attr_change_message
+    收到的应是目标属性（ip），而非列表末尾的属性（zzz_last）。
+    若修复被 revert（去掉 break），此测试必定失败。
+    """
+    from apps.cmdb.services import model as model_mod
+    from apps.cmdb.services.model import ModelManage
+
+    target_attr = {"attr_id": "ip", "attr_name": "IP", "attr_type": "str"}
+    decoy_attr = {"attr_id": "zzz_last", "attr_name": "末位属性", "attr_type": "str"}
+    # 保存后 attrs 中 target 在中间，decoy 在末尾
+    updated_attrs = json.dumps([
+        {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
+        target_attr,
+        decoy_attr,
+    ])
+    fake_graph(
+        "apps.cmdb.services.model",
+        query_entity=([{"model_id": "host", "model_name": "主机", "_id": 1,
+                        "attrs": json.dumps([
+                            {"attr_id": "name", "attr_name": "名称", "attr_type": "str"},
+                            decoy_attr,
+                        ])}], 1),
+        set_entity_properties=[{"_id": 1, "attrs": updated_attrs}],
+    )
+    monkeypatch.setattr("apps.cmdb.display_field.ExcludeFieldsCache.update_on_model_change", lambda model_id: None)
+    monkeypatch.setattr(model_mod, "create_change_record", lambda **kw: None)
+
+    captured = {}
+
+    class FakeExt:
+        def validate_attr(self, attr_info):
+            return attr_info
+
+        def build_attr_change_message(self, old, new_attr):
+            captured["attr_id"] = new_attr.get("attr_id")
+            return ""
+
+    monkeypatch.setattr(model_mod, "get_model_enterprise_extension", lambda: FakeExt())
+
+    ModelManage.create_model_attr("host", dict(target_attr), username="admin")
+
+    # 修复前（无 break）：attr 总是 decoy_attr（列表最后一项），captured["attr_id"] == "zzz_last"
+    # 修复后（有 break）：attr 是 target_attr，captured["attr_id"] == "ip"
+    assert captured.get("attr_id") == "ip", (
+        f"变更日志应使用目标属性 ip，实际使用了 {captured.get('attr_id')!r}（#3663 回归）"
+    )
+
+
+@pytest.mark.django_db
 def test_create_model_attr_model_missing(fake_graph):
     from apps.cmdb.services.model import ModelManage
     from apps.core.exceptions.base_app_exception import BaseAppException
@@ -194,9 +246,16 @@ def test_create_model_uses_targeted_conflict_query(fake_graph, monkeypatch):
 
     _patch_create_model_side_effects(monkeypatch)
 
+    # create_entity 真实行为：回显已创建节点的全部属性（含 classification_id），
+    # 后续 create_edge 会读取 result['classification_id'] / result['model_id']。
     fake = fake_graph(
         "apps.cmdb.services.model",
-        create_entity={"model_id": "new_model", "model_name": "新模型", "_id": 10},
+        create_entity={
+            "model_id": "new_model",
+            "model_name": "新模型",
+            "classification_id": "infra",
+            "_id": 10,
+        },
         create_edge={},
     )
 
@@ -230,6 +289,14 @@ def test_create_model_raises_on_duplicate_model_id(fake_graph, monkeypatch):
 
     _patch_create_model_side_effects(monkeypatch)
 
+    # create_entity 的真实唯一性校验委托给 FalkorDBClient.check_unique_attr：
+    # 用真实逻辑判断冲突，避免在 fake 里重写恒真断言。
+    def _create_entity_with_real_check(label, properties, check_attr_map, exist_items, *a, **k):
+        from apps.cmdb.graph.falkordb import FalkorDBClient
+
+        FalkorDBClient.check_unique_attr(properties, check_attr_map["is_only"], exist_items)
+        return {**properties, "_id": 10}
+
     # 定点查询返回一个 model_id 相同的已有模型（模拟重复）
     fake_graph(
         "apps.cmdb.services.model",
@@ -237,6 +304,7 @@ def test_create_model_raises_on_duplicate_model_id(fake_graph, monkeypatch):
             [{"model_id": "new_model", "model_name": "其他名称", "_id": 5}],
             1,
         ),
+        create_entity=_create_entity_with_real_check,
     )
 
     data = {
@@ -256,6 +324,12 @@ def test_create_model_raises_on_duplicate_model_name(fake_graph, monkeypatch):
 
     _patch_create_model_side_effects(monkeypatch)
 
+    def _create_entity_with_real_check(label, properties, check_attr_map, exist_items, *a, **k):
+        from apps.cmdb.graph.falkordb import FalkorDBClient
+
+        FalkorDBClient.check_unique_attr(properties, check_attr_map["is_only"], exist_items)
+        return {**properties, "_id": 10}
+
     # 定点查询返回一个 model_name 相同的已有模型（模拟重复）
     fake_graph(
         "apps.cmdb.services.model",
@@ -263,6 +337,7 @@ def test_create_model_raises_on_duplicate_model_name(fake_graph, monkeypatch):
             [{"model_id": "other_id", "model_name": "新模型", "_id": 6}],
             1,
         ),
+        create_entity=_create_entity_with_real_check,
     )
 
     data = {

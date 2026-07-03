@@ -24,7 +24,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Digi路由器内存使用率过高",
@@ -48,7 +49,8 @@
           "value": 80,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Digi路由器温度过高",
@@ -72,7 +74,8 @@
           "value": 60,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

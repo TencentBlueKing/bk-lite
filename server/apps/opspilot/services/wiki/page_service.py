@@ -8,6 +8,7 @@ import difflib
 from django.db import transaction
 
 from apps.opspilot.models import KnowledgePage, PageVersion
+from apps.opspilot.services.wiki.check_service import create_candidate
 
 
 def _next_no(page):
@@ -47,6 +48,130 @@ def create_manual_page(knowledge_base, page_type, title, body="", tags=None, cre
     )
     _new_current_version(page, body=body, change_type="human_edit", created_by=created_by)
     return page
+
+
+def _answer_source_meta(source_conversation_id="", source_message_id="", source_channel="qa"):
+    return {
+        "type": "qa_answer",
+        "conversation_id": str(source_conversation_id),
+        "message_id": str(source_message_id or ""),
+        "channel": str(source_channel or "qa"),
+    }
+
+
+@transaction.atomic
+def save_answer_page(
+    knowledge_base,
+    page_type,
+    title,
+    body,
+    tags=None,
+    source_conversation_id="",
+    source_message_id="",
+    source_channel="qa",
+    created_by="",
+):
+    """将 QA/Bot 回答沉淀为知识页面,并记录来源对话。"""
+    page = KnowledgePage.objects.create(
+        knowledge_base=knowledge_base,
+        page_type=page_type,
+        title=title,
+        tags=tags or [],
+        contribution="mixed",
+        update_method="qa_answer",
+        created_by=created_by or "",
+    )
+    _new_current_version(
+        page,
+        body=body,
+        change_type="qa_answer",
+        created_by=created_by,
+        meta_snapshot={"source": _answer_source_meta(source_conversation_id, source_message_id, source_channel)},
+    )
+    return page
+
+
+@transaction.atomic
+def save_answer_candidate_page(
+    knowledge_base,
+    page_type,
+    title,
+    body,
+    tags=None,
+    source_conversation_id="",
+    source_message_id="",
+    source_channel="qa",
+    created_by="",
+):
+    """将 QA/Bot 回答保存为待审核候选页,接受前不进入正式知识消费面。"""
+    source = _answer_source_meta(source_conversation_id, source_message_id, source_channel)
+    page = KnowledgePage.objects.create(
+        knowledge_base=knowledge_base,
+        page_type=page_type,
+        title=title,
+        tags=tags or [],
+        contribution="mixed",
+        update_method="qa_answer",
+        status="pending_review",
+        created_by=created_by or "",
+    )
+    return create_candidate(
+        page,
+        body=body,
+        reason="qa_answer_pending_review",
+        check_type="qa_answer_candidate",
+        created_by=created_by,
+        related={"pages": [page.id], "source": source},
+        suggested_actions=["accept", "reject", "edit_accept"],
+        change_type="qa_answer_candidate",
+        meta_snapshot={"source": source},
+    )
+
+
+@transaction.atomic
+def import_markdown_page(knowledge_base, page_type, title, body, tags=None, source_meta=None, operator=""):
+    """导入 Markdown 为知识页面;同标题同类型的非归档页面更新为新版本。"""
+    page = (
+        KnowledgePage.objects.filter(knowledge_base=knowledge_base, title=title, page_type=page_type)
+        .exclude(status="archived")
+        .order_by("id")
+        .first()
+    )
+    if page:
+        page.tags = tags or []
+        if page.contribution == "ai":
+            page.contribution = "mixed"
+        page.update_method = "markdown_import"
+        page.status = "active"
+        page.updated_by = operator or ""
+        page.save(update_fields=["tags", "contribution", "update_method", "status", "updated_by", "updated_at"])
+        _new_current_version(
+            page,
+            body=body,
+            change_type="markdown_import",
+            created_by=operator,
+            meta_snapshot={"source": source_meta or {}},
+        )
+        return page, False
+
+    page = KnowledgePage.objects.create(
+        knowledge_base=knowledge_base,
+        page_type=page_type,
+        title=title,
+        tags=tags or [],
+        contribution="human",
+        update_method="markdown_import",
+        status="active",
+        created_by=operator or "",
+    )
+    _new_current_version(
+        page,
+        body=body,
+        change_type="markdown_import",
+        created_by=operator,
+        meta_snapshot={"source": source_meta or {}},
+    )
+    return page, True
 
 
 @transaction.atomic

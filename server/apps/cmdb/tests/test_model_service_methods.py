@@ -213,6 +213,13 @@ _ATTRS_JSON = json.dumps(
     ]
 )
 
+_SYSTEM_ATTRS_JSON = json.dumps(
+    [
+        {"attr_id": "organization", "attr_type": "organization", "attr_name": "所属组织", "is_required": True,
+         "editable": True, "option": [], "user_prompt": "实例所属的组织", "attr_group": "default", "is_pre": True},
+    ]
+)
+
 
 @pytest.mark.django_db
 def test_update_model_attr_ok(fake_graph, patch_side_effects, monkeypatch):
@@ -245,6 +252,25 @@ def test_update_model_attr_attr_missing(fake_graph):
 
 
 @pytest.mark.django_db
+def test_update_model_attr_rejects_organization(fake_graph, patch_side_effects, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.guard_attr_change_against_unique_rules", lambda *a, **k: None)
+    fg = fake_graph(
+        MODULE,
+        query_entity=([{"_id": 1, "model_id": "host", "model_name": "主机", "attrs": _SYSTEM_ATTRS_JSON}], 1),
+        set_entity_properties=_echo_set_entity,
+    )
+    attr_info = {
+        "attr_id": "organization", "attr_type": "organization", "attr_name": "组织",
+        "is_required": False, "editable": False, "option": [], "user_prompt": "",
+        "attr_group": "default",
+    }
+    with pytest.raises(BaseAppException) as exc:
+        ModelManage.update_model_attr("host", attr_info)
+    assert "organization" in exc.value.message
+    assert not any(c[0] == "set_entity_properties" for c in fg.calls)
+
+
+@pytest.mark.django_db
 def test_delete_model_attr_ok(fake_graph, patch_side_effects, monkeypatch):
     monkeypatch.setattr(f"{MODULE}.guard_attr_change_against_unique_rules", lambda *a, **k: None)
     fg = fake_graph(
@@ -263,6 +289,21 @@ def test_delete_model_attr_model_missing(fake_graph, monkeypatch):
     fake_graph(MODULE, query_entity=([], 0))
     with pytest.raises(BaseAppException):
         ModelManage.delete_model_attr("host", "name")
+
+
+@pytest.mark.django_db
+def test_delete_model_attr_rejects_organization(fake_graph, patch_side_effects, monkeypatch):
+    monkeypatch.setattr(f"{MODULE}.guard_attr_change_against_unique_rules", lambda *a, **k: None)
+    fg = fake_graph(
+        MODULE,
+        query_entity=([{"_id": 1, "model_id": "host", "model_name": "主机", "attrs": _SYSTEM_ATTRS_JSON}], 1),
+        set_entity_properties=_echo_set_entity,
+    )
+    with pytest.raises(BaseAppException) as exc:
+        ModelManage.delete_model_attr("host", "organization")
+    assert "organization" in exc.value.message
+    assert not any(c[0] == "set_entity_properties" for c in fg.calls)
+    assert not any(c[0] == "remove_entitys_properties" for c in fg.calls)
 
 
 @pytest.mark.django_db

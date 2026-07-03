@@ -7,6 +7,7 @@ import { useWikiApi } from '@/app/opspilot/api/wiki';
 import { WikiOverview } from '@/app/opspilot/types/wiki';
 import WikiQaAssistant from './WikiQaAssistant';
 import ContributionTag from './ContributionTag';
+import { formatWikiTime, TRIGGER_LABEL, BUILD_STATUS_LABEL } from './wikiFormat';
 
 const MAT_STATUS_META: Record<string, { color: string; key: string }> = {
   pending: { color: 'default', key: 'wiki.statusPending' },
@@ -23,6 +24,7 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { fetchOverview } = useWikiApi();
   const [data, setData] = useState<WikiOverview | null>(null);
   const [loading, setLoading] = useState(false);
+  const labelOf = (map: Record<string, string>, v: string) => (map[v] ? t(map[v]) : v || '--');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -123,10 +125,10 @@ const OverviewTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                   renderItem={(b) => (
                     <List.Item>
                       <span className="mr-2">
-                        #{String(b.id)} · {String(b.trigger)}
+                        {formatWikiTime(b.created_at as string)} · {labelOf(TRIGGER_LABEL, String(b.trigger))}
                       </span>
                       <Tag color={b.status === 'success' ? 'green' : b.status === 'failed' ? 'red' : 'blue'}>
-                        {String(b.status)}
+                        {labelOf(BUILD_STATUS_LABEL, String(b.status))}
                       </Tag>
                     </List.Item>
                   )}

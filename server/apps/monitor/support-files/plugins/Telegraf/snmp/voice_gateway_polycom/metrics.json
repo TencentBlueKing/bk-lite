@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_polycom",
+  "plugin": "VoiceGateway Polycom SNMP",
+  "plugin_desc": "Polycom voice endpoint and conference phone SNMP baseline child template. This child template relies on the shared VoiceGateway SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Polycom enterprise root and endpoint MIB subtree are verified, but stable shared CPU, memory, temperature, fan and power health scalars are not proven in this pass, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='voice_gateway', collect_type='snmp_polycom'}) by (instance_id)",
+  "name": "VoiceGateway",
+  "icon": "mm-polycom_polycom",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='voice_gateway'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

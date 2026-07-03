@@ -38,17 +38,17 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
         return queryset
 
     @staticmethod
-    def _translate_display_fields(lan, object_name, display_fields):
-        """展示列名国际化：列名一律取绑定指标在当前账号语言下的译名，跟随 request.user.locale
-        自动中/英切换；无绑定指标或无译名时回退原列名。
+    def _translate_display_fields(lan, object_name, display_fields, customized=False):
+        """展示列名国际化。
 
-        说明：display_fields[].name 是 metrics.json 写死的英文种子（且有时是另起的精简标签，
-        不等于指标英文名），数据模型里没有可靠区分“默认名 vs 用户手打名”的信号
-        （display_fields_customized 只要在弹窗里加/删/排序就置 True），故统一按绑定指标译名展示，
-        以保证编辑后仍跟随语言、不回退英文。不就地修改入参，返回新副本。
+        未自定义的默认列取绑定指标在当前账号语言下的译名；用户通过弹窗自定义过展示列后，
+        display_fields[].name 是明确的列头配置，必须原样返回，不能再被指标译名覆盖。
+        不就地修改入参，返回新副本。
         """
         if not display_fields:
             return display_fields
+        if customized:
+            return [{**col} for col in display_fields]
         translated = []
         for col in display_fields:
             metrics = col.get("metrics") or []
@@ -86,9 +86,12 @@ class MonitorObjectViewSet(viewsets.ModelViewSet):
             result["is_builtin"] = bool(i18n_name) or not result.get("display_name")
             # 添加子对象数量
             result["children_count"] = children_count_map.get(result["id"], 0)
-            # 展示列名国际化：一律按绑定指标译名展示，跟随账号语言（编辑后也不回退英文）。
+            # 展示列名国际化：默认列跟随语言，自定义列保留用户输入。
             result["display_fields"] = self._translate_display_fields(
-                lan, result["name"], result.get("display_fields")
+                lan,
+                result["name"],
+                result.get("display_fields"),
+                result.get("display_fields_customized", False),
             )
 
         if request.GET.get("add_instance_count") in ["true", "True"]:

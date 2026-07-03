@@ -6,9 +6,9 @@ from typing import Any
 
 from asgiref.sync import sync_to_async
 from django.core import signing
-from django.db.models import Count, IntegerField, Q, Sum
+from django.db.models import Count, IntegerField, Q, Sum, Value
 from django.db.models.fields.json import KeyTextTransform
-from django.db.models.functions import Cast, Coalesce, TruncDate
+from django.db.models.functions import Cast, Coalesce, NullIf, TruncDate
 from django.http import FileResponse, HttpResponse, JsonResponse
 from ipware import get_client_ip
 from wechatpy.enterprise import WeChatCrypto
@@ -35,6 +35,7 @@ from apps.opspilot.services.workflow_attachment_service import resolve_signed_at
 from apps.opspilot.tasks import chat_flow_test_execute_task
 from apps.opspilot.utils.bot_utils import insert_skill_log, set_time_range
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
+from apps.opspilot.utils.enterprise_wechat_aibot_chat_flow_utils import EnterpriseWechatAibotChatFlowUtils
 from apps.opspilot.utils.execution_interrupt import request_interrupt
 from apps.opspilot.utils.pending_hitl import try_deliver_to_pending
 from apps.opspilot.utils.sse_chat import create_error_stream_response, generate_stream_error, stream_chat
@@ -144,7 +145,7 @@ def validate_openai_token(token, team=None, is_mobile=False):
     if not token:
         return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
     token = token.split("Bearer ")[-1]
-    user = UserAPISecret.objects.filter(api_secret=token).first()
+    user = UserAPISecret.find_by_api_secret(token)
     if not user:
         if team is None and not is_mobile:
             return False, {"choices": [{"message": {"role": "assistant", "content": loader.get("error.no_authorization", "No authorization")}}]}
@@ -504,15 +505,24 @@ def _annotate_token_fields(queryset):
 
     response_detail 结构：{"usage": {"prompt_tokens": N, "completion_tokens": N, "total_tokens": N}}
     KeyTextTransform 提取文本值后 Cast 为整型；NULL 值（路径不存在的旧行）被 Coalesce 置零。
+    与 _extract_token_usage 保持一致：total_tokens 缺失或为 0 时回退为 prompt_tokens + completion_tokens。
     """
 
     def _int_field(path):
         return Coalesce(Cast(KeyTextTransform(path[1], KeyTextTransform(path[0], "response_detail")), IntegerField()), 0)
 
+    prompt_expr = _int_field(("usage", "prompt_tokens"))
+    completion_expr = _int_field(("usage", "completion_tokens"))
+    total_expr = _int_field(("usage", "total_tokens"))
     return queryset.annotate(
-        _prompt=_int_field(("usage", "prompt_tokens")),
-        _completion=_int_field(("usage", "completion_tokens")),
-        _total=_int_field(("usage", "total_tokens")),
+        _prompt=prompt_expr,
+        _completion=completion_expr,
+        _total=Coalesce(
+            NullIf(total_expr, Value(0)),
+            prompt_expr + completion_expr,
+            Value(0),
+            output_field=IntegerField(),
+        ),
     )
 
 
@@ -540,13 +550,7 @@ def get_token_consumption_overview(request):
     # 先初始化日期骨架（保证无数据日仍有 0 占位）
     daily_totals = {(start_time + datetime.timedelta(days=i)).strftime("%Y-%m-%d"): 0 for i in range(num_days)}
     # DB 层按日期聚合 token 总量，不再全量拉取行到 Python
-    rows = (
-        _annotate_token_fields(queryset)
-        .annotate(date=TruncDate("created_at"))
-        .values("date")
-        .annotate(tokens=Sum("_total"))
-        .order_by("date")
-    )
+    rows = _annotate_token_fields(queryset).annotate(date=TruncDate("created_at")).values("date").annotate(tokens=Sum("_total")).order_by("date")
     for row in rows:
         date_key = row["date"].strftime("%Y-%m-%d")
         daily_totals[date_key] = (daily_totals.get(date_key) or 0) + (row["tokens"] or 0)
@@ -1020,6 +1024,12 @@ def execute_chat_flow_wechat(request, bot_id):
 
     # 6. 处理POST请求（消息处理）
     return wechat_utils.handle_wechat_message(request, crypto, bot_chat_flow, wechat_config)
+
+
+@api_exempt
+def execute_chat_flow_enterprise_wechat_aibot(request, bot_id):
+    """企微智能机器人短连接 ChatFlow 执行入口。"""
+    return EnterpriseWechatAibotChatFlowUtils(bot_id).handle_request(request)
 
 
 @api_exempt

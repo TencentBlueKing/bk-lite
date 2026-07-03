@@ -14,6 +14,17 @@ import { useImportExportApi } from '@/app/ops-analysis/api/importExport';
 import { ImportModal } from '@/app/ops-analysis/components/importExport';
 import { useLocalizedTime } from '@/hooks/useLocalizedTime';
 
+const getRestPath = (url?: string) => {
+  if (!url) return '';
+  try {
+    const parsed = new URL(url);
+    return parsed.pathname || '/';
+  } catch {
+    const [path] = url.split(/[?#]/);
+    return path || url;
+  }
+};
+
 const Datasource: React.FC = () => {
   const { t } = useTranslation();
   const { convertToLocalizedTime } = useLocalizedTime();
@@ -150,9 +161,64 @@ const Datasource: React.FC = () => {
     fetchDataSources(undefined, newPagination);
   };
 
+  const sourceTypeLabels: Record<string, string> = {
+    nats: t('dataSource.sourceTypes.nats'),
+    mysql: 'MySQL',
+    postgresql: 'PostgreSQL',
+    rest_api: 'REST API',
+    excel: 'Excel',
+  };
+
+  const renderSourceObject = (_: unknown, row: DatasourceItem) => {
+    const sourceType = row.source_type || 'nats';
+    const connectionConfig = row.connection_config || {};
+    const queryConfig = row.query_config || {};
+
+    if (sourceType === 'nats') {
+      return row.rest_api || '-';
+    }
+
+    if (sourceType === 'rest_api') {
+      const method = String(connectionConfig.method || 'GET').toUpperCase();
+      const path = getRestPath(String(connectionConfig.url || ''));
+      return path ? `${method} ${path}` : '-';
+    }
+
+    if (sourceType === 'mysql' || sourceType === 'postgresql') {
+      if (queryConfig.sql) {
+        return t('dataSource.sqlQuery');
+      }
+      const database = connectionConfig.database;
+      const table = queryConfig.table;
+      if (database && table) {
+        return `${database}.${table}`;
+      }
+      return table || '-';
+    }
+
+    if (sourceType === 'excel') {
+      return connectionConfig.filename || t('dataSource.excelImportedData');
+    }
+
+    return '-';
+  };
+
   const columns = [
     { title: t('dataSource.name'), dataIndex: 'name', key: 'name', width: 150 },
-    { title: 'REST API', dataIndex: 'rest_api', key: 'rest_api', width: 150 },
+    {
+      title: t('dataSource.sourceType'),
+      dataIndex: 'source_type',
+      key: 'source_type',
+      width: 140,
+      render: (value: string) => sourceTypeLabels[value || 'nats'] || value || '-',
+    },
+    {
+      title: t('dataSource.sourceObject'),
+      key: 'source_object',
+      width: 190,
+      ellipsis: true,
+      render: renderSourceObject,
+    },
     {
       title: t('dataSource.describe'),
       dataIndex: 'desc',

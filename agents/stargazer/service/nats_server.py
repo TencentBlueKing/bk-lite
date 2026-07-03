@@ -6,11 +6,6 @@ from core.task_queue import get_task_queue
 from sanic.log import logger
 from service.collection_service import CollectionService
 from service.debug.protocol_debug_service import ProtocolDebugService
-from plugins.inputs.ip_discovery.ip_discovery_handler import handle_ip_scan
-
-# 注册 IP 发现 NATS handler：subject "{stargazer_namespace}.ip_scan"
-# 与 server dispatch_ip_discovery 下发的 subject 对应
-register_handler("ip_scan")(handle_ip_scan)
 
 
 def _extract_host_remote_callback_payload(data):

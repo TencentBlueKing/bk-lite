@@ -37,10 +37,18 @@ def test_build_task_missing_material_returns_none():
 
 
 @pytest.mark.django_db
-def test_ingest_task_parses_and_sets_status_done():
+def test_ingest_task_parses_and_sets_status_done(monkeypatch):
     """异步解析任务:抽取 + 摘要后,资料状态机置「已解析」done。"""
     from apps.opspilot.models import Material  # noqa: F401
+    from apps.opspilot.services.wiki import material_service
     from apps.opspilot.tasks import wiki_ingest_material_task
+
+    class Parser:
+        def parse_text(self, text, *, filename="raw.txt"):
+            return text
+
+    monkeypatch.setattr(material_service, "get_parser", lambda: Parser())
+    monkeypatch.setattr(material_service, "save_parsed_markdown", lambda material, md, digest: "wiki/parsed/task.md")
 
     kb = _kb()
     mat = _material(kb)  # text 资料,正文 "facts"
@@ -93,8 +101,20 @@ def test_refresh_web_materials_task(monkeypatch):
     from apps.opspilot.tasks import wiki_refresh_web_materials_task
 
     kb = _kb()
-    Material.objects.create(knowledge_base=kb, name="site", material_type="web", url="http://example.com")
-    monkeypatch.setattr(material_service, "_fetch_url", lambda url: "<p>fresh content</p>")
+    Material.objects.create(
+        knowledge_base=kb,
+        name="site",
+        material_type="web",
+        url="http://example.com",
+        sync_policy={"enabled": True},
+    )
+
+    class Parser:
+        def parse_url(self, url, *, vision_client=None):
+            return "fresh content"
+
+    monkeypatch.setattr(material_service, "get_parser", lambda: Parser())
+    monkeypatch.setattr(material_service, "save_parsed_markdown", lambda material, md, digest: "wiki/parsed/web-refresh.md")
 
     result = wiki_refresh_web_materials_task.apply().get()
     assert result["checked"] == 1 and result["updated"] == 1

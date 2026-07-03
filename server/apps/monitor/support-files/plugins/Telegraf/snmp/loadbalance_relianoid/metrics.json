@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_relianoid",
+  "plugin": "Loadbalance RELIANOID SNMP",
+  "plugin_desc": "RELIANOID load balancer SNMP child template (enterprise 61269). The currently verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific scalar device-health gauges are confirmed for CPU, memory, temperature, fan, power state or current connections. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Loadbalance SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/loadbalance metric model while this plugin provides the RELIANOID collect_type, UI and Telegraf child template. Supported brands/models — RELIANOID ADC and load-balancing appliances.",
+  "status_query": "any({instance_type='loadbalance', collect_type='snmp_relianoid'}) by (instance_id)",
+  "name": "Loadbalance",
+  "icon": "mm-loadbalance_负载均衡",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='loadbalance'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

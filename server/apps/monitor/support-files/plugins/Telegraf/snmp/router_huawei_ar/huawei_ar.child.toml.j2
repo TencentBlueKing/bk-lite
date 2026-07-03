@@ -66,4 +66,41 @@
     [[inputs.snmp.table.field]]
         oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.7"
         name = "usage"
-# ---- 温度/风扇/电源状态对 Huawei AR 系列 N/A,故不建模。BGP 邻居走 BGP4-MIB bgpPeerTable(per-peer walk,需聚合计数)→本轮 N/A,后续可补 BGP peer 数。----
+    # ---- Huawei AR environment sensors (HUAWEI-ENTITY-EXTENT-MIB) ----
+    # 待现网核验：温度 hwEntityTemperature 1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.1.1.11"
+        name = "celsius"
+    # 待现网核验：风扇状态 hwEntityFanState 1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7。
+    [[inputs.snmp.table]]
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.10.1.7"
+        name = "state"
+    # 待现网核验：电源状态按同族实体状态表采集，状态码经 enum 归一为 1=正常/2=异常。
+    [[inputs.snmp.table]]
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.2011.5.25.31.1.1.20.1.7"
+        name = "state"
+# ---- BGP 邻居走 BGP4-MIB bgpPeerTable(per-peer walk,需聚合计数)→本轮 N/A,后续可补 BGP peer 数。----
+
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1

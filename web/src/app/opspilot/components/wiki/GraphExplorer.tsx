@@ -15,14 +15,23 @@ import {
   ReloadOutlined,
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
-import { GraphEdge, GraphNode, WikiGraph } from '@/app/opspilot/types/wiki';
-import GraphCanvas, { GraphCanvasHandle, communityColor } from '@/app/opspilot/components/wiki/GraphCanvas';
+import {
+  GraphEdge,
+  GraphNode,
+  WikiGraph,
+  WikiGraphBridgeNode,
+  WikiGraphCrossCommunityEdge,
+  WikiGraphSparseCommunity,
+} from '@/app/opspilot/types/wiki';
+import GraphCanvas, { GraphCanvasHandle, communityColor, graphEdgeId } from '@/app/opspilot/components/wiki/GraphCanvas';
 
 interface GraphExplorerProps {
   graph: WikiGraph;
   titleOf: (id: number) => string;
   onRebuild?: () => void;
   rebuilding?: boolean;
+  onCreateInsightChecks?: () => void;
+  creatingInsightChecks?: boolean;
   // 初始展开哪些浮层(主要给 Storybook 出不同版式预览;实际页面默认只开图例)
   initialPanels?: { filter?: boolean; insights?: boolean; legend?: boolean };
   // 非全屏时的容器高度(CSS 值),默认按页面留白计算;Storybook 可传 '100vh' 等铺满
@@ -39,6 +48,8 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
   titleOf,
   onRebuild,
   rebuilding,
+  onCreateInsightChecks,
+  creatingInsightChecks,
   initialPanels,
   height,
 }) => {
@@ -87,12 +98,33 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     }
     return ns;
   }, [graph.nodes, graph.edges, hiddenTypes, hideIsolated]);
-  const shownIds = useMemo(() => new Set(shownNodes.map((n) => n.id)), [shownNodes]);
+  const shownNodeIds = useMemo(() => new Set(shownNodes.map((n) => String(n.id))), [shownNodes]);
   const shownEdges = useMemo(
-    () => graph.edges.filter((e) => shownIds.has(e.from) && shownIds.has(e.to)),
-    [graph.edges, shownIds]
+    () => graph.edges.filter((e) => shownNodeIds.has(String(e.from)) && shownNodeIds.has(String(e.to))),
+    [graph.edges, shownNodeIds]
+  );
+  const shownEdgeIds = useMemo(
+    () =>
+      new Set(
+        graph.edges
+          .map((edge, index) => ({ edge, index }))
+          .filter(({ edge }) => shownNodeIds.has(String(edge.from)) && shownNodeIds.has(String(edge.to)))
+          .map(({ edge, index }) => graphEdgeId(edge, index))
+      ),
+    [graph.edges, shownNodeIds]
   );
   const hiddenCount = graph.nodes.length - shownNodes.length;
+
+  useEffect(() => {
+    if (!shownNodes.length) return;
+    canvasRef.current?.resizeToFit();
+    const frame = window.requestAnimationFrame(() => canvasRef.current?.resizeToFit());
+    const timer = window.setTimeout(() => canvasRef.current?.resizeToFit(), 180);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [fullscreen, shownNodes.length]);
 
   // 社区图例:以社区内连接度最高的节点标题作为该社区的代表名
   const legend = useMemo(() => {
@@ -115,8 +147,14 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
       });
   }, [shownNodes, graph.edges, t]);
 
-  const ins = (graph.insights || {}) as Record<string, number>;
+  const ins = (graph.insights || {}) as Record<string, unknown>;
   const strongest = ((graph.insights?.strongest_edges as GraphEdge[] | undefined) || []).slice(0, 6);
+  const rawBridgeNodes = ins.bridge_nodes as WikiGraphBridgeNode[] | undefined;
+  const rawSparseCommunities = ins.sparse_communities as WikiGraphSparseCommunity[] | undefined;
+  const rawCrossCommunityEdges = ins.cross_community_edges as WikiGraphCrossCommunityEdge[] | undefined;
+  const bridgeNodes = (rawBridgeNodes || []).slice(0, 8);
+  const sparseCommunities = (rawSparseCommunities || []).slice(0, 6);
+  const crossCommunityEdges = (rawCrossCommunityEdges || []).slice(0, 6);
 
   const toggleType = (type: string) =>
     setHiddenTypes((prev) => {
@@ -152,17 +190,24 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
     >
       {/* 图谱铺满 */}
       <div className="absolute inset-0">
-        {shownNodes.length ? (
+        {graph.nodes.length ? (
           <GraphCanvas
             ref={canvasRef}
-            nodes={shownNodes}
-            edges={shownEdges}
+            nodes={graph.nodes}
+            edges={graph.edges}
+            visibleNodeIds={shownNodeIds}
+            visibleEdgeIds={shownEdgeIds}
             height="100%"
             nodeScale={nodeScale / 100}
             linkDistance={Math.round((spacing / 100) * 160)}
           />
         ) : (
           <div className="flex h-full items-center justify-center">
+            <Empty />
+          </div>
+        )}
+        {graph.nodes.length > 0 && !shownNodes.length && (
+          <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
             <Empty />
           </div>
         )}
@@ -191,10 +236,17 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           {toggleBtn(showFilter, <FilterOutlined />, t('wiki.filters'), () => setShowFilter((v) => !v))}
           {toggleBtn(showLegend, <ApartmentOutlined />, t('wiki.communities'), () => setShowLegend((v) => !v))}
           {toggleBtn(showInsights, <BulbOutlined />, t('wiki.insights'), () => setShowInsights((v) => !v))}
+          {onCreateInsightChecks && (
+            <Tooltip title={t('wiki.createInsightChecks')}>
+              <Button size="small" icon={<BulbOutlined />} loading={creatingInsightChecks} onClick={onCreateInsightChecks}>
+                {t('wiki.createInsightChecks')}
+              </Button>
+            </Tooltip>
+          )}
           {onRebuild && (
-            <Tooltip title={t('wiki.scan')}>
+            <Tooltip title={t('wiki.rebuildRelations')}>
               <Button size="small" icon={<ReloadOutlined />} loading={rebuilding} onClick={onRebuild}>
-                {t('wiki.scan')}
+                {t('wiki.rebuildRelations')}
               </Button>
             </Tooltip>
           )}
@@ -290,10 +342,10 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
           </div>
           <div className="grid grid-cols-2 gap-2">
             {[
-              { label: t('wiki.page'), value: ins.node_count ?? graph.nodes.length },
-              { label: t('wiki.edges'), value: ins.edge_count ?? graph.edges.length },
-              { label: t('wiki.community'), value: ins.community_count ?? legend.length },
-              { label: t('wiki.largest'), value: ins.largest_community ?? 0 },
+              { label: t('wiki.page'), value: Number(ins.node_count ?? graph.nodes.length) },
+              { label: t('wiki.edges'), value: Number(ins.edge_count ?? graph.edges.length) },
+              { label: t('wiki.community'), value: Number(ins.community_count ?? legend.length) },
+              { label: t('wiki.largest'), value: Number(ins.largest_community ?? 0) },
             ].map((s) => (
               <div key={s.label} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5">
                 <div className="text-xs text-[var(--color-text-3)]">{s.label}</div>
@@ -312,6 +364,61 @@ const GraphExplorer: React.FC<GraphExplorerProps> = ({
                   <span className="shrink-0 rounded bg-[var(--color-fill-2)] px-1.5 text-[var(--color-text-3)]">
                     {e.weight ?? 1}
                   </span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-xs text-[var(--color-text-3)]">--</div>
+          )}
+          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">{t('wiki.bridgeNodes')}</div>
+          {bridgeNodes.length ? (
+            <ul className="space-y-1.5">
+              {bridgeNodes.map((item) => (
+                <li key={item.id} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs">
+                  <div className="truncate font-medium text-[var(--color-text-1)]">{item.title || titleOf(item.id)}</div>
+                  <div className="mt-1 text-[var(--color-text-3)]">
+                    {t('wiki.edges')}: {item.degree} · {t('wiki.graphInsightChecks')}:{' '}
+                    {item.component_count_after_removal}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-xs text-[var(--color-text-3)]">--</div>
+          )}
+          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">
+            {t('wiki.crossCommunityEdges')}
+          </div>
+          {crossCommunityEdges.length ? (
+            <ul className="space-y-1.5">
+              {crossCommunityEdges.map((item) => (
+                <li key={`${item.from}-${item.to}`} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs">
+                  <div className="line-clamp-2 font-medium text-[var(--color-text-1)]">
+                    {item.from_title || titleOf(item.from)}
+                    <span className="mx-1 text-[var(--color-text-4)]">↔</span>
+                    {item.to_title || titleOf(item.to)}
+                  </div>
+                  <div className="mt-1 text-[var(--color-text-3)]">
+                    {t('wiki.community')}: {item.from_community + 1}/{item.to_community + 1} ·{' '}
+                    {t('wiki.weight')}: {item.weight}
+                  </div>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <div className="text-xs text-[var(--color-text-3)]">--</div>
+          )}
+          <div className="mb-1 mt-3 text-xs font-medium text-[var(--color-text-2)]">{t('wiki.sparseCommunities')}</div>
+          {sparseCommunities.length ? (
+            <ul className="space-y-1.5">
+              {sparseCommunities.map((item) => (
+                <li key={item.page_ids.join('-')} className="rounded-md bg-[var(--color-fill-1)] px-2 py-1.5 text-xs">
+                  <div className="line-clamp-2 font-medium text-[var(--color-text-1)]">
+                    {(item.titles || []).join(' · ') || item.page_ids.map(titleOf).join(' · ')}
+                  </div>
+                  <div className="mt-1 text-[var(--color-text-3)]">
+                    {t('wiki.page')}: {item.size} · {t('wiki.density')}: {item.density}
+                  </div>
                 </li>
               ))}
             </ul>

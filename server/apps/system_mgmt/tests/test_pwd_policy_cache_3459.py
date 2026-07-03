@@ -49,8 +49,8 @@ def test_get_pwd_policy_settings_single_batch_query():
     """Helper must issue exactly one DB query (batch filter) not N single-key queries."""
     from apps.system_mgmt.models.system_settings import SystemSettings
 
-    SystemSettings.objects.create(key="pwd_set_max_retry_count", value="3")
-    SystemSettings.objects.create(key="pwd_set_lock_duration", value="60")
+    SystemSettings.objects.update_or_create(key="pwd_set_max_retry_count", defaults={"value": "3"})
+    SystemSettings.objects.update_or_create(key="pwd_set_lock_duration", defaults={"value": "60"})
 
     # Count DB queries — must be exactly 1 (batch filter), not 2+ (per-key filters)
     with patch.object(
@@ -78,7 +78,7 @@ def test_get_pwd_policy_settings_caches_result():
     """Second call within TTL must not hit DB (cache hit)."""
     from apps.system_mgmt.models.system_settings import SystemSettings
 
-    SystemSettings.objects.create(key="pwd_set_max_retry_count", value="7")
+    SystemSettings.objects.update_or_create(key="pwd_set_max_retry_count", defaults={"value": "7"})
 
     # First call populates cache
     result1 = get_pwd_policy_settings()
@@ -98,7 +98,7 @@ def test_invalidate_pwd_policy_cache_clears_cache():
     """After invalidation, next call must re-query DB and pick up new value."""
     from apps.system_mgmt.models.system_settings import SystemSettings
 
-    SystemSettings.objects.create(key="pwd_set_max_retry_count", value="5")
+    SystemSettings.objects.update_or_create(key="pwd_set_max_retry_count", defaults={"value": "5"})
 
     # Prime cache
     result1 = get_pwd_policy_settings()
@@ -135,8 +135,8 @@ def test_login_wrong_password_calls_get_pwd_policy_once(django_user_model):
         password_error_count=0,
     )
 
-    SystemSettings.objects.create(key="pwd_set_max_retry_count", value="5")
-    SystemSettings.objects.create(key="pwd_set_lock_duration", value="180")
+    SystemSettings.objects.update_or_create(key="pwd_set_max_retry_count", defaults={"value": "5"})
+    SystemSettings.objects.update_or_create(key="pwd_set_lock_duration", defaults={"value": "180"})
 
     call_count = []
 
@@ -173,10 +173,16 @@ def test_update_sys_set_invalidates_pwd_policy_cache(client):
         with patch("apps.system_mgmt.viewset.system_settings_viewset.log_operation"):
             factory = RequestFactory()
             request = factory.post("/", data={"pwd_set_max_retry_count": "8"}, content_type="application/json")
-            # Minimal auth stub
-            from django.contrib.auth.models import AnonymousUser
-            request.user = AnonymousUser()
-            import json
+            # 鉴权桩：update_sys_set 受 @HasPermission("security_settings-Edit") 保护，
+            # 超管可绕过权限校验，确保进入缓存失效分支
+            import types as _types
+            request.user = _types.SimpleNamespace(
+                username="pwd-policy-admin",
+                domain="domain.com",
+                is_superuser=True,
+                is_authenticated=True,
+                permission={"system_mgmt": {"security_settings-Edit"}},
+            )
             request.data = {"pwd_set_max_retry_count": "8"}
 
             view = SystemSettingsViewSet()

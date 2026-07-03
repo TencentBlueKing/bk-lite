@@ -106,26 +106,3 @@ export const applyValueMapping = (
   }
   return null;
 };
-
-/**
- * 便捷封装：返回映射后的展示文本（无命中或无 text 时回退 fallback）。
- */
-export const mapValueText = (
-  raw: unknown,
-  mappings: ValueMapping[] | undefined,
-  fallback: string,
-): string => {
-  const r = applyValueMapping(raw, mappings);
-  return r && r.text !== undefined ? r.text : fallback;
-};
-
-/**
- * 便捷封装：返回映射后的颜色（无命中或无 color 时返回 undefined）。
- */
-export const mapValueColor = (
-  raw: unknown,
-  mappings: ValueMapping[] | undefined,
-): string | undefined => {
-  const r = applyValueMapping(raw, mappings);
-  return r?.color;
-};

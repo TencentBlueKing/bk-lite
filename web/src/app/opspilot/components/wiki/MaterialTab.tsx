@@ -1,14 +1,14 @@
 'use client';
 
 import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Descriptions, Drawer, Form, Input, InputNumber, List, Modal, Popconfirm, Select, Space, Switch, Tag, Upload, message } from 'antd';
+import { Button, Descriptions, Drawer, Form, Input, InputNumber, List, Modal, Select, Space, Switch, Tag, Upload, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import type { UploadFile } from 'antd/es/upload/interface';
 import { LoadingOutlined, UploadOutlined } from '@ant-design/icons';
 import CustomTable from '@/components/custom-table';
 import { useTranslation } from '@/utils/i18n';
 import { useWikiApi } from '@/app/opspilot/api/wiki';
-import { Material, MaterialInfo, MaterialType } from '@/app/opspilot/types/wiki';
+import { Material, MaterialDeleteImpact, MaterialInfo, MaterialType, MaterialUpdateImpact } from '@/app/opspilot/types/wiki';
 
 // 资料状态机:pending(待解析) → parsing(解析中) → done(已解析) → building(构建中) → built(已构建);失败 failed
 const STATUS_META: Record<string, { color: string; key: string }> = {
@@ -21,12 +21,57 @@ const STATUS_META: Record<string, { color: string; key: string }> = {
   updated: { color: 'gold', key: 'wiki.statusUpdated' },
   invalid: { color: 'red', key: 'wiki.statusInvalid' },
 };
+const MATERIAL_TYPE_KEY: Record<MaterialType, string> = {
+  file: 'wiki.materialFile',
+  text: 'wiki.materialText',
+  web: 'wiki.materialWeb',
+};
 const IN_PROGRESS = ['parsing', 'building'];
+const SUPPORTED_FILE_EXTENSIONS = [
+  '.pdf',
+  '.docx',
+  '.pptx',
+  '.xlsx',
+  '.xls',
+  '.msg',
+  '.html',
+  '.htm',
+  '.txt',
+  '.md',
+  '.markdown',
+  '.csv',
+  '.json',
+  '.xml',
+  '.jpg',
+  '.jpeg',
+  '.png',
+  '.gif',
+  '.bmp',
+  '.tiff',
+  '.tif',
+  '.webp',
+  '.zip',
+  '.epub',
+];
+const FILE_ACCEPT = SUPPORTED_FILE_EXTENSIONS.join(',');
 
 const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
-  const { fetchMaterials, fetchMaterialInfo, createMaterial, createMaterialFile, deleteMaterial, ingestMaterial, buildMaterial } =
-    useWikiApi();
+  const {
+    fetchKnowledgeBase,
+    fetchMaterials,
+    fetchMaterialInfo,
+    fetchMaterialDeleteImpact,
+    fetchMaterialUpdateImpact,
+    createMaterial,
+    createMaterialFile,
+    batchCreateMaterials,
+    deleteMaterial,
+    ingestMaterial,
+    buildMaterial,
+    proposeUpdate,
+    reindexMaterial,
+  } = useWikiApi();
   const [form] = Form.useForm();
   const [data, setData] = useState<Material[]>([]);
   const [loading, setLoading] = useState(false);
@@ -37,7 +82,20 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const [saving, setSaving] = useState(false);
   const [type, setType] = useState<MaterialType>('text');
   const [fileList, setFileList] = useState<UploadFile[]>([]);
+  const [folderImport, setFolderImport] = useState(false);
   const [detail, setDetail] = useState<MaterialInfo | null>(null);
+  const [hasVisionModel, setHasVisionModel] = useState(false);
+  const [reindexingMaterialId, setReindexingMaterialId] = useState<number | null>(null);
+  const [deleteImpactVisible, setDeleteImpactVisible] = useState(false);
+  const [deleteImpactLoading, setDeleteImpactLoading] = useState(false);
+  const [deleteSubmitting, setDeleteSubmitting] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState<Material | null>(null);
+  const [deleteImpact, setDeleteImpact] = useState<MaterialDeleteImpact | null>(null);
+  const [updateImpactVisible, setUpdateImpactVisible] = useState(false);
+  const [updateImpactLoading, setUpdateImpactLoading] = useState(false);
+  const [updateSubmitting, setUpdateSubmitting] = useState(false);
+  const [updateTarget, setUpdateTarget] = useState<Material | null>(null);
+  const [updateImpact, setUpdateImpact] = useState<MaterialUpdateImpact | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -56,6 +114,13 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [kbId, page, pageSize]);
 
+  useEffect(() => {
+    fetchKnowledgeBase(kbId)
+      .then((kb) => setHasVisionModel(Boolean(kb.vision_model)))
+      .catch(() => setHasVisionModel(false));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [kbId]);
+
   // 解析/构建为 Celery 异步:有资料处于「解析中/构建中」时每 3s 轮询刷新状态,全部完成后自动停止
   useEffect(() => {
     if (!data.some((m) => IN_PROGRESS.includes(m.status || ''))) return;
@@ -68,7 +133,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     form.resetFields();
     setType('file');
     setFileList([]);
-    form.setFieldsValue({ material_type: 'file' });
+    setFolderImport(false);
+    form.setFieldsValue({ material_type: 'file', ocr_enhance: false });
     setOpen(true);
   };
 
@@ -76,23 +142,49 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     const values = await form.validateFields();
     setSaving(true);
     try {
+      let successMessage = t('wiki.saveSuccess');
       if (values.material_type === 'file') {
-        const f = fileList[0]?.originFileObj as File | undefined;
-        if (!f) {
+        const files = fileList
+          .map((item) => item.originFileObj as File | undefined)
+          .filter((file): file is File => Boolean(file));
+        if (!files.length) {
           message.error(t('wiki.fileRequired'));
           return;
         }
-        await createMaterialFile(kbId, values.name, f);
+        if (files.length === 1) {
+          // 单文件走原 create 端点:与单文件上传行为保持完全一致(独立 name 字段)
+          await createMaterialFile(
+            kbId,
+            values.name || files[0].name,
+            files[0],
+            Boolean(values.ocr_enhance)
+          );
+        } else {
+          // 多文件走 batch_create 端点:单次请求,失败文件汇总到 errors
+          const result = await batchCreateMaterials(kbId, files, Boolean(values.ocr_enhance));
+          const failed = result?.errors ?? [];
+          if (failed.length) {
+            // 部分失败:展示汇总,允许用户从列表中删除失败项
+            const preview = failed
+              .slice(0, 3)
+              .map((f) => `${f.name}: ${f.error}`)
+              .join('；');
+            const suffix = failed.length > 3 ? `…(共 ${failed.length} 项)` : `共 ${failed.length} 项`;
+            message.warning(`${t('wiki.batchAddMaterialPartial')}: ${suffix}\n${preview}`);
+          }
+          successMessage = `${t('wiki.batchAddMaterialDone')}: ${result?.items?.length ?? 0}`;
+        }
       } else {
         // 网页资料:按站点单独配置同步策略(替代原知识库级别的统一规则)
         const { sync_enabled, sync_interval_hours, ...rest } = values;
+        delete rest.ocr_enhance;
         const payload: Partial<Material> = { ...rest, knowledge_base: kbId };
         if (values.material_type === 'web') {
           payload.sync_policy = { enabled: !!sync_enabled, interval_hours: sync_interval_hours ?? 24 };
         }
         await createMaterial(payload);
       }
-      message.success(t('wiki.saveSuccess'));
+      message.success(successMessage);
       setOpen(false);
       load();
     } finally {
@@ -114,15 +206,116 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     load();
   };
 
-  const handleDelete = async (id: number) => {
-    await deleteMaterial(id);
-    message.success(t('wiki.deleteSuccess'));
-    load();
+  const openDeleteImpact = async (record: Material) => {
+    setDeleteTarget(record);
+    setDeleteImpact(null);
+    setDeleteImpactVisible(true);
+    setDeleteImpactLoading(true);
+    try {
+      setDeleteImpact(await fetchMaterialDeleteImpact(record.id));
+    } finally {
+      setDeleteImpactLoading(false);
+    }
+  };
+
+  const closeDeleteImpact = () => {
+    if (deleteSubmitting) return;
+    setDeleteImpactVisible(false);
+    setDeleteTarget(null);
+    setDeleteImpact(null);
+  };
+
+  const handleDelete = async () => {
+    if (!deleteTarget) return;
+    setDeleteSubmitting(true);
+    try {
+      await deleteMaterial(deleteTarget.id);
+      message.success(t('wiki.deleteSuccess'));
+      setDeleteImpactVisible(false);
+      setDeleteTarget(null);
+      setDeleteImpact(null);
+      load();
+    } finally {
+      setDeleteSubmitting(false);
+    }
+  };
+
+  const openUpdateImpact = async (record: Material) => {
+    setUpdateTarget(record);
+    setUpdateImpact(null);
+    setUpdateImpactVisible(true);
+    setUpdateImpactLoading(true);
+    try {
+      setUpdateImpact(await fetchMaterialUpdateImpact(record.id));
+    } finally {
+      setUpdateImpactLoading(false);
+    }
+  };
+
+  const closeUpdateImpact = () => {
+    if (updateSubmitting) return;
+    setUpdateImpactVisible(false);
+    setUpdateTarget(null);
+    setUpdateImpact(null);
+  };
+
+  const handleProposeUpdate = async () => {
+    if (!updateTarget) return;
+    setUpdateSubmitting(true);
+    try {
+      await proposeUpdate(updateTarget.id);
+      message.success(t('wiki.proposeUpdateDone'));
+      setUpdateImpactVisible(false);
+      setUpdateTarget(null);
+      setUpdateImpact(null);
+      load();
+    } finally {
+      setUpdateSubmitting(false);
+    }
+  };
+
+  const handleReindexMaterial = async (id: number) => {
+    setReindexingMaterialId(id);
+    try {
+      await reindexMaterial(id);
+      message.success(t('wiki.reindexPageDone'));
+      load();
+    } finally {
+      setReindexingMaterialId(null);
+    }
+  };
+
+  const materialTypeLabel = (type: MaterialType) => t(MATERIAL_TYPE_KEY[type] || type);
+
+  const renderImpactPages = (pages: MaterialDeleteImpact['affected_pages']) => (
+    <List
+      size="small"
+      dataSource={pages}
+      locale={{ emptyText: t('wiki.noAffectedPages') }}
+      renderItem={(pageItem) => (
+        <List.Item>
+          <div className="min-w-0">
+            <div className="truncate font-medium">{pageItem.title}</div>
+            <Space size={[4, 4]} wrap>
+              <Tag className="m-0">#{pageItem.id}</Tag>
+              <Tag className="m-0">{pageItem.page_type}</Tag>
+              <Tag className="m-0">{pageItem.status}</Tag>
+            </Space>
+          </div>
+        </List.Item>
+      )}
+    />
+  );
+
+  const versionLabel = (version?: MaterialUpdateImpact['latest_version']) => {
+    if (!version) return '--';
+    const hash = version.content_hash ? version.content_hash.slice(0, 8) : '--';
+    return `#${version.id} ${hash}`;
   };
 
   const columns: ColumnsType<Material> = [
     { title: t('wiki.name'), dataIndex: 'name', key: 'name' },
-    { title: t('wiki.materialType'), dataIndex: 'material_type', key: 'material_type', width: 100 },
+    { title: t('wiki.materialType'), dataIndex: 'material_type', key: 'material_type', width: 100, render: (type: MaterialType) => materialTypeLabel(type) },
     {
       title: t('wiki.status'),
       dataIndex: 'status',
@@ -150,10 +343,11 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
     {
       title: t('common.actions'),
       key: 'action',
-      width: 280,
+      width: 360,
       render: (_: unknown, record) => {
         const busy = IN_PROGRESS.includes(record.status || '');
         const canBuild = ['done', 'built'].includes(record.status || '');
+        const canProposeUpdate = record.status === 'updated';
         return (
           <Space>
             <Button type="link" size="small" onClick={() => openDetail(record.id)}>
@@ -171,11 +365,23 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             >
               {t('wiki.build')}
             </Button>
-            <Popconfirm title={t('wiki.deleteMaterialConfirm')} onConfirm={() => handleDelete(record.id)}>
-              <Button type="link" size="small" danger disabled={busy}>
-                {t('common.delete')}
+            <Button
+              type="link"
+              size="small"
+              disabled={busy || (reindexingMaterialId !== null && reindexingMaterialId !== record.id)}
+              loading={reindexingMaterialId === record.id}
+              onClick={() => handleReindexMaterial(record.id)}
+            >
+              {t('wiki.reindexPage')}
+            </Button>
+            {canProposeUpdate && (
+              <Button type="link" size="small" disabled={busy} onClick={() => openUpdateImpact(record)}>
+                {t('wiki.proposeUpdate')}
               </Button>
-            </Popconfirm>
+            )}
+            <Button type="link" size="small" danger disabled={busy} onClick={() => openDeleteImpact(record)}>
+              {t('common.delete')}
+            </Button>
           </Space>
         );
       },
@@ -212,6 +418,84 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       </div>
 
       <Modal
+        title={t('wiki.deleteImpact')}
+        open={deleteImpactVisible}
+        onOk={handleDelete}
+        okText={t('common.delete')}
+        okButtonProps={{ danger: true, disabled: deleteImpactLoading || !deleteImpact }}
+        confirmLoading={deleteSubmitting}
+        onCancel={closeDeleteImpact}
+        maskClosable={false}
+        destroyOnHidden
+      >
+        {deleteImpactLoading ? (
+          <div className="py-6 text-center text-[var(--color-text-3)]">
+            <LoadingOutlined spin className="mr-2" />
+            {t('wiki.deleteImpactLoading')}
+          </div>
+        ) : (
+          deleteImpact && (
+            <>
+              <div className="mb-3 text-sm text-[var(--color-text-2)]">{t('wiki.deleteImpactTip')}</div>
+              <Descriptions column={3} bordered size="small">
+                <Descriptions.Item label={t('wiki.affectedPages')}>{deleteImpact.affected_count}</Descriptions.Item>
+                <Descriptions.Item label={t('wiki.willLoseSource')}>
+                  {deleteImpact.will_be_source_invalid_count}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('wiki.sharedSourceProtected')}>
+                  {deleteImpact.shared_source_protected_count}
+                </Descriptions.Item>
+              </Descriptions>
+              <div className="mt-4 mb-2 font-medium">{t('wiki.willLoseSource')}</div>
+              {renderImpactPages(deleteImpact.will_be_source_invalid)}
+              <div className="mt-4 mb-2 font-medium">{t('wiki.sharedSourceProtected')}</div>
+              {renderImpactPages(deleteImpact.shared_source_protected)}
+            </>
+          )
+        )}
+      </Modal>
+
+      <Modal
+        title={t('wiki.updateImpact')}
+        open={updateImpactVisible}
+        onOk={handleProposeUpdate}
+        okText={t('wiki.proposeUpdate')}
+        okButtonProps={{ disabled: updateImpactLoading || !updateImpact }}
+        confirmLoading={updateSubmitting}
+        onCancel={closeUpdateImpact}
+        maskClosable={false}
+        destroyOnHidden
+      >
+        {updateImpactLoading ? (
+          <div className="py-6 text-center text-[var(--color-text-3)]">
+            <LoadingOutlined spin className="mr-2" />
+            {t('wiki.updateImpactLoading')}
+          </div>
+        ) : (
+          updateImpact && (
+            <>
+              <div className="mb-3 text-sm text-[var(--color-text-2)]">{t('wiki.updateImpactTip')}</div>
+              <Descriptions column={3} bordered size="small">
+                <Descriptions.Item label={t('wiki.contentChanged')}>
+                  {updateImpact.content_changed ? t('common.yes') : t('common.no')}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('wiki.latestVersion')}>{versionLabel(updateImpact.latest_version)}</Descriptions.Item>
+                <Descriptions.Item label={t('wiki.previousVersion')}>
+                  {versionLabel(updateImpact.previous_version)}
+                </Descriptions.Item>
+                <Descriptions.Item label={t('wiki.affectedPages')}>{updateImpact.affected_count}</Descriptions.Item>
+                <Descriptions.Item label={t('wiki.pendingReviewPages')}>
+                  {updateImpact.pending_review_count}
+                </Descriptions.Item>
+              </Descriptions>
+              <div className="mt-4 mb-2 font-medium">{t('wiki.pendingReviewPages')}</div>
+              {renderImpactPages(updateImpact.pending_review_pages)}
+            </>
+          )
+        )}
+      </Modal>
+
+      <Modal
         title={t('wiki.addMaterial')}
         open={open}
         onOk={handleSave}
@@ -220,12 +504,15 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         destroyOnHidden
       >
         <Form form={form} layout="vertical">
-          <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
+          <Form.Item label={t('wiki.name')} name="name" rules={type === 'file' ? [] : [{ required: true }]}>
             <Input />
           </Form.Item>
           <Form.Item label={t('wiki.materialType')} name="material_type" initialValue="file">
             <Select
-              onChange={(v: MaterialType) => setType(v)}
+              onChange={(v: MaterialType) => {
+                setType(v);
+                if (v !== 'file') setFolderImport(false);
+              }}
               options={[
                 { value: 'file', label: t('wiki.materialFile') },
                 { value: 'text', label: t('wiki.materialText') },
@@ -259,26 +546,46 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             </>
           )}
           {type === 'file' && (
-            <Form.Item label={t('wiki.materialFile')} required>
-              <Upload.Dragger
-                maxCount={1}
-                fileList={fileList}
-                beforeUpload={() => false}
-                onChange={({ fileList: fl }) => {
-                  const last = fl.slice(-1);
-                  setFileList(last);
-                  const fname = last[0]?.name;
-                  if (fname && !form.getFieldValue('name')) form.setFieldsValue({ name: fname });
-                }}
-                accept=".pdf,.docx,.pptx,.xlsx,.xls,.csv,.txt,.md,.png,.jpg,.jpeg"
+            <>
+              <Form.Item label={t('wiki.folderImport')} tooltip={t('wiki.folderImportTip')}>
+                <Switch checked={folderImport} onChange={(checked) => setFolderImport(checked)} />
+              </Form.Item>
+              <Form.Item label={t('wiki.materialFile')} required>
+                <Upload.Dragger
+                  multiple
+                  directory={folderImport}
+                  fileList={fileList}
+                  beforeUpload={() => false}
+                  onChange={({ fileList: fl }) => {
+                    setFileList(fl);
+                    const fname = fl.length === 1 ? fl[0]?.name : '';
+                    if (fname && !form.getFieldValue('name')) form.setFieldsValue({ name: fname });
+                    if (fl.length > 1) form.setFieldsValue({ name: '' });
+                  }}
+                  accept={FILE_ACCEPT}
+                >
+                  <p className="ant-upload-drag-icon">
+                    <UploadOutlined />
+                  </p>
+                  <p className="ant-upload-text">{t('wiki.uploadHint')}</p>
+                  <p className="ant-upload-hint text-xs text-gray-400">{t('wiki.supportedFileHint')}</p>
+                  {fileList.length > 1 && (
+                    <p className="ant-upload-hint text-xs text-gray-400">
+                      {t('wiki.selectedFiles')}: {fileList.length}
+                    </p>
+                  )}
+                </Upload.Dragger>
+              </Form.Item>
+              <Form.Item
+                label={t('wiki.imageEnhance')}
+                name="ocr_enhance"
+                valuePropName="checked"
+                initialValue={false}
+                tooltip={hasVisionModel ? t('wiki.imageEnhanceTip') : t('wiki.imageEnhanceDisabledTip')}
               >
-                <p className="ant-upload-drag-icon">
-                  <UploadOutlined />
-                </p>
-                <p className="ant-upload-text">{t('wiki.uploadHint')}</p>
-                <p className="ant-upload-hint text-xs text-gray-400">pdf / docx / pptx / xlsx / csv / txt / md / 图片</p>
-              </Upload.Dragger>
-            </Form.Item>
+                <Switch disabled={!hasVisionModel} />
+              </Form.Item>
+            </>
           )}
         </Form>
       </Modal>
@@ -293,7 +600,9 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         {detail && (
           <>
             <Descriptions column={1} bordered size="small" className="mb-4">
-              <Descriptions.Item label={t('wiki.materialType')}>{detail.material.material_type}</Descriptions.Item>
+              <Descriptions.Item label={t('wiki.materialType')}>
+                {materialTypeLabel(detail.material.material_type)}
+              </Descriptions.Item>
               {detail.material.material_type === 'web' && (
                 <Descriptions.Item label={t('wiki.webSyncEnabled')}>
                   {detail.material.sync_policy?.enabled
@@ -301,10 +610,15 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                     : '--'}
                 </Descriptions.Item>
               )}
+              {detail.material.material_type === 'file' && (
+                <Descriptions.Item label={t('wiki.imageEnhance')}>
+                  {detail.material.ocr_enhance ? t('common.yes') : t('common.no')}
+                </Descriptions.Item>
+              )}
               <Descriptions.Item label={t('wiki.original')}>
                 {detail.file_url ? (
                   <a href={detail.file_url} target="_blank" rel="noreferrer">
-                    {t('wiki.openFile')}
+                    {t('wiki.downloadFile')}
                   </a>
                 ) : (
                   <span className="break-all">{detail.original || '--'}</span>

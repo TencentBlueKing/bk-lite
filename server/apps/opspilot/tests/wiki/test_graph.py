@@ -54,6 +54,34 @@ def test_graph_hub_ranked_by_degree():
 
 
 @pytest.mark.django_db
+def test_graph_collapses_alias_nodes_to_canonical_title():
+    from apps.opspilot.services.wiki.graph_service import build_graph
+
+    kb = _kb()
+    kb.generation_rules = {"title_aliases": [{"canonical": "配置平台", "aliases": ["CMDB"]}]}
+    kb.save(update_fields=["generation_rules"])
+    alias = _page(kb, "CMDB")
+    canonical = _page(kb, "配置平台")
+    source = _page(kb, "业务系统")
+    _rel(source, alias)
+    _rel(source, canonical)
+
+    graph = build_graph(kb)
+
+    titles = {node["title"] for node in graph["nodes"]}
+    assert "CMDB" not in titles
+    assert "配置平台" in titles
+    canonical_node = next(node for node in graph["nodes"] if node["title"] == "配置平台")
+    assert canonical_node["id"] == canonical.id
+    assert canonical_node["page_ids"] == [alias.id, canonical.id]
+    assert canonical_node["aliases"] == ["CMDB"]
+    assert graph["insights"]["node_count"] == 2
+    edges = [edge for edge in graph["edges"] if {edge["from"], edge["to"]} == {source.id, canonical.id}]
+    assert len(edges) == 1
+    assert edges[0]["weight"] == 2.0
+
+
+@pytest.mark.django_db
 class TestGraphView:
     def test_graph_endpoint(self, api_client):
         kb = _kb()

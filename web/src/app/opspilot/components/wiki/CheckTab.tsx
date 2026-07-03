@@ -1,7 +1,7 @@
 'use client';
 
-import React, { useCallback, useEffect, useState } from 'react';
-import { Button, Drawer, Empty, Space, Tag, message } from 'antd';
+import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Drawer, Empty, Popconfirm, Select, Space, Tag, message } from 'antd';
 import type { ColumnsType } from 'antd/es/table';
 import MarkdownIt from 'markdown-it';
 import DOMPurify from 'dompurify';
@@ -21,8 +21,15 @@ const STATUS_COLOR: Record<string, string> = {
   dismissed: 'default',
 };
 
+const CHECK_STATUS_KEY: Record<string, string> = {
+  open: 'wiki.checkStatusOpen',
+  resolved: 'wiki.checkStatusResolved',
+  dismissed: 'wiki.checkStatusDismissed',
+};
+
 // 检查类型本地化(spec 4.5)
 const CHECK_TYPE_KEY: Record<string, string> = {
+  ambiguous_link: 'wiki.checkAmbiguousLink',
   conflict: 'wiki.checkConflict',
   duplicate: 'wiki.checkDuplicate',
   stale: 'wiki.checkStale',
@@ -32,6 +39,9 @@ const CHECK_TYPE_KEY: Record<string, string> = {
   all_sources_invalid: 'wiki.checkAllSourcesInvalid',
   low_confidence: 'wiki.checkLowConfidence',
   cannot_merge: 'wiki.checkCannotMerge',
+  bridge_node: 'wiki.checkBridgeNode',
+  sparse_community: 'wiki.checkSparseCommunity',
+  cross_community_edge: 'wiki.checkCrossCommunityEdge',
   schema_violation: 'wiki.checkSchemaViolation',
   missing: 'wiki.checkMissing',
   material_update: 'wiki.checkMaterialUpdate',
@@ -40,31 +50,84 @@ const CHECK_TYPE_KEY: Record<string, string> = {
 
 const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   const { t } = useTranslation();
-  const { fetchCheckItems, acceptCheck, rejectCheck, scan } = useWikiApi();
+  const {
+    fetchCheckItems,
+    acceptCheck,
+    rejectCheck,
+    mergeDuplicateCheck,
+    resolveCheck,
+    batchAcceptChecks,
+    batchRejectChecks,
+    batchResolveChecks,
+    scan,
+  } = useWikiApi();
   const [data, setData] = useState<CheckItem[]>([]);
   const [loading, setLoading] = useState(false);
   const [page, setPage] = useState(1);
   const [pageSize, setPageSize] = useState(20);
   const [total, setTotal] = useState(0);
+  const [statusFilter, setStatusFilter] = useState('open');
+  const [checkTypeFilter, setCheckTypeFilter] = useState('');
   const [scanning, setScanning] = useState(false);
+  const [batchSubmitting, setBatchSubmitting] = useState<'accept' | 'reject' | 'resolve' | null>(null);
+  const [selectedRowKeys, setSelectedRowKeys] = useState<React.Key[]>([]);
   const [detail, setDetail] = useState<CheckItem | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchCheckItems(kbId, { page, page_size: pageSize });
+      const res = await fetchCheckItems(kbId, {
+        page,
+        page_size: pageSize,
+        status: statusFilter || undefined,
+        check_type: checkTypeFilter || undefined,
+      });
       setData(res.items);
       setTotal(res.count);
+      const openIds = new Set(res.items.filter((item) => item.status === 'open').map((item) => item.id));
+      setSelectedRowKeys((keys) => keys.filter((key) => openIds.has(Number(key))));
     } finally {
       setLoading(false);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize]);
+  }, [kbId, page, pageSize, statusFilter, checkTypeFilter]);
 
   useEffect(() => {
     load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [kbId, page, pageSize]);
+  }, [kbId, page, pageSize, statusFilter, checkTypeFilter]);
+
+  const statusOptions = useMemo(
+    () => [
+      { value: '', label: t('wiki.checkStatusAll') },
+      { value: 'open', label: t('wiki.checkStatusOpen') },
+      { value: 'resolved', label: t('wiki.checkStatusResolved') },
+      { value: 'dismissed', label: t('wiki.checkStatusDismissed') },
+    ],
+    [t]
+  );
+  const checkTypeOptions = useMemo(
+    () => [
+      { value: '', label: t('wiki.checkTypeAll') },
+      ...Object.entries(CHECK_TYPE_KEY).map(([value, labelKey]) => ({ value, label: t(labelKey) })),
+    ],
+    [t]
+  );
+
+  const resetSelectionAndPage = () => {
+    setSelectedRowKeys([]);
+    setPage(1);
+  };
+
+  const handleStatusFilterChange = (value: string) => {
+    setStatusFilter(value);
+    resetSelectionAndPage();
+  };
+
+  const handleCheckTypeFilterChange = (value: string) => {
+    setCheckTypeFilter(value);
+    resetSelectionAndPage();
+  };
 
   const handleScan = async () => {
     setScanning(true);
@@ -85,6 +148,67 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   };
 
   const typeLabel = (ct: string) => (CHECK_TYPE_KEY[ct] ? t(CHECK_TYPE_KEY[ct]) : ct);
+  const statusLabel = (status: string) => (CHECK_STATUS_KEY[status] ? t(CHECK_STATUS_KEY[status]) : status);
+  const resolutionOf = (item?: CheckItem | null) =>
+    item?.related?.resolution as
+      | {
+          action?: string;
+          operator?: string;
+          note?: string;
+          processed_at?: string;
+        }
+      | undefined;
+  const canMergeDuplicate = (r: CheckItem) =>
+    r.status === 'open' && r.check_type === 'duplicate' && !r.candidate_version && (r.related_pages?.length || 0) > 1;
+  const selectedOpenItems = useMemo(() => {
+    const selectedIds = new Set(selectedRowKeys.map((key) => Number(key)));
+    return data.filter((item) => item.status === 'open' && selectedIds.has(item.id));
+  }, [data, selectedRowKeys]);
+  const selectedOpenIds = selectedOpenItems.map((item) => item.id);
+  const hasSelectedOpenItems = selectedOpenIds.length > 0;
+  const hasSelectedResolvableItems = selectedOpenItems.some((item) => !item.candidate_version);
+
+  const batchMessage = (acceptedOrRejected: number, skipped: number) =>
+    `${t('wiki.batchActionDone')}: ${t('wiki.processed')} ${acceptedOrRejected}, ${t('wiki.skipped')} ${skipped}`;
+
+  const handleBatchAccept = async () => {
+    if (!hasSelectedOpenItems) return;
+    setBatchSubmitting('accept');
+    try {
+      const res = await batchAcceptChecks(selectedOpenIds);
+      message.success(batchMessage(res.accepted, res.skipped));
+      setSelectedRowKeys([]);
+      load();
+    } finally {
+      setBatchSubmitting(null);
+    }
+  };
+
+  const handleBatchReject = async () => {
+    if (!hasSelectedOpenItems) return;
+    setBatchSubmitting('reject');
+    try {
+      const res = await batchRejectChecks(selectedOpenIds);
+      message.success(batchMessage(res.rejected, res.skipped));
+      setSelectedRowKeys([]);
+      load();
+    } finally {
+      setBatchSubmitting(null);
+    }
+  };
+
+  const handleBatchResolve = async () => {
+    if (!hasSelectedResolvableItems) return;
+    setBatchSubmitting('resolve');
+    try {
+      const res = await batchResolveChecks(selectedOpenIds);
+      message.success(batchMessage(res.resolved, res.skipped));
+      setSelectedRowKeys([]);
+      load();
+    } finally {
+      setBatchSubmitting(null);
+    }
+  };
 
   const columns: ColumnsType<CheckItem> = [
     {
@@ -99,7 +223,7 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
       dataIndex: 'status',
       key: 'status',
       width: 110,
-      render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{s}</Tag>,
+      render: (s: string) => <Tag color={STATUS_COLOR[s] || 'default'}>{statusLabel(s)}</Tag>,
     },
     {
       title: t('wiki.related'),
@@ -133,9 +257,33 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               </>
             ) : (
               // 扫描类(重复/低置信等):无候选版本,仅能忽略(标记已处理)
-              <Button type="link" size="small" onClick={() => act(() => rejectCheck(r.id))}>
-                {t('wiki.dismiss')}
-              </Button>
+              <>
+                {canMergeDuplicate(r) && (
+                  <Popconfirm
+                    title={t('wiki.mergeDuplicateConfirm')}
+                    okText={t('wiki.confirm')}
+                    cancelText={t('common.cancel')}
+                    onConfirm={() => act(() => mergeDuplicateCheck(r.id))}
+                  >
+                    <Button type="link" size="small">
+                      {t('wiki.mergeDuplicate')}
+                    </Button>
+                  </Popconfirm>
+                )}
+                <Popconfirm
+                  title={t('wiki.markResolvedConfirm')}
+                  okText={t('wiki.confirm')}
+                  cancelText={t('common.cancel')}
+                  onConfirm={() => act(() => resolveCheck(r.id))}
+                >
+                  <Button type="link" size="small">
+                    {t('wiki.markResolved')}
+                  </Button>
+                </Popconfirm>
+                <Button type="link" size="small" onClick={() => act(() => rejectCheck(r.id))}>
+                  {t('wiki.dismiss')}
+                </Button>
+              </>
             ))}
         </Space>
       ),
@@ -143,10 +291,66 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
   ];
 
   const pages = detail?.related_pages || [];
+  const resolution = resolutionOf(detail);
+  const suggestedQueries = Array.isArray(detail?.related?.suggested_queries)
+    ? (detail.related.suggested_queries as string[])
+    : [];
 
   return (
     <div className="h-full flex flex-col">
-      <div className="flex justify-end mb-3 shrink-0">
+      <div className="mb-3 flex shrink-0 flex-wrap items-center justify-between gap-2">
+        <Space size={8} wrap>
+          <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterStatus')}</span>
+          <Select
+            value={statusFilter}
+            options={statusOptions}
+            className="min-w-[132px]"
+            onChange={handleStatusFilterChange}
+          />
+          <span className="text-xs text-[var(--color-text-3)]">{t('wiki.filterType')}</span>
+          <Select
+            value={checkTypeFilter}
+            options={checkTypeOptions}
+            className="min-w-[160px]"
+            onChange={handleCheckTypeFilterChange}
+          />
+          <Tag className="m-0">
+            {t('wiki.selected')}: {selectedRowKeys.length}
+          </Tag>
+          <Popconfirm
+            title={t('wiki.batchAcceptConfirm')}
+            okText={t('wiki.confirm')}
+            cancelText={t('common.cancel')}
+            disabled={!hasSelectedOpenItems}
+            onConfirm={handleBatchAccept}
+          >
+            <Button disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'accept'}>
+              {t('wiki.batchAccept')}
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title={t('wiki.batchRejectConfirm')}
+            okText={t('wiki.confirm')}
+            cancelText={t('common.cancel')}
+            disabled={!hasSelectedOpenItems}
+            onConfirm={handleBatchReject}
+          >
+            <Button danger disabled={!hasSelectedOpenItems} loading={batchSubmitting === 'reject'}>
+              {t('wiki.batchReject')}
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title={t('wiki.batchResolveConfirm')}
+            okText={t('wiki.confirm')}
+            cancelText={t('common.cancel')}
+            disabled={!hasSelectedResolvableItems}
+            onConfirm={handleBatchResolve}
+          >
+            <Button disabled={!hasSelectedResolvableItems} loading={batchSubmitting === 'resolve'}>
+              {t('wiki.batchResolve')}
+            </Button>
+          </Popconfirm>
+        </Space>
         <Button onClick={handleScan} loading={scanning}>
           {t('wiki.scan')}
         </Button>
@@ -158,6 +362,11 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
           loading={loading}
           columns={columns}
           dataSource={data}
+          rowSelection={{
+            selectedRowKeys,
+            onChange: setSelectedRowKeys,
+            getCheckboxProps: (record) => ({ disabled: record.status !== 'open' }),
+          }}
           pagination={{
             current: page,
             pageSize,
@@ -194,6 +403,36 @@ const CheckTab: React.FC<{ kbId: number }> = ({ kbId }) => {
             </div>
           ) : pages.length ? (
             <div className="space-y-4">
+              {resolution && (
+                <div className="rounded-lg border border-[var(--color-border-2)] bg-[var(--color-fill-1)] p-3">
+                  <div className="mb-2 text-xs font-medium text-[var(--color-text-2)]">
+                    {t('wiki.resolutionResult')}
+                  </div>
+                  <div className="space-y-1 text-xs text-[var(--color-text-3)]">
+                    <div>
+                      {t('wiki.operator')}: {resolution.operator || '--'}
+                    </div>
+                    <div>
+                      {t('wiki.time')}: {resolution.processed_at || '--'}
+                    </div>
+                    {resolution.note && <div>{resolution.note}</div>}
+                  </div>
+                </div>
+              )}
+              {suggestedQueries.length > 0 && (
+                <div>
+                  <div className="mb-2 text-xs font-medium text-[var(--color-text-3)]">
+                    {t('wiki.suggestedQueries')}
+                  </div>
+                  <div className="flex flex-wrap gap-2">
+                    {suggestedQueries.map((query) => (
+                      <Tag key={query} className="m-0">
+                        {query}
+                      </Tag>
+                    ))}
+                  </div>
+                </div>
+              )}
               <div className="text-xs text-[var(--color-text-3)]">{t('wiki.involvedPages')}</div>
               {pages.map((p) => (
                 <div key={p.id} className="rounded-lg border border-[var(--color-border-2)] p-3">

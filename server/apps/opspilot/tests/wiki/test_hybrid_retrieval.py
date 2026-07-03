@@ -53,6 +53,10 @@ def test_hybrid_search_semantic_rerank():
 
     results = hybrid_search(kb, "重启", embed_fn=stub)
     assert results and results[0]["id"] == p2.id  # 语义重排把 p2 顶到前面
+    explanation = results[0]["explanation"]
+    assert explanation["matched_by"] == ["keyword", "vector"]
+    assert explanation["semantic_rank"] == 1
+    assert explanation["vector_score"] > 0
 
 
 @pytest.mark.django_db
@@ -64,3 +68,13 @@ def test_hybrid_search_falls_back_to_keyword_without_embeddings():
 
     results = hybrid_search(kb, "重启", embed_fn=lambda texts: [])  # 嵌入不可用
     assert len(results) == 1 and results[0]["kind"] == "page"
+    assert results[0]["explanation"]["matched_by"] == ["keyword"]
+
+
+@pytest.mark.django_db
+def test_hybrid_search_empty_without_keyword_candidates():
+    from apps.opspilot.services.wiki.retrieval_service import hybrid_search
+
+    kb = _kb()
+
+    assert hybrid_search(kb, "不存在的内容", embed_fn=lambda texts: pytest.fail("no candidates should skip embedding")) == []

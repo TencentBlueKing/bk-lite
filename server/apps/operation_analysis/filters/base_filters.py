@@ -6,8 +6,8 @@ from django.db.models import Q
 from django_filters import FilterSet
 
 from apps.core.utils.permission_utils import get_permission_rules
-from apps.operation_analysis.constants.constants import APP_NAME
 from apps.core.utils.team_utils import get_current_team
+from apps.operation_analysis.constants.constants import APP_NAME
 
 
 class GroupPermissionMixin:
@@ -18,8 +18,8 @@ class GroupPermissionMixin:
 
     @staticmethod
     def validate_all_groups_permission(request):
-        if request.method == 'GET':
-            if request.GET.get('all_groups'):  # 带有 all_groups 参数，表示请求所有组织数据
+        if request.method == "GET":
+            if request.GET.get("all_groups"):  # 带有 all_groups 参数，表示请求所有组织数据
                 return True, None
 
         return False, None
@@ -28,7 +28,7 @@ class GroupPermissionMixin:
     def validate_group_permission(request):
         """
         验证用户的组织权限
-        
+
         :param request: Django request 对象
         :return: (is_valid, current_team) 元组
                  is_valid: 是否有效
@@ -38,7 +38,7 @@ class GroupPermissionMixin:
         if _all:
             return True, None
 
-        if not request or not hasattr(request, 'user'):
+        if not request or not hasattr(request, "user"):
             return False, None
 
         # user = request.user
@@ -104,8 +104,7 @@ class GroupPermissionMixin:
         permission_q = Q()
         if user:
             # 如果提供了实例ID列表,添加实例级权限查询
-            id_list = cls.get_permission_rules(current_team=current_team, user=user,
-                                               permission_key=permission_key)
+            id_list = cls.get_permission_rules(current_team=current_team, user=user, permission_key=permission_key)
             if id_list:
                 permission_q |= Q(id__in=id_list)
 
@@ -132,14 +131,12 @@ class GroupPermissionMixin:
         """
         _permission_rules = {}
         if permission_key:
-            _permission_rules = get_permission_rules(user=user,
-                                                     current_team=current_team, app_name=APP_NAME,
-                                                     permission_key=permission_key)
+            _permission_rules = get_permission_rules(user=user, current_team=current_team, app_name=APP_NAME, permission_key=permission_key)
             """
             {'instance': [{'id': 3, 'name': '【目录A】监控222', 'permission': ['View', 'Operate']}], 'team': []}
             """
 
-        result = [item['id'] for item in _permission_rules.get('instance', [])]
+        result = [item["id"] for item in _permission_rules.get("instance", [])]
         return result
 
 
@@ -155,8 +152,9 @@ class BaseGroupFilter(FilterSet):
             "DashboardModelFilter": "directory.dashboard",
             "TopologyModelFilter": "directory.topology",
             "ArchitectureModelFilter": "directory.architecture",
-            "DataSourceAPIModelFilter": "datasource"
-
+            "ScreenModelFilter": "directory.screen",
+            "ReportModelFilter": "directory.report",
+            "DataSourceAPIModelFilter": "datasource",
         }
 
     def permission_key(self):

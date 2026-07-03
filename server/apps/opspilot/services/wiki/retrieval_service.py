@@ -11,6 +11,7 @@ import re
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.models import KnowledgePage, LLMModel, Material
+from apps.opspilot.services.wiki.embedding_service import cosine, embed_texts, rrf_fuse
 
 logger = logging.getLogger("opspilot")
 
@@ -38,6 +39,19 @@ def _score(text, terms):
     return sum(text.count(t) for t in terms if t)
 
 
+def _matched_terms(terms, *texts):
+    text = "\n".join(texts or "").lower()
+    return [term for term in terms if term and term in text]
+
+
+def _keyword_explanation(score, terms, *texts):
+    return {
+        "matched_by": ["keyword"],
+        "keyword_score": score,
+        "matched_terms": _matched_terms(terms, *texts),
+    }
+
+
 def search(knowledge_base, query, top_k=5):
     """返回 [{kind, id, title, snippet, score}],kind ∈ {page, material_summary}。"""
     terms = _tokenize(query)
@@ -47,7 +61,16 @@ def search(knowledge_base, query, top_k=5):
         body = page.current_version.body if page.current_version_id else ""
         score = _score(page.title, terms) * 5 + _score(body, terms)
         if score > 0:
-            results.append({"kind": "page", "id": page.id, "title": page.title, "snippet": (body or "")[:300], "score": score})
+            results.append(
+                {
+                    "kind": "page",
+                    "id": page.id,
+                    "title": page.title,
+                    "snippet": (body or "")[:300],
+                    "score": score,
+                    "explanation": _keyword_explanation(score, terms, page.title, body),
+                }
+            )
 
     for material in Material.objects.filter(knowledge_base=knowledge_base).exclude(ai_summary=""):
         score = _score(material.ai_summary, terms) + _score(material.name, terms) * 2
@@ -59,6 +82,7 @@ def search(knowledge_base, query, top_k=5):
                     "title": f"资料摘要: {material.name}",
                     "snippet": (material.ai_summary or "")[:300],
                     "score": score,
+                    "explanation": _keyword_explanation(score, terms, material.name, material.ai_summary),
                 }
             )
 
@@ -71,8 +95,6 @@ def hybrid_search(knowledge_base, query, top_k=5, candidate_k=20, embed_fn=None)
 
     embed_fn(texts)->List[vector] 可注入以便测试;默认走知识库的 EmbedProvider。
     """
-    from apps.opspilot.services.wiki.embedding_service import cosine, embed_texts, rrf_fuse
-
     candidates = search(knowledge_base, query, top_k=candidate_k)
     if not candidates:
         return []
@@ -90,10 +112,35 @@ def hybrid_search(knowledge_base, query, top_k=5, candidate_k=20, embed_fn=None)
         return candidates[:top_k]  # 无嵌入 → 回退关键词
 
     qv = qvecs[0]
-    order = sorted(range(len(candidates)), key=lambda i: cosine(qv, cvecs[i]), reverse=True)
+    vector_scores = {i: cosine(qv, cvecs[i]) for i in range(len(candidates))}
+    order = sorted(range(len(candidates)), key=lambda i: vector_scores[i], reverse=True)
     sem_rank = [_key(candidates[i]) for i in order]
     fused = rrf_fuse([kw_rank, sem_rank], top_k=top_k)
-    return [by_key[k] for k in fused]
+    keyword_ranks = {key: rank for rank, key in enumerate(kw_rank, start=1)}
+    semantic_ranks = {key: rank for rank, key in enumerate(sem_rank, start=1)}
+    vector_score_by_key = {_key(candidates[i]): vector_scores[i] for i in range(len(candidates))}
+
+    results = []
+    for key in fused:
+        item = dict(by_key[key])
+        explanation = dict(item.get("explanation") or {})
+        matched_by = list(explanation.get("matched_by") or [])
+        if "keyword" not in matched_by:
+            matched_by.append("keyword")
+        if "vector" not in matched_by:
+            matched_by.append("vector")
+        explanation.update(
+            {
+                "matched_by": matched_by,
+                "keyword_rank": keyword_ranks.get(key),
+                "semantic_rank": semantic_ranks.get(key),
+                "vector_score": vector_score_by_key.get(key, 0),
+                "fusion": "rrf",
+            }
+        )
+        item["explanation"] = explanation
+        results.append(item)
+    return results
 
 
 def _answer_with_llm(query, contexts, llm_model_id):
@@ -102,11 +149,7 @@ def _answer_with_llm(query, contexts, llm_model_id):
     try:
         llm = LLMModel.objects.get(id=llm_model_id)
         ctx_text = "\n\n".join(f"[{c['title']}]\n{c['snippet']}" for c in contexts)
-        prompt = (
-            "基于下面的知识页面与资料摘要回答问题。优先使用知识页面;在回答末尾用 [引用: 标题] 标注所依据的页面。"
-            "若资料不足,请明确说明。\n\n"
-            f"# 上下文\n{ctx_text}\n\n# 问题\n{query}\n"
-        )
+        prompt = "基于下面的知识页面与资料摘要回答问题。优先使用知识页面;在回答末尾用 [引用: 标题] 标注所依据的页面。" "若资料不足,请明确说明。\n\n" f"# 上下文\n{ctx_text}\n\n# 问题\n{query}\n"
         request = BasicLLMRequest(
             openai_api_base=llm.openai_api_base,
             openai_api_key=llm.openai_api_key,
@@ -123,7 +166,7 @@ def _answer_with_llm(query, contexts, llm_model_id):
 def answer(knowledge_base, query, llm_model_id=None, top_k=5):
     """问答试用:检索 + 作答 + 引用。返回 {answer, citations, contexts}。"""
     contexts = search(knowledge_base, query, top_k=top_k)
-    citations = [{"kind": c["kind"], "id": c["id"], "title": c["title"]} for c in contexts]
+    citations = [{"kind": c["kind"], "id": c["id"], "title": c["title"], "explanation": c.get("explanation", {})} for c in contexts]
     if not contexts:
         return {"answer": "知识库中暂无相关资料,无法回答该问题。", "citations": [], "contexts": []}
     llm_answer = _answer_with_llm(query, contexts, llm_model_id)

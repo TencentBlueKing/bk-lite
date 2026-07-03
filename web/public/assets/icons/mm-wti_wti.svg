@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="WTI">
+  <rect width="64" height="64" rx="12" fill="#0f5f8f"/>
+  <path d="M12 20h40v24H12z" fill="#ffffff" opacity="0.96"/>
+  <path d="M17 26h6v12h-6zM29 26h6v12h-6zM41 26h6v12h-6z" fill="#0f5f8f"/>
+  <path d="M14 47h36" stroke="#8bd3ff" stroke-width="4" stroke-linecap="round"/>
+</svg>

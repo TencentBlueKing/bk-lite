@@ -16,6 +16,7 @@ class WikiKnowledgeBase(MaintainerInfo, TimeInfo):
     schema_md = models.TextField(default="", verbose_name=_("Schema Markdown"))
     llm_model = models.ForeignKey("LLMModel", null=True, blank=True, on_delete=models.SET_NULL)
     embed_provider = models.ForeignKey("EmbedProvider", null=True, blank=True, on_delete=models.SET_NULL)
+    vision_model = models.ForeignKey("LLMModel", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     generation_language = models.CharField(max_length=20, default="zh")
     generation_rules = models.JSONField(default=dict)
     web_sync_policy = models.JSONField(default=dict)
@@ -46,6 +47,7 @@ class Material(MaintainerInfo, TimeInfo):
     # 网页资料的定时刷新策略(按站点单独配置):{"enabled": bool, "interval_hours": int}
     sync_policy = models.JSONField(default=dict)
     text_content = models.TextField(blank=True, default="")
+    ocr_enhance = models.BooleanField(default=False)
     content_hash = models.CharField(max_length=64, blank=True, default="", db_index=True)
     ai_summary = models.TextField(blank=True, default="")
     # pending / building / done / partial / failed / updated / invalid
@@ -67,6 +69,15 @@ class MaterialVersion(TimeInfo):
 
     class Meta:
         db_table = "opspilot_wiki_material_version"
+
+
+class WikiImageCaption(TimeInfo):
+    image_hash = models.CharField(max_length=64, unique=True, db_index=True)
+    caption = models.TextField(default="")
+    vision_model = models.ForeignKey("LLMModel", null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
+
+    class Meta:
+        db_table = "opspilot_wiki_image_caption"
 
 
 class KnowledgePage(MaintainerInfo, TimeInfo):
@@ -152,6 +163,7 @@ class BuildRecord(MaintainerInfo, TimeInfo):
     counts = models.JSONField(default=dict)  # {new, updated, unchanged, pending_review}
     affected_pages = models.JSONField(default=list)
     errors = models.JSONField(default=list)
+    maintenance = models.JSONField(default=dict)
     status = models.CharField(max_length=20, default="running")  # running / success / partial / failed
 
     class Meta:
@@ -167,6 +179,10 @@ class CheckItem(MaintainerInfo, TimeInfo):
     related = models.JSONField(default=dict)  # {pages: [], materials: []}
     candidate_version = models.ForeignKey(PageVersion, null=True, blank=True, on_delete=models.SET_NULL, related_name="+")
     suggested_actions = models.JSONField(default=list)
+    # 责任人/到期/动作类型:扩展检查项为可操作任务队列(图谱洞察、健康扫描、资料更新共用)
+    assignee = models.CharField(max_length=64, blank=True, default="")
+    due_at = models.DateTimeField(null=True, blank=True)
+    action_type = models.CharField(max_length=40, blank=True, default="")
 
     class Meta:
         db_table = "opspilot_wiki_check_item"

@@ -25,8 +25,95 @@ from apps.opspilot.services.builtin_tools import (
 )
 from apps.opspilot.services.chat_request import ChatRequest
 from apps.opspilot.services.history_service import history_service
+from apps.opspilot.services.wiki.wiki_context_service import augment_prompt
 from apps.opspilot.utils.agent_factory import create_agent_instance
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
+
+
+def _truncate_candidate_title(text, limit=60):
+    """从回答文本截取候选页标题(首行/前 N 字符)。"""
+    if not text:
+        return ""
+    first_line = (text.strip().splitlines() or [""])[0].strip()
+    if not first_line:
+        return ""
+    return first_line[:limit]
+
+
+def _maybe_save_answer_as_wiki_candidate(kwargs, chat_result, doc_map):
+    """如果 kwargs.wiki_save_answer_as_candidate=True 且有 wiki_kb_ids 且回答引用了 wiki 文档,
+    自动调用 save_answer_candidate_page 把回答保存为待审核候选页。
+
+    用于"高价值回答沉淀"——避免 UI 漏触发。返回落库后的 KnowledgePage 或 None。
+    """
+    if not kwargs.get("wiki_save_answer_as_candidate"):
+        return None
+    if not chat_result.get("success"):
+        return None
+    wiki_kb_ids = kwargs.get("wiki_kb_ids") or []
+    if not wiki_kb_ids:
+        return None
+    # 只在 doc_map 中存在 wiki 来源时才落候选——避免把非 wiki 回答存到 wiki
+    wiki_doc_marker = kwargs.get("wiki_doc_marker", "wiki")
+    has_wiki_doc = False
+    if isinstance(doc_map, dict):
+        for value in doc_map.values():
+            if isinstance(value, dict) and value.get("source") == wiki_doc_marker:
+                has_wiki_doc = True
+                break
+    if not has_wiki_doc:
+        return None
+    # 落候选(用第一个 wiki KB,实际 KB 由调用方按规则选)
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.page_service import save_answer_candidate_page
+
+    kb = WikiKnowledgeBase.objects.filter(id=wiki_kb_ids[0]).first()
+    if not kb:
+        return None
+    body = chat_result.get("message", "") or ""
+    title = _truncate_candidate_title(body)
+    if not title:
+        return None
+    try:
+        return save_answer_candidate_page(
+            knowledge_base=kb,
+            page_type="qa",
+            title=title,
+            body=body,
+            source_conversation_id=str(kwargs.get("chat_id") or ""),
+            source_message_id=str(kwargs.get("message_id") or ""),
+            source_channel="chat_service",
+            created_by=str(kwargs.get("user") or kwargs.get("username") or ""),
+        )
+    except Exception:  # noqa: BLE001 - 自动落候选失败不应阻塞 chat 主流程
+        logger.exception("chat_service 自动落候选失败")
+        return None
+
+
+def _optional_positive_int(value):
+    if value in (None, ""):
+        return None
+    try:
+        parsed = int(value)
+    except (TypeError, ValueError):
+        return None
+    return parsed if parsed >= 0 else None
+
+
+def _wiki_context_options(kwargs):
+    options = {}
+    if kwargs.get("wiki_retrieval_mode"):
+        options["retrieval_mode"] = kwargs["wiki_retrieval_mode"]
+    graph_hops = _optional_positive_int(kwargs.get("wiki_graph_hops"))
+    if graph_hops is not None:
+        options["graph_hops"] = graph_hops
+    token_budget = _optional_positive_int(kwargs.get("wiki_token_budget"))
+    if token_budget:
+        options["token_budget"] = token_budget
+    top_k = _optional_positive_int(kwargs.get("wiki_top_k"))
+    if top_k:
+        options["top_k"] = top_k
+    return options
 
 
 def _resolve_agent_execute_timeout() -> int:
@@ -144,6 +231,11 @@ class ChatService:
             if not show_think:
                 content = re.sub(r"<think>.*?</think>", "", result["message"], flags=re.DOTALL).strip()
                 result["message"] = content
+
+            # 自动落候选:在 chat 完成后,如果 kwargs 标记保存且有 wiki 引用,把回答落为待审核候选页
+            saved_page = _maybe_save_answer_as_wiki_candidate(kwargs, result, doc_map)
+            if saved_page is not None:
+                result["saved_wiki_candidate_id"] = saved_page.id
 
             return result, doc_map, title_map
 
@@ -335,9 +427,7 @@ class ChatService:
         # Wiki 知识库复用:若技能选择了 Wiki 知识库,则检索并把上下文注入系统提示词
         wiki_kb_ids = kwargs.get("wiki_kb_ids")
         if wiki_kb_ids:
-            from apps.opspilot.services.wiki.wiki_context_service import augment_prompt
-
-            resolved_prompt, wiki_citations = augment_prompt(resolved_prompt, wiki_kb_ids, user_message)
+            resolved_prompt, wiki_citations = augment_prompt(resolved_prompt, wiki_kb_ids, user_message, **_wiki_context_options(kwargs))
             if wiki_citations:
                 extra_config["wiki_citations"] = wiki_citations
 

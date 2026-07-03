@@ -1,0 +1,31 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ipinfusion",
+  "plugin": "Switch IP Infusion SNMP",
+  "plugin_desc": "IP Infusion OcNOS white-box switch SNMP child template for devices under IP Infusion enterprise PEN 36673. The shared Switch SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic, while the private IPI-CMM-CHASSIS-MIB cmm subtree contributes one chassis-level PSU temperature scalar (cmmSysPSTemperature1). Per-row objects in cmmFanTable, cmmIpmiDeviceSensorTable and cmmTransTemperature, as well as the additional chassis scalars cmmSysPSTemperature2 / cmmSysPSTemperature3, are intentionally not collected: telegraf inputs.snmp cannot reliably aggregate per-row indices or arithmetic-merge chassis scalars into a single bk-lite metric, so those leaves are kept as N/A to honor the no-fabricated-health-metrics rule.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_ipinfusion'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-ipinfusion_ipinfusion",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "device_psu_temperature_celsius"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_psu_temperature_celsius",
+      "query": "device_psu_temperature_celsius{instance_type='switch', __$labels__}",
+      "display_name": "PSU Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reports the chassis-level PSU 1 temperature of the IP Infusion (OcNOS) device, read from IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1 at .1.3.6.1.4.1.36673.100.2.1.0, in degrees Celsius. Abnormally high temperatures may indicate blocked airflow, failing fans, or excessive ambient heat, and can trigger thermal protection or hardware damage if left unaddressed."
+    }
+  ]
+}

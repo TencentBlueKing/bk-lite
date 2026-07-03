@@ -1,0 +1,112 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_wti"
+        config_type = "wti"
+        brand = "wti"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.31.1.1"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.1"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+
+    # WTI-CONSOLE-MIB environment unit leaves under 1.3.6.1.4.1.2634.1.
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2634.1.200.10.1.3.0"
+        name = "device_temperature_celsius"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2634.1.200.10.1.22.0"
+        name = "wti_input_power_1_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2634.1.200.10.1.23.0"
+        name = "wti_input_power_2_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2634.1.200.10.1.24.0"
+        name = "wti_input_power_3_state"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.4.1.2634.1.200.10.1.25.0"
+        name = "wti_input_power_4_state"
+
+[[processors.enum]]
+    [processors.enum.tagpass]
+        brand = ["wti"]
+    [[processors.enum.mapping]]
+        field = "wti_input_power_1_state"
+        dest = "wti_input_power_1_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1
+    [[processors.enum.mapping]]
+        field = "wti_input_power_2_state"
+        dest = "wti_input_power_2_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1
+    [[processors.enum.mapping]]
+        field = "wti_input_power_3_state"
+        dest = "wti_input_power_3_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1
+    [[processors.enum.mapping]]
+        field = "wti_input_power_4_state"
+        dest = "wti_input_power_4_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1
+
+[[processors.starlark]]
+    namepass = ["snmp"]
+    [processors.starlark.tagpass]
+        brand = ["wti"]
+    source = '''
+def apply(metric):
+    states = []
+    for key in (
+        "wti_input_power_1_state",
+        "wti_input_power_2_state",
+        "wti_input_power_3_state",
+        "wti_input_power_4_state",
+    ):
+        states.append(metric.fields.get(key, 2))
+    metric.fields["device_psu_state"] = max(states)
+    return metric
+'''

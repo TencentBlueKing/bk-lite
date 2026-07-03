@@ -1,0 +1,156 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_benu"
+        config_type = "benu"
+        brand = "benu"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB) + 64-bit HC ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.31.1.1"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.1"
+        name = "ifName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Benu chassis temperature sensors: keep only sensor type temparature(1) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1"
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1.1.3"
+        name = "sensor"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1.1.4"
+        name = "sensor_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1.1.5"
+        name = "celsius"
+    # ---- Benu fan sensors: sensor type fan(4), sensor state normal(1) -> 1, every other code -> 2 ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1"
+        name = "device_fan"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1.1.3"
+        name = "fan"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1.1.4"
+        name = "sensor_type"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.4.1.1.8"
+        name = "state"
+    # ---- Benu power supply: present yes(1) and powered(1) are healthy; every other state is abnormal ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.7.1"
+        name = "device_psu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.7.1.1.2"
+        name = "psu"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.7.1.1.3"
+        name = "present"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39406.1.1.1.7.1.1.5"
+        name = "powered"
+    # ---- BENU-HOST-MIB software task CPU/memory tables are process-level metrics, not shared device CPU/memory health. ----
+
+[[processors.starlark]]
+    namepass = ["device_temperature"]
+    source = '''
+def apply(metric):
+    if metric.tags.get("sensor_type") != "1":
+        return None
+    return metric
+'''
+
+[[processors.starlark]]
+    namepass = ["device_fan"]
+    source = '''
+def apply(metric):
+    if metric.tags.get("sensor_type") != "4":
+        return None
+    return metric
+'''
+
+[[processors.enum]]
+    namepass = ["device_fan"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+
+[[processors.enum]]
+    namepass = ["device_psu"]
+    [[processors.enum.mapping]]
+        field = "present"
+        dest = "present_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+    [[processors.enum.mapping]]
+        field = "powered"
+        dest = "powered_state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+
+[[processors.starlark]]
+    namepass = ["device_psu"]
+    source = '''
+def apply(metric):
+    present = metric.fields.get("present_state", 2)
+    powered = metric.fields.get("powered_state", 2)
+    metric.fields["state"] = max(present, powered)
+    return metric
+'''

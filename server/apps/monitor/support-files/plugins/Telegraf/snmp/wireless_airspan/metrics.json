@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_airspan",
+  "plugin": "Wireless Airspan SNMP",
+  "plugin_desc": "Airspan wireless access SNMP baseline collection for devices under Airspan PEN 1803. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. No stable public private device-health leaf OIDs are collected in this pass.",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_airspan'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-wireless_无线设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -1,6 +1,7 @@
 from rest_framework import serializers
 
 from apps.opspilot.models import BuildRecord, CheckItem, KnowledgePage, Material, PageVersion, WikiKnowledgeBase
+from apps.opspilot.services.wiki.index_status_service import page_index_detail
 
 
 class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
@@ -25,6 +26,7 @@ class WikiKnowledgeBaseSerializer(serializers.ModelSerializer):
             "schema_md",
             "llm_model",
             "embed_provider",
+            "vision_model",
             "generation_language",
             "generation_rules",
             "web_sync_policy",
@@ -50,6 +52,7 @@ class MaterialSerializer(serializers.ModelSerializer):
             "url",
             "sync_policy",
             "text_content",
+            "ocr_enhance",
             "content_hash",
             "ai_summary",
             "status",
@@ -64,6 +67,9 @@ class MaterialSerializer(serializers.ModelSerializer):
 
 class KnowledgePageSerializer(serializers.ModelSerializer):
     body = serializers.SerializerMethodField()
+    index_status = serializers.SerializerMethodField()
+    chunk_index_status = serializers.SerializerMethodField()
+    index_detail = serializers.SerializerMethodField()
 
     class Meta:
         model = KnowledgePage
@@ -78,6 +84,9 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
             "status",
             "current_version",
             "body",
+            "index_status",
+            "chunk_index_status",
+            "index_detail",
             "created_by",
             "created_at",
             "updated_at",
@@ -85,6 +94,21 @@ class KnowledgePageSerializer(serializers.ModelSerializer):
 
     def get_body(self, obj):
         return obj.current_version.body if obj.current_version_id else ""
+
+    def _index_detail(self, obj):
+        cache = self.context.setdefault("_wiki_index_detail_cache", {})
+        if obj.id not in cache:
+            cache[obj.id] = page_index_detail(obj, failure_lookup=self.context.get("index_failure_lookup"))
+        return cache[obj.id]
+
+    def get_index_status(self, obj):
+        return self._index_detail(obj)["page_embedding"]["status"]
+
+    def get_chunk_index_status(self, obj):
+        return self._index_detail(obj)["chunk_embedding"]["status"]
+
+    def get_index_detail(self, obj):
+        return self._index_detail(obj)
 
 
 class CheckItemSerializer(serializers.ModelSerializer):
@@ -104,6 +128,9 @@ class CheckItemSerializer(serializers.ModelSerializer):
             "candidate_version",
             "candidate",
             "suggested_actions",
+            "assignee",
+            "due_at",
+            "action_type",
             "created_at",
             "updated_at",
         ]
@@ -118,9 +145,7 @@ class CheckItemSerializer(serializers.ModelSerializer):
             if not p:
                 continue
             cur = p.current_version
-            result.append(
-                {"id": p.id, "title": p.title, "page_type": p.page_type, "body": (cur.body if cur else "") or ""}
-            )
+            result.append({"id": p.id, "title": p.title, "page_type": p.page_type, "body": (cur.body if cur else "") or ""})
         return result
 
     def get_candidate(self, obj):
@@ -139,6 +164,7 @@ class PageVersionSerializer(serializers.ModelSerializer):
 class BuildRecordSerializer(serializers.ModelSerializer):
     # 输入资料的人性化名称(替代直接暴露 {"material_id":5} 这类 JSON)
     input_label = serializers.SerializerMethodField()
+    affected_page_details = serializers.SerializerMethodField()
 
     class Meta:
         model = BuildRecord
@@ -153,7 +179,9 @@ class BuildRecordSerializer(serializers.ModelSerializer):
             "progress",
             "counts",
             "affected_pages",
+            "affected_page_details",
             "errors",
+            "maintenance",
             "status",
             "created_at",
             "updated_at",
@@ -166,8 +194,35 @@ class BuildRecordSerializer(serializers.ModelSerializer):
             return inputs["material_name"]
         mid = inputs.get("material_id")
         if mid:
-            from apps.opspilot.models import Material
-
             m = Material.objects.filter(id=mid).only("name").first()
             return m.name if m else f"#{mid}"
         return ""
+
+    def get_affected_page_details(self, obj):
+        """受影响页面的可读信息:保留 affected_pages 顺序,已删除页面只保留在原始 ID 列表中。"""
+        page_ids = obj.affected_pages or []
+        if not page_ids:
+            return []
+        pages = {
+            p.id: p
+            for p in KnowledgePage.objects.filter(id__in=page_ids).only(
+                "id",
+                "title",
+                "page_type",
+                "status",
+            )
+        }
+        result = []
+        for page_id in page_ids:
+            page = pages.get(page_id)
+            if not page:
+                continue
+            result.append(
+                {
+                    "id": page.id,
+                    "title": page.title,
+                    "page_type": page.page_type,
+                    "status": page.status,
+                }
+            )
+        return result

@@ -51,9 +51,9 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     _config_analysis_fix_description,
     _config_analysis_risk_description,
     build_a2ui_report_contract,
-    build_config_diff_report_payload,
     build_config_analysis_report_markdown,
     build_config_analysis_report_payload,
+    build_config_diff_report_payload,
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
@@ -98,6 +98,15 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     if not content:
         return ""
     return str(content)[:max_len]
+
+
+def _tool_call_signature(tool_name: str, tool_args: Dict[str, Any]) -> str:
+    """Build a stable signature for duplicate tool-call detection."""
+    try:
+        args_payload = json.dumps(tool_args or {}, ensure_ascii=False, sort_keys=True, default=str)
+    except TypeError:
+        args_payload = repr(tool_args)
+    return f"{tool_name}:{args_payload}"
 
 
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
@@ -854,8 +863,6 @@ class ToolsNodes(BasicNode):
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
             import uuid
 
-            from langchain_core.callbacks import dispatch_custom_event
-
             report_id = str(uuid.uuid4())[:8]
 
             report_data = build_config_diff_report_payload(title=title, cluster_name=cluster_name, items=items)
@@ -914,7 +921,10 @@ class ToolsNodes(BasicNode):
             title: str = PydanticField(default="K8S 配置修复对比", description="报告标题（如 'K8S 配置修复对比'、'MySQL 索引优化建议'）")
             context_name: str = PydanticField(default="", description="上下文名称（如集群名、数据库实例名）")
             items: List[RepairItem] = PydanticField(default=[], description="修复项列表（可选：留空则自动从分析结果生成）")
-            target_names: List[str] = PydanticField(default=[], description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。")
+            target_names: List[str] = PydanticField(
+                default=[],
+                description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。",
+            )
             expected_target_count: int = PydanticField(default=0, description="预期的修复目标数量（即分析报告中有问题的目标总数）。用于校验是否遗漏，必须填写真实数量。")
             group_by: str = PydanticField(
                 default="target",
@@ -926,8 +936,6 @@ class ToolsNodes(BasicNode):
         ) -> str:
             import uuid
             from itertools import groupby as _groupby
-
-            from langchain_core.callbacks import dispatch_custom_event
 
             group_by = self._normalize_repair_group_by(group_by)
 
@@ -1581,6 +1589,7 @@ class ToolsNodes(BasicNode):
         reflection_tracker = {
             "consecutive_failures": 0,  # 连续失败计数
             "tool_call_history": [],  # 最近的工具调用名称列表
+            "duplicate_call_counts": {},  # tool signature -> executed count
         }
         # 动态工具选择相关
         dynamic_mode = self._dynamic_mode
@@ -1603,7 +1612,9 @@ class ToolsNodes(BasicNode):
         diff_report_tool_instance = self._build_diff_report_tool() if (_has_any_tools and _is_k8s_agent and _enable_repair_diff_report) else None
         # 批量修复报告工具（传入分析缓存以支持自动生成）
         _analysis_cache: Dict[str, Any] = {}  # 由 logged_tool_node 在 analyze 工具返回时填充
-        bulk_repair_tool_instance = self._build_bulk_repair_tool(_analysis_cache) if (_has_any_tools and _is_k8s_agent and _enable_repair_diff_report) else None
+        bulk_repair_tool_instance = (
+            self._build_bulk_repair_tool(_analysis_cache) if (_has_any_tools and _is_k8s_agent and _enable_repair_diff_report) else None
+        )
         # 选择后续行追踪（防止 LLM 在 request_user_choice 后停止）
         choice_continuation = {"retried_at_step": -1}
 
@@ -2049,7 +2060,11 @@ class ToolsNodes(BasicNode):
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
                 # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
-                if _has_pending_choice and not (_analysis_cache.get("deployments") and not self._enable_repair_diff_report()) and "tool_choice" not in bind_kwargs:
+                if (
+                    _has_pending_choice
+                    and not (_analysis_cache.get("deployments") and not self._enable_repair_diff_report())
+                    and "tool_choice" not in bind_kwargs
+                ):
                     bind_kwargs["tool_choice"] = "any"
                     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
 
@@ -2117,6 +2132,24 @@ class ToolsNodes(BasicNode):
             response = self._sanitize_duplicate_config_analysis_text(response, _analysis_cache)
             tool_calls = getattr(response, "tool_calls", None) or []
 
+            duplicate_cfg = graph_request.reflection_config
+            if getattr(duplicate_cfg, "duplicate_call_hard_enabled", False) and tool_calls:
+                seen_signatures = set()
+                deduped_tool_calls = []
+                for ntc in normalize_tool_calls(tool_calls):
+                    signature = _tool_call_signature(ntc.name, ntc.args)
+                    if signature in seen_signatures:
+                        logger.info(f"[{trace_id}] agent_node: 同批重复工具调用已去重, " f"tool={ntc.name}, tool_call_id={ntc.id}")
+                        continue
+                    seen_signatures.add(signature)
+                    deduped_tool_calls.append(ntc.raw)
+                if len(deduped_tool_calls) != len(tool_calls):
+                    tool_calls = deduped_tool_calls
+                    try:
+                        response.tool_calls = deduped_tool_calls
+                    except Exception:
+                        object.__setattr__(response, "tool_calls", deduped_tool_calls)
+
             # ========== done tool 拦截：在 agent_node 中直接处理，避免进入 tools_node ==========
             if done_tool_name and tool_calls:
                 for tc in tool_calls:
@@ -2151,8 +2184,7 @@ class ToolsNodes(BasicNode):
                 if _blocked_basic_k8s_loop:
                     response.tool_calls = tool_calls
                     logger.info(
-                        f"[{trace_id}] agent_node: 基础 K8s 分析已完成，拦截后续循环倾向工具调用，"
-                        f"remaining_tool_calls={[tc.get('name') for tc in tool_calls]}"
+                        f"[{trace_id}] agent_node: 基础 K8s 分析已完成，拦截后续循环倾向工具调用，" f"remaining_tool_calls={[tc.get('name') for tc in tool_calls]}"
                     )
                     if not tool_calls:
                         return {"messages": [self._build_basic_k8s_analysis_done_message(response, _analysis_cache)]}
@@ -2414,12 +2446,6 @@ class ToolsNodes(BasicNode):
             norm_calls = normalize_tool_calls(tool_calls)
             logger.info(f"[{trace_id}] ReAct tools_node 开始执行, tool_call_count={len(tool_calls)}, tool_calls={tool_calls}")
 
-            # ========== 防护：记录大体积工具调用（执行后截断内容）==========
-            YAML_TOOL_NAME = "get_kubernetes_resource_yaml"
-            MAX_YAML_PER_STEP = 1
-            MAX_YAML_CONTENT_LEN = 2000  # 每个保留 YAML 结果最大字符数
-            yaml_call_ids = [ntc.id for ntc in norm_calls if ntc.name == YAML_TOOL_NAME]
-
             # ========== 中断检查：工具执行前检查是否被请求中断 ==========
             execution_id = config["configurable"].get("execution_id", "")
             if execution_id and await is_interrupt_requested_async(execution_id):
@@ -2446,6 +2472,50 @@ class ToolsNodes(BasicNode):
                         logger.warning(f"[{trace_id}] logged_tool_node: 无法修改 last_message.tool_calls，并发拦截可能失效")
                 tool_calls = _filtered_tool_calls
                 norm_calls = normalize_tool_calls(tool_calls)
+
+            # ========== 硬拦截：同名同参工具调用累计达阈值后不再真实执行 ==========
+            blocked_duplicate_messages = []
+            restore_tool_calls_after_invoke = None
+            duplicate_cfg = graph_request.reflection_config
+            if getattr(duplicate_cfg, "duplicate_call_hard_enabled", False) and norm_calls:
+                hard_limit = max(1, int(getattr(duplicate_cfg, "duplicate_call_hard_limit", 3) or 3))
+                duplicate_counts = reflection_tracker.setdefault("duplicate_call_counts", {})
+                executable_norm_calls = []
+                executable_raw_calls = []
+                for ntc in norm_calls:
+                    signature = _tool_call_signature(ntc.name, ntc.args)
+                    executed_count = duplicate_counts.get(signature, 0)
+                    if executed_count >= hard_limit:
+                        blocked_duplicate_messages.append(
+                            ToolMessage(
+                                content=(f"[已拦截] 工具 {ntc.name} 使用相同参数已执行 {executed_count} 次，" f"达到上限 {hard_limit}，本次不再重复执行。"),
+                                tool_call_id=ntc.id,
+                            )
+                        )
+                        logger.warning(
+                            f"[{trace_id}] logged_tool_node: 硬拦截重复工具调用, "
+                            f"tool={ntc.name}, tool_call_id={ntc.id}, executed_count={executed_count}, limit={hard_limit}"
+                        )
+                        continue
+                    duplicate_counts[signature] = executed_count + 1
+                    executable_norm_calls.append(ntc)
+                    executable_raw_calls.append(ntc.raw)
+
+                if blocked_duplicate_messages:
+                    tool_calls = executable_raw_calls
+                    norm_calls = executable_norm_calls
+                    if tool_calls:
+                        restore_tool_calls_after_invoke = getattr(last_message, "tool_calls", None)
+                        try:
+                            last_message.tool_calls = tool_calls
+                        except Exception:
+                            object.__setattr__(last_message, "tool_calls", tool_calls)
+
+            # ========== 防护：记录大体积工具调用（执行后截断内容）==========
+            YAML_TOOL_NAME = "get_kubernetes_resource_yaml"
+            MAX_YAML_PER_STEP = 1
+            MAX_YAML_CONTENT_LEN = 2000  # 每个保留 YAML 结果最大字符数
+            yaml_call_ids = [ntc.id for ntc in norm_calls if ntc.name == YAML_TOOL_NAME]
 
             # ========== 操作前快照（回滚用）==========
             rollback_cfg = graph_request.rollback_config
@@ -2497,17 +2567,31 @@ class ToolsNodes(BasicNode):
             _has_interactive_tool = bool(_interactive_tools & set(tool_names))
             _effective_step_timeout = None if _has_interactive_tool else step_timeout
 
-            try:
-                if _effective_step_timeout:
-                    result = await asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=_effective_step_timeout)
-                else:
-                    result = await tool_node.ainvoke(state, config=config)
-            except asyncio.TimeoutError:
-                logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
-                # 返回超时错误 ToolMessage
-                timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
-                return {"messages": timeout_msgs}
-            result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            if norm_calls:
+                try:
+                    try:
+                        if _effective_step_timeout:
+                            result = await asyncio.wait_for(tool_node.ainvoke(state, config=config), timeout=_effective_step_timeout)
+                        else:
+                            result = await tool_node.ainvoke(state, config=config)
+                    finally:
+                        if restore_tool_calls_after_invoke is not None:
+                            try:
+                                last_message.tool_calls = restore_tool_calls_after_invoke
+                            except Exception:
+                                object.__setattr__(last_message, "tool_calls", restore_tool_calls_after_invoke)
+                except asyncio.TimeoutError:
+                    logger.warning(f"[{trace_id}] logged_tool_node 工具执行超时 ({step_timeout}s)")
+                    # 返回超时错误 ToolMessage
+                    timeout_msgs = [ToolMessage(content=f"Error: 工具执行超时 ({step_timeout}s)", tool_call_id=ntc.id) for ntc in norm_calls]
+                    return {"messages": timeout_msgs + blocked_duplicate_messages}
+                result_messages = result.get("messages", []) if isinstance(result, dict) else []
+            else:
+                result = {"messages": []}
+                result_messages = []
+            if blocked_duplicate_messages:
+                result_messages.extend(blocked_duplicate_messages)
+                result = {"messages": result_messages}
 
             # ========== 缓存分析结果：供 generate_repair_report 自动生成使用 ==========
             for _rm in result_messages:

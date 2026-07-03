@@ -1,5 +1,5 @@
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Flex, Image, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
+import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconfirm, Spin, Tooltip, Upload} from 'antd';
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
 import {Bubble, Sender} from '@ant-design/x';
@@ -11,6 +11,9 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
+import KnowledgeBase from '../custom-chat/knowledgeBase';
+import AnnotationModal from '../custom-chat/annotationModal';
+import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
@@ -22,12 +25,15 @@ import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
-import {CustomChatMessage, ReportFileDownload} from '@/app/opspilot/types/global';
+import SkillView from './SkillView';
+import { hydrateGeneratedFileLinks } from './downloadUrl';
+import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
+import {useReferenceHandler} from './hooks/useReferenceHandler';
 import {initToolCallTooltips} from './toolCallRenderer';
 
 const normalizeThinkingText = (value?: string) => {
@@ -107,10 +113,9 @@ const md = new MarkdownIt({
 });
 
 // Sanitize HTML to prevent XSS and CSS injection.
-// SECURITY: 'style' tag (block CSS) is intentionally excluded — allowing it enables CSS injection
-// via LLM prompt injection (e.g. `<style>*{background:url(//attacker.com)}</style>`).
-// Inline 'style' attribute is kept in ALLOWED_ATTR as it is used by guide/reference link renderers.
-// ALLOW_DATA_ATTR is false; all required data-* attributes are listed explicitly in ALLOWED_ATTR.
+// SECURITY: 'style' tag (block CSS) is intentionally excluded: allowing it
+// enables CSS injection via LLM prompt injection.
+// Inline style attributes are kept because guide/reference link renderers use them.
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
@@ -119,60 +124,9 @@ const sanitizeHtml = (html: string): string => {
   });
 };
 
-const normalizeDownloadUrl = (url?: string): string => {
-  if (!url) {
-    return '';
-  }
-
-  if (url.startsWith('/api/v1/')) {
-    return url.replace('/api/v1/', '/api/proxy/');
-  }
-
-  return url;
-};
-
-const hydrateGeneratedFileLinks = (html: string, downloads?: ReportFileDownload[]): string => {
-  if (!html || !downloads?.length || typeof window === 'undefined') {
-    return html;
-  }
-
-  const linkableDownloads = downloads.filter(download => download.file_url);
-  if (linkableDownloads.length === 0 || !html.includes('<a')) {
-    return html;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const anchors = Array.from(doc.querySelectorAll('a:not([href])'));
-  if (anchors.length === 0) {
-    return html;
-  }
-
-  const normalizeText = (value: string) => value.replace(/^下载/, '').replace(/\.[^.]+$/, '').trim().toLowerCase();
-
-  anchors.forEach(anchor => {
-    const anchorText = normalizeText(anchor.textContent || '');
-    const matchedDownload = linkableDownloads.length === 1
-      ? linkableDownloads[0]
-      : linkableDownloads.find(download => {
-        const fileName = normalizeText(download.filename);
-        return anchorText && (fileName.includes(anchorText) || anchorText.includes(fileName));
-      });
-
-    if (!matchedDownload?.file_url) {
-      return;
-    }
-
-    anchor.setAttribute('href', normalizeDownloadUrl(matchedDownload.file_url));
-    anchor.setAttribute('target', '_blank');
-    anchor.setAttribute('rel', 'noopener noreferrer');
-  });
-
-  return doc.body.innerHTML;
-};
-
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
+  showMarkOnly = false,
   initialMessages = [],
   mode = 'chat',
   guide,
@@ -201,6 +155,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
+  const [annotationModalVisible, setAnnotationModalVisible] = useState(false);
+  const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
 
@@ -276,6 +232,20 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     t
   });
 
+  const { referenceModal, drawerContent, handleReferenceClick, closeDrawer } =
+    useReferenceHandler(t);
+
+  const pendingChoice = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const requests = messages[i].userChoiceRequests;
+      if (requests?.length) {
+        const pending = requests.find(request => request.status === 'pending');
+        if (pending) return pending;
+      }
+    }
+    return null;
+  }, [messages]);
+
   // Parse guide with proper HTML escaping
   const parseGuideItems = useCallback((guideText: string): GuideParseResult => {
     if (!guideText) return { text: '', items: [], renderedHtml: '' };
@@ -305,6 +275,46 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     });
 
     return { text: guideText, items, renderedHtml: sanitizeHtml(renderedHtml) };
+  }, []);
+
+  // Parse links with proper HTML escaping
+  const parseReferenceLinks = useCallback((content: string) => {
+    // Escape HTML entities to prevent XSS
+    const escapeAttr = (text: string) => {
+      return text
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#39;');
+    };
+
+    const referenceRegex = /\[\[(\d+)\]\]\(([^)]+)\)/g;
+    return content.replace(referenceRegex, (match, refNumber, params) => {
+      const paramPairs = params.split('|');
+      const urlParams = new Map();
+
+      paramPairs.forEach((pair: string) => {
+        const [key, value] = pair.split(':');
+        if (key && value) urlParams.set(key, escapeAttr(value));
+      });
+
+      const chunkId = urlParams.get('chunk_id') || '';
+      const knowledgeId = urlParams.get('knowledge_id') || '';
+      const chunkType = urlParams.get('chunk_type') || 'Document';
+      const iconType =
+        chunkType === 'QA'
+          ? 'wendaduihua'
+          : chunkType === 'Graph'
+            ? 'zhishitupu'
+            : 'wendangguanlixitong-wendangguanlixitongtubiao';
+
+      // Escape all dynamic values
+      const escapedRefNumber = escapeAttr(refNumber);
+      const escapedIconType = escapeAttr(iconType);
+
+      return `<span class="reference-link inline-flex items-center gap-1" data-ref-number="${escapedRefNumber}" data-chunk-id="${chunkId}" data-knowledge-id="${knowledgeId}" data-chunk-type="${chunkType}" style="color: #1890ff; cursor: pointer; margin: 0 2px;"><svg class="icon icon-${escapedIconType} inline-block" style="width: 1em; height: 1em; vertical-align: text-bottom;" aria-hidden="true"><use href="#icon-${escapedIconType}"></use></svg></span>`;
+    });
   }, []);
 
   const parseSuggestionLinks = useCallback((content: string) => {
@@ -410,23 +420,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     currentBotMessageRef.current = null;
   };
 
-  // 当前是否有正在等待用户回答的选择（B 在等待）：用于把主对话框输入直接投递给该节点，
-  // 而非新建对话；同时让发送框在等待期间可交互（不显示"停止"态）。
-  const pendingChoice = useMemo(() => {
-    for (let i = messages.length - 1; i >= 0; i--) {
-      const reqs = messages[i].userChoiceRequests;
-      if (reqs && reqs.length) {
-        const pending = reqs.find(r => r.status === 'pending');
-        if (pending) return pending;
-      }
-    }
-    return null;
-  }, [messages]);
-
   const handleSend = useCallback(
     async (msg: string, images?: UploadFile[]) => {
-      // 命中"正在等待回答的选择"：把本条消息当作该选择的答案投递给等待中的节点，
-      // 不新建对话、不中断原流（B 会在原 SSE 流上继续输出）。
       if (pendingChoice && msg.trim() && token) {
         const answer = msg.trim();
         try {
@@ -436,14 +431,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             choice_id: pendingChoice.choice_id,
             selected: [answer],
           });
-          updateMessages(prev => prev.map(m => {
-            if (!m.userChoiceRequests) return m;
+          updateMessages(prev => prev.map(message => {
+            if (!message.userChoiceRequests) return message;
             return {
-              ...m,
-              userChoiceRequests: m.userChoiceRequests.map(r =>
-                r.choice_id === pendingChoice.choice_id
-                  ? { ...r, status: 'submitted' as const, selected: [answer] }
-                  : r
+              ...message,
+              userChoiceRequests: message.userChoiceRequests.map(request =>
+                request.choice_id === pendingChoice.choice_id
+                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  : request
               ),
             };
           }));
@@ -550,12 +545,13 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress } = msg;
+    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
 
-    const replacedContent = parseSuggestionLinks(content || '');
+    let replacedContent = parseReferenceLinks(content || '');
+    replacedContent = parseSuggestionLinks(replacedContent);
 
     // Split content at placeholder markers and render components inline
     const renderContentWithInlineComponents = () => {
@@ -567,7 +563,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       if (!hasMarkers) {
         // No markers — render as single block with fallback positions
-        const html = hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads);
+        const html = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads));
         return (
           <>
             <div
@@ -575,6 +571,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
+                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -652,7 +649,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i].trim();
         if (segment) {
-          const segHtml = hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads);
+          const segHtml = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads));
           elements.push(
             <div
               key={`seg-${i}`}
@@ -660,6 +657,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
+                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -791,6 +789,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
         <ThinkingPanel thinking={thinking} isThinking={isThinking} />
+        <SkillView items={skillViews} />
         {Array.isArray(agentStepProgress) && agentStepProgress.length > 0 && (
           <AgentStepProgress steps={agentStepProgress} />
         )}
@@ -798,6 +797,9 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
+        {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
+          <KnowledgeBase knowledgeList={knowledgeBase} />
+        ) : null}
         {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
       </>
     );
@@ -883,7 +885,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             setImageList([]);
             handleSend(msg, currentImages);
           }}
-          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题…') : placeholder}
+          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : placeholder}
           onCancel={stopSSEConnection}
           prefix={uploadButton}
           onPaste={(event: React.ClipboardEvent) => {
@@ -921,7 +923,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             }
           ) => {
             const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading) {
+            if (!ignoreLoading && loading && !pendingChoice) {
               return (
                 <Tooltip title={t('chat.clickCancel')}>
                   <LoadingButton />
@@ -947,6 +949,41 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {senderComponent}
       </PermissionWrapper>
     ) : senderComponent;
+  };
+
+  const toggleAnnotationModal = (message: CustomChatMessage) => {
+    if (message?.annotation) {
+      setAnnotation(message.annotation);
+    } else {
+      const lastUserMessage = messages
+        .slice(0, messages.indexOf(message))
+        .reverse()
+        .find(msg => msg.role === 'user') as CustomChatMessage;
+      setAnnotation({
+        answer: message,
+        question: lastUserMessage,
+        selectedKnowledgeBase: '',
+        tagId: 0,
+      });
+    }
+    setAnnotationModalVisible(!annotationModalVisible);
+  };
+
+  const updateMessagesAnnotation = (id: string | undefined, newAnnotation?: Annotation) => {
+    if (!id) return;
+    updateMessages(prevMessages =>
+      prevMessages.map(msg => (msg.id === id ? { ...msg, annotation: newAnnotation } : msg))
+    );
+    setAnnotationModalVisible(false);
+  };
+
+  const handleSaveAnnotation = (annotation?: Annotation) => {
+    updateMessagesAnnotation(annotation?.answer?.id, annotation);
+  };
+
+  const handleRemoveAnnotation = (id: string | undefined) => {
+    if (!id) return;
+    updateMessagesAnnotation(id, undefined);
   };
 
   useEffect(() => {
@@ -1015,6 +1052,8 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                         onCopy={handleCopyMessage}
                         onRegenerate={handleRegenerateMessage}
                         onDelete={handleDeleteMessage}
+                        onMark={toggleAnnotationModal}
+                        showMarkOnly={showMarkOnly}
                       />
                     )
                   }
@@ -1050,6 +1089,46 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
       </div>
+      {annotation && (
+        <AnnotationModal
+          visible={annotationModalVisible}
+          showMarkOnly={showMarkOnly}
+          annotation={annotation}
+          onSave={handleSaveAnnotation}
+          onRemove={handleRemoveAnnotation}
+          onCancel={() => setAnnotationModalVisible(false)}
+        />
+      )}
+
+      <Drawer
+        width={drawerContent.chunkType === 'Graph' ? 800 : 480}
+        visible={drawerContent.visible}
+        title={drawerContent.title}
+        onClose={closeDrawer}
+        getContainer={isFullscreen ? false : undefined}
+        styles={{
+          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
+        }}
+      >
+        {referenceModal.loading ? (
+          <div className="flex justify-center items-center h-32">
+            <Spin size="large" />
+          </div>
+        ) : (
+          <>
+            {drawerContent.chunkType === 'Graph' ? (
+              <div style={{ height: '100%', padding: '16px' }}>
+                <KnowledgeGraphView
+                  data={drawerContent.graphData || { nodes: [], edges: [] }}
+                  height="100%"
+                />
+              </div>
+            ) : (
+              <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
+            )}
+          </>
+        )}
+      </Drawer>
     </div>
   );
 };

@@ -638,6 +638,9 @@ export const DashboardShell = ({
           selectorLoading={dashboard.instanceLoading}
           selectorOptions={dashboard.instanceSelectOptions}
           onInstanceChange={dashboard.onInstanceChange}
+          clusterOptions={dashboard.clusterFilterEnabled ? dashboard.clusterFilterOptions : undefined}
+          clusterValue={dashboard.clusterFilterValue}
+          onClusterChange={dashboard.onClusterFilterChange}
           selectorPlaceholder={
             dashboard.resolvedInstanceName !== '--' ? dashboard.resolvedInstanceName : '选择实例'
           }

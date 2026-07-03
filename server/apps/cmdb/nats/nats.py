@@ -261,9 +261,18 @@ def _format_asset_instances_response(model_id, instances):
 
 
 @nats_client.register
-def get_cmdb_module_data(module, child_module, page, page_size, group_id):
+def get_cmdb_module_data(module, child_module, page, page_size, group_id, user_info=None):
     """
     获取cmdb模块实例数据
+
+    Args:
+        module: 模块类型（PERMISSION_INSTANCES / PERMISSION_MODEL / PERMISSION_TASK）
+        child_module: 子模块标识（PERMISSION_INSTANCES 分支下为 model_id）
+        page: 页码
+        page_size: 每页条目数
+        group_id: 组织 ID，用于限定组织范围查询
+        user_info: 用户上下文 { user: str, team: int, domain: str }，
+                   由调用方（system_mgmt）注入；缺失时 PERMISSION_INSTANCES 分支返回空列表（安全兜底）
     """
     page = int(page)
     page_size = int(page_size)
@@ -275,14 +284,19 @@ def get_cmdb_module_data(module, child_module, page, page_size, group_id):
         count = instances.count()
         queryset = [{"id": str(i["id"]), "name": f"{i['model_id']}_{i['name']}"} for i in instances]
     elif module == PERMISSION_INSTANCES:
+        # 构建真实权限 map：根据调用方传入的 user_info 查询用户在目标模型上的权限范围
+        # 当 user_info 缺失或用户无权限时返回空列表，避免越权泄露实例名称
+        permission_map = _build_nats_permission_map(user_info, model_id=child_module)
+        if permission_map is None:
+            return {"count": 0, "items": []}
         instances, count = InstanceManage.instance_list(
-            model_id=child_module,  # 使用实际模型ID
-            params=[{"field": "organization", "type": "list[]", "value": [int(group_id)]}],  # 空查询条件（或按需添加）
+            model_id=child_module,
+            params=[{"field": "organization", "type": "list[]", "value": [int(group_id)]}],
             page=page,
             page_size=page_size,
             order="",
             creator="",
-            permission_map={},
+            permission_map=permission_map,
         )
         queryset = []
         for instance in instances:
@@ -1150,43 +1164,3 @@ def model_inst_count(*args, **kwargs):
     """
     result = InstanceManage.model_inst_count(permissions_map={}, creator="")
     return {"result": True, "message": "", "data": result}
-
-
-@nats_client.register
-def receive_ip_discovery_result(data: dict):
-    """接收 Stargazer 回传的 IP 探测结果并写入台账（在线/离线/手工保护）。
-
-    预期 payload 结构（由 Stargazer ip_scan handler 按 callback_subject 回推）：
-        {
-            "subnet_id": 1,           # 子网 _id（int 或 str，与下发时一致）
-            "alive": [                 # 存活 IP 列表
-                {"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"},
-                ...
-            ]
-        }
-
-    TODO(2.7): 确认 Stargazer ip_scan handler 实际下发的 payload key 名称；
-    若 Stargazer 用 "results"/"hosts" 等替代 "alive"，需同步调整本函数的解析逻辑。
-    参考：agents/stargazer（暂无对应 handler 实现，待 2.7 接入）。
-    """
-    from apps.cmdb.services.ipam_discovery import apply_discovery_result
-
-    payload = data or {}
-    subnet_id = payload.get("subnet_id")
-    alive = payload.get("alive") or []
-
-    logger.info(
-        "[IPDiscovery] 接收探测回调 subnet_id=%s alive_count=%s",
-        subnet_id, len(alive),
-    )
-
-    if subnet_id is None:
-        logger.warning("[IPDiscovery] 回调 payload 缺少 subnet_id，已跳过")
-        return {"result": False, "message": "subnet_id missing"}
-
-    result = apply_discovery_result(subnet_id=subnet_id, alive=alive)
-    logger.info(
-        "[IPDiscovery] 回写完成 subnet_id=%s created=%s updated=%s offline=%s",
-        subnet_id, result["created"], result["updated"], result["offline"],
-    )
-    return {"result": True, **result}

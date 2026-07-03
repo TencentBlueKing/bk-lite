@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { Toast, Popover, ImageViewer } from 'antd-mobile';
 import { Sender } from '@ant-design/x';
 import { AddOutline, ExclamationCircleFill } from 'antd-mobile-icons';
@@ -53,11 +53,51 @@ export const CustomInput: React.FC<CustomInputProps> = ({
     const [fileBase64Data, setFileBase64Data] = useState<Record<number, string>>({}); // 存储每个文件的base64数据
     const [imageViewerVisible, setImageViewerVisible] = useState(false);
     const [currentPreviewImage, setCurrentPreviewImage] = useState<string>('');
+    // 持有每个已选文件的 Blob URL，避免每次渲染重新创建（file 对象引用不变时复用）
+    const fileBlobUrlsRef = useRef<Map<File, string>>(new Map());
+
+    // 当 selectedFiles 变化时，清理已移除文件的 Blob URL
+    useEffect(() => {
+        const currentMap = fileBlobUrlsRef.current;
+        const toDelete: File[] = [];
+        currentMap.forEach((url, file) => {
+            if (!selectedFiles.includes(file)) {
+                URL.revokeObjectURL(url);
+                toDelete.push(file);
+            }
+        });
+        toDelete.forEach((f) => currentMap.delete(f));
+    }, [selectedFiles]);
+
+    // 组件卸载时释放所有持有的 Blob URL
+    useEffect(() => {
+        const currentMap = fileBlobUrlsRef.current;
+        return () => {
+            currentMap.forEach((url) => URL.revokeObjectURL(url));
+            currentMap.clear();
+        };
+    }, []);
+
+    // 获取（或创建并缓存）文件对应的 Blob URL
+    const getFileBlobUrl = (file: File): string => {
+        const map = fileBlobUrlsRef.current;
+        if (!map.has(file)) {
+            map.set(file, URL.createObjectURL(file));
+        }
+        return map.get(file)!;
+    };
+
+    // lgtm[js/xss-through-dom] Object URLs are generated locally from File objects and constrained to the blob: scheme.
+    const getSafeImageBlobUrl = (file: File): string | undefined => {
+        const url = getFileBlobUrl(file);
+        return url.startsWith('blob:') ? url : undefined;
+    };
 
     // 处理图片点击预览
     const handleImagePreview = (file: File, e: React.MouseEvent) => {
         e.stopPropagation();
-        const imageUrl = URL.createObjectURL(file);
+        const imageUrl = getSafeImageBlobUrl(file);
+        if (!imageUrl) return;
         setCurrentPreviewImage(imageUrl);
         setImageViewerVisible(true);
     };
@@ -456,12 +496,15 @@ export const CustomInput: React.FC<CustomInputProps> = ({
                             >
                                 <div className="w-full h-full relative border border-[var(--color-border)] rounded-lg overflow-hidden">
                                     {file.type.startsWith('image/') ? (
-                                        <img
-                                            src={URL.createObjectURL(file)}
-                                            alt={file.name}
-                                            className="w-full h-full object-cover cursor-pointer"
+                                        <button
+                                            type="button"
+                                            aria-label={file.name}
+                                            className="w-full h-full flex flex-col items-center justify-center gap-1 p-2 cursor-pointer bg-[var(--color-fill-1)]"
                                             onClick={(e) => handleImagePreview(file, e)}
-                                        />
+                                        >
+                                            <span className="iconfont icon-tupian1 text-2xl text-[var(--color-text-2)]"></span>
+                                            <span className="text-[var(--color-text-3)] text-xs">{getFileExtension(file.name)}</span>
+                                        </button>
                                     ) : (
                                         <div className="w-full h-full flex items-center gap-2 p-2">
                                             {(() => {
@@ -753,7 +796,10 @@ export const CustomInput: React.FC<CustomInputProps> = ({
             <ImageViewer
                 image={currentPreviewImage}
                 visible={imageViewerVisible}
-                onClose={() => setImageViewerVisible(false)}
+                onClose={() => {
+                    setImageViewerVisible(false);
+                    setCurrentPreviewImage('');
+                }}
             />
         </div>
     );

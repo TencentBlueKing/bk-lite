@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_packetlight",
+  "plugin": "Transmission PacketLight SNMP",
+  "plugin_desc": "PacketLight optical transmission SNMP child template (enterprise PEN 4515). The verified profile is a clean baseline built on standard MIB-II and IF-MIB ifXTable; no stable vendor-specific row-filter-free device-health gauges are confirmed for optical link, transponder, amplifier, temperature or power. This child therefore declares no vendor-specific metric deltas in metrics.json. The shared Transmission SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate traffic while this plugin provides the PacketLight collect_type, UI and Telegraf child template. Supported brands/models — PacketLight DWDM, OTN and optical transmission devices.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_packetlight'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-packetlight_packetlight",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

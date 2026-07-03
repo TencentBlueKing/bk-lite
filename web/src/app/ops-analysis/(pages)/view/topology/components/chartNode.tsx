@@ -45,7 +45,7 @@ const ChartNodeContent: React.FC<ChartNodeProps> = ({ node }) => {
   const width = styleConfig?.width || NODE_DEFAULTS.CHART_NODE.width;
   const height = styleConfig?.height || NODE_DEFAULTS.CHART_NODE.height;
 
-  const handleQueryChange = useCallback((params: Record<string, any>) => {
+  const handleQueryChange = useCallback((params: Record<string, unknown>) => {
     if (onTableQueryChange) {
       onTableQueryChange(node.id, params);
     }

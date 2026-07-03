@@ -1,0 +1,44 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission Huber+Suhner Cubo SNMP",
+  "templates": [
+    {
+      "name": "Huber+Suhner Cubo传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 Huber+Suhner Cubo Mini 光传输设备的光模块温度，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或光模块过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ]
+    },
+    {
+      "name": "Huber+Suhner Cubo传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇异常",
+      "description": "监控 Huber+Suhner Cubo Mini 光传输设备的风扇卡状态，非正常状态表示风扇卡故障或散热模块异常。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ]
+    }
+  ]
+}

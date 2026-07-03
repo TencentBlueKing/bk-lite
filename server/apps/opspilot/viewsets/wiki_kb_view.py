@@ -1,24 +1,52 @@
-from django.http import JsonResponse
+import zipfile
+
+from django.http import HttpResponse, JsonResponse
 from rest_framework.decorators import action
 
+from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
-from apps.opspilot.models import WikiKnowledgeBase
-from apps.opspilot.serializers.wiki_serializers import WikiKnowledgeBaseSerializer
+from apps.opspilot.models import BuildRecord, KnowledgePage, WikiKnowledgeBase
+from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, WikiKnowledgeBaseSerializer
+from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import scan_health
 from apps.opspilot.services.wiki.embedding_service import chunk_semantic_search as wiki_chunk_search
+from apps.opspilot.services.wiki.embedding_service import index_version
 from apps.opspilot.services.wiki.embedding_service import reindex_chunks as wiki_reindex_chunks
-from apps.opspilot.services.wiki.embedding_service import reindex_knowledge_base
+from apps.opspilot.services.wiki.embedding_service import reindex_page_chunks
 from apps.opspilot.services.wiki.embedding_service import semantic_search as wiki_semantic_search
 from apps.opspilot.services.wiki.graph_service import analyze_graph, build_graph
+from apps.opspilot.services.wiki.index_rebuild_service import rebuild_page_indexes
+from apps.opspilot.services.wiki.markdown_export_service import QuotaExceededError, build_markdown_export_zip
+from apps.opspilot.services.wiki.markdown_import_service import import_markdown_archive
 from apps.opspilot.services.wiki.overview_service import get_overview
+from apps.opspilot.services.wiki.parsed_storage_service import delete_knowledge_base_parsed_markdown
 from apps.opspilot.services.wiki.purpose_schema_service import generate_purpose_schema, list_templates
-from apps.opspilot.services.wiki.rebuild_service import rebuild_knowledge_base
+from apps.opspilot.services.wiki.rebuild_service import create_rebuild_record, running_build_record
 from apps.opspilot.services.wiki.relation_service import list_relations, rebuild_relations
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
 from apps.opspilot.services.wiki.wiki_context_service import build_context
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def _int_param(params, key, default, minimum=0):
+    try:
+        value = int(params.get(key, default))
+    except (TypeError, ValueError):
+        return default
+    return max(value, minimum)
+
+
+def _optional_int_param(params, key, minimum=1):
+    raw = params.get(key)
+    if raw in (None, ""):
+        return None
+    try:
+        value = int(raw)
+    except (TypeError, ValueError):
+        return None
+    return max(value, minimum)
 
 
 class WikiKnowledgeBaseViewSet(AuthViewSet):
@@ -83,8 +111,12 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
 
     def destroy(self, request, *args, **kwargs):
         instance = self.get_object()
+        if running_build_record(instance):
+            return JsonResponse({"result": False, "message": "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
+        knowledge_base_id = instance.id
         name = instance.name
         instance.delete()
+        delete_knowledge_base_parsed_markdown(knowledge_base_id)
         log_operation(request, "delete", "opspilot", f"删除知识库: {name}")
         return JsonResponse({"result": True})
 
@@ -92,6 +124,123 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
     def templates(self, request):
         """返回创建知识库的场景模板列表。"""
         return JsonResponse({"result": True, "data": list_templates()})
+
+    @action(methods=["GET"], detail=True)
+    def export_markdown(self, request, pk=None):
+        """导出当前知识库启用中的知识页面为 Markdown zip。带配额审计。"""
+        kb = self.get_object()
+        try:
+            content, count = build_markdown_export_zip(kb)
+        except QuotaExceededError as exc:
+            # 审计失败导出尝试:留给运维/安全审计
+            log_operation(
+                request,
+                "execute",
+                "opspilot",
+                f"导出 Markdown 超限: 知识库={kb.name} code={exc.code} detail={exc.message}",
+            )
+            return JsonResponse(
+                {"result": False, "code": exc.code, "message": exc.message},
+                status=400,
+            )
+        log_operation(
+            request,
+            "execute",
+            "opspilot",
+            f"导出 Markdown: 知识库={kb.name} pages={count} bytes={len(content)}",
+        )
+        response = HttpResponse(content, content_type="application/zip")
+        response["Content-Disposition"] = f'attachment; filename="wiki-kb-{kb.id}-markdown.zip"'
+        return response
+
+    @action(methods=["POST"], detail=True)
+    def import_markdown(self, request, pk=None):
+        """导入 Markdown 或 Markdown zip 为内部知识页面,并触发增量维护。
+
+        治理增强:同步导入失败时(解析/级联异常),自动落 BuildRecord(stage=failed)
+        并投递 Celery 异步重试任务(最多 3 次退避)。OperationLog 记录尝试与最终结果。
+        """
+        import base64
+
+        from apps.opspilot.tasks import wiki_retry_markdown_import_task
+
+        kb = self.get_object()
+        upload = request.FILES.get("file")
+        if not upload:
+            return JsonResponse({"result": False, "message": "file 必填"}, status=400)
+        operator = getattr(request.user, "username", "")
+        content = upload.read()
+        try:
+            result = import_markdown_archive(kb, content, filename=upload.name, operator=operator)
+        except (UnicodeDecodeError, ValueError, zipfile.BadZipFile) as exc:
+            log_operation(
+                request,
+                "create",
+                "opspilot",
+                f"导入 Markdown 失败(可重试): 知识库={kb.name} file={upload.name} error={exc}",
+            )
+            return JsonResponse({"result": False, "message": str(exc)}, status=400)
+        except Exception as exc:  # noqa: BLE001 - 任何意外都进重试队列
+            logger.exception("wiki markdown 导入意外失败,投递重试")
+            record = BuildRecord.objects.create(
+                knowledge_base=kb,
+                trigger="markdown_import",
+                operator=operator,
+                inputs={"filename": upload.name},
+                stage="failed",
+                progress=0,
+                errors=[f"导入异常: {exc}"],
+                status="failed",
+            )
+            try:
+                wiki_retry_markdown_import_task.delay(kb.id, record.id, base64.b64encode(content).decode("ascii"), upload.name, operator)
+            except Exception:  # noqa: BLE001 - 重试队列投递失败不阻塞返回
+                logger.exception("wiki markdown 重试任务投递失败")
+            log_operation(
+                request,
+                "create",
+                "opspilot",
+                f"导入 Markdown 投递重试: 知识库={kb.name} build_record={record.id}",
+            )
+            return JsonResponse(
+                {
+                    "result": False,
+                    "code": "import_retry",
+                    "message": "导入异常,已加入重试队列",
+                    "data": {"build_record": BuildRecordSerializer(record).data},
+                },
+                status=202,
+            )
+
+        maintenance = cascade(kb, result.page_ids, "markdown_import") if result.page_ids else {}
+        status = maintenance.get("status", "success") if result.page_ids else "success"
+        record = BuildRecord.objects.create(
+            knowledge_base=kb,
+            trigger="markdown_import",
+            operator=operator,
+            inputs={"filename": upload.name, **result.as_dict()},
+            stage="done",
+            progress=100,
+            counts={"created": result.created, "updated": result.updated, "skipped": result.skipped},
+            affected_pages=result.page_ids,
+            maintenance=maintenance,
+            status=status,
+        )
+        log_operation(
+            request,
+            "create",
+            "opspilot",
+            f"导入 Markdown 成功: 知识库={kb.name} 创建={result.created} 更新={result.updated} 跳过={result.skipped}",
+        )
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    **result.as_dict(),
+                    "build_record": BuildRecordSerializer(record).data,
+                },
+            }
+        )
 
     @action(methods=["POST"], detail=False)
     def generate_purpose_schema(self, request):
@@ -120,10 +269,23 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
 
     @action(methods=["POST"], detail=True)
     def reindex(self, request, pk=None):
-        """构建/刷新语义索引:为所有有效页面当前版本生成并存储嵌入向量。"""
+        """重建知识库全部有效页面的页面级和 chunk 级索引,并落构建记录供诊断追踪。"""
         kb = self.get_object()
-        count = reindex_knowledge_base(kb)
-        return JsonResponse({"result": True, "data": {"indexed": count}})
+        if not kb.embed_provider_id:
+            return JsonResponse({"result": False, "message": "知识库未配置向量模型,无法重建索引"}, status=400)
+        pages = list(KnowledgePage.objects.filter(knowledge_base=kb, status="active").select_related("current_version").order_by("id"))
+        record = rebuild_page_indexes(
+            kb,
+            pages,
+            trigger="kb_reindex",
+            event="kb_reindex",
+            operator=getattr(request.user, "username", ""),
+            inputs={"knowledge_base_id": kb.id, "knowledge_base_name": kb.name},
+            index_fn=index_version,
+            chunk_index_fn=reindex_page_chunks,
+        )
+        log_operation(request, "execute", "opspilot", f"重建知识库索引: {kb.name}")
+        return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
     @action(methods=["POST"], detail=True)
     def semantic_search(self, request, pk=None):
@@ -160,13 +322,69 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         created = scan_health(kb)
         return JsonResponse({"result": True, "data": {"created": len(created)}})
 
+    @action(methods=["GET"], detail=True, url_path="preview_merge")
+    def preview_merge(self, request, pk=None):
+        """合并预览:按 title_aliases 规则归一 KB 内所有 active 页面,返回会被合并到同一规范标题的页面集合(不写库)。"""
+        from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
+
+        kb = self.get_object()
+        alias_map = title_alias_map(kb)
+        # {compact_title_key(canonical): {canonical_label, pages: [{id, title, status}]}}
+        buckets = {}
+        active_pages = KnowledgePage.objects.filter(knowledge_base=kb, status="active").order_by("title").only("id", "title", "status")
+        for page in active_pages:
+            canonical = canonical_title(kb, page.title)
+            # 用 compact_title_key 做桶 key,与 title_alias_map 的 key 形式一致(否则 alias_only 判定会失败)
+            key = compact_title_key(canonical or page.title)
+            bucket = buckets.setdefault(key, {"canonical": canonical or page.title, "pages": []})
+            bucket["pages"].append({"id": page.id, "title": page.title, "status": page.status})
+
+        merges = []
+        # 只保留"会被合并的"桶(2+ 个页面共享同一规范标题)与"孤页但命中别名表"的桶
+        for key, bucket in buckets.items():
+            if len(bucket["pages"]) > 1:
+                # 多页共享规范标题:这些页面将被合并
+                merges.append(
+                    {
+                        "canonical": bucket["canonical"],
+                        "merged_pages": [p["title"] for p in bucket["pages"]],
+                        "page_ids": [p["id"] for p in bucket["pages"]],
+                        "rule": "duplicate_canonical",
+                    }
+                )
+            elif key in alias_map and bucket["pages"][0]["title"] != bucket["canonical"]:
+                # 单页但标题命中别名表(说明页面用了别名,需要规范化为 canonical)
+                merges.append(
+                    {
+                        "canonical": bucket["canonical"],
+                        "merged_pages": [bucket["pages"][0]["title"]],
+                        "page_ids": [bucket["pages"][0]["id"]],
+                        "rule": "alias_only",
+                    }
+                )
+        merges.sort(key=lambda item: (-len(item["page_ids"]), item["canonical"]))
+        return JsonResponse(
+            {
+                "result": True,
+                "data": {
+                    "merges": merges,
+                    "total_canonical_groups": len(merges),
+                    "active_page_count": active_pages.count(),
+                },
+            }
+        )
+
     @action(methods=["POST"], detail=True)
     def rebuild(self, request, pk=None):
         """Schema 变更后全量重建:归档旧 AI 页、保留并标记人工页、按新 Schema 重生成。"""
         kb = self.get_object()
-        record = rebuild_knowledge_base(kb, llm_model_id=kb.llm_model_id, operator=getattr(request.user, "username", ""))
-        from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer
+        if running_build_record(kb):
+            return JsonResponse({"result": False, "message": "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
+        operator = getattr(request.user, "username", "")
+        record = create_rebuild_record(kb, operator=operator)
+        from apps.opspilot.tasks import wiki_rebuild_kb_task
 
+        wiki_rebuild_kb_task.delay(kb.id, kb.llm_model_id, operator, record.id)
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
     @action(methods=["POST"], detail=True)
@@ -205,5 +423,20 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         """多智能体复用:按所选知识库 + 问题取回可注入提示词的上下文 + 引用。"""
         kb_ids = request.data.get("kb_ids") or []
         query = request.data.get("query", "")
-        top_k = int(request.data.get("top_k", 5))
-        return JsonResponse({"result": True, "data": build_context(kb_ids, query, top_k=top_k)})
+        top_k = _int_param(request.data, "top_k", 5, minimum=1)
+        graph_hops = _int_param(request.data, "graph_hops", 1, minimum=0)
+        token_budget = _optional_int_param(request.data, "token_budget", minimum=1)
+        retrieval_mode = request.data.get("retrieval_mode", "keyword")
+        return JsonResponse(
+            {
+                "result": True,
+                "data": build_context(
+                    kb_ids,
+                    query,
+                    top_k=top_k,
+                    graph_hops=graph_hops,
+                    token_budget=token_budget,
+                    retrieval_mode=retrieval_mode,
+                ),
+            }
+        )

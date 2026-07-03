@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="RubyTech">
+  <rect width="64" height="64" rx="12" fill="#7f1d1d"/>
+  <path d="M17 18h20c7 0 12 4.2 12 10.7 0 4.5-2.3 7.9-6.2 9.5L50 50h-9l-6.4-10.5H25V50h-8V18Zm8 7.2v7.3h11.2c2.8 0 4.5-1.4 4.5-3.7s-1.7-3.6-4.5-3.6H25Z" fill="#fff7ed"/>
+  <path d="M16 54h32" stroke="#fecaca" stroke-width="4" stroke-linecap="round"/>
+</svg>

@@ -13,6 +13,12 @@ from apps.opspilot.metis.llm.tools.common.credentials import (
 )
 from apps.opspilot.metis.llm.tools.mssql.utils import get_available_driver
 
+if not hasattr(pyodbc, "connect"):
+    def _missing_pyodbc_connect(*args, **kwargs):
+        raise RuntimeError("pyodbc.connect is unavailable")
+
+    pyodbc.connect = _missing_pyodbc_connect
+
 MSSQL_INSTANCE_FIELDS = (
     "id",
     "name",

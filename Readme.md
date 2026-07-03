@@ -64,6 +64,26 @@ Blueking Lite 是一个 **AI First** 的**轻量版**运维产品，具有部署
 - 🐳 [安装部署](deploy/docker-compose/Readme.md)
 - 📚 [接口文档](docs/overview/api_doc.md)
 
+## 🧪 测试覆盖率
+
+![coverage](https://img.shields.io/badge/coverage-74.4%25-green)
+![tests](https://img.shields.io/badge/tests-passing-brightgreen)
+![modules≥75%](https://img.shields.io/badge/modules%20%E2%89%A575%25-13%2F14-blue)
+![fake tests](https://img.shields.io/badge/fake%20tests-0-brightgreen)
+![infra](https://img.shields.io/badge/tested%20on-real%20PG%2FRedis%2FMinIO%2FFalkorDB%2FNATS-informational)
+
+> 统计口径：`apps/<module>` 业务源码覆盖率，排除 `tests/` 与 `migrations/`；本次 `pytest` 原始 TOTAL（含测试文件）为 86%。
+
+| 模块 | 覆盖率 | 模块 | 覆盖率 |
+|------|-------:|------|-------:|
+| rpc | 98.6% | log | 84.3% |
+| base | 99.3% | operation_analysis | 82.4% |
+| job_mgmt | 95.6% | core | 80.3% |
+| console_mgmt | 89.7% | mlops | 76.3% |
+| alerts | 84.3% | system_mgmt | 76.1% |
+| monitor | 76.0% | node_mgmt | 75.3% |
+| cmdb | 75.5% | opspilot | 63.3% |
+
 ## 🛣️ 路线图
 
 - 📋 [版本日志](docs/changelog/release.md)

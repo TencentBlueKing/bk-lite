@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_fiberhome_olt",
+  "plugin": "Access FiberHome OLT SNMP",
+  "plugin_desc": "FiberHome OLT and GPON access-device SNMP child template. The template keeps the shared Access baseline only: MIB-II uptime and IF-MIB ifXTable 64-bit HC interface counters. FiberHome OLT private health leaves are not modeled in this pass because stable device-level CPU, memory, temperature, fan or power OIDs are not confirmed from the available FIBERHOME-OLT-COMMON-MIB signal. PON, ONU and optical service tables are not promoted to shared device-health metrics.",
+  "status_query": "any({instance_type='access', collect_type='snmp_fiberhome_olt'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

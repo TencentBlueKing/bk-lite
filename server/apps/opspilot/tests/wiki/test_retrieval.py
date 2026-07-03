@@ -25,6 +25,23 @@ def test_search_ranks_relevant_pages():
 
 
 @pytest.mark.django_db
+def test_search_returns_keyword_explanation():
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.retrieval_service import search
+
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    _seed(kb)
+
+    results = search(kb, "重启 服务")
+
+    assert results
+    explanation = results[0]["explanation"]
+    assert explanation["matched_by"] == ["keyword"]
+    assert explanation["keyword_score"] == results[0]["score"]
+    assert "重启" in explanation["matched_terms"]
+
+
+@pytest.mark.django_db
 def test_answer_without_model_falls_back_with_citations():
     from apps.opspilot.models import WikiKnowledgeBase
     from apps.opspilot.services.wiki.retrieval_service import answer
@@ -34,6 +51,22 @@ def test_answer_without_model_falls_back_with_citations():
     out = answer(kb, "如何重启服务", llm_model_id=None)
     assert out["citations"], "should cite something"
     assert "systemctl" in out["answer"] or "重启" in out["answer"]
+    assert out["citations"][0]["explanation"]["matched_by"] == ["keyword"]
+
+
+@pytest.mark.django_db
+def test_answer_with_missing_model_falls_back_with_explanation():
+    from apps.opspilot.models import WikiKnowledgeBase
+    from apps.opspilot.services.wiki.retrieval_service import answer
+
+    kb = WikiKnowledgeBase.objects.create(name="kb", team=[1])
+    _seed(kb)
+
+    out = answer(kb, "如何重启服务", llm_model_id=999999)
+
+    assert out["citations"]
+    assert out["citations"][0]["explanation"]["matched_by"] == ["keyword"]
+    assert "重启" in out["answer"]
 
 
 @pytest.mark.django_db

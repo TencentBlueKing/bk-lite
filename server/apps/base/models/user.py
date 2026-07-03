@@ -1,4 +1,5 @@
 import binascii
+import hashlib
 import os
 
 from django.contrib.auth.models import AbstractUser
@@ -10,14 +11,46 @@ from apps.core.models.time_info import TimeInfo
 
 
 class UserAPISecret(TimeInfo):
+    HASH_PREFIX = "sha256$"
+
     username = models.CharField(max_length=255)
     domain = models.CharField(max_length=255, default="domain.com")
-    api_secret = models.CharField(max_length=64)
+    api_secret = models.CharField(max_length=80)
     team = models.IntegerField(default=0)
 
     @staticmethod
     def generate_api_secret():
         return binascii.hexlify(os.urandom(32)).decode()
+
+    @classmethod
+    def hash_api_secret(cls, api_secret: str) -> str:
+        if not api_secret:
+            return api_secret
+        if cls.is_hashed_api_secret(api_secret):
+            return api_secret
+        return f"{cls.HASH_PREFIX}{hashlib.sha256(api_secret.encode()).hexdigest()}"
+
+    @classmethod
+    def is_hashed_api_secret(cls, api_secret: str) -> bool:
+        return bool(api_secret and api_secret.startswith(cls.HASH_PREFIX))
+
+    @classmethod
+    def find_by_api_secret(cls, api_secret: str):
+        if not api_secret:
+            return None
+        if cls.is_hashed_api_secret(api_secret):
+            return None
+
+        hashed_secret = cls.hash_api_secret(api_secret)
+        user_secret = cls._default_manager.filter(api_secret=hashed_secret).first()
+        if user_secret:
+            return user_secret
+
+        # 滚动发布兼容：迁移尚未执行到的旧明文记录仍可认证。
+        return cls._default_manager.filter(api_secret=api_secret).first()
+
+    def get_api_secret_preview(self) -> str:
+        return "********" if self.api_secret else ""
 
     class Meta:
         unique_together = ("username", "domain", "team")

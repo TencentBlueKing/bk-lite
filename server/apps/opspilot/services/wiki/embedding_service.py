@@ -11,6 +11,11 @@ import logging
 import math
 import re
 
+from django.db import transaction
+from openai import OpenAI
+
+from apps.opspilot.models import KnowledgePage, PageChunk, PageVersion
+
 logger = logging.getLogger("opspilot")
 
 _HEADING_RE = re.compile(r"^(#{1,6})\s+(.*)$")
@@ -83,7 +88,7 @@ def index_version(version, embed_provider, embed_fn=None):
     if not body:
         return False
     embed = embed_fn or (lambda texts: embed_texts(texts, embed_provider))
-    vecs = embed([body[:8000]])
+    vecs = embed([body])
     if not vecs or not vecs[0]:
         return False
     version.embedding = vecs[0]
@@ -91,10 +96,18 @@ def index_version(version, embed_provider, embed_fn=None):
     return True
 
 
+def clear_page_vectors(page_ids):
+    """Clear page-level and chunk-level embeddings for pages that left active retrieval."""
+    ids = list(page_ids or [])
+    if not ids:
+        return 0
+    PageVersion.objects.filter(page_id__in=ids).update(embedding=[])
+    PageChunk.objects.filter(page_id__in=ids).update(embedding=[])
+    return len(ids)
+
+
 def reindex_knowledge_base(knowledge_base, embed_fn=None):
     """为知识库所有有效页面的当前版本(重新)生成语义索引,返回成功建索引的页面数。"""
-    from apps.opspilot.models import KnowledgePage
-
     count = 0
     pages = KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").select_related("current_version")
     for page in pages:
@@ -109,8 +122,6 @@ def semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
 
     仅覆盖已建索引(current_version.embedding 非空)的页面;无嵌入则返回 []。
     """
-    from apps.opspilot.models import KnowledgePage
-
     embed = embed_fn or (lambda texts: embed_texts(texts, knowledge_base.embed_provider))
     qvecs = embed([query])
     if not qvecs or not qvecs[0]:
@@ -126,17 +137,22 @@ def semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
         score = cosine(qv, vec)
         if score > 0:
             body = cv.body or ""
-            results.append({"kind": "page", "id": page.id, "title": page.title, "snippet": body[:300], "score": score})
+            results.append(
+                {
+                    "kind": "page",
+                    "id": page.id,
+                    "title": page.title,
+                    "snippet": body[:300],
+                    "score": score,
+                    "explanation": {"matched_by": ["vector"], "vector_score": score},
+                }
+            )
     results.sort(key=lambda r: r["score"], reverse=True)
     return results[:top_k]
 
 
 def reindex_page_chunks(page, embed_provider, embed_fn=None):
     """重建某页面当前版本的分块索引:删旧块 → 切块 → 批量嵌入 → 落库。返回建索引的块数。"""
-    from django.db import transaction
-
-    from apps.opspilot.models import PageChunk
-
     cv = page.current_version
     if not cv:
         return 0
@@ -169,8 +185,6 @@ def reindex_page_chunks(page, embed_provider, embed_fn=None):
 
 def reindex_chunks(knowledge_base, embed_fn=None):
     """为知识库所有有效页面重建分块索引,返回 (页面数, 块数)。"""
-    from apps.opspilot.models import KnowledgePage
-
     pages = KnowledgePage.objects.filter(knowledge_base=knowledge_base, status="active").select_related("current_version")
     n_pages = n_chunks = 0
     for page in pages:
@@ -183,8 +197,6 @@ def reindex_chunks(knowledge_base, embed_fn=None):
 
 def chunk_semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
     """块级语义检索:query 嵌入 vs 已存块嵌入余弦,返回 [{page_id,title,heading_path,snippet,score}]。"""
-    from apps.opspilot.models import PageChunk
-
     embed = embed_fn or (lambda texts: embed_texts(texts, knowledge_base.embed_provider))
     qvecs = embed([query])
     if not qvecs or not qvecs[0]:
@@ -204,6 +216,11 @@ def chunk_semantic_search(knowledge_base, query, top_k=5, embed_fn=None):
                     "heading_path": ch.heading_path,
                     "snippet": (ch.text or "")[:300],
                     "score": score,
+                    "explanation": {
+                        "matched_by": ["chunk_vector"],
+                        "chunk_index": ch.idx,
+                        "vector_score": score,
+                    },
                 }
             )
     results.sort(key=lambda r: r["score"], reverse=True)
@@ -215,8 +232,6 @@ def embed_texts(texts, embed_provider):
     if not texts or embed_provider is None:
         return []
     try:
-        from openai import OpenAI
-
         client = OpenAI(base_url=embed_provider.base_url, api_key=embed_provider.api_key)
         resp = client.embeddings.create(model=embed_provider.model_name, input=list(texts))
         return [item.embedding for item in resp.data]

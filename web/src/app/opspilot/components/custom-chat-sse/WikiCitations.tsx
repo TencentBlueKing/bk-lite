@@ -27,6 +27,12 @@ const WikiCitations: React.FC<{ citations: WikiCitation[]; content?: string }> =
   const items = Array.from(new Map(citations.filter(referenced).map((c) => [`${c.kind}:${c.id}`, c])).values()).sort(
     (a, b) => (a.n ?? 0) - (b.n ?? 0)
   );
+  const explanationLabels: Record<string, string> = {
+    keyword: t('wiki.retrievalKeyword'),
+    vector: t('wiki.retrievalVector'),
+    chunk_vector: t('wiki.retrievalChunkVector'),
+    graph: t('wiki.retrievalGraph'),
+  };
 
   const open = async (c: WikiCitation) => {
     setActive(c);
@@ -53,12 +59,19 @@ const WikiCitations: React.FC<{ citations: WikiCitation[]; content?: string }> =
     <div className="mt-2 flex flex-wrap items-center gap-1.5 border-t border-[var(--color-border-2)] pt-2">
       <span className="text-xs text-[var(--color-text-3)]">{t('wiki.citations')}:</span>
       {items.map((c) => (
-        <Tooltip key={`${c.kind}:${c.id}`} title={c.title}>
-          <Tag color="processing" className="m-0 max-w-[220px] cursor-pointer truncate hover:opacity-80" onClick={() => open(c)}>
-            {c.n != null ? `[${c.n}] ` : ''}
-            {c.title}
-          </Tag>
-        </Tooltip>
+        <span key={`${c.kind}:${c.id}`} className="flex max-w-full items-center gap-1">
+          <Tooltip title={c.title}>
+            <Tag color="processing" className="m-0 max-w-[220px] cursor-pointer truncate hover:opacity-80" onClick={() => open(c)}>
+              {c.n != null ? `[${c.n}] ` : ''}
+              {c.title}
+            </Tag>
+          </Tooltip>
+          {c.explanation?.matched_by?.map((mode) => (
+            <Tag key={mode} className="m-0 text-[11px]">
+              {explanationLabels[mode] || mode}
+            </Tag>
+          ))}
+        </span>
       ))}
       <Drawer title={active?.title} open={!!active} width={600} onClose={() => setActive(null)} destroyOnHidden>
         <Spin spinning={loading}>

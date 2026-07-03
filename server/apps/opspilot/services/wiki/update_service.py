@@ -13,8 +13,10 @@ from django.db import transaction
 
 from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
-from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, PageEvidence
+from apps.opspilot.models import BuildRecord, KnowledgePage, LLMModel, MaterialVersion, PageEvidence
+from apps.opspilot.services.wiki.cascade_service import cascade
 from apps.opspilot.services.wiki.check_service import create_candidate, ensure_check
+from apps.opspilot.services.wiki.material_service import load_parsed_markdown
 
 logger = logging.getLogger("opspilot")
 
@@ -22,7 +24,70 @@ logger = logging.getLogger("opspilot")
 def affected_pages(material):
     """返回引用了该资料的有效页面。"""
     page_ids = list(PageEvidence.objects.filter(material=material).values_list("page_id", flat=True).distinct())
-    return list(KnowledgePage.objects.filter(id__in=page_ids, status="active"))
+    return list(KnowledgePage.objects.filter(id__in=page_ids, status="active").order_by("id"))
+
+
+def _page_impact_payload(page):
+    return {"id": page.id, "title": page.title, "page_type": page.page_type, "status": page.status}
+
+
+def _version_impact_payload(version):
+    if not version:
+        return None
+    return {
+        "id": version.id,
+        "content_hash": version.content_hash,
+        "content_locator": version.content_locator,
+        "created_at": version.created_at.isoformat() if version.created_at else None,
+    }
+
+
+def preview_material_deletion(material):
+    """预览删除资料的影响,不修改任何资料、证据或页面状态。"""
+    pages = affected_pages(material)
+    page_ids = [page.id for page in pages]
+    protected_page_ids = set(
+        PageEvidence.objects.filter(page_id__in=page_ids).exclude(material=material).values_list("page_id", flat=True).distinct()
+    )
+    affected = [_page_impact_payload(page) for page in pages]
+    will_be_source_invalid = [_page_impact_payload(page) for page in pages if page.id not in protected_page_ids]
+    shared_source_protected = [_page_impact_payload(page) for page in pages if page.id in protected_page_ids]
+    return {
+        "material_id": material.id,
+        "material_name": material.name,
+        "affected_count": len(affected),
+        "will_be_source_invalid_count": len(will_be_source_invalid),
+        "shared_source_protected_count": len(shared_source_protected),
+        "affected_pages": affected,
+        "will_be_source_invalid": will_be_source_invalid,
+        "shared_source_protected": shared_source_protected,
+    }
+
+
+def preview_material_update(material):
+    """预览资料更新影响,不调用 LLM、不生成候选版本。"""
+    pages = affected_pages(material)
+    versions = list(MaterialVersion.objects.filter(material=material).order_by("-id")[:2])
+    latest = versions[0] if versions else None
+    previous = versions[1] if len(versions) > 1 else None
+    affected = [_page_impact_payload(page) for page in pages]
+    content_changed = bool(
+        material.status == "updated"
+        or (latest and previous and latest.content_hash and previous.content_hash and latest.content_hash != previous.content_hash)
+    )
+    return {
+        "material_id": material.id,
+        "material_name": material.name,
+        "material_status": material.status,
+        "content_hash": material.content_hash,
+        "content_changed": content_changed,
+        "latest_version": _version_impact_payload(latest),
+        "previous_version": _version_impact_payload(previous),
+        "affected_count": len(affected),
+        "pending_review_count": len(affected),
+        "affected_pages": affected,
+        "pending_review_pages": affected,
+    }
 
 
 @transaction.atomic
@@ -47,16 +112,13 @@ def _default_generator(page, material, llm_model_id):
     """默认正文生成:用更新后的资料为该页面重写正文(LLM)。无模型则返回空(跳过)。"""
     if not llm_model_id:
         return ""
-    text = (material.ai_summary or material.text_content or "").strip()
+    text = (load_parsed_markdown(material) or material.ai_summary or material.text_content or "").strip()
     if not text:
         return ""
     try:
         llm = LLMModel.objects.get(id=llm_model_id)
         current = page.current_version.body if page.current_version_id else ""
-        prompt = (
-            "资料已更新,请据此重写指定知识页面的正文,保持标题主题不变,只输出 markdown 正文。\n\n"
-            f"# 页面标题\n{page.title}\n\n# 现有正文\n{current[:4000]}\n\n# 更新后的资料\n{text[:6000]}\n"
-        )
+        prompt = "资料已更新,请据此重写指定知识页面的正文,保持标题主题不变,只输出 markdown 正文。\n\n" f"# 页面标题\n{page.title}\n\n# 现有正文\n{current}\n\n# 更新后的资料\n{text}\n"
         request = BasicLLMRequest(
             openai_api_base=llm.openai_api_base,
             openai_api_key=llm.openai_api_key,
@@ -92,11 +154,15 @@ def handle_material_deletion(material, operator=""):
     flagged = []
     for page in KnowledgePage.objects.filter(id__in=page_ids, status="active"):
         if not PageEvidence.objects.filter(page=page).exists():
+            page.status = "source_invalid"
+            page.save(update_fields=["status", "updated_at"])
             if ensure_check(kb, "source_invalid", page, suggested_actions=["supplement_source", "archive"]):
                 flagged.append(page.id)
+    maintenance = cascade(kb, page_ids, "material_delete")
     build.counts = {"new": 0, "updated": 0, "unchanged": 0, "pending_review": len(flagged)}
     build.affected_pages = flagged
-    build.save(update_fields=["counts", "affected_pages", "updated_at"])
+    build.maintenance = maintenance
+    build.save(update_fields=["counts", "affected_pages", "maintenance", "updated_at"])
     return build
 
 
