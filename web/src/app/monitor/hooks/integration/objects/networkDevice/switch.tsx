@@ -150,6 +150,7 @@ export const useSwitchConfig = () => {
       'Switch WoMaster SNMP': 'snmp_womaster',
       'Switch Murrelektronik SNMP': 'snmp_murrelektronik',
       'Switch InHand Networks SNMP': 'snmp_inhand',
+      'Switch IP Infusion SNMP': 'snmp_ipinfusion',
       'Switch Wi-Tek SNMP': 'snmp_witek',
       'Switch Nexans SNMP': 'snmp_nexans',
       'Switch Pica8 SNMP': 'snmp_pica8',

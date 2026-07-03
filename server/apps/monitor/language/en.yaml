@@ -2355,6 +2355,9 @@ monitor_object_metric:
     device_flow_top_conversation_bytes_rate:
       name: Top Conversation Flow Traffic Rate
       desc: Conversation traffic ranked by source, destination, protocol, and destination port, used to locate dominant communication pairs.
+    device_psu_temperature_celsius:
+      name: PSU Temperature
+      desc: Chassis-level PSU 1 temperature reading from IP Infusion (OcNOS) device (IPI-CMM-CHASSIS-MIB cmmSysPSTemperature1), in degrees Celsius. Used to monitor power module operating temperature; abnormally high values may indicate blocked airflow, failing fans or excessive ambient heat, which can trigger thermal protection or hardware damage if left unaddressed.
   Router:
     device_temperature_celsius:
       name: Device Temperature
@@ -4792,6 +4795,9 @@ monitor_object_plugin:
   Transmission Ifotec SNMP:
     name: Transmission Ifotec SNMP
     desc: Baseline SNMP child template for Ifotec industrial fiber-optic transceiver and optical transmission devices (enterprise PEN 21362). The shared Transmission SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The Ifotec enterprise root and the ifotecProductList / ifotecGeneral / ifotecModules sub-trees are publicly documented, but no stable, row-filter-free CPU, memory, temperature, fan or power health scalars are proven for this vendor in the current MIB facts, so they are not promoted into shared device-health metrics. Applicable to Ifotec industrial fiber-optic transceivers and optical transmission devices and other IF-MIB compliant transmission devices.
+  Switch IP Infusion SNMP:
+    name: Switch IP Infusion SNMP
+    desc: IP Infusion OcNOS white-box switch SNMP child template (enterprise PEN 36673). The shared Switch SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic, while the IPI-CMM-CHASSIS-MIB cmm subtree contributes one chassis-level PSU temperature scalar (cmmSysPSTemperature1). Per-row objects in cmmFanTable, cmmIpmiDeviceSensorTable and cmmTransTemperature, as well as the additional chassis scalars cmmSysPSTemperature2 and cmmSysPSTemperature3, are intentionally not collected -- telegraf inputs.snmp cannot reliably aggregate per-row indices or arithmetic-merge chassis scalars into a single bk-lite metric, so those leaves are kept as N/A to honor the no-fabricated-health-metrics rule. Applicable to IP Infusion OcNOS white-box switches (Edgecore/Accton, UfiSpace, Delta, Celestica and similar white-box hardware platforms).
 monitor_object:
   Wireless: Wireless
   Transmission: Transmission
