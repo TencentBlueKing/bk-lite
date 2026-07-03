@@ -1,7 +1,10 @@
 import { IntegrationLogInstance } from '@/app/log/types/integration';
 import { TableDataItem } from '@/app/log/types';
 import { useDockerVectorFormItems } from '../../common/dockerVectorFormItems';
-import { cloneDeep } from 'lodash';
+import {
+  getVectorDockerDefaultForm,
+  getVectorDockerParams
+} from './dockerDefaults';
 
 export const useVectorConfig = () => {
   const commonFormItems = useDockerVectorFormItems();
@@ -41,20 +44,19 @@ export const useVectorConfig = () => {
           },
           columns: [],
           getParams: (row: IntegrationLogInstance, config: TableDataItem) => {
-            const dataSource = cloneDeep(config.dataSource || []);
-            const formData = cloneDeep(row);
+            // auto 模式保留旧实现：构造 configs: [params] 数组项，与 edit 不同。
+            const dataSource = config.dataSource || [];
+            const formData = { ...row };
 
             // 处理容器过滤开关
             const enableContainerFilter =
               formData.containerFilter?.enabled || false;
-            delete formData.containerFilter;
 
             // 处理多行合并开关
             const enableMultiline = formData.multiline?.enabled || false;
-            delete formData.multiline?.enabled;
 
             // 构建最终参数
-            const params: any = {
+            const params: Record<string, unknown> = {
               endpoint: formData.endpoint,
               enable_container_filter: enableContainerFilter,
               enable_multiline: enableMultiline
@@ -104,79 +106,9 @@ export const useVectorConfig = () => {
               disabledFormItems: {}
             });
           },
-          getDefaultForm: (formData: TableDataItem) => {
-            const sources =
-              formData?.child?.content?.sources?.[
-                pluginConfig.collect_type + '_' + formData.rowId
-              ] || {};
-
-            // 从实际数据结构中获取容器过滤数组
-            const includeContainers = sources.include_containers || [];
-            const excludeContainers = sources.exclude_containers || [];
-
-            // 判断容器过滤是否开启：有 include 或 exclude 数组且不为空
-            const hasContainerFilter =
-              includeContainers.length > 0 || excludeContainers.length > 0;
-
-            return {
-              endpoint: sources.docker_host || 'unix:///var/run/docker.sock',
-              containerFilter: {
-                enabled: hasContainerFilter
-              },
-              container_name_contains: includeContainers,
-              container_name_exclude: excludeContainers,
-              multiline: {
-                enabled: !!sources.multiline?.mode,
-                mode: sources.multiline?.mode || 'continue_through',
-                condition_pattern:
-                  sources.multiline?.condition_pattern || '^[\\s]+',
-                start_pattern: sources.multiline?.start_pattern || '^[^\\s]',
-                timeout_ms: sources.multiline?.timeout_ms || 1000
-              }
-            };
-          },
-          getParams: (formData: TableDataItem, configForm: TableDataItem) => {
-            const originalChild = cloneDeep(configForm?.child || {});
-            const formDataCopy = cloneDeep(formData);
-
-            // 处理容器过滤开关
-            const enableContainerFilter =
-              formDataCopy.containerFilter?.enabled || false;
-
-            // 处理多行合并开关
-            const enableMultiline = formDataCopy.multiline?.enabled || false;
-
-            // 容器过滤参数
-            const containsArr = formDataCopy.container_name_contains || [];
-            const excludeArr = formDataCopy.container_name_exclude || [];
-
-            // 构建扁平化的 content 对象（9个参数）
-            const content: any = {
-              endpoint: formDataCopy.endpoint,
-              enable_container_filter: enableContainerFilter,
-              container_name_contains: Array.isArray(containsArr)
-                ? containsArr.join(',')
-                : containsArr,
-              container_name_exclude: Array.isArray(excludeArr)
-                ? excludeArr.join(',')
-                : excludeArr,
-              enable_multiline: enableMultiline,
-              multiline_mode:
-                formDataCopy.multiline?.mode || 'continue_through',
-              multiline_pattern:
-                formDataCopy.multiline?.condition_pattern || '^[\\s]+',
-              multiline_start_pattern:
-                formDataCopy.multiline?.start_pattern || '^[^\\s]',
-              multiline_timeout_ms: formDataCopy.multiline?.timeout_ms || 1000
-            };
-
-            return {
-              child: {
-                ...originalChild,
-                content
-              }
-            };
-          }
+          // 从 ./dockerDefaults 导入的纯函数 —— 与 getVectorDockerParams 写入结构一致
+          getDefaultForm: getVectorDockerDefaultForm,
+          getParams: getVectorDockerParams
         },
         manual: {
           defaultForm: {},
