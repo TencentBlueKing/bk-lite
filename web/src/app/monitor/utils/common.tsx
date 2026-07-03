@@ -672,6 +672,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /packetfront|\bdrg\b/i, label: 'PacketFront', icon: 'mm-packetfront_packetfront' },
   { match: /c-?data|cdatatec/i, label: 'C-Data', icon: 'mm-cdata_cdata' },
   { match: /casa( systems)?/i, label: 'Casa Systems', icon: 'mm-casa_casa' },
+  { match: /topvision|sumavision|数码视讯/i, label: 'Topvision', icon: 'mm-topvision_topvision' },
   { match: /nateks|megatrans|orion/i, label: 'Nateks', icon: 'mm-nateks_nateks' },
   { match: /harmonic|nsg\s*pro|cableos/i, label: 'Harmonic', icon: 'mm-harmonic_harmonic' },
   { match: /\brad\b|rad\s*data|radcomms|etx|megaplex/i, label: 'RAD', icon: 'mm-rad_rad' },
