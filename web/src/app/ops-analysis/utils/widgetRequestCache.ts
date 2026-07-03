@@ -1,10 +1,20 @@
 export interface WidgetRequestCacheEntry {
   rawData: any;
   baselineData: any;
-  dataValidation: { isValid: boolean; message?: string } | null;
+  errorMessage?: string;
 }
 
 const widgetRequestCache = new Map<string, WidgetRequestCacheEntry>();
+
+export const buildWidgetRequestCacheKey = ({
+  scopeId,
+  requestVersionKey,
+  requestSignature,
+}: {
+  scopeId?: string | number;
+  requestVersionKey: string;
+  requestSignature: string;
+}) => `${scopeId ?? 'dashboard'}:${requestVersionKey}:${requestSignature}`;
 
 export const getCachedWidgetRequest = (
   requestKey: string,
@@ -24,9 +34,6 @@ export const setWidgetRequestFailureCache = (
   widgetRequestCache.set(requestKey, {
     rawData: null,
     baselineData: null,
-    dataValidation: {
-      isValid: false,
-      message,
-    },
+    errorMessage: message,
   });
 };
