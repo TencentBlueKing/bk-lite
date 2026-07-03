@@ -36,7 +36,7 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         capability_enabled = obj.capability_enabled or {}
         has_login_auth = "login_auth" in capability_status or "login_auth" in capability_enabled
         request = self.context.get("request")
-        return get_login_auth_callback_uri(request=request, local_port=8011) if has_login_auth else ""
+        return get_login_auth_callback_uri(request=request) if has_login_auth else ""
 
     def validate(self, attrs):
         provider_key = attrs.get("provider_key") or getattr(self.instance, "provider_key", "")

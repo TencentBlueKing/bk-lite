@@ -14,9 +14,11 @@ from apps.core.services.login_auth_request_service import (
     build_auth_request_state,
     create_auth_request,
     get_auth_request,
+    get_login_auth_callback_uri,
     parse_auth_request_state,
     update_auth_request_status,
     validate_poll_token,
+    validate_redirect_origin,
 )
 from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
@@ -109,11 +111,28 @@ def _is_safe_relative_callback_url(callback_url: str) -> bool:
     return not parsed.scheme and not parsed.netloc
 
 
-def _build_login_auth_callback_uri(request):
-    base_url = _get_login_auth_external_base_url()
-    if base_url:
-        return f"{base_url}/api/v1/core/api/login_auth/callback/"
-    return request.build_absolute_uri("/api/v1/core/api/login_auth/callback/")
+def _build_login_auth_result_redirect(
+    request,
+    status_key: str,
+    message: str,
+    redirect_origin: str | None = None,
+):
+    """生成 OAuth callback 完成后的前端结果页重定向。
+
+    优先级:
+      1. 同源校验通过的 redirect_origin → 绝对 URL,跳到前端
+      2. 相对路径 /auth/signin/login-auth-result(生产同源部署的兑底)
+    """
+    query_string = urlencode(
+        {
+            "status": status_key,
+            "message": message,
+        }
+    )
+    path = f"/auth/signin/login-auth-result?{query_string}"
+    if redirect_origin and validate_redirect_origin(request, redirect_origin):
+        return HttpResponseRedirect(f"{redirect_origin.rstrip('/')}{path}")
+    return HttpResponseRedirect(path)
 
 
 def _get_login_auth_binding_by_id(binding_id: int):
@@ -121,23 +140,6 @@ def _get_login_auth_binding_by_id(binding_id: int):
         if binding.id == binding_id:
             return binding
     return None
-
-
-def _get_login_auth_external_base_url():
-    base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
-    if not base_url:
-        return ""
-    return base_url
-
-
-def _build_login_auth_result_redirect(status_key: str, message: str):
-    query_string = urlencode(
-        {
-            "status": status_key,
-            "message": message,
-        }
-    )
-    return HttpResponseRedirect(f"/auth/signin/login-auth-result?{query_string}")
 
 
 def verify_wechat_code(code: str) -> dict:
@@ -904,6 +906,7 @@ def start_login_auth(request):
     try:
         data = _parse_request_data(request)
         callback_url = (data.get("callback_url") or "/").strip() or "/"
+        redirect_origin = (data.get("redirect_origin") or "").strip() or None
         binding_id = data.get("binding_id")
 
         if not _is_safe_relative_callback_url(callback_url):
@@ -922,6 +925,7 @@ def start_login_auth(request):
             binding_id=binding.id,
             provider_key=binding.integration_instance.provider_key,
             callback_url=callback_url,
+            redirect_origin=redirect_origin,
         )
         state = build_auth_request_state(
             auth_request_id=auth_request["auth_request_id"],
@@ -930,7 +934,7 @@ def start_login_auth(request):
         )
         redirect_result = build_login_auth_redirect(
             binding,
-            redirect_uri=_build_login_auth_callback_uri(request),
+            redirect_uri=get_login_auth_callback_uri(request=request, redirect_origin=redirect_origin),
             state=state,
         )
         redirect_payload = getattr(redirect_result, "payload", {}) or {}
@@ -1016,12 +1020,16 @@ def login_auth_callback(request):
 
     state_payload = parse_auth_request_state(state)
     if not state_payload:
-        return _build_login_auth_result_redirect("failed", "认证状态无效或已过期，请返回原页面重试。")
+        return _build_login_auth_result_redirect(request, "failed", "认证状态无效或已过期，请返回原页面重试。")
 
     auth_request_id = state_payload["auth_request_id"]
     auth_request = get_auth_request(auth_request_id)
     if not auth_request:
-        return _build_login_auth_result_redirect("expired", "认证请求已过期，请返回原页面重新发起认证。")
+        return _build_login_auth_result_redirect(request, "expired", "认证请求已过期，请返回原页面重新发起认证。")
+
+    # 集中读一次(后续 6 处 status 分支共用);state 解析失败/auth_request 缺失分支
+    # 走相对路径,这里 redirect_origin 自然为 None
+    redirect_origin = (auth_request or {}).get("redirect_origin") or None
 
     current_status = auth_request.get("status", "pending")
     if current_status != "pending":
@@ -1032,18 +1040,20 @@ def login_auth_callback(request):
             "failed": "认证失败，请返回原页面重试。",
         }
         return _build_login_auth_result_redirect(
+            request,
             current_status,
             terminal_messages.get(current_status, "认证状态已完成，可返回原页面查看结果。"),
+            redirect_origin=redirect_origin,
         )
 
     if provider_error:
         message = error_description or provider_error
         update_auth_request_status(auth_request_id, status="cancelled", error_message=message)
-        return _build_login_auth_result_redirect("cancelled", "认证已取消，可返回原页面重试。")
+        return _build_login_auth_result_redirect(request, "cancelled", "认证已取消，可返回原页面重试。", redirect_origin=redirect_origin)
 
     if not code:
         update_auth_request_status(auth_request_id, status="failed", error_message="Missing provider code")
-        return _build_login_auth_result_redirect("failed", "认证失败，请返回原页面重试。")
+        return _build_login_auth_result_redirect(request, "failed", "认证失败，请返回原页面重试。", redirect_origin=redirect_origin)
 
     try:
         client = SystemMgmt()
@@ -1051,12 +1061,12 @@ def login_auth_callback(request):
     except Exception as e:
         logger.error(f"Login auth callback error: {e}")
         update_auth_request_status(auth_request_id, status="failed", error_message=str(e))
-        return _build_login_auth_result_redirect("failed", "认证失败，请返回原页面重试。")
+        return _build_login_auth_result_redirect(request, "failed", "认证失败，请返回原页面重试。", redirect_origin=redirect_origin)
 
     if not result.get("result"):
         error_message = result.get("message", "Login auth callback failed")
         update_auth_request_status(auth_request_id, status="failed", error_message=error_message)
-        return _build_login_auth_result_redirect("failed", "认证失败，请返回原页面重试。")
+        return _build_login_auth_result_redirect(request, "failed", "认证失败，请返回原页面重试。", redirect_origin=redirect_origin)
 
     login_result = result.get("data", {}) or {}
     login_result.setdefault("redirect_url", state_payload["callback_url"])
@@ -1066,7 +1076,7 @@ def login_auth_callback(request):
         login_result=login_result,
     )
 
-    response = _build_login_auth_result_redirect("success", "认证已完成，可返回原页面继续。")
+    response = _build_login_auth_result_redirect(request, "success", "认证已完成，可返回原页面继续。", redirect_origin=redirect_origin)
     if login_result.get("token"):
         _set_auth_cookie_on_response(response, login_result["token"])
     return response

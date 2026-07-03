@@ -246,6 +246,7 @@ export function useLoginAuthValidation({
         body: JSON.stringify({
           binding_id: binding.id,
           callback_url: safeCallbackUrl,
+          redirect_origin: window.location.origin,
         }),
       });
       const responseData = await response.json();

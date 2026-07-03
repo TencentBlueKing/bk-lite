@@ -33,20 +33,64 @@ LOGIN_RESULT_ALLOWED_KEYS = {
     "need_binding",
 }
 
+LOGIN_AUTH_CALLBACK_PATH = "/api/v1/core/api/login_auth/callback/"
 
-def get_login_auth_callback_uri(request=None, local_port: int | None = None) -> str:
+
+def validate_redirect_origin(request, redirect_origin) -> bool:
+    """同源校验:浏览器声明的 origin 是否可信任。
+
+    防止 OAuth open-redirector phishing:前端只能声明与请求同源的 origin,
+    不同源时调用方需降级到 env/request 兑底。
+    优先读 X-Forwarded-Host(反代场景),再回落到 request.get_host()。
+    """
+    if not redirect_origin or not isinstance(redirect_origin, str):
+        return False
+    try:
+        parsed = urlparse(redirect_origin)
+    except (ValueError, TypeError):
+        return False
+    if parsed.scheme not in ("http", "https"):
+        return False
+    if not parsed.netloc:
+        return False
+    if parsed.path not in ("", "/"):
+        return False
+    if parsed.query or parsed.fragment:
+        return False
+    forwarded_host = request.META.get("HTTP_X_FORWARDED_HOST")
+    if forwarded_host:
+        return parsed.netloc == forwarded_host
+    return parsed.netloc == request.get_host()
+
+
+def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None) -> str:
+    """生成 login_auth 回调地址。
+
+    优先级:
+      1. ``redirect_origin``(同源校验通过时胜出,适用于反代/同源部署可见)
+      2. 环境变量 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL``
+      3. ``request.build_absolute_uri(...)``(典型 dev / 反代未配置场景)
+      4. 空字符串
+
+    该函数同时用于:
+      - 集成中心详情页「平台回调地址」展示
+      - OAuth 启动流程中飞书/钉钉等 adapter 的 ``redirect_uri``
+    """
     base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
+    if (
+        redirect_origin
+        and request is not None
+        and validate_redirect_origin(request, redirect_origin)
+    ):
+        return f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
     if base_url:
-        parsed = urlparse(base_url)
-        if local_port and parsed.hostname:
-            scheme = parsed.scheme or "http"
-            return f"{scheme}://{parsed.hostname}:{local_port}/api/v1/core/api/login_auth/callback/"
-        return f"{base_url}/api/v1/core/api/login_auth/callback/"
-
+        return f"{base_url}{LOGIN_AUTH_CALLBACK_PATH}"
+    if request is not None:
+        return request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
     return ""
 
 
-def create_auth_request(binding_id: int, provider_key: str, callback_url: str) -> dict:
+def create_auth_request(binding_id: int, provider_key: str, callback_url: str, redirect_origin: str | None = None) -> dict:
     auth_request_id = str(uuid.uuid4())
     poll_token = str(uuid.uuid4())
     created_at = timezone.now()
@@ -57,6 +101,7 @@ def create_auth_request(binding_id: int, provider_key: str, callback_url: str) -
         "binding_id": binding_id,
         "provider_key": provider_key,
         "callback_url": callback_url,
+        "redirect_origin": redirect_origin or "",
         "poll_token": poll_token,
         "status": "pending",
         "error_message": "",
