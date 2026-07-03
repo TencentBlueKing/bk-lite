@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_inhand",
+  "plugin": "Switch InHand Networks SNMP",
+  "plugin_desc": "InHand Networks industrial switch SNMP baseline collection. This template uses standard MIB-II / IF-MIB to collect device uptime and 64-bit HC interface traffic. Current public facts confirm InHand Networks industrial switches, SNMPv1/v2c/v3 support, MIB-II, SMIv2, RMON, Ping MIB support, and the enterprise root 144629, but they do not expose stable shared CPU, memory, temperature, fan or power health leaf OIDs with conservative status semantics, so vendor health metrics are not promoted into device-health metrics.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_inhand'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

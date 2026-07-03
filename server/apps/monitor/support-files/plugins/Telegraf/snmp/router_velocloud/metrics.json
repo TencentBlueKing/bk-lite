@@ -1,0 +1,46 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_velocloud",
+  "plugin": "Router VeloCloud SNMP",
+  "plugin_desc": "VeloCloud/VMware SD-WAN Edge router SNMP collection (enterprise 45346). Beyond standard IF-MIB interface metrics, it collects VeloCloud private health OIDs for CPU utilisation (5-minute average, reported directly as a percentage) and memory usage (reported directly as a percentage). Temperature/fan/power are not collected here, so they are N/A. Supported brands/models - VeloCloud/VMware SD-WAN Edge routers.",
+  "status_query": "any({instance_type='router', collect_type='snmp_velocloud'}) by (instance_id)",
+  "name": "Router",
+  "icon": "mm-router_路由器",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='router'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_cpu_usage"
+  ],
+  "metrics": [
+    {
+      "metric_group": "CPU",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "display_name": "CPU Utilization",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Five-minute average CPU utilisation of the VeloCloud Edge router, reported directly as a percentage."
+    },
+    {
+      "metric_group": "Memory",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "Memory Utilization",
+      "query": "avg(device_memory_usage{instance_type='router', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Used memory percentage of the VeloCloud Edge router, reported directly as a percentage."
+    }
+  ]
+}

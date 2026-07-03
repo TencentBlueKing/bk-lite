@@ -104,6 +104,15 @@ def _safe_log_preview(content: str, max_len: int = 200) -> str:
     return str(content)[:max_len]
 
 
+def _tool_call_signature(tool_name: str, tool_args: Dict[str, Any]) -> str:
+    """Build a stable signature for duplicate tool-call detection."""
+    try:
+        args_payload = json.dumps(tool_args or {}, ensure_ascii=False, sort_keys=True, default=str)
+    except TypeError:
+        args_payload = repr(tool_args)
+    return f"{tool_name}:{args_payload}"
+
+
 def normalize_messages_for_llm(messages: List[Any]) -> List[Any]:
     """
     规范化消息列表，确保兼容 Qwen 等对消息顺序有严格要求的模型。
@@ -767,7 +776,7 @@ class ToolsNodes(BasicNode):
         if tool_pool_config and tool_pool_config.enabled and len(self.all_tools) > tool_pool_config.auto_activate_threshold:
             self._dynamic_mode = True
             self.active_tools = []  # 初始不激活任何工具
-            self.tools = []  # 清空 self.tools，由 build_react_nodes 使用 active_tools + meta-tool
+            self.tools = []  # 清空 self.tools，由 DeepAgent 通过 active_tools + meta-tool 按需激活
             logger.info(f"动态工具选择已启用: 共 {len(self.all_tools)} 个工具函数, " f"{len(self.tool_catalog)} 个类别, 阈值={tool_pool_config.auto_activate_threshold}")
         else:
             self._dynamic_mode = False
@@ -924,7 +933,7 @@ class ToolsNodes(BasicNode):
         return meta_tool
 
     def _build_done_tool(self, done_cfg=None):
-        """构建 done tool 用于显式终止 ReAct 循环并返回结构化结果"""
+        """构建 done tool，用于让 Agent 显式返回结构化结果。"""
         if done_cfg is None:
             done_cfg = DoneToolConfig()
         if not done_cfg.enabled:
@@ -1003,7 +1012,7 @@ class ToolsNodes(BasicNode):
             description=("当你判断即将执行的操作具有较高风险（如修改系统配置、删除数据、重启服务等），" "应先调用此工具请求人工审批。描述你要做什么以及为什么需要审批。" "收到审批结果后，根据结果决定是否继续执行实际操作。"),
             args_schema=ApprovalToolInput,
         )
-        # 存储执行上下文的引用，在 build_react_nodes 中设置
+        # 存储执行上下文引用，供审批工具运行时读取。
         approval_tool._request_approval_func = _request_approval
         return approval_tool
 
@@ -1201,8 +1210,6 @@ class ToolsNodes(BasicNode):
         async def _report_config_diff(title: str, cluster_name: str, items: List[dict]) -> str:
             import uuid
 
-            from langchain_core.callbacks import dispatch_custom_event
-
             report_id = str(uuid.uuid4())[:8]
 
             report_data = build_config_diff_report_payload(title=title, cluster_name=cluster_name, items=items)
@@ -1273,8 +1280,6 @@ class ToolsNodes(BasicNode):
         ) -> str:
             import uuid
             from itertools import groupby as _groupby
-
-            from langchain_core.callbacks import dispatch_custom_event
 
             group_by = self._normalize_repair_group_by(group_by)
 
@@ -1889,7 +1894,7 @@ class ToolsNodes(BasicNode):
 
     # ========== 使用 DeepAgent 实现 ==========
     #
-    # 统一引擎入口：所有 agent 图（ReAct / Plan-Execute / ChatBot）均通过
+    # 统一引擎入口：所有 Agent 图均通过
     # build_deepagent_nodes 委托给 deepagents 的 create_deep_agent。
     # deepagents 原生提供规划（TodoListMiddleware）、虚拟文件系统、子代理、
     # 上下文压缩（SummarizationMiddleware）、Anthropic prompt 缓存、以及
@@ -1901,8 +1906,6 @@ class ToolsNodes(BasicNode):
     #   - skills：把 SkillPackage 物化为 SKILL.md 写入 MinIO 对象存储 backend
     #   - approval：approval_config -> deepagents 原生 interrupt_on（HITL）
     #
-    # 手写 ReAct 循环（build_react_nodes）暂时保留以兼容存量单测，但图层不再使用。
-
     # deepagents 内置工具名（规划/文件系统/子代理），用于 AG-UI 事件过滤与审批排除。
     DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
         {

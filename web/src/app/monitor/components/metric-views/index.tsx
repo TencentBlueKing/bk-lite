@@ -226,7 +226,7 @@ const MetricViews: React.FC<ViewDetailProps> = ({
       return;
     }
     initPage();
-  }, [isLoading]);
+  }, [isLoading, monitorObjectId, instanceId]);
 
   useEffect(() => {
     clearTimer();
@@ -251,6 +251,15 @@ const MetricViews: React.FC<ViewDetailProps> = ({
   }, []);
 
   const initPage = async () => {
+    if (!monitorObjectId || !instanceId) {
+      setPlugins([]);
+      setActiveTab('');
+      setMetricData([]);
+      setOriginMetricData([]);
+      setLoading(false);
+      return;
+    }
+
     setLoading(true);
     const responseData = await getEffectivePlugins(monitorObjectId, {
       instance_id: instanceId

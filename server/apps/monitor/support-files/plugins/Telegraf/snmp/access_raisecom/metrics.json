@@ -1,0 +1,99 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_raisecom",
+  "plugin": "Access Raisecom SNMP",
+  "plugin_desc": "Raisecom ROAP/ROS access-device SNMP collection under enterprise PEN 8886. Beyond the shared Access SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic, it collects vendor health deltas for total CPU utilization, memory total/free/usage, device temperature, fan state and power supply state. Optical transceiver, PON and alarm tables are not promoted to shared device-health metrics.",
+  "status_query": "any({instance_type='access', collect_type='snmp_raisecom'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Access",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total CPU busy percentage from raisecomTotalCPUUtilizationOneMin, reported directly as a percentage."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_total",
+      "query": "avg(device_memory_total{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Total",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Total device memory from raisecomMemoryTotal, reported in bytes."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_free",
+      "query": "avg(device_memory_free{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Memory Free",
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Available device memory from raisecomMemoryAvailable, reported in bytes."
+    },
+    {
+      "metric_group": "Access",
+      "name": "device_memory_usage",
+      "query": "avg((device_memory_total{instance_type='access', __$labels__} - device_memory_free{instance_type='access', __$labels__}) / device_memory_total{instance_type='access', __$labels__} * 100) by (instance_id)",
+      "display_name": "Memory Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Memory utilization computed from Raisecom total and available memory."
+    },
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Device Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Device temperature from raisecomTemperatureValue, reported directly in degrees Celsius."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Fan State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Fan work state from raisecomFanWorkState, normalized so that normal(1) is healthy and every other value is abnormal."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='access', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply State",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"异常\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "instance_id_keys": ["instance_id"],
+      "description": "Power supply status from raisecomPowerStatus, normalized so that online and power-on are healthy while offline or unknown values are abnormal."
+    }
+  ]
+}

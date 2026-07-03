@@ -43,6 +43,7 @@ export interface CredentialPoolItem {
   username?: string;
   user?: string;
   password?: string;
+  enable_password?: string;
   port?: number | string;
   database?: string;
   version?: string;

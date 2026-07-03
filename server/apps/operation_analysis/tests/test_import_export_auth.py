@@ -41,7 +41,7 @@ def _build_dashboard_yaml(name: str) -> str:
     return yaml.safe_dump(
         {
             "meta": {
-                "schema_version": "1.0.0",
+                "schema_version": "1.1.0",
                 "object_counts": {
                     "dashboards": 1,
                     "topologies": 0,
@@ -229,6 +229,7 @@ def test_backend_precheck_returns_structured_error_for_invalid_yaml(authenticate
     assert payload["result"] is True
     assert data["valid"] is False
     assert data["errors"]
+    assert "_doc" not in data
 
 
 @pytest.mark.django_db
@@ -251,6 +252,29 @@ def test_openapi_submit_returns_structured_error_for_invalid_yaml(authenticated_
     assert payload["result"] is False
     assert response_data["success"] is False
     assert response_data["errors"]
+    assert "_doc" not in response_data
+
+
+def test_precheck_result_includes_doc_key():
+    """回归测试 #3704：_build_precheck_result 必须在返回值中携带 _doc，
+    供 import_submit / import_precheck 直接取用，避免第二次 YAML 解析。
+    若把 _doc 从返回值去掉，本测试失败。
+    """
+    from apps.operation_analysis.services.import_export.precheck_service import PrecheckService
+    from apps.operation_analysis.schemas.import_export_schema import YAMLDocument
+    import yaml
+
+    yaml_content = "meta:\n  schema_version: '1.0.0'\n"
+    data = yaml.safe_load(yaml_content)
+    doc = YAMLDocument(**data)
+
+    result = PrecheckService._build_precheck_result(True, doc, [], [], [])
+    assert "_doc" in result, "precheck_result 缺少 '_doc' 键，import_submit 会触发第二次 YAML 解析"
+    assert result["_doc"] is doc, "precheck_result['_doc'] 应与传入的 doc 对象完全相同"
+
+    result_none = PrecheckService._build_precheck_result(False, None, [], [], [{"code": "e", "message": "m"}])
+    assert "_doc" in result_none, "precheck 失败时 '_doc' 键也必须存在（值为 None）"
+    assert result_none["_doc"] is None
 
 
 @pytest.mark.django_db
@@ -264,7 +288,7 @@ def test_backend_import_submit_logs_success_results_as_create_and_update(authent
 
     monkeypatch.setattr(
         "apps.operation_analysis.views.import_export_view.PrecheckService.precheck",
-        staticmethod(lambda **kwargs: {"valid": True, "conflicts": [], "errors": []}),
+        staticmethod(lambda **kwargs: {"valid": True, "conflicts": [], "errors": [], "_doc": None}),
     )
     monkeypatch.setattr(
         "apps.operation_analysis.views.import_export_view.ImportExportAuthorizationService.apply_precheck_permissions",
@@ -488,6 +512,7 @@ def test_openapi_precheck_limits_existing_dashboard_to_rename_when_rpc_scope_den
     assert payload["result"] is True
     assert data["valid"] is True
     assert data["conflicts"][0]["suggested_actions"] == ["rename"]
+    assert "_doc" not in data
 
 
 @pytest.mark.django_db
@@ -548,9 +573,7 @@ def test_get_existing_objects_batch_issues_single_query_for_multiple_dashboards(
         result = ImportExportAuthorizationService.get_existing_objects_batch(ObjectType.DASHBOARD, items)
 
     # 只调用了一次 filter（批量 name__in=...），而非三次逐 item filter
-    assert mock_filter.call_count == 1, (
-        f"预期批量查询只调用 1 次 filter，实际调用了 {mock_filter.call_count} 次（存在 N+1）"
-    )
+    assert mock_filter.call_count == 1, f"预期批量查询只调用 1 次 filter，实际调用了 {mock_filter.call_count} 次（存在 N+1）"
     assert result["batch-dash-a"].id == dashboard_a.id
     assert result["batch-dash-b"].id == dashboard_b.id
     assert "nonexistent-dash" not in result
@@ -569,10 +592,7 @@ def test_apply_precheck_permissions_uses_batch_lookup_not_per_item(authenticated
         authenticated_user,
     )
 
-    items = [
-        SimpleNamespace(key=f"dashboard::dash-{i}", name=f"dash-{i}")
-        for i in range(5)
-    ]
+    items = [SimpleNamespace(key=f"dashboard::dash-{i}", name=f"dash-{i}") for i in range(5)]
     doc = SimpleNamespace(
         namespaces=[],
         datasources=[],
@@ -599,6 +619,4 @@ def test_apply_precheck_permissions_uses_batch_lookup_not_per_item(authenticated
     ImportExportAuthorizationService.apply_precheck_permissions(request, doc, result, current_team=1)
 
     dashboard_calls = [t for t in batch_call_count if t == ObjectType.DASHBOARD]
-    assert len(dashboard_calls) == 1, (
-        f"预期对 DASHBOARD 批量查询 1 次，实际 {len(dashboard_calls)} 次"
-    )
+    assert len(dashboard_calls) == 1, f"预期对 DASHBOARD 批量查询 1 次，实际 {len(dashboard_calls)} 次"

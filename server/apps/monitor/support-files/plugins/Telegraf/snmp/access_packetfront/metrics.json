@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_packetfront",
+  "plugin": "Access PacketFront SNMP",
+  "plugin_desc": "Baseline SNMP child template for PacketFront DRG and access CPE devices under the PacketFront private MIB tree. The current MIB facts confirm the PacketFront DRG and SMI roots, but no reliable row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Access SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — PacketFront DRG and access CPE devices that expose standard IF-MIB.",
+  "status_query": "any({instance_type='access', collect_type='snmp_packetfront'}) by (instance_id)",
+  "name": "Access",
+  "icon": "mm-access_接入设备",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='access'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

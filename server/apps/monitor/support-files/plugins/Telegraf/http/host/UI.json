@@ -40,22 +40,9 @@
     },
     {
       "name": "metrics_modules",
-      "label": "采集模块",
-      "type": "checkbox_group",
+      "type": "hidden",
       "required": true,
-      "editable": false,
-      "default_value": ["cpu", "mem", "disk", "net"],
-      "description": "选择需要远程采集的主机指标模块",
-      "options": [
-        {"label": "CPU", "value": "cpu", "description": "CPU 使用率、核心数和负载"},
-        {"label": "Memory", "value": "mem", "description": "内存、Swap、缓存和缓冲区"},
-        {"label": "Disk", "value": "disk", "description": "磁盘容量、可用空间和 inode 使用率"},
-        {"label": "Network", "value": "net", "description": "网卡流量、包数、错误和丢包"},
-        {"label": "Disk IO", "value": "diskio", "description": "磁盘读写次数、字节数和耗时"},
-        {"label": "Processes", "value": "processes", "description": "进程状态数量"},
-        {"label": "System", "value": "system", "description": "系统负载和运行时长"}
-      ],
-      "widget_props": {},
+      "default_value": ["cpu", "mem", "disk", "diskio", "net", "processes", "system"],
       "transform_on_edit": {
         "origin_path": "child.content.config.http_headers.metrics_modules",
         "to_form": {

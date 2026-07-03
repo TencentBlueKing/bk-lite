@@ -12,9 +12,9 @@ import { useTranslation } from '@/utils/i18n';
 import AssoList from './list';
 import Topo from './topo';
 import NetworkTopo from './networkTopo';
-import IpamMatrix from './ipamMatrix';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
+import ApplicationResourceOverview from './applicationResourceOverview';
 import DeviceDetailDrawer from './deviceDetailDrawer';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
@@ -74,6 +74,9 @@ const Ralationships = () => {
       : []),
     ...(themes.includes('ipam')
       ? [{ label: t('Model.ipView'), value: 'ipam' }]
+      : []),
+    ...(themes.includes('app_overview')
+      ? [{ label: t('Model.applicationResourceOverview'), value: 'appOverview' }]
       : []),
     ...(modelId === 'rack'
       ? [{ label: t('Model.rackElevation'), value: 'rackView' }]
@@ -149,6 +152,9 @@ const Ralationships = () => {
       )}
       {activeTab === 'ipam' && (
         <IpamMatrix instId={instId} />
+      )}
+      {activeTab === 'appOverview' && (
+        <ApplicationResourceOverview modelId={modelId} instId={instId} />
       )}
       {activeTab === 'rackView' && (
         <RackElevation

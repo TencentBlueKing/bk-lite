@@ -21,7 +21,6 @@ import { useTomcatConfig } from './objects/middleware/tomcat';
 import { useMinioBkpullConfig } from './objects/middleware/minio';
 import { useJettyJmxConfig } from './objects/middleware/jetty';
 import { useRabbitMQConfig } from './objects/middleware/rabbitMQ';
-import { useIBMMQConfig } from './objects/middleware/ibmmq';
 import { useRouterConfig } from './objects/networkDevice/router';
 import { useLoadbalanceConfig } from './objects/networkDevice/loadbalance';
 import { useSwitchConfig } from './objects/networkDevice/switch';
@@ -41,6 +40,7 @@ import { useStorageConfig } from './objects/hardwareDevice/storage';
 import { useHostConfig } from './objects/os/host';
 import { useWebsiteConfig } from './objects/web/website';
 import { usePingConfig } from './objects/web/ping';
+import { useTcpPortConfig } from './objects/web/tcpPort';
 import { useSnmpTrapConfig } from './objects/other/snmpTrap';
 import { useJvmConfig } from './objects/other/jvm';
 import { useTcpConfig } from './objects/tencentCloud/tcp';
@@ -113,6 +113,7 @@ export const useMonitorConfig = () => {
   const hostConfig = useHostConfig();
   const websiteConfig = useWebsiteConfig();
   const pingConfig = usePingConfig();
+  const tcpPortConfig = useTcpPortConfig();
   const snmpTrapConfig = useSnmpTrapConfig();
   const jvmConfig = useJvmConfig();
   const tcpConfig = useTcpConfig();
@@ -120,7 +121,6 @@ export const useMonitorConfig = () => {
   const tongWebConfig = useTongWebConfig();
   const jbossConfig = useJbossConfig();
   const kafkaConfig = useKafkaConfig();
-  const ibmmqConfig = useIBMMQConfig();
   const mssqlConfig = useMssqlConfig();
   const clusterConfig = useClusterConfig();
   const podConfig = usePodConfig();
@@ -173,13 +173,13 @@ export const useMonitorConfig = () => {
       Host: hostConfig,
       Website: websiteConfig,
       Ping: pingConfig,
+      TCPPort: tcpPortConfig,
       'SNMP Trap': snmpTrapConfig,
       JVM: jvmConfig,
       TCP: tcpConfig,
       TongWeb: tongWebConfig,
       JBoss: jbossConfig,
       Kafka: kafkaConfig,
-      IBMMQ: ibmmqConfig,
       MSSQL: mssqlConfig,
       Cluster: clusterConfig,
       Pod: podConfig,

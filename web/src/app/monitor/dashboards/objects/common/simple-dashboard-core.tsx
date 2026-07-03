@@ -8,7 +8,7 @@ import useMonitorApi from '@/app/monitor/api';
 import useViewApi from '@/app/monitor/api/view';
 import {
   normalizeDisplayText,
-  parseLegacyParamList,
+  resolveDashboardInstanceIdentity,
   buildInstanceDisplayName,
   buildInstanceSearchTokens,
   formatEnumValue,
@@ -24,7 +24,12 @@ import {
   buildMetricItem,
   getCollectionStatus,
   buildCollectionStatusTimeline,
-  useLoadSequence
+  useLoadSequence,
+  buildClusterFilterOptions,
+  filterInstanceOptionsByCluster,
+  selectFirstInstanceInCluster,
+  isInstanceOptionForIdentity,
+  DashboardInstanceOption
 } from '../../shared/utils';
 import {
   CompareFavorableDirection,
@@ -33,6 +38,11 @@ import {
   MetricUnit,
   TrendLegendItem
 } from '../../shared/types';
+import {
+  DashboardDisplayMode,
+  getDashboardDisplayModeFromParams,
+  setDashboardDisplayModeInParams
+} from '../../shared/utils/display-mode-route';
 
 export type SimpleMetricUnit = MetricUnit;
 
@@ -51,13 +61,7 @@ export interface MetricSeries extends SimpleMetricConfig {
   loadState: 'success' | 'error';
 }
 
-interface InstanceOption {
-  label: string;
-  value: string;
-  instanceIdValues: string[];
-  searchTokens: string[];
-  interval?: number;
-}
+type InstanceOption = DashboardInstanceOption & { searchTokens: string[] };
 
 export interface SummaryFieldConfig {
   label: string;
@@ -172,6 +176,7 @@ export interface SimpleDashboardConfig {
   barPanels?: BarPanelConfig[];
   statusPanels?: StatusPanelConfig[];
   details: DetailPanelConfig[];
+  clusterFilter?: boolean;
 }
 
 export interface PreparedSummaryCard {
@@ -319,7 +324,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
   const [loading, setLoading] = useState(true);
-  const [displayMode, setDisplayMode] = useState<'dashboard' | 'metrics'>('dashboard');
+  const [displayMode, setDisplayModeState] = useState<DashboardDisplayMode>(() =>
+    getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString()))
+  );
   const [timeValues, setTimeValues] = useState<TimeValuesProps>({ timeRange: [], originValue: 15 });
   const [timeDefaultValue, setTimeDefaultValue] = useState<TimeSelectorDefaultValue>({ selectValue: 15, rangePickerVaule: null });
   const [frequence, setFrequence] = useState<number>(0);
@@ -337,21 +344,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const monitorObjectId = searchParams.get('monitorObjId') || '';
   const monitorObjectName = searchParams.get('name') || config.objectFallbackName;
   const monitorObjDisplayName = searchParams.get('monitorObjDisplayName') || config.objectFallbackName;
-  const rawInstanceId = searchParams.get('instance_id') || '';
-  const rawInstanceIdValues = searchParams.get('instance_id_values') || '';
   const rawInstanceIdKeys = searchParams.get('instance_id_keys') || 'instance_id';
   const instanceName = searchParams.get('instance_name') || '--';
 
   // Stable memoized values - avoids new array references on every render
-  const parsedLegacyInstanceIds = useMemo(() => parseLegacyParamList(rawInstanceId), [rawInstanceId]);
-  const instanceId: React.Key = parsedLegacyInstanceIds[0] || rawInstanceId || '';
-  const idValues = useMemo(() => {
-    const explicitValues = parseLegacyParamList(rawInstanceIdValues);
-    if (explicitValues.length > 0) return explicitValues;
-    if (parsedLegacyInstanceIds.length > 0) return parsedLegacyInstanceIds;
-    const normalizedInstanceId = normalizeDisplayText(rawInstanceId);
-    return normalizedInstanceId ? [normalizedInstanceId] : [];
-  }, [rawInstanceIdValues, parsedLegacyInstanceIds, rawInstanceId]);
+  const instanceIdentity = useMemo(
+    () => resolveDashboardInstanceIdentity(new URLSearchParams(searchParams.toString())),
+    [searchParams]
+  );
+  const instanceId: React.Key = instanceIdentity.instanceId;
+  const idValues = instanceIdentity.idValues;
   const instanceIdKeys = useMemo(
     () => rawInstanceIdKeys.split(',').filter(Boolean),
     [rawInstanceIdKeys]
@@ -359,6 +361,16 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
   const objectDisplayText = normalizeDisplayText(monitorObjDisplayName) || normalizeDisplayText(monitorObjectName) || config.objectFallbackName;
   const normalizedInstanceName = normalizeDisplayText(instanceName);
   const isDashboardMode = displayMode === 'dashboard';
+
+  useEffect(() => {
+    setDisplayModeState(getDashboardDisplayModeFromParams(new URLSearchParams(searchParams.toString())));
+  }, [searchParams]);
+
+  const setDisplayMode = useCallback((mode: DashboardDisplayMode) => {
+    setDisplayModeState(mode);
+    const params = setDashboardDisplayModeInParams(new URLSearchParams(searchParams.toString()), mode);
+    router.replace(`?${params.toString()}`, { scroll: false });
+  }, [router, searchParams]);
 
   useEffect(() => {
     if (!monitorObjectId) {
@@ -399,9 +411,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
 
   const idValuesKey = useMemo(() => JSON.stringify(idValues), [idValues]);
   const currentInstanceCandidates = useMemo(
-    () => instanceOptions.filter(
-      (item) => item.value === String(instanceId || '') || item.instanceIdValues.some((value) => idValues.includes(value))
-    ),
+    () => instanceOptions.filter((item) => isInstanceOptionForIdentity(item, instanceId, idValues)),
     [instanceOptions, instanceId, idValues]
   );
   const currentInstanceOption = useMemo(
@@ -415,8 +425,14 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     [currentInstanceOption, normalizedInstanceName]
   );
   const hasReadableInstanceName = Boolean(normalizedInstanceName && normalizedInstanceName !== String(instanceId || ''));
+  const clusterFilterEnabled = Boolean(config.clusterFilter);
+  const activeCluster = clusterFilterEnabled ? (idValues[0] ? String(idValues[0]) : undefined) : undefined;
+  const clusterFilterOptions = useMemo(
+    () => (clusterFilterEnabled ? buildClusterFilterOptions(instanceOptions) : []),
+    [clusterFilterEnabled, instanceOptions]
+  );
   const instanceSelectOptions = useMemo(() => {
-    const options = [...instanceOptions];
+    const options = filterInstanceOptionsByCluster(instanceOptions, activeCluster);
     const selectedValue = String(instanceId || '');
     if (selectedValue && hasReadableInstanceName && !options.some((item) => item.value === selectedValue)) {
       options.unshift({
@@ -428,7 +444,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
       });
     }
     return options;
-  }, [currentInstanceOption?.interval, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
+  }, [activeCluster, currentInstanceOption?.interval, hasReadableInstanceName, idValues, instanceId, instanceOptions, normalizedInstanceName]);
   const instanceSelectValue = currentInstanceOption?.value || (hasReadableInstanceName && instanceId ? String(instanceId) : undefined);
   const currentInstanceInterval = currentInstanceOption?.interval;
 
@@ -809,6 +825,11 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     params.set('instance_id_values', (target?.instanceIdValues || [value]).join(','));
     router.push(`/monitor/view/dashboard/${config.routeKey}?${params.toString()}`);
   };
+  const onClusterFilterChange = (cluster: string) => {
+    if (cluster === activeCluster) return;
+    const first = selectFirstInstanceInCluster(instanceOptions, cluster);
+    if (first) onInstanceChange(first.value);
+  };
   const onRefresh = () => {
     if (displayMode === 'dashboard') {
       loadMetrics();
@@ -840,6 +861,9 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     instanceSelectValue,
     instanceLoading,
     instanceSelectOptions,
+    clusterFilterEnabled,
+    clusterFilterValue: activeCluster,
+    clusterFilterOptions,
     currentInstanceInterval,
     currentInstanceLabel: currentInstanceOption?.label || normalizedInstanceName || resolvedInstanceName,
     isDashboardMode,
@@ -853,6 +877,7 @@ export function useSimpleDashboardData(config: SimpleDashboardConfig) {
     onRefresh,
     onXRangeChange,
     onBack: goBack,
-    onInstanceChange
+    onInstanceChange,
+    onClusterFilterChange
   };
 }

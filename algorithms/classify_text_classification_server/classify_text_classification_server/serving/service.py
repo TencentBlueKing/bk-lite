@@ -131,7 +131,10 @@ class MLService:
 
         # 2. 文本预处理（截断处理）
         processed_texts, text_warnings = self._preprocess_texts(request.texts)
-        logger.debug(f"Preprocessed texts: {processed_texts}")
+        text_batch_summary = self._summarize_text_batch(
+            processed_texts, text_warnings
+        )
+        logger.debug(f"Preprocessed text summary: {text_batch_summary}")
         logger.debug(
             f"Processed texts type: {type(processed_texts)}, length: {len(processed_texts) if processed_texts else 0}"
         )
@@ -144,7 +147,9 @@ class MLService:
                 # 调用模型预测（MLflow PyFunc标准接口）
                 # MLflow加载后的模型使用标准接口：predict(data)
                 # MLflow内部会自动将data传递给自定义包装器的model_input参数
-                logger.debug(f"Calling model.predict with texts: {processed_texts}")
+                logger.debug(
+                    f"Calling model.predict with text summary: {text_batch_summary}"
+                )
                 model_output = self.model.predict(processed_texts)
 
                 predict_time = (time.time() - predict_start) * 1000
@@ -246,6 +251,37 @@ class MLService:
             all_warnings.append(warnings)
 
         return processed_texts, all_warnings
+
+    def _summarize_text_batch(
+        self, texts: list[str], text_warnings: list[list[TextWarning]]
+    ) -> dict[str, int | float | None]:
+        """
+        构造不含原文的文本批次摘要，避免 debug 日志泄露请求内容.
+        """
+        lengths = [len(text) for text in texts]
+        truncated_count = sum(
+            1
+            for warnings in text_warnings
+            for warning in warnings
+            if warning.type == "TEXT_TRUNCATED"
+        )
+
+        if not lengths:
+            return {
+                "count": 0,
+                "min_length": None,
+                "max_length": None,
+                "avg_length": None,
+                "truncated_count": truncated_count,
+            }
+
+        return {
+            "count": len(lengths),
+            "min_length": min(lengths),
+            "max_length": max(lengths),
+            "avg_length": round(sum(lengths) / len(lengths), 2),
+            "truncated_count": truncated_count,
+        }
 
     def _build_results(
         self,

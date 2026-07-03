@@ -109,9 +109,26 @@ class DataSourceTag(MaintainerInfo, TimeInfo):
 
 
 class DataSourceAPIModel(MaintainerInfo, TimeInfo, Groups):
+    SOURCE_TYPE_NATS = "nats"
+    SOURCE_TYPE_MYSQL = "mysql"
+    SOURCE_TYPE_POSTGRESQL = "postgresql"
+    SOURCE_TYPE_REST_API = "rest_api"
+    SOURCE_TYPE_EXCEL = "excel"
+
+    SOURCE_TYPE_CHOICES = [
+        (SOURCE_TYPE_NATS, "NATS"),
+        (SOURCE_TYPE_MYSQL, "MySQL"),
+        (SOURCE_TYPE_POSTGRESQL, "PostgreSQL"),
+        (SOURCE_TYPE_REST_API, "REST API"),
+        (SOURCE_TYPE_EXCEL, "Excel"),
+    ]
+
     name = models.CharField(max_length=255, verbose_name="数据源名称")
-    rest_api = models.CharField(max_length=255, verbose_name="REST API URL")
+    rest_api = models.CharField(max_length=255, verbose_name="REST API URL", blank=True)
     desc = models.TextField(verbose_name="描述", blank=True, null=True)
+    source_type = models.CharField(max_length=32, choices=SOURCE_TYPE_CHOICES, default=SOURCE_TYPE_NATS, verbose_name="数据来源类型")
+    connection_config = JSONField(default=dict, blank=True, verbose_name="连接配置")
+    query_config = JSONField(default=dict, blank=True, verbose_name="取数配置")
     # [内部预留] 当前无产品功能依赖，仅用于历史兼容透传（导入导出/内置数据导入）；前端不暴露、运行时不校验
     is_active = models.BooleanField(default=True, verbose_name="是否启用")
     params = JSONField(help_text="API请求参数", verbose_name="请求参数", blank=True, null=True)

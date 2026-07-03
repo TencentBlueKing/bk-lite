@@ -1,0 +1,78 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_netapp"
+        config_type = "netapp"
+        brand = "netapp"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- NetApp controller CPU busy time (NETWORK-APPLIANCE-MIB cpuBusyTimePerCent, 标量, 0..100 %) ----
+    # cpuBusyTimePerCent 1.3.6.1.4.1.789.1.2.1.3.0，控制器 CPU 繁忙时间百分比，直接百分比。
+    # 标量经合成表归一为 measurement device_cpu.usage；共享盘 device_cpu_usage max()。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.789.1.2.1.3.0"
+        name = "usage"
+    # ---- NetApp RAID disk-drive status (NETWORK-APPLIANCE-MIB raidStatus, 每磁盘一行) ----
+    # raidStatus 1.3.6.1.4.1.789.1.6.1.1.3，磁盘驱动器状态。active(1)→1 正常，其余(reconstructing/failed ...)→2 异常。
+    # 共享盘 device_disk_state(1=正常,>1=异常) max() by instance_id 取最差磁盘行。
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.789.1.6.1.1"
+        name = "device_disk"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.789.1.6.1.1.3"
+        name = "state"
+# ---- 磁盘状态归一：active(1)→1(正常)，其余(reconstructing/failed/spare 等)→2(异常)，default=2。----
+[[processors.enum]]
+    namepass = ["device_disk"]
+    [[processors.enum.mapping]]
+        field = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            "1" = 1
+# ---- 内存/温度/风扇/电源：本插件以权威 cpuBusyTimePerCent + raidStatus 为采集面，环境标量(envFailedFanCount/PowerSupplyCount/OverTemperature)为计数/布尔型，未纳入共享盘 enum 语义 → N/A 不采，待现网核验后扩展。----

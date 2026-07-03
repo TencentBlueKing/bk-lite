@@ -1,0 +1,183 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_zdns"
+        config_type = "zdns"
+        brand = "zdns"
+
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.31.1.1"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.1"
+        name = "ifDescr"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+
+    # ---- ZDNS private scalar health (PEN 39810, direct percentages / Celsius) ----
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.1.0"
+        name = "usage"
+
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.2.0"
+        name = "usage"
+
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.4.0"
+        name = "celsius"
+
+    # ---- ZDNS service states. Value 1 is treated as healthy; other values fault. ----
+    [[inputs.snmp.table]]
+        name = "network_service_dns_service"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.5.0"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        name = "network_service_dhcp_service"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.6.0"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        name = "network_service_ntp_service"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.7.0"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        name = "network_service_zwp_service"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.12.0"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        name = "network_service_tftp_service"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.39810.100.1.13.0"
+        name = "state"
+
+    # ---- F5 BIG-IP LTM availability states reused by the local ZDNS profile. ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.3375.2.2.10.1.2.1"
+        name = "network_service_virtual_server"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.10.1.2.1.1"
+        name = "ltmVirtualServName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.10.1.2.1.22"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.3375.2.2.4.3.2.1"
+        name = "network_service_node"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.4.3.2.1.1"
+        name = "ltmNodeAddrStatusName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.4.3.2.1.3"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.5.2.1"
+        name = "network_service_pool"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.5.2.1.1"
+        name = "ltmPoolStatusName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.5.2.1.2"
+        name = "state"
+
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.6.2.1"
+        name = "network_service_pool_member"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.6.2.1.1"
+        name = "ltmPoolMbrStatusPoolName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.6.2.1.2"
+        name = "ltmPoolMbrStatusNodeName"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.6.2.1.3"
+        name = "ltmPoolMbrStatusPort"
+        is_tag = true
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.3375.2.2.5.6.2.1.5"
+        name = "state"
+
+[[processors.enum]]
+    namepass = [
+        "network_service_dns_service",
+        "network_service_dhcp_service",
+        "network_service_ntp_service",
+        "network_service_zwp_service",
+        "network_service_tftp_service",
+        "network_service_virtual_server",
+        "network_service_node",
+        "network_service_pool",
+        "network_service_pool_member"
+    ]
+    [[processors.enum.mapping]]
+        field = "state"
+        dest = "state"
+        default = 2
+        [processors.enum.mapping.value_mappings]
+            1 = 1

@@ -24,7 +24,8 @@
           "value": 60,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Moxa交换机电源异常",
@@ -38,7 +39,8 @@
           "value": 1,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

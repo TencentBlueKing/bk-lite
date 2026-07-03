@@ -74,7 +74,7 @@ def test_query_aggregation_metrics_uses_trigger_count_for_range_but_keeps_period
     module = _load_metric_query_module(monkeypatch)
     captured = {}
 
-    def fake_method(query, start, end, step, group_by):
+    def fake_method(query, start, end, step, group_by, group_algorithm=None):
         captured.update(
             {
                 "query": query,
@@ -82,6 +82,7 @@ def test_query_aggregation_metrics_uses_trigger_count_for_range_but_keeps_period
                 "end": end,
                 "step": step,
                 "group_by": group_by,
+                "group_algorithm": group_algorithm,
             }
         )
         return {"data": {"result": []}}
@@ -105,3 +106,30 @@ def test_query_aggregation_metrics_uses_trigger_count_for_range_but_keeps_period
     assert captured["step"] == "5m"
     assert captured["query"] == "up{}"
     assert captured["group_by"] == "instance_id"
+    assert captured["group_algorithm"] is None
+
+
+def test_query_aggregation_metrics_passes_group_algorithm(monkeypatch):
+    module = _load_metric_query_module(monkeypatch)
+    captured = {}
+
+    def fake_method(query, start, end, step, group_by, group_algorithm=None):
+        captured["group_algorithm"] = group_algorithm
+        return {"data": {"result": []}}
+
+    monkeypatch.setitem(module.METHOD, "avg_over_time", fake_method)
+
+    policy = types.SimpleNamespace(
+        last_run_time=datetime(2026, 6, 24, 10, 10, tzinfo=timezone.utc),
+        query_condition={"type": "pmq", "query": "up{}"},
+        group_by=["instance_id"],
+        group_algorithm="max",
+        algorithm="avg_over_time",
+        metric_unit="",
+        calculation_unit="",
+    )
+
+    service = module.MetricQueryService(policy, {})
+    service.query_aggregation_metrics({"type": "min", "value": 5}, points=1)
+
+    assert captured["group_algorithm"] == "max"

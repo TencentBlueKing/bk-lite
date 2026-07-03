@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_albentia",
+  "plugin": "Wireless Albentia SNMP",
+  "plugin_desc": "Albentia Systems WiMAX / AerDOCSIS wireless SNMP child template (ALBENTIA-AS-MIB, enterprise PEN 28087). The source queue confirms private Albentia telemetry for sector temperature, clients, frequency, distance and power, but the exact raw MIB object list is not present in this worktree; without row-filter-free OIDs, those private temperature/client/radio/link health metrics are N/A and not faked. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Wireless SNMP floor supplies uptime, IF-MIB interface metrics and aggregate traffic through the generic snmp/wireless metric model while this plugin provides the Albentia collect_type, UI and Telegraf child template. Applicable to Albentia wireless base stations / access devices and other IF-MIB compliant wireless devices.",
+  "status_query": "any({instance_type='wireless', collect_type='snmp_albentia'}) by (instance_id)",
+  "name": "Wireless",
+  "icon": "mm-albentia_albentia",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='wireless'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -15,7 +15,7 @@ _fix_command_for_issue / _auto_generate_items_from_cache / _generate_repair_repo
 import sys
 import types
 
-# node.py 间接依赖重型可选驱动模块，测试环境用空 stub 顶替（与 react_agent/cases 一致）。
+# node.py 间接依赖重型可选驱动模块，测试环境用空 stub 顶替。
 for _mod_name in ("oracledb", "pyodbc"):
     sys.modules.setdefault(_mod_name, types.ModuleType(_mod_name))
 

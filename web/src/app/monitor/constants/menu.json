@@ -60,6 +60,11 @@
           "url": "/monitor/view/dashboard/ping",
           "name": "ping_dashboard",
           "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/tcp",
+          "name": "tcp_dashboard",
+          "isNotMenuItem": true
         }
       ]
     },
@@ -216,6 +221,11 @@
         {
           "url": "/monitor/view/dashboard/ping",
           "name": "ping_dashboard",
+          "isNotMenuItem": true
+        },
+        {
+          "url": "/monitor/view/dashboard/tcp",
+          "name": "tcp_dashboard",
           "isNotMenuItem": true
         }
       ]

@@ -41,8 +41,17 @@ type DisplayCol = NonNullable<ObjectItem['display_fields']>[number];
 // 展示指标回填值的复合 key，必须与后端 display_field_key 保持一致：
 // 有插件用 `<plugin>::<metric>`（避免不同插件同名指标互相覆盖/串数据），无插件退化为裸指标名。
 const DISPLAY_FIELD_KEY_SEP = '::';
-const displayFieldKey = (plugin?: string, metric?: string): string =>
-  plugin ? `${plugin}${DISPLAY_FIELD_KEY_SEP}${metric}` : (metric ?? '');
+const FIELD_DISPLAY_KEY_PREFIX = 'field';
+const displayFieldKey = (
+  plugin?: string,
+  metric?: string,
+  field?: string
+): string => {
+  if (field) {
+    return `${FIELD_DISPLAY_KEY_PREFIX}${DISPLAY_FIELD_KEY_SEP}${plugin}${DISPLAY_FIELD_KEY_SEP}${metric}${DISPLAY_FIELD_KEY_SEP}${field}`;
+  }
+  return plugin ? `${plugin}${DISPLAY_FIELD_KEY_SEP}${metric}` : (metric ?? '');
+};
 
 const ViewList: React.FC<ViewListProps> = ({
   objects,
@@ -295,12 +304,33 @@ const ViewList: React.FC<ViewListProps> = ({
         // 解析某行在某列应展示的绑定指标值（按绑定顺序取首个有值），返回 {value, unit, metricName}
         const resolveCell = (record: TableDataItem, col: DisplayCol) => {
           for (const binding of col.metrics || []) {
-            const cell = record[displayFieldKey(binding.plugin, binding.metric)] as
+            const key = displayFieldKey(
+              binding.plugin,
+              binding.metric,
+              col.type === 'field' ? binding.field : undefined
+            );
+            const cell = record[key] as
               | { value?: string | number; unit?: string }
+              | string
+              | number
               | undefined;
-            const v = cell?.value;
+            if (col.type === 'field') {
+              if (cell != null && cell !== '') {
+                return {
+                  value: cell as string | number,
+                  unit: undefined,
+                  metricName: binding.metric
+                };
+              }
+              continue;
+            }
+            const metricCell =
+              cell && typeof cell === 'object'
+                ? (cell as { value?: string | number; unit?: string })
+                : undefined;
+            const v = metricCell?.value;
             if (v != null && v !== '') {
-              return { value: v, unit: cell?.unit, metricName: binding.metric };
+              return { value: v, unit: metricCell?.unit, metricName: binding.metric };
             }
           }
           const primary = col.metrics?.[0]?.metric;
@@ -332,6 +362,29 @@ const ViewList: React.FC<ViewListProps> = ({
             if (nb) return 1;
             return Number(va) - Number(vb);
           };
+
+          if (col.type === 'field') {
+            return {
+              title: col.name,
+              dataIndex: dataKey,
+              key: dataKey,
+              onCell: () => ({ style: { minWidth: 150 } }),
+              sorter: (a: any, b: any) => {
+                const va = `${resolveCell(a, col).value ?? ''}`;
+                const vb = `${resolveCell(b, col).value ?? ''}`;
+                return va.localeCompare(vb);
+              },
+              render: (_: unknown, record: TableDataItem) => {
+                const value = resolveCell(record, col).value;
+                return (
+                  <EllipsisWithTooltip
+                    text={value == null || value === '' ? '--' : String(value)}
+                    className="w-full overflow-hidden text-ellipsis whitespace-nowrap"
+                  />
+                );
+              }
+            };
+          }
 
           if (colType === 'progress') {
             return {

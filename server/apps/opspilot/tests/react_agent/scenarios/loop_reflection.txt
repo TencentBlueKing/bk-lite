@@ -3,7 +3,7 @@
 对应计划: Phase 1 — #6 循环内反思
 
 功能描述:
-  检测 ReAct 循环陷入死循环（连续调用相同工具、重复失败）时，
+  检测 DeepAgent 工具调用流程陷入死循环（连续调用相同工具、重复失败）时，
   触发反思逻辑，注入反思 prompt 改变执行方向。
   实现方式: reflection_tracker 记录 consecutive_failures 和 tool_call_history，
   agent_node 每步检查是否达到阈值，触发时通过模板注入反思 HumanMessage。

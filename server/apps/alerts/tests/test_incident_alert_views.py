@@ -128,6 +128,24 @@ def test_alert_operator_action_no_permission(superuser):
 
 
 @pytest.mark.django_db
+def test_alert_operator_requires_edit_permission(authenticated_user):
+    """Issue #3383: operator action 必须拦截仅持有 Alarms-View 的用户（权限旁路修复验证）。
+
+    若将 @HasPermission("Alarms-Edit") 注释掉，本测试将失败——
+    因为 view-only 用户的请求会被放行并返回 200/500，而非 403。
+    """
+    # 只授予 Alarms-View，不授予 Alarms-Edit
+    authenticated_user.is_superuser = False
+    authenticated_user.permission = {"alarm": {"Alarms-View"}}
+
+    _make_alert("A1", team=[1])
+    request = _request("post", "/alerts/operator/close/", authenticated_user, data={"alert_id": ["A1"]}, team="1")
+    response = AlertModelViewSet.as_view({"post": "operator"})(request, operator_action="close")
+    # HasPermission("Alarms-Edit") 应拦截并返回 403
+    assert response.status_code == status.HTTP_403_FORBIDDEN
+
+
+@pytest.mark.django_db
 def test_alert_operator_action_acknowledge(superuser):
     from apps.alerts.constants.constants import AlertStatus
 

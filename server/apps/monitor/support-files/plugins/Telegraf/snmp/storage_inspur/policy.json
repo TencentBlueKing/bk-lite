@@ -1,0 +1,36 @@
+{
+  "object": "Storage",
+  "plugin": "Storage Inspur SNMP",
+  "templates": [
+    {
+      "name": "Inspur存储磁盘异常",
+      "alert_name": "存储${resource_name} 磁盘状态异常",
+      "description": "监控 Inspur AS5500 存储设备磁盘健康（statuaDisk/driveStatus，归一为 1=正常/2=异常），当出现降级或故障磁盘时触发告警，存在数据丢失风险，需尽快更换。",
+      "metric_name": "device_disk_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Inspur存储电源异常",
+      "alert_name": "存储${resource_name} 电源状态异常",
+      "description": "监控 Inspur AS5500 存储设备电源状态（powerStatus，归一为 1=正常/2=异常），当出现故障电源时触发告警，提示电源失效或供电冗余缺失风险，需及时排查。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

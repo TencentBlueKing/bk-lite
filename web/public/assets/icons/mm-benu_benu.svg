@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Benu Networks">
+  <rect width="64" height="64" rx="12" fill="#0f5f8f"/>
+  <path d="M14 16h21c7 0 12 4 12 10 0 3-1 6-4 8 4 2 7 5 7 11 0 7-5 11-13 11H14V16zm10 8v8h10c3 0 5-2 5-4s-2-4-5-4H24zm0 16v8h12c3 0 5-1 5-4s-2-4-5-4H24z" fill="#fff"/>
+  <path d="M45 13l6 6-6 6-6-6 6-6z" fill="#6ee7b7"/>
+</svg>

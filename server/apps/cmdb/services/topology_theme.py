@@ -7,6 +7,7 @@ network 主题：模型拥有 interface --belong--> <model> 的模型关联即�
 from apps.cmdb.constants.constants import (
     TOPO_THEME_NETWORK,
     TOPO_THEME_IPAM,
+    TOPO_THEME_APP_OVERVIEW,
     NETWORK_INTERFACE_MODEL,
     NETWORK_INTERFACE_BELONG_ASST,
 )
@@ -35,4 +36,6 @@ def get_topo_themes(model_id: str) -> list:
         themes.append(TOPO_THEME_NETWORK)
     if model_id == "subnet":
         themes.append(TOPO_THEME_IPAM)
+    if model_id in {"system", "application"}:
+        themes.append(TOPO_THEME_APP_OVERVIEW)
     return themes

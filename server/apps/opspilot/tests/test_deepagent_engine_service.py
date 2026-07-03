@@ -156,7 +156,7 @@ class TestBuildDeepagentNodes:
         gb = _FakeGraphBuilder()
 
         async def _build():
-            return await node.build_deepagent_nodes(gb, composite_node_name="react_agent")
+            return await node.build_deepagent_nodes(gb, composite_node_name="deep_agent")
 
         name = asyncio.get_event_loop().run_until_complete(_build())
         wrapper = gb.nodes[name]

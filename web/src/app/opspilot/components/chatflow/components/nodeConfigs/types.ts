@@ -76,6 +76,10 @@ export interface NotificationNodeConfigProps extends BaseNodeConfigProps {
 
 export type EnterpriseWechatNodeConfigProps = BaseNodeConfigProps;
 
+export interface EnterpriseWechatAibotNodeConfigProps extends BaseNodeConfigProps {
+  botId: string;
+}
+
 export type DingtalkNodeConfigProps = BaseNodeConfigProps;
 
 export type WechatOfficialNodeConfigProps = BaseNodeConfigProps;

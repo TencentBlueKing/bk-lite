@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_asterfusion",
+  "plugin": "Switch AsterFusion SNMP",
+  "plugin_desc": "AsterFusion open-network switch SNMP collection for AsterNOS devices under PEN 55955. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. The public AsterNOS SNMP material confirms SNMP v1/v2c/v3 and private nodes for RoCE, BGP and RIB data, but stable shared CPU, memory, temperature, fan and power health scalars with conservative status semantics are not proven in the current facts, so service and fabric indicators are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_asterfusion'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -6,68 +6,12 @@ import { CaretRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import ChatflowEditor, { ChatflowEditorRef } from '@/app/opspilot/components/chatflow/ChatflowEditor';
 import type { ChatflowExecutionState } from '@/app/opspilot/components/chatflow/types';
+import { nodeCategories } from '@/app/opspilot/constants/chatflow';
 import Icon from '@/components/icon';
 import GroupTreeSelect from '@/components/group-tree-select';
 
 const { TextArea } = Input;
 const { Panel } = Collapse;
-
-const nodeCategories = [
-  {
-    key: 'triggers',
-    labelKey: 'chatflow.triggers',
-    items: [
-      { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
-      { type: 'nats', icon: 'WebSphereMQ', labelKey: 'chatflow.nats' },
-      { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
-      { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
-      { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
-    ]
-  },
-  {
-    key: 'applications',
-    labelKey: 'chatflow.applications',
-    items: [
-      { type: 'embedded_chat', icon: 'wendaduihua', labelKey: 'chatflow.embeddedChat' },
-      { type: 'web_chat', icon: 'WebSphereMQ', labelKey: 'chatflow.webChat' },
-      { type: 'mobile', icon: 'zhuji', labelKey: 'chatflow.mobile' },
-      { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
-      { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
-      { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
-    ]
-  },
-  {
-    key: 'agents',
-    labelKey: 'chatflow.agents',
-    items: [
-      { type: 'agents', icon: 'zhinengti', labelKey: 'chatflow.agents' }
-    ]
-  },
-  {
-    key: 'logic',
-    labelKey: 'chatflow.logicNodes',
-    items: [
-      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' },
-      { type: 'intent_classification', icon: 'question-circle-fill', labelKey: 'chatflow.intentClassification' }
-    ]
-  },
-  {
-    key: 'memory',
-    labelKey: 'chatflow.memoryNodes',
-    items: [
-      { type: 'memory_read', icon: 'database', labelKey: 'chatflow.memoryRead' },
-      { type: 'memory_write', icon: 'edit', labelKey: 'chatflow.memoryWrite' }
-    ]
-  },
-  {
-    key: 'actions',
-    labelKey: 'chatflow.actionNodes',
-    items: [
-      { type: 'http', icon: 'HTTP', labelKey: 'chatflow.http' },
-      { type: 'notification', icon: 'alarm', labelKey: 'chatflow.notification' }
-    ]
-  }
-];
 
 // 节点库项目组件 - 增强版本
 const NodeLibraryItem = ({ type, icon, label, onDragStart }: {

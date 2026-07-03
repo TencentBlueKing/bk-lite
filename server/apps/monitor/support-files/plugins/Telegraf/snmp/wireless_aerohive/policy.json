@@ -1,0 +1,81 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Aerohive SNMP",
+  "templates": [
+    {
+      "name": "Aerohive无线设备CPU使用率过高",
+      "alert_name": "无线设备${resource_name} CPU 使用率过高",
+      "description": "监控 Aerohive / Extreme HiveOS 无线设备的整体 CPU 使用率，当持续高于阈值时触发告警，提示可能存在客户端关联负载过高、控制平面压力或射频管理开销过大，避免影响漫游与管理响应。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aerohive无线设备内存使用率过高",
+      "alert_name": "无线设备${resource_name} 内存使用率过高",
+      "description": "监控 Aerohive / Extreme HiveOS 无线设备的整体内存使用率，当超过阈值时触发告警。内存压力过高会导致接入点丢弃客户端关联或重启服务，需及时排查客户端数量或异常负载。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Aerohive无线设备温度过高",
+      "alert_name": "无线设备${resource_name} 温度过高",
+      "description": "监控 Aerohive / Extreme 设备机箱温度（仅带温度传感器机型有效，无风扇 AP 返回 0），超过阈值时触发告警，防止散热失效或气流不畅导致高温损坏设备。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

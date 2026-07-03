@@ -18,25 +18,29 @@ const CollectionPage: React.FC = () => {
   //   ];
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex h-full min-h-0 flex-col overflow-hidden">
       {/* <Tabs activeKey={activeTab} onChange={handleTabChange} items={tabItems} /> */}
-      <Introduction
-        title={
-          activeTab === 'professional'
-            ? t('Collection.professionalTitle')
-            : t('Collection.fullTitle')
-        }
-        message={
-          activeTab === 'professional'
-            ? t('Collection.professionalMessage')
-            : t('Collection.fullMessage')
-        }
-      />
-      {activeTab === 'professional' ? (
-        <ProfessionalCollection />
-      ) : (
-        <FullCollection />
-      )}
+      <div className="shrink-0">
+        <Introduction
+          title={
+            activeTab === 'professional'
+              ? t('Collection.professionalTitle')
+              : t('Collection.fullTitle')
+          }
+          message={
+            activeTab === 'professional'
+              ? t('Collection.professionalMessage')
+              : t('Collection.fullMessage')
+          }
+        />
+      </div>
+      <div className="min-h-0 flex-1 overflow-hidden">
+        {activeTab === 'professional' ? (
+          <ProfessionalCollection />
+        ) : (
+          <FullCollection />
+        )}
+      </div>
     </div>
   );
 };

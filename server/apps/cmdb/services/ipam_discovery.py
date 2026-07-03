@@ -1,21 +1,8 @@
 # -- coding: utf-8 --
-"""IP 发现采集 server 端：选子网范围推导、NATS 下发 payload、回调回写。规格 §13。"""
-import ipaddress
+"""IP 发现采集 server 端：子网参数提取、VM 指标落库、IPAM 台账回写。"""
 from datetime import datetime
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
-
-DEFAULT_PORTS = [22, 80, 443, 3389]
-
-# ---------------------------------------------------------------------------
-# 选子网 IP 发现任务路由（§13 工作项 2）
-# ---------------------------------------------------------------------------
-# task 中用于存储子网参数的字段：
-#   instances = {"subnet_ids": [...], "scan_method": "icmp", "ports": [...]}
-# 之所以复用 instances 字段（JSONField），是因为：
-#   - 它已存在、无需迁移
-#   - 对于 ip+subnet 任务而言，instances 本身没有其他含义
-# task_type 仍写 "ip"（CollectPluginTypes.IP）；input_method 写 CollectInputMethod.SUBNET(2)
 
 
 def extract_subnet_discovery_params(task) -> tuple:
@@ -26,15 +13,21 @@ def extract_subnet_discovery_params(task) -> tuple:
 
     返回 (subnet_ids: list, scan_method: str, ports: list | None)。
     subnet_ids 缺失时返回空列表；scan_method 缺失时默认 "icmp"；ports 缺失时返回 None（由
-    build_scan_payload 填充 DEFAULT_PORTS）。
+    端口缺失时由下发侧/采集侧使用默认端口）。
     """
     if hasattr(task, "instances"):
         raw_instances = task.instances
+        raw_params = getattr(task, "params", {}) or {}
     else:
         raw_instances = task.get("instances", {})
+        raw_params = task.get("params", {}) or {}
 
     if not isinstance(raw_instances, dict):
         raw_instances = {}
+    if not isinstance(raw_params, dict):
+        raw_params = {}
+
+    raw_instances = {**raw_instances, **raw_params}
 
     subnet_ids = raw_instances.get("subnet_ids", [])
     if not isinstance(subnet_ids, list):
@@ -48,57 +41,6 @@ def extract_subnet_discovery_params(task) -> tuple:
     return subnet_ids, scan_method, ports
 
 
-def maybe_dispatch_ip_discovery(task) -> bool:
-    """检测采集任务是否为「选子网 IP 发现」任务，是则下发扫描并返回 True，否则返回 False。
-
-    「选子网 IP 发现」任务的判定条件：
-        task_type == "ip"  AND  input_method == CollectInputMethod.SUBNET (2)
-
-    扫描结果由 Stargazer 异步回推到 NATS subject "receive_ip_discovery_result"，
-    由 apps.cmdb.nats.nats.receive_ip_discovery_result 落库（fire-and-forget）。
-
-    返回 True 时调用方（sync_collect_task）应跳过常规 ProtocolCollect/JobCollect 路径。
-
-    TODO(2.7): 若未来支持多接入点（access_point），需从 task.access_point 推导
-    Stargazer instance_id，而非固定使用默认 "stargazer"。
-    """
-    from apps.cmdb.constants.constants import CollectPluginTypes, CollectInputMethod
-    from apps.rpc.stargazer import Stargazer
-
-    if hasattr(task, "task_type"):
-        task_type = task.task_type
-        input_method = task.input_method
-    else:
-        task_type = task.get("task_type", "")
-        input_method = task.get("input_method", CollectInputMethod.AUTO)
-
-    if task_type != CollectPluginTypes.IP:
-        return False
-    if int(input_method) != CollectInputMethod.SUBNET:
-        return False
-
-    subnet_ids, scan_method, ports = extract_subnet_discovery_params(task)
-    if not subnet_ids:
-        return False
-
-    # TODO(2.7): 从 task.access_point 推导 instance_id 支持多接入点
-    stargazer = Stargazer()
-    stargazer.dispatch_ip_discovery(subnet_ids=subnet_ids, scan_method=scan_method, ports=ports)
-    return True
-
-
-def _derive_targets(address: str, mask: str, gateway: str = "") -> list:
-    try:
-        net = ipaddress.ip_network(f"{str(address).strip()}/{str(mask).strip()}", strict=False)
-    except (ValueError, TypeError):
-        return []
-    hosts = [str(ip) for ip in net.hosts()]
-    gw = str(gateway or "").strip()
-    if gw in hosts:
-        hosts.remove(gw)
-    return hosts
-
-
 def _load_subnets_by_ids(subnet_ids: list) -> list:
     ids = [int(i) for i in subnet_ids]
     with GraphClient() as ag:
@@ -106,26 +48,6 @@ def _load_subnets_by_ids(subnet_ids: list) -> list:
             {"field": "model_id", "type": "str=", "value": "subnet"},
             {"field": "id", "type": "id[]", "value": ids}])
     return rows or []
-
-
-def build_scan_payload(subnet_id, scan_method: str = "icmp", ports=None) -> dict:
-    """为单个子网构造扫描 payload。
-
-    每个子网独立下发，payload 携带 subnet_id，Stargazer 回调时原样回传，
-    以便 receive_ip_discovery_result 能路由到正确的子网台账。
-    """
-    rows = _load_subnets_by_ids([subnet_id])
-    targets = []
-    for sn in rows:
-        targets.extend(_derive_targets(sn.get("subnet_address"), sn.get("subnet_mask"), sn.get("gateway")))
-    return {
-        "model_id": "ip",
-        "subnet_id": subnet_id,
-        "scan_method": (scan_method or "icmp").lower(),
-        "ports": list(ports) if ports else DEFAULT_PORTS,
-        "targets": targets,
-        "callback_subject": "receive_ip_discovery_result",
-    }
 
 
 # ---------------------------------------------------------------------------
@@ -222,3 +144,32 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
 
     _writeback_subnet_utilization([subnet_id])
     return {"created": created, "updated": updated, "offline": offline}
+
+
+def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
+    """把 VM 中的 ip_info 指标行回写到 IPAM 台账。
+
+    C2 链路下 Stargazer 不再通过 NATS 回调结果，CMDB 周期任务从 VM 拉取
+    `ip_info` 指标后调用本函数。函数以任务所选子网为准，因此某个子网本轮
+    没有任何在线 IP 时，也会触发原自动发现记录置离线。
+    """
+    selected_subnet_ids, _, _ = extract_subnet_discovery_params(task)
+    alive_by_subnet: dict[str, list[dict]] = {}
+    for row in rows or []:
+        if row.get("collect_status", "success") == "failed":
+            continue
+        subnet_id = str(row.get("subnet_id") or "").strip()
+        ip_addr = str(row.get("ip_addr") or row.get("ip") or "").strip()
+        if not subnet_id or not ip_addr:
+            continue
+        alive_by_subnet.setdefault(subnet_id, []).append(
+            {"ip": ip_addr, "mac": row.get("mac", "")}
+        )
+
+    subnet_ids = [str(item) for item in selected_subnet_ids] or sorted(alive_by_subnet)
+    summary = {"created": 0, "updated": 0, "offline": 0}
+    for subnet_id in subnet_ids:
+        result = apply_discovery_result(subnet_id, alive_by_subnet.get(str(subnet_id), []))
+        for key in summary:
+            summary[key] += int(result.get(key, 0))
+    return summary

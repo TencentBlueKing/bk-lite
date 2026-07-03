@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_nomadix",
+  "plugin": "NetworkService Nomadix SNMP",
+  "plugin_desc": "Nomadix hospitality and MDU network-gateway SNMP baseline collection for devices under Nomadix PEN 3309. The shared SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. No stable public private health leaf OIDs are collected in this pass.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_nomadix'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

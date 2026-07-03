@@ -341,7 +341,7 @@ class LLMViewSet(PinMixin, AuthViewSet):
         """
         AGUI协议的execute接口
 
-        遵循AGUI协议规范，调用metis的/api/agent/invoke_chatbot_workflow_agui接口
+        遵循 AGUI 协议规范，使用 DeepAgent runtime 执行并返回流式事件。
 
         请求参数与execute相同:
         {

@@ -1,0 +1,31 @@
+{
+  "object": "Router",
+  "plugin": "Router Sierra Wireless SNMP",
+  "templates": [
+    {
+      "name": "Sierra Wireless路由器温度过高",
+      "alert_name": "路由器${resource_name} 温度过高",
+      "description": "监控 Sierra Wireless AirLink（ALEOS）设备板载/无线温度（SIERRA-MIB，IANA PEN 20542，直接以摄氏度上报无缩放），当超过阈值时触发告警，提示机箱过热风险，防止蜂窝模块热保护停机。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

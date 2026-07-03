@@ -1,0 +1,83 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "${AUTH_PASSWORD__{{ config_id }}}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "${PRIV_PASSWORD__{{ config_id }}}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_mikrotik_router"
+        config_type = "mikrotik"
+        brand = "mikrotik"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    # 待现网核验：ifHCInOctets 1.3.6.1.2.1.31.1.1.1.6 / ifHCOutOctets ...1.10，按 ifIndex 与上表接口行对齐。
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- MikroTik CPU utilization (HOST-RESOURCES-MIB hrProcessorLoad, per-core %) ----
+    # 待现网核验：1.3.6.1.2.1.25.3.3.1.2（per-core 0-100%，多核走表自动按 index 区分；仪表盘 avg by instance）。
+    [[inputs.snmp.table]]
+        name = "device_cpu"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.3.3.1.2"
+        name = "usage"
+    # ---- MikroTik system memory (HOST-RESOURCES-MIB hrStorage, main-memory index 65536) ----
+    # 待现网核验：used hrStorageUsed 1.3.6.1.2.1.25.2.3.1.6.65536；total hrStorageSize ...1.5.65536。
+    # ⚠ 原始单位是 allocation units（模版有 MULTIPLIER），inputs.snmp 不能算术缩放 → 采到的是 alloc units；
+    #   利用率 used/total 比值与单位无关(alloc units 抵消)正确；绝对 used/total 是 alloc units(非 bytes)留「待现网核验」。
+    [[inputs.snmp.table]]
+        name = "device_memory"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.6.65536"
+        name = "used"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.25.2.3.1.5.65536"
+        name = "total"
+    # ---- MikroTik board temperature (MIKROTIK-MIB mtxrHlTemperature) ----
+    # 待现网核验：1.3.6.1.4.1.14988.1.1.3.10 → device_temperature_celsius。
+    # ⚠ 原始单位是 0.1℃/单位（模版 MULTIPLIER 0.1），telegraf inputs.snmp 不能缩放 →
+    #   真机采到的是原始值（需 ×0.1 才是摄氏度），留「待现网核验」；mock 直接发摄氏度，验证不受影响。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.14988.1.1.3.10"
+        name = "celsius"
+# ---- 风扇/电源：MikroTik 以 RPM 上报风扇(非 1=normal 状态)，且电源状态随型号缺失 → 标 N/A 不采。----

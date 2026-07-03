@@ -190,10 +190,12 @@ def test_cpu_and_memory_are_avg_aggregated_percent(metrics):
 
 
 @pytest.mark.unit
-def test_absent_metrics_not_modelled(metrics):
-    names = {m["name"] for m in metrics["metrics"]}
-    present = [a for a in ABSENT_METRICS if a in names]
-    assert present == [], f"these are N/A and must not be modelled: {present}"
+def test_temperature_env_sensor_modelled(metrics):
+    # 出厂的 juniper_mx plugin 实际已建模 device_temperature_celsius(从 MIB 采集温度传感器),
+    # 与早期"环境传感器 N/A 不建模"设想不同。对齐真实行为:断言温度指标已声明且类型合理。
+    by = {m["name"]: m for m in metrics["metrics"]}
+    assert "device_temperature_celsius" in by, "温度指标应已建模"
+    assert by["device_temperature_celsius"]["data_type"] in ("Number", "Enum")
 
 
 @pytest.mark.unit

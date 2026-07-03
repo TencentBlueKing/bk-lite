@@ -25,7 +25,7 @@ import threading
 import time
 
 from django.db import IntegrityError
-from django.db.models import QuerySet
+from django.db.models import Q, QuerySet
 from django.db.models.fields.json import JSONField
 
 logger = logging.getLogger(__name__)
@@ -412,6 +412,112 @@ def _patch_jsonfield_for_bulk_update():
     logger.debug("JSONField.get_db_prep_value patched for DamengDB bulk_update compatibility")
 
 
+def _iter_bulk_create_batches(objs, batch_size):
+    if not batch_size:
+        yield objs
+        return
+
+    for start in range(0, len(objs), batch_size):
+        yield objs[start : start + batch_size]
+
+
+def _get_bulk_create_conflict_field_sets(model):
+    opts = model._meta
+    field_sets = []
+
+    if opts.pk:
+        field_sets.append((opts.pk.attname,))
+
+    for field in opts.concrete_fields:
+        if getattr(field, "unique", False):
+            field_sets.append((field.attname,))
+
+    for unique_together in opts.unique_together:
+        field_sets.append(tuple(opts.get_field(field_name).attname for field_name in unique_together))
+
+    for constraint in opts.constraints:
+        if (
+            constraint.__class__.__name__ == "UniqueConstraint"
+            and getattr(constraint, "fields", None)
+            and getattr(constraint, "condition", None) is None
+            and not getattr(constraint, "expressions", None)
+        ):
+            field_sets.append(tuple(opts.get_field(field_name).attname for field_name in constraint.fields))
+
+    return tuple(dict.fromkeys(field_sets))
+
+
+def _get_obj_conflict_key(obj, field_names):
+    values = []
+    for field_name in field_names:
+        value = getattr(obj, field_name)
+        if value is None:
+            return None
+        values.append(value)
+    return tuple(values)
+
+
+def _get_existing_conflict_keys(queryset, objs, field_names):
+    keys = {_get_obj_conflict_key(obj, field_names) for obj in objs}
+    keys.discard(None)
+    if not keys:
+        return set()
+
+    query = Q()
+    for key in keys:
+        query |= Q(**dict(zip(field_names, key)))
+
+    return set(queryset.filter(query).values_list(*field_names))
+
+
+def _filter_bulk_create_conflicts(queryset, objs):
+    conflict_field_sets = _get_bulk_create_conflict_field_sets(queryset.model)
+    if not conflict_field_sets:
+        return objs
+
+    existing_keys = {
+        field_names: _get_existing_conflict_keys(queryset, objs, field_names) for field_names in conflict_field_sets
+    }
+    seen_keys = {field_names: set() for field_names in conflict_field_sets}
+    filtered = []
+
+    for obj in objs:
+        duplicate = False
+        obj_keys = {}
+        for field_names in conflict_field_sets:
+            key = _get_obj_conflict_key(obj, field_names)
+            if key is None:
+                continue
+            obj_keys[field_names] = key
+            if key in existing_keys[field_names] or key in seen_keys[field_names]:
+                duplicate = True
+                break
+
+        if duplicate:
+            continue
+
+        for field_names, key in obj_keys.items():
+            seen_keys[field_names].add(key)
+        filtered.append(obj)
+
+    return filtered
+
+
+def _save_ignore_conflicts_one_by_one(queryset, objs):
+    created = []
+    for obj in objs:
+        try:
+            obj.save(using=queryset.db)
+            created.append(obj)
+        except IntegrityError:
+            logger.debug(
+                "bulk_create ignore_conflicts fallback: skipped duplicate %s(pk=%s)",
+                type(obj).__name__,
+                obj.pk,
+            )
+    return created
+
+
 def _patch_bulk_create_ignore_conflicts():
     """
     修复达梦数据库不支持 bulk_create(ignore_conflicts=True) 的问题。
@@ -421,8 +527,9 @@ def _patch_bulk_create_ignore_conflicts():
     导致 Django 直接抛出 NotSupportedError。
 
     修复策略：
-    monkey-patch QuerySet.bulk_create，当 ignore_conflicts=True 时，
-    降级为逐条 save()，静默跳过已存在的记录（IntegrityError）。
+    monkey-patch QuerySet.bulk_create，当 ignore_conflicts=True 时，先按模型唯一键
+    预查并过滤已存在/本批重复对象，再调用原始 bulk_create 保持批量写入语义。
+    只有并发竞争导致批量插入仍触发 IntegrityError 时，才退回逐条 save() 兜底。
     """
     original_bulk_create = QuerySet.bulk_create
 
@@ -446,18 +553,29 @@ def _patch_bulk_create_ignore_conflicts():
                 unique_fields=unique_fields,
             )
 
-        # 达梦降级：逐条插入，遇到唯一约束冲突则跳过
+        objs = list(objs)
         created = []
-        for obj in objs:
+
+        for batch in _iter_bulk_create_batches(objs, batch_size):
+            bulk_objs = _filter_bulk_create_conflicts(self, batch)
+            if not bulk_objs:
+                continue
+
             try:
-                obj.save(using=self.db)
-                created.append(obj)
-            except IntegrityError:
-                logger.debug(
-                    "bulk_create ignore_conflicts fallback: skipped duplicate %s(pk=%s)",
-                    type(obj).__name__,
-                    obj.pk,
+                created.extend(
+                    original_bulk_create(
+                        self,
+                        bulk_objs,
+                        batch_size=batch_size,
+                        ignore_conflicts=False,
+                        update_conflicts=update_conflicts,
+                        update_fields=update_fields,
+                        unique_fields=unique_fields,
+                    )
                 )
+            except IntegrityError:
+                created.extend(_save_ignore_conflicts_one_by_one(self, bulk_objs))
+
         return created
 
     QuerySet.bulk_create = patched_bulk_create

@@ -31,8 +31,8 @@ from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest, BasicLLMRespon
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
 
 # deepagents 引擎内置工具（规划/虚拟文件系统/子代理）。这些是 agent 的内部
-# 机制，默认不在 AG-UI/A2UI 流中展示，避免污染前端的工具调用视图，保持与
-# 旧 ReAct 引擎一致的用户体验。可通过环境变量 OPSPILOT_AGUI_SHOW_BUILTIN_TOOLS=1
+# 机制，默认不在 AG-UI/A2UI 流中展示，避免污染前端的工具调用视图。
+# 可通过环境变量 OPSPILOT_AGUI_SHOW_BUILTIN_TOOLS=1
 # 打开（用于调试 deepagent 的规划/文件读写过程）。
 _DEEPAGENT_BUILTIN_TOOL_NAMES = frozenset(
     {

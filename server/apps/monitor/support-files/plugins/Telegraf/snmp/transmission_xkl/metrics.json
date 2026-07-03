@@ -1,0 +1,61 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_xkl",
+  "plugin": "Transmission XKL SNMP",
+  "plugin_desc": "XKL DXMOS optical transport SNMP child template (enterprise PEN 21150). Beyond standard MIB-II uptime and IF-MIB interface metrics supplied by the shared Transmission SNMP floor, it collects XKL private hardware health tables for sensor temperature, fan controller state and power-supply state. Temperature is reported directly in degrees Celsius. Fan and power-supply status values are normalized so normal(2) maps to 1 healthy and every other state maps to 2 fault. CPU and memory usage are not exposed as stable shared health objects in XKL-MIB, so they are N/A.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_xkl'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-xkl_xkl",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "device_temperature_celsius",
+    "device_fan_state",
+    "device_psu_state"
+  ],
+  "metrics": [
+    {
+      "metric_group": "Temperature",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Highest XKL hardware sensor temperature in degrees Celsius, read directly from xklSensorTemp."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_fan_state",
+      "query": "max(device_fan_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Fan Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst XKL fan-controller status, normalized from xklFanControllerStatus so normal(2) is healthy and every other state is abnormal."
+    },
+    {
+      "metric_group": "Hardware Status",
+      "name": "device_psu_state",
+      "query": "max(device_psu_state{instance_type='transmission', __$labels__}) by (instance_id)",
+      "display_name": "Power Supply Status",
+      "data_type": "Enum",
+      "unit": "[{\"id\":1,\"name\":\"Normal\"},{\"id\":2,\"name\":\"Abnormal\"}]",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Worst XKL power-supply status, normalized from xklPowerStatus so normal(2) is healthy and every other state is abnormal."
+    }
+  ]
+}

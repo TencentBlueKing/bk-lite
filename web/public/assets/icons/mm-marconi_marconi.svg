@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" role="img" aria-label="Marconi">
+  <rect x="8" y="8" width="104" height="104" rx="22" fill="#1d4ed8"/>
+  <path d="M30 76c18-24 38-36 60-36" fill="none" stroke="#bfdbfe" stroke-width="8" stroke-linecap="round"/>
+  <path d="M30 88c26-34 55-51 86-51" fill="none" stroke="#60a5fa" stroke-width="7" stroke-linecap="round"/>
+  <path d="M28 88V34l20 34 20-34v54" fill="none" stroke="#ffffff" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+  <circle cx="90" cy="38" r="8" fill="#facc15"/>
+</svg>
