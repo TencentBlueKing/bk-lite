@@ -15,6 +15,7 @@ import importlib.util
 import sys
 import types
 from datetime import datetime, timedelta, timezone
+from textwrap import dedent
 from unittest.mock import MagicMock, call, patch
 
 
@@ -156,11 +157,13 @@ def _load_get_step_based_stats():
     # 收集方法的所有行（4 空格缩进块）
     method_lines = []
     for line in lines[start_line:]:
+        if method_lines and (line.startswith("    @") or line.startswith("    def ")):
+            break
         if method_lines and line and not line.startswith("    ") and not line.startswith("\t"):
             break
         method_lines.append(line)
 
-    method_source = "\n".join(method_lines)
+    method_source = dedent("\n".join(method_lines))
 
     # 构建可执行的函数（去掉 self 参数，作为独立函数）
     func_source = "from datetime import datetime, timedelta, timezone\n"

@@ -1,0 +1,60 @@
+[[inputs.snmp]]
+    startup_error_behavior = "retry"
+    interval = "{{ interval }}s"
+    {% if version == 2 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 2
+    community = "{{ community }}"
+    timeout = "{{ timeout }}s"
+    {% elif version == 3 %}
+    agents = ["udp://{{ ip }}:{{ port }}"]
+    version = 3
+    timeout = "{{ timeout }}s"
+    sec_name = "{{ sec_name }}"
+    sec_level = "{{ sec_level }}"
+    auth_protocol = "{{ auth_protocol }}"
+    auth_password = "{{ auth_password }}"
+    priv_protocol = "{{ priv_protocol }}"
+    priv_password = "{{ priv_password }}"
+    {% else %}
+    {% endif %}
+    [inputs.snmp.tags]
+        instance_id = "{{ instance_id }}"
+        instance_type = "{{ instance_type }}"
+        collect_type = "snmp_sierrawireless"
+        config_type = "sierrawireless"
+        brand = "sierrawireless"
+    # ---- System ----
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.3.0"
+        name = "uptime"
+    [[inputs.snmp.field]]
+        oid = "1.3.6.1.2.1.1.5.0"
+        name = "source"
+        is_tag = true
+    # ---- Interfaces (generic IF-MIB, auto-walked column names) ----
+    [[inputs.snmp.table]]
+        oid = "1.3.6.1.2.1.2.2"
+        name = "interface"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.2.2.1.2"
+        name = "ifDescr"
+        is_tag = true
+    # ---- 64-bit IF-MIB HC traffic counters (ifXTable, wrap-safe on high-speed ports) ----
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.6"
+        name = "ifHCInOctets"
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.2.1.31.1.1.1.10"
+        name = "ifHCOutOctets"
+    # ---- Sierra Wireless ALEOS 板载/无线温度标量 (SIERRA-MIB, scalar, 私有树 PEN 20542) ----
+    # 待现网核验：标量 OID 1.3.6.1.4.1.20542.9.1.1.1.267，SIERRA-MIB 文档为摄氏度整数直采，无 d-1/÷10 缩放。
+    # device_temperature_celsius max() by instance_id；若现网实测为十分之一度则在 metrics.json 查询补 /10。
+    [[inputs.snmp.table]]
+        name = "device_temperature"
+        inherit_tags = ["source"]
+    [[inputs.snmp.table.field]]
+        oid = "1.3.6.1.4.1.20542.9.1.1.1.267"
+        name = "celsius"
+# ---- CPU/内存/风扇/电源：SIERRA-MIB（PEN 20542）未暴露聚合 CPU 或内存标量；蜂窝 RSSI（.261，dBm）与 power-in（.266）为有符号/上下文相关量，留待后续增量；AirLink 网关为无风扇设计，无风扇/电源状态对象。故 CPU/内存/风扇/电源 N/A，仅采集板载温度 + 标准 IF-MIB（含 64 位 HC）接口指标。----

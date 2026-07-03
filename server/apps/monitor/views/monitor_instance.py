@@ -104,7 +104,7 @@ def _ensure_instance_scope(instance_ids, actor_context):
     return normalized_ids
 
 
-def _ensure_operate_instances(request, instance_ids, actor_context=None):
+def _ensure_operate_instances(request, instance_ids, actor_context=None, allow_missing=False):
     normalized_ids = _normalize_id_list(instance_ids)
     if not normalized_ids:
         return []
@@ -117,7 +117,12 @@ def _ensure_operate_instances(request, instance_ids, actor_context=None):
         )
     )
     found_ids = {str(instance["id"]) for instance in instances}
-    if found_ids != set(normalized_ids):
+    # allow_missing: derived / auto-discovered instances (e.g. K8s Pod and Node)
+    # report metrics under an instance_id that has no MonitorInstance row. Read-only
+    # endpoints (e.g. effective_plugins) must tolerate their absence instead of 500-ing;
+    # only the instances that DO have a row are authorization-scoped below. Mutating
+    # callers keep allow_missing=False so a bogus instance_id still fails fast.
+    if found_ids != set(normalized_ids) and not allow_missing:
         raise BaseAppException("监控实例不存在")
 
     if not actor_context["is_superuser"]:
@@ -259,7 +264,9 @@ class MonitorInstanceViewSet(viewsets.ViewSet):
         instance_id = normalize_instance_identity(instance_id)["storage_instance_key"]
 
         actor_context = _build_actor_context(request)
-        _ensure_operate_instances(request, [instance_id], actor_context)
+        # Derived instances (K8s Pod/Node) have no MonitorInstance row; tolerate their
+        # absence so the detail view resolves plugins from reported metrics instead of 500-ing.
+        _ensure_operate_instances(request, [instance_id], actor_context, allow_missing=True)
         data = MonitorEffectivePluginService.get_effective_plugins(
             int(monitor_object_id),
             instance_id,

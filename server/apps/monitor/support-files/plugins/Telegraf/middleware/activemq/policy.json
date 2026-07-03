@@ -7,7 +7,7 @@
       "alert_name": "Topic ${resource_name} 消费者不足",
       "description": "监控Topic消费者数量，过少可能导致消息积压。需检查消费者应用状态。",
       "metric_name": "activemq_topics_consumer_count",
-      "algorithm": "min",
+      "algorithm": "min_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -24,14 +24,15 @@
           "value": 5,
           "method": "<="
         }
-      ]
+      ],
+      "group_algorithm": "min"
     },
     {
       "name": "Topic积压量",
       "alert_name": "Topic ${resource_name} 消息堆积",
       "description": "检测当前积压消息数，过多会占用内存和存储资源。需扩容消费者。",
       "metric_name": "activemq_topics_size",
-      "algorithm": "max",
+      "algorithm": "max_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -48,7 +49,8 @@
           "value": 10000,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "max"
     }
   ]
 }

@@ -24,7 +24,8 @@ import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
-import {Annotation, CustomChatMessage, ReportFileDownload} from '@/app/opspilot/types/global';
+import { hydrateGeneratedFileLinks } from './downloadUrl';
+import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
@@ -116,58 +117,6 @@ const sanitizeHtml = (html: string): string => {
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
     ALLOW_DATA_ATTR: true,
   });
-};
-
-const normalizeDownloadUrl = (url?: string): string => {
-  if (!url) {
-    return '';
-  }
-
-  if (url.startsWith('/api/v1/')) {
-    return url.replace('/api/v1/', '/api/proxy/');
-  }
-
-  return url;
-};
-
-const hydrateGeneratedFileLinks = (html: string, downloads?: ReportFileDownload[]): string => {
-  if (!html || !downloads?.length || typeof window === 'undefined') {
-    return html;
-  }
-
-  const linkableDownloads = downloads.filter(download => download.file_url);
-  if (linkableDownloads.length === 0 || !html.includes('<a')) {
-    return html;
-  }
-
-  const parser = new DOMParser();
-  const doc = parser.parseFromString(html, 'text/html');
-  const anchors = Array.from(doc.querySelectorAll('a:not([href])'));
-  if (anchors.length === 0) {
-    return html;
-  }
-
-  const normalizeText = (value: string) => value.replace(/^下载/, '').replace(/\.[^.]+$/, '').trim().toLowerCase();
-
-  anchors.forEach(anchor => {
-    const anchorText = normalizeText(anchor.textContent || '');
-    const matchedDownload = linkableDownloads.length === 1
-      ? linkableDownloads[0]
-      : linkableDownloads.find(download => {
-        const fileName = normalizeText(download.filename);
-        return anchorText && (fileName.includes(anchorText) || anchorText.includes(fileName));
-      });
-
-    if (!matchedDownload?.file_url) {
-      return;
-    }
-
-    anchor.setAttribute('href', normalizeDownloadUrl(matchedDownload.file_url));
-    anchor.setAttribute('target', '_blank');
-    anchor.setAttribute('rel', 'noopener noreferrer');
-  });
-
-  return doc.body.innerHTML;
 };
 
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
@@ -572,7 +521,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
       if (!hasMarkers) {
         // No markers — render as single block with fallback positions
-        const html = hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads);
+        const html = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(replacedContent)), reportFileDownloads));
         return (
           <>
             <div
@@ -658,7 +607,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
       for (let i = 0; i < segments.length; i++) {
         const segment = segments[i].trim();
         if (segment) {
-          const segHtml = hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads);
+          const segHtml = sanitizeHtml(hydrateGeneratedFileLinks(sanitizeHtml(md.render(segment)), reportFileDownloads));
           elements.push(
             <div
               key={`seg-${i}`}

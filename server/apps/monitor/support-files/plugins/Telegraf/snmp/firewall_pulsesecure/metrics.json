@@ -1,0 +1,376 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_pulsesecure",
+  "plugin": "Firewall Pulse Secure SNMP",
+  "plugin_desc": "Pulse Secure / Ivanti Connect Secure (IVE) SSL VPN gateway-specific SNMP collection (PULSESECURE-PSG-MIB, enterprise PEN 12532). In addition to standard IF-MIB interface metrics, it collects the IVE system health scalars — CPU utilization (iveCpuUtil), memory utilization (iveMemoryUtil), swap utilization (iveSwapUtil), disk utilization (diskFullPercent) all reported directly as 0-100 percentages, chassis temperature (iveTemperature, degrees Celsius read directly; only MAG-series blades return a real value while other platforms return 0) and the number of signed-in web users (signedInWebUsers). Fan and power-supply objects are not exposed by the MIB, so those are N/A. Supported brands/models — Pulse Connect Secure / Ivanti Connect Secure, MAG / PSA series SSL VPN and ZTNA gateways (enterprise PEN 12532).",
+  "status_query": "any({instance_type='firewall', collect_type='snmp_pulsesecure'}) by (instance_id)",
+  "name": "Firewall",
+  "icon": "mm-firewall_防火墙",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='firewall'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [
+    "snmp_uptime",
+    "device_cpu_usage",
+    "device_memory_usage",
+    "device_disk_usage",
+    "device_temperature_celsius"
+  ],
+  "display_fields": [],
+  "metrics": [
+    {
+      "metric_group": "Base",
+      "name": "snmp_uptime",
+      "query": "sum(snmp_uptime{instance_type='firewall', __$labels__}/100) by (instance_id)",
+      "display_name": "System Uptime",
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the uptime of the device since the last restart. By monitoring the uptime, network administrators can understand the stability and reliability of the device and identify potential reboot or failure issues."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_cpu_usage",
+      "query": "avg(device_cpu_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "CPU Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "CPU utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveCpuUtil, OID 12532.10), reported directly as a 0-100 percentage. Sustained high CPU usage can indicate VPN session overload, SSL/TLS processing pressure, or attack activity affecting tunnel setup and management responsiveness."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifAdminStatus",
+      "query": "interface_ifAdminStatus{instance_type='firewall', __$labels__}",
+      "display_name": "Interface Admin Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the administrative status of the network interface."
+    },
+    {
+      "metric_group": "Status",
+      "name": "interface_ifOperStatus",
+      "query": "interface_ifOperStatus{instance_type='firewall', __$labels__}",
+      "display_name": "Interface Oper Status",
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"up\",\"id\":1,\"color\":\"#1ac44a\"},{\"name\":\"down\",\"id\":2,\"color\":\"#ff4d4f\"},{\"name\":\"testing\",\"id\":3,\"color\":\"#faad14\"}]",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric reflects the actual operational status of the network interface."
+    },
+    {
+      "metric_group": "Bandwidth",
+      "name": "interface_ifSpeed",
+      "query": "interface_ifSpeed{instance_type='firewall', __$labels__}",
+      "display_name": "Interface Bandwidth",
+      "data_type": "Number",
+      "unit": "bitps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the maximum data transmission speed supported by the network interface."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifInErrors",
+      "query": "rate(interface_ifInErrors{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Incoming Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of incoming error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Error",
+      "name": "interface_ifOutErrors",
+      "query": "rate(interface_ifOutErrors{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Outgoing Errors Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing error packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifInDiscards",
+      "query": "rate(interface_ifInDiscards{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Incoming Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of incoming discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet Loss",
+      "name": "interface_ifOutDiscards",
+      "query": "rate(interface_ifOutDiscards{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Outgoing Discards Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing discarded packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifInUcastPkts",
+      "query": "rate(interface_ifInUcastPkts{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Incoming Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of incoming unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Packet",
+      "name": "interface_ifOutUcastPkts",
+      "query": "rate(interface_ifOutUcastPkts{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Outgoing Unicast Packets Rate",
+      "data_type": "Number",
+      "unit": "cps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of outgoing unicast packets over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifInOctets",
+      "query": "rate(interface_ifInOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifOutOctets",
+      "query": "rate(interface_ifOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCInOctets",
+      "query": "rate(interface_ifHCInOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Incoming Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of bytes received over the past 5 minutes, based on the 64-bit ifHCInOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "interface_ifHCOutOctets",
+      "query": "rate(interface_ifHCOutOctets{instance_type='firewall', __$labels__}[5m])",
+      "display_name": "Interface Outgoing Traffic Rate (HC)",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [
+        {
+          "name": "ifDescr",
+          "description": "ifDescr"
+        }
+      ],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric calculates the average rate of bytes sent over the past 5 minutes, based on the 64-bit ifHCOutOctets counter which does not wrap on high-speed interfaces."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_incoming_traffic",
+      "query": "sum(rate(interface_ifInOctets{instance_type='firewall', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Incoming Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric indicates the average rate of total bytes received by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Traffic",
+      "name": "device_total_outgoing_traffic",
+      "query": "sum(rate(interface_ifOutOctets{instance_type='firewall', __$labels__}[5m])) by (instance_id)",
+      "display_name": "Device Total Outgoing Traffic Rate",
+      "data_type": "Number",
+      "unit": "byteps",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "This metric represents the average rate of total bytes sent by the entire device over the past 5 minutes."
+    },
+    {
+      "metric_group": "Firewall",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "name": "device_memory_usage",
+      "display_name": "Memory Usage",
+      "query": "avg(device_memory_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "unit": "percent",
+      "data_type": "Number",
+      "description": "Memory utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveMemoryUtil, OID 12532.11), reported directly as a 0-100 percentage. High memory pressure can cause the gateway to refuse new VPN sessions, so investigate session counts or abnormal load promptly."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_swap_usage",
+      "query": "avg(device_swap_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Swap Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Swap utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB iveSwapUtil, OID 12532.24), reported directly as a 0-100 percentage. Sustained swap usage indicates memory exhaustion and degrades VPN session performance."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_disk_usage",
+      "query": "avg(device_disk_usage{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Disk Usage",
+      "data_type": "Number",
+      "unit": "percent",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Disk-space utilization of the Pulse Secure / Ivanti Connect Secure IVE system (PULSESECURE-PSG-MIB diskFullPercent, OID 12532.25), reported directly as a 0-100 percentage. A nearly full disk can prevent logging and configuration changes and may destabilize the gateway."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_temperature_celsius",
+      "query": "max(device_temperature_celsius{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Temperature",
+      "data_type": "Number",
+      "unit": "celsius",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Chassis temperature in degrees Celsius of the Pulse Secure / Ivanti Connect Secure device (PULSESECURE-PSG-MIB iveTemperature, OID 12532.42), read directly with no scaling. Only MAG-series blades report a real value; other platforms return 0. High temperatures can indicate cooling failure and risk thermal damage."
+    },
+    {
+      "metric_group": "Firewall",
+      "name": "device_web_users",
+      "query": "max(device_web_users{instance_type='firewall', __$labels__}) by (instance_id)",
+      "display_name": "Signed-In Web Users",
+      "data_type": "Number",
+      "unit": "short",
+      "dimensions": [],
+      "instance_id_keys": [
+        "instance_id"
+      ],
+      "description": "Number of currently signed-in web users on the Pulse Secure / Ivanti Connect Secure gateway (PULSESECURE-PSG-MIB signedInWebUsers, OID 12532.2). Tracking the active session count helps capacity planning and detecting abnormal connection spikes."
+    }
+  ]
+}

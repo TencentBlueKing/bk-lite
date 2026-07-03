@@ -1,0 +1,30 @@
+{
+  "object": "Wireless",
+  "plugin": "Wireless Mimosa SNMP",
+  "templates": [
+    {
+      "name": "Mimosa无线设备温度过高",
+      "alert_name": "无线设备${resource_name} 温度过高",
+      "description": "监控 Mimosa 无线回传设备内部温度，超过阈值时触发告警，提示可能存在散热不良、机箱温升或射频硬件热压力。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 70,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 60,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 55,
+          "method": ">"
+        }
+      ]
+    }
+  ]
+}

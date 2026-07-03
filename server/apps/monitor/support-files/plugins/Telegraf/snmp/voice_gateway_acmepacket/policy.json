@@ -1,0 +1,5 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway Acme Packet SNMP",
+  "templates": []
+}

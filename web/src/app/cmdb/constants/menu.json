@@ -34,6 +34,13 @@
           "withParentPermission": true
         },
         {
+          "title": "IP视图",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/ipView",
+          "name": "asset_ip_view",
+          "withParentPermission": true
+        },
+        {
           "title": "配置文件",
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/configFiles",
@@ -165,6 +172,13 @@
           "icon": "shujumoxingguanli",
           "url": "/cmdb/assetData/detail/relationships",
           "name": "asset_relationships",
+          "withParentPermission": true
+        },
+        {
+          "title": "IP View",
+          "icon": "shujumoxingguanli",
+          "url": "/cmdb/assetData/detail/ipView",
+          "name": "asset_ip_view",
           "withParentPermission": true
         },
         {

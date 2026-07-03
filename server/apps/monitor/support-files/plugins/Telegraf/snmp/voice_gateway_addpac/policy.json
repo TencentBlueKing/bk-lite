@@ -1,0 +1,5 @@
+{
+  "object": "VoiceGateway",
+  "plugin": "VoiceGateway AddPac SNMP",
+  "templates": []
+}

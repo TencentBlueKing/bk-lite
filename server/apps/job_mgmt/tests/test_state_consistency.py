@@ -39,7 +39,7 @@ class TestAnsibleCallbackFailureConvergence:
 
         with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
             "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback:
+        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
             # 发送非法格式的结果（不是 list）
             result = ansible_task_callback(
                 {
@@ -65,7 +65,7 @@ class TestAnsibleCallbackFailureConvergence:
 
         with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
             "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback:
+        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
             # 发送空结果
             result = ansible_task_callback(
                 {
@@ -90,7 +90,7 @@ class TestAnsibleCallbackFailureConvergence:
 
         with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
             "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback:
+        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
             # 发送不匹配的主机结果
             result = ansible_task_callback(
                 {
@@ -115,7 +115,7 @@ class TestAnsibleCallbackFailureConvergence:
 
         with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
             "apps.job_mgmt.nats_api.send_callback"
-        ) as mock_send_callback:
+        ) as mock_send_callback, patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
             # 发送重复主机的结果
             result = ansible_task_callback(
                 {
@@ -141,7 +141,9 @@ class TestAnsibleCallbackFailureConvergence:
 
         mock_execution = self._create_mock_execution()
 
-        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch("apps.job_mgmt.nats_api.send_callback"):
+        with patch("apps.job_mgmt.nats_api.JobExecution.objects.get", return_value=mock_execution), patch(
+            "apps.job_mgmt.nats_api.send_callback"
+        ), patch("apps.job_mgmt.nats_api.publish_done_sentinel"):
             # 发送正常的回调结果
             result = ansible_task_callback(
                 {

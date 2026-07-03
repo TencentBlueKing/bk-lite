@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_sycamore",
+  "plugin": "Transmission Sycamore SNMP",
+  "plugin_desc": "Sycamore optical switching transmission SNMP child template for devices under Sycamore PEN 2411. This child template relies on the shared Transmission SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Stable private CPU, memory, temperature, fan and power health scalars are not proven in the current MIB facts, so they are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='transmission', collect_type='snmp_sycamore'}) by (instance_id)",
+  "name": "Transmission",
+  "icon": "mm-sycamore_sycamore",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='transmission'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -77,7 +77,14 @@ def _load_target_view(monkeypatch):
     _install_module(monkeypatch, "apps.core.exceptions.base_app_exception", BaseAppException=BaseAppException)
     _install_module(monkeypatch, "apps.core.logger", job_logger=types.SimpleNamespace(exception=lambda *args, **kwargs: None))
     _install_module(monkeypatch, "apps.core.utils.viewset_utils", AuthViewSet=AuthViewSet)
-    _install_module(monkeypatch, "apps.job_mgmt.constants", OSType=object(), SSHCredentialType=object())
+    _install_module(
+        monkeypatch,
+        "apps.job_mgmt.constants",
+        OSType=object(),
+        SSHCredentialType=object(),
+        DangerousLevel=object(),
+        MatchType=object(),
+    )
     _install_module(monkeypatch, "apps.job_mgmt.filters.target", TargetFilter=object)
     _install_module(monkeypatch, "apps.job_mgmt.models", Target=_Target)
     _install_module(
@@ -91,6 +98,21 @@ def _load_target_view(monkeypatch):
     _install_module(monkeypatch, "apps.rpc.executor", Executor=object)
     _install_module(monkeypatch, "apps.rpc.node_mgmt", NodeMgmt=object)
     _install_module(monkeypatch, "apps.rpc.system_mgmt", SystemMgmt=object)
+    # 忠实复刻 exception_to_response 对 BaseAppException 的处理：返回 400 + 规范化外壳
+    # （生产 CustomRenderer 会把 {"message": ...} 包装为 {"result": False, "message": ...}）
+    def _fake_exception_to_response(e, context="", default_message="查询失败"):
+        if isinstance(e, BaseAppException):
+            return Response({"result": False, "message": str(e)}, status=400)
+        return Response({"result": False, "message": default_message}, status=500)
+
+    _install_module(monkeypatch, "apps.job_mgmt.services.error_response", exception_to_response=_fake_exception_to_response)
+    _install_module(monkeypatch, "apps.job_mgmt.services.execution_base_service", ExecutionTaskBaseService=object)
+    _install_module(monkeypatch, "apps.system_mgmt.utils.operation_log_utils", log_operation=lambda *a, **k: None)
+    # 使用真实 get_current_team（从 request.COOKIES 读取），不 stub
+    # 预置 views 包及 mixins 子模块，避免 from apps.job_mgmt.views.mixins import ...
+    # 触发 apps.job_mgmt.views.__init__ 加载全部 viewset（含未 stub 的 dangerous_path）
+    _install_module(monkeypatch, "apps.job_mgmt.views", __path__=[])
+    _install_module(monkeypatch, "apps.job_mgmt.views.mixins", BatchDeleteMixin=type("BatchDeleteMixin", (), {}))
 
     return _load_module(
         "job_target_view_test_module",
@@ -419,7 +441,9 @@ def parse_data(data):
 
 
 @pytest.mark.django_db
-def test_ansible_task_callback_records_ansible_failure_payload():
+def test_ansible_task_callback_records_ansible_failure_payload(monkeypatch):
+    # 屏蔽 NATS 流推送（外部边界），仅验证回调对 JobExecution 的 DB 副作用
+    monkeypatch.setattr("apps.job_mgmt.nats_api.publish_done_sentinel", lambda *a, **k: None)
     execution = JobExecution.objects.create(
         name="ansible failure callback",
         job_type="script",
@@ -465,7 +489,9 @@ def test_ansible_task_callback_records_ansible_failure_payload():
 
 
 @pytest.mark.django_db
-def test_ansible_task_callback_consumes_per_host_result_array():
+def test_ansible_task_callback_consumes_per_host_result_array(monkeypatch):
+    # 屏蔽 NATS 流推送（外部边界），仅验证回调对 JobExecution 的 DB 副作用
+    monkeypatch.setattr("apps.job_mgmt.nats_api.publish_done_sentinel", lambda *a, **k: None)
     execution = JobExecution.objects.create(
         name="ansible host array callback",
         job_type="script",
@@ -772,6 +798,8 @@ def test_file_distribution_routes_manual_windows_ansible_target_to_ansible_execu
                             "winrm_scheme": "https",
                             "winrm_transport": "ntlm",
                             "winrm_cert_validation": False,
+                            "credential_source": "manual",
+                            "credential_id": None,
                         },
                     )()
                 )
@@ -900,6 +928,8 @@ def test_file_distribution_polls_until_ansible_task_finishes(monkeypatch):
                             "winrm_scheme": "https",
                             "winrm_transport": "ntlm",
                             "winrm_cert_validation": False,
+                            "credential_source": "manual",
+                            "credential_id": None,
                         },
                     )()
                 )
@@ -1000,6 +1030,8 @@ def test_file_distribution_raises_when_ansible_task_query_stays_running(monkeypa
                             "winrm_scheme": "https",
                             "winrm_transport": "ntlm",
                             "winrm_cert_validation": False,
+                            "credential_source": "manual",
+                            "credential_id": None,
                         },
                     )()
                 )
@@ -1540,6 +1572,7 @@ def test_search_opspilot_nats_channels_filters_by_source_and_bot():
     assert {c["node_id"] for c in team3["data"]} == {"m1"}
 
 
+@pytest.mark.django_db(transaction=True)
 def test_wechat_user_register_uses_select_for_update_inside_transaction(monkeypatch):
     """
     验证 wechat_user_register 的 RMW 操作受 select_for_update 保护。

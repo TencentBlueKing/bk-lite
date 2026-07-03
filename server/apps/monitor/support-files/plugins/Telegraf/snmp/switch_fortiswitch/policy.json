@@ -24,7 +24,8 @@
           "value": 70,
           "method": ">"
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

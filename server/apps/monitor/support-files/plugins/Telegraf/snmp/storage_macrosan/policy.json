@@ -1,0 +1,101 @@
+{
+  "object": "Storage",
+  "plugin": "Storage MacroSAN SNMP",
+  "templates": [
+    {
+      "name": "MacroSAN存储CPU使用率过高",
+      "alert_name": "存储${resource_name} CPU 使用率过高",
+      "description": "监控 MacroSAN 存储控制器的 CPU 使用率（cpuRate），当持续高于阈值时触发告警，提示控制器过载或阵列重建占用，可能导致主机 IO 响应变慢。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MacroSAN存储内存使用率过高",
+      "alert_name": "存储${resource_name} 内存使用率过高",
+      "description": "监控 MacroSAN 存储控制器的内存使用率（vmRate），当持续高于阈值时触发告警，提示缓存压力或内存泄漏，可能影响 IO 性能或触发控制器切换。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 75,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MacroSAN存储风扇异常",
+      "alert_name": "存储${resource_name} 风扇状态异常",
+      "description": "监控 MacroSAN 存储设备风扇状态（fanState，归一为 1=正常/2=异常），当出现异常风扇时触发告警，风扇故障会导致控制器过热，需尽快处理。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MacroSAN存储电源异常",
+      "alert_name": "存储${resource_name} 电源状态异常",
+      "description": "监控 MacroSAN 存储设备电源状态（powerState，归一为 1=正常/2=异常），当出现故障电源时触发告警，提示电源失效或供电冗余缺失风险，需及时排查。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "MacroSAN存储磁盘健康异常",
+      "alert_name": "存储${resource_name} 磁盘健康状态异常",
+      "description": "监控 MacroSAN 存储设备物理磁盘健康状态（diskHealthState，归一为 1=正常/2=异常），当磁盘降级或损坏时触发告警，存在数据丢失风险，需立即更换。",
+      "metric_name": "device_disk_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

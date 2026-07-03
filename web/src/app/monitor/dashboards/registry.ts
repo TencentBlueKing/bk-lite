@@ -10,10 +10,10 @@ import ActiveMQDashboard from './objects/activemq';
 import ApacheDashboard from './objects/apache';
 import ConsulDashboard from './objects/consul';
 import RabbitMQDashboard from './objects/rabbitmq';
-import IBMMQDashboard from './objects/ibmmq';
 import TomcatDashboard from './objects/tomcat';
 import ZookeeperDashboard from './objects/zookeeper';
 import PingDashboard from './objects/ping';
+import TcpDashboard from './objects/tcp';
 import PostgresqlDashboard from './objects/postgresql';
 import { ProfessionalDashboardRegistryItem } from './shared/types';
 import WebsiteDashboard from './objects/website';
@@ -125,15 +125,6 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     component: RabbitMQDashboard
   },
   {
-    key: 'ibmmq',
-    aliases: ['ibm_mq'],
-    groupKey: 'middleware',
-    objectName: 'IBMMQ',
-    objectDisplayName: 'IBM MQ',
-    inheritedPermissionPath: '/monitor/view',
-    component: IBMMQDashboard
-  },
-  {
     key: 'tomcat',
     groupKey: 'middleware',
     objectName: 'Tomcat',
@@ -192,6 +183,15 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     objectDisplayName: 'Ping',
     inheritedPermissionPath: '/monitor/view',
     component: PingDashboard
+  },
+  {
+    key: 'tcp',
+    aliases: ['TCPPort', 'TCP端口'],
+    groupKey: 'network',
+    objectName: 'TCPPort',
+    objectDisplayName: 'TCP',
+    inheritedPermissionPath: '/monitor/view',
+    component: TcpDashboard
   },
   {
     key: 'switch',

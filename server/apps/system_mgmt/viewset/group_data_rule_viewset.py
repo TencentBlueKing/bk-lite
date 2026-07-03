@@ -4,7 +4,9 @@ from django_filters.rest_framework import FilterSet
 from rest_framework.decorators import action
 
 from apps.core.decorators.api_permission import HasPermission
+from apps.core.utils.team_utils import get_current_team
 from apps.core.utils.permission_cache import clear_users_permission_cache
+from apps.core.utils.user_group import normalize_user_group_ids
 from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.rpc.job_mgmt import JobMgmt
@@ -17,7 +19,30 @@ from apps.rpc.opspilot import OpsPilot
 from apps.rpc.system_mgmt import SystemMgmt
 from apps.system_mgmt.models import GroupDataRule, UserRule
 from apps.system_mgmt.serializers import GroupDataRuleSerializer
+from apps.system_mgmt.utils.group_filter_mixin import get_user_group_ids
 from apps.system_mgmt.utils.operation_log_utils import log_operation
+
+
+def _build_actor_context(request, loader=None):
+    current_team = get_current_team(request)
+    if current_team in (None, ""):
+        message = loader.get("error.current_team_required") if loader else "缺少 current_team 参数"
+        return None, JsonResponse({"result": False, "message": message}, status=400)
+
+    try:
+        current_team = int(current_team)
+    except (TypeError, ValueError):
+        message = loader.get("error.invalid_current_team") if loader else "current_team 参数非法"
+        return None, JsonResponse({"result": False, "message": message}, status=400)
+
+    return {
+        "username": request.user.username,
+        "domain": request.user.domain,
+        "current_team": current_team,
+        "include_children": request.COOKIES.get("include_children", "0") == "1",
+        "is_superuser": request.user.is_superuser,
+        "group_list": normalize_user_group_ids(getattr(request.user, "group_list", [])),
+    }, None
 
 
 class GroupDataRuleFilter(FilterSet):
@@ -44,9 +69,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
     def _get_user_group_ids(self, user):
         """获取用户有权限的组ID集合"""
-        if getattr(user, "is_superuser", False):
-            return None  # superuser 返回 None 表示有权限访问所有组
-        return {g["id"] for g in getattr(user, "group_list", [])}
+        return get_user_group_ids(user)
 
     def _validate_group_permission(self, request, group_id):
         """校验用户是否有权限访问指定组
@@ -63,7 +86,7 @@ class GroupDataRuleViewSet(LanguageViewSet):
 
         user_group_ids = self._get_user_group_ids(request.user)
         if group_id not in user_group_ids:
-            message = self.loader.get("error.no_permission_access_group") if self.loader else "无权访问该组织"
+            message = (self.loader.get("error.no_permission_access_group") if self.loader else None) or "无权访问该组织"
             return False, JsonResponse({"result": False, "message": message}, status=403)
         return True, None
 
@@ -184,6 +207,27 @@ class GroupDataRuleViewSet(LanguageViewSet):
     @HasPermission("data_permission-View")
     def get_app_data(self, request):
         params = request.GET.dict()
+        # 记录 app 值（get_client 会从 params 中弹出），用于后续判断是否注入上下文
+        app = params.get("app", "")
+        if app in {"job", "mlops"}:
+            try:
+                group_id = int(params.get("group_id"))
+            except (TypeError, ValueError):
+                return JsonResponse({"result": False, "message": "group_id 参数非法"}, status=400)
+
+            is_valid, error_response = self._validate_group_permission(request, group_id)
+            if not is_valid:
+                return error_response
+
+            if app == "mlops":
+                actor_context, error_response = _build_actor_context(request, self.loader)
+                if error_response:
+                    return error_response
+                params["actor_context"] = actor_context
+            else:
+                user_group_ids = self._get_user_group_ids(request.user)
+                params["team"] = [group_id] if user_group_ids is None else sorted(user_group_ids)
+
         client = self.get_client(params)
         fun = getattr(client, "get_module_data", None)
         if fun is None:
@@ -191,6 +235,21 @@ class GroupDataRuleViewSet(LanguageViewSet):
             raise AttributeError(message)
         params["page"] = int(params.get("page", "1"))
         params["page_size"] = int(params.get("page_size", "10"))
+        # 对 CMDB 权限实例查询注入调用方用户上下文，供 NATS handler 构建真实权限 map
+        if app == "cmdb":
+            user = request.user
+            current_team = get_current_team(request)
+            try:
+                team = int(current_team) if current_team not in (None, "") else None
+            except (TypeError, ValueError):
+                message = self.loader.get("error.invalid_current_team") if self.loader else "current_team 参数非法"
+                return JsonResponse({"result": False, "message": message}, status=400)
+            params["user_info"] = {
+                "user": getattr(user, "username", ""),
+                "domain": getattr(user, "domain", "domain.com"),
+                "team": team,
+                "include_children": request.COOKIES.get("include_children", "0") == "1",
+            }
         return_data = fun(**params)
         if isinstance(return_data, dict) and not return_data.get("result", True):
             return JsonResponse({"result": False, "message": return_data.get("message", "")}, status=400)

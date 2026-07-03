@@ -1,7 +1,7 @@
 import type { Node } from '@xyflow/react';
 
 /** 节点类型定义 */
-export type NodeType = 'celery' | 'nats' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'dingtalk' | 'wechat_official' | 'intent_classification' | 'memory_read' | 'memory_write';
+export type NodeType = 'celery' | 'nats' | 'restful' | 'openai' | 'agents' | 'agui' | 'embedded_chat' | 'web_chat' | 'mobile' | 'condition' | 'http' | 'notification' | 'enterprise_wechat' | 'enterprise_wechat_aibot' | 'dingtalk' | 'wechat_official' | 'intent_classification' | 'memory_read' | 'memory_write';
 
 /** 基础节点配置 */
 interface BaseNodeConfig {
@@ -61,6 +61,20 @@ export interface EnterpriseWechatNodeConfig extends BaseNodeConfig {
   agent_id: string;
 }
 
+/** 企微智能机器人节点配置 */
+export interface EnterpriseWechatAibotNodeConfig extends BaseNodeConfig {
+  connectionMode: 'webhook' | 'websocket';
+  webhook: {
+    token: string;
+    encodingAESKey: string;
+    aibotid: string;
+  };
+  websocket: {
+    botId: string;
+    secret: string;
+  };
+}
+
 /** 钉钉节点配置 */
 export interface DingtalkNodeConfig extends BaseNodeConfig {
   client_id: string;
@@ -77,9 +91,13 @@ export interface WechatOfficialNodeConfig extends BaseNodeConfig {
 
 /** 通知节点配置 */
 export interface NotificationNodeConfig extends BaseNodeConfig {
-  notificationType: 'email' | 'wechat_bot';
+  notificationType: 'email' | 'enterprise_wechat_bot' | 'feishu_bot' | 'dingtalk_bot' | 'custom_webhook';
   notificationMethod: string;
   notificationChannels: Array<{ id: string; name: string }>;
+  notificationRecipients?: Array<string | number>;
+  notificationTitle?: string;
+  notificationContent?: string;
+  llmOptimizeModel?: number;
 }
 
 /** Web Chat 节点配置 */
@@ -123,6 +141,7 @@ export type NodeConfig =
   | ConditionNodeConfig
   | IntentClassificationNodeConfig
   | EnterpriseWechatNodeConfig
+  | EnterpriseWechatAibotNodeConfig
   | DingtalkNodeConfig
   | WechatOfficialNodeConfig
   | NotificationNodeConfig

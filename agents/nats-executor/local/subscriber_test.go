@@ -87,6 +87,22 @@ func TestExecuteResponseIncludesErrorCodeForExecutionFailure(t *testing.T) {
 	}
 }
 
+func TestExecuteInjectsEnvironmentVariables(t *testing.T) {
+	response := Execute(ExecuteRequest{
+		Command:        "printf %s \"$BK_LITE_PREFLIGHT_SECRET\"",
+		ExecuteTimeout: 5,
+		Shell:          "sh",
+		Env:            map[string]string{"BK_LITE_PREFLIGHT_SECRET": "from-env"},
+	}, "instance-env")
+
+	if !response.Success {
+		t.Fatalf("expected success response: %+v", response)
+	}
+	if strings.TrimSpace(response.Output) != "from-env" {
+		t.Fatalf("expected command to receive env, got output=%q", response.Output)
+	}
+}
+
 func TestHandleLocalExecuteMessageRejectsMalformedJSON(t *testing.T) {
 	response, ok := handleLocalExecuteMessage([]byte("not-json"), "instance-1")
 	if !ok {
@@ -152,6 +168,31 @@ func TestHandleLocalExecuteMessageReturnsExecutionResponse(t *testing.T) {
 	}
 	if result.Code != "" {
 		t.Fatalf("success response should not contain code: %+v", result)
+	}
+}
+
+func TestHandleLocalExecuteMessagePassesEnvironmentVariables(t *testing.T) {
+	original := executeLocalCommand
+	executeLocalCommand = func(req ExecuteRequest, instanceId string) ExecuteResponse {
+		if req.Env["BK_LITE_PREFLIGHT_SECRET"] != "from-payload" {
+			t.Fatalf("expected env from payload, got: %+v", req.Env)
+		}
+		return ExecuteResponse{Output: "hello", InstanceId: instanceId, Success: true}
+	}
+	defer func() { executeLocalCommand = original }()
+
+	payload := []byte(`{"args":[{"command":"echo hello","execute_timeout":5,"env":{"BK_LITE_PREFLIGHT_SECRET":"from-payload"}}],"kwargs":{}}`)
+	response, ok := handleLocalExecuteMessage(payload, "instance-1")
+	if !ok {
+		t.Fatal("expected execution payload to produce response")
+	}
+
+	var result ExecuteResponse
+	if err := json.Unmarshal(response, &result); err != nil {
+		t.Fatalf("failed to unmarshal response: %v", err)
+	}
+	if !result.Success {
+		t.Fatalf("unexpected response: %+v", result)
 	}
 }
 

@@ -1,0 +1,15 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_liebert",
+  "plugin": "NetworkService Liebert PDU UPS Environmental SNMP",
+  "plugin_desc": "Liebert and Vertiv PDU, UPS and environmental monitor SNMP baseline child template for network-service devices under Liebert Global Products PEN 476.1.42. This child template relies on the shared SNMP floor for MIB-II uptime and IF-MIB 64-bit HC interface traffic. Current MIB facts confirm rack PDU, MPX, MPH, RPC2, power measurement, power line, DC power, threshold, load circuit, temperature, humidity and remote sensor tables, but do not prove stable shared CPU, memory, fan or power-health scalar semantics, so private health and UPS/PDU/environmental business counters are not promoted into shared device-health metrics.",
+  "status_query": "any({instance_type='network_service', collect_type='snmp_liebert'}) by (instance_id)",
+  "name": "NetworkService",
+  "icon": "mm-network_service_网络服务",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='network_service'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [],
+  "metrics": []
+}

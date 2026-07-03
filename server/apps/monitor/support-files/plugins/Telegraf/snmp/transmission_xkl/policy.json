@@ -1,0 +1,61 @@
+{
+  "object": "Transmission",
+  "plugin": "Transmission XKL SNMP",
+  "templates": [
+    {
+      "name": "XKL传输设备温度过高",
+      "alert_name": "传输设备${resource_name} 温度过高",
+      "description": "监控 XKL DXMOS 光传输设备的硬件传感器温度，当持续高于阈值时触发告警，提示可能存在散热异常、环境温度过高或设备过载。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 85,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 75,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 65,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "XKL传输设备风扇异常",
+      "alert_name": "传输设备${resource_name} 风扇异常",
+      "description": "监控 XKL DXMOS 光传输设备的风扇控制器状态，非正常状态表示散热模块异常或通信故障。",
+      "metric_name": "device_fan_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "XKL传输设备电源异常",
+      "alert_name": "传输设备${resource_name} 电源异常",
+      "description": "监控 XKL DXMOS 光传输设备的电源模块状态，非正常状态表示电源离线、无输入、过温、直流故障、风扇低速或告警。",
+      "metric_name": "device_psu_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 2,
+          "method": "=="
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

@@ -1,0 +1,46 @@
+{
+  "object": "Storage",
+  "plugin": "Storage Fujitsu SNMP",
+  "templates": [
+    {
+      "name": "Fujitsu存储温度过高",
+      "alert_name": "存储${resource_name} 温度过高",
+      "description": "监控 Fujitsu ETERNUS 存储设备机箱温度（fjdaryMachineTempInfo，单位摄氏度），当超过阈值时触发告警，便于及时发现散热失效或机柜风道堵塞，防止高温损坏磁盘和硬件。",
+      "metric_name": "device_temperature_celsius",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 65,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 55,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 50,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    },
+    {
+      "name": "Fujitsu存储RAID异常",
+      "alert_name": "存储${resource_name} RAID 阵列状态异常",
+      "description": "监控 Fujitsu ETERNUS 存储设备 RAID 组与逻辑卷阵列状态（fjdaryMgtRaidGrpStatus/fjdaryMgtOpVolumeStatus，归一为 1=正常/2=异常），当阵列或卷降级、错误时触发告警，存在数据丢失风险，需立即排查。",
+      "metric_name": "device_raid_state",
+      "algorithm": "last_over_time",
+      "threshold": [
+        {
+          "level": "critical",
+          "value": 1,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
+    }
+  ]
+}

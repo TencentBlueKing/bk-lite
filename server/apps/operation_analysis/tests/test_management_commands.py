@@ -179,6 +179,21 @@ def test_init_default_groups_fills_empty_groups():
 
 
 @pytest.mark.django_db
+def test_init_default_groups_uses_root_default_group_when_child_has_same_name():
+    from apps.system_mgmt.models.user import Group
+
+    root_default, _ = Group.objects.get_or_create(name="Default", parent_id=0)
+    parent = Group.objects.create(name="业务组织", parent_id=0)
+    Group.objects.create(name="Default", parent_id=parent.id)
+    obj = Directory.objects.create(name="无组织目录", groups=[], created_by="system")
+
+    call_command("init_default_groups")
+
+    obj.refresh_from_db()
+    assert obj.groups == [root_default.id]
+
+
+@pytest.mark.django_db
 def test_init_default_groups_without_default_group_returns_early():
     # 没有名为 Default 的组织 → 捕获异常并提前返回，不抛出
     from apps.system_mgmt.models.user import Group

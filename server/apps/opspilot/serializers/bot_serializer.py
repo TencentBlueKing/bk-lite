@@ -4,6 +4,7 @@ from rest_framework.fields import empty
 from apps.core.utils.serializers import AuthSerializer, TeamSerializer
 from apps.opspilot.enum import BotTypeChoice
 from apps.opspilot.models import Bot, UserPin
+from apps.opspilot.utils.workflow_sensitive_config import mask_workflow_sensitive_config
 
 
 class BotSerializer(TeamSerializer, AuthSerializer):
@@ -58,5 +59,5 @@ class BotSerializer(TeamSerializer, AuthSerializer):
             workflow = instance.botworkflow_set.first()
             if not workflow:
                 return {}
-            return workflow.web_json
+            return mask_workflow_sensitive_config(workflow.web_json)
         return {}

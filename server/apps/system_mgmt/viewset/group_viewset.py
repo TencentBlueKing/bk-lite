@@ -9,6 +9,7 @@ from apps.core.utils.viewset_utils import LanguageViewSet
 from apps.rpc.cmdb import CMDB
 from apps.system_mgmt.models import Group, User
 from apps.system_mgmt.serializers.group_serializer import GroupSerializer
+from apps.system_mgmt.utils.group_filter_mixin import get_user_group_ids
 from apps.system_mgmt.utils.group_utils import GroupUtils
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 from apps.system_mgmt.utils.viewset_utils import ViewSetUtils
@@ -30,9 +31,7 @@ class GroupViewSet(LanguageViewSet, ViewSetUtils):
 
     def _get_user_group_ids(self, user):
         """获取用户有权限的组ID集合"""
-        if getattr(user, "is_superuser", False):
-            return None  # superuser 返回 None 表示有权限访问所有组
-        return {g["id"] for g in getattr(user, "group_list", [])}
+        return get_user_group_ids(user)
 
     def _validate_group_permission(self, request, group_id):
         """校验用户是否有权限访问指定组

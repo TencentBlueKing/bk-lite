@@ -13,6 +13,8 @@ import sys
 import types
 from types import SimpleNamespace
 
+_MISSING = object()
+
 
 # ---------------------------------------------------------------------------
 # 注入伪依赖（nats_client + apps.log.models.*）
@@ -32,34 +34,51 @@ def _load_permission_module():
     每次调用都重新加载 nats/permission.py，避免测试间模块缓存相互污染。
     返回加载后的模块对象。
     """
-    # ── nats_client ──────────────────────────────────────────────────────────
-    def _register(fn):
-        return fn
-
-    _install("nats_client", register=_register)
-
-    # ── apps.log.models（顶层包 + 子模块）─────────────────────────────────────
-    _install("apps")
-    _install("apps.log")
-    _install("apps.log.models")
-    _install("apps.log.models.policy", Policy=object)
-
-    # LogGroup / CollectType / CollectInstance 用于 from ... import 语句
-    for sym in ("LogGroup", "CollectType", "CollectInstance"):
-        setattr(sys.modules["apps.log.models"], sym, object)
-
-    # ── 加载被测文件 ───────────────────────────────────────────────────────────
     import os
-    permission_path = os.path.join(
-        os.path.dirname(__file__),
-        "..", "nats", "permission.py",
+
+    injected_modules = (
+        "nats_client",
+        "apps",
+        "apps.log",
+        "apps.log.models",
+        "apps.log.models.policy",
     )
-    spec = importlib.util.spec_from_file_location(
-        "apps.log.nats.permission", permission_path
-    )
-    mod = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(mod)
-    return mod
+    original_modules = {name: sys.modules.get(name, _MISSING) for name in injected_modules}
+
+    try:
+        # ── nats_client ──────────────────────────────────────────────────────
+        def _register(fn):
+            return fn
+
+        _install("nats_client", register=_register)
+
+        # ── apps.log.models（顶层包 + 子模块）─────────────────────────────────
+        _install("apps")
+        _install("apps.log")
+        _install("apps.log.models")
+        _install("apps.log.models.policy", Policy=object)
+
+        # LogGroup / CollectType / CollectInstance 用于 from ... import 语句
+        for sym in ("LogGroup", "CollectType", "CollectInstance"):
+            setattr(sys.modules["apps.log.models"], sym, object)
+
+        # ── 加载被测文件 ───────────────────────────────────────────────────────
+        permission_path = os.path.join(
+            os.path.dirname(__file__),
+            "..", "nats", "permission.py",
+        )
+        spec = importlib.util.spec_from_file_location(
+            "apps.log.nats.permission", permission_path
+        )
+        mod = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(mod)
+        return mod
+    finally:
+        for name, original in original_modules.items():
+            if original is _MISSING:
+                sys.modules.pop(name, None)
+            else:
+                sys.modules[name] = original
 
 
 # ---------------------------------------------------------------------------

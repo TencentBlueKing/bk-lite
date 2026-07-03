@@ -9,10 +9,23 @@
       "metric_name": "device_cpu_usage",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 90, "method": ">"},
-        {"level": "error", "value": 80, "method": ">"},
-        {"level": "warning", "value": 70, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "Teltonika路由器内存使用率过高",
@@ -21,10 +34,23 @@
       "metric_name": "device_memory_usage",
       "algorithm": "last_over_time",
       "threshold": [
-        {"level": "critical", "value": 90, "method": ">"},
-        {"level": "error", "value": 80, "method": ">"},
-        {"level": "warning", "value": 70, "method": ">"}
-      ]
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        },
+        {
+          "level": "error",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "warning",
+          "value": 70,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

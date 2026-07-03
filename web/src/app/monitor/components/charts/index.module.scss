@@ -3,6 +3,7 @@
     pointer-events: auto;
     max-height: 300px;
     max-width: 390px;
+    overflow-x: hidden;
     overflow-y: auto;
     font-size: 14px;
     background: var(--color-bg-1);
@@ -97,6 +98,12 @@
 
             .dimeLabel {
                 flex: 1;
+                // flex 子项必须 min-width:0 才能收缩到内容宽度以下，
+                // 否则超长维度文本会撑破容器、与相邻行重叠。
+                min-width: 0;
+                overflow: hidden;
+                white-space: nowrap;
+                text-overflow: ellipsis;
             }
         }
     }

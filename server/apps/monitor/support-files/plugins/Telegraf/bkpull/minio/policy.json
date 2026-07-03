@@ -14,7 +14,8 @@
           "value": 1,
           "method": "!="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "MinIO 节点离线率过高",
@@ -38,7 +39,8 @@
           "value": 10,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "MinIO 磁盘离线率过高",
@@ -62,14 +64,15 @@
           "value": 10,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "MinIO 磁盘利用率过高",
       "alert_name": "MinIO ${resource_name} 磁盘过载",
       "description": "监控磁盘使用率（drive_perc_util），持续过高可能导致IO性能下降。",
       "metric_name": "minio_node_drive_perc_util_gauge",
-      "algorithm": "avg",
+      "algorithm": "avg_over_time",
       "threshold": [
         {
           "level": "critical",
@@ -86,7 +89,8 @@
           "value": 70,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     },
     {
       "name": "MinIO 请求排队数过多",
@@ -110,7 +114,8 @@
           "value": 20,
           "method": ">="
         }
-      ]
+      ],
+      "group_algorithm": "avg"
     }
   ]
 }

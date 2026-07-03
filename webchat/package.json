@@ -9,7 +9,7 @@
     "build:core": "cd packages/webchat-core && npm run build",
     "build:ui": "cd packages/webchat-ui && npm run build",
     "build:demo": "cd packages/webchat-demo && npm run build",
-    "test": "echo 'No tests configured yet'",
+    "test": "node tests/state-machine.issue-3882.mjs",
     "lint": "echo 'No linter configured yet'",
     "format": "prettier --write \"**/*.{ts,tsx,js,jsx,json,md}\"",
     "clean": "rm -rf node_modules packages/*/node_modules packages/*/dist packages/*/.next"

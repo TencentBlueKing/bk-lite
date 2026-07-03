@@ -1,3 +1,5 @@
+from collections import defaultdict
+
 from django.core.paginator import Paginator
 from django.db import connection
 from django.db.models import Count, Max, Min
@@ -20,6 +22,7 @@ from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.opspilot.utils.workflow_sensitive_config import merge_masked_workflow_sensitive_config
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -198,6 +201,7 @@ class BotViewSet(PinMixin, AuthViewSet):
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
             old_flow_json = flow.flow_json
+            workflow_data = merge_masked_workflow_sensitive_config(workflow_data, old_flow_json)
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
             flow.save()
@@ -523,7 +527,57 @@ class BotViewSet(PinMixin, AuthViewSet):
         except Exception:
             page_data = paginator.page(1)
 
-        for entry in page_data:
+        page_entries = list(page_data)
+        page_keys = []
+        for entry in page_entries:
+            entry_day = entry["day"].date() if hasattr(entry["day"], "date") else entry["day"]
+            page_keys.append((entry["bot_id"], entry["user_id"], entry["entry_type"], entry_day))
+        page_key_set = set(page_keys)
+
+        ids_rows = []
+        title_rows = []
+        if page_keys:
+            bot_ids = {key[0] for key in page_keys}
+            user_ids = {key[1] for key in page_keys}
+            entry_types = {key[2] for key in page_keys}
+            entry_days = {key[3] for key in page_keys}
+            if any("ids" not in entry for entry in page_entries):
+                ids_rows = list(
+                    WorkFlowConversationHistory.objects.filter(
+                        bot_id__in=bot_ids,
+                        user_id__in=user_ids,
+                        entry_type__in=entry_types,
+                        conversation_time__date__in=entry_days,
+                    )
+                    .order_by("-conversation_time")
+                    .values("id", "bot_id", "user_id", "entry_type", "conversation_time")
+                )
+            title_rows = list(
+                WorkFlowConversationHistory.objects.filter(
+                    bot_id__in=bot_ids,
+                    user_id__in=user_ids,
+                    conversation_time__date__in=entry_days,
+                )
+                .order_by("-conversation_time")
+                .values("bot_id", "user_id", "conversation_time", "conversation_content")
+            )
+
+        ids_map = defaultdict(list)
+        for row in ids_rows:
+            row_day = row["conversation_time"].date()
+            ids_key = (row["bot_id"], row["user_id"], row["entry_type"], row_day)
+            if ids_key in page_key_set:
+                ids_map[ids_key].append(row["id"])
+
+        title_map = {}
+        title_keys = {(key[0], key[1], key[3]) for key in page_keys}
+        for row in title_rows:
+            row_day = row["conversation_time"].date()
+            title_key = (row["bot_id"], row["user_id"], row_day)
+            if title_key in title_keys and (title_key not in title_map or row["conversation_time"] < title_map[title_key][0]):
+                title_map[title_key] = (row["conversation_time"], row["conversation_content"])
+
+        for entry in page_entries:
             # 将 TruncDay 返回的 datetime 转换为 date，确保跨数据库兼容性
             entry_day = entry["day"].date() if hasattr(entry["day"], "date") else entry["day"]
 
@@ -531,29 +585,10 @@ class BotViewSet(PinMixin, AuthViewSet):
             if "ids" in entry:
                 ids = entry["ids"]
             else:
-                # 回退方案：根据聚合条件查询对应的 ID 列表
-                ids = list(
-                    WorkFlowConversationHistory.objects.filter(
-                        bot_id=entry["bot_id"],
-                        user_id=entry["user_id"],
-                        entry_type=entry["entry_type"],
-                        conversation_time__date=entry_day,
-                    ).values_list("id", flat=True)
-                )
+                ids = ids_map.get((entry["bot_id"], entry["user_id"], entry["entry_type"], entry_day), [])
 
-            # 获取 title：查询当天最早的对话内容作为标题
-            # 此查询从主聚合查询中分离，避免 GROUP BY 子查询问题（达梦等数据库不支持）
-            title_record = (
-                WorkFlowConversationHistory.objects.filter(
-                    bot_id=entry["bot_id"],
-                    user_id=entry["user_id"],
-                    conversation_time__date=entry_day,
-                )
-                .order_by("conversation_time")
-                .values_list("conversation_content", flat=True)
-                .first()
-            )
-            title = title_record[:100] if title_record else ""
+            title_record = title_map.get((entry["bot_id"], entry["user_id"], entry_day))
+            title = title_record[1][:100] if title_record else ""
 
             result.append(
                 {

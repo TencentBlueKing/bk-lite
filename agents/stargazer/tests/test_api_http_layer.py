@@ -32,6 +32,7 @@ _STARGAZER_ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_STARGAZER_ROOT))
 
 _API_DIR = _STARGAZER_ROOT / "api"
+FULL_HOST_MODULES = "cpu,mem,disk,diskio,net,processes,system"
 
 
 # ---------------------------------------------------------------------------
@@ -450,6 +451,37 @@ class TestMonitorEndpointLogic:
         assert "text/plain" in result["content_type"]
         assert "0.0.4" in result["content_type"]
         assert "X-Task-ID" in result["headers"]
+
+    async def test_host_metrics_defaults_missing_modules_to_full_collection(self):
+        """Host Remote 未传 metrics_modules 时，应默认采集全部主机模块。"""
+        result = await self.mod.host_metrics(self._req(
+            headers={
+                "host": "10.0.0.10",
+                "username": "root",
+                "password": "pass",
+                "ansible_node_id": "node-1",
+            }
+        ))
+
+        assert result["status"] == 200
+        task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
+        assert task_params["monitor_type"] == "host"
+        assert task_params["metrics_modules"] == FULL_HOST_MODULES
+
+    async def test_windows_wmi_metrics_defaults_missing_modules_to_full_collection(self):
+        """Windows WMI 未传 metrics_modules 时，应默认采集全部主机模块。"""
+        result = await self.mod.windows_wmi_metrics(self._req(
+            headers={
+                "host": "10.0.0.20",
+                "username": "DOMAIN\\monitor",
+                "password": "pass",
+            }
+        ))
+
+        assert result["status"] == 200
+        task_params = self.task_queue.enqueue_collect_task.call_args.args[0]
+        assert task_params["monitor_type"] == "windows_wmi"
+        assert task_params["metrics_modules"] == FULL_HOST_MODULES
 
 
 # ---------------------------------------------------------------------------

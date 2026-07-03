@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_antaira",
+  "plugin": "Switch Antaira SNMP",
+  "plugin_desc": "Baseline SNMP child template for Antaira industrial managed Ethernet switches (enterprise PEN 38477). The available state confirms Antaira managed switch SNMP v1/v2c/v3 support and enterprise identity, but no reliable public row-filter-free scalar CPU, memory, temperature, fan or power-supply OID was confirmed. This child therefore declares no vendor-specific metric deltas in metrics.json; the shared Switch SNMP floor supplies uptime, IF-MIB interface metrics including 64-bit ifHCInOctets/ifHCOutOctets, and aggregate device traffic. Supported brands/models — Antaira industrial managed Ethernet switches such as LMX series.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_antaira'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-antaira_antaira",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="BridgeWave">
+  <rect width="1024" height="1024" rx="112" fill="#0B1220"/>
+  <path d="M196 660h632" stroke="#38BDF8" stroke-width="58" stroke-linecap="round"/>
+  <path d="M260 524c124-92 380-92 504 0" fill="none" stroke="#F8FAFC" stroke-width="54" stroke-linecap="round"/>
+  <path d="M340 398c88-62 256-62 344 0" fill="none" stroke="#22C55E" stroke-width="50" stroke-linecap="round"/>
+  <path d="M428 288c50-28 118-28 168 0" fill="none" stroke="#F59E0B" stroke-width="46" stroke-linecap="round"/>
+  <circle cx="512" cy="660" r="88" fill="#38BDF8"/>
+  <path d="M468 660h88" stroke="#0B1220" stroke-width="34" stroke-linecap="round"/>
+</svg>

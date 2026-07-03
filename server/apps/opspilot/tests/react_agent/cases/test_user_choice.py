@@ -127,6 +127,7 @@ async def _build_and_run(
 
     node_builder = ToolsNodes()
     node_builder.tools = tools_list
+    node_builder._skill_package_capabilities = set((request.extra_config or {}).get("skill_package_capabilities", []))
 
     call_count = {"n": 0}
     responses = list(mock_llm_responses)
@@ -277,7 +278,7 @@ class TestUserSelection:
             mock_choice_result={"selected": ["users"], "source": "user"},
         )
 
-        assert llm_calls == 4
+        assert llm_calls == 3
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned selection text
         assert any("用户回答" in str(m.content) and "users" in str(m.content) for m in tool_msgs)
@@ -294,6 +295,7 @@ class TestUserSelection:
             retry_config=RetryConfig(enabled=False),
             reflection_config=ReflectionConfig(enabled=False),
             timeout_config=TimeoutConfig(enabled=False),
+            extra_config={"skill_package_capabilities": ["config_analysis_report", "repair_diff_report"]},
         )
 
         responses = [
@@ -366,10 +368,12 @@ class TestUserSelection:
             retry_config=RetryConfig(enabled=False),
             reflection_config=ReflectionConfig(enabled=False),
             timeout_config=TimeoutConfig(enabled=False),
+            extra_config={"skill_package_capabilities": ["config_analysis_report", "repair_diff_report"]},
         )
 
         node_builder = ToolsNodes()
         node_builder.tools = [analyze_deployment_configurations]
+        node_builder._skill_package_capabilities = set((request.extra_config or {}).get("skill_package_capabilities", []))
 
         responses = [
             AIMessage(
@@ -517,8 +521,8 @@ class TestChoiceTimeout:
             mock_choice_result={"selected": ["opt_a"], "source": "timeout"},
         )
 
-        # LLM calls: Step 1 + forced tool_choice='any' after choice tool + Step 2
-        assert llm_calls == 3
+        # LLM calls: Step 1 asks, Step 2 proceeds with the default.
+        assert llm_calls == 2
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned timeout text
         assert any("默认选项" in str(m.content) or "未在规定时间" in str(m.content) for m in tool_msgs)
@@ -634,7 +638,7 @@ class TestUnattendedMode:
             trigger_type="unattended",
         )
 
-        assert llm_calls == 3  # 3 calls: initial + forced tool_choice='any' after choice + final
+        assert llm_calls == 2  # initial choice + final after auto-selection
         tool_msgs = [m for m in messages if isinstance(m, ToolMessage)]
         # Choice tool returned auto-select text
         assert any("默认选项" in str(m.content) and "auto_opt" in str(m.content) for m in tool_msgs)

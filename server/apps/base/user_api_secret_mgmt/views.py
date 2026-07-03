@@ -86,15 +86,17 @@ class UserAPISecretViewSet(viewsets.ModelViewSet):
                     "message": loader.get("error.api_secret_exists", "This user already has an API Secret"),
                 }
             )
+        api_secret = UserAPISecret.generate_api_secret()
         additional_data = {
             "username": username,
-            "api_secret": UserAPISecret.generate_api_secret(),
+            "api_secret": UserAPISecret.hash_api_secret(api_secret),
             "domain": request.user.domain,
             "team": current_team,
         }
         serializer = UserAPISecretCreateSerializer(data=additional_data, context=self.get_serializer_context())
         serializer.is_valid(raise_exception=True)
         self.perform_create(serializer)
+        serializer.instance._plain_api_secret = api_secret
         response_serializer = UserAPISecretCreateSerializer(serializer.instance, context=self.get_serializer_context())
         headers = self.get_success_headers(response_serializer.data)
         return Response(response_serializer.data, status=status.HTTP_201_CREATED, headers=headers)

@@ -1,0 +1,46 @@
+{
+  "object": "Switch",
+  "plugin": "Switch Alaxala SNMP",
+  "templates": [
+    {
+      "name": "Alaxala交换机CPU使用率",
+      "alert_name": "交换机${resource_name} CPU使用率过高",
+      "description": "监控 Alaxala AX 设备控制平面 1 分钟 CPU 负载（axsCpuLoad1m），持续高位可能预示控制平面过载或异常流量。",
+      "metric_name": "device_cpu_usage",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    },
+    {
+      "name": "Alaxala交换机内存使用率",
+      "alert_name": "交换机${resource_name} 内存使用率过高",
+      "description": "监控 Alaxala AX 设备内存使用率（由 axsMemoryUsedSize/axsMemoryFreeSize 推导），持续高位可能预示内存泄漏或容量不足。",
+      "metric_name": "device_memory_usage",
+      "algorithm": "max_over_time",
+      "threshold": [
+        {
+          "level": "warning",
+          "value": 80,
+          "method": ">"
+        },
+        {
+          "level": "critical",
+          "value": 90,
+          "method": ">"
+        }
+      ],
+      "group_algorithm": "max"
+    }
+  ]
+}

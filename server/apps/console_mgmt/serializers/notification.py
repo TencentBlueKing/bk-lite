@@ -2,6 +2,8 @@ from rest_framework import serializers
 
 from apps.console_mgmt.models import Notification
 
+MARK_BATCH_READ_MAX_IDS = 1000
+
 
 class NotificationSerializer(serializers.ModelSerializer):
     """通知消息序列化器"""
@@ -18,3 +20,11 @@ class NotificationSerializer(serializers.ModelSerializer):
         if hasattr(obj, "user_is_read"):
             return obj.user_is_read
         return False
+
+
+class MarkBatchAsReadSerializer(serializers.Serializer):
+    ids = serializers.ListField(
+        child=serializers.IntegerField(min_value=1),
+        allow_empty=False,
+        max_length=MARK_BATCH_READ_MAX_IDS,
+    )

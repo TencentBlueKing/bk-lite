@@ -1,3 +1,5 @@
+from rest_framework import serializers
+
 from apps.core.utils.serializers import UsernameSerializer
 from apps.system_mgmt.models import Channel, ChannelChoices
 
@@ -16,6 +18,20 @@ class ChannelSerializer(UsernameSerializer):
     class Meta:
         model = Channel
         fields = "__all__"
+
+    def validate_team(self, value):
+        if isinstance(value, (int, str)):
+            value = [value]
+        if not isinstance(value, (list, tuple, set)):
+            raise serializers.ValidationError("请选择渠道所属组织")
+
+        team_ids = []
+        for team_id in value:
+            try:
+                team_ids.append(int(team_id))
+            except (TypeError, ValueError) as exc:
+                raise serializers.ValidationError("请选择渠道所属组织") from exc
+        return team_ids
 
     def create(self, validated_data):
         if validated_data.get("config"):
