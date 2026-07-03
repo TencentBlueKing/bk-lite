@@ -23,7 +23,7 @@
 
 ## 3. 接口【已实现/已存在】
 各为独立 ViewSet 路由：`monitor_object`、`monitor_object_type`、`metrics_group`、`metrics`、`metrics_instance`、`organization_rule`、`monitor_instance`、`monitor_policy`、`monitor_plugin`、`monitor_alert`、`monitor_event`、`manual_collect`、`collect_detect`、`unit`、`monitor_condition`、`system_mgmt`、`node_mgmt`；开放端点 `open_api/infra`。
-- `collect_detect`【已实现/已存在】：用于接入前采集探测任务的创建与结果查询。`POST /api/v1/monitor/api/collect_detect/` 创建异步探测任务并返回 `task_id/status`，`GET /api/v1/monitor/api/collect_detect/{id}/` 返回任务状态、阶段、结果与错误信息（`views/collect_detect.py:10-31`）。
+- `collect_detect`【已实现/已存在】：用于接入前采集探测任务的创建与结果查询。创建前会校验当前用户对监控对象与节点实例的访问权限；结果查询只允许创建人于所属组织范围内读取。`POST /api/v1/monitor/api/collect_detect/` 创建异步探测任务并返回 `task_id/status`，`GET /api/v1/monitor/api/collect_detect/{id}/` 返回任务状态、阶段、结果与错误信息（`views/collect_detect.py:15-86`）。
 
 - Celery 任务与调度【已实现/已存在】：
   - `tasks/grouping_rule.py:sync_instance_and_group`（同步实例分组，查 VM）—— 由 beat 每 10 分钟触发（`config.py:8-11`）。
@@ -40,7 +40,11 @@
   - `flow_onboarding.py:17` 创建/绑定流量资产，兜底采样率默认 1000（`DEFAULT_FALLBACK_SAMPLING_RATE`）。
   - `flow_env_config.py` 按云区域刷新采集器环境变量（`refresh_collect_configs`）。
   - `flow_sampling.py:10` 的 `FlowSamplingService.normalize_payload` 归一化上报载荷，产出 `effective_sampling_rate` 字段及来源标记 `sampling_rate_source`（上报值 `reported_effective_sampling_rate` / 派生 `normalized_from_*` / 兜底 `fallback_sampling_rate`）。
-- 接入前采集探测【已实现/已存在】：插件模型新增 `support_collect_detect` 能力标记；`CollectDetectService.create_task()` 创建任务后通过 `run_collect_detect_task.delay(...)` 异步执行一次性探测，结果记录到 `CollectDetectTask`，用于接入向导中的“先探测再落配置”场景（`models/plugin.py:17`、`services/collect_detect.py:63-65,128`、`tasks/collect_detect.py:7`）。
+- 接入前采集探测【已实现/已存在】：插件模型新增 `support_collect_detect` 能力标记；`CollectDetectService.create_task()` 创建任务后通过 `run_collect_detect_task.delay(...)` 异步执行一次性探测，结果记录到 `CollectDetectTask`，用于接入向导中的“先探测再落配置”场景。服务层会对超时时间做 1~600 秒钳制，并把请求快照中的敏感值脱敏存档（`models/plugin.py:17`、`services/collect_detect.py:29-69,198-213`、`tasks/collect_detect.py:7`）。
+- 内置网络设备模板增量【已实现/已存在】：SNMP 目录新增 `router_mikrotik`、`router_milesight`、`wireless_prosoft` 三组内置模板；其中 MikroTik 模板附带 CPU / 内存 / 温度三类默认告警策略模板，其余两组提供对象接入模板但不内置策略（`support-files/plugins/Telegraf/snmp/*/policy.json`）。
+
+对应 PRD：[[spec/prd/监控系统/集成.md#3.1 集成（插件管理）]]；对应功能清单：[[spec/fuctionlist/02-监控系统-功能清单.md#7. Integration - 资产管理]]
+> 证据来源：server/apps/monitor/views/collect_detect.py:15-86，server/apps/monitor/services/collect_detect.py:29-69,198-213，server/apps/monitor/support-files/plugins/Telegraf/snmp/router_mikrotik/policy.json:1-42，server/apps/monitor/support-files/plugins/Telegraf/snmp/router_milesight/policy.json:1-5，server/apps/monitor/support-files/plugins/Telegraf/snmp/wireless_prosoft/policy.json:1-5　|　同步基线：83091efe　|　【已实现】
 
 ## 5. 数据流【已实现/已存在】
 - 指标采集与告警评估：telegraf 采集 → VictoriaMetrics →（PromQL）scan_policy_task → 阈值/聚合/恢复评估 → MonitorEvent → MonitorAlert（原始快照存 MinIO）。
@@ -52,4 +56,4 @@
 - 与 alerts 模块的告警职责边界（monitor 自有 Alert vs 统一 alerts）【推断为分层，需确认收敛路径】。
 
 ## 7. 证据来源
-`server/apps/monitor/{urls.py,config.py,constants/alert_policy.py,models/*,tasks/*,views/monitor_policy.py,views/collect_detect.py:10-31,services/flow_*.py,services/collect_detect.py:63-65,128,utils/victoriametrics_api.py,nats/monitor.py,nats/permission.py}`、`server/apps/rpc/monitor.py`、`web/src/app/monitor/api/integration.ts:220-239`。
+`server/apps/monitor/{urls.py,config.py,constants/alert_policy.py,models/*,tasks/*,views/monitor_policy.py,views/collect_detect.py:15-86,services/flow_*.py,services/collect_detect.py:29-69,198-213,utils/victoriametrics_api.py,nats/monitor.py,nats/permission.py,support-files/plugins/Telegraf/snmp/router_mikrotik/policy.json,support-files/plugins/Telegraf/snmp/router_milesight/policy.json,support-files/plugins/Telegraf/snmp/wireless_prosoft/policy.json}`、`server/apps/rpc/monitor.py`、`web/src/app/monitor/api/integration.ts:220-239`。

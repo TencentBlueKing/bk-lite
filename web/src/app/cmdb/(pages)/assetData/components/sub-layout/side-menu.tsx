@@ -55,6 +55,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
   onBackButtonClick,
 }) => {
   const ASSET_NAME = 'asset_relationships';
+  const IP_VIEW_NAME = 'asset_ip_view';
 
   const { getModelAssociations } = useModelApi();
 
@@ -213,6 +214,18 @@ const SideMenu: React.FC<SideMenuProps> = ({
     });
   }, [assoInstances, assoTypes, allAssociations, modelList]);
 
+  const orderedMenuItems = useMemo(() => {
+    const items = [...menuItems];
+    const ipViewIndex = items.findIndex((item) => item.name === IP_VIEW_NAME);
+    const relationIndex = items.findIndex((item) => item.name === ASSET_NAME);
+    if (ipViewIndex === -1 || relationIndex === -1 || ipViewIndex < relationIndex) {
+      return items;
+    }
+    const [ipViewItem] = items.splice(ipViewIndex, 1);
+    items.splice(relationIndex, 0, ipViewItem);
+    return items;
+  }, [menuItems]);
+
   return (
     <aside
       className={`w-[216px] pr-4 flex flex-shrink-0 flex-col h-full ${sideMenuStyle.sideMenu}`}
@@ -228,7 +241,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
         className={`flex flex-1 overflow-hidden relative rounded-md ${sideMenuStyle.nav}`}
       >
         <ul className="p-3 flex-1">
-          {menuItems.map((item) => (
+          {orderedMenuItems.map((item) => (
             <React.Fragment key={item.url}>
               {item.name === ASSET_NAME && shortcuts.map((s) => {
                 const active = isActive(item.url) && currentTab === s.tab;
@@ -252,15 +265,14 @@ const SideMenu: React.FC<SideMenuProps> = ({
               <li
                 className={`rounded-md mb-1 ${isActive(item.url) ? sideMenuStyle.active : ''}`}
               >
-                <Link legacyBehavior href={buildUrlWithParams(item.url)}>
-                  <a
-                    className={`group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3`}
-                  >
-                    {item.icon && (
-                      <Icon type={item.icon} className="text-xl pr-1.5" />
-                    )}
-                    {item.title}
-                  </a>
+                <Link
+                  href={buildUrlWithParams(item.url)}
+                  className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
+                >
+                  {item.icon && (
+                    <Icon type={item.icon} className="text-xl pr-1.5" />
+                  )}
+                  {item.title}
                 </Link>
               </li>
               {item.name === ASSET_NAME && !!relationData?.length && (

@@ -406,6 +406,9 @@ const cycleValidators = (context: ValidationContext) => ({
             new Error(context.t('Collection.k8sTask.intervalRequired'))
           );
         }
+        if (cycle === CYCLE_OPTIONS.INTERVAL && Number(value) < 1) {
+          return Promise.reject(new Error(context.t('Collection.everyMinuteMin')));
+        }
         return Promise.resolve();
       },
     },
