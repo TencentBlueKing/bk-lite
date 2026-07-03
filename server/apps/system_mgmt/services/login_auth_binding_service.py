@@ -43,7 +43,7 @@ def build_login_auth_redirect(binding: LoginAuthBinding, redirect_uri: str, stat
 
 
 def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = "", password: str = ""):
-    from apps.system_mgmt.nats_api import get_user_login_token
+    from apps.system_mgmt.nats.login import get_user_login_token
 
     binding = (
         LoginAuthBinding.objects.select_related("integration_instance")
