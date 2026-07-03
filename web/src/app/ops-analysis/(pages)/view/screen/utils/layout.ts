@@ -47,19 +47,6 @@ export const isScreenItemInsideViewport = (
   item.x + item.w <= viewport.width &&
   item.y + item.h <= viewport.height;
 
-export const sanitizeScreenItems = (
-  items: ScreenItem[],
-  viewport: ScreenViewportConfig,
-) => {
-  const seen = new Set<string>();
-  return items.filter((item) => {
-    if (!item.id || seen.has(item.id)) return false;
-    if (!isScreenItemInsideViewport(item, viewport)) return false;
-    seen.add(item.id);
-    return true;
-  });
-};
-
 export const canViewportContainItems = (
   items: ScreenItem[],
   viewport: ScreenViewportConfig,
@@ -251,14 +238,6 @@ export const createScreenWidgetItem = (
     },
   };
 };
-
-export const addScreenWidget = (
-  viewSets: ScreenViewSets,
-  chartType: ScreenWidgetChartType,
-): ScreenViewSets => ({
-  ...viewSets,
-  items: [...viewSets.items, createScreenWidgetItem(chartType, viewSets.items)],
-});
 
 export const isScreenWidgetChartType = (
   chartType?: string,
