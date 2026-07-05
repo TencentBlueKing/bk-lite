@@ -55,5 +55,6 @@ automation/
 /server/apps/cmdb_enterprise/
 
 .projectmem/events.jsonl
+.projectmem/.current_issue
 .projectmem/watch.pid
 .projectmem/watch.log
