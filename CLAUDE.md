@@ -90,6 +90,17 @@
 
 > 完整信条与「为什么」见 [docs/design-docs/core-beliefs.md](docs/design-docs/core-beliefs.md)。
 
+<!-- CODEGRAPH_START -->
+## CodeGraph
+
+本仓库已项目级接入 CodeGraph。需要理解或定位代码结构时,在 `rg`/`find` 或逐文件读取之前优先使用 CodeGraph:
+
+- **MCP 工具**: 可用时使用 `codegraph_explore`,一次获取相关符号源码、调用路径和动态分发关系。
+- **Shell 兜底**: `codegraph explore "<符号名或问题>"`。
+
+仅当仓库根存在 `.codegraph/` 时使用 CodeGraph;索引目录由 `codegraph init` 生成,数据库为本地文件,不提交。
+<!-- CODEGRAPH_END -->
+
 ## TODO（待确认项）
 
 由各团队按内部约定追踪;新发现的待确认项写明「确认位置(路径+关键词)」,不散落在本文。
