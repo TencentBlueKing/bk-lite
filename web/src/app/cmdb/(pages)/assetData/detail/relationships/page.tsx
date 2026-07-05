@@ -14,6 +14,7 @@ import Topo from './topo';
 import NetworkTopo from './networkTopo';
 import RackElevation from './rackElevation';
 import RoomFloorPlan from './roomFloorPlan';
+import ApplicationResourceOverview from './applicationResourceOverview';
 import DeviceDetailDrawer from './deviceDetailDrawer';
 import IpamMatrix from '../ipView/ipamMatrix';
 import type { RackDevice } from '@/app/cmdb/types/rackRoom';
@@ -71,6 +72,12 @@ const Ralationships = () => {
     { label: t('topo'), value: 'topo' },
     ...(themes.includes('network')
       ? [{ label: t('Model.networkTopo'), value: 'network' }]
+      : []),
+    ...(themes.includes('ipam')
+      ? [{ label: t('Model.ipView'), value: 'ipam' }]
+      : []),
+    ...(themes.includes('app_overview')
+      ? [{ label: t('Model.applicationResourceOverview'), value: 'appOverview' }]
       : []),
     ...(modelId === 'rack'
       ? [{ label: t('Model.rackElevation'), value: 'rackView' }]
@@ -143,6 +150,12 @@ const Ralationships = () => {
       )}
       {activeTab === 'network' && (
         <NetworkTopo modelId={modelId} instId={instId} />
+      )}
+      {activeTab === 'ipam' && (
+        <IpamMatrix instId={instId} />
+      )}
+      {activeTab === 'appOverview' && (
+        <ApplicationResourceOverview modelId={modelId} instId={instId} />
       )}
       {activeTab === 'rackView' && (
         <RackElevation
