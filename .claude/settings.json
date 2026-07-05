@@ -1,7 +1,8 @@
 {
   "permissions": {
     "allow": [
-      "mcp__codegraph__*"
+      "mcp__codegraph__*",
+      "mcp__projectmem__*"
     ]
   },
   "hooks": {

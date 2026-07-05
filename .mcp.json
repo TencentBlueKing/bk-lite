@@ -7,6 +7,16 @@
         "serve",
         "--mcp"
       ]
+    },
+    "projectmem": {
+      "type": "stdio",
+      "command": "/Users/mac/.local/share/uv/tools/projectmem/bin/python",
+      "args": [
+        "-m",
+        "projectmem.mcp_server",
+        "--root",
+        "/Users/mac/Documents/codespaces/bk-lite"
+      ]
     }
   }
 }

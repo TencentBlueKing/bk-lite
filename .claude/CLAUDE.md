@@ -8,3 +8,11 @@ In repositories indexed by CodeGraph (a `.codegraph/` directory exists at the re
 
 If there is no `.codegraph/` directory, skip CodeGraph entirely — indexing is the user's decision.
 <!-- CODEGRAPH_END -->
+
+<!-- >>> projectmem bridge >>> -->
+## projectmem (MANDATORY)
+
+This project uses projectmem for persistent project memory and workflow rules.
+
+At session start, call `get_instructions()`, `get_summary()`, and `get_project_map()` before answering project questions. Before modifying a file, call `precheck_file(path)`. During work, log bugs, attempts, fixes, decisions, and notes through the projectmem MCP tools or `pjm`; do not edit `.projectmem/summary.md` or `.projectmem/events.jsonl` by hand.
+<!-- <<< projectmem bridge <<< -->
