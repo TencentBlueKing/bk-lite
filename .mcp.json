@@ -2,21 +2,13 @@
   "mcpServers": {
     "codegraph": {
       "type": "stdio",
-      "command": "codegraph",
-      "args": [
-        "serve",
-        "--mcp"
-      ]
+      "command": "./scripts/codegraph-mcp",
+      "args": []
     },
     "projectmem": {
       "type": "stdio",
-      "command": "/Users/mac/.local/share/uv/tools/projectmem/bin/python",
-      "args": [
-        "-m",
-        "projectmem.mcp_server",
-        "--root",
-        "/Users/mac/Documents/codespaces/bk-lite"
-      ]
+      "command": "./scripts/projectmem-mcp",
+      "args": []
     }
   }
 }

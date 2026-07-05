@@ -25,6 +25,8 @@ BK-Lite is an AI-first lightweight operations platform for operations administra
 - `.codex/` — project-level Codex configuration, including MCP servers.
 - `.projectmem/` — projectmem distilled memory, project map, AI instructions, and issue summaries. Raw `events.jsonl` is intentionally ignored.
 - `.codegraph/` — local CodeGraph index storage. The database is local-only and ignored.
+- `scripts/agent-tooling-bootstrap` — team/agent bootstrap for OpenSpec, projectmem, CodeGraph, projectmem hooks, and local CodeGraph indexing.
+- `scripts/projectmem-mcp`, `scripts/codegraph-mcp` — stable repository-relative MCP launchers used by Claude and Codex.
 
 ## First reads
 - `CLAUDE.md` / `AGENTS.md` — repository agent rules and current single source of truth.
@@ -69,3 +71,4 @@ BK-Lite is an AI-first lightweight operations platform for operations administra
 - Superpowers skills live at `.claude/skills`.
 - CodeGraph is configured in `.mcp.json` and `.codex/config.toml`; use it before grep/find for code understanding when `.codegraph/` exists.
 - projectmem is configured in `.mcp.json` and `.codex/config.toml`; use it at session start and before modifying files.
+- If `openspec`, `pjm`, or `codegraph` is missing on a team member's machine, agents must run `scripts/agent-tooling-bootstrap` before using those workflows.

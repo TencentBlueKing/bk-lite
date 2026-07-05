@@ -2,10 +2,9 @@
 # Loaded only when this repository is trusted by Codex.
 
 [mcp_servers.codegraph]
-command = "codegraph"
-args = ["serve", "--mcp"]
+command = "./scripts/codegraph-mcp"
+args = []
 
 [mcp_servers.projectmem]
-command = "/Users/mac/.local/share/uv/tools/projectmem/bin/python"
-args = ["-m", "projectmem.mcp_server", "--root", "/Users/mac/Documents/codespaces/bk-lite"]
-cwd = "/Users/mac/Documents/codespaces/bk-lite"
+command = "./scripts/projectmem-mcp"
+args = []

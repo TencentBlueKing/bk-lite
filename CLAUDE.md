@@ -55,6 +55,7 @@
 
 - 版本:Python `3.12`;Node Web=`24`(`web/.nvmrc`),WebChat≥18。
 - 依赖:`uv`(Python)/`pnpm`(web、mobile,`only-allow` 强制)/`npm`(webchat)。
+- Agent 基础工具:团队成员或 Agent 新环境若缺 `openspec` / `pjm` / `codegraph`,先在仓库根执行 `scripts/agent-tooling-bootstrap`;只检查用 `scripts/agent-tooling-bootstrap --check`。不要假设本机已全局安装。
 - Secrets(强制):仅用 `*.example`/`*.template` 样例;`.env`/keystore 不入库;凭据经部署环境注入,不写代码和日志。
 - 完整 env 变量与模板清单见 [docs/operations.md §4](docs/operations.md) 与 [SECURITY.md](SECURITY.md)。
 
@@ -77,6 +78,7 @@
   - `/fix` / `/修复`: 缺陷修复流程。先系统化调试确认根因,经确认后 TDD 复现与最小修复,最后真实验证并收口。
   - `/feature` / `/功能`: 功能开发流程。先澄清与设计,必要时走 OpenSpec,多步骤实现先写计划,实现阶段 TDD,最后跑对应模块门禁。
   - 工具入口按会话类型同步维护:`.agents/skills/source-command-*`、`.claude/commands/`、`.claude/skills/`、`.opencode/command/`、`.opencode/skills/`、`.github/prompts/`。
+- **Agent 工具自检**:会话需要 OpenSpec / projectmem / CodeGraph 时,先确认 `openspec`、`pjm`、`codegraph` 可用;缺失则由 Agent 运行 `scripts/agent-tooling-bootstrap` 补齐并记录结果。MCP 启动统一走 `scripts/projectmem-mcp`、`scripts/codegraph-mcp`,禁止在仓库配置里写个人机器绝对路径。
 - **最小 diff**:仅改需求相关文件与代码块。
 - **避免格式化污染**:只格式化触及文件,不全仓格式化。
 - **变更后必验**:至少跑对应模块最小门禁。

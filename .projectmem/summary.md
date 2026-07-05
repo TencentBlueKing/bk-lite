@@ -20,6 +20,7 @@ BK-Lite is an AI-first lightweight operations platform for operations administra
 ## Decisions
 - 项目级 projectmem 作为持久项目记忆与工作流审计入口；Claude 通过 .mcp.json，Codex 通过 .codex/config.toml 同时接入 projectmem MCP。 [.mcp.json]
 - BK-Lite 的核心架构是 Django 后端、Next.js Web/Mobile、多采集 Agent 与算法服务协同；跨模块工作必须先读 CLAUDE.md、ARCHITECTURE.md、docs/operations.md 与 projectmem 三件套。 [ARCHITECTURE.md]
+- 团队成员本机可能缺 openspec、projectmem(pjm)、CodeGraph CLI；仓库提供 scripts/agent-tooling-bootstrap 自动检测/安装基础工具，并用仓库相对 MCP 包装脚本避免个人绝对路径。 [scripts/agent-tooling-bootstrap]
 
 ## Notes
 - minor: 合并
