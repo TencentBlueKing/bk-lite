@@ -1,0 +1,27 @@
+{
+  "model_id": "tomcat",
+  "captured_at": "2026-07-05T05:42:12Z",
+  "image": "docker.m.daocloud.io/library/ubuntu:22.04",
+  "container_meta": {
+    "container_id": "0c7c066d5b53",
+    "image": "docker.m.daocloud.io/library/ubuntu:22.04"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "ssh_port": 12225
+  },
+  "raw_stdout": {
+    "inst_name": "192.168.215.3-tomcat-8080",
+    "obj_id": "tomcat",
+    "ip_addr": "192.168.215.3",
+    "port": "8080",
+    "catalina_path": "/usr/share/tomcat9/bin/catalina.sh",
+    "version": "9.0.58 (Ubuntu)",
+    "xms": "",
+    "xmx": "",
+    "max_perm_size": "",
+    "permsize": "",
+    "log_path": "/usr/share/tomcat9/logs/catalina.out",
+    "java_version": "11.0.31"
+  }
+}
