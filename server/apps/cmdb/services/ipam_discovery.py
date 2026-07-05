@@ -3,6 +3,7 @@
 from datetime import datetime
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.core.exceptions.base_app_exception import BaseAppException
 
 
 def extract_subnet_discovery_params(task) -> tuple:
@@ -54,14 +55,70 @@ def _load_subnets_by_ids(subnet_ids: list) -> list:
 # 回写层：apply_discovery_result (§13.4)
 # ---------------------------------------------------------------------------
 
-def _load_subnet_ips(subnet_id) -> list:
-    """查询某子网下所有 IP 记录（含手工和自动发现）。"""
+def _dedupe_ip_rows(rows: list) -> list:
+    result = []
+    seen = set()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        identity = row.get("_id") or (row.get("subnet_id"), row.get("ip_addr"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(row)
+    return result
+
+
+def _load_subnet_ips_by_field(subnet_id) -> list:
+    """兼容旧数据：按 subnet_id 字段查询某子网下所有 IP 记录。"""
     with GraphClient() as ag:
         rows, _ = ag.query_entity(INSTANCE, [
             {"field": "model_id", "type": "str=", "value": "ip"},
             {"field": "subnet_id", "type": "str=", "value": str(subnet_id)},
         ])
     return rows or []
+
+
+def _load_subnet_associated_ips(subnet_id) -> list:
+    """按 subnet_group_ip 关联查询子网下的 IP。"""
+    from apps.cmdb.services.instance import InstanceManage
+
+    associations = InstanceManage.instance_association_instance_list("subnet", int(subnet_id)) or []
+    rows = []
+    for item in associations:
+        if item.get("model_asst_id") != "subnet_group_ip":
+            continue
+        rows.extend(item.get("inst_list") or [])
+    return rows
+
+
+def _load_subnet_ips(subnet_id) -> list:
+    """查询某子网下所有 IP 记录（关联优先，字段兜底兼容历史数据）。"""
+    return _dedupe_ip_rows(_load_subnet_associated_ips(subnet_id) + _load_subnet_ips_by_field(subnet_id))
+
+
+def _ensure_subnet_ip_association(subnet_id, ip_id) -> dict:
+    """确保 subnet --group--> ip 关联存在；重复关联视为成功幂等。"""
+    from apps.cmdb.services.instance import InstanceManage
+
+    data = {
+        "src_inst_id": int(subnet_id),
+        "dst_inst_id": int(ip_id),
+        "asst_id": "group",
+        "src_model_id": "subnet",
+        "dst_model_id": "ip",
+        "model_asst_id": "subnet_group_ip",
+    }
+    try:
+        InstanceManage.instance_association_create(data, "system")
+        return {"success": [data], "failed": []}
+    except BaseAppException as exc:
+        message = getattr(exc, "message", "") or str(exc)
+        if "repetition" in message:
+            return {"success": [data], "failed": []}
+        error_data = dict(data)
+        error_data["error"] = message
+        return {"success": [], "failed": [error_data]}
 
 
 def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", organization=None):
@@ -80,10 +137,21 @@ def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", org
     if existing_id:
         InstanceManage.instance_update(
             [], [], existing_id, payload, "system",
-            skip_permission_check=True, record_change=False,
+            skip_permission_check=True, allowed_org_ids=organization or [], record_change=False,
         )
+        ip_id = existing_id
     else:
-        InstanceManage.instance_create("ip", payload, "system", record_change=False)
+        created = InstanceManage.instance_create(
+            "ip",
+            payload,
+            "system",
+            allowed_org_ids=organization or [],
+            record_change=False,
+        )
+        ip_id = created["_id"]
+    payload_with_id = {**payload, "_id": ip_id, "model_id": "ip"}
+    assos_result = _ensure_subnet_ip_association(subnet_id, ip_id)
+    return {"_id": ip_id, "inst_info": payload_with_id, "assos_result": assos_result}
 
 
 def _mark_offline(ip_id):
@@ -120,30 +188,59 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
     alive_addrs = {a["ip"] for a in alive}
 
     created = updated = offline = 0
+    format_data = {"add": [], "update": [], "delete": [], "association": [], "all": 0}
     for a in alive:
         prev = existing_by_addr.get(a["ip"])
         if prev and prev.get("auto_collect") is not True:
             # 手工录入不被自动发现覆盖（仅 auto_collect is True 的记录归发现采集所有、可写）
             continue
-        _upsert_alive_ip(
+        upsert_result = _upsert_alive_ip(
             existing_id=(prev or {}).get("_id"),
             subnet_id=subnet_id,
             ip_addr=a["ip"],
             mac=a.get("mac", ""),
             organization=organization,
-        )
+        ) or {}
+        upsert_inst_info = upsert_result.get("inst_info") or {
+            "_id": (prev or {}).get("_id"),
+            "model_id": "ip",
+            "inst_name": a["ip"],
+            "ip_addr": a["ip"],
+            "subnet_id": str(subnet_id),
+            "ip_status": ["online"],
+            "auto_collect": True,
+            "mac": a.get("mac", ""),
+            "organization": organization,
+        }
+        if upsert_result.get("assos_result"):
+            for status, rows in upsert_result["assos_result"].items():
+                for row in rows:
+                    format_data["association"].append({**row, "_status": status})
         if prev:
             updated += 1
+            format_data["update"].append({"_status": "success", **upsert_inst_info})
         else:
             created += 1
+            format_data["add"].append({"_status": "success", **upsert_inst_info})
 
     for ip in existing:
         if ip.get("auto_collect") is True and ip.get("ip_addr") not in alive_addrs:
             _mark_offline(ip["_id"])
             offline += 1
+            format_data["update"].append({
+                "_status": "success",
+                "_id": ip["_id"],
+                "model_id": "ip",
+                "inst_name": ip.get("inst_name") or ip.get("ip_addr"),
+                "ip_addr": ip.get("ip_addr"),
+                "subnet_id": str(subnet_id),
+                "ip_status": ["offline"],
+                "auto_collect": True,
+            })
 
     _writeback_subnet_utilization([subnet_id])
-    return {"created": created, "updated": updated, "offline": offline}
+    format_data["all"] = len(format_data["add"]) + len(format_data["update"]) + len(format_data["delete"])
+    return {"created": created, "updated": updated, "offline": offline, "format_data": format_data}
 
 
 def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
@@ -167,9 +264,18 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
         )
 
     subnet_ids = [str(item) for item in selected_subnet_ids] or sorted(alive_by_subnet)
-    summary = {"created": 0, "updated": 0, "offline": 0}
+    summary = {
+        "created": 0,
+        "updated": 0,
+        "offline": 0,
+        "format_data": {"add": [], "update": [], "delete": [], "association": [], "all": 0},
+    }
     for subnet_id in subnet_ids:
         result = apply_discovery_result(subnet_id, alive_by_subnet.get(str(subnet_id), []))
-        for key in summary:
+        for key in ("created", "updated", "offline"):
             summary[key] += int(result.get(key, 0))
+        result_format_data = result.get("format_data") or {}
+        for key in ("add", "update", "delete", "association"):
+            summary["format_data"][key].extend(result_format_data.get(key) or [])
+        summary["format_data"]["all"] += int(result_format_data.get("all", 0) or 0)
     return summary

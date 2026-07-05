@@ -1,0 +1,33 @@
+{
+  "model_id": "postgresql",
+  "captured_at": "2026-07-04T16:04:40Z",
+  "image": "docker.m.daocloud.io/library/postgres:16-alpine",
+  "container_meta": {
+    "container_id": "f96249d5b07c",
+    "image": "docker.m.daocloud.io/library/postgres:16-alpine"
+  },
+  "params": {
+    "host": "127.0.0.1",
+    "port": 15432,
+    "user": "postgres",
+    "password": "***"
+  },
+  "raw_stdout": {
+    "result": {
+      "postgresql": [
+        {
+          "inst_name": "127.0.0.1-pg-15432",
+          "ip_addr": "127.0.0.1",
+          "port": 15432,
+          "version": "16.14",
+          "conf_path": "/var/lib/postgresql/data/postgresql.conf",
+          "data_path": "/var/lib/postgresql/data",
+          "max_conn": "100",
+          "cache_memory_mb": 128,
+          "log_path": "/var/lib/postgresql/data/log"
+        }
+      ]
+    },
+    "success": true
+  }
+}

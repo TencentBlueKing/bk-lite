@@ -61,11 +61,12 @@ const SideMenu: React.FC<SideMenuProps> = ({
         <ul className="p-3">
           {menuItems.map((item) => (
             <li key={item.url} className={`rounded-md mb-1 ${isActive(item.url, item.name) ? sideMenuStyle.active : ''}`}>
-              <Link legacyBehavior href={buildUrlWithParams(item.url)}>
-                <a className={`group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3`}>
-                  {item.icon && <Icon type={item.icon} className="text-xl pr-1.5" />}
-                  {item.title}
-                </a>
+              <Link
+                href={buildUrlWithParams(item.url)}
+                className="group flex items-center h-9 rounded-md py-2 text-sm font-normal px-3"
+              >
+                {item.icon && <Icon type={item.icon} className="text-xl pr-1.5" />}
+                {item.title}
               </Link>
             </li>
           ))}

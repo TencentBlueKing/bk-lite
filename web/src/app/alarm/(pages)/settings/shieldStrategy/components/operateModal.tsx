@@ -85,8 +85,8 @@ const OperateModalPage: React.FC<OperateModalProps> = ({
     <Drawer
       title={
         currentRow
-          ? t('settings.assignStrategy.editTitle') + ` - ${currentRow.name}`
-          : t('settings.assignStrategy.addTitle')
+          ? t('settings.shieldStrategyForm.editTitle') + ` - ${currentRow.name}`
+          : t('settings.shieldStrategyForm.addTitle')
       }
       placement="right"
       width={720}

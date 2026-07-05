@@ -711,7 +711,7 @@ const BaseTaskForm = forwardRef<BaseTaskRef, BaseTaskFormProps>(
                         >
                           <InputNumber
                             className="w-20"
-                            min={5}
+                            min={1}
                             placeholder={t('common.inputTip')}
                           />
                         </Form.Item>

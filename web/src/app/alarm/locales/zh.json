@@ -339,6 +339,10 @@
         "correlationRules": "相关性规则",
         "assignStrategyMessage": "您可以配置自动分派策略，让符合筛选条件的告警，分派给指定人员，并可选择通知方式。",
         "shieldStrategyMessage": "通过屏蔽策略，您可以更加高效地管理告警信息的发送，提高告警系统的效率和用户体验。",
+        "shieldStrategyForm": {
+            "editTitle": "编辑屏蔽策略",
+            "addTitle": "新增屏蔽策略"
+        },
         "correlationRulesMessage": "挖掘低层次事件的关联性，从而聚合为高层次事件，在这里您可以定义Event到Alert的聚合规则，以减少需要处理的信息量，提高单个事件的信息价值。",
         "correlationAlertPlaceholder": "Alert 到 Incident 的聚合规则功能开发中，敬请期待...",
         "alertAssignTableName": "名称",

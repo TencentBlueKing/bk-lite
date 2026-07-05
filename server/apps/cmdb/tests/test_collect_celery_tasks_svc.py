@@ -31,6 +31,10 @@ def test_build_safe_error_message_prefers_str():
     assert ct._build_safe_error_message(ValueError("boom")) == "boom"
 
 
+def test_build_safe_error_message_ignores_numeric_placeholder():
+    assert ct._build_safe_error_message(Exception(0)) == "Exception(0)"
+
+
 def test_build_safe_error_message_falls_back_to_message_attr():
     class E(Exception):
         message = "attr-msg"
@@ -57,6 +61,31 @@ def test_build_safe_error_message_falls_back_to_classname():
             return ""
 
     assert ct._build_safe_error_message(WeirdError()) == "WeirdError"
+
+
+def test_build_traceback_excerpt_keeps_tail():
+    text = "\n".join(
+        [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1, in <module>',
+            '  File "b.py", line 2, in run',
+            "KeyError: 0",
+        ]
+    )
+    excerpt = ct._build_traceback_excerpt(text, max_lines=2)
+    assert excerpt == '  File "b.py", line 2, in run\nKeyError: 0'
+
+
+def test_build_traceback_location_returns_last_file_frame():
+    text = "\n".join(
+        [
+            "Traceback (most recent call last):",
+            '  File "a.py", line 1, in <module>',
+            '  File "b.py", line 2, in run',
+            "KeyError: 0",
+        ]
+    )
+    assert ct._build_traceback_location(text) == 'File "b.py", line 2, in run'
 
 
 # --------------------------------------------------------------------------
@@ -267,6 +296,35 @@ def test_sync_collect_task_handles_collect_exception(monkeypatch):
     task.refresh_from_db()
     assert task.exec_status == CollectRunStatusType.ERROR
     assert "collect exploded" in task.collect_digest["message"]
+    assert "RuntimeError: collect exploded" in task.collect_digest["traceback"]
+
+
+@pytest.mark.django_db
+def test_sync_collect_task_handles_numeric_exception_with_traceback(monkeypatch):
+    task = CollectModels.objects.create(
+        name="numeric-collect", task_type=CollectPluginTypes.PROTOCOL, model_id="mysql", driver_type="protocol",
+        cycle_value_type="cycle", team=[1],
+        instances=[{"_id": "i1", "model_id": "mysql", "inst_name": "db1"}],
+    )
+    monkeypatch.setattr(
+        "apps.cmdb.services.collect_dispatch_service.CollectDispatchService.should_dispatch",
+        staticmethod(lambda inst: False),
+    )
+
+    class FakeCollect:
+        def __init__(self, task):
+            pass
+
+        def main(self):
+            raise Exception(0)
+
+    monkeypatch.setattr(ct, "ProtocolCollect", FakeCollect)
+    ct.sync_collect_task(task.id)
+    task.refresh_from_db()
+    assert task.exec_status == CollectRunStatusType.ERROR
+    assert "Exception(0)" in task.collect_digest["message"]
+    assert '@ File "' in task.collect_digest["message"]
+    assert "Exception: 0" in task.collect_digest["traceback"]
 
 
 @pytest.mark.django_db
