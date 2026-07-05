@@ -69,7 +69,7 @@ const SideMenu: React.FC<SideMenuProps> = ({
     []
   );
 
-  // 左侧快捷入口：网络拓扑 / 机房视图 / 机柜视图，直达关联关系页对应子视图（缩短操作路径）
+  // 左侧快捷入口：网络拓扑 / 应用拓扑 / 机房视图 / 机柜视图，直达关联关系页对应子视图（缩短操作路径）
   const { getTopoThemes } = useInstanceApi();
   const { t } = useTranslation();
   const [themes, setThemes] = useState<string[]>([]);
@@ -96,6 +96,9 @@ const SideMenu: React.FC<SideMenuProps> = ({
     const list: { tab: string; title: string; icon: React.ReactNode }[] = [];
     if (themes.includes('network')) {
       list.push({ tab: 'network', title: t('Model.networkTopo'), icon: <ApartmentOutlined /> });
+    }
+    if (themes.includes('app_overview')) {
+      list.push({ tab: 'appOverview', title: t('Model.applicationResourceOverview'), icon: <ApartmentOutlined /> });
     }
     if (modelId === 'server_room') {
       list.push({ tab: 'roomView', title: t('Model.roomLayout'), icon: <AppstoreOutlined /> });
