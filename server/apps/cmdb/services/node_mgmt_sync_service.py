@@ -449,7 +449,7 @@ class NodeMgmtSyncService:
             page_nodes = cls._extract_nodes(rows)
             nodes.extend(page_nodes)
             count = cls._safe_count(rows.get("count") if isinstance(rows, dict) else len(page_nodes))
-            if not page_nodes or len(page_nodes) < cls.NODE_MGMT_SYNC_PAGE_SIZE or len(nodes) >= count:
+            if not page_nodes or len(nodes) >= count:
                 break
             page += 1
         return nodes

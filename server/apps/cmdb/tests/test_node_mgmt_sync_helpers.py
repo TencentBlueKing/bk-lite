@@ -221,6 +221,25 @@ class TestRpcWrappers:
             mocker.call({"is_container": False, "page": 2, "page_size": 2}),
         ]
 
+    def test_fetch_node_mgmt_pages_按count继续翻页(self, mocker):
+        rpc = mocker.MagicMock()
+        rpc.node_list.side_effect = [
+            {"count": 1200, "nodes": [{"id": f"n-{idx}"} for idx in range(500)]},
+            {"count": 1200, "nodes": [{"id": f"n-{idx}"} for idx in range(500, 1000)]},
+            {"count": 1200, "nodes": [{"id": f"n-{idx}"} for idx in range(1000, 1200)]},
+        ]
+        mocker.patch.object(S, "NODE_MGMT_SYNC_PAGE_SIZE", 1000)
+        mocker.patch.object(S, "_node_mgmt_client", return_value=rpc)
+
+        nodes = S._fetch_node_mgmt_pages({"is_container": False})
+
+        assert len(nodes) == 1200
+        assert rpc.node_list.call_args_list == [
+            mocker.call({"is_container": False, "page": 1, "page_size": 1000}),
+            mocker.call({"is_container": False, "page": 2, "page_size": 1000}),
+            mocker.call({"is_container": False, "page": 3, "page_size": 1000}),
+        ]
+
     def test_pick_access_point_无容器节点返回None(self, mocker):
         rpc = mocker.MagicMock()
         rpc.cloud_region_list.return_value = [{"id": 1, "name": "华东"}]
