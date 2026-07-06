@@ -3,6 +3,7 @@ import time
 from copy import deepcopy
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
 from apps.monitor.tasks.utils.policy_methods import METHOD, build_policy_query, period_to_seconds
@@ -20,11 +21,17 @@ class PolicyPreviewService:
         period = self._require_dict("period")
         algorithm = self._require_value("algorithm")
         group_algorithm = self.payload.get("group_algorithm")
-        group_by = self._require_string_list("group_by")
         step = self._format_period(period)
-        group_by_clause = ",".join(group_by)
+        if query_condition.get("type") == "formula":
+            compiled_formula = build_formula_query(query_condition)
+            metric_query = compiled_formula.query
+            group_by = compiled_formula.group_by
+            self.warnings.extend(compiled_formula.warnings)
+        else:
+            group_by = self._require_string_list("group_by")
+            metric_query = self._build_metric_query(query_condition)
 
-        metric_query = self._build_metric_query(query_condition)
+        group_by_clause = ",".join(group_by)
         method = METHOD.get(algorithm)
         if not method:
             raise BaseAppException(f"invalid algorithm method: {algorithm}")

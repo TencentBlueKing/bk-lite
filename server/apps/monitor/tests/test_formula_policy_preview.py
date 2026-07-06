@@ -1,0 +1,78 @@
+import pytest
+
+from apps.monitor.models.monitor_metrics import Metric, MetricGroup
+from apps.monitor.models.monitor_object import MonitorObject
+from apps.monitor.models.plugin import MonitorPlugin
+from apps.monitor.services.policy_preview import PolicyPreviewService
+
+
+@pytest.mark.django_db
+def test_preview_formula_uses_compiled_query(mocker):
+    obj = MonitorObject.objects.create(name="FormulaObj", level="base")
+    plugin = MonitorPlugin.objects.create(name="FormulaPlugin")
+    group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+    a = Metric.objects.create(
+        monitor_object=obj,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="a_metric",
+        query="a_metric{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    b = Metric.objects.create(
+        monitor_object=obj,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="b_metric",
+        query="b_metric{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    captured = {}
+
+    def fake_method(query, start, end, step, group_by, group_algorithm=None):
+        captured["query"] = query
+        captured["group_by"] = group_by
+        return {"status": "success", "data": {"result": []}}
+
+    mocker.patch.dict(
+        "apps.monitor.services.policy_preview.METHOD",
+        {"avg_over_time": fake_method},
+        clear=False,
+    )
+
+    svc = PolicyPreviewService(
+        {
+            "query_condition": {
+                "type": "formula",
+                "result_name": "错误率",
+                "expression": "a / b * 100",
+                "queries": [
+                    {
+                        "ref": "a",
+                        "metric_id": a.id,
+                        "filter": [],
+                        "group_algorithm": "sum",
+                        "group_by": ["instance_id", "status"],
+                    },
+                    {
+                        "ref": "b",
+                        "metric_id": b.id,
+                        "filter": [],
+                        "group_algorithm": "sum",
+                        "group_by": ["instance_id"],
+                    },
+                ],
+            },
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "group_algorithm": "avg",
+            "group_by": ["instance_id"],
+            "preview": {"duration_points": 1},
+        }
+    )
+
+    out = svc.preview()
+
+    assert "on(instance_id) group_left" in captured["query"]
+    assert captured["group_by"] == "instance_id,status"
+    assert out["warnings"] == []
