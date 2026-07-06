@@ -7,6 +7,7 @@ from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
 from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
 from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
+from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
 from apps.core.logger import celery_logger as logger
@@ -62,8 +63,7 @@ class MetricQueryService:
             return
 
         if query_type == "formula":
-            self.compiled_formula = build_formula_query(self.policy.query_condition)
-            self.instance_id_keys = self.compiled_formula.group_by
+            self._ensure_formula_compiled()
             return
 
         # Metric类型: 从metric配置中获取instance_id_keys
@@ -119,9 +119,7 @@ class MetricQueryService:
             return query_condition.get("query")
 
         if query_type == "formula":
-            if self.compiled_formula is None:
-                self.compiled_formula = build_formula_query(query_condition)
-            return self.compiled_formula.query
+            return self._ensure_formula_compiled().query
 
         # 否则基于metric构建查询
         query = self.metric.query
@@ -158,7 +156,7 @@ class MetricQueryService:
         # 准备查询参数
         query = self.format_pmq()
         step = self.format_period(period, points)
-        group_by = ",".join(self._get_group_by_keys())
+        group_by = ",".join(self.get_result_group_by())
 
         # 获取聚合方法
         method = METHOD.get(self.policy.algorithm)
@@ -302,7 +300,7 @@ class MetricQueryService:
             dict: 格式化后的指标数据 {metric_instance_id: {"value": float, "raw_data": dict}}
         """
         result = {}
-        group_by_keys = self._get_group_by_keys()
+        group_by_keys = self.get_result_group_by()
 
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id_tuple = tuple(
@@ -311,8 +309,8 @@ class MetricQueryService:
             metric_instance_id = str(instance_id_tuple)
 
             if self.instances_map:
-                monitor_instance_id = (
-                    str((instance_id_tuple[0],)) if instance_id_tuple else ""
+                monitor_instance_id = self.get_monitor_instance_id_from_tuple(
+                    instance_id_tuple, group_by_keys
                 )
                 if monitor_instance_id not in self.instances_map:
                     continue
@@ -325,7 +323,47 @@ class MetricQueryService:
 
         return result
 
-    def _get_group_by_keys(self) -> list:
-        if self.compiled_formula:
-            return self.compiled_formula.group_by
+    def _ensure_formula_compiled(self):
+        if self.compiled_formula is None:
+            self.compiled_formula = build_formula_query(self.policy.query_condition)
+            self.instance_id_keys = list(self.compiled_formula.group_by)
+        return self.compiled_formula
+
+    def get_result_group_by(self) -> list:
+        if self.policy.query_condition.get("type") == "formula":
+            return list(self._ensure_formula_compiled().group_by)
         return self.policy.group_by or []
+
+    def get_monitor_instance_id_key(self) -> str:
+        result_group_by = self.get_result_group_by()
+        if getattr(self.policy, "collect_type", "") == "trap":
+            return "source"
+        if "instance_id" in result_group_by:
+            return "instance_id"
+        metric_instance_keys = getattr(self.metric, "instance_id_keys", None) or []
+        if metric_instance_keys:
+            return metric_instance_keys[0]
+        query_instance_keys = self.policy.query_condition.get("instance_id_keys") or []
+        if query_instance_keys:
+            return query_instance_keys[0]
+        return result_group_by[0] if result_group_by else ""
+
+    def get_monitor_instance_id_from_tuple(
+        self, instance_id_tuple: tuple, group_by_keys: list | None = None
+    ) -> str:
+        if not instance_id_tuple:
+            return ""
+
+        group_by_keys = group_by_keys or self.get_result_group_by()
+        monitor_key = self.get_monitor_instance_id_key()
+        if monitor_key in group_by_keys:
+            index = group_by_keys.index(monitor_key)
+            if index < len(instance_id_tuple):
+                return str((instance_id_tuple[index],))
+
+        return str((instance_id_tuple[0],))
+
+    def get_monitor_instance_id_from_metric_instance_id(
+        self, metric_instance_id: str
+    ) -> str:
+        return self.get_monitor_instance_id_from_tuple(parse_instance_id(metric_instance_id))

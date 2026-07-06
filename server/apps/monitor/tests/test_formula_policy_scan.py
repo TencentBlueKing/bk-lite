@@ -198,3 +198,138 @@ def test_metric_query_path_still_uses_policy_group_by(mocker):
     service.query_aggregation_metrics(policy.period)
 
     assert captured == {"query": "cpu{}", "group_by": "instance_id"}
+
+
+def test_metric_detector_uses_policy_group_by_not_metric_instance_id_keys():
+    policy = _policy(
+        query_condition={"type": "metric", "metric_id": 9},
+        group_by=["instance_id", "mount"],
+        alert_name="$instance_name $metric__mount $value",
+    )
+    agg = {
+        "data": {
+            "result": [
+                {
+                    "metric": {"instance_id": "h1", "mount": "/data"},
+                    "values": [[100, "95"]],
+                }
+            ]
+        }
+    }
+    detector = AlertDetector(
+        policy,
+        {"('h1',)": "主机1"},
+        {},
+        [],
+        _metric_query_service(
+            metric=SimpleNamespace(display_name="CPU", name="cpu", dimensions=[]),
+            instance_id_keys=["instance_id"],
+            agg=agg,
+        ),
+    )
+
+    alerts, infos = detector.detect_threshold_alerts()
+
+    assert infos == []
+    assert alerts[0]["metric_instance_id"] == str(("h1", "/data"))
+    assert alerts[0]["monitor_instance_id"] == "('h1',)"
+    assert alerts[0]["content"].startswith("主机1 - mount:/data /data")
+
+
+def test_formula_reversed_group_by_threshold_uses_instance_id_for_scope():
+    policy = _policy(group_by=["instance_id"])
+    agg = {
+        "data": {
+            "result": [
+                {
+                    "metric": {"status": "500", "instance_id": "h1"},
+                    "values": [[100, "95"]],
+                }
+            ]
+        }
+    }
+    detector = AlertDetector(
+        policy,
+        {"('h1',)": "主机1"},
+        {},
+        [],
+        _metric_query_service(instance_id_keys=["status", "instance_id"], agg=agg),
+    )
+
+    alerts, infos = detector.detect_threshold_alerts()
+
+    assert infos == []
+    assert alerts[0]["metric_instance_id"] == str(("500", "h1"))
+    assert alerts[0]["monitor_instance_id"] == "('h1',)"
+    assert alerts[0]["dimensions"] == {"status": "500", "instance_id": "h1"}
+    assert alerts[0]["content"].startswith("错误率 主机1")
+    assert " 500 " in alerts[0]["content"]
+
+
+@pytest.mark.django_db
+def test_formula_reversed_group_by_baseline_uses_instance_id_for_scope():
+    obj = MonitorObject.objects.create(name="FormulaReverseBaseObj", level="base")
+    policy = MonitorPolicy.objects.create(
+        monitor_object=obj,
+        name="formula-policy-reverse",
+        algorithm="max",
+        query_condition={"type": "formula", "result_name": "错误率"},
+        source={"type": "instance", "values": ["('h1',)"]},
+        group_by=["instance_id"],
+        period={"type": "min", "value": 5},
+        last_run_time=datetime(2026, 7, 6, 10, 0, tzinfo=timezone.utc),
+    )
+    MonitorInstance.objects.create(id="('h1',)", name="host1", monitor_object=obj)
+    fake_query_svc = MagicMock()
+    fake_query_svc.instance_id_keys = ["status", "instance_id"]
+    fake_query_svc.query_aggregation_metrics.return_value = {
+        "data": {
+            "result": [
+                {
+                    "metric": {"status": "500", "instance_id": "h1"},
+                    "values": [[100, "1"]],
+                },
+            ]
+        }
+    }
+
+    with patch(
+        "apps.monitor.tasks.services.policy_scan.metric_query.MetricQueryService",
+        return_value=fake_query_svc,
+    ):
+        PolicyBaselineService(policy).refresh()
+
+    baseline = policy.policyinstancebaseline_set.get()
+    assert baseline.metric_instance_id == str(("500", "h1"))
+    assert baseline.monitor_instance_id == "('h1',)"
+
+
+def test_formula_lazy_compile_sets_result_group_by_for_formatting(mocker):
+    policy = _policy(group_by=["instance_id"])
+    compiled = SimpleNamespace(
+        query="formula_query",
+        group_by=["status", "instance_id"],
+        result_name="错误率",
+        warnings=[],
+    )
+    mocker.patch(
+        "apps.monitor.tasks.services.policy_scan.metric_query.build_formula_query",
+        return_value=compiled,
+    )
+    service = MetricQueryService(policy, {"('h1',)": "主机1"})
+    metrics = {
+        "data": {
+            "result": [
+                {
+                    "metric": {"status": "500", "instance_id": "h1"},
+                    "values": [[100, "1"]],
+                },
+            ]
+        }
+    }
+
+    assert service.format_pmq() == "formula_query"
+    formatted = service.format_aggregation_metrics(metrics)
+
+    assert service.instance_id_keys == ["status", "instance_id"]
+    assert list(formatted.keys()) == [str(("500", "h1"))]
