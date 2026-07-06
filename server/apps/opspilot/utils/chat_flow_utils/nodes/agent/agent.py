@@ -14,7 +14,6 @@ from apps.opspilot.services.chat_service import ChatService, chat_service
 from apps.opspilot.services.skill_package.runtime import build_skill_package_prompt, build_skill_package_strategy, hydrate_skill_packages
 from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 from apps.opspilot.utils.agent_factory import create_agent_instance
-from apps.opspilot.utils.chat_flow_utils.conversation_history import build_node_chat_history
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.prompt_utils import resolve_skill_params
 
@@ -175,14 +174,7 @@ class AgentNode(BaseNodeExecutor):
                 break
         return message
 
-    def _build_llm_params(
-        self,
-        skill: LLMSkill,
-        final_message: str,
-        flow_input: Dict[str, Any],
-        node_id: str = "",
-        raw_message: Any = None,
-    ) -> Dict[str, Any]:
+    def _build_llm_params(self, skill: LLMSkill, final_message: str, flow_input: Dict[str, Any], node_id: str = "") -> Dict[str, Any]:
         """构建LLM调用参数
 
         Args:
@@ -190,7 +182,6 @@ class AgentNode(BaseNodeExecutor):
             final_message: 最终消息
             flow_input: 流程输入
             node_id: 当前执行的节点ID（优先级高于 flow_input["node_id"]）
-            raw_message: 节点消费的原始输入，用于判断是否注入跨轮会话历史
 
         Returns:
             LLM参数字典
@@ -211,18 +202,16 @@ class AgentNode(BaseNodeExecutor):
             available_tool_names={tool.get("name") for tool in (skill.tools or []) if isinstance(tool, dict) and tool.get("name")},
         )
         skill_package_strategy = build_skill_package_strategy(matched_skill_packages)
-        chat_history = build_node_chat_history(
-            self.variable_manager,
-            raw_input_message=final_message if raw_message is None else raw_message,
-            final_message=final_message,
-        )
         return {
             "llm_model": skill.llm_model_id,
             "skill_prompt": resolved_prompt,
             "matched_skill_packages": matched_skill_packages,
+            # 用户显式选中的全集:用于 backend 物化,绕开 substring 匹配丢包。
+            # chat_service 透传到 extra_config,node._resolve_skill_packages 优先使用。
+            "enabled_skill_packages": skill_packages,
             **skill_package_strategy,
             "temperature": skill.temperature,
-            "chat_history": chat_history,
+            "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
             "enable_rag": skill.enable_rag,
@@ -333,7 +322,7 @@ class AgentNode(BaseNodeExecutor):
         entry_type = flow_input.get("entry_type", "")
         if entry_type in ("celery", "test"):
             return "unattended"
-        elif entry_type in ("enterprise_wechat", "enterprise_wechat_aibot", "dingtalk", "wechat_official"):
+        elif entry_type in ("enterprise_wechat", "dingtalk", "wechat_official"):
             return "third_party"
         else:
             return "interactive"
@@ -368,7 +357,7 @@ class AgentNode(BaseNodeExecutor):
         final_message = self._build_final_message(message, node_prompt, uploaded_files, node_id)
 
         # 构建LLM参数
-        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id, raw_message=message)
+        llm_params = self._build_llm_params(skill, final_message, flow_input, node_id=node_id)
 
         return llm_params, skill.name, self._skill_supports_attachment_generation(skill)
 
