@@ -233,7 +233,7 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
     return errors;
   }
 
-  assignMetricRowRefs(rows).forEach((row) => {
+  rows.forEach((row) => {
     if (!isPositiveInteger(row.metricId)) {
       errors.push(`指标 ${row.ref} 必须选择有效指标`);
     }
@@ -249,6 +249,15 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
     ) {
       errors.push(`指标 ${row.ref} 缺少有效分组维度`);
     }
+
+    row.filters.forEach((filter, index) => {
+      if (!filter.name || !filter.method || !filter.value) {
+        errors.push(`指标 ${row.ref} 的条件 ${index + 1} 未填写完整`);
+      }
+      if (index > 0 && !['and', 'or'].includes(filter.logic || '')) {
+        errors.push(`指标 ${row.ref} 的条件 ${index + 1} 缺少 AND/OR 关系`);
+      }
+    });
   });
 
   return errors;
@@ -269,6 +278,43 @@ export const toMetricRowsFromMetricCondition = (
   })
 ];
 
+export const toMetricExpressionStateFromQueryCondition = (
+  condition?: MetricExpressionQueryCondition,
+  options: {
+    groupAlgorithm?: string | null;
+    groupBy?: string[];
+  } = {}
+): {
+  rows: MetricExpressionRow[];
+  resultName: string;
+  expression: string;
+} => {
+  if (condition?.type === 'formula') {
+    return {
+      rows: condition.queries.map((query, index) =>
+        createMetricRow(index, {
+          ref: query.ref || getMetricRowRef(index),
+          metricId: query.metric_id || null,
+          filters: query.filter || [],
+          groupAlgorithm: query.group_algorithm || 'avg',
+          groupBy: query.group_by?.length ? query.group_by : ['instance_id']
+        })
+      ),
+      resultName: condition.result_name || '',
+      expression: condition.expression || 'a / b * 100'
+    };
+  }
+
+  return {
+    rows: toMetricRowsFromMetricCondition(
+      condition?.type === 'metric' ? condition : undefined,
+      options
+    ),
+    resultName: '',
+    expression: 'a / b * 100'
+  };
+};
+
 export const validateMetricExpressionPayload = ({
   resultName,
   expression,
@@ -278,7 +324,7 @@ export const validateMetricExpressionPayload = ({
   expression: string;
   rows: MetricExpressionRow[];
 }): string[] => {
-  const normalizedRows = assignMetricRowRefs(rows);
+  const normalizedRows = rows;
   const errors: string[] = [];
 
   errors.push(...validateMetricRows(normalizedRows));
@@ -360,7 +406,7 @@ export const buildMetricExpressionQueryCondition = ({
   expression: string;
   rows: MetricExpressionRow[];
 }): MetricExpressionQueryCondition => {
-  const normalizedRows = assignMetricRowRefs(rows);
+  const normalizedRows = rows.length <= 1 ? assignMetricRowRefs(rows) : rows;
 
   if (normalizedRows.length <= 1) {
     const row = normalizedRows[0] || createMetricRow(0);

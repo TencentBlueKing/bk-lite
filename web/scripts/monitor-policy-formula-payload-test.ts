@@ -4,6 +4,7 @@ import {
   assignMetricRowRefs,
   buildMetricExpressionQueryCondition,
   extractFormulaRefs,
+  toMetricExpressionStateFromQueryCondition,
   toMetricRowsFromMetricCondition,
   validateMetricExpressionPayload
 } from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
@@ -214,6 +215,75 @@ assert.deepEqual(
   }),
   ['表达式引用了不存在的变量：b']
 );
+
+const restoredMetricState = toMetricExpressionStateFromQueryCondition(
+  {
+    type: 'metric',
+    metric_id: 11,
+    filter: [{ name: 'service', method: '=', value: 'checkout' }]
+  },
+  {
+    groupAlgorithm: 'max',
+    groupBy: ['instance_id', 'service']
+  }
+);
+
+assert.deepEqual(restoredMetricState, {
+  rows: [
+    {
+      ref: 'a',
+      metricId: 11,
+      filters: [{ name: 'service', method: '=', value: 'checkout' }],
+      groupAlgorithm: 'max',
+      groupBy: ['instance_id', 'service']
+    }
+  ],
+  resultName: '',
+  expression: 'a / b * 100'
+});
+
+const restoredFormulaState = toMetricExpressionStateFromQueryCondition({
+  type: 'formula',
+  result_name: 'HTTP 5xx 错误率',
+  expression: 'a / b * 100',
+  queries: [
+    {
+      ref: 'a',
+      metric_id: 101,
+      filter: [{ name: 'service', method: '=', value: 'checkout' }],
+      group_algorithm: 'sum',
+      group_by: ['instance_id', 'status']
+    },
+    {
+      ref: 'b',
+      metric_id: 102,
+      filter: [{ logic: 'or', name: 'status', method: '=', value: '200' }],
+      group_algorithm: 'sum',
+      group_by: ['instance_id']
+    }
+  ]
+});
+
+assert.deepEqual(restoredFormulaState, {
+  rows: [
+    {
+      ref: 'a',
+      metricId: 101,
+      filters: [{ name: 'service', method: '=', value: 'checkout' }],
+      groupAlgorithm: 'sum',
+      groupBy: ['instance_id', 'status']
+    },
+    {
+      ref: 'b',
+      metricId: 102,
+      filters: [{ logic: 'or', name: 'status', method: '=', value: '200' }],
+      groupAlgorithm: 'sum',
+      groupBy: ['instance_id']
+    }
+  ],
+  resultName: 'HTTP 5xx 错误率',
+  expression: 'a / b * 100'
+});
 
 assertBuildThrows([], '至少需要配置一个指标');
 assertBuildThrows(

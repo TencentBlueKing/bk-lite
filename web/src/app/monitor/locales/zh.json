@@ -492,6 +492,7 @@
       "keyMetric": "关键指标",
       "generateConfiguration": "生成配置",
       "addMetric": "添加指标",
+      "formulaResultName": "结果名称",
       "authPasswordDes": "用于认证的密码，与选择的认证协议对应。",
       "memoryDes": "监控内存使用情况，包括内存利用率和可用内存。",
       "originalValue": "原始值",

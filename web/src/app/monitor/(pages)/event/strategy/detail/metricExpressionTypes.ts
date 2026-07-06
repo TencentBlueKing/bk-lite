@@ -22,7 +22,7 @@ export interface FormulaQueryCondition {
   queries: Array<{
     ref: string;
     metric_id: number;
-    filter: FilterItem[];
+    filter?: FilterItem[];
     group_algorithm: string;
     group_by: string[];
   }>;

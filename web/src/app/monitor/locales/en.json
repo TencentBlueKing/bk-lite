@@ -492,6 +492,7 @@
       "keyMetric": "Key Metric",
       "generateConfiguration": "Generate Configuration",
       "addMetric": "Add Metric",
+      "formulaResultName": "Result Name",
       "authPasswordDes": "The password used for authentication, corresponding to the chosen authentication protocol.",
       "memoryDes": "Monitor memory usage, including memory utilization and available memory.",
       "originalValue": "Original Value",
