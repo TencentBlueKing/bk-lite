@@ -6,6 +6,25 @@ import {
 } from './metricExpressionTypes';
 
 export const VARIABLE_SEQUENCE = 'abcdefghijklmnopqrstuvwxyz'.split('');
+export const SUPPORTED_GROUP_ALGORITHMS = [
+  'sum',
+  'avg',
+  'max',
+  'min',
+  'count'
+];
+
+type FormulaTokenType = 'identifier' | 'number' | 'operator' | 'leftParen' | 'rightParen';
+
+interface FormulaToken {
+  type: FormulaTokenType;
+  value: string;
+}
+
+interface ParsedFormula {
+  refs: string[];
+  errors: string[];
+}
 
 export const getMetricRowRef = (index: number): string =>
   VARIABLE_SEQUENCE[index] || `m${index + 1}`;
@@ -42,6 +61,199 @@ export const extractFormulaRefs = (expression: string): string[] => {
   return Array.from(refs);
 };
 
+const tokenizeFormulaExpression = (expression: string): {
+  tokens: FormulaToken[];
+  errors: string[];
+} => {
+  const tokens: FormulaToken[] = [];
+  const errors: string[] = [];
+  let index = 0;
+
+  while (index < expression.length) {
+    const char = expression[index];
+
+    if (/\s/.test(char)) {
+      index += 1;
+      continue;
+    }
+
+    if (/[0-9]/.test(char)) {
+      let value = char;
+      index += 1;
+      while (index < expression.length && /[0-9.]/.test(expression[index])) {
+        value += expression[index];
+        index += 1;
+      }
+      if (!/^\d+(?:\.\d+)?$/.test(value)) {
+        errors.push(`表达式包含非法数字：${value}`);
+      }
+      tokens.push({ type: 'number', value });
+      continue;
+    }
+
+    if (/[a-zA-Z]/.test(char)) {
+      let value = char;
+      index += 1;
+      while (index < expression.length && /[a-zA-Z0-9_]/.test(expression[index])) {
+        value += expression[index];
+        index += 1;
+      }
+      tokens.push({ type: 'identifier', value });
+      continue;
+    }
+
+    if (['+', '-', '*', '/'].includes(char)) {
+      tokens.push({ type: 'operator', value: char });
+      index += 1;
+      continue;
+    }
+
+    if (char === '(') {
+      tokens.push({ type: 'leftParen', value: char });
+      index += 1;
+      continue;
+    }
+
+    if (char === ')') {
+      tokens.push({ type: 'rightParen', value: char });
+      index += 1;
+      continue;
+    }
+
+    errors.push(`表达式包含非法字符：${char}`);
+    index += 1;
+  }
+
+  return { tokens, errors };
+};
+
+const parseFormulaExpression = (expression: string): ParsedFormula => {
+  const { tokens, errors } = tokenizeFormulaExpression(expression);
+  const refs = new Set<string>();
+  let index = 0;
+
+  const current = () => tokens[index];
+  const consume = () => {
+    const token = tokens[index];
+    index += 1;
+    return token;
+  };
+
+  const parseFactor = (): boolean => {
+    const token = current();
+
+    if (!token) {
+      errors.push('表达式语法不完整');
+      return false;
+    }
+
+    if (token.type === 'identifier') {
+      refs.add(token.value);
+      consume();
+      return true;
+    }
+
+    if (token.type === 'number') {
+      consume();
+      return true;
+    }
+
+    if (token.type === 'leftParen') {
+      consume();
+      if (!parseExpression()) {
+        return false;
+      }
+      if (current()?.type !== 'rightParen') {
+        errors.push('表达式括号不匹配');
+        return false;
+      }
+      consume();
+      return true;
+    }
+
+    if (token.type === 'rightParen') {
+      errors.push('表达式括号不匹配');
+      return false;
+    }
+
+    errors.push('表达式语法不完整');
+    return false;
+  };
+
+  const parseTerm = (): boolean => {
+    if (!parseFactor()) {
+      return false;
+    }
+
+    while (current()?.type === 'operator' && ['*', '/'].includes(current().value)) {
+      consume();
+      if (!parseFactor()) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  const parseExpression = (): boolean => {
+    if (!parseTerm()) {
+      return false;
+    }
+
+    while (current()?.type === 'operator' && ['+', '-'].includes(current().value)) {
+      consume();
+      if (!parseTerm()) {
+        return false;
+      }
+    }
+
+    return true;
+  };
+
+  if (tokens.length && parseExpression() && current()) {
+    errors.push(
+      current()?.type === 'rightParen' ? '表达式括号不匹配' : '表达式语法不完整'
+    );
+  }
+
+  return {
+    refs: Array.from(refs),
+    errors: Array.from(new Set(errors))
+  };
+};
+
+const isPositiveInteger = (value: number | null): value is number =>
+  Number.isInteger(value) && !!value && value > 0;
+
+const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
+  const errors: string[] = [];
+
+  if (!rows.length) {
+    errors.push('至少需要配置一个指标');
+    return errors;
+  }
+
+  assignMetricRowRefs(rows).forEach((row) => {
+    if (!isPositiveInteger(row.metricId)) {
+      errors.push(`指标 ${row.ref} 必须选择有效指标`);
+    }
+
+    if (!SUPPORTED_GROUP_ALGORITHMS.includes(row.groupAlgorithm)) {
+      errors.push(`指标 ${row.ref} 缺少有效分组聚合方式`);
+    }
+
+    if (
+      !Array.isArray(row.groupBy) ||
+      !row.groupBy.length ||
+      row.groupBy.some((item) => typeof item !== 'string' || !item.trim())
+    ) {
+      errors.push(`指标 ${row.ref} 缺少有效分组维度`);
+    }
+  });
+
+  return errors;
+};
+
 export const toMetricRowsFromMetricCondition = (
   condition?: MetricQueryCondition,
   options: {
@@ -67,11 +279,9 @@ export const validateMetricExpressionPayload = ({
   rows: MetricExpressionRow[];
 }): string[] => {
   const normalizedRows = assignMetricRowRefs(rows);
-  const availableRefs = new Set(normalizedRows.map((row) => row.ref));
-  const missingRefs = extractFormulaRefs(expression).filter(
-    (ref) => !availableRefs.has(ref)
-  );
   const errors: string[] = [];
+
+  errors.push(...validateMetricRows(normalizedRows));
 
   if (!resultName.trim()) {
     errors.push('结果名称不能为空');
@@ -79,13 +289,33 @@ export const validateMetricExpressionPayload = ({
 
   if (!expression.trim()) {
     errors.push('表达式不能为空');
+    return errors;
+  }
+
+  const parsedExpression = parseFormulaExpression(expression);
+  errors.push(...parsedExpression.errors);
+
+  const availableRefs = new Set(normalizedRows.map((row) => row.ref));
+  const expressionRefs = new Set(parsedExpression.refs);
+  const missingRefs = parsedExpression.refs.filter(
+    (ref) => !availableRefs.has(ref)
+  );
+
+  if (expressionRefs.size < 2) {
+    errors.push('表达式至少需要引用两个不同变量');
   }
 
   if (missingRefs.length) {
     errors.push(`表达式引用了不存在的变量：${missingRefs.join(', ')}`);
   }
 
-  return errors;
+  normalizedRows.forEach((row) => {
+    if (!expressionRefs.has(row.ref)) {
+      errors.push(`指标 ${row.ref} 未在表达式中使用`);
+    }
+  });
+
+  return Array.from(new Set(errors));
 };
 
 export const buildFormulaQueryCondition = ({
@@ -113,7 +343,7 @@ export const buildFormulaQueryCondition = ({
     expression: expression.trim(),
     queries: assignMetricRowRefs(rows).map((row) => ({
       ref: row.ref,
-      metric_id: row.metricId as number,
+      metric_id: row.metricId,
       filter: row.filters,
       group_algorithm: row.groupAlgorithm,
       group_by: row.groupBy
@@ -134,9 +364,15 @@ export const buildMetricExpressionQueryCondition = ({
 
   if (normalizedRows.length <= 1) {
     const row = normalizedRows[0] || createMetricRow(0);
+    const errors = validateMetricRows(normalizedRows);
+
+    if (errors.length) {
+      throw new Error(errors.join('；'));
+    }
+
     return {
       type: 'metric',
-      metric_id: row.metricId || undefined,
+      metric_id: row.metricId,
       filter: row.filters
     };
   }

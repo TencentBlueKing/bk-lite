@@ -8,6 +8,32 @@ import {
   validateMetricExpressionPayload
 } from '../src/app/monitor/(pages)/event/strategy/detail/formulaExpressionUtils';
 
+const assertValidationIncludes = (
+  errors: string[],
+  expectedMessage: string
+) => {
+  assert.ok(
+    errors.includes(expectedMessage),
+    `Expected validation errors to include "${expectedMessage}", got ${JSON.stringify(errors)}`
+  );
+};
+
+const assertBuildThrows = (
+  rows: Parameters<typeof buildMetricExpressionQueryCondition>[0]['rows'],
+  expectedMessage: string
+) => {
+  assert.throws(
+    () =>
+      buildMetricExpressionQueryCondition({
+        resultName: 'HTTP 5xx 错误率',
+        expression: 'a / b',
+        rows
+      }),
+    (error) =>
+      error instanceof Error && error.message.includes(expectedMessage)
+  );
+};
+
 const singleRows = toMetricRowsFromMetricCondition(
   {
     type: 'metric',
@@ -99,6 +125,69 @@ assert.deepEqual(
   ['结果名称不能为空']
 );
 
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: [{ ...formulaRows[0], metricId: null }]
+  }),
+  '指标 a 必须选择有效指标'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: [{ ...formulaRows[0], groupAlgorithm: '' }, formulaRows[1]]
+  }),
+  '指标 a 缺少有效分组聚合方式'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: [{ ...formulaRows[0], groupBy: [] }, formulaRows[1]]
+  }),
+  '指标 a 缺少有效分组维度'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a b',
+    rows: formulaRows
+  }),
+  '表达式语法不完整'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a * 100',
+    rows: formulaRows
+  }),
+  '表达式至少需要引用两个不同变量'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a /',
+    rows: formulaRows
+  }),
+  '表达式语法不完整'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: '(a / b',
+    rows: formulaRows
+  }),
+  '表达式括号不匹配'
+);
+
 assert.deepEqual(
   validateMetricExpressionPayload({
     resultName: 'HTTP 5xx 错误率',
@@ -108,13 +197,13 @@ assert.deepEqual(
   ['表达式不能为空']
 );
 
-assert.deepEqual(
+assertValidationIncludes(
   validateMetricExpressionPayload({
     resultName: 'HTTP 5xx 错误率',
     expression: 'a / c',
     rows: formulaRows
   }),
-  ['表达式引用了不存在的变量：c']
+  '表达式引用了不存在的变量：c'
 );
 
 assert.deepEqual(
@@ -124,6 +213,12 @@ assert.deepEqual(
     rows: formulaRows.slice(0, 1)
   }),
   ['表达式引用了不存在的变量：b']
+);
+
+assertBuildThrows([], '至少需要配置一个指标');
+assertBuildThrows(
+  [{ ...singleRows[0], metricId: null }],
+  '指标 a 必须选择有效指标'
 );
 
 console.log('monitor-policy-formula-payload-test passed');
