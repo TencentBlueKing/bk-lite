@@ -21,12 +21,13 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
         return normalize_network_config_instance(self._single_instance())
 
     def get_hosts(self):
-        # P2-2.2: 复用 _target_instance 的规范化结果,避免对每个 instance 重复校验
-        # 多个 instance 的场景下,O(N) 次 validate → O(1) 次 normalize
+        # P2-2.2: get_hosts 只需要 host 字段,不需要 device_type。
+        # 跳过 normalize 直接抽 host,避免 N 个 instance 重复 N 次 resolve_device_type
+        # (set_credential 仍会调 _target_instance 走一次完整 normalize)。
         if not (self.instance.instances or []):
             return "hosts", ""
         hosts = ",".join(
-            normalize_network_config_instance(inst)["host"]
+            (inst.get("ip_addr") or inst.get("host") or "").strip()
             for inst in self.instance.instances
             if isinstance(inst, dict)
         )
