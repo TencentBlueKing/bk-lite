@@ -12,5 +12,5 @@ def test_feishu_login_auth_manifest_declares_recommended_external_field():
 def test_wechat_login_auth_manifest_declares_recommended_external_field():
     template = WECHAT_PROVIDER_MANIFEST.business_templates["login_auth_form"]
 
-    assert template.available_external_fields == ["open_id", "unionid", "nickname"]
-    assert template.default_external_match_field == "open_id"
+    assert template.available_external_fields == ["openid", "unionid"]
+    assert template.default_external_match_field == "openid"

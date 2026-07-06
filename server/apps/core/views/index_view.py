@@ -381,9 +381,13 @@ def logout(request):
 @api_exempt
 def wechat_login(request):
     """
-    微信扫码登录接口。
+    [LEGACY] 旧扫码登录入口,与 LoginAuthBinding 通用链路并行。
 
-    接收微信授权 code，后端验证后签发 token。
+    接收微信授权 code,后端验证后签发 token。
+
+    新链路走 WechatLoginAuthAdapter → _resolve_platform_user,
+    详情见 openspec/changes/wechat-login-auth-field-mapping/design.md。
+    新链路稳定后移除本入口及 wechat_user_register NATS handler。
 
     Request:
         POST { "code": "微信授权码" }
