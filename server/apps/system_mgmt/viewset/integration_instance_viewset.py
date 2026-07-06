@@ -83,7 +83,11 @@ class IntegrationInstanceViewSet(MaintainerViewSet):
         is_valid, error_response = self._validate_instance_permission(request, obj)
         if not is_valid:
             return error_response
-        serializer = self.get_serializer(obj)
+        raw_origin = request.query_params.get("redirect_origin")
+        redirect_origin = raw_origin if isinstance(raw_origin, str) and raw_origin.strip() else None
+        context = self.get_serializer_context()
+        context["redirect_origin"] = redirect_origin
+        serializer = IntegrationInstanceSerializer(obj, context=context)
         return Response(serializer.data)
 
     @HasPermission("integration_center-Add")

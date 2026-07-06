@@ -106,7 +106,7 @@ const IntegrationDetailPage: React.FC = () => {
     setLoading(true);
     try {
       const [instanceData, providerData] = await Promise.all([
-        getInstance(numericId),
+        getInstance(numericId, { redirect_origin: window.location.origin }),
         getProviders(),
       ]);
       setInstance(instanceData);

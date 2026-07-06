@@ -1,4 +1,4 @@
-from unittest.mock import MagicMock, patch
+from unittest.mock import ANY, MagicMock, patch
 
 import pytest
 
@@ -201,6 +201,99 @@ class TestIntegrationInstanceViewSet:
         assert response.status_code == 200
         assert response.data["id"] == draft_instance.id
         assert response.data["login_auth_callback_url"] == "http://testserver/api/v1/core/api/login_auth/callback/"
+        # V6:无 redirect_origin query 时,生成函数收到 redirect_origin=None
+        mock_get_login_auth_callback_uri.assert_called_once_with(request=ANY, redirect_origin=None)
+
+    @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
+    def test_retrieve_forwards_same_origin_redirect_origin_query(
+        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+    ):
+        """V1:?redirect_origin=<同源> 时透传给生成函数,字段值取 mock 返回。"""
+        mock_get_login_auth_callback_uri.return_value = (
+            "http://testserver/api/v1/core/api/login_auth/callback/"
+        )
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+        authenticated_user.save(update_fields=["group_list"])
+
+        response = api_client.get(
+            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/?redirect_origin=http://testserver"
+        )
+
+        assert response.status_code == 200
+        assert response.data["login_auth_callback_url"] == (
+            "http://testserver/api/v1/core/api/login_auth/callback/"
+        )
+        mock_get_login_auth_callback_uri.assert_called_once_with(
+            request=ANY, redirect_origin="http://testserver",
+        )
+
+    @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
+    def test_retrieve_normalizes_empty_redirect_origin_query(
+        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+    ):
+        """V2/V3:无 query 或空串 query 都归一化为 None,行为兼容。"""
+        mock_get_login_auth_callback_uri.return_value = (
+            "http://testserver/api/v1/core/api/login_auth/callback/"
+        )
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+        authenticated_user.save(update_fields=["group_list"])
+
+        for url in (
+            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/",
+            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/?redirect_origin=",
+        ):
+            mock_get_login_auth_callback_uri.reset_mock()
+            response = api_client.get(url)
+            assert response.status_code == 200
+            mock_get_login_auth_callback_uri.assert_called_once_with(
+                request=ANY, redirect_origin=None,
+            )
+
+    @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
+    def test_retrieve_passes_cross_origin_redirect_origin_through(
+        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+    ):
+        """V4:跨域 origin 仍按契约透传给生成函数(契约层);具体降级由生成函数负责。"""
+        mock_get_login_auth_callback_uri.return_value = (
+            "http://testserver/api/v1/core/api/login_auth/callback/"
+        )
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+        authenticated_user.save(update_fields=["group_list"])
+
+        response = api_client.get(
+            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/"
+            "?redirect_origin=http://evil.com"
+        )
+
+        assert response.status_code == 200
+        mock_get_login_auth_callback_uri.assert_called_once_with(
+            request=ANY, redirect_origin="http://evil.com",
+        )
+
+    @patch("apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri")
+    def test_retrieve_passes_redirect_origin_with_path_through(
+        self, mock_get_login_auth_callback_uri, api_client, authenticated_user, draft_instance,
+    ):
+        """V5:redirect_origin 带 path 时仍按契约透传(契约层校验非此处职责)。"""
+        mock_get_login_auth_callback_uri.return_value = (
+            "http://testserver/api/v1/core/api/login_auth/callback/"
+        )
+        authenticated_user.permission = {"system-manager": {"integration_center-View"}}
+        authenticated_user.group_list = [{"id": 1, "name": "Team A"}]
+        authenticated_user.save(update_fields=["group_list"])
+
+        response = api_client.get(
+            f"/api/v1/system_mgmt/integration_instance/{draft_instance.id}/",
+            data={"redirect_origin": "http://testserver/x"},
+        )
+
+        assert response.status_code == 200
+        mock_get_login_auth_callback_uri.assert_called_once_with(
+            request=ANY, redirect_origin="http://testserver/x",
+        )
 
     def test_retrieve_rejects_instance_outside_user_team(self, api_client, authenticated_user, draft_instance):
         authenticated_user.permission = {"system-manager": {"integration_center-View"}}

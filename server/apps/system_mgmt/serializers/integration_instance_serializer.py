@@ -35,8 +35,12 @@ class IntegrationInstanceSerializer(UsernameSerializer):
         capability_status = obj.capability_status or {}
         capability_enabled = obj.capability_enabled or {}
         has_login_auth = "login_auth" in capability_status or "login_auth" in capability_enabled
+        if not has_login_auth:
+            return ""
         request = self.context.get("request")
-        return get_login_auth_callback_uri(request=request) if has_login_auth else ""
+        raw_origin = self.context.get("redirect_origin")
+        redirect_origin = raw_origin if isinstance(raw_origin, str) and raw_origin.strip() else None
+        return get_login_auth_callback_uri(request=request, redirect_origin=redirect_origin)
 
     def validate(self, attrs):
         provider_key = attrs.get("provider_key") or getattr(self.instance, "provider_key", "")

@@ -29,8 +29,11 @@ export const useIntegrationCenterApi = () => {
     return (response as PaginatedResponse<IntegrationInstance>).items ?? [];
   }
 
-  async function getInstance(id: number): Promise<IntegrationInstance> {
-    return await get(`/system_mgmt/integration_instance/${id}/`);
+  async function getInstance(
+    id: number,
+    params?: Record<string, unknown>,
+  ): Promise<IntegrationInstance> {
+    return await get(`/system_mgmt/integration_instance/${id}/`, { params });
   }
 
   async function createInstance(params: CreateIntegrationInstancePayload): Promise<IntegrationInstance> {

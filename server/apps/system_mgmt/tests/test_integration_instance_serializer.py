@@ -1,3 +1,5 @@
+from unittest.mock import ANY, patch
+
 import pytest
 
 from apps.system_mgmt.models import IntegrationInstance, IntegrationInstanceStatusChoices
@@ -287,3 +289,136 @@ def test_integration_instance_serializer_display_name(monkeypatch):
 
     serializer = IntegrationInstanceSerializer(instance)
     assert serializer.data["display_name"] == "总部通讯录(feishu)"
+
+
+# ----------------------------------------------------------------------
+# login_auth_callback_url 字段的 redirect_origin 透传契约
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture
+def login_auth_ready_instance(db, monkeypatch):
+    """构造一个声明了 login_auth 能力的集成实例,并为 serializer 测试打桩 provider registry。"""
+    manifest = FakeManifest(
+        instance_template=[FakeField("app_id", required=True)],
+        capabilities=[FakeCapability("login_auth")],
+    )
+    patch_provider_registry(monkeypatch, manifest)
+    return IntegrationInstance.objects.create(
+        name="feishu-login",
+        provider_key="feishu",
+        config={"app_id": "cli_xxx"},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"login_auth": IntegrationInstanceStatusChoices.READY},
+        capability_enabled={"login_auth": True},
+    )
+
+
+@pytest.mark.django_db
+def test_login_auth_callback_url_forwards_redirect_origin_from_context(
+    login_auth_ready_instance, request_factory,
+):
+    """S1:redirect_origin 为 None 时,生成函数收到 None,行为向后兼容。"""
+    request = request_factory.get("/")
+
+    with patch(
+        "apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri",
+        return_value="http://fallback/api/v1/core/api/login_auth/callback/",
+    ) as mock_cb:
+        serializer = IntegrationInstanceSerializer(
+            login_auth_ready_instance,
+            context={"request": request, "redirect_origin": None},
+        )
+        value = serializer.data["login_auth_callback_url"]
+
+    assert value == "http://fallback/api/v1/core/api/login_auth/callback/"
+    mock_cb.assert_called_once_with(request=request, redirect_origin=None)
+
+
+@pytest.mark.django_db
+def test_login_auth_callback_url_passes_through_same_origin_redirect_origin(
+    login_auth_ready_instance, request_factory,
+):
+    """S2:同源 redirect_origin 原样透传给生成函数。"""
+    request = request_factory.get("/")
+
+    with patch(
+        "apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri",
+        return_value="http://testserver/api/v1/core/api/login_auth/callback/",
+    ) as mock_cb:
+        serializer = IntegrationInstanceSerializer(
+            login_auth_ready_instance,
+            context={"request": request, "redirect_origin": "http://testserver"},
+        )
+        value = serializer.data["login_auth_callback_url"]
+
+    assert value.endswith("/api/v1/core/api/login_auth/callback/")
+    mock_cb.assert_called_once_with(request=request, redirect_origin="http://testserver")
+
+
+@pytest.mark.django_db
+def test_login_auth_callback_url_normalizes_empty_redirect_origin_to_none(
+    login_auth_ready_instance, request_factory,
+):
+    """S3:空串统一归一化为 None,避免函数被同源校验空检后再降级。"""
+    request = request_factory.get("/")
+
+    with patch(
+        "apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri",
+        return_value="http://fallback/api/v1/core/api/login_auth/callback/",
+    ) as mock_cb:
+        serializer = IntegrationInstanceSerializer(
+            login_auth_ready_instance,
+            context={"request": request, "redirect_origin": ""},
+        )
+        serializer.data["login_auth_callback_url"]
+
+    mock_cb.assert_called_once_with(request=request, redirect_origin=None)
+
+
+@pytest.mark.django_db
+def test_login_auth_callback_url_passes_through_cross_origin_redirect_origin(
+    login_auth_ready_instance, request_factory,
+):
+    """S4:跨域 redirect_origin 仍按契约透传给生成函数;具体降级由生成函数负责。"""
+    request = request_factory.get("/")
+
+    with patch(
+        "apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri",
+        return_value="http://testserver/api/v1/core/api/login_auth/callback/",
+    ) as mock_cb:
+        serializer = IntegrationInstanceSerializer(
+            login_auth_ready_instance,
+            context={"request": request, "redirect_origin": "http://evil.com"},
+        )
+        serializer.data["login_auth_callback_url"]
+
+    mock_cb.assert_called_once_with(request=request, redirect_origin="http://evil.com")
+
+
+@pytest.mark.django_db
+def test_login_auth_callback_url_returns_empty_when_capability_not_declared(
+    db, request_factory,
+):
+    """S5:实例未声明 login_auth 能力时,不调用生成函数,字段直接返回空串。"""
+    request = request_factory.get("/")
+    instance = IntegrationInstance.objects.create(
+        name="no-login",
+        provider_key="feishu",
+        config={},
+        status=IntegrationInstanceStatusChoices.READY,
+        capability_status={"user_sync": IntegrationInstanceStatusChoices.READY},
+        capability_enabled={"user_sync": True},
+    )
+
+    with patch(
+        "apps.system_mgmt.serializers.integration_instance_serializer.get_login_auth_callback_uri",
+    ) as mock_cb:
+        serializer = IntegrationInstanceSerializer(
+            instance,
+            context={"request": request, "redirect_origin": "http://testserver"},
+        )
+        value = serializer.data["login_auth_callback_url"]
+
+    assert value == ""
+    mock_cb.assert_not_called()
