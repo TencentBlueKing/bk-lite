@@ -16,10 +16,23 @@ import type {
   StartLoginAuthResponseData,
 } from "./types";
 
+interface LoginAuthValidationMessages {
+  loadMethodsFailed: string;
+  timedOut: string;
+  cancelled: string;
+  failed: string;
+  incompletePayload: string;
+  syncFailed: string;
+  queryStatusFailed: string;
+  startFailed: string;
+  popupBlocked: string;
+}
+
 interface UseLoginAuthValidationOptions {
   enabled: boolean;
   callbackUrl: string;
   onOtpRequired: (loginResult: LoginAuthLoginResult) => void;
+  messages: LoginAuthValidationMessages;
   onSessionSync: (loginResult: LoginAuthLoginResult) => Promise<boolean>;
 }
 
@@ -40,6 +53,7 @@ function isTokenReadyResult(loginResult?: LoginAuthLoginResult): boolean {
 export function useLoginAuthValidation({
   enabled,
   callbackUrl,
+  messages,
   onOtpRequired,
   onSessionSync,
 }: UseLoginAuthValidationOptions) {
@@ -96,7 +110,7 @@ export function useLoginAuthValidation({
       const responseData = await response.json();
 
       if (!response.ok || !responseData?.result || !Array.isArray(responseData?.data)) {
-        throw new Error(responseData?.message || "Failed to load login auth bindings");
+        throw new Error(responseData?.message || messages.loadMethodsFailed);
       }
 
       const nextBindings = responseData.data as LoginAuthBindingItem[];
@@ -113,7 +127,7 @@ export function useLoginAuthValidation({
       console.error("Failed to fetch login auth bindings:", error);
       setBindings([]);
       setBindingsLoadState("bindings-error");
-      setErrorMessage("Failed to load login methods. Please refresh and try again.");
+      setErrorMessage(messages.loadMethodsFailed);
       setSelectedBindingId(null);
     } finally {
       setIsLoadingBindings(false);
@@ -146,10 +160,10 @@ export function useLoginAuthValidation({
         status,
         statusData.error_message
           || (status === "expired"
-            ? "Authentication timed out. Please try again."
+            ? messages.timedOut
             : status === "cancelled"
-              ? "Authentication was cancelled. Please try again."
-              : "Authentication failed. Please try again."),
+              ? messages.cancelled
+              : messages.failed),
       );
       return;
     }
@@ -167,13 +181,13 @@ export function useLoginAuthValidation({
     }
 
     if (!isTokenReadyResult(loginResult)) {
-      resetSelectionState("failed", "Authentication succeeded, but the returned login payload is incomplete.");
+      resetSelectionState("failed", messages.incompletePayload);
       return;
     }
 
     const synced = await onSessionSync(loginResult as LoginAuthLoginResult);
     if (!synced) {
-      resetSelectionState("failed", "Authentication succeeded, but session synchronization failed.");
+      resetSelectionState("failed", messages.syncFailed);
     }
   };
 
@@ -199,7 +213,7 @@ export function useLoginAuthValidation({
 
       if (!response.ok || !responseData?.result) {
         stopPolling();
-        resetSelectionState("failed", responseData?.message || "Failed to query authentication status.");
+        resetSelectionState("failed", responseData?.message || messages.queryStatusFailed);
         return;
       }
 
@@ -212,7 +226,7 @@ export function useLoginAuthValidation({
       await resolveTerminalStatus(statusData);
     } catch (error) {
       console.error("Failed to poll login auth status:", error);
-      resetSelectionState("failed", "Failed to query authentication status.");
+      resetSelectionState("failed", messages.queryStatusFailed);
     } finally {
       pollingInFlightRef.current = false;
     }
@@ -252,14 +266,14 @@ export function useLoginAuthValidation({
       const responseData = await response.json();
 
       if (!response.ok || !responseData?.result) {
-        resetSelectionState("failed", responseData?.message || "Failed to start authentication.");
+        resetSelectionState("failed", responseData?.message || messages.startFailed);
         return;
       }
 
       const startData = responseData.data as StartLoginAuthResponseData;
       const openedWindow = window.open(startData.login_url, "_blank");
       if (!openedWindow) {
-        resetSelectionState("failed", "Unable to open the authentication page. Please allow new tabs and try again.");
+        resetSelectionState("failed", messages.popupBlocked);
         return;
       }
 
@@ -279,7 +293,7 @@ export function useLoginAuthValidation({
       }, 3000);
     } catch (error) {
       console.error("Failed to start login auth:", error);
-      resetSelectionState("failed", "Failed to start authentication.");
+      resetSelectionState("failed", messages.startFailed);
     }
   };
 

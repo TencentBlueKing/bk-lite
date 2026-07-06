@@ -309,6 +309,41 @@
       "qrLoadFailed": "微信二维码加载失败",
       "loading": "正在加载二维码...",
       "unableToDisplay": "无法显示二维码"
+    },
+    "loginAuth": {
+      "methodsTitle": "切换登录方式",
+      "bindingPassword": {
+        "usernameLabel": "{bindingName} 用户名",
+        "usernamePlaceholder": "请输入 {bindingName} 用户名",
+        "passwordLabel": "{bindingName} 密码",
+        "passwordPlaceholder": "请输入 {bindingName} 密码",
+        "submitText": "使用 {bindingName} 登录",
+        "loadingText": "正在使用 {bindingName} 登录..."
+      },
+      "bindingContent": {
+        "completingSignIn": "正在完成登录",
+        "startingAuthentication": "正在启动认证",
+        "waitingForAuthentication": "等待认证完成",
+        "loadErrorTitle": "无法加载登录方式",
+        "loadErrorDescription": "请重试加载可用登录选项。",
+        "retry": "重试",
+        "bindingTitle": "{bindingName} 登录",
+        "bindingDescription": "使用 {bindingName} 账号完成登录",
+        "continueSignIn": "点击继续登录",
+        "waiting": "等待中...",
+        "helperMessage": "点击后将在新窗口中完成验证。若未跳转，可检查浏览器是否拦截弹窗。"
+      },
+      "validation": {
+        "loadMethodsFailed": "登录方式加载失败，请刷新后重试。",
+        "timedOut": "认证已超时，请重试。",
+        "cancelled": "认证已取消，请重试。",
+        "failed": "认证失败，请重试。",
+        "incompletePayload": "认证已成功，但返回的登录数据不完整。",
+        "syncFailed": "认证已成功，但会话同步失败。",
+        "queryStatusFailed": "查询认证状态失败。",
+        "startFailed": "启动认证失败。",
+        "popupBlocked": "无法打开认证页面，请允许浏览器弹窗后重试。"
+      }
     }
   },
   "system": {

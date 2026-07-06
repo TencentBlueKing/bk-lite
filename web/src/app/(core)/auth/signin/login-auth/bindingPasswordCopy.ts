@@ -8,15 +8,19 @@ function getBindingFormName(binding: LoginAuthBindingItem): string {
   return bindingFormNameOverrides[binding.provider_key] || binding.name;
 }
 
-export function getBindingPasswordCopy(binding: LoginAuthBindingItem) {
+export function getBindingPasswordCopy(
+  binding: LoginAuthBindingItem,
+  t: (id: string, defaultMessage?: string, values?: Record<string, string>) => string,
+) {
   const bindingName = getBindingFormName(binding);
+  const values = { bindingName };
 
   return {
-    usernameLabel: `${bindingName} Username`,
-    usernamePlaceholder: `Enter your ${bindingName} username`,
-    passwordLabel: `${bindingName} Password`,
-    passwordPlaceholder: `Enter your ${bindingName} password`,
-    submitText: `Sign in with ${bindingName}`,
-    loadingText: `Signing in with ${bindingName}...`,
+    usernameLabel: t('signin.loginAuth.bindingPassword.usernameLabel', undefined, values),
+    usernamePlaceholder: t('signin.loginAuth.bindingPassword.usernamePlaceholder', undefined, values),
+    passwordLabel: t('signin.loginAuth.bindingPassword.passwordLabel', undefined, values),
+    passwordPlaceholder: t('signin.loginAuth.bindingPassword.passwordPlaceholder', undefined, values),
+    submitText: t('signin.loginAuth.bindingPassword.submitText', undefined, values),
+    loadingText: t('signin.loginAuth.bindingPassword.loadingText', undefined, values),
   };
 }

@@ -8,12 +8,12 @@ interface BuiltinSigninContentProps {
   username: string;
   password: string;
   isLoading: boolean;
-  usernameLabel?: string;
-  usernamePlaceholder?: string;
-  passwordLabel?: string;
-  passwordPlaceholder?: string;
-  submitText?: string;
-  loadingText?: string;
+  usernameLabel: string;
+  usernamePlaceholder: string;
+  passwordLabel: string;
+  passwordPlaceholder: string;
+  submitText: string;
+  loadingText: string;
   fieldIdPrefix?: string;
   onUsernameChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
@@ -25,12 +25,12 @@ export default function BuiltinSigninContent({
   username,
   password,
   isLoading,
-  usernameLabel = "Username",
-  usernamePlaceholder = "Enter your username",
-  passwordLabel = "Password",
-  passwordPlaceholder = "Enter your password",
-  submitText = "Sign In",
-  loadingText = "Signing in...",
+  usernameLabel,
+  usernamePlaceholder,
+  passwordLabel,
+  passwordPlaceholder,
+  submitText,
+  loadingText,
   fieldIdPrefix = "builtin",
   onUsernameChange,
   onPasswordChange,

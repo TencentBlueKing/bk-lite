@@ -134,9 +134,22 @@ export default function SigninClient({
     setFormError("");
   };
 
+  const loginAuthValidationMessages = {
+    loadMethodsFailed: t('signin.loginAuth.validation.loadMethodsFailed'),
+    timedOut: t('signin.loginAuth.validation.timedOut'),
+    cancelled: t('signin.loginAuth.validation.cancelled'),
+    failed: t('signin.loginAuth.validation.failed'),
+    incompletePayload: t('signin.loginAuth.validation.incompletePayload'),
+    syncFailed: t('signin.loginAuth.validation.syncFailed'),
+    queryStatusFailed: t('signin.loginAuth.validation.queryStatusFailed'),
+    startFailed: t('signin.loginAuth.validation.startFailed'),
+    popupBlocked: t('signin.loginAuth.validation.popupBlocked'),
+  };
+
   const loginAuthValidation = useLoginAuthValidation({
     enabled: authStep === 'login',
     callbackUrl: callbackUrl || '/',
+    messages: loginAuthValidationMessages,
     onOtpRequired: applyOtpLoginResult,
     onSessionSync: async (loginResult) => {
       const success = await syncAuthenticatedSession({
@@ -368,6 +381,12 @@ export default function SigninClient({
       username={username}
       password={password}
       isLoading={isLoading}
+      usernameLabel={t('signin.form.username')}
+      usernamePlaceholder={t('signin.form.usernamePlaceholder')}
+      passwordLabel={t('signin.form.password')}
+      passwordPlaceholder={t('signin.form.passwordPlaceholder')}
+      submitText={t('signin.form.signIn')}
+      loadingText={t('signin.form.signingIn')}
       onUsernameChange={setUsername}
       onPasswordChange={setPassword}
       onSubmit={handleLoginSubmit}
@@ -380,7 +399,7 @@ export default function SigninClient({
       username={bindingCredentials.username}
       password={bindingCredentials.password}
       isLoading={isLoading}
-      {...getBindingPasswordCopy(selectedBinding)}
+      {...getBindingPasswordCopy(selectedBinding, t)}
       fieldIdPrefix={`binding-${selectedBinding.id}`}
       onUsernameChange={(value) => {
         setBindingCredentialMap((current) => ({
@@ -466,7 +485,7 @@ export default function SigninClient({
                 : bindingContent
           }
           methodsContent={bindingsSelector}
-          methodsTitle="切换登录方式"
+          methodsTitle={t('signin.loginAuth.methodsTitle')}
         />
       )}
       {authStep === 'reset-password' && renderPasswordResetForm()}
@@ -497,8 +516,8 @@ export default function SigninClient({
               <div className="mb-6 flex justify-center">
                 <img src={logoUrl} alt="Logo" className="h-14 w-auto object-contain" />
               </div>
-              <h2 className="text-3xl font-bold text-(--color-text-1)">Sign In</h2>
-              <p className="mt-2 text-(--color-text-3)">Enter your credentials to continue</p>
+              <h2 className="text-3xl font-bold text-(--color-text-1)">{t('signin.pageTitle.login')}</h2>
+              <p className="mt-2 text-(--color-text-3)">{t('signin.pageDescription.login')}</p>
             </div>
             {sharedContent}
           </div>

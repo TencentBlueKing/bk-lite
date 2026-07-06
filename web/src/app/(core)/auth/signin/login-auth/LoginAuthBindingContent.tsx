@@ -2,6 +2,7 @@
 
 import { LoadingOutlined, ReloadOutlined } from "@ant-design/icons";
 import Icon from "@/components/icon";
+import { useTranslation } from "@/utils/i18n";
 import type {
   LoginAuthBindingItem,
   LoginAuthBindingsLoadState,
@@ -19,16 +20,19 @@ interface LoginAuthBindingContentProps {
   onContinueThirdParty: () => void;
 }
 
-function getWaitingTitle(viewState: LoginAuthValidationViewState) {
+function getWaitingTitle(
+  viewState: LoginAuthValidationViewState,
+  t: (id: string) => string,
+) {
   if (viewState === "syncing-session") {
-    return "Completing sign-in";
+    return t('signin.loginAuth.bindingContent.completingSignIn');
   }
 
   if (viewState === "starting") {
-    return "Starting authentication";
+    return t('signin.loginAuth.bindingContent.startingAuthentication');
   }
 
-  return "Waiting for authentication";
+  return t('signin.loginAuth.bindingContent.waitingForAuthentication');
 }
 
 export default function LoginAuthBindingContent({
@@ -40,8 +44,9 @@ export default function LoginAuthBindingContent({
   onRetryBindings,
   onContinueThirdParty,
 }: LoginAuthBindingContentProps) {
+  const { t } = useTranslation();
   const isModalMode = mode === "modal";
-  const helperMessage = "点击后将在新窗口中完成验证。若未跳转，可检查浏览器是否拦截弹窗。";
+  const helperMessage = t('signin.loginAuth.bindingContent.helperMessage');
 
   if (bindingLoadState === "loading-bindings") {
     return (
@@ -60,17 +65,17 @@ export default function LoginAuthBindingContent({
           <ReloadOutlined />
         </div>
         <div className={`mt-4 font-semibold text-(--color-text-1) ${isModalMode ? "text-[15px]" : "text-[17px]"}`}>
-          Unable to load login methods
+          {t('signin.loginAuth.bindingContent.loadErrorTitle')}
         </div>
         <p className={`mt-2 text-(--color-text-3) ${isModalMode ? "text-[12px] leading-5" : "text-sm leading-6"}`}>
-          {errorMessage || "Please retry to load the available sign-in options."}
+          {errorMessage || t('signin.loginAuth.bindingContent.loadErrorDescription')}
         </p>
         <button
           type="button"
           onClick={onRetryBindings}
           className={`mt-5 inline-flex items-center justify-center rounded-lg bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
         >
-          Retry
+          {t('signin.loginAuth.bindingContent.retry')}
         </button>
       </div>
     );
@@ -94,10 +99,10 @@ export default function LoginAuthBindingContent({
             </div>
             <div className="min-w-0">
               <div className={`font-semibold text-[#1E4FD6] ${isModalMode ? "text-[13px] leading-[1.35]" : "text-[14px] leading-[1.4]"}`}>
-                {selectedBinding.name}登录
+                {t('signin.loginAuth.bindingContent.bindingTitle', undefined, { bindingName: selectedBinding.name })}
               </div>
               <div className="mt-[2px] text-[12px] leading-[1.45] text-[#7A8A9D]">
-                {getWaitingTitle(viewState)}
+                {getWaitingTitle(viewState, t)}
               </div>
             </div>
           </div>
@@ -108,7 +113,7 @@ export default function LoginAuthBindingContent({
           className={`mt-5 inline-flex w-full items-center justify-center gap-2 rounded-[8px] bg-[#246BFD] px-4 text-white opacity-90 ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
         >
           <LoadingOutlined className={viewState === "syncing-session" ? "" : "animate-spin"} />
-          <span>Waiting...</span>
+          <span>{t('signin.loginAuth.bindingContent.waiting')}</span>
         </button>
         <p className="mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
           {helperMessage}
@@ -130,10 +135,10 @@ export default function LoginAuthBindingContent({
           </div>
           <div className="min-w-0">
             <div className={`font-semibold text-[var(--color-text-1)] ${isModalMode ? "text-[13px] leading-[1.35]" : "text-[14px] leading-[1.4]"}`}>
-              {selectedBinding.name}登录
+              {t('signin.loginAuth.bindingContent.bindingTitle', undefined, { bindingName: selectedBinding.name })}
             </div>
             <div className="mt-[2px] text-[12px] leading-[1.45] text-[#7A8A9D]">
-              使用{selectedBinding.name}账号完成登录
+              {t('signin.loginAuth.bindingContent.bindingDescription', undefined, { bindingName: selectedBinding.name })}
             </div>
           </div>
         </div>
@@ -143,7 +148,7 @@ export default function LoginAuthBindingContent({
         onClick={onContinueThirdParty}
         className={`mt-5 inline-flex w-full items-center justify-center rounded-[8px] bg-[#246BFD] px-4 text-white transition-colors hover:bg-[#1F5DE0] ${isModalMode ? "h-10 text-[13px]" : "h-11 text-sm font-medium"}`}
       >
-        Click to continue sign in
+        {t('signin.loginAuth.bindingContent.continueSignIn')}
       </button>
       <p className="mt-3 rounded-[8px] border border-[#D7E0EA] bg-[#F8FAFC] px-3 py-[10px] text-[12px] leading-[1.6] text-[#708094]">
         {helperMessage}
