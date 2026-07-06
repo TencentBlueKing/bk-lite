@@ -1,5 +1,4 @@
 import asyncio
-import hashlib
 import inspect
 import json
 import time
@@ -9,7 +8,6 @@ from datetime import datetime
 from typing import Any, Dict, List, Optional
 from urllib.parse import parse_qs, urlparse
 
-import json_repair
 from deepagents import create_deep_agent
 from langchain_core.callbacks import dispatch_custom_event
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage, ToolMessage
@@ -53,9 +51,9 @@ from apps.opspilot.metis.llm.chain.k8s_report_tools import (  # noqa: E402,F401
     _config_analysis_fix_description,
     _config_analysis_risk_description,
     build_a2ui_report_contract,
-    build_config_diff_report_payload,
     build_config_analysis_report_markdown,
     build_config_analysis_report_payload,
+    build_config_diff_report_payload,
     build_post_tool_directives,
     build_repair_mode_choice_args,
     downgrade_config_analysis_next_step_hint,
@@ -74,8 +72,6 @@ from apps.opspilot.metis.llm.chain.message_trim import trim_messages
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
-from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
-from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.services.approval import wait_for_approval
@@ -216,349 +212,6 @@ class BasicNode:
                 elif chat.event == "assistant":
                     state["messages"].append(AIMessage(content=chat.message))
         return state
-
-    async def naive_rag_node(self, state: Dict[str, Any], config: RunnableConfig) -> Dict[str, Any]:
-        naive_rag_request = config["configurable"]["graph_request"].naive_rag_request
-        if len(naive_rag_request) == 0:
-            return state
-
-        # 智能知识路由选择
-        selected_knowledge_ids = []
-        if "km_info" in config["configurable"]:
-            # _select_knowledge_ids 内部走同步阻塞的 LLM HTTP 调用（invoke_isolated），
-            # 在 async 节点中直接调用会阻塞事件循环，放入线程池执行。
-            selected_knowledge_ids = await asyncio.to_thread(self._select_knowledge_ids, config)
-
-        rag_result = []
-        all_img_docs = []  # 收集所有图片文档
-
-        for rag_search_request in naive_rag_request:
-            rag_search_request.search_query = config["configurable"]["graph_request"].graph_user_message
-
-            if len(selected_knowledge_ids) != 0 and rag_search_request.index_name not in selected_knowledge_ids:
-                logger.debug(f"智能知识路由判断:[{rag_search_request.index_name}]不适合当前问题,跳过检索")
-                continue
-
-            rag = PgvectorRag()
-            # PgvectorRag().search 为同步阻塞的向量库查询，async 节点中放入线程池避免阻塞事件循环。
-            naive_rag_search_result = await asyncio.to_thread(rag.search, rag_search_request)
-
-            rag_documents = []
-            img_docs = []
-            for doc in naive_rag_search_result:
-                # 根据 is_doc 字段处理文档内容
-                if getattr(doc, "metadata", {}).get("format") == "image":
-                    img_docs.append(doc)
-                    continue  # 图片不加入普通文档处理流程
-                processed_doc = self._process_document_content(doc)
-                rag_documents.append(processed_doc)
-
-            rag_result.extend(rag_documents)
-            all_img_docs.extend(img_docs)
-
-            logger.info(f"文档中的图片数：{len(img_docs)}")
-            if img_docs:
-                logger.info(f"图片文档示例： {img_docs[0].page_content[:50] if img_docs[0].page_content else 'empty'}")
-
-            # 执行图谱 RAG 检索
-            if rag_search_request.enable_graph_rag:
-                graph_results = await self._execute_graph_rag(rag_search_request, config)
-                rag_result.extend(graph_results)
-
-        # 准备模板数据
-        template_data = self._prepare_template_data(rag_result, config)
-
-        # 使用模板生成 RAG 消息
-        rag_message = TemplateLoader.render_template("prompts/graph/naive_rag_node_prompt", template_data)
-
-        # 如果有图片文档，将图片的OCR识别内容添加到rag_message
-        if all_img_docs:
-            # all_img_docs = all_img_docs[:10]
-            img_text_content = self._extract_image_text_content(all_img_docs)
-            if img_text_content:
-                rag_message += f"\n\n=== 图片识别内容 ===\n{img_text_content}"
-
-        logger.debug(f"RAG增强Prompt已生成，长度: {len(rag_message)}")
-
-        # 添加文本 RAG 消息
-        state["messages"].append(HumanMessage(content=rag_message))
-
-        # 添加图片到消息（仅图片base64，不含文本内容）
-        if all_img_docs:
-            self._add_image_docs_to_messages(state, all_img_docs)
-
-        return state
-
-    def _select_knowledge_ids(self, config: RunnableConfig) -> list:
-        """智能知识路由选择"""
-        km_info = config["configurable"]["km_info"]
-
-        # 创建临时请求对象用于知识路由
-        km_request = BasicLLMRequest(
-            model=config["configurable"]["km_route_llm_model"],
-            openai_api_base=config["configurable"]["km_route_llm_api_base"],
-            openai_api_key=config["configurable"]["km_route_llm_api_key"],
-            temperature=0.01,
-            user_message="",
-        )
-
-        # 使用模板生成知识路由选择prompt
-        template_data = {"km_info": km_info, "user_message": config["configurable"]["graph_request"].user_message}
-        selected_knowledge_prompt = TemplateLoader.render_template("prompts/graph/knowledge_route_selection_prompt", template_data)
-
-        logger.debug(f"知识路由选择Prompt: {selected_knowledge_prompt}")
-        # 使用原生OpenAI客户端调用,完全绕过LangGraph追踪
-        response_content = LLMClientFactory.invoke_isolated(km_request, [{"role": "user", "content": selected_knowledge_prompt}])
-        return json_repair.loads(response_content)
-
-    async def _execute_graph_rag(self, rag_search_request, config: RunnableConfig) -> list:
-        """执行图谱RAG检索并处理结果"""
-        try:
-            # 执行图谱检索
-            graph_result = await self._perform_graph_search(rag_search_request, config)
-            if not graph_result:
-                logger.warning("GraphRAG检索结果为空")
-                return []
-
-            # 处理检索结果
-            return self._process_graph_results(graph_result, rag_search_request.graph_rag_request.group_ids)
-
-        except Exception as e:
-            logger.error("GraphRAG检索处理异常: %r", e)
-            return []
-
-    async def _perform_graph_search(self, rag_search_request, config: RunnableConfig) -> list:
-        """执行图谱搜索"""
-        graphiti = GraphitiRAG()
-        rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
-        graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
-
-        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
-        return graph_result
-
-    def _process_graph_results(self, graph_result: list, group_ids: list) -> list:
-        """处理图谱检索结果"""
-        seen_relations = set()
-        summary_dict = {}  # 用于去重summary
-        processed_results = []
-
-        # 使用默认的group_id，避免在循环中重复获取
-        default_group_id = group_ids[0] if group_ids else ""
-
-        for graph_item in graph_result:
-            # 处理关系事实
-            relation_result = self._process_relation_fact(graph_item, seen_relations, default_group_id)
-            if relation_result:
-                processed_results.append(relation_result)
-
-            # 收集summary信息
-            self._collect_summary_info(graph_item, summary_dict)
-
-        # 生成去重的summary结果
-        summary_results = self._generate_summary_results(summary_dict, default_group_id)
-        processed_results.extend(summary_results)
-
-        return processed_results
-
-    def _process_relation_fact(self, graph_item: dict, seen_relations: set, group_id: str):
-        """处理单个关系事实"""
-        source_node = graph_item.get("source_node", {})
-        target_node = graph_item.get("target_node", {})
-        source_name = source_node.get("name", "")
-        target_name = target_node.get("name", "")
-        fact = graph_item.get("fact", "")
-
-        if not (fact and source_name and target_name):
-            return None
-
-        relation_content = f"关系事实: {source_name} - {fact} - {target_name}"
-        if relation_content in seen_relations:
-            return None
-
-        seen_relations.add(relation_content)
-        return self._create_relation_result_object(relation_content, source_name, target_name, group_id)
-
-    def _collect_summary_info(self, graph_item: dict, summary_dict: dict):
-        """收集并去重summary信息"""
-        source_node = graph_item.get("source_node", {})
-        target_node = graph_item.get("target_node", {})
-
-        for node_data in [source_node, target_node]:
-            node_name = node_data.get("name", "")
-            node_summary = node_data.get("summary", "")
-
-            if node_name and node_summary:
-                if node_summary not in summary_dict:
-                    summary_dict[node_summary] = set()
-                summary_dict[node_summary].add(node_name)
-
-    def _generate_summary_results(self, summary_dict: dict, group_id: str) -> list:
-        """生成去重的summary结果"""
-        summary_results = []
-        for summary_content, associated_nodes in summary_dict.items():
-            nodes_list = ", ".join(sorted(associated_nodes))
-            summary_with_nodes = f"节点详情: 以下内容与节点 [{nodes_list}] 相关:\n{summary_content}"
-
-            summary_result = self._create_summary_result_object(summary_with_nodes, nodes_list, group_id, summary_content)
-            summary_results.append(summary_result)
-
-        return summary_results
-
-    def _create_relation_result_object(self, relation_content: str, source_name: str, target_name: str, group_id: str):
-        """创建关系事实结果对象"""
-        content_hash = hashlib.md5(relation_content.encode("utf-8")).hexdigest()[:8]
-
-        class RelationResult:
-            def __init__(self):
-                self.page_content = relation_content
-                self.metadata = {
-                    "knowledge_title": f"图谱关系: {source_name} - {target_name}",
-                    "knowledge_id": group_id,
-                    "chunk_number": 1,
-                    "chunk_id": f"relation_{content_hash}",
-                    "segment_number": 1,
-                    "segment_id": f"relation_{content_hash}",
-                    "chunk_type": "Graph",
-                }
-
-        return RelationResult()
-
-    def _create_summary_result_object(self, summary_with_nodes: str, nodes_list: str, group_id: str, summary_content: str):
-        """创建summary结果对象"""
-        content_hash = hashlib.md5(summary_content.encode("utf-8")).hexdigest()[:8]
-
-        class SummaryResult:
-            def __init__(self):
-                self.page_content = summary_with_nodes
-                self.metadata = {
-                    "knowledge_title": f"图谱节点详情: {nodes_list}",
-                    "knowledge_id": group_id,
-                    "chunk_number": 1,
-                    "chunk_id": f"summary_{content_hash}",
-                    "segment_number": 1,
-                    "segment_id": f"summary_{content_hash}",
-                    "chunk_type": "Graph",
-                }
-
-        return SummaryResult()
-
-    def _prepare_template_data(self, rag_result: list, config: RunnableConfig) -> dict:
-        """准备模板渲染所需的数据"""
-        # 转换RAG结果为模板友好的格式
-        rag_results = []
-        for r in rag_result:
-            # 直接从metadata获取数据（PgvectorRag返回扁平结构）
-            metadata = getattr(r, "metadata", {})
-            rag_results.append(
-                {
-                    "title": metadata.get("knowledge_title", "N/A"),
-                    "knowledge_id": metadata.get("knowledge_id", 0),
-                    "chunk_number": metadata.get("chunk_number", 0),
-                    "chunk_id": metadata.get("chunk_id", "N/A"),
-                    "segment_number": metadata.get("segment_number", 0),
-                    "segment_id": metadata.get("segment_id", "N/A"),
-                    "content": r.page_content,
-                    "chunk_type": metadata.get("chunk_type", "Document"),
-                }
-            )
-
-        # 准备模板数据
-        template_data = {
-            "rag_results": rag_results,
-            "enable_rag_source": config["configurable"].get("enable_rag_source", False),
-            "enable_rag_strict_mode": config["configurable"].get("enable_rag_strict_mode", False),
-        }
-
-        return template_data
-
-    def _process_document_content(self, doc):
-        """
-        根据 is_doc 字段处理文档内容
-
-        Args:
-            doc: 文档对象，包含 page_content 和 metadata
-
-        Returns:
-            处理后的文档对象
-        """
-        # 获取元数据
-        metadata = getattr(doc, "metadata", {})
-        is_doc = metadata.get("is_doc")
-
-        logger.debug(f"处理文档内容 - is_doc: {is_doc}")
-
-        if is_doc == "0":
-            # QA类型：用 qa_question 和 qa_answer 组合替换 page_content
-            qa_question = metadata.get("qa_question")
-            qa_answer = metadata.get("qa_answer")
-
-            if qa_question and qa_answer:
-                doc.page_content = f"问题: {qa_question}\n答案: {qa_answer}"
-                doc.metadata["knowledge_title"] = qa_question
-            doc.metadata["chunk_type"] = "QA"
-        elif is_doc == "1":
-            # 文档类型：直接 append qa_answer
-            qa_answer = metadata.get("qa_answer")
-            if qa_answer:
-                doc.page_content += f"\n{qa_answer}"
-            doc.metadata["chunk_type"] = "Document"
-        else:
-            # 默认为文档类型
-            doc.metadata["chunk_type"] = "Document"
-
-        return doc
-
-    def _extract_image_text_content(self, img_docs: List[Any]) -> str:
-        """从图片文档中提取文本内容（OCR识别结果）
-
-        Args:
-            img_docs: 图片文档列表
-
-        Returns:
-            合并后的图片文本内容
-        """
-        text_parts = []
-        for idx, doc in enumerate(img_docs, 1):
-            page_content = getattr(doc, "page_content", "")
-            if page_content:
-                text_parts.append(f"[图片 {idx}]\n{page_content}")
-
-        return "\n\n".join(text_parts) if text_parts else ""
-
-    def _add_image_docs_to_messages(self, state: Dict[str, Any], img_docs: List[Any]) -> None:
-        """将图片以ImageContentBlock形式添加到消息列表
-
-        Args:
-            state: 状态字典
-            img_docs: 图片文档列表，每个文档的metadata包含format, page, image_base64字段
-        """
-        if not img_docs:
-            return
-
-        # 构建包含所有图片的多模态消息内容（仅图片，不含文本说明）
-        content = []
-
-        # 添加所有图片
-        for idx, doc in enumerate(img_docs, 1):
-            metadata = getattr(doc, "metadata", {})
-            image_base64 = metadata.get("image_base64", "")
-            page_number = metadata.get("page", "unknown")
-
-            if not image_base64:
-                logger.warning(f"图片文档 {idx} 缺少 image_base64 字段，跳过")
-                continue
-
-            # 添加图片URL（base64格式）- ImageContentBlock
-            content.append({"type": "image_url", "image_url": {"url": f"data:image/jpeg;base64,{image_base64}"}})
-
-            logger.debug(f"添加图片 {idx}/{len(img_docs)} - 页码: {page_number}, base64长度: {len(image_base64)}")
-
-        # 只有在至少有一张有效图片时才添加消息
-        if content:
-            state["messages"].append(HumanMessage(content=content))
-            logger.info(f"已将 {len(content)} 张图片添加到消息中")
-        else:
-            logger.warning("所有图片文档都缺少有效的 image_base64，未添加图片消息")
 
     def _rewrite_query(self, request: BasicLLMRequest, config: RunnableConfig) -> str:
         """
@@ -1268,7 +921,10 @@ class ToolsNodes(BasicNode):
             title: str = PydanticField(default="K8S 配置修复对比", description="报告标题（如 'K8S 配置修复对比'、'MySQL 索引优化建议'）")
             context_name: str = PydanticField(default="", description="上下文名称（如集群名、数据库实例名）")
             items: List[RepairItem] = PydanticField(default=[], description="修复项列表（可选：留空则自动从分析结果生成）")
-            target_names: List[str] = PydanticField(default=[], description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。")
+            target_names: List[str] = PydanticField(
+                default=[],
+                description="要包含的目标名称过滤列表（如 ['payment-gateway']）。留空=全部。当检查特定工作负载时必须填写，自动生成时会只保留这些目标。",
+            )
             expected_target_count: int = PydanticField(default=0, description="预期的修复目标数量（即分析报告中有问题的目标总数）。用于校验是否遗漏，必须填写真实数量。")
             group_by: str = PydanticField(
                 default="target",
@@ -1956,7 +1612,9 @@ class ToolsNodes(BasicNode):
         diff_report_tool_instance = self._build_diff_report_tool() if (_has_any_tools and _is_k8s_agent and _enable_repair_diff_report) else None
         # 批量修复报告工具（传入分析缓存以支持自动生成）
         _analysis_cache: Dict[str, Any] = {}  # 由 logged_tool_node 在 analyze 工具返回时填充
-        bulk_repair_tool_instance = self._build_bulk_repair_tool(_analysis_cache) if (_has_any_tools and _is_k8s_agent and _enable_repair_diff_report) else None
+        bulk_repair_tool_instance = (
+            self._build_bulk_repair_tool(_analysis_cache) if (_has_any_tools and _is_k8s_agent and _enable_repair_diff_report) else None
+        )
         # 选择后续行追踪（防止 LLM 在 request_user_choice 后停止）
         choice_continuation = {"retried_at_step": -1}
 
@@ -2402,7 +2060,11 @@ class ToolsNodes(BasicNode):
                         elif tool_choice_cfg.mode == "specific" and tool_choice_cfg.tool_name:
                             bind_kwargs["tool_choice"] = tool_choice_cfg.tool_name
                 # 选择后续行：用户刚完成 request_user_choice，强制 LLM 必须调用工具
-                if _has_pending_choice and not (_analysis_cache.get("deployments") and not self._enable_repair_diff_report()) and "tool_choice" not in bind_kwargs:
+                if (
+                    _has_pending_choice
+                    and not (_analysis_cache.get("deployments") and not self._enable_repair_diff_report())
+                    and "tool_choice" not in bind_kwargs
+                ):
                     bind_kwargs["tool_choice"] = "any"
                     logger.info(f"[{trace_id}] 选择后续行: 用户刚完成 request_user_choice，" f"强制 tool_choice='any' (step={step_counter['count']})")
 
@@ -2477,10 +2139,7 @@ class ToolsNodes(BasicNode):
                 for ntc in normalize_tool_calls(tool_calls):
                     signature = _tool_call_signature(ntc.name, ntc.args)
                     if signature in seen_signatures:
-                        logger.info(
-                            f"[{trace_id}] agent_node: 同批重复工具调用已去重, "
-                            f"tool={ntc.name}, tool_call_id={ntc.id}"
-                        )
+                        logger.info(f"[{trace_id}] agent_node: 同批重复工具调用已去重, " f"tool={ntc.name}, tool_call_id={ntc.id}")
                         continue
                     seen_signatures.add(signature)
                     deduped_tool_calls.append(ntc.raw)
@@ -2525,8 +2184,7 @@ class ToolsNodes(BasicNode):
                 if _blocked_basic_k8s_loop:
                     response.tool_calls = tool_calls
                     logger.info(
-                        f"[{trace_id}] agent_node: 基础 K8s 分析已完成，拦截后续循环倾向工具调用，"
-                        f"remaining_tool_calls={[tc.get('name') for tc in tool_calls]}"
+                        f"[{trace_id}] agent_node: 基础 K8s 分析已完成，拦截后续循环倾向工具调用，" f"remaining_tool_calls={[tc.get('name') for tc in tool_calls]}"
                     )
                     if not tool_calls:
                         return {"messages": [self._build_basic_k8s_analysis_done_message(response, _analysis_cache)]}
@@ -2830,10 +2488,7 @@ class ToolsNodes(BasicNode):
                     if executed_count >= hard_limit:
                         blocked_duplicate_messages.append(
                             ToolMessage(
-                                content=(
-                                    f"[已拦截] 工具 {ntc.name} 使用相同参数已执行 {executed_count} 次，"
-                                    f"达到上限 {hard_limit}，本次不再重复执行。"
-                                ),
+                                content=(f"[已拦截] 工具 {ntc.name} 使用相同参数已执行 {executed_count} 次，" f"达到上限 {hard_limit}，本次不再重复执行。"),
                                 tool_call_id=ntc.id,
                             )
                         )

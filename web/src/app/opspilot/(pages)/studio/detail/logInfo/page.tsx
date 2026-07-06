@@ -19,7 +19,7 @@ const { Search } = Input;
 
 const StudioLogsPage: React.FC = () => {
   const { t } = useTranslation();
-  const { get, post } = useApiClient();
+  const { post } = useApiClient();
   const { fetchLogs, fetchChannels, fetchBotDetail, fetchWorkflowTaskResult, fetchWorkflowLogs, fetchExecutionOutputData, fetchExecutionDetail } = useStudioApi();
   const { convertToLocalizedTime } = useLocalizedTime();
   const [searchText, setSearchText] = useState('');
@@ -231,7 +231,7 @@ const StudioLogsPage: React.FC = () => {
 
     try {
       const data = await fetchLogDetails(post, record?.ids || []);
-      const conversation = await createConversation(data, get);
+      const conversation = await createConversation(data);
       setSelectedConversation({
         ...record,
         conversation,

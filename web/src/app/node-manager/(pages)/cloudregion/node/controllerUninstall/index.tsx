@@ -412,7 +412,7 @@ const ControllerUninstall = forwardRef<ModalRef, ModalSuccess>(
         title={t(`node-manager.cloudregion.node.${type}`)}
         open={collectorVisible}
         width={650}
-        destroyOnClose
+        destroyOnHidden
         okText={t('common.confirm')}
         cancelText={t('common.cancel')}
         onCancel={handleCancel}

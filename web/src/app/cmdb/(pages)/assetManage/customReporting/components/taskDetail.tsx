@@ -287,7 +287,7 @@ export default function TaskDetail({
       open={open}
       onClose={onClose}
       width={720}
-      destroyOnClose
+      destroyOnHidden
       extra={
         task ? (
           <Space>

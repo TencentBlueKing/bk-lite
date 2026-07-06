@@ -1,4 +1,4 @@
-import React, {ReactNode, useCallback, useEffect, useRef, useState} from 'react';
+import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
 import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconfirm, Spin, Tooltip, Upload} from 'antd';
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
@@ -17,8 +17,10 @@ import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
+import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
+import {postUserChoice} from './submitUserChoice';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
@@ -110,12 +112,15 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS
+// Sanitize HTML to prevent XSS and CSS injection.
+// SECURITY: 'style' tag (block CSS) is intentionally excluded: allowing it
+// enables CSS injection via LLM prompt injection.
+// Inline style attributes are kept because guide/reference link renderers use them.
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: true,
+    ALLOW_DATA_ATTR: false,
   });
 };
 
@@ -229,6 +234,17 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   const { referenceModal, drawerContent, handleReferenceClick, closeDrawer } =
     useReferenceHandler(t);
+
+  const pendingChoice = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const requests = messages[i].userChoiceRequests;
+      if (requests?.length) {
+        const pending = requests.find(request => request.status === 'pending');
+        if (pending) return pending;
+      }
+    }
+    return null;
+  }, [messages]);
 
   // Parse guide with proper HTML escaping
   const parseGuideItems = useCallback((guideText: string): GuideParseResult => {
@@ -406,6 +422,32 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   const handleSend = useCallback(
     async (msg: string, images?: UploadFile[]) => {
+      if (pendingChoice && msg.trim() && token) {
+        const answer = msg.trim();
+        try {
+          await postUserChoice(token, {
+            execution_id: pendingChoice.execution_id,
+            node_id: pendingChoice.node_id,
+            choice_id: pendingChoice.choice_id,
+            selected: [answer],
+          });
+          updateMessages(prev => prev.map(message => {
+            if (!message.userChoiceRequests) return message;
+            return {
+              ...message,
+              userChoiceRequests: message.userChoiceRequests.map(request =>
+                request.choice_id === pendingChoice.choice_id
+                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  : request
+              ),
+            };
+          }));
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
+        }
+        return;
+      }
+
       if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
 
@@ -435,7 +477,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         await sendMessage(msg, messages, imageData);
       }
     },
-    [loading, token, sendMessage, messages]
+    [pendingChoice, loading, token, sendMessage, messages, updateMessages, t]
   );
 
   const handleCopyMessage = (content: string) => {
@@ -758,6 +800,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
           <KnowledgeBase knowledgeList={knowledgeBase} />
         ) : null}
+        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
       </>
     );
   };
@@ -835,14 +878,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           className={styles.sender}
           value={value}
           onChange={setValue}
-          loading={loading}
+          loading={loading && !pendingChoice}
           onSubmit={(msg: string) => {
             setValue('');
             const currentImages = [...imageList];
             setImageList([]);
             handleSend(msg, currentImages);
           }}
-          placeholder={placeholder}
+          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : placeholder}
           onCancel={stopSSEConnection}
           prefix={uploadButton}
           onPaste={(event: React.ClipboardEvent) => {
@@ -880,7 +923,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             }
           ) => {
             const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading) {
+            if (!ignoreLoading && loading && !pendingChoice) {
               return (
                 <Tooltip title={t('chat.clickCancel')}>
                   <LoadingButton />

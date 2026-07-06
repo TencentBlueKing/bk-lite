@@ -12,6 +12,21 @@
   "description": "app.opspilot",
   "menus": [
     {
+      "name": "Knowledge Base",
+      "children": [
+        {
+          "id": "wiki_list",
+          "name": "Knowledge Base list",
+          "operation": [
+            "View",
+            "Add",
+            "Edit",
+            "Delete"
+          ]
+        }
+      ]
+    },
+    {
       "name": "Studio",
       "children": [
         {
