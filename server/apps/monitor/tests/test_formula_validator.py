@@ -133,6 +133,58 @@ def test_validate_formula_rejects_invalid_filter_label_name():
     assert "非法字符" in str(exc.value)
 
 
+def test_validate_formula_rejects_filter_item_not_object():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [1],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "filter" in str(exc.value)
+
+
+def test_validate_formula_rejects_empty_filter_object():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [{}],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "filter" in str(exc.value)
+
+
 def test_validate_formula_rejects_query_item_not_object():
     payload = formula(
         queries=[
