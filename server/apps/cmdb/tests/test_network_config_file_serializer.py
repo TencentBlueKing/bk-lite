@@ -79,7 +79,20 @@ def test_network_config_file_serializer_rejects_dangerous_command():
     assert "高危" in str(serializer.errors)
 
 
-def test_network_config_file_serializer_requires_enable_password_when_enable_is_true():
+def test_network_config_file_serializer_derives_enable_mode_from_enable_password():
+    serializer = _serializer(
+        _payload(
+            [{"_id": "1", "model_id": "switch", "brand": "Cisco", "ip_addr": "10.0.0.1"}],
+            params={"need_enable": False},
+            credential=[{"username": "admin", "password": "secret", "enable_password": "enable-secret", "port": 22}],
+        )
+    )
+
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["params"]["need_enable"] is True
+
+
+def test_network_config_file_serializer_disables_enable_mode_without_enable_password():
     serializer = _serializer(
         _payload(
             [{"_id": "1", "model_id": "switch", "brand": "Cisco", "ip_addr": "10.0.0.1"}],
@@ -88,5 +101,5 @@ def test_network_config_file_serializer_requires_enable_password_when_enable_is_
         )
     )
 
-    assert not serializer.is_valid()
-    assert "特权密码" in str(serializer.errors)
+    assert serializer.is_valid(), serializer.errors
+    assert serializer.validated_data["params"]["need_enable"] is False
