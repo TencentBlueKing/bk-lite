@@ -1,5 +1,5 @@
 import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
-import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconfirm, Spin, Tooltip, Upload} from 'antd';
+import {Button, ButtonProps, Flex, Image, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
 import {Bubble, Sender} from '@ant-design/x';
@@ -11,9 +11,6 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
-import KnowledgeBase from '../custom-chat/knowledgeBase';
-import AnnotationModal from '../custom-chat/annotationModal';
-import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
@@ -27,13 +24,12 @@ import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
 import { hydrateGeneratedFileLinks } from './downloadUrl';
-import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
+import {CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
-import {useReferenceHandler} from './hooks/useReferenceHandler';
 import {initToolCallTooltips} from './toolCallRenderer';
 
 const normalizeThinkingText = (value?: string) => {
@@ -126,7 +122,6 @@ const sanitizeHtml = (html: string): string => {
 
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
-  showMarkOnly = false,
   initialMessages = [],
   mode = 'chat',
   guide,
@@ -155,8 +150,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
-  const [annotationModalVisible, setAnnotationModalVisible] = useState(false);
-  const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
 
@@ -231,9 +224,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     currentBotMessageRef,
     t
   });
-
-  const { referenceModal, drawerContent, handleReferenceClick, closeDrawer } =
-    useReferenceHandler(t);
 
   const pendingChoice = useMemo(() => {
     for (let i = messages.length - 1; i >= 0; i--) {
@@ -545,7 +535,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
@@ -571,7 +561,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
-                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -657,7 +646,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
-                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -797,9 +785,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
-        {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
-          <KnowledgeBase knowledgeList={knowledgeBase} />
-        ) : null}
         {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
       </>
     );
@@ -951,41 +936,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     ) : senderComponent;
   };
 
-  const toggleAnnotationModal = (message: CustomChatMessage) => {
-    if (message?.annotation) {
-      setAnnotation(message.annotation);
-    } else {
-      const lastUserMessage = messages
-        .slice(0, messages.indexOf(message))
-        .reverse()
-        .find(msg => msg.role === 'user') as CustomChatMessage;
-      setAnnotation({
-        answer: message,
-        question: lastUserMessage,
-        selectedKnowledgeBase: '',
-        tagId: 0,
-      });
-    }
-    setAnnotationModalVisible(!annotationModalVisible);
-  };
-
-  const updateMessagesAnnotation = (id: string | undefined, newAnnotation?: Annotation) => {
-    if (!id) return;
-    updateMessages(prevMessages =>
-      prevMessages.map(msg => (msg.id === id ? { ...msg, annotation: newAnnotation } : msg))
-    );
-    setAnnotationModalVisible(false);
-  };
-
-  const handleSaveAnnotation = (annotation?: Annotation) => {
-    updateMessagesAnnotation(annotation?.answer?.id, annotation);
-  };
-
-  const handleRemoveAnnotation = (id: string | undefined) => {
-    if (!id) return;
-    updateMessagesAnnotation(id, undefined);
-  };
-
   useEffect(() => {
     return () => {
       stopSSEConnection();
@@ -1052,8 +1002,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                         onCopy={handleCopyMessage}
                         onRegenerate={handleRegenerateMessage}
                         onDelete={handleDeleteMessage}
-                        onMark={toggleAnnotationModal}
-                        showMarkOnly={showMarkOnly}
                       />
                     )
                   }
@@ -1089,46 +1037,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
       </div>
-      {annotation && (
-        <AnnotationModal
-          visible={annotationModalVisible}
-          showMarkOnly={showMarkOnly}
-          annotation={annotation}
-          onSave={handleSaveAnnotation}
-          onRemove={handleRemoveAnnotation}
-          onCancel={() => setAnnotationModalVisible(false)}
-        />
-      )}
-
-      <Drawer
-        width={drawerContent.chunkType === 'Graph' ? 800 : 480}
-        visible={drawerContent.visible}
-        title={drawerContent.title}
-        onClose={closeDrawer}
-        getContainer={isFullscreen ? false : undefined}
-        styles={{
-          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
-        }}
-      >
-        {referenceModal.loading ? (
-          <div className="flex justify-center items-center h-32">
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            {drawerContent.chunkType === 'Graph' ? (
-              <div style={{ height: '100%', padding: '16px' }}>
-                <KnowledgeGraphView
-                  data={drawerContent.graphData || { nodes: [], edges: [] }}
-                  height="100%"
-                />
-              </div>
-            ) : (
-              <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
-            )}
-          </>
-        )}
-      </Drawer>
     </div>
   );
 };
