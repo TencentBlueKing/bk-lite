@@ -1,0 +1,41 @@
+<h2>BK-Lite 补丁管理 P1 信息架构 - 收窄版</h2>
+<p class="subtitle">按最新决策：目标管理只支持 Ansible；不做仓库配置页面，不做报表。</p>
+
+<div class="mockup">
+  <div class="mockup-header">顶部菜单</div>
+  <div class="mockup-body">
+    <div class="mock-nav">首页 | 补丁扫描 | 补丁安装 | 补丁库 | 目标管理</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:18px;margin-top:18px;">
+      <div class="section">
+        <div class="label">首页</div>
+        <h3>风险与待办</h3>
+        <p>高危缺失补丁、影响服务器、待重启、失败安装、最近扫描。只做运营入口，不做报表中心。</p>
+      </div>
+      <div class="section">
+        <div class="label">补丁扫描</div>
+        <h3>扫描任务</h3>
+        <p>创建扫描任务、设置扫描周期、查看主机视角和补丁视角结果。</p>
+      </div>
+      <div class="section">
+        <div class="label">补丁安装</div>
+        <h3>安装任务</h3>
+        <p>选择补丁与目标，配置执行时间、超时和重启策略，跟踪待重启与重启执行。</p>
+      </div>
+      <div class="section">
+        <div class="label">补丁库</div>
+        <h3>补丁元数据与包</h3>
+        <p>Linux 仓库同步结果、Windows 包导入、KB/CVE/严重级别/适用规则/检测规则/安装参数。</p>
+      </div>
+      <div class="section">
+        <div class="label">目标管理</div>
+        <h3>Ansible 目标</h3>
+        <p>参考 Job 目标维护方式，保存 Ansible 执行所需主机、认证、系统类型、组织归属和连通性检查。</p>
+      </div>
+      <div class="section">
+        <div class="label">明确不做</div>
+        <h3>仓库配置 / 报表</h3>
+        <p>不提供独立仓库配置页；不建设报表模块。列表导出可作为普通表格能力保留。</p>
+      </div>
+    </div>
+  </div>
+</div>
