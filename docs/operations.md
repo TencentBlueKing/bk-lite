@@ -4,6 +4,19 @@
 
 ## 1. 完整命令清单
 
+### Agent 基础工具（OpenSpec / projectmem / CodeGraph）
+```bash
+scripts/agent-tooling-bootstrap          # 安装/修复 openspec、pjm、codegraph,安装 projectmem hooks,必要时初始化 CodeGraph 索引
+scripts/agent-tooling-bootstrap --check  # 只检查,缺工具时失败
+scripts/agent-tooling-bootstrap --no-index # 跳过 CodeGraph 索引初始化
+```
+
+约定:
+- `openspec` 与 `codegraph` 通过 npm 全局包安装:`@fission-ai/openspec`、`@colbymchenry/codegraph`。
+- `pjm` 通过 `uv tool install projectmem` 安装;若 `uv` 不存在,脚本会尝试用 `python3 -m pip install --user uv` 补齐。
+- Claude / Codex 的 projectmem 与 CodeGraph MCP 不直接引用个人机器绝对路径,统一走 `scripts/projectmem-mcp`、`scripts/codegraph-mcp`。
+- Agent 发现团队成员机器缺这些工具时,应先运行 bootstrap,不要继续在半可用状态下执行 OpenSpec、projectmem 或 CodeGraph 流程。
+
 ### Server（`server/`，Django）
 ```bash
 make install          # uv sync 安装依赖

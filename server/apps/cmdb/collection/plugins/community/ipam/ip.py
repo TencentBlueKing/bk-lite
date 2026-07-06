@@ -10,7 +10,9 @@ class IPAMDiscoveryCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectBa
     supported_model_id = "ip"
     plugin_source = "community"
     priority = 10
-    metric_names = ("ip_info",)
+    # Stargazer 会把 ip 模型输出为 ip_info_gauge；保留旧名兼容历史样本/测试数据。
+    metric_names = ("ip_info_gauge", "ip_info")
+    TASK_FORMAT_DATA_KEY = "__task_format_data__"
 
     @property
     def _metrics(self):
@@ -37,5 +39,18 @@ class IPAMDiscoveryCollectionPlugin(AutoRegisterCollectionPluginMixin, CollectBa
         rows = []
         for metrics in self.collection_metrics_dict.values():
             rows.extend(metrics)
-        ipam_discovery.apply_ip_discovery_vm_rows(self.get_collect_inst(), rows)
+        summary = ipam_discovery.apply_ip_discovery_vm_rows(self.get_collect_inst(), rows)
         self.result[self.model_id] = []
+        self.result[self.TASK_FORMAT_DATA_KEY] = summary.get("format_data", {})
+
+    def run(self):
+        """IP 发现任务由自定义回写负责落库；这里只向 MetricsCannula 返回空 metrics。
+
+        任务详情所需的 add/update/association 摘要挂在 self.result 的保留键上，
+        由 BaseCollect.run 合并进 format_data，不进入通用对比入库流程。
+        """
+        data = self.query_data()
+        self.raw_data = data.get("result", [])
+        self.format_data(data)
+        self.format_metrics()
+        return {self.model_id: []}

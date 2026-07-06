@@ -1,0 +1,119 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd -P)"
+CHECK_ONLY=0
+SKIP_INDEX=0
+
+for arg in "$@"; do
+  case "$arg" in
+    --check) CHECK_ONLY=1 ;;
+    --no-index) SKIP_INDEX=1 ;;
+    *)
+      echo "usage: scripts/agent-tooling-bootstrap [--check] [--no-index]" >&2
+      exit 2
+      ;;
+  esac
+done
+
+say() {
+  printf '%s\n' "$*"
+}
+
+fail() {
+  printf 'ERROR: %s\n' "$*" >&2
+  exit 1
+}
+
+have() {
+  command -v "$1" >/dev/null 2>&1
+}
+
+ensure_path() {
+  export PATH="$HOME/.local/bin:$HOME/bin:$PATH"
+}
+
+install_uv() {
+  have uv && return 0
+  [ "$CHECK_ONLY" -eq 1 ] && fail "missing uv; run without --check to install it"
+  have python3 || fail "missing uv and python3; install uv manually, then rerun this script"
+  say "Installing uv with python3 -m pip --user..."
+  python3 -m pip install --user uv
+  ensure_path
+  have uv || fail "uv was installed but is not on PATH; add ~/.local/bin to PATH"
+}
+
+install_node_tool() {
+  local bin_name="$1"
+  local package_name="$2"
+
+  if have "$bin_name"; then
+    return 0
+  fi
+
+  [ "$CHECK_ONLY" -eq 1 ] && fail "missing ${bin_name}; run without --check to install ${package_name}"
+  have npm || fail "missing npm; install Node.js/npm before installing ${package_name}"
+
+  say "Installing ${package_name}..."
+  npm install -g "$package_name"
+  have "$bin_name" || fail "${bin_name} was installed but is not on PATH"
+}
+
+install_projectmem() {
+  if have pjm; then
+    return 0
+  fi
+
+  [ "$CHECK_ONLY" -eq 1 ] && fail "missing pjm; run without --check to install projectmem"
+  install_uv
+  say "Installing projectmem..."
+  uv tool install projectmem
+  ensure_path
+  have pjm || fail "projectmem was installed but pjm is not on PATH; add ~/.local/bin to PATH"
+}
+
+verify_command() {
+  local label="$1"
+  shift
+  say "Checking ${label}..."
+  "$@"
+}
+
+ensure_path
+install_uv
+install_node_tool openspec @fission-ai/openspec
+install_node_tool codegraph @colbymchenry/codegraph
+install_projectmem
+
+verify_command "uv" uv --version
+verify_command "openspec" openspec --version
+verify_command "codegraph" codegraph --version
+verify_command "projectmem" pjm brief
+
+if [ -d "$ROOT/.projectmem" ]; then
+  if [ "$CHECK_ONLY" -eq 1 ]; then
+    say "Checking projectmem git hooks..."
+    grep -q "projectmem auto-capture" "$ROOT/.git/hooks/pre-commit" 2>/dev/null || fail "projectmem pre-commit hook is missing"
+    grep -q "projectmem auto-capture" "$ROOT/.git/hooks/post-commit" 2>/dev/null || fail "projectmem post-commit hook is missing"
+  else
+    say "Installing projectmem git hooks..."
+    pjm hooks install
+  fi
+fi
+
+say "Checking OpenSpec root..."
+OPENSPEC_TELEMETRY="${OPENSPEC_TELEMETRY:-0}" openspec doctor
+
+if [ "$SKIP_INDEX" -eq 0 ]; then
+  if codegraph status "$ROOT" >/dev/null 2>&1; then
+    say "CodeGraph index is present."
+  else
+    [ "$CHECK_ONLY" -eq 1 ] && fail "CodeGraph index is missing; run scripts/agent-tooling-bootstrap to create it"
+    say "Initializing CodeGraph index..."
+    codegraph init "$ROOT"
+  fi
+else
+  say "Skipping CodeGraph index check."
+fi
+
+say "Agent tooling bootstrap complete."

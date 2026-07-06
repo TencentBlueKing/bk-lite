@@ -1,0 +1,20 @@
+{
+  "permissions": {
+    "allow": [
+      "mcp__codegraph__*",
+      "mcp__projectmem__*"
+    ]
+  },
+  "hooks": {
+    "UserPromptSubmit": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "codegraph prompt-hook"
+          }
+        ]
+      }
+    ]
+  }
+}

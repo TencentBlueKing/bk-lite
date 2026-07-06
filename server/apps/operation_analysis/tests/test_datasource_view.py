@@ -28,6 +28,9 @@ def _build_instance(groups=(1,), rest_api="monitor/query_latest_active_alerts"):
         name="test-datasource",
         groups=list(groups),
         rest_api=rest_api,
+        source_type=datasource_view.DataSourceAPIModel.SOURCE_TYPE_NATS,
+        connection_config={},
+        query_config={},
         params=[
             {"name": "limit", "type": "number", "value": 10, "filterType": "params"},
             {"name": "time_range", "type": "timeRange", "value": 10080, "filterType": "params"},
@@ -319,6 +322,9 @@ def test_get_source_data_rejects_unassociated_namespace(authenticated_user, monk
             name="test-datasource",
             groups=[1],
             rest_api="monitor/query_latest_active_alerts",
+            source_type=datasource_view.DataSourceAPIModel.SOURCE_TYPE_NATS,
+            connection_config={},
+            query_config={},
             params=[
                 {"name": "limit", "type": "number", "value": 10, "filterType": "params"},
                 {"name": "time_range", "type": "timeRange", "value": 10080, "filterType": "params"},
@@ -338,6 +344,7 @@ def test_get_source_data_rejects_unassociated_namespace(authenticated_user, monk
 
 
 # --- Tests for issue #3394: NameSpaceModelViewSet.partial_update permission enforcement ---
+
 
 def _build_patch_request(user, data=None):
     factory = APIRequestFactory()
@@ -367,9 +374,7 @@ def test_namespace_partial_update_blocked_without_permission(authenticated_user)
     view = datasource_view.NameSpaceModelViewSet.as_view({"patch": "partial_update"})
     response = view(request, pk="1")
 
-    assert response.status_code == 403, (
-        "PATCH /namespace/{id}/ must be blocked for users without namespace-Edit permission"
-    )
+    assert response.status_code == 403, "PATCH /namespace/{id}/ must be blocked for users without namespace-Edit permission"
 
 
 def test_namespace_partial_update_allowed_with_permission(authenticated_user, monkeypatch):
@@ -383,6 +388,7 @@ def test_namespace_partial_update_allowed_with_permission(authenticated_user, mo
     def fake_update(self, request, *args, **kwargs):
         update_called.append(True)
         from rest_framework.response import Response
+
         return Response({"id": 1, "name": "test"})
 
     monkeypatch.setattr(datasource_view.NameSpaceModelViewSet, "update", fake_update)

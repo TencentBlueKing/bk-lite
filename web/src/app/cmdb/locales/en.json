@@ -561,6 +561,7 @@
             "selectK8S": "K8S",
             "second": "seconds",
             "intervalRequired": "Please enter execution interval",
+            "everyMinuteMin": "Minimum execution interval is 1 minute",
             "timeRequired": "Please select execution time",
             "timeoutRequired": "Please enter timeout",
             "accessConfig": "Access Config",

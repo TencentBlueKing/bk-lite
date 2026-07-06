@@ -15,7 +15,7 @@ class IPDiscoveryScanner:
         self.ports = self._normalize_ports(kwargs.get("ports") or DEFAULT_PORTS)
         self.subnets = self._normalize_json_list(kwargs.get("subnets") or [])
         self.targets = self._build_targets(kwargs.get("targets") or [])
-        self.timeout = float(kwargs.get("timeout", 2))
+        self.timeout = float(kwargs.get("timeout", 5))
 
     @staticmethod
     def _normalize_json_list(value):
