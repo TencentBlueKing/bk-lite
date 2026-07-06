@@ -98,8 +98,17 @@ def execute_scheduled_task(scheduled_task_id: int):
         return
 
     team = st_snapshot.team or []
-    if st_snapshot.job_type == JobType.SCRIPT and st_snapshot.script_content:
-        check_result = DangerousChecker.check_command(st_snapshot.script_content, team)
+
+    # 脚本内容和类型：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段。
+    # 危险命令预检必须使用解析后的脚本内容，不能漏掉脚本库模式。
+    script_content = st_snapshot.script_content or ""
+    script_type = st_snapshot.script_type or ""
+    if st_snapshot.script:
+        script_content = st_snapshot.script.content or script_content
+        script_type = st_snapshot.script.script_type or script_type
+
+    if st_snapshot.job_type == JobType.SCRIPT and script_content:
+        check_result = DangerousChecker.check_command(script_content, team)
         if not check_result.can_execute:
             forbidden_rules = [r["rule_name"] for r in check_result.forbidden]
             logger.warning(f"[execute_scheduled_task] 脚本包含高危命令，禁止执行: " f"scheduled_task_id={scheduled_task_id}, rules={forbidden_rules}")
@@ -123,13 +132,6 @@ def execute_scheduled_task(scheduled_task_id: int):
     params = st_snapshot.params if isinstance(st_snapshot.params, list) else []
     resolved_params = ScriptParamsService.resolve_params(params, script=st_snapshot.script)
     params_str = ScriptParamsService.params_to_string(resolved_params)
-
-    # 脚本内容和类型：优先从关联的 Script 对象获取，回退到定时任务上的临时输入字段
-    script_content = st_snapshot.script_content or ""
-    script_type = st_snapshot.script_type or ""
-    if st_snapshot.script:
-        script_content = st_snapshot.script.content or script_content
-        script_type = st_snapshot.script.script_type or script_type
 
     # ---- 阶段 2: 临界区(行锁 + 事务)----
     # 只保留"竞争状态相关的 SQL":并发策略检查 + run_count 自增 + 创建 PENDING execution。

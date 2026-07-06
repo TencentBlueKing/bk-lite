@@ -58,16 +58,7 @@ def _call_in_thread(task_id, results: list, idx: int):
 
     def runner():
         try:
-            with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True), patch.object(
-                tasks.DangerousChecker,
-                "check_command",
-                return_value=_safe_check_result(),
-            ), patch.object(
-                tasks.DangerousChecker,
-                "check_path",
-                return_value=_safe_check_result(),
-            ):
-                tasks.execute_scheduled_task(task_id)
+            tasks.execute_scheduled_task(task_id)
         except Exception as exc:  # noqa: BLE001 — 收集到主线程再断言
             results.append((idx, exc))
         finally:
@@ -85,15 +76,30 @@ def _safe_check_result():
     return SimpleNamespace(can_execute=True, forbidden=[], warnings=[])
 
 
+def _skip_sqlite_true_concurrency():
+    if connection.vendor == "sqlite":
+        pytest.skip("SQLite 不支持与线上数据库一致的 select_for_update 行级锁并发语义")
+
+
 class TestRunCountAtomicity:
     def test_concurrent_run_count_increments_correctly(self):
         """两个 worker 并发触发同一任务,run_count 必须累加到 2,不能因 read-modify-write 漏算。"""
+        _skip_sqlite_true_concurrency()
         st = _task()
         results: list = []
-        t1 = _call_in_thread(st.id, results, 0)
-        t2 = _call_in_thread(st.id, results, 1)
-        t1.join(timeout=15)
-        t2.join(timeout=15)
+        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True), patch.object(
+            tasks.DangerousChecker,
+            "check_command",
+            return_value=_safe_check_result(),
+        ), patch.object(
+            tasks.DangerousChecker,
+            "check_path",
+            return_value=_safe_check_result(),
+        ):
+            t1 = _call_in_thread(st.id, results, 0)
+            t2 = _call_in_thread(st.id, results, 1)
+            t1.join(timeout=15)
+            t2.join(timeout=15)
         assert not t1.is_alive() and not t2.is_alive(), "线程未在 15s 内结束,疑似死锁"
         assert results == [], f"线程内异常: {results}"
         st.refresh_from_db()
@@ -116,12 +122,22 @@ class TestRunCountAtomicity:
 class TestSkipPolicyConcurrency:
     def test_concurrent_skip_blocks_second_execution(self):
         """SKIP 策略下并发触发只允许产生 1 条 JobExecution,run_count 只 +1(SKIP 命中 return 不自增)。"""
+        _skip_sqlite_true_concurrency()
         st = _task(concurrency_policy=ConcurrencyPolicy.SKIP)
         results: list = []
-        t1 = _call_in_thread(st.id, results, 0)
-        t2 = _call_in_thread(st.id, results, 1)
-        t1.join(timeout=15)
-        t2.join(timeout=15)
+        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True), patch.object(
+            tasks.DangerousChecker,
+            "check_command",
+            return_value=_safe_check_result(),
+        ), patch.object(
+            tasks.DangerousChecker,
+            "check_path",
+            return_value=_safe_check_result(),
+        ):
+            t1 = _call_in_thread(st.id, results, 0)
+            t2 = _call_in_thread(st.id, results, 1)
+            t1.join(timeout=15)
+            t2.join(timeout=15)
         assert results == [], f"线程内异常: {results}"
         ex_count = JobExecution.objects.filter(scheduled_task=st).count()
         assert ex_count == 1, f"预期 SKIP 后只有 1 条 execution,实际={ex_count}"
@@ -130,11 +146,13 @@ class TestSkipPolicyConcurrency:
 
 
 class TestAtomicContract:
-    def test_skip_check_runs_inside_atomic_block(self, mocker):
+    def test_skip_check_runs_inside_atomic_block(self):
         """契约:策略检查 + run_count 自增 + 创建 execution 必须在 transaction.atomic 内。"""
-        atomic_spy = mocker.spy(transaction, "atomic")
         st = _task()
-        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True), patch.object(
+        with patch.object(transaction, "atomic", wraps=transaction.atomic) as atomic_spy, patch(
+            "apps.job_mgmt.tasks._dispatch_execution_job",
+            return_value=True,
+        ), patch.object(
             tasks.DangerousChecker,
             "check_command",
             return_value=_safe_check_result(),
@@ -142,13 +160,19 @@ class TestAtomicContract:
             tasks.execute_scheduled_task(st.id)
         assert atomic_spy.called, "execute_scheduled_task 必须包裹在 transaction.atomic 内"
 
-    def test_select_for_update_locks_scheduled_task_row(self, mocker):
+    def test_select_for_update_locks_scheduled_task_row(self):
         """契约:必须用 select_for_update() 锁 ScheduledTask 行,否则 SKIP 竞态窗口未闭合。"""
         from apps.job_mgmt.models import ScheduledTask as ScheduledTaskModel
 
-        sfu_spy = mocker.spy(ScheduledTaskModel.objects, "select_for_update")
         st = _task()
-        with patch("apps.job_mgmt.tasks._dispatch_execution_job", return_value=True), patch.object(
+        with patch.object(
+            ScheduledTaskModel.objects,
+            "select_for_update",
+            wraps=ScheduledTaskModel.objects.select_for_update,
+        ) as sfu_spy, patch(
+            "apps.job_mgmt.tasks._dispatch_execution_job",
+            return_value=True,
+        ), patch.object(
             tasks.DangerousChecker,
             "check_command",
             return_value=_safe_check_result(),
