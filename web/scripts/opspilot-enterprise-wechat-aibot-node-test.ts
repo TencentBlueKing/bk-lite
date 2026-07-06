@@ -1,4 +1,10 @@
-import { getDefaultConfig, nodeCategories, nodeConfig, TRIGGER_NODE_TYPES } from '../src/app/opspilot/constants/chatflow';
+import {
+  getDefaultConfig,
+  nodeCategories,
+  nodeConfig,
+  normalizeEnterpriseWechatAibotConfig,
+  TRIGGER_NODE_TYPES,
+} from '../src/app/opspilot/constants/chatflow';
 import { formatConfigInfo } from '../src/app/opspilot/components/chatflow/utils/formatConfigInfo';
 
 function assert(condition: unknown, message: string) {
@@ -30,6 +36,17 @@ assert(config.websocket?.botId === '', 'websocket.botId must be reserved');
 assert(config.websocket?.secret === '', 'websocket.secret must be reserved');
 assert(config.inputParams === 'last_message', 'inputParams must remain last_message');
 assert(config.outputParams === 'last_message', 'outputParams must remain last_message');
+
+const normalizedConfig = normalizeEnterpriseWechatAibotConfig({
+  ...config,
+  webhook: {
+    token: 'token',
+    encodingAESKey: 'encoding-aes-key',
+    aibotid: 'stale-wrong-id',
+  },
+});
+
+assert(normalizedConfig.webhook.aibotid === '', 'enterprise_wechat_aibot must clear aibotid before saving');
 
 const configuredSummary = formatConfigInfo({
   label: '企微机器人',
