@@ -1,4 +1,4 @@
-import type { ChatflowNodeData, CeleryNodeConfig, HttpNodeConfig, AgentsNodeConfig, ConditionNodeConfig, IntentClassificationNodeConfig, EnterpriseWechatNodeConfig, DingtalkNodeConfig, WechatOfficialNodeConfig, NotificationNodeConfig, WebChatNodeConfig, MobileNodeConfig } from '../types';
+import type { ChatflowNodeData, CeleryNodeConfig, HttpNodeConfig, AgentsNodeConfig, ConditionNodeConfig, IntentClassificationNodeConfig, EnterpriseWechatNodeConfig, EnterpriseWechatAibotNodeConfig, DingtalkNodeConfig, WechatOfficialNodeConfig, NotificationNodeConfig, WebChatNodeConfig, MobileNodeConfig } from '../types';
 
 /** 记忆节点配置（前端表单格式） */
 interface MemoryNodeFormConfig {
@@ -93,6 +93,23 @@ export const formatConfigInfo = (data: ChatflowNodeData, t: any) => {
         if (wechatConfig.aes_key) configuredParams.push('AES Key');
         if (wechatConfig.corp_id) configuredParams.push('Corp ID');
         if (wechatConfig.agent_id) configuredParams.push('Agent ID');
+        return `已配置: ${configuredParams.join(', ')}`;
+      }
+      return t('chatflow.notConfigured');
+    }
+
+    case 'enterprise_wechat_aibot': {
+      const aibotConfig = config as EnterpriseWechatAibotNodeConfig;
+      if (aibotConfig.connectionMode === 'websocket') {
+        if (aibotConfig.websocket?.botId && aibotConfig.websocket?.secret) {
+          return '已配置: Bot ID, Secret';
+        }
+        return t('chatflow.notConfigured');
+      }
+
+      if (aibotConfig.webhook?.token && aibotConfig.webhook?.encodingAESKey) {
+        const configuredParams = ['Token', 'EncodingAESKey'];
+        if (aibotConfig.webhook.aibotid) configuredParams.push('AIBot ID');
         return `已配置: ${configuredParams.join(', ')}`;
       }
       return t('chatflow.notConfigured');
