@@ -1,4 +1,8 @@
+import pytest
+
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.compiler import FormulaCompiler
+from apps.monitor.expression.query import build_formula_query
 
 
 class MetricObj:
@@ -59,3 +63,42 @@ def test_compile_formula_same_dimensions_without_group_left():
 
     assert "group_left" not in compiled.query
     assert "* 100" in compiled.query
+
+
+def test_compile_nested_formula_with_group_right():
+    metrics = {
+        1: MetricObj(1, "request_count{__$labels__}"),
+        2: MetricObj(2, "request_total{__$labels__}"),
+    }
+    condition = {
+        "type": "formula",
+        "result_name": "请求占比",
+        "expression": "a + (b / a)",
+        "queries": [
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {"ref": "b", "metric_id": 2, "filter": [], "group_algorithm": "sum", "group_by": ["instance_id"]},
+        ],
+    }
+
+    compiled = FormulaCompiler(condition, metrics).compile()
+
+    assert "/ on(instance_id) group_right" in compiled.query
+    assert compiled.group_by == ["instance_id", "status"]
+
+
+def test_build_formula_query_rejects_invalid_query_shape_with_controlled_error():
+    condition = {
+        "type": "formula",
+        "result_name": "x",
+        "expression": "a/b",
+        "queries": [1],
+    }
+
+    with pytest.raises(BaseAppException):
+        build_formula_query(condition)
