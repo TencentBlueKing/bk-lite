@@ -5,11 +5,13 @@
   "plugin_desc": "Omnitron Systems Technology iConverter management-module SNMP child template for industrial Ethernet media converters and fiber transceiver modules under Omnitron enterprise PEN 7342. The shared Switch SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The private OMNITRON-MIB / OMNITRON-POE-MIB / OMNITRON-TC-MIB (omnitron OBJECT IDENTIFIER ::= { enterprises 7342 } + icAgent(1)/prodAgent(2)/omnitronProducts(5) + managementModule(1)/omnitronMIB(3)) expose iConverter management module inventory and PoE port budget leaves, but the publicly documented OMNITRON-MIB / OMNITRON-POE-MIB / OMNITRON-TC-MIB do not publish a stable, row-free chassis-level scalar health object that bk-lite can promote to a single device_* metric; the OMNITRON-POE-MIB and icAgent/managementModule subtrees are per-port or per-module rows, which telegraf inputs.snmp cannot aggregate into one bk-lite scalar, so they are kept as N/A to honor the no-fabricated-health-metrics rule.",
   "status_query": "any({instance_type='switch', collect_type='snmp_omnitron'}) by (instance_id)",
   "name": "Switch",
-  "icon": "mm-omnitron_omnitron",
+  "icon": "mm-switch_交换机",
   "type": "Network Device",
   "description": "",
   "default_metric": "any({instance_type='switch'}) by (instance_id)",
-  "instance_id_keys": ["instance_id"],
+  "instance_id_keys": [
+    "instance_id"
+  ],
   "supplementary_indicators": [],
   "metrics": []
 }

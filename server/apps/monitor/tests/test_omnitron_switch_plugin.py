@@ -278,6 +278,19 @@ def test_new_files_do_not_leak_external_source_names():
 
 
 @pytest.mark.unit
+def test_icon_field_uses_object_category_not_brand(metrics):
+    """Round 5 icon 铁律: metrics.json icon 字段必须 mm-<object>_<中文>,
+    不是 mm-<brand>_<x>. Object category for Switch is mm-switch_交换机;
+    brand-specific icon belongs to common.tsx BRANDS[].icon only.
+    """
+    assert metrics["icon"] == "mm-switch_交换机", (
+        f"metrics.json icon must be the Switch category icon "
+        f"'mm-switch_交换机' (round 5 iron rule), got {metrics['icon']!r}; "
+        f"brand-specific icon belongs to common.tsx BRANDS, not metrics.json."
+    )
+
+
+@pytest.mark.unit
 def test_collecttype_uniqueness_in_switch_object():
     """Verify there is exactly one collect_type entry for the Omnitron
     plugin in the switch.tsx collectTypes map (defense against 沉淀 #11
