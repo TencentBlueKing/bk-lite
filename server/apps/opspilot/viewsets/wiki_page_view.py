@@ -5,6 +5,7 @@ from django.http import JsonResponse
 from rest_framework.decorators import action
 
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.opspilot import tasks as _opspilot_tasks
 from apps.opspilot.models import BuildRecord, KnowledgePage, Material, PageEvidence, WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, CheckItemSerializer, KnowledgePageSerializer, PageVersionSerializer
 from apps.opspilot.services.wiki.cascade_service import MAINTENANCE_STAGE_KEYS, cascade
@@ -525,12 +526,10 @@ class WikiBuildRecordViewSet(AuthViewSet):
         material = Material.objects.filter(id=material_id).first() if material_id else None
         if not material:
             return JsonResponse({"result": False, "message": "原资料不存在,无法重试"}, status=400)
-        from apps.opspilot.tasks import wiki_build_material_task
-
         material.status = "building"
         material.save(update_fields=["status", "updated_at"])
         operator = getattr(request.user, "username", "")
-        wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
+        _opspilot_tasks.wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
         return JsonResponse({"result": True, "data": {"async": True}})
 
     @action(methods=["POST"], detail=True)

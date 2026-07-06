@@ -1,3 +1,4 @@
+import base64
 import zipfile
 
 from django.http import HttpResponse, JsonResponse
@@ -5,6 +6,7 @@ from rest_framework.decorators import action
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.opspilot import tasks as _opspilot_tasks
 from apps.opspilot.models import BuildRecord, KnowledgePage, WikiKnowledgeBase
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, WikiKnowledgeBaseSerializer
 from apps.opspilot.services.wiki.cascade_service import cascade
@@ -26,6 +28,7 @@ from apps.opspilot.services.wiki.relation_service import list_relations, rebuild
 from apps.opspilot.services.wiki.retrieval_service import answer as wiki_answer
 from apps.opspilot.services.wiki.retrieval_service import hybrid_search as wiki_hybrid_search
 from apps.opspilot.services.wiki.retrieval_service import search as wiki_search
+from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
 from apps.opspilot.services.wiki.wiki_context_service import build_context
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
@@ -160,10 +163,6 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
         治理增强:同步导入失败时(解析/级联异常),自动落 BuildRecord(stage=failed)
         并投递 Celery 异步重试任务(最多 3 次退避)。OperationLog 记录尝试与最终结果。
         """
-        import base64
-
-        from apps.opspilot.tasks import wiki_retry_markdown_import_task
-
         kb = self.get_object()
         upload = request.FILES.get("file")
         if not upload:
@@ -193,7 +192,8 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
                 status="failed",
             )
             try:
-                wiki_retry_markdown_import_task.delay(kb.id, record.id, base64.b64encode(content).decode("ascii"), upload.name, operator)
+                encoded = base64.b64encode(content).decode("ascii")
+                _opspilot_tasks.wiki_retry_markdown_import_task.delay(kb.id, record.id, encoded, upload.name, operator)
             except Exception:  # noqa: BLE001 - 重试队列投递失败不阻塞返回
                 logger.exception("wiki markdown 重试任务投递失败")
             log_operation(
@@ -325,8 +325,6 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
     @action(methods=["GET"], detail=True, url_path="preview_merge")
     def preview_merge(self, request, pk=None):
         """合并预览:按 title_aliases 规则归一 KB 内所有 active 页面,返回会被合并到同一规范标题的页面集合(不写库)。"""
-        from apps.opspilot.services.wiki.title_service import canonical_title, compact_title_key, title_alias_map
-
         kb = self.get_object()
         alias_map = title_alias_map(kb)
         # {compact_title_key(canonical): {canonical_label, pages: [{id, title, status}]}}
@@ -382,9 +380,7 @@ class WikiKnowledgeBaseViewSet(AuthViewSet):
             return JsonResponse({"result": False, "message": "知识库存在运行中的构建任务,请等待完成后再操作"}, status=400)
         operator = getattr(request.user, "username", "")
         record = create_rebuild_record(kb, operator=operator)
-        from apps.opspilot.tasks import wiki_rebuild_kb_task
-
-        wiki_rebuild_kb_task.delay(kb.id, kb.llm_model_id, operator, record.id)
+        _opspilot_tasks.wiki_rebuild_kb_task.delay(kb.id, kb.llm_model_id, operator, record.id)
         return JsonResponse({"result": True, "data": BuildRecordSerializer(record).data})
 
     @action(methods=["POST"], detail=True)

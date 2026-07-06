@@ -1,4 +1,5 @@
 from django.http import JsonResponse
+from django.utils.dateparse import parse_datetime
 from rest_framework.decorators import action
 
 from apps.core.utils.viewset_utils import AuthViewSet
@@ -191,8 +192,6 @@ class WikiCheckItemViewSet(AuthViewSet):
     @staticmethod
     def _parse_assignee_due(request):
         """解析分配/延期参数:assignee/due_at 可单独或同时提供;空值表示清除。"""
-        from django.utils.dateparse import parse_datetime
-
         raw_assignee = request.data.get("assignee")
         raw_due = request.data.get("due_at")
         raw_action = request.data.get("action_type")
