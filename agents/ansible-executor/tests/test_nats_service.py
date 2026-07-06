@@ -251,6 +251,28 @@ async def test_invoke_callback_allows_configured_subject_pattern(tmp_path):
 
 
 @pytest.mark.asyncio
+async def test_invoke_callback_allows_default_host_remote_callback_subject(tmp_path):
+    service = AnsibleNATSService(
+        ServiceConfig(
+            nats_servers=["nats://127.0.0.1:4222"],
+            nats_instance_id="default",
+            js_stream="BK_ANS_EXEC_TASKS",
+            js_subject_prefix="bk.ans_exec.tasks",
+            js_durable="ansible-executor",
+            state_db_path=str(tmp_path / "task.db"),
+        )
+    )
+    service.nc = DummyNATSClient({"success": True})
+
+    await service._invoke_callback(
+        {"subject": "default_stargazer.host_remote.callback"},
+        {"task_id": "collect_host_safe"},
+    )
+
+    assert service.nc.requests[0][0] == "default_stargazer.host_remote.callback"
+
+
+@pytest.mark.asyncio
 async def test_enqueue_task_publishes_sanitized_queue_payload(tmp_path):
     service = AnsibleNATSService(
         ServiceConfig(
