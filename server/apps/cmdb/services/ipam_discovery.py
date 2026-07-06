@@ -194,8 +194,17 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
     C2 链路下 Stargazer 不再通过 NATS 回调结果，CMDB 周期任务从 VM 拉取
     `ip_info` 指标后调用本函数。函数以任务所选子网为准，因此某个子网本轮
     没有任何在线 IP 时，也会触发原自动发现记录置离线。
+
+    P1-2.7: 任务未勾选子网时不应越权处理 VM 指标里出现的子网(原代码
+    fallback 到 sorted(alive_by_subnet) 等于默默处理外部发现的子网,
+    与"任务只对所选子网负责"的语义不一致)。早返回空 summary + WARNING。
     """
     selected_subnet_ids, _, _ = extract_subnet_discovery_params(task)
+    selected_subnet_ids = [str(item) for item in selected_subnet_ids]
+    if not selected_subnet_ids:
+        logger.warning("[IPDiscovery] 任务未勾选子网,跳过 VM 指标处理,行数=%s", len(rows or []))
+        return {"created": 0, "updated": 0, "offline": 0, "failed": 0}
+
     alive_by_subnet: dict[str, list[dict]] = {}
     for row in rows or []:
         if row.get("collect_status", "success") == "failed":
@@ -204,14 +213,16 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
         ip_addr = str(row.get("ip_addr") or row.get("ip") or "").strip()
         if not subnet_id or not ip_addr:
             continue
+        if subnet_id not in selected_subnet_ids:
+            # VM 指标里出现了任务未勾的子网,严格按"任务所选"过滤,避免越权处理
+            continue
         alive_by_subnet.setdefault(subnet_id, []).append(
             {"ip": ip_addr, "mac": row.get("mac", "")}
         )
 
-    subnet_ids = [str(item) for item in selected_subnet_ids] or sorted(alive_by_subnet)
-    summary = {"created": 0, "updated": 0, "offline": 0}
-    for subnet_id in subnet_ids:
-        result = apply_discovery_result(subnet_id, alive_by_subnet.get(str(subnet_id), []))
+    summary = {"created": 0, "updated": 0, "offline": 0, "failed": 0}
+    for subnet_id in selected_subnet_ids:
+        result = apply_discovery_result(subnet_id, alive_by_subnet.get(subnet_id, []))
         for key in summary:
             summary[key] += int(result.get(key, 0))
     return summary

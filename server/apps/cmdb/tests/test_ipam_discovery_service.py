@@ -34,7 +34,7 @@ class TestApplyIpDiscoveryVmRows:
             ("1", [{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}]),
             ("2", []),
         ]
-        assert result == {"created": 1, "updated": 0, "offline": 1}
+        assert result == {"created": 1, "updated": 0, "offline": 1, "failed": 0}
 
     def test_忽略失败行和缺少关键字段的行(self, monkeypatch):
         from apps.cmdb.services import ipam_discovery
@@ -44,7 +44,7 @@ class TestApplyIpDiscoveryVmRows:
         monkeypatch.setattr(
             ipam_discovery,
             "apply_discovery_result",
-            lambda subnet_id, alive: calls.append((subnet_id, alive)) or {"created": 0, "updated": 0, "offline": 0},
+            lambda subnet_id, alive: calls.append((subnet_id, alive)) or {"created": 0, "updated": 0, "offline": 0, "failed": 0},
         )
 
         result = ipam_discovery.apply_ip_discovery_vm_rows(
@@ -57,7 +57,7 @@ class TestApplyIpDiscoveryVmRows:
         )
 
         assert calls == []
-        assert result == {"created": 0, "updated": 0, "offline": 0}
+        assert result == {"created": 0, "updated": 0, "offline": 0, "failed": 0}
 
 
 class TestApplyDiscoveryResult:
@@ -351,3 +351,79 @@ class TestApplyDiscoveryResultPartialFailure:
         assert result["created"] == 0
         assert result["failed"] == 1
         assert "failed" in result
+
+
+# ---------------------------------------------------------------------------
+# P1-2.7 — apply_ip_discovery_vm_rows 任务未勾子网时不应越权处理 VM 指标里出现的子网
+# ---------------------------------------------------------------------------
+
+class TestApplyIpDiscoveryVmRowsSubnetScoping:
+    """P1-2.7: 任务未勾选子网时,代码 fallback 到 sorted(alive_by_subnet) 会把
+    VM 指标里出现的所有子网都跑一遍,语义上越权(任务只对所选子网负责)。
+    修复后:无 selected_subnet_ids 时直接返回空 summary,不调 apply_discovery_result。"""
+
+    def test_no_selected_subnet_returns_empty_summary_without_calling_apply(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        task = SimpleNamespace(params={}, instances={})  # 任务没勾子网
+        apply_calls = []
+        monkeypatch.setattr(
+            ipam_discovery,
+            "apply_discovery_result",
+            lambda subnet_id, alive: apply_calls.append((subnet_id, alive)) or {"created": 0, "updated": 0, "offline": 0, "failed": 0},
+        )
+
+        result = ipam_discovery.apply_ip_discovery_vm_rows(
+            task,
+            [
+                {"subnet_id": "1", "ip_addr": "10.0.1.10", "collect_status": "success"},
+                {"subnet_id": "2", "ip_addr": "10.0.2.20", "collect_status": "success"},
+            ],
+        )
+
+        assert apply_calls == [], "任务未勾子网时不应触发任何 apply_discovery_result"
+        assert result == {"created": 0, "updated": 0, "offline": 0, "failed": 0}
+
+    def test_no_selected_subnet_logs_warning(self, monkeypatch, caplog):
+        """任务未勾子网时应记 WARNING(对账任务可观测),不静默吞。"""
+        import logging
+
+        from apps.cmdb.services import ipam_discovery
+
+        task = SimpleNamespace(params={}, instances={})
+        monkeypatch.setattr(
+            ipam_discovery,
+            "apply_discovery_result",
+            lambda subnet_id, alive: {"created": 0, "updated": 0, "offline": 0, "failed": 0},
+        )
+
+        with caplog.at_level(logging.WARNING, logger="cmdb"):
+            ipam_discovery.apply_ip_discovery_vm_rows(task, [])
+
+        assert any("未勾选子网" in r.message for r in caplog.records), "应记 WARNING 供上层对账任务感知"
+
+    def test_selected_subnet_scopes_processing_to_task_choice(self, monkeypatch):
+        """任务勾了子网 [1, 3],VM 指标里出现 [1, 2, 3, 5],只应处理 1 和 3。"""
+        from apps.cmdb.services import ipam_discovery
+
+        task = SimpleNamespace(params={"subnet_ids": [1, 3]}, instances={})
+        apply_calls = []
+        monkeypatch.setattr(
+            ipam_discovery,
+            "apply_discovery_result",
+            lambda subnet_id, alive: apply_calls.append((str(subnet_id), [a["ip"] for a in alive]))
+            or {"created": len(alive), "updated": 0, "offline": 0, "failed": 0},
+        )
+
+        ipam_discovery.apply_ip_discovery_vm_rows(
+            task,
+            [
+                {"subnet_id": "1", "ip_addr": "10.0.1.10", "collect_status": "success"},
+                {"subnet_id": "2", "ip_addr": "10.0.2.20", "collect_status": "success"},
+                {"subnet_id": "3", "ip_addr": "10.0.3.30", "collect_status": "success"},
+                {"subnet_id": "5", "ip_addr": "10.0.5.50", "collect_status": "success"},
+            ],
+        )
+
+        processed = {sid for sid, _ in apply_calls}
+        assert processed == {"1", "3"}, f"只应处理任务勾的 1 和 3,实际处理 {processed}"
