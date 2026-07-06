@@ -34,6 +34,7 @@ class ControllerTask(TimeInfo, MaintainerInfo):
 
 class ControllerTaskNode(models.Model):
     task = models.ForeignKey(ControllerTask, on_delete=models.CASCADE, verbose_name="任务")
+    node_id = models.CharField(max_length=100, blank=True, default="", db_index=True, verbose_name="节点ID")
     ip = models.CharField(max_length=100, verbose_name="IP地址")
     node_name = models.CharField(max_length=200, default="", verbose_name="节点名称")
     os = models.CharField(max_length=100, verbose_name="操作系统")
