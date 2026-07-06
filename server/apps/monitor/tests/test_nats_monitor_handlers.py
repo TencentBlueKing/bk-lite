@@ -243,6 +243,47 @@ class TestMonitorInstanceMetrics:
         assert out["data"]["count"] == 1
         assert out["data"]["items"][0]["metric"] == "cpu"
 
+    def test_only_with_data_limits_vm_queries_to_current_page(self, mocker):
+        obj = MonitorObject.objects.create(name="MIMObjPaged", level="base")
+        plugin = MonitorPlugin.objects.create(name="MIMPluginPaged")
+        group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+        for index, name in enumerate(["cpu", "mem", "disk"], start=1):
+            Metric.objects.create(
+                monitor_object=obj,
+                monitor_plugin=plugin,
+                metric_group=group,
+                name=name,
+                display_name=name.upper(),
+                query=f'{name}{{instance_id="$instance_id"}}',
+                sort_order=index,
+            )
+        MonitorInstance.objects.create(
+            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+        )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        vm = mocker.patch("apps.monitor.nats.monitor.VictoriaMetricsAPI")
+        vm.return_value.query_range.return_value = {"status": "success", "data": {"result": [{"values": [[1, "1"]]}]}}
+
+        out = nm.monitor_instance_metrics(
+            {
+                "monitor_obj_id": obj.id,
+                "instance_id": "('h1',)",
+                "only_with_data": True,
+                "page": 1,
+                "page_size": 1,
+            },
+            user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1},
+        )
+
+        assert out["result"] is True
+        assert out["data"]["count"] == 3
+        assert [item["metric"] for item in out["data"]["items"]] == ["cpu"]
+        assert vm.return_value.query_range.call_count == 1
+
     def test_instance_not_authorized(self, mocker):
         obj = MonitorObject.objects.create(name="MIMObj2", level="base")
         mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
@@ -304,6 +345,48 @@ class TestQueryMonitorAlertSegments:
         }, user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1})
         assert out["result"] is True
         assert out["data"]["count"] == 1
+
+    def test_paginates_before_building_segments(self, mocker):
+        from datetime import datetime, timezone
+        from apps.monitor.models import MonitorAlert
+
+        obj = MonitorObject.objects.create(name="QMASObj3", level="base")
+        MonitorInstance.objects.create(
+            id="('h1',)", name="h1", monitor_object=obj, is_active=True, is_deleted=False,
+        )
+        for idx, hour in enumerate([12, 11, 10], start=1):
+            MonitorAlert.objects.create(
+                policy_id=idx,
+                monitor_instance_id="('h1',)",
+                status="new",
+                level="critical",
+                start_event_time=datetime(2026, 1, 1, hour, tzinfo=timezone.utc),
+            )
+        mocker.patch("apps.monitor.nats.monitor.get_permission_rules", return_value={"team": [1]})
+        mocker.patch(
+            "apps.monitor.nats.monitor.permission_filter",
+            side_effect=lambda model, perm, **kw: model.objects.all(),
+        )
+        build_segment = mocker.patch(
+            "apps.monitor.nats.monitor._build_monitor_alert_segment",
+            side_effect=nm._build_monitor_alert_segment,
+        )
+
+        out = nm.query_monitor_alert_segments({
+            "monitor_obj_id": obj.id,
+            "start": "2026-01-01 00:00:00",
+            "end": "2026-01-02 00:00:00",
+            "page": 2,
+            "page_size": 1,
+        }, user_info={"user": SimpleNamespace(username="u", domain="d"), "team": 1})
+
+        assert out["result"] is True
+        assert out["data"]["count"] == 3
+        assert out["data"]["page"] == 2
+        assert out["data"]["page_size"] == 1
+        assert len(out["data"]["items"]) == 1
+        assert out["data"]["items"][0]["policy_id"] == 2
+        assert build_segment.call_count == 1
 
 
 class TestBuildMonitorAlertSegment:

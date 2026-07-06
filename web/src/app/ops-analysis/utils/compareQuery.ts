@@ -1,7 +1,7 @@
 import dayjs from 'dayjs';
 import type { ValueConfig, FilterBindings, UnifiedFilterDefinition, FilterValue } from '@/app/ops-analysis/types/dashBoard';
 import type { DatasourceItem, ParamItem } from '@/app/ops-analysis/types/dataSource';
-import { buildWidgetRequestParams, formatTimeRange } from '@/app/ops-analysis/utils/widgetDataTransform';
+import { buildWidgetRequestParams } from '@/app/ops-analysis/utils/widgetDataTransform';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 
 type RequestParams = Record<string, any>;
@@ -205,19 +205,6 @@ export const getChangePercent = (
   }
   if (currentValue > 0) {
     return 100;
-  }
-  return null;
-};
-
-export const resolveRequestTimeRange = (value: unknown): [string, string] | null => {
-  if (typeof value === 'number') {
-    return formatTimeRange(value) as [string, string];
-  }
-  if (Array.isArray(value) && value.length === 2) {
-    return formatTimeRange(value) as [string, string];
-  }
-  if (value && typeof value === 'object' && 'start' in (value as any) && 'end' in (value as any)) {
-    return formatTimeRange(value) as [string, string];
   }
   return null;
 };

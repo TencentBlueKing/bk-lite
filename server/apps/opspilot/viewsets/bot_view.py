@@ -22,6 +22,7 @@ from apps.opspilot.utils.bot_utils import set_time_range
 from apps.opspilot.utils.celery_task_utils import create_celery_task, delete_celery_task
 from apps.opspilot.utils.pin_mixin import PinMixin
 from apps.opspilot.utils.schedule_utils import get_crontab_next_runs
+from apps.opspilot.utils.workflow_sensitive_config import merge_masked_workflow_sensitive_config
 from apps.system_mgmt.utils.operation_log_utils import log_operation
 
 
@@ -91,6 +92,16 @@ class BotViewSet(PinMixin, AuthViewSet):
     def query_by_groups(self, request, queryset):
         """重写排序逻辑：当前用户置顶优先，再按 ID 倒序"""
         return self.query_by_groups_with_pinned(request, queryset)
+
+    @action(detail=False, methods=["GET"])
+    def get_teams(self, request):
+        """返回当前用户可访问的团队(组)列表。
+
+        通用工具接口：原挂在已删除的知识库 ViewSet 上（与知识库无关），
+        知识库功能移除后迁移到此处。前端 useGroups hook 调用它获取用户团队。
+        """
+        groups = request.user.group_list
+        return JsonResponse({"result": True, "data": groups})
 
     @HasPermission("bot_list-View")
     def list(self, request, *args, **kwargs):
@@ -200,6 +211,7 @@ class BotViewSet(PinMixin, AuthViewSet):
             # 直接使用 workflow_data 作为 flow_json
             flow = BotWorkFlow.objects.get(bot_id=obj.id)
             old_flow_json = flow.flow_json
+            workflow_data = merge_masked_workflow_sensitive_config(workflow_data, old_flow_json)
             flow.flow_json = workflow_data
             flow.web_json = workflow_data
             flow.save()
@@ -572,9 +584,7 @@ class BotViewSet(PinMixin, AuthViewSet):
         for row in title_rows:
             row_day = row["conversation_time"].date()
             title_key = (row["bot_id"], row["user_id"], row_day)
-            if title_key in title_keys and (
-                title_key not in title_map or row["conversation_time"] < title_map[title_key][0]
-            ):
+            if title_key in title_keys and (title_key not in title_map or row["conversation_time"] < title_map[title_key][0]):
                 title_map[title_key] = (row["conversation_time"], row["conversation_content"])
 
         for entry in page_entries:

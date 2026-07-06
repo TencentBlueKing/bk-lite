@@ -1,0 +1,157 @@
+'use client';
+
+import React, { useEffect, useState } from 'react';
+import { Form, Input, Modal, Select } from 'antd';
+import { useTranslation } from '@/utils/i18n';
+import GroupTreeSelect from '@/components/group-tree-select';
+import { useWikiApi } from '@/app/opspilot/api/wiki';
+import { Model } from '@/app/opspilot/types/provider';
+import { PurposeSchemaTemplate, WikiKnowledgeBase } from '@/app/opspilot/types/wiki';
+import { LlmModel } from '@/app/opspilot/types/skill';
+
+interface WikiModifyModalProps {
+  visible: boolean;
+  onCancel: () => void;
+  onConfirm: (values: Record<string, unknown>) => void;
+  initialValues?: WikiKnowledgeBase | null;
+}
+
+const fillTemplate = (tpl: PurposeSchemaTemplate | undefined, intro: string) => ({
+  purpose_md: (tpl?.purpose_md || '').replace(/\{\{description\}\}/g, intro || ''),
+  schema_md: tpl?.schema_md || '',
+});
+
+const WikiModifyModal: React.FC<WikiModifyModalProps> = ({ visible, onCancel, onConfirm, initialValues }) => {
+  const { t } = useTranslation();
+  const [form] = Form.useForm();
+  const { fetchTemplates, fetchKnowledgeBase, fetchLlmModels, fetchEmbedProviders } = useWikiApi();
+  const [templates, setTemplates] = useState<PurposeSchemaTemplate[]>([]);
+  const [llmModels, setLlmModels] = useState<LlmModel[]>([]);
+  const [embedProviders, setEmbedProviders] = useState<Model[]>([]);
+  const [confirmLoading, setConfirmLoading] = useState(false);
+
+  useEffect(() => {
+    if (!visible) return;
+    fetchLlmModels()
+      .then((models) => setLlmModels(models || []))
+      .catch(() => undefined);
+    fetchEmbedProviders()
+      .then((providers) => setEmbedProviders(providers || []))
+      .catch(() => undefined);
+    fetchTemplates()
+      .then((tpls) => {
+        setTemplates(tpls);
+        // 新建:默认套用「通用知识库」固定内容
+        if (!initialValues) {
+          const def = tpls.find((x) => x.key === 'general') || tpls[0];
+          form.setFieldsValue({ template_key: def?.key, ...fillTemplate(def, '') });
+        }
+      })
+      .catch(() => undefined);
+    if (initialValues?.id) {
+      form.resetFields();
+      // 卡片菜单只透传了部分字段,编辑时拉取完整知识库回写(含用途/结构)
+      fetchKnowledgeBase(initialValues.id)
+        .then((full) => {
+          form.setFieldsValue({
+            name: full.name,
+            introduction: full.introduction,
+            team: full.team,
+            llm_model: full.llm_model,
+            embed_provider: full.embed_provider,
+            vision_model: full.vision_model,
+            template_key: full.template_key || 'general',
+            purpose_md: full.purpose_md,
+            schema_md: full.schema_md,
+          });
+        })
+        .catch(() => undefined);
+    } else {
+      form.resetFields();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [visible, initialValues]);
+
+  // 选择模板 → 直接填入该模板固定的用途/结构(用户可再编辑)
+  const onTemplateChange = (key: string) => {
+    const tpl = templates.find((x) => x.key === key);
+    form.setFieldsValue(fillTemplate(tpl, form.getFieldValue('introduction') || ''));
+  };
+
+  const handleOk = async () => {
+    const values = await form.validateFields();
+    setConfirmLoading(true);
+    try {
+      await onConfirm(values);
+    } finally {
+      setConfirmLoading(false);
+    }
+  };
+
+  return (
+    <Modal
+      title={initialValues ? t('wiki.edit') : t('wiki.create')}
+      open={visible}
+      onOk={handleOk}
+      confirmLoading={confirmLoading}
+      onCancel={onCancel}
+      maskClosable={false}
+      width={560}
+      destroyOnHidden
+      // 表单较长:限制弹窗主体高度并内部滚动,确保任何视口下都不触底(前端规范:弹窗禁止触底)
+      styles={{ body: { maxHeight: 'calc(100vh - 240px)', overflowY: 'auto', overflowX: 'hidden' } }}
+    >
+      <Form form={form} layout="vertical">
+        <Form.Item label={t('wiki.name')} name="name" rules={[{ required: true }]}>
+          <Input />
+        </Form.Item>
+        <Form.Item
+          label={t('common.organization')}
+          name="team"
+          rules={[{ required: true, message: `${t('common.selectMsg')}${t('common.organization')}` }]}
+        >
+          <GroupTreeSelect placeholder={`${t('common.selectMsg')}${t('common.organization')}`} />
+        </Form.Item>
+        <Form.Item
+          label={t('wiki.llmModel')}
+          name="llm_model"
+          rules={[{ required: true, message: `${t('common.selectMsg')}${t('wiki.llmModel')}` }]}
+          tooltip={t('wiki.llmModelTip')}
+        >
+          <Select
+            placeholder={t('wiki.llmModelPlaceholder')}
+            options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
+          />
+        </Form.Item>
+        <Form.Item label={t('wiki.embedProvider')} name="embed_provider" tooltip={t('wiki.embedProviderTip')}>
+          <Select
+            allowClear
+            placeholder={t('wiki.embedProviderPlaceholder')}
+            options={embedProviders.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
+          />
+        </Form.Item>
+        <Form.Item label={t('wiki.visionModel')} name="vision_model" tooltip={t('wiki.visionModelTip')}>
+          <Select
+            allowClear
+            placeholder={t('wiki.visionModelPlaceholder')}
+            options={llmModels.map((m) => ({ value: m.id, label: m.name, disabled: !m.enabled }))}
+          />
+        </Form.Item>
+        <Form.Item label={t('wiki.introduction')} name="introduction">
+          <Input.TextArea rows={2} />
+        </Form.Item>
+        <Form.Item label={t('wiki.template')} name="template_key">
+          <Select onChange={onTemplateChange} options={templates.map((tp) => ({ value: tp.key, label: tp.name }))} />
+        </Form.Item>
+        <Form.Item label={t('wiki.purpose')} name="purpose_md">
+          <Input.TextArea rows={3} />
+        </Form.Item>
+        <Form.Item label={t('wiki.schema')} name="schema_md">
+          <Input.TextArea rows={3} />
+        </Form.Item>
+      </Form>
+    </Modal>
+  );
+};
+
+export default WikiModifyModal;

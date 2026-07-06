@@ -18,6 +18,7 @@ import {
   NotificationNodeConfig,
   WebChatNodeConfig,
   WechatOfficialNodeConfig,
+  EnterpriseWechatAibotNodeConfig,
 } from './components/nodeConfigs';
 
 export const NodeConfigForm: React.FC<any> = ({
@@ -171,6 +172,8 @@ export const NodeConfigForm: React.FC<any> = ({
           notificationChannels={notificationChannels}
           loadingChannels={loadingChannels}
           loadChannels={loadChannels}
+          llmModels={llmModels}
+          loadingLlmModels={loadingLlmModels}
           allUsers={allUsers}
           loadingUsers={loadingUsers}
           form={form}
@@ -178,6 +181,8 @@ export const NodeConfigForm: React.FC<any> = ({
       )}
 
       {nodeType === 'enterprise_wechat' && <EnterpriseWechatNodeConfig t={t} />}
+
+      {nodeType === 'enterprise_wechat_aibot' && <EnterpriseWechatAibotNodeConfig t={t} botId={botId} />}
 
       {nodeType === 'dingtalk' && <DingtalkNodeConfig t={t} />}
 

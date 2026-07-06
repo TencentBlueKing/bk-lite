@@ -1,6 +1,5 @@
 import useApiClient from '@/utils/request';
 import type {
-  KnowledgeBase,
   InvocationLogParams,
   InvocationLogResponse,
   SkillListParams,
@@ -40,10 +39,6 @@ export const useSkillApi = () => {
 
   const fetchSkillDetail = async (id: string | null): Promise<SkillDetail> => {
     return get(`/opspilot/model_provider_mgmt/llm/${id}/`);
-  };
-
-  const fetchKnowledgeBases = async (): Promise<KnowledgeBase[]> => {
-    return get('/opspilot/knowledge_mgmt/knowledge_base/');
   };
 
   const updateRule = async (key: string | number, postData: Partial<RulePayload>): Promise<void> => {
@@ -151,7 +146,6 @@ export const useSkillApi = () => {
     fetchInvocationLogs,
     fetchSkill,
     fetchSkillDetail,
-    fetchKnowledgeBases,
     updateRule,
     createRule,
     fetchRules,

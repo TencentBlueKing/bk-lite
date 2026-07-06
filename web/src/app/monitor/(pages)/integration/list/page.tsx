@@ -465,7 +465,7 @@ const Integration = () => {
                           onClick={(e) => e.stopPropagation()}
                         >
                           <Dropdown
-                            dropdownRender={() => renderTemplateActionMenu(app)}
+                            popupRender={() => renderTemplateActionMenu(app)}
                             placement="bottomRight"
                             trigger={['click']}
                           >

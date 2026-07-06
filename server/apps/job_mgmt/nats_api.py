@@ -2,6 +2,7 @@
 
 from asgiref.sync import async_to_sync
 from celery import current_app
+from django.db import connection
 from django.utils import timezone
 
 import nats_client
@@ -66,7 +67,7 @@ def get_job_mgmt_module_list():
 
 
 @nats_client.register
-def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
+def get_job_mgmt_module_data(module, child_module, page, page_size, group_id, *, team=None):
     """获取作业管理模块数据"""
     model_map = {
         "script": Script,
@@ -81,11 +82,33 @@ def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
     }
 
     if module != "system":
-        model = model_map[module]
+        model = model_map.get(module)
+        if model is None:
+            return {"result": False, "message": f"未知 module: {module}"}
     else:
-        model = system_model_map[child_module]
+        model = system_model_map.get(child_module)
+        if model is None:
+            return {"result": False, "message": f"未知 child_module: {child_module}"}
 
-    queryset = model.objects.filter(team__contains=int(group_id))
+    requested_teams = normalize_team(group_id)
+    if len(requested_teams) != 1:
+        return {"result": False, "message": "group_id 参数非法"}
+
+    authorized_team_ids = normalize_team(team)
+    if not authorized_team_ids:
+        return {"result": False, "message": "team 不能为空"}
+
+    group_id = next(iter(requested_teams))
+    if not is_team_authorized(group_id, authorized_team_ids):
+        return {"result": False, "message": "无权访问该团队数据"}
+
+    try:
+        page = max(1, int(page))
+        page_size = max(1, int(page_size))
+    except (TypeError, ValueError):
+        return {"result": False, "message": "page/page_size 参数非法"}
+
+    queryset = _filter_module_data_by_team(model.objects.all(), group_id)
 
     # 计算总数
     total_count = queryset.count()
@@ -101,6 +124,18 @@ def get_job_mgmt_module_data(module, child_module, page, page_size, group_id):
         "count": total_count,
         "items": list(data_list),
     }
+
+
+def _filter_module_data_by_team(queryset, group_id):
+    if connection.features.supports_json_field_contains:
+        return queryset.filter(team__contains=group_id)
+
+    matched_ids = [
+        item.id
+        for item in queryset.only("id", "team")
+        if group_id in normalize_team(getattr(item, "team", None))
+    ]
+    return queryset.filter(id__in=matched_ids)
 
 
 @nats_client.register
@@ -625,15 +660,30 @@ def job_detail_query(data: dict):
 def job_task_terminate(data=None, task_id=None, **kwargs):
     if isinstance(data, dict):
         task_id = data.get("task_id", task_id)
+        caller_team = data.get("caller_team", kwargs.get("caller_team", []))
+    else:
+        caller_team = kwargs.get("caller_team", [])
     if task_id is None:
         task_id = kwargs.get("task_id")
     if not task_id:
         return {"result": False, "message": "task_id 不能为空"}
+    if not caller_team:
+        return {"result": False, "message": "caller_team 不能为空"}
 
     try:
         execution = JobExecution.objects.get(id=task_id)
     except JobExecution.DoesNotExist:
         return {"result": False, "message": "任务不存在"}
+
+    # 归属校验：执行记录所属团队必须与调用方团队有交集
+    if not set(execution.team) & set(caller_team):
+        logger.warning(
+            "[job_task_terminate] 团队归属校验失败: task_id=%s, execution.team=%s, caller_team=%s",
+            task_id,
+            execution.team,
+            caller_team,
+        )
+        return {"result": False, "message": "无权取消该任务"}
 
     status_now = execution.status
     if status_now in ExecutionStatus.TERMINAL_STATES:

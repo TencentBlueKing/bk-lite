@@ -1,0 +1,8 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="IP Infusion">
+  <rect width="1024" height="1024" rx="112" fill="#0F3057"/>
+  <circle cx="512" cy="384" r="170" fill="none" stroke="#7DD3FC" stroke-width="44"/>
+  <circle cx="512" cy="384" r="84" fill="#7DD3FC"/>
+  <rect x="412" y="560" width="200" height="84" rx="14" fill="#22C55E"/>
+  <rect x="362" y="668" width="300" height="68" rx="12" fill="#F59E0B"/>
+  <rect x="312" y="760" width="400" height="56" rx="10" fill="#F8FAFC"/>
+</svg>

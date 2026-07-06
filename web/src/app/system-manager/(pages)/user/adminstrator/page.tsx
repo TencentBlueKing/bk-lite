@@ -149,7 +149,7 @@ const AdminUsers: React.FC = () => {
         onCancel={closeAddAdminModal}
         okButtonProps={{ loading: modalLoading }}
         cancelButtonProps={{ disabled: modalLoading }}
-        destroyOnClose={true}
+        destroyOnHidden={true}
       >
         <div className="mb-4">
           <label className="block text-sm font-medium text-gray-700 mb-2">

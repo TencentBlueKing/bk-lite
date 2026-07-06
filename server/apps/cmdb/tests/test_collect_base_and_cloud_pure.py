@@ -6,6 +6,7 @@ check_metrics 断言。aliyun/qcloud：inst_name 拼接、belong 关联、check_
 只 mock 真实外部边界（CollectModels DB、VM 查询）。
 """
 import time
+from types import SimpleNamespace
 
 import pytest
 
@@ -55,6 +56,26 @@ def test_collect_base_init_metrics_dict(monkeypatch):
     assert r.collection_metrics_dict["host_info_gauge"] == []
     assert r._instance_id == "cmdb_42"
     assert r.asso == "assos"
+
+
+def test_collect_base_init_backfills_inst_name_from_list_instances(monkeypatch):
+    monkeypatch.setattr(
+        CollectBase,
+        "get_collect_inst",
+        lambda self: SimpleNamespace(instances=[{"inst_name": "host-a"}], model_id="host"),
+    )
+    runner = _DummyCollect(inst_name="", inst_id=1, task_id=42)
+    assert runner.inst_name == "host-a"
+
+
+def test_collect_base_init_skips_dict_instances_for_ip_tasks(monkeypatch):
+    monkeypatch.setattr(
+        CollectBase,
+        "get_collect_inst",
+        lambda self: SimpleNamespace(instances={"subnet_ids": [714], "scan_method": "icmp"}, model_id="ip"),
+    )
+    runner = _DummyCollect(inst_name="", inst_id=None, task_id=294)
+    assert runner.inst_name == ""
 
 
 def test_collect_base_prom_sql(monkeypatch):

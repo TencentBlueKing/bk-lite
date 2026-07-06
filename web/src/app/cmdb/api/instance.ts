@@ -36,6 +36,37 @@ export const useInstanceApi = () => {
   const getRackLayout = (modelId: string, instId: string) =>
     get(`/cmdb/api/instance/rack_layout/${modelId}/${instId}/`);
 
+  const getApplicationResourceApps = (modelId: string, instId: string) =>
+    get(`/cmdb/api/instance/application_resource_apps/${modelId}/${instId}/`);
+
+  const getApplicationResourceTopology = (
+    modelId: string,
+    instId: string,
+    depth = 1
+  ) => get(`/cmdb/api/instance/application_resource_topology/${modelId}/${instId}/?depth=${depth}`);
+
+  const getApplicationResourceResources = (modelId: string, instId: string) =>
+    get(`/cmdb/api/instance/application_resource_resources/${modelId}/${instId}/`);
+
+  const getApplicationResourceInstances = (
+    modelId: string,
+    instId: string,
+    nodeIds: string[]
+  ) => post(
+    `/cmdb/api/instance/application_resource_instances/${modelId}/${instId}/`,
+    { node_ids: nodeIds }
+  );
+
+  const exportApplicationResourceInstances = (
+    modelId: string,
+    instId: string,
+    nodeIds: string[]
+  ) => post(
+    `/cmdb/api/instance/application_resource_export/${modelId}/${instId}/`,
+    { node_ids: nodeIds },
+    { responseType: 'blob' }
+  );
+
   // 获取实例详情
   const getInstanceDetail = (instanceId: string) =>
     get(`/cmdb/api/instance/${instanceId}/`);
@@ -134,6 +165,11 @@ export const useInstanceApi = () => {
     getNetworkTopo,
     getRoomLayout,
     getRackLayout,
+    getApplicationResourceApps,
+    getApplicationResourceTopology,
+    getApplicationResourceResources,
+    getApplicationResourceInstances,
+    exportApplicationResourceInstances,
     getInstanceDetail,
     createInstance,
     updateInstance,

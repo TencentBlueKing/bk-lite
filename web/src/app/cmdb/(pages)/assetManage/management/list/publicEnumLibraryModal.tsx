@@ -542,7 +542,7 @@ const PublicEnumLibraryModal = forwardRef<PublicEnumLibraryModalRef, PublicEnumL
           width={480}
           maskClosable={false}
           centered
-          destroyOnClose={false}
+          destroyOnHidden={false}
           afterClose={() => libraryFormRef.current?.resetFields()}
         >
           <Form ref={libraryFormRef} layout="vertical" className="mt-4">

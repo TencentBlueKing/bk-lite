@@ -55,6 +55,20 @@ export const useDataSourceApi = () => {
     return post(`/operation_analysis/api/data_source/get_source_data/${id}/`, params);
   }, [post]);
 
+  const previewDataSourceConfig = useCallback(async (data: any) => {
+    const isFormData =
+      typeof FormData !== 'undefined' && data instanceof FormData;
+    return post(
+      '/operation_analysis/api/data_source/preview/',
+      data,
+      isFormData ? { headers: { 'Content-Type': 'multipart/form-data' } } : undefined
+    );
+  }, [post]);
+
+  const previewDataSource = useCallback(async (id: number, data?: any) => {
+    return post(`/operation_analysis/api/data_source/${id}/preview/`, data);
+  }, [post]);
+
   return {
     getDataSourceList,
     getDataSourceBriefList,
@@ -63,6 +77,8 @@ export const useDataSourceApi = () => {
     updateDataSource,
     deleteDataSource,
     getDataSourceDetail,
-    getSourceDataByApiId
+    getSourceDataByApiId,
+    previewDataSourceConfig,
+    previewDataSource
   };
 };

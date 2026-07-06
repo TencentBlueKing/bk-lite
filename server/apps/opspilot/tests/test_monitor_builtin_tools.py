@@ -145,11 +145,11 @@ def test_generate_attachment_file_creates_workflow_asset():
     from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url
 
     asset = WorkflowAttachmentAsset.objects.get(execution_id="exec-1", attachment_id="daily_report")
-    asset.file_knowledge.file.open("rb")
+    asset.file.open("rb")
     try:
-        content = asset.file_knowledge.file.read()
+        content = asset.file.read()
     finally:
-        asset.file_knowledge.file.close()
+        asset.file.close()
 
     assert result["file_url"].startswith("/api/proxy/opspilot/bot_mgmt/workflow_attachment/download/")
     assert result["file_url"] == build_signed_attachment_download_url(asset)
@@ -163,16 +163,14 @@ def test_build_signed_attachment_download_url_uses_proxy_path():
     route the download request through the Next.js proxy rather than treating it as a page route."""
     from django.core.files.base import ContentFile
 
-    from apps.opspilot.models import FileKnowledge
     from apps.opspilot.services.workflow_attachment_service import build_signed_attachment_download_url, resolve_signed_attachment_token
 
-    fk = FileKnowledge.objects.create(file=ContentFile(b"data", name="f.md"))
     asset = WorkflowAttachmentAsset.objects.create(
         execution_id="exec-url-test",
         attachment_id="att-url-test",
         filename="test.md",
         mime_type="text/markdown",
-        file_knowledge=fk,
+        file=ContentFile(b"data", name="f.md"),
     )
 
     url = build_signed_attachment_download_url(asset)
@@ -255,7 +253,6 @@ def test_cleanup_expired_workflow_attachments_removes_old_assets():
 
     assert deleted_count == 1
     assert not WorkflowAttachmentAsset.objects.filter(id=expired_asset.id).exists()
-    assert not type(expired_asset.file_knowledge).objects.filter(id=expired_asset.file_knowledge_id).exists()
     assert WorkflowAttachmentAsset.objects.filter(id=recent_asset.id).exists()
 
 

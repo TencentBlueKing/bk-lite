@@ -1,0 +1,17 @@
+{
+  "collector": "Telegraf",
+  "collect_type": "snmp_ubiquoss",
+  "plugin": "Switch Ubiquoss SNMP",
+  "plugin_desc": "Ubiquoss Corp. GPON/EPON OLT and L2/L3 industrial Ethernet switch SNMP child template under Ubiquoss enterprise PEN 36141. The shared Switch SNMP floor supplies MIB-II uptime and IF-MIB 64-bit HC interface traffic. The private UBIQUOSS-SMI / UBQS-SMI / UBQS-PRODUCTS-MIB / UBQS-ENVMON-MIB / UBQS-CPU-STATS-MIB / UBQS-ENTITY-MIB / UBQS-ENTITY-ALARM-MIB / UBQS-INTERFACE-MIB / UBQS-SYSTEM-MIB / UBQS-SYSINFO-MIB / UBQS-SNMP-MIB / UBQS-AUTO-RESET-MIB and the EPON / 10GEPON family expose the ubiquoss enterprise root plus chassis, card, fan, power, temperature, port, and OLT PM subtrees, but every documented health-related leaf is per-stack-unit, per-fan, per-PSU or per-port -- telegraf inputs.snmp cannot aggregate those rows into a single bk-lite device_* metric, so they are kept as N/A to honor the no-fabricated-health-metrics rule.",
+  "status_query": "any({instance_type='switch', collect_type='snmp_ubiquoss'}) by (instance_id)",
+  "name": "Switch",
+  "icon": "mm-switch_交换机",
+  "type": "Network Device",
+  "description": "",
+  "default_metric": "any({instance_type='switch'}) by (instance_id)",
+  "instance_id_keys": [
+    "instance_id"
+  ],
+  "supplementary_indicators": [],
+  "metrics": []
+}

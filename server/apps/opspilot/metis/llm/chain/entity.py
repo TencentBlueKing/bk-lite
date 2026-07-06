@@ -2,8 +2,6 @@ from typing import Any, Callable, Dict, List, Optional
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from apps.opspilot.metis.llm.rag.naive_rag_entity import DocumentRetrieverRequest
-
 
 class NormalizedToolCall(BaseModel):
     """规范化后的 tool_call 访问器。
@@ -411,7 +409,7 @@ class BasicLLMRequest(BaseModel):
     user_id: Optional[str] = ""
     thread_id: Optional[str] = ""
 
-    naive_rag_request: List[DocumentRetrieverRequest] = []
+    naive_rag_request: List[Any] = []
 
     extra_config: Optional[dict] = {}
 

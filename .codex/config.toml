@@ -1,0 +1,10 @@
+# Project-scoped Codex configuration for BK-Lite.
+# Loaded only when this repository is trusted by Codex.
+
+[mcp_servers.codegraph]
+command = "./scripts/codegraph-mcp"
+args = []
+
+[mcp_servers.projectmem]
+command = "./scripts/projectmem-mcp"
+args = []

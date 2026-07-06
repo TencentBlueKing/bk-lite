@@ -8,13 +8,55 @@ from typing import Any, Dict
 
 import requests
 from django.utils import timezone
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.safe_requests import safe_delete, safe_get, safe_patch, safe_post, safe_put
 from apps.core.utils.safe_template import TemplateSecurityError, safe_render
-from apps.opspilot.models import WorkflowAttachmentAsset
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
+from apps.opspilot.models import LLMModel, WorkflowAttachmentAsset
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.rpc.system_mgmt import SystemMgmt
+
+
+def optimize_email_content_with_llm(*, model_id: int, title: str, content: str, node_id: str) -> str:
+    """使用指定大模型格式化邮件正文。"""
+    llm_model = LLMModel.objects.filter(id=model_id, enabled=True).select_related("vendor").first()
+    if not llm_model:
+        raise ValueError(f"通知节点 {node_id} 配置的 LLM 优化模型不可用: {model_id}")
+
+    request = BasicLLMRequest(
+        openai_api_base=llm_model.openai_api_base,
+        openai_api_key=llm_model.openai_api_key,
+        model=llm_model.model_name,
+        protocol_type=llm_model.protocol_type,
+        vendor_type=llm_model.vendor.vendor_type if llm_model.vendor_id else "",
+        temperature=0.2,
+        system_message_prompt=(
+            "你是邮件正文格式化助手。请将用户提供的邮件正文整理成适合直接发送的 HTML 邮件正文。"
+            "要求：保留全部事实信息，不新增未提供的信息；结构清晰、语气专业；"
+            "只输出 HTML 片段，不输出完整 html/head/body 包裹。"
+            "允许使用 <p>、<br>、<strong>、<ul>、<ol>、<li>、<table>、<thead>、<tbody>、<tr>、<th>、<td> 等邮件客户端常见标签。"
+            "如果原始正文包含 Markdown 标记，必须转换为等价 HTML；禁止输出 Markdown 语法、代码块、解释、标题外的寒暄。"
+        ),
+        user_message=f"邮件标题：{title or '无'}\n\n原始正文：\n{content}",
+        extra_config={"show_think": False},
+    )
+    llm = LLMClientFactory.create_client(request, disable_stream=True, isolated=True, timeout=60)
+    response = llm.invoke(
+        [
+            SystemMessage(content=request.system_message_prompt),
+            HumanMessage(content=request.user_message),
+        ]
+    )
+    optimized_content = getattr(response, "content", response)
+    if isinstance(optimized_content, list):
+        optimized_content = "\n".join(str(item) for item in optimized_content)
+    optimized_content = str(optimized_content).strip()
+    if not optimized_content:
+        raise ValueError(f"通知节点 {node_id} LLM 优化返回空内容")
+    return optimized_content
 
 
 class HttpActionNode(BaseNodeExecutor):
@@ -239,6 +281,18 @@ class NotifyNode(BaseNodeExecutor):
             rendered_title = self._render_content(title, node_id) if title else ""
             attachments = []
             if notification_type == "email":
+                llm_optimize_model = config.get("llmOptimizeModel")
+                if llm_optimize_model:
+                    try:
+                        rendered_content = optimize_email_content_with_llm(
+                            model_id=int(llm_optimize_model),
+                            title=rendered_title,
+                            content=rendered_content,
+                            node_id=node_id,
+                        )
+                        logger.info(f"通知节点 {node_id} 邮件正文已完成 LLM 优化: model_id={llm_optimize_model}")
+                    except Exception as e:
+                        logger.warning(f"通知节点 {node_id} LLM 优化失败，将使用原始正文发送: {e}")
                 attachments = self._build_attachments()
 
             # 调用发送通知接口
@@ -268,11 +322,11 @@ class NotifyNode(BaseNodeExecutor):
             if extension not in self.SUPPORTED_ATTACHMENT_EXTENSIONS:
                 raise ValueError(f"附件 {asset.filename} 类型不支持发送")
 
-            asset.file_knowledge.file.open("rb")
+            asset.file.open("rb")
             try:
-                file_bytes = asset.file_knowledge.file.read()
+                file_bytes = asset.file.read()
             finally:
-                asset.file_knowledge.file.close()
+                asset.file.close()
 
             attachments.append(
                 {

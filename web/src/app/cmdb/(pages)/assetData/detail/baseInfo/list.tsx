@@ -62,7 +62,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
   }));
 
   useEffect(() => {
-    if (modelId == 'host') {
+    if (['host', 'subnet'].includes(modelId)) {
       getInstanceProxys()
         .then((data: any[]) => {
           useAssetDataStore.getState().setCloudList(data || []);
@@ -136,7 +136,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       );
       value = filtered.length > 0 ? filtered : undefined;
     }
-    if (fieldKey === 'cloud') {
+    if (fieldKey === 'cloud' || fieldKey === 'cloud_id') {
       return String(value);
     }
     return value;
@@ -285,7 +285,10 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                     className="mb-0 w-full"
                   >
                     <>
-                      {item.attr_id === 'cloud' && modelId === 'host' ? (
+                      {(
+                        (item.attr_id === 'cloud' && modelId === 'host') ||
+                        (item.attr_id === 'cloud_id' && modelId === 'subnet')
+                      ) ? (
                         <Select placeholder={t('common.selectTip')}>
                           {cloudOptions.map((opt) => (
                             <Select.Option key={opt.proxy_id} value={opt.proxy_id}>
@@ -293,14 +296,14 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                             </Select.Option>
                           ))}
                         </Select>
-                      ) : (
-                        getFieldItem({
-                          fieldItem: item,
-                          userList,
-                          isEdit: true,
-                          modelId,
-                        })
-                      )}
+                        ) : (
+                          getFieldItem({
+                            fieldItem: item,
+                            userList,
+                            isEdit: true,
+                            modelId,
+                          })
+                        )}
                     </>
                   </Form.Item>
                 ) : (
@@ -315,6 +318,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
                         userList,
                         isEdit: false,
                         value: item.value,
+                        modelId,
                       })
                     )}
                   </>
@@ -457,6 +461,7 @@ const InfoList: React.FC<AssetDataFieldProps> = ({
       value,
       hideUserAvatar: true,
       flatGroups,
+      modelId,
     }) as string;
     navigator.clipboard.writeText(copyVal);
     message.success(t('successfulCopied'));

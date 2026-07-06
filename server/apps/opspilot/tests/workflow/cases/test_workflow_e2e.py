@@ -17,7 +17,7 @@ from apps.opspilot.services.workflow_attachment_service import create_workflow_a
 from apps.opspilot.utils.chat_flow_utils.engine.core.base_executor import BaseNodeExecutor
 from apps.opspilot.utils.chat_flow_utils.engine.core.variable_manager import VariableManager
 from apps.opspilot.utils.chat_flow_utils.engine.factory import create_chat_flow_engine
-from apps.opspilot.utils.chat_flow_utils.nodes.action.action import NotifyNode
+from apps.opspilot.utils.chat_flow_utils.nodes.action.action import NotifyNode, optimize_email_content_with_llm
 from apps.opspilot.utils.chat_flow_utils.nodes.agent.agent import AgentNode
 
 # ---------------------------------------------------------------------------
@@ -340,6 +340,111 @@ def test_notification_node_falls_back_to_flow_input_user_ids(mocker):
     )
 
     assert send_mock.call_args.kwargs["receivers"] == ["alice", "bob"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notification_node_optimizes_email_content_before_sending(mocker):
+    variable_manager = VariableManager()
+    variable_manager.set_variable("execution_id", "exec-notify")
+    variable_manager.set_variable("last_message", "ignored")
+    optimizer_mock = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.optimize_email_content_with_llm",
+        return_value="优化后的邮件正文",
+    )
+    send_mock = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.SystemMgmt.send_msg_with_channel",
+        return_value={"result": True, "message": "ok"},
+    )
+    info_mock = mocker.patch("apps.opspilot.utils.chat_flow_utils.nodes.action.action.logger.info")
+
+    node = NotifyNode(variable_manager)
+    node.execute(
+        "notify_node",
+        {
+            "data": {
+                "config": {
+                    "notificationType": "email",
+                    "notificationMethod": 1,
+                    "notificationTitle": "Daily Report",
+                    "notificationContent": "{{last_message}}",
+                    "notificationRecipients": [1],
+                    "llmOptimizeModel": 8,
+                    "outputParams": "last_message",
+                }
+            }
+        },
+        {"last_message": "ignored"},
+    )
+
+    optimizer_mock.assert_called_once_with(model_id=8, title="Daily Report", content="ignored", node_id="notify_node")
+    assert send_mock.call_args.kwargs["content"] == "优化后的邮件正文"
+    info_mock.assert_any_call("通知节点 notify_node 邮件正文已完成 LLM 优化: model_id=8")
+
+
+@pytest.mark.django_db(transaction=True)
+def test_notification_node_sends_original_content_when_llm_optimization_fails(mocker):
+    variable_manager = VariableManager()
+    variable_manager.set_variable("execution_id", "exec-notify")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.optimize_email_content_with_llm",
+        side_effect=RuntimeError("llm timeout"),
+    )
+    send_mock = mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.SystemMgmt.send_msg_with_channel",
+        return_value={"result": True, "message": "ok"},
+    )
+
+    node = NotifyNode(variable_manager)
+    node.execute(
+        "notify_node",
+        {
+            "data": {
+                "config": {
+                    "notificationType": "email",
+                    "notificationMethod": 1,
+                    "notificationTitle": "Daily Report",
+                    "notificationContent": "原始正文",
+                    "notificationRecipients": [1],
+                    "llmOptimizeModel": 8,
+                    "outputParams": "last_message",
+                }
+            }
+        },
+        {"last_message": "ignored"},
+    )
+
+    assert send_mock.call_args.kwargs["content"] == "原始正文"
+
+
+def test_email_content_optimizer_requests_html_output(mocker):
+    llm_model = mocker.Mock()
+    llm_model.openai_api_base = "https://example.com/v1"
+    llm_model.openai_api_key = "key"
+    llm_model.model_name = "gpt-4o"
+    llm_model.protocol_type = "openai"
+    llm_model.vendor_id = None
+    filter_mock = mocker.patch("apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMModel.objects.filter")
+    filter_mock.return_value.select_related.return_value.first.return_value = llm_model
+
+    llm_client = mocker.Mock()
+    llm_client.invoke.return_value = mocker.Mock(content="<p>优化后的邮件正文</p>")
+    mocker.patch(
+        "apps.opspilot.utils.chat_flow_utils.nodes.action.action.LLMClientFactory.create_client",
+        return_value=llm_client,
+    )
+
+    result = optimize_email_content_with_llm(
+        model_id=8,
+        title="Daily Report",
+        content="**根因**: FailedScheduling",
+        node_id="notify_node",
+    )
+
+    messages = llm_client.invoke.call_args.args[0]
+    system_prompt = messages[0].content
+    assert "HTML" in system_prompt
+    assert "Markdown" in system_prompt
+    assert "<p>" in result
 
 
 @pytest.mark.django_db(transaction=True)

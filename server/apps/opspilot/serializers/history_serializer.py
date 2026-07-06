@@ -16,5 +16,4 @@ class HistorySerializer(UsernameSerializer):
             "conversation",
             "created_at",
             "channel_user",
-            "citing_knowledge",
         ]

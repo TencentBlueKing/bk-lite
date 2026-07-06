@@ -4,13 +4,14 @@ import uuid
 from django.db import models
 from django.utils.functional import cached_property
 from django.utils.translation import gettext_lazy as _
-from django_minio_backend import MinioBackend
+from django_minio_backend import MinioBackend, iso_date_prefix
 from django_yaml_field import YAMLField
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.mixinx import EncryptMixin
 from apps.core.models.maintainer_info import MaintainerInfo
 from apps.opspilot.enum import BotTypeChoice, ChannelChoices, WorkFlowExecuteType
+from apps.opspilot.utils.workflow_sensitive_config import encrypt_workflow_sensitive_config
 
 BOT_CONVERSATION_ROLE_CHOICES = [("user", "用户"), ("bot", "机器人")]
 
@@ -179,7 +180,6 @@ class BotConversationHistory(MaintainerInfo):
     conversation = models.TextField(verbose_name="对话内容")
     created_at = models.DateTimeField(auto_now_add=True, verbose_name="创建时间")
     channel_user = models.ForeignKey("ChannelUser", on_delete=models.CASCADE, verbose_name="通道用户", blank=True, null=True)
-    citing_knowledge = models.JSONField(verbose_name="引用知识", default=list, blank=True, null=True)
 
     def __str__(self):
         return self.conversation
@@ -194,8 +194,6 @@ class ConversationTag(models.Model):
     question = models.TextField(verbose_name="问题")
     answer = models.ForeignKey("BotConversationHistory", null=True, blank=True, on_delete=models.CASCADE, verbose_name="回答")
     content = models.TextField(verbose_name="内容")
-    knowledge_base_id = models.IntegerField(verbose_name="知识库ID")
-    knowledge_document_id = models.IntegerField(verbose_name="知识文档ID")
 
     class Meta:
         db_table = "bot_mgmt_conversationtag"
@@ -268,6 +266,8 @@ class BotWorkFlow(models.Model):
 
     def save(self, *args, **kwargs):
         """保存工作流并自动同步聊天应用"""
+        self.flow_json = encrypt_workflow_sensitive_config(self.flow_json)
+        self.web_json = encrypt_workflow_sensitive_config(self.web_json)
         # 先保存工作流
         super().save(*args, **kwargs)
 
@@ -299,11 +299,12 @@ class WorkflowAttachmentAsset(models.Model):
     attachment_id = models.CharField(max_length=100, verbose_name="附件ID")
     filename = models.CharField(max_length=255, verbose_name="文件名")
     mime_type = models.CharField(max_length=120, default="", blank=True, verbose_name="MIME类型")
-    file_knowledge = models.ForeignKey(
-        "FileKnowledge",
-        on_delete=models.CASCADE,
-        related_name="workflow_attachments",
+    file = models.FileField(
         verbose_name="附件文件",
+        storage=MinioBackend(bucket_name="munchkin-private"),
+        upload_to=iso_date_prefix,
+        blank=True,
+        null=True,
     )
     created_by = models.CharField(max_length=100, default="", blank=True, verbose_name="创建者")
     download_token = models.CharField(

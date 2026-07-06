@@ -40,12 +40,3 @@ export const collectNamespaceIdsFromLayout = (
 
   return namespaceIds;
 };
-
-export const datasourceSupportsNamespace = (
-  dataSource: DatasourceItem | undefined,
-  namespaceId: number | undefined,
-): boolean => {
-  if (!dataSource || namespaceId === undefined) return true;
-  if (!dataSource.namespaces || dataSource.namespaces.length === 0) return true;
-  return dataSource.namespaces.includes(namespaceId);
-};

@@ -58,7 +58,7 @@ const ExportModal: React.FC<ExportModalProps> = ({
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
       width={560}
-      destroyOnClose
+      destroyOnHidden
       centered
     >
       <div className="py-2">

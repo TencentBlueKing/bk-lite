@@ -44,6 +44,20 @@
 | `GET instance/room_layout/<model_id>/<inst_id>` | `InstanceViewSet.room_layout` | 机房俯视平面图：返回该机房下机柜的 row/col/类型/U 占用率供前端布局渲染 |
 | `GET instance/rack_layout/<model_id>/<inst_id>` | `InstanceViewSet.rack_layout` | 机柜正视 U 图：返回机柜总 U 数及其 contains 设备的 U 位排布 |
 
+**instance / collect 路由组增量端点**【已实现/已存在】：
+| 端点 | 方法 | 说明 |
+|------|------|------|
+| `GET collect/network_config_file_supported_brands` | `CollectModelViewSet.network_config_file_supported_brands` | 返回网络设备配置文件采集支持的品牌选项，供任务配置页动态展示 |
+| `GET instance/application_resource_apps/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_apps` | 仅对 `system` 模型返回应用清单入口 |
+| `GET instance/application_resource_topology/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_topology` | 返回应用资源拓扑图，支持 `depth` 查询参数 |
+| `GET instance/application_resource_resources/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_resources` | 返回应用拓扑节点的资源汇总数据 |
+| `POST instance/application_resource_instances/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_instances` | 按选中节点返回分组后的资源实例明细 |
+| `POST instance/application_resource_export/<model_id>/<inst_id>` | `InstanceViewSet.application_resource_export` | 导出当前选中节点对应的资源实例 Excel |
+| `GET instance/ipam_view/<inst_id>` | `InstanceViewSet.ipam_view` | 返回子网视角的 IP 容量、利用率与地址列表 |
+
+对应 PRD：[[spec/prd/CMDB/自动发现.md#3.1 采集对象树与插件]]、[[spec/prd/CMDB/资产.md#3.8 资产详情 · 应用资源总览]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#3. 资产详情]]
+> 证据来源：server/apps/cmdb/views/collect.py:66-68，server/apps/cmdb/views/instance.py:999-1150　|　同步基线：83091efe　|　【已实现】
+
 ## 4. 依赖与通信【已实现/已存在】
 - 依赖 `apps.core`（logger/异常/加密/模板沙箱）。
 - NATS：`nats/nats.py` 注册 25 个 `@nats_client.register` handler（取数前按角色/团队构建实例分组权限过滤），对外提供五类能力【已实现/已存在】：
@@ -97,6 +111,11 @@
 - **数据库**（constants.py:376-471）：MySQL、InfluxDB、PostgreSQL、MSSQL、Redis、MongoDB、Elasticsearch、HBase、TiDB（实现集中于 `databases.py`）。目录与映射中均无 Oracle 条目。
 - **中间件**（constants.py:611-855）：Nginx、MinIO、Zookeeper、Kafka、Tomcat、Jetty、WebLogic、KeepAlive、Spark（id=`spark`，constants.py:846）等共 20+ 项，多为 JOB 驱动。目录中无 Hadoop 条目；大数据相关现仅 Spark（中间件分组）与 FusionInsight（云平台分组）。
 - **配置文件采集**（task_type=`config_file`，constants.py:578）：由 Stargazer 采集后经 NATS `receive_config_file_result`(nats.py:417) 回传，落库为 `ConfigFileVersion`，内容存 MinIO。
+- **网络设备配置文件采集**【已实现/已存在】：对象树新增 `network_config_file`，节点参数封装登录账号、口令、特权口令、命令列表与配置名称，回调仍走 `receive_config_file_result`，因此复用既有配置文件版本存储与详情查看链路（`constants/constants.py:377-387`、`node_configs/network_config_file.py:5-63`）。
+- **IP 地址管理发现回写**【已实现/已存在】：对象树新增 `ip_discovery`；服务层从任务的 `instances/params` 合并读取 `subnet_ids`、`scan_method`、`ports`，再把 VictoriaMetrics 中的 `ip_info` 行按子网回写为在线 / 离线地址，同时重算子网利用率；手工维护地址不被覆盖（`constants/constants.py:391-403`、`services/ipam_discovery.py:8-175`）。
+
+对应 PRD：[[spec/prd/CMDB/自动发现.md#3.2 采集任务]]；对应功能清单：[[spec/fuctionlist/01-CMDB配置管理-功能清单.md#5. 自动发现（采集）]]
+> 证据来源：server/apps/cmdb/constants/constants.py:377-403，server/apps/cmdb/node_configs/network_config_file.py:5-63，server/apps/cmdb/services/ipam_discovery.py:8-175　|　同步基线：83091efe　|　【已实现】
 
 ## 6. 风险 / 待确认
 - 双图库后端按 `FALKORDB_HOST` 环境变量在运行期单选（`graph/drivers/graph_client.py:46-52`），非并存；切换条件已明确【已实现/已存在】。
@@ -104,4 +123,4 @@
 - 凭据加密密钥管理与轮转策略【待确认】。
 
 ## 7. 证据来源
-`server/apps/cmdb/{urls.py,models/*,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py,nats/nats.py,services/rack_room.py,views/instance.py:1030-1072,support-files/model_config.xlsx}`；`server/apps/rpc/cmdb.py:44-94`。
+`server/apps/cmdb/{urls.py,models/*,graph/*,graph/neo4j.py,graph/drivers/graph_client.py,collection/*,collection/collect_plugin/oceanstor.py,constants/constants.py,tasks/celery_tasks.py,nats/nats.py,services/rack_room.py,services/ipam_discovery.py,node_configs/network_config_file.py,views/collect.py:66-68,views/instance.py:999-1150,support-files/model_config.xlsx}`；`server/apps/rpc/cmdb.py:44-94`。

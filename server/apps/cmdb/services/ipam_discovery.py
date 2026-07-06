@@ -1,21 +1,26 @@
 # -- coding: utf-8 --
-"""IP 发现采集 server 端：子网参数提取、VM 指标落库、IPAM 台账回写。"""
+"""IP 发现采集 server 端:子网参数提取、VM 指标落库、IPAM 台账回写。"""
 from datetime import datetime
+
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.core.logger import cmdb_logger as logger
 
 
+def _empty_summary(**extra) -> dict:
+    return {
+        "created": 0,
+        "updated": 0,
+        "offline": 0,
+        "failed": 0,
+        "format_data": {"add": [], "update": [], "delete": [], "association": [], "all": 0},
+        **extra,
+    }
+
+
 def extract_subnet_discovery_params(task) -> tuple:
-    """从采集任务 model 实例或 dict 中提取 (subnet_ids, scan_method, ports)。
-
-    存储约定（见 instances 字段注释）：
-        instances = {"subnet_ids": [1, 2, ...], "scan_method": "icmp", "ports": [22, 80, ...]}
-
-    返回 (subnet_ids: list, scan_method: str, ports: list | None)。
-    subnet_ids 缺失时返回空列表；scan_method 缺失时默认 "icmp"；ports 缺失时返回 None（由
-    端口缺失时由下发侧/采集侧使用默认端口）。
-    """
+    """从采集任务 model 实例或 dict 中提取 (subnet_ids, scan_method, ports)。"""
     if hasattr(task, "instances"):
         raw_instances = task.instances
         raw_params = getattr(task, "params", {}) or {}
@@ -43,16 +48,14 @@ def extract_subnet_discovery_params(task) -> tuple:
 
 
 def _load_subnets_by_ids(subnet_ids: list) -> list:
-    # P0-1.3: VM 指标的 subnet_id 可能非数字(字段漂移/格式变更),裸 int() 会崩。
-    # 单条脏数据导致整批周期扫描挂掉,这里静默丢弃非法值。
     ids = []
-    for i in subnet_ids or []:
-        if isinstance(i, bool):
+    for item in subnet_ids or []:
+        if isinstance(item, bool):
             continue
         try:
-            ids.append(int(i))
+            ids.append(int(item))
         except (TypeError, ValueError):
-            logger.warning("[IPDiscovery] 忽略非法 subnet_id=%r", i)
+            logger.warning("[IPDiscovery] 忽略非法 subnet_id=%r", item)
     if not ids:
         return []
     with GraphClient() as ag:
@@ -66,8 +69,22 @@ def _load_subnets_by_ids(subnet_ids: list) -> list:
 # 回写层:apply_discovery_result / apply_ip_discovery_vm_rows
 # ---------------------------------------------------------------------------
 
-def _load_subnet_ips(subnet_id) -> list:
-    """查询某子网下所有 IP 记录(含手工和自动发现)。"""
+def _dedupe_ip_rows(rows: list) -> list:
+    result = []
+    seen = set()
+    for row in rows or []:
+        if not isinstance(row, dict):
+            continue
+        identity = row.get("_id") or (row.get("subnet_id"), row.get("ip_addr"))
+        if identity in seen:
+            continue
+        seen.add(identity)
+        result.append(row)
+    return result
+
+
+def _load_subnet_ips_by_field(subnet_id) -> list:
+    """兼容旧数据:按 subnet_id 字段查询某子网下所有 IP 记录。"""
     with GraphClient() as ag:
         rows, _ = ag.query_entity(INSTANCE, [
             {"field": "model_id", "type": "str=", "value": "ip"},
@@ -76,25 +93,78 @@ def _load_subnet_ips(subnet_id) -> list:
     return rows or []
 
 
+def _load_subnet_associated_ips(subnet_id) -> list:
+    """按 subnet_group_ip 关联查询子网下的 IP。"""
+    from apps.cmdb.services.instance import InstanceManage
+
+    associations = InstanceManage.instance_association_instance_list("subnet", int(subnet_id)) or []
+    rows = []
+    for item in associations:
+        if item.get("model_asst_id") != "subnet_group_ip":
+            continue
+        rows.extend(item.get("inst_list") or [])
+    return rows
+
+
+def _load_subnet_ips(subnet_id) -> list:
+    """查询某子网下所有 IP 记录(关联优先,字段兜底兼容历史数据)。"""
+    return _dedupe_ip_rows(_load_subnet_associated_ips(subnet_id) + _load_subnet_ips_by_field(subnet_id))
+
+
+def _ensure_subnet_ip_association(subnet_id, ip_id) -> dict:
+    """确保 subnet --group--> ip 关联存在；重复关联视为成功幂等。"""
+    from apps.cmdb.services.instance import InstanceManage
+
+    data = {
+        "src_inst_id": int(subnet_id),
+        "dst_inst_id": int(ip_id),
+        "asst_id": "group",
+        "src_model_id": "subnet",
+        "dst_model_id": "ip",
+        "model_asst_id": "subnet_group_ip",
+    }
+    try:
+        InstanceManage.instance_association_create(data, "system")
+        return {"success": [data], "failed": []}
+    except BaseAppException as exc:
+        message = getattr(exc, "message", "") or str(exc)
+        if "repetition" in message:
+            return {"success": [data], "failed": []}
+        error_data = dict(data)
+        error_data["error"] = message
+        return {"success": [], "failed": [error_data]}
+
+
 # ---------------------------------------------------------------------------
-# P2-2.3: 系统写公共 helper,周期任务写台账用,跳过权限校验 + 不记变更日志
+# 系统写公共 helper,周期任务写台账用,跳过权限校验 + 不记变更日志
 # ---------------------------------------------------------------------------
 
-def _system_create_or_update(model_id: str, instance_info: dict, existing_id=None) -> None:
-    """IPAM 周期任务专用入口:已有 _id 走 update,否则 create。统一走 system 操作员 + 跳过权限校验。"""
+def _system_create_or_update(model_id: str, instance_info: dict, existing_id=None, organization=None) -> dict:
+    """已有 _id 走 update,否则 create。统一走 system 操作员 + 跳过权限校验。"""
     from apps.cmdb.services.instance import InstanceManage
+
     if existing_id:
         InstanceManage.instance_update(
             [], [], existing_id, instance_info, "system",
-            skip_permission_check=True, record_change=False,
+            skip_permission_check=True,
+            allowed_org_ids=organization or [],
+            record_change=False,
         )
-    else:
-        InstanceManage.instance_create(model_id, instance_info, "system", record_change=False)
+        return {"_id": existing_id, **instance_info}
+    created = InstanceManage.instance_create(
+        model_id,
+        instance_info,
+        "system",
+        allowed_org_ids=organization or [],
+        record_change=False,
+    )
+    return {"_id": created["_id"], **instance_info}
 
 
 def _system_update(instance_id, instance_info: dict) -> None:
-    """IPAM 周期任务专用入口:更新单条实例。"""
+    """更新单条实例。"""
     from apps.cmdb.services.instance import InstanceManage
+
     InstanceManage.instance_update(
         [], [], instance_id, instance_info, "system",
         skip_permission_check=True, record_change=False,
@@ -113,7 +183,11 @@ def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", org
         "organization": organization or [],
         "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    _system_create_or_update("ip", payload, existing_id=existing_id)
+    saved = _system_create_or_update("ip", payload, existing_id=existing_id, organization=organization)
+    ip_id = saved["_id"]
+    payload_with_id = {**payload, "_id": ip_id, "model_id": "ip"}
+    assos_result = _ensure_subnet_ip_association(subnet_id, ip_id)
+    return {"_id": ip_id, "inst_info": payload_with_id, "assos_result": assos_result}
 
 
 def _mark_offline(ip_id):
@@ -122,68 +196,71 @@ def _mark_offline(ip_id):
 
 
 def _writeback_subnet_utilization(subnet_ids):
-    """重算子网利用率统计（复用 P1 同款 helper，保持口径一致）。"""
+    """重算子网利用率统计(复用 P1 同款 helper,保持口径一致)。"""
     from apps.cmdb.services.ipam_reconcile import _writeback_subnet_utilization as wb
+
     wb(set(subnet_ids))
 
 
 def apply_discovery_result(subnet_id, alive: list) -> dict:
-    """活跃 IP 回写台账。规格 §13.4。
-
-    - 在线 IP → 创建/更新 ip 实例（online + MAC + auto_collect=True）。
-    - 原自动发现 IP 未出现在本次扫描结果 → 标记 offline。
-    - 手工记录（auto_collect=False）→ 永不修改。
-    - IP 冲突（同地址多记录）不在此处裁决，交由 P1 周期对账任务处理。
-    - 最后回写子网利用率统计（与 P1 reconcile 共享同一 _writeback_subnet_utilization）。
-
-    P0-1.2 兜底:子网不存在或子网无 organization 时(ip 模型 is_required=True),
-    早返回 skipped=True,避免 instance_create 抛「organization is empty」。
-
-    P0-1.4 业务层补偿(选 B 路):多步图写无 atomic 包裹,单条 IP 写入失败
-    不能击穿整批。每个 upsert/mark_offline 独立 try/except,失败时记录
-    WARNING + 累加 failed 计数,继续处理其他 IP。summary 加 failed 字段
-    供上层对账任务感知与重试。
-    """
-    # DEFECT A fix: load subnet to extract organization so instance_create gets a
-    # real org value (ip model has is_required=True for organization).
+    """活跃 IP 回写台账。规格 §13.4。"""
     subnet_rows = _load_subnets_by_ids([subnet_id])
     if not subnet_rows:
         logger.warning("[IPDiscovery] 子网不存在,跳过 subnet_id=%s alive_count=%s", subnet_id, len(alive))
-        return {"created": 0, "updated": 0, "offline": 0, "failed": 0, "skipped": True}
+        return _empty_summary(skipped=True)
     organization = subnet_rows[0].get("organization") or []
     if not organization:
         logger.warning("[IPDiscovery] 子网 %s 缺少 organization,ip 模型要求必填,跳过", subnet_id)
-        return {"created": 0, "updated": 0, "offline": 0, "failed": 0, "skipped": True}
+        return _empty_summary(skipped=True)
 
     existing = _load_subnet_ips(subnet_id)
     existing_by_addr = {i.get("ip_addr"): i for i in existing}
     alive_addrs = {a["ip"] for a in alive}
 
     created = updated = offline = failed = 0
-    for a in alive:
-        prev = existing_by_addr.get(a["ip"])
+    format_data = {"add": [], "update": [], "delete": [], "association": [], "all": 0}
+    for item in alive:
+        prev = existing_by_addr.get(item["ip"])
         if prev and prev.get("auto_collect") is not True:
             # 手工录入不被自动发现覆盖(仅 auto_collect is True 的记录归发现采集所有、可写)
             continue
         try:
-            _upsert_alive_ip(
+            upsert_result = _upsert_alive_ip(
                 existing_id=(prev or {}).get("_id"),
                 subnet_id=subnet_id,
-                ip_addr=a["ip"],
-                mac=a.get("mac", ""),
+                ip_addr=item["ip"],
+                mac=item.get("mac", ""),
                 organization=organization,
-            )
+            ) or {}
         except Exception as err:
             failed += 1
             logger.warning(
                 "[IPDiscovery] upsert IP 失败 subnet_id=%s ip=%s err=%s,继续处理其他 IP",
-                subnet_id, a["ip"], err,
+                subnet_id, item["ip"], err,
             )
             continue
+
+        upsert_inst_info = upsert_result.get("inst_info") or {
+            "_id": (prev or {}).get("_id"),
+            "model_id": "ip",
+            "inst_name": item["ip"],
+            "ip_addr": item["ip"],
+            "subnet_id": str(subnet_id),
+            "ip_status": ["online"],
+            "auto_collect": True,
+            "mac": item.get("mac", ""),
+            "organization": organization,
+        }
+        if upsert_result.get("assos_result"):
+            for status, rows in upsert_result["assos_result"].items():
+                for row in rows:
+                    format_data["association"].append({**row, "_status": status})
         if prev:
             updated += 1
+            format_data["update"].append({"_status": "success", **upsert_inst_info})
         else:
             created += 1
+            format_data["add"].append({"_status": "success", **upsert_inst_info})
 
     for ip in existing:
         if ip.get("auto_collect") is True and ip.get("ip_addr") not in alive_addrs:
@@ -197,27 +274,35 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
                 )
                 continue
             offline += 1
+            format_data["update"].append({
+                "_status": "success",
+                "_id": ip["_id"],
+                "model_id": "ip",
+                "inst_name": ip.get("inst_name") or ip.get("ip_addr"),
+                "ip_addr": ip.get("ip_addr"),
+                "subnet_id": str(subnet_id),
+                "ip_status": ["offline"],
+                "auto_collect": True,
+            })
 
     _writeback_subnet_utilization([subnet_id])
-    return {"created": created, "updated": updated, "offline": offline, "failed": failed}
+    format_data["all"] = len(format_data["add"]) + len(format_data["update"]) + len(format_data["delete"])
+    return {
+        "created": created,
+        "updated": updated,
+        "offline": offline,
+        "failed": failed,
+        "format_data": format_data,
+    }
 
 
 def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
-    """把 VM 中的 ip_info 指标行回写到 IPAM 台账。
-
-    C2 链路下 Stargazer 不再通过 NATS 回调结果，CMDB 周期任务从 VM 拉取
-    `ip_info` 指标后调用本函数。函数以任务所选子网为准，因此某个子网本轮
-    没有任何在线 IP 时，也会触发原自动发现记录置离线。
-
-    P1-2.7: 任务未勾选子网时不应越权处理 VM 指标里出现的子网(原代码
-    fallback 到 sorted(alive_by_subnet) 等于默默处理外部发现的子网,
-    与"任务只对所选子网负责"的语义不一致)。早返回空 summary + WARNING。
-    """
+    """把 VM 中的 ip_info 指标行回写到 IPAM 台账。"""
     selected_subnet_ids, _, _ = extract_subnet_discovery_params(task)
     selected_subnet_ids = [str(item) for item in selected_subnet_ids]
     if not selected_subnet_ids:
         logger.warning("[IPDiscovery] 任务未勾选子网,跳过 VM 指标处理,行数=%s", len(rows or []))
-        return {"created": 0, "updated": 0, "offline": 0, "failed": 0}
+        return _empty_summary()
 
     alive_by_subnet: dict[str, list[dict]] = {}
     for row in rows or []:
@@ -228,15 +313,18 @@ def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:
         if not subnet_id or not ip_addr:
             continue
         if subnet_id not in selected_subnet_ids:
-            # VM 指标里出现了任务未勾的子网,严格按"任务所选"过滤,避免越权处理
             continue
         alive_by_subnet.setdefault(subnet_id, []).append(
             {"ip": ip_addr, "mac": row.get("mac", "")}
         )
 
-    summary = {"created": 0, "updated": 0, "offline": 0, "failed": 0}
+    summary = _empty_summary()
     for subnet_id in selected_subnet_ids:
         result = apply_discovery_result(subnet_id, alive_by_subnet.get(subnet_id, []))
-        for key in summary:
+        for key in ("created", "updated", "offline", "failed"):
             summary[key] += int(result.get(key, 0))
+        result_format_data = result.get("format_data") or {}
+        for key in ("add", "update", "delete", "association"):
+            summary["format_data"][key].extend(result_format_data.get(key) or [])
+        summary["format_data"]["all"] += int(result_format_data.get("all", 0) or 0)
     return summary

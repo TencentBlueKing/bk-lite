@@ -7,6 +7,7 @@ import {DeleteOutlined} from '@ant-design/icons';
 import {Node} from '@xyflow/react';
 import {useTranslation} from '@/utils/i18n';
 import {useSearchParams} from 'next/navigation';
+import {normalizeEnterpriseWechatAibotConfig} from '@/app/opspilot/constants/chatflow';
 import {useNodeConfigData} from './hooks/useNodeConfigData';
 import {useKeyValueRows} from './hooks/useKeyValueRows';
 import {NodeConfigForm} from './NodeConfigForm';
@@ -50,7 +51,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
   // 状态管理
   const [frequency, setFrequency] = useState('daily');
   const [uploadedFiles, setUploadedFiles] = useState<UploadFile[]>([]);
-  const [notificationType, setNotificationType] = useState<'email' | 'enterprise_wechat_bot'>('email');
+  const [notificationType, setNotificationType] = useState<string>('email');
 
   // 使用自定义 Hooks
   const {
@@ -122,14 +123,14 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
         loadSkills();
       }
 
-      // 加载模型列表（意图分类节点、记忆写入节点）
-      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write') {
+      // 加载模型列表（意图分类节点、记忆写入节点、通知节点邮件优化）
+      if (node.data.type === 'intent_classification' || node.data.type === 'memory_write' || node.data.type === 'notification') {
         loadLlmModels();
       }
 
       // 加载通知渠道和用户
       if (node.data.type === 'notification') {
-        const type = (config.notificationType || 'email') as 'email' | 'enterprise_wechat_bot';
+        const type = config.notificationType || 'email';
         setNotificationType(type);
         loadChannels(type);
         loadUsers();
@@ -152,7 +153,7 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
     if (!node) return;
 
     form.validateFields().then((values) => {
-      const configData: any = {
+      let configData: any = {
         ...values,
         params: paramRows.rows.filter(row => row.key && row.value),
         headers: headerRows.rows.filter(row => row.key && row.value)
@@ -167,6 +168,10 @@ const NodeConfigDrawer: React.FC<NodeConfigDrawerProps> = ({
 
       if (node.data.type === 'notification') {
         configData.notificationChannels = notificationChannels;
+      }
+
+      if (node.data.type === 'enterprise_wechat_aibot') {
+        configData = normalizeEnterpriseWechatAibotConfig(configData);
       }
 
       if (node.data.type === 'celery') {

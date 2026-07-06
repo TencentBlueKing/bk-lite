@@ -263,7 +263,6 @@ export const useGraphNodeOperations = ({
 
   const dataOperations = useGraphData(
     graphInstance,
-    updateSingleNodeData,
     startLoadingAnimation,
     handleSave,
   );
