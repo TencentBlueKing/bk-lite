@@ -5,6 +5,8 @@ import {
   MetricQueryCondition
 } from './metricExpressionTypes';
 
+export type MetricExpressionMode = 'metric' | 'formula' | 'auto';
+
 export const VARIABLE_SEQUENCE = 'abcdefghijklmnopqrstuvwxyz'.split('');
 export const SUPPORTED_GROUP_ALGORITHMS = [
   'sum',
@@ -387,7 +389,7 @@ export const buildFormulaQueryCondition = ({
     type: 'formula',
     result_name: resultName.trim(),
     expression: expression.trim(),
-    queries: assignMetricRowRefs(rows).map((row) => ({
+    queries: rows.map((row) => ({
       ref: row.ref,
       metric_id: row.metricId,
       filter: row.filters,
@@ -398,34 +400,39 @@ export const buildFormulaQueryCondition = ({
 };
 
 export const buildMetricExpressionQueryCondition = ({
+  mode = 'auto',
   resultName,
   expression,
   rows
 }: {
+  mode?: MetricExpressionMode;
   resultName: string;
   expression: string;
   rows: MetricExpressionRow[];
 }): MetricExpressionQueryCondition => {
-  const normalizedRows = rows.length <= 1 ? assignMetricRowRefs(rows) : rows;
+  const shouldBuildFormula =
+    mode === 'formula' || (mode === 'auto' && rows.length > 1);
 
-  if (normalizedRows.length <= 1) {
-    const row = normalizedRows[0] || createMetricRow(0);
-    const errors = validateMetricRows(normalizedRows);
-
-    if (errors.length) {
-      throw new Error(errors.join('；'));
-    }
-
-    return {
-      type: 'metric',
-      metric_id: row.metricId,
-      filter: row.filters
-    };
+  if (shouldBuildFormula) {
+    return buildFormulaQueryCondition({
+      resultName,
+      expression,
+      rows
+    });
   }
 
-  return buildFormulaQueryCondition({
-    resultName,
-    expression,
-    rows: normalizedRows
-  });
+  const normalizedRows = assignMetricRowRefs(rows);
+
+  const row = normalizedRows[0] || createMetricRow(0);
+  const errors = validateMetricRows(normalizedRows);
+
+  if (errors.length) {
+    throw new Error(errors.join('；'));
+  }
+
+  return {
+    type: 'metric',
+    metric_id: row.metricId,
+    filter: row.filters
+  };
 };

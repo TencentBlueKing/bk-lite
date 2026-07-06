@@ -23,7 +23,10 @@ import { debounce } from 'lodash';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 import MetricExpressionEditor from './metricExpressionEditor';
 import { MetricExpressionRow } from './metricExpressionTypes';
-import { buildMetricExpressionQueryCondition } from './formulaExpressionUtils';
+import {
+  buildMetricExpressionQueryCondition,
+  MetricExpressionMode
+} from './formulaExpressionUtils';
 
 const { Option } = Select;
 const { TextArea } = Input;
@@ -38,6 +41,7 @@ interface MetricDefinitionFormProps {
   originMetricData: IndexViewItem[];
   monitorName: string;
   metricRows: MetricExpressionRow[];
+  metricExpressionMode: MetricExpressionMode;
   resultName: string;
   expression: string;
   labelsByRef: Record<string, string[]>;
@@ -59,6 +63,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   originMetricData,
   monitorName,
   metricRows,
+  metricExpressionMode,
   resultName,
   expression,
   labelsByRef,
@@ -109,6 +114,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
   const validateMetric = async () => {
     try {
       buildMetricExpressionQueryCondition({
+        mode: metricExpressionMode,
         resultName,
         expression,
         rows: metricRows

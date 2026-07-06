@@ -51,6 +51,7 @@ import { MetricExpressionRow } from './metricExpressionTypes';
 import {
   buildMetricExpressionQueryCondition,
   createMetricRow,
+  MetricExpressionMode,
   toMetricExpressionStateFromQueryCondition
 } from './formulaExpressionUtils';
 const defaultGroup = ['instance_id'];
@@ -108,6 +109,8 @@ const StrategyOperation = () => {
   const [metricRows, setMetricRows] = useState<MetricExpressionRow[]>([
     createMetricRow(0)
   ]);
+  const [metricExpressionMode, setMetricExpressionMode] =
+    useState<MetricExpressionMode>('metric');
   const [formulaResultName, setFormulaResultName] = useState<string>('');
   const [formulaExpression, setFormulaExpression] =
     useState<string>('a / b * 100');
@@ -232,6 +235,7 @@ const StrategyOperation = () => {
                 groupBy: allGroupByOptions
               })
             ]);
+            setMetricExpressionMode('metric');
           }
         }
       } else if (!_metricId) {
@@ -246,6 +250,7 @@ const StrategyOperation = () => {
             groupBy: fixedList
           })
         ]);
+        setMetricExpressionMode('metric');
       }
       const instanceIdStr = searchParams.get('instanceId');
       let instanceIds: string[] = [];
@@ -432,6 +437,7 @@ const StrategyOperation = () => {
             groupBy: sanitizeGroupBy(data.group_by || [])
           })
         ]);
+        setMetricExpressionMode('metric');
         const isEnumMetric = isStringArray(_metrics?.unit || '');
         const comparisonMethods = isEnumMetric
           ? ENUM_COMPARISON_METHOD
@@ -462,6 +468,7 @@ const StrategyOperation = () => {
         };
       });
       setMetricRows(rows);
+      setMetricExpressionMode('formula');
       setFormulaResultName(restoredState.resultName);
       setFormulaExpression(restoredState.expression);
       setMetric(rows[0]?.metricName || null);
@@ -600,6 +607,9 @@ const StrategyOperation = () => {
   const handleMetricRowsChange = (rows: MetricExpressionRow[]) => {
     const previousPrimaryMetricName = metricRows[0]?.metricName;
     const nextPrimaryMetricName = rows[0]?.metricName;
+    if (rows.length > metricRows.length || rows.length > 1) {
+      setMetricExpressionMode('formula');
+    }
     setMetricRows(rows);
 
     if (
@@ -704,6 +714,7 @@ const StrategyOperation = () => {
       } else {
         try {
           params.query_condition = buildMetricExpressionQueryCondition({
+            mode: metricExpressionMode,
             resultName: formulaResultName,
             expression: formulaExpression,
             rows: metricRows
@@ -858,6 +869,7 @@ const StrategyOperation = () => {
                           originMetricData={originMetricData}
                           monitorName={monitorName as string}
                           metricRows={metricRows}
+                          metricExpressionMode={metricExpressionMode}
                           resultName={formulaResultName}
                           expression={formulaExpression}
                           labelsByRef={labelsByRef}

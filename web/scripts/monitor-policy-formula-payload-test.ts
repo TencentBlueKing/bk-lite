@@ -216,6 +216,60 @@ assert.deepEqual(
   ['表达式引用了不存在的变量：b']
 );
 
+assert.throws(
+  () =>
+    buildMetricExpressionQueryCondition({
+      mode: 'formula',
+      resultName: 'HTTP 5xx 错误率',
+      expression: 'a / b',
+      rows: [formulaRows[0]]
+    }),
+  (error) =>
+    error instanceof Error &&
+    error.message.includes('表达式引用了不存在的变量：b')
+);
+
+const formulaRowsAfterDeletingMiddle = [
+  formulaRows[0],
+  {
+    ref: 'c',
+    metricId: 3,
+    filters: [{ name: 'service', method: '=', value: 'checkout' }],
+    groupAlgorithm: 'sum',
+    groupBy: ['instance_id']
+  }
+];
+
+const formulaPayloadAfterDeletingMiddle = buildMetricExpressionQueryCondition({
+  mode: 'formula',
+  resultName: 'HTTP 5xx 错误率',
+  expression: 'a / c',
+  rows: formulaRowsAfterDeletingMiddle
+});
+
+assert.equal(formulaPayloadAfterDeletingMiddle.type, 'formula');
+assert.deepEqual(
+  formulaPayloadAfterDeletingMiddle.queries.map((query) => query.ref),
+  ['a', 'c']
+);
+assert.equal(formulaPayloadAfterDeletingMiddle.expression, 'a / c');
+
+const explicitMetricPayload = buildMetricExpressionQueryCondition({
+  mode: 'metric',
+  resultName: 'HTTP 5xx 错误率',
+  expression: 'a / b',
+  rows: singleRows
+});
+
+assert.deepEqual(explicitMetricPayload, {
+  type: 'metric',
+  metric_id: 10,
+  filter: [
+    { name: 'service', method: '=', value: 'checkout' },
+    { logic: 'or', name: 'status', method: '=~', value: '5..' }
+  ]
+});
+
 const restoredMetricState = toMetricExpressionStateFromQueryCondition(
   {
     type: 'metric',
