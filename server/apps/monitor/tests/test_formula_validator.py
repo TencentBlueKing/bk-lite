@@ -105,3 +105,144 @@ def test_validate_formula_rejects_missing_variable_reference():
         validate_formula_condition(payload)
 
     assert "不存在" in str(exc.value)
+
+
+def test_validate_formula_rejects_invalid_filter_label_name():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [{"name": 'bad"label', "method": "=", "value": "api"}],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "非法字符" in str(exc.value)
+
+
+def test_validate_formula_rejects_query_item_not_object():
+    payload = formula(
+        queries=[
+            1,
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "必须是对象" in str(exc.value)
+
+
+@pytest.mark.parametrize("bad_group_by", [["instance_id", 1], ["instance_id", ""]])
+def test_validate_formula_rejects_invalid_group_by_item(bad_group_by):
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": bad_group_by,
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "group_by" in str(exc.value)
+
+
+def test_validate_formula_rejects_expression_with_single_distinct_variable():
+    payload = formula(expression="a * 100")
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "至少引用两个指标变量" in str(exc.value)
+
+
+def test_validate_formula_rejects_unused_query_variable():
+    payload = formula(
+        expression="a / b",
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+            {
+                "ref": "c",
+                "metric_id": 3,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ],
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "未被表达式引用" in str(exc.value)
+
+
+def test_validate_formula_rejects_invalid_group_algorithm():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "median",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "group_algorithm" in str(exc.value)
