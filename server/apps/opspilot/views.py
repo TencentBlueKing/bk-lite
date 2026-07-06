@@ -20,7 +20,16 @@ from apps.core.utils.exempt import api_exempt
 from apps.core.utils.loader import LanguageLoader
 from apps.core.utils.team_utils import get_current_team
 from apps.opspilot.enum import WorkFlowTaskStatus
-from apps.opspilot.models import Bot, BotChannel, BotConversationHistory, BotWorkFlow, LLMSkill, SkillRequestLog, WorkFlowTaskResult
+from apps.opspilot.models import (
+    Bot,
+    BotChannel,
+    BotConversationHistory,
+    BotWebChatSession,
+    BotWorkFlow,
+    LLMSkill,
+    SkillRequestLog,
+    WorkFlowTaskResult,
+)
 from apps.opspilot.serializers.request_serializers import (
     InterruptChatFlowRequestSerializer,
     SubmitApprovalRequestSerializer,
@@ -693,6 +702,14 @@ async def execute_chat_flow(request, bot_id, node_id):
         # 则把本条对话框消息当作答案直接投递回该节点（在原流续跑），不新建执行——
         # 否则消息会从工作流入口重跑，回复跑回第一个智能体而非正在等待的那个。
         if not is_test and session_id and message:
+            # NATS 暴露会话参与者授权：当前用户必须为 BotWebChatSession 干系人之一
+            web_session = await sync_to_async(
+                BotWebChatSession.objects.filter(session_id=session_id).first,
+                thread_sensitive=False,
+            )()
+            if web_session is not None and not web_session.is_participant(user):
+                return JsonResponse({"result": False, "message": loader.get("error.session_not_participant", "当前用户不在该会话的干系人列表中")}, status=403)
+
             delivered = await sync_to_async(try_deliver_to_pending, thread_sensitive=False)(bot_id, session_id, message)
             if delivered:
                 logger.info(
