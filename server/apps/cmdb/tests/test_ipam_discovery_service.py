@@ -210,3 +210,56 @@ class TestApplyDiscoveryResultSubnetMissing:
 
         assert ups_calls == []
         assert result.get("skipped") is True
+
+
+# ---------------------------------------------------------------------------
+# P0-1.3 — _load_subnets_by_ids must tolerate non-numeric subnet_id
+# ---------------------------------------------------------------------------
+
+class TestLoadSubnetsByIdsRobustness:
+    """P0-1.3: apply_ip_discovery_vm_rows 的 subnet_id 来源是 VM 指标,外部 collector
+    可能传非数字(字段漂移/格式变更)。_load_subnets_by_ids 内的 int() 裸转换
+    会让单条脏数据导致整批周期扫描挂掉。"""
+
+    def test_load_subnets_by_ids_skips_non_numeric_values(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        captured_filters: list = []
+
+        def fake_query_entity(*args, **kwargs):
+            # 调用形态: ag.query_entity(INSTANCE, [filter_dicts...])
+            captured_filters.append(args[1] if len(args) > 1 else kwargs.get("filters"))
+            return ([{"_id": 1, "organization": [7], "subnet_address": "10.0.1.0", "subnet_mask": "24"}], 1)
+
+        # 不依赖真实 GraphClient,mock 掉 context manager 入口
+        class _FakeAg:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+            query_entity = staticmethod(fake_query_entity)
+
+        monkeypatch.setattr(ipam_discovery, "GraphClient", lambda *a, **k: _FakeAg())
+
+        # 混入字符串 "abc"、None、空串,期望被过滤而不是崩
+        rows = ipam_discovery._load_subnets_by_ids([1, "abc", None, "", 2])
+
+        assert len(rows) == 1
+        assert captured_filters, "query_entity 应被调用"
+        id_filter = next(
+            (f for f in captured_filters[0] if isinstance(f, dict) and f.get("field") == "id"),
+            None,
+        )
+        assert id_filter is not None, "必须以 id[] 过滤做图查询"
+        ids_value = id_filter["value"]
+        assert all(isinstance(i, int) and not isinstance(i, bool) for i in ids_value)
+        assert set(ids_value) == {1, 2}
+
+    def test_load_subnets_by_ids_returns_empty_when_all_invalid(self, monkeypatch):
+        """全是非数字时返回空列表,不抛 ValueError。"""
+        from apps.cmdb.services import ipam_discovery
+
+        rows = ipam_discovery._load_subnets_by_ids(["abc", None, ""])
+        assert rows == []

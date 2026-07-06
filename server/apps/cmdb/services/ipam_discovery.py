@@ -43,7 +43,18 @@ def extract_subnet_discovery_params(task) -> tuple:
 
 
 def _load_subnets_by_ids(subnet_ids: list) -> list:
-    ids = [int(i) for i in subnet_ids]
+    # P0-1.3: VM 指标的 subnet_id 可能非数字(字段漂移/格式变更),裸 int() 会崩。
+    # 单条脏数据导致整批周期扫描挂掉,这里静默丢弃非法值。
+    ids = []
+    for i in subnet_ids or []:
+        if isinstance(i, bool):
+            continue
+        try:
+            ids.append(int(i))
+        except (TypeError, ValueError):
+            logger.warning("[IPDiscovery] 忽略非法 subnet_id=%r", i)
+    if not ids:
+        return []
     with GraphClient() as ag:
         rows, _ = ag.query_entity(INSTANCE, [
             {"field": "model_id", "type": "str=", "value": "subnet"},
