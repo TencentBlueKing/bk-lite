@@ -37,7 +37,7 @@ class AlertDetector:
         vm_data = self.metric_query_service.query_aggregation_metrics(self.policy.period, trigger_count)
         vm_data = self.metric_query_service.convert_metric_values(vm_data)
 
-        group_by_keys = self.policy.group_by or []
+        group_by_keys = self._get_group_by_keys()
         df = vm_to_dataframe(
             vm_data.get("data", {}).get("result", []),
             group_by_keys,
@@ -71,6 +71,9 @@ class AlertDetector:
         return alert_events, info_events
 
     def _get_metric_display_name(self):
+        if self.policy.query_condition.get("type") == "formula":
+            return self.policy.query_condition.get("result_name", "")
+
         metric = self.metric_query_service.metric
         if metric:
             return metric.display_name or metric.name
@@ -116,7 +119,7 @@ class AlertDetector:
             dimensions = self._parse_dimensions(metric_instance_id)
             dimension_str = self._format_dimension_str(dimensions)
             display_name = f"{resource_name} - {dimension_str}" if dimension_str else resource_name
-            group_by_keys = self.policy.group_by or []
+            group_by_keys = self._get_group_by_keys()
             sub_dimension_keys = [k for k in group_by_keys if k != "instance_id"]
             dimension_value = format_dimension_value(
                 dimensions,
@@ -153,8 +156,14 @@ class AlertDetector:
         return events
 
     def _parse_dimensions(self, metric_instance_id: str) -> dict:
-        keys = self.policy.group_by or []
+        keys = self._get_group_by_keys()
         return build_dimensions(metric_instance_id, keys)
+
+    def _get_group_by_keys(self) -> list:
+        instance_id_keys = getattr(self.metric_query_service, "instance_id_keys", None)
+        if isinstance(instance_id_keys, (list, tuple)) and instance_id_keys:
+            return list(instance_id_keys)
+        return self.policy.group_by or []
 
     def _format_dimension_str(self, dimensions: dict) -> str:
         return format_dimension_str(dimensions)

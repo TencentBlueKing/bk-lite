@@ -157,7 +157,11 @@ class PolicyBaselineService:
             metrics = metric_query_service.query_aggregation_metrics(self.policy.period)
 
             result = {}
-            group_by_keys = self.policy.group_by or []
+            service_group_by = getattr(metric_query_service, "instance_id_keys", None)
+            if isinstance(service_group_by, (list, tuple)) and service_group_by:
+                group_by_keys = list(service_group_by)
+            else:
+                group_by_keys = self.policy.group_by or []
 
             for metric_info in metrics.get("data", {}).get("result", []):
                 instance_id_tuple = tuple([metric_info["metric"].get(key) for key in group_by_keys])

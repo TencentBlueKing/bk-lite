@@ -3,6 +3,7 @@
 import json
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
 from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
 from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
@@ -32,6 +33,7 @@ class MetricQueryService:
         self.instances_map = instances_map
         self.instance_id_keys = None
         self.metric = None
+        self.compiled_formula = None
         # 单位转换配置
         self._unit_conversion_enabled = bool(
             self.policy.metric_unit
@@ -57,6 +59,11 @@ class MetricQueryService:
                 self.instance_id_keys = self.policy.query_condition.get(
                     "instance_id_keys", ["instance_id"]
                 )
+            return
+
+        if query_type == "formula":
+            self.compiled_formula = build_formula_query(self.policy.query_condition)
+            self.instance_id_keys = self.compiled_formula.group_by
             return
 
         # Metric类型: 从metric配置中获取instance_id_keys
@@ -111,6 +118,11 @@ class MetricQueryService:
         if query_type == "pmq":
             return query_condition.get("query")
 
+        if query_type == "formula":
+            if self.compiled_formula is None:
+                self.compiled_formula = build_formula_query(query_condition)
+            return self.compiled_formula.query
+
         # 否则基于metric构建查询
         query = self.metric.query
         filter_list = query_condition.get("filter", [])
@@ -146,7 +158,7 @@ class MetricQueryService:
         # 准备查询参数
         query = self.format_pmq()
         step = self.format_period(period, points)
-        group_by = ",".join(self.policy.group_by or [])
+        group_by = ",".join(self._get_group_by_keys())
 
         # 获取聚合方法
         method = METHOD.get(self.policy.algorithm)
@@ -290,7 +302,7 @@ class MetricQueryService:
             dict: 格式化后的指标数据 {metric_instance_id: {"value": float, "raw_data": dict}}
         """
         result = {}
-        group_by_keys = self.policy.group_by or []
+        group_by_keys = self._get_group_by_keys()
 
         for metric_info in metrics.get("data", {}).get("result", []):
             instance_id_tuple = tuple(
@@ -312,3 +324,8 @@ class MetricQueryService:
             }
 
         return result
+
+    def _get_group_by_keys(self) -> list:
+        if self.compiled_formula:
+            return self.compiled_formula.group_by
+        return self.policy.group_by or []
