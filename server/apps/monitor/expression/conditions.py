@@ -1,4 +1,4 @@
-from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
+from apps.monitor.expression.labels import format_to_vm_filter
 
 
 def split_filter_groups(filters: list[dict]) -> list[list[dict]]:

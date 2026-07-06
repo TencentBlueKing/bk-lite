@@ -1,9 +1,9 @@
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.compiler import CompiledFormula, FormulaCompiler
 from apps.monitor.expression.errors import FormulaError
+from apps.monitor.expression.labels import format_to_vm_filter
 from apps.monitor.expression.validators import validate_formula_condition
 from apps.monitor.models.monitor_metrics import Metric
-from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
 
 
 def build_metric_query(metric, filters: list[dict]) -> str:
