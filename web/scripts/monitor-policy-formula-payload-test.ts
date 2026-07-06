@@ -4,6 +4,7 @@ import {
   assignMetricRowRefs,
   buildMetricExpressionQueryCondition,
   extractFormulaRefs,
+  shouldShowFormulaEditor,
   toMetricExpressionStateFromQueryCondition,
   toMetricRowsFromMetricCondition,
   validateMetricExpressionPayload
@@ -215,6 +216,9 @@ assert.deepEqual(
   }),
   ['表达式引用了不存在的变量：b']
 );
+
+assert.equal(shouldShowFormulaEditor('metric'), false);
+assert.equal(shouldShowFormulaEditor('formula'), true);
 
 assert.throws(
   () =>

@@ -31,6 +31,10 @@ interface ParsedFormula {
 export const getMetricRowRef = (index: number): string =>
   VARIABLE_SEQUENCE[index] || `m${index + 1}`;
 
+export const shouldShowFormulaEditor = (
+  mode: MetricExpressionMode
+): boolean => mode === 'formula';
+
 export const createMetricRow = (
   index: number,
   patch: Partial<MetricExpressionRow> = {}

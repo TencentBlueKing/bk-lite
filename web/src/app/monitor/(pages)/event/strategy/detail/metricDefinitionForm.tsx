@@ -186,6 +186,7 @@ const MetricDefinitionForm: React.FC<MetricDefinitionFormProps> = ({
               >
                 <MetricExpressionEditor
                   rows={metricRows}
+                  mode={metricExpressionMode}
                   resultName={resultName}
                   expression={expression}
                   labelsByRef={labelsByRef}

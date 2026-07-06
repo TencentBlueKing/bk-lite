@@ -15,12 +15,18 @@ import {
   sanitizeGroupBy
 } from '@/app/monitor/utils/metricDimensions';
 import { MetricExpressionRow } from './metricExpressionTypes';
-import { createMetricRow, VARIABLE_SEQUENCE } from './formulaExpressionUtils';
+import {
+  createMetricRow,
+  MetricExpressionMode,
+  shouldShowFormulaEditor,
+  VARIABLE_SEQUENCE
+} from './formulaExpressionUtils';
 
 const { Option } = Select;
 
 interface MetricExpressionEditorProps {
   rows: MetricExpressionRow[];
+  mode: MetricExpressionMode;
   resultName: string;
   expression: string;
   labelsByRef: Record<string, string[]>;
@@ -36,6 +42,7 @@ interface MetricExpressionEditorProps {
 
 const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   rows,
+  mode,
   resultName,
   expression,
   labelsByRef,
@@ -49,6 +56,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   onExpressionChange
 }) => {
   const { t } = useTranslation();
+  const showFormula = shouldShowFormulaEditor(mode);
 
   const metricByName = useMemo(() => {
     const map = new Map<string, MetricItem>();
@@ -307,7 +315,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
         <Button className="w-fit" icon={<PlusOutlined />} onClick={addMetricRow}>
           {t('monitor.events.addMetric')}
         </Button>
-        {rows.length > 1 && (
+        {showFormula && (
           <div className="flex items-center gap-2 border-t border-[var(--color-border-2)] pt-3">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
               fx
