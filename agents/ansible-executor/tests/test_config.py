@@ -4,7 +4,10 @@ from core.config import ServiceConfig, load_config
 def test_service_config_uses_default_subject_allowlists():
     config = ServiceConfig(nats_servers=["nats://127.0.0.1:4222"], nats_instance_id="default")
 
-    assert config.allowed_callback_subjects == ["job.ansible_task_callback"]
+    assert config.allowed_callback_subjects == [
+        "job.ansible_task_callback",
+        "default_stargazer.host_remote.callback",
+    ]
     assert config.allowed_stream_subjects == ["job.stream.>", "executor.stream.>", "bk.ans_exec.stream.>"]
 
 
