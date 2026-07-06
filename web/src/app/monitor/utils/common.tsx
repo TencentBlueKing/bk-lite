@@ -676,6 +676,7 @@ const BRANDS: { match: RegExp; label: string; icon?: string }[] = [
   { match: /icotera|kjaerulff/i, label: 'Icotera', icon: 'mm-icotera_icotera' },
   { match: /ipinfusion|\bocnos\b/i, label: 'IP Infusion', icon: 'mm-ipinfusion_ipinfusion' },
   { match: /omnitron|iconverter|netoutlook/i, label: 'Omnitron', icon: 'mm-omnitron_omnitron' },
+  { match: /\bubiquoss\b|ubiq-?uoss/i, label: 'Ubiquoss', icon: 'mm-ubiquoss_ubiquoss' },
   { match: /nateks|megatrans|orion/i, label: 'Nateks', icon: 'mm-nateks_nateks' },
   { match: /harmonic|nsg\s*pro|cableos/i, label: 'Harmonic', icon: 'mm-harmonic_harmonic' },
   { match: /\brad\b|rad\s*data|radcomms|etx|megaplex/i, label: 'RAD', icon: 'mm-rad_rad' },

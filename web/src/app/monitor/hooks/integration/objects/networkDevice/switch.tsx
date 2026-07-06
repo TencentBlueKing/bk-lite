@@ -152,6 +152,7 @@ export const useSwitchConfig = () => {
       'Switch InHand Networks SNMP': 'snmp_inhand',
       'Switch IP Infusion SNMP': 'snmp_ipinfusion',
       'Switch Omnitron SNMP': 'snmp_omnitron',
+      'Switch Ubiquoss SNMP': 'snmp_ubiquoss',
       'Switch Wi-Tek SNMP': 'snmp_witek',
       'Switch Nexans SNMP': 'snmp_nexans',
       'Switch Pica8 SNMP': 'snmp_pica8',
