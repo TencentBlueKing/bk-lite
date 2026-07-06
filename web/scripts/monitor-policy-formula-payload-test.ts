@@ -409,6 +409,22 @@ assert.deepEqual(
 );
 assert.equal(formulaPayloadAfterDeletingMiddle.expression, 'a / c');
 
+const formulaRowsWithEmptyFilterValue = [
+  {
+    ...formulaRows[0],
+    filters: [{ name: 'empty_label', method: '=', value: '' }]
+  },
+  formulaRows[1]
+];
+assert.deepEqual(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: formulaRowsWithEmptyFilterValue
+  }),
+  []
+);
+
 const explicitMetricPayload = buildMetricExpressionQueryCondition({
   mode: 'metric',
   resultName: 'HTTP 5xx 错误率',

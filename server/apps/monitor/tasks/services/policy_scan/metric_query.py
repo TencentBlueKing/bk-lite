@@ -3,10 +3,10 @@
 import json
 
 from apps.core.exceptions.base_app_exception import BaseAppException
+from apps.monitor.expression.conditions import compile_filter_to_query
 from apps.monitor.expression.query import build_formula_query
 from apps.monitor.models import Metric
-from apps.monitor.tasks.utils.metric_query import format_to_vm_filter
-from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds
+from apps.monitor.tasks.utils.policy_methods import METHOD, period_to_seconds, query_formula_policy_metrics
 from apps.monitor.utils.dimension import parse_instance_id
 from apps.monitor.utils.victoriametrics_api import VictoriaMetricsAPI
 from apps.monitor.utils.unit_converter import UnitConverter
@@ -121,18 +121,7 @@ class MetricQueryService:
         if query_type == "formula":
             return self._ensure_formula_compiled().query
 
-        # 否则基于metric构建查询
-        query = self.metric.query
-        filter_list = query_condition.get("filter", [])
-        vm_filter_str = format_to_vm_filter(filter_list)
-
-        # 清理filter字符串尾部的逗号
-        if vm_filter_str and vm_filter_str.endswith(","):
-            vm_filter_str = vm_filter_str[:-1]
-
-        # 替换查询模板中的label占位符
-        query = query.replace("__$labels__", vm_filter_str or "")
-        return query
+        return compile_filter_to_query(self.metric.query, query_condition.get("filter", []))
 
     def query_aggregation_metrics(self, period, points=1):
         """查询聚合指标数据
@@ -162,6 +151,15 @@ class MetricQueryService:
         method = METHOD.get(self.policy.algorithm)
         if not method:
             raise BaseAppException(f"invalid algorithm method: {self.policy.algorithm}")
+
+        if self.policy.query_condition.get("type") == "formula":
+            return query_formula_policy_metrics(
+                self.policy.algorithm,
+                query,
+                start_timestamp,
+                end_timestamp,
+                step,
+            )
 
         return method(
             query,

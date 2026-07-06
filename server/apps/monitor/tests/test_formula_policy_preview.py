@@ -29,17 +29,13 @@ def test_preview_formula_uses_compiled_query(mocker):
         instance_id_keys=["instance_id"],
     )
     captured = {}
+    api = mocker.patch("apps.monitor.tasks.utils.policy_methods.VictoriaMetricsAPI")
 
-    def fake_method(query, start, end, step, group_by, group_algorithm=None):
+    def fake_query_range(query, *args):
         captured["query"] = query
-        captured["group_by"] = group_by
         return {"status": "success", "data": {"result": []}}
 
-    mocker.patch.dict(
-        "apps.monitor.services.policy_preview.METHOD",
-        {"avg_over_time": fake_method},
-        clear=False,
-    )
+    api.return_value.query_range.side_effect = fake_query_range
 
     svc = PolicyPreviewService(
         {
@@ -52,7 +48,7 @@ def test_preview_formula_uses_compiled_query(mocker):
                         "ref": "a",
                         "metric_id": a.id,
                         "filter": [],
-                        "group_algorithm": "sum",
+                        "group_algorithm": "count",
                         "group_by": ["instance_id", "status"],
                     },
                     {
@@ -66,7 +62,7 @@ def test_preview_formula_uses_compiled_query(mocker):
             },
             "period": {"type": "min", "value": 5},
             "algorithm": "avg_over_time",
-            "group_algorithm": "avg",
+            "group_algorithm": "count",
             "group_by": ["instance_id"],
             "preview": {"duration_points": 1},
         }
@@ -75,7 +71,8 @@ def test_preview_formula_uses_compiled_query(mocker):
     out = svc.preview()
 
     assert "on(instance_id) group_left" in captured["query"]
-    assert captured["group_by"] == "instance_id,status"
+    assert "count(count(a_metric" not in captured["query"]
+    assert out["query"] == captured["query"]
     assert out["warnings"] == []
 
 
@@ -101,11 +98,10 @@ def test_preview_formula_returns_compiled_warnings(mocker):
         instance_id_keys=["instance_id"],
     )
 
-    mocker.patch.dict(
-        "apps.monitor.services.policy_preview.METHOD",
-        {"avg_over_time": lambda *args, **kwargs: {"status": "success", "data": {"result": []}}},
-        clear=False,
-    )
+    mocker.patch("apps.monitor.tasks.utils.policy_methods.VictoriaMetricsAPI").return_value.query_range.return_value = {
+        "status": "success",
+        "data": {"result": []},
+    }
 
     svc = PolicyPreviewService(
         {

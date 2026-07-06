@@ -262,7 +262,12 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
     }
 
     row.filters.forEach((filter, index) => {
-      if (!filter.name || !filter.method || !filter.value) {
+      if (
+        !filter.name ||
+        !filter.method ||
+        filter.value === undefined ||
+        filter.value === null
+      ) {
         errors.push(`指标 ${row.ref} 的条件 ${index + 1} 未填写完整`);
       }
       if (index > 0 && !['and', 'or'].includes(filter.logic || '')) {

@@ -67,16 +67,14 @@ def test_formula_query_aggregation_uses_formula_query_and_anchor_group_by(mocker
         return_value=compiled,
     )
 
-    def fake_method(query, start, end, step, group_by, group_algorithm=None):
+    def fake_formula_method(algorithm, query, start, end, step):
+        captured["algorithm"] = algorithm
         captured["query"] = query
-        captured["group_by"] = group_by
-        captured["group_algorithm"] = group_algorithm
         return {"status": "success", "data": {"result": []}}
 
-    mocker.patch.dict(
-        "apps.monitor.tasks.services.policy_scan.metric_query.METHOD",
-        {"avg_over_time": fake_method},
-        clear=False,
+    mocker.patch(
+        "apps.monitor.tasks.services.policy_scan.metric_query.query_formula_policy_metrics",
+        side_effect=fake_formula_method,
     )
 
     service = MetricQueryService(policy, {})
@@ -85,9 +83,28 @@ def test_formula_query_aggregation_uses_formula_query_and_anchor_group_by(mocker
 
     build.assert_called_once_with(policy.query_condition)
     assert service.instance_id_keys == ["instance_id", "status"]
+    assert captured["algorithm"] == "avg_over_time"
     assert captured["query"].startswith("sum(a{})")
-    assert captured["group_by"] == "instance_id,status"
-    assert captured["group_algorithm"] == "avg"
+
+
+def test_metric_query_path_supports_or_filter_without_formula():
+    policy = _policy(
+        query_condition={
+            "type": "metric",
+            "filter": [
+                {"name": "service", "method": "=", "value": "checkout"},
+                {"logic": "or", "name": "status", "method": "=", "value": "500"},
+            ],
+        },
+        group_by=["instance_id"],
+    )
+    service = MetricQueryService(policy, {})
+    service.metric = SimpleNamespace(query="http_requests_total{__$labels__}")
+
+    assert service.format_pmq() == (
+        '(http_requests_total{service="checkout"}) or '
+        '(http_requests_total{status="500"})'
+    )
 
 
 def test_formula_metric_name_template_uses_result_name():
