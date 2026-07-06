@@ -4,6 +4,7 @@ from rest_framework.decorators import action
 
 from apps.core.logger import opspilot_logger as logger
 from apps.core.utils.viewset_utils import AuthViewSet
+from apps.opspilot import tasks as _opspilot_tasks
 from apps.opspilot.models import KnowledgePage, Material, MaterialVersion, PageEvidence
 from apps.opspilot.serializers.wiki_serializers import BuildRecordSerializer, MaterialSerializer
 from apps.opspilot.services.wiki.build_service import build_from_material
@@ -46,11 +47,9 @@ class WikiMaterialViewSet(AuthViewSet):
     @staticmethod
     def _enqueue_ingest(material, llm_model_id):
         """资料置「解析中」并投递异步解析任务(loader/OCR/LLM 较重,不阻塞前台)。"""
-        from apps.opspilot.tasks import wiki_ingest_material_task
-
         material.status = "parsing"
         material.save(update_fields=["status", "updated_at"])
-        wiki_ingest_material_task.delay(material.id, llm_model_id)
+        _opspilot_tasks.wiki_ingest_material_task.delay(material.id, llm_model_id)
 
     def create(self, request, *args, **kwargs):
         serializer = self.get_serializer(data=request.data)
@@ -102,11 +101,9 @@ class WikiMaterialViewSet(AuthViewSet):
         material = self.get_object()
         operator = getattr(request.user, "username", "")
         if request.data.get("async"):
-            from apps.opspilot.tasks import wiki_build_material_task
-
             material.status = "building"
             material.save(update_fields=["status", "updated_at"])
-            wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
+            _opspilot_tasks.wiki_build_material_task.delay(material.id, material.knowledge_base.llm_model_id, operator)
             return JsonResponse({"result": True, "data": self.get_serializer(material).data})
         record = build_from_material(
             material,
@@ -197,9 +194,7 @@ class WikiMaterialViewSet(AuthViewSet):
                 continue
             # 投递异步解析(loader/OCR/LLM 较重);任务投递失败不阻塞记录创建
             try:
-                from apps.opspilot.tasks import wiki_ingest_material_task
-
-                wiki_ingest_material_task.delay(material.id, material.knowledge_base.llm_model_id)
+                _opspilot_tasks.wiki_ingest_material_task.delay(material.id, material.knowledge_base.llm_model_id)
             except Exception:  # noqa: BLE001
                 logger.exception("wiki batch_create 投递解析任务失败 material_id=%s", material.id)
             items.append(MaterialSerializer(material).data)
