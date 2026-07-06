@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import copy
+import os
 from typing import Any
 
 from django.db import transaction
@@ -18,6 +19,14 @@ from apps.rpc.node_mgmt import NodeMgmt
 from apps.core.logger import cmdb_logger as logger
 
 
+def _get_positive_int_env(name, default):
+    try:
+        value = int(os.getenv(name, str(default)))
+    except (TypeError, ValueError):
+        return default
+    return max(1, value)
+
+
 class NodeMgmtSyncService:
     SYNC_PERIODIC_TASK_NAME = "cmdb_node_mgmt_sync_hosts"
     COLLECT_PERIODIC_TASK_NAME = "cmdb_node_mgmt_collect_hosts"
@@ -32,6 +41,7 @@ class NodeMgmtSyncService:
     DISPLAY_SOURCE_COLLECT = "collect"
     DISPLAY_SOURCE_SYNC_FALLBACK = "sync_fallback"
     DISPLAY_SOURCE_NONE = "none"
+    NODE_MGMT_SYNC_PAGE_SIZE = _get_positive_int_env("CMDB_NODE_MGMT_SYNC_PAGE_SIZE", 500)
     RAW_DATA_FIELDS = (
         "id",
         "_id",
@@ -429,22 +439,32 @@ class NodeMgmtSyncService:
         return result
 
     @classmethod
+    def _fetch_node_mgmt_pages(cls, query: dict[str, Any]) -> list[dict[str, Any]]:
+        page = 1
+        nodes: list[dict[str, Any]] = []
+        client = cls._node_mgmt_client()
+        while True:
+            payload = {**query, "page": page, "page_size": cls.NODE_MGMT_SYNC_PAGE_SIZE}
+            rows = client.node_list(payload)
+            page_nodes = cls._extract_nodes(rows)
+            nodes.extend(page_nodes)
+            count = cls._safe_count(rows.get("count") if isinstance(rows, dict) else len(page_nodes))
+            if not page_nodes or len(page_nodes) < cls.NODE_MGMT_SYNC_PAGE_SIZE or len(nodes) >= count:
+                break
+            page += 1
+        return nodes
+
+    @classmethod
     def _fetch_non_container_nodes(cls) -> list[dict[str, Any]]:
         logger.info("[NodeMgmtSync] 开始获取非容器节点列表")
         cloud_region_names = cls._cloud_region_name_map()
         logger.debug("[NodeMgmtSync] 获取到云区域名称映射, region_count=%d", len(cloud_region_names))
-        rows = cls._node_mgmt_client().node_list(
-                {
-                    "page": 1,
-                    "page_size": -1,
-                    "is_container": False,
-                }
-            )
-        total_nodes = len(rows.get("nodes", []))
+        nodes = cls._fetch_node_mgmt_pages({"is_container": False})
+        total_nodes = len(nodes)
         logger.info("[NodeMgmtSync] 从节点管理获取到节点数据, total=%d", total_nodes)
         result: list[dict[str, Any]] = []
         skipped_count = 0
-        for node in rows["nodes"]:
+        for node in nodes:
             cloud_region_id = cls._safe_int(node.get("cloud_region_id") or node.get("cloud_region"))
             if cloud_region_id is None:
                 skipped_count += 1
@@ -486,16 +506,7 @@ class NodeMgmtSyncService:
     def _pick_access_point(cls, cloud_region_id: int) -> dict[str, Any] | None:
         logger.debug("[NodeMgmtSync] 查找云区域接入点, cloud_region_id=%d", cloud_region_id)
         cloud_region_name = cls._cloud_region_name_map().get(int(cloud_region_id), "")
-        nodes = cls._extract_nodes(
-            cls._node_mgmt_client().node_list(
-                {
-                    "page": 1,
-                    "page_size": -1,
-                    "cloud_region_id": cloud_region_id,
-                    "is_container": True,
-                }
-            )
-        )
+        nodes = cls._fetch_node_mgmt_pages({"cloud_region_id": cloud_region_id, "is_container": True})
         if not nodes:
             logger.warning("[NodeMgmtSync] 云区域无可用容器节点作为接入点, cloud_region_id=%d", cloud_region_id)
             return None
