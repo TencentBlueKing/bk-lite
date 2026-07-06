@@ -1,5 +1,5 @@
 from apps.cmdb.node_configs.base import BaseNodeParams
-from apps.cmdb.services.network_config_file_policy import validate_network_config_instance
+from apps.cmdb.services.network_config_file_policy import normalize_network_config_instance
 
 
 class NetworkConfigFileNodeParams(BaseNodeParams):
@@ -17,13 +17,18 @@ class NetworkConfigFileNodeParams(BaseNodeParams):
         return instances[0] if instances and isinstance(instances[0], dict) else {}
 
     def _target_instance(self):
-        return validate_network_config_instance(self._single_instance())
+        # P2-2.1: 改用 normalize(只规范化,不再二次校验;serializer 已校验)
+        return normalize_network_config_instance(self._single_instance())
 
     def get_hosts(self):
+        # P2-2.2: 复用 _target_instance 的规范化结果,避免对每个 instance 重复校验
+        # 多个 instance 的场景下,O(N) 次 validate → O(1) 次 normalize
+        if not (self.instance.instances or []):
+            return "hosts", ""
         hosts = ",".join(
-            validate_network_config_instance(instance)["host"]
-            for instance in (self.instance.instances or [])
-            if isinstance(instance, dict)
+            normalize_network_config_instance(inst)["host"]
+            for inst in self.instance.instances
+            if isinstance(inst, dict)
         )
         return "hosts", hosts
 
