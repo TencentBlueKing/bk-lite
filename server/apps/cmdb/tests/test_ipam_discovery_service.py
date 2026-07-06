@@ -427,3 +427,64 @@ class TestApplyIpDiscoveryVmRowsSubnetScoping:
 
         processed = {sid for sid, _ in apply_calls}
         assert processed == {"1", "3"}, f"只应处理任务勾的 1 和 3,实际处理 {processed}"
+
+
+# ---------------------------------------------------------------------------
+# P2-2.3 — _system_create_or_update / _system_update 抽公共 helper
+# ---------------------------------------------------------------------------
+
+class TestSystemWriteHelper:
+    """P2-2.3: _upsert_alive_ip / _mark_offline 重复 'system' 写模板
+    (skip_permission_check=True, record_change=False),抽公共 helper
+    便于后续自动发现类任务复用,避免漂移。
+
+    本测试验证 helper 函数 _system_create_or_update / _system_update
+    存在并被 _upsert_alive_ip / _mark_offline 调用。"""
+
+    def test_system_write_helpers_exist(self):
+        """helper 必须从 ipam_discovery 暴露,供其他自动发现类任务复用。"""
+        from apps.cmdb.services import ipam_discovery
+
+        assert callable(getattr(ipam_discovery, "_system_create_or_update", None)), (
+            "_system_create_or_update helper 不存在"
+        )
+        assert callable(getattr(ipam_discovery, "_system_update", None)), (
+            "_system_update helper 不存在"
+        )
+
+    def test_upsert_alive_ip_calls_system_create_or_update(self, monkeypatch):
+        """_upsert_alive_ip 必须走 _system_create_or_update,不直接调 InstanceManage。"""
+        from apps.cmdb.services import ipam_discovery
+
+        captured = []
+
+        def fake_system_helper(model_id, instance_info, existing_id=None):
+            captured.append((model_id, instance_info, existing_id))
+
+        monkeypatch.setattr(ipam_discovery, "_system_create_or_update", staticmethod(fake_system_helper))
+
+        ipam_discovery._upsert_alive_ip(
+            existing_id=None, subnet_id=1, ip_addr="10.0.1.5", mac="AA:BB", organization=[7],
+        )
+
+        assert len(captured) == 1
+        assert captured[0][0] == "ip"
+        assert captured[0][1]["ip_addr"] == "10.0.1.5"
+        assert captured[0][2] is None
+
+    def test_mark_offline_calls_system_update(self, monkeypatch):
+        """_mark_offline 必须走 _system_update,不直接调 InstanceManage。"""
+        from apps.cmdb.services import ipam_discovery
+
+        captured = []
+
+        def fake_system_update(instance_id, instance_info):
+            captured.append((instance_id, instance_info))
+
+        monkeypatch.setattr(ipam_discovery, "_system_update", staticmethod(fake_system_update))
+
+        ipam_discovery._mark_offline(99)
+
+        assert len(captured) == 1
+        assert captured[0][0] == 99
+        assert captured[0][1] == {"ip_status": ["offline"]}

@@ -63,11 +63,11 @@ def _load_subnets_by_ids(subnet_ids: list) -> list:
 
 
 # ---------------------------------------------------------------------------
-# 回写层：apply_discovery_result (§13.4)
+# 回写层:apply_discovery_result / apply_ip_discovery_vm_rows
 # ---------------------------------------------------------------------------
 
 def _load_subnet_ips(subnet_id) -> list:
-    """查询某子网下所有 IP 记录（含手工和自动发现）。"""
+    """查询某子网下所有 IP 记录(含手工和自动发现)。"""
     with GraphClient() as ag:
         rows, _ = ag.query_entity(INSTANCE, [
             {"field": "model_id", "type": "str=", "value": "ip"},
@@ -76,9 +76,33 @@ def _load_subnet_ips(subnet_id) -> list:
     return rows or []
 
 
-def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", organization=None):
-    """创建或更新在线 IP 记录。subnet_id 以字符串写入，保证查询一致性。"""
+# ---------------------------------------------------------------------------
+# P2-2.3: 系统写公共 helper,周期任务写台账用,跳过权限校验 + 不记变更日志
+# ---------------------------------------------------------------------------
+
+def _system_create_or_update(model_id: str, instance_info: dict, existing_id=None) -> None:
+    """IPAM 周期任务专用入口:已有 _id 走 update,否则 create。统一走 system 操作员 + 跳过权限校验。"""
     from apps.cmdb.services.instance import InstanceManage
+    if existing_id:
+        InstanceManage.instance_update(
+            [], [], existing_id, instance_info, "system",
+            skip_permission_check=True, record_change=False,
+        )
+    else:
+        InstanceManage.instance_create(model_id, instance_info, "system", record_change=False)
+
+
+def _system_update(instance_id, instance_info: dict) -> None:
+    """IPAM 周期任务专用入口:更新单条实例。"""
+    from apps.cmdb.services.instance import InstanceManage
+    InstanceManage.instance_update(
+        [], [], instance_id, instance_info, "system",
+        skip_permission_check=True, record_change=False,
+    )
+
+
+def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", organization=None):
+    """创建或更新在线 IP 记录。subnet_id 以字符串写入,保证查询一致性。"""
     payload = {
         "ip_addr": ip_addr,
         "inst_name": ip_addr,
@@ -89,22 +113,12 @@ def _upsert_alive_ip(existing_id=None, subnet_id=None, ip_addr=None, mac="", org
         "organization": organization or [],
         "collect_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
     }
-    if existing_id:
-        InstanceManage.instance_update(
-            [], [], existing_id, payload, "system",
-            skip_permission_check=True, record_change=False,
-        )
-    else:
-        InstanceManage.instance_create("ip", payload, "system", record_change=False)
+    _system_create_or_update("ip", payload, existing_id=existing_id)
 
 
 def _mark_offline(ip_id):
-    """将单条自动发现 IP 置为离线，不影响手工记录。"""
-    from apps.cmdb.services.instance import InstanceManage
-    InstanceManage.instance_update(
-        [], [], ip_id, {"ip_status": ["offline"]}, "system",
-        skip_permission_check=True, record_change=False,
-    )
+    """将单条自动发现 IP 置为离线,不影响手工记录。"""
+    _system_update(ip_id, {"ip_status": ["offline"]})
 
 
 def _writeback_subnet_utilization(subnet_ids):
