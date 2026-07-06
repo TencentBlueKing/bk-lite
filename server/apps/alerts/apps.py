@@ -78,7 +78,7 @@ def _register_level_cache_signals():
             AlertBuilder._valid_alert_levels = None
             logger.info("[AlertInit] Level 配置变更，已清除 AlertBuilder 级别缓存")
 
-        post_save.connect(_invalidate_level_cache, sender=Level, dispatch_uid="alert_builder_level_post_save")
-        post_delete.connect(_invalidate_level_cache, sender=Level, dispatch_uid="alert_builder_level_post_delete")
+        post_save.connect(_invalidate_level_cache, sender=Level, dispatch_uid="alert_builder_level_post_save", weak=False)
+        post_delete.connect(_invalidate_level_cache, sender=Level, dispatch_uid="alert_builder_level_post_delete", weak=False)
     except Exception as e:  # noqa
         logger.error("[AlertInit] 注册 Level 缓存失效信号失败: %s", e, exc_info=True)
