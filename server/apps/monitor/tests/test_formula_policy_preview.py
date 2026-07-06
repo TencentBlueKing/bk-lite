@@ -76,3 +76,72 @@ def test_preview_formula_uses_compiled_query(mocker):
     assert "on(instance_id) group_left" in captured["query"]
     assert captured["group_by"] == "instance_id,status"
     assert out["warnings"] == []
+
+
+@pytest.mark.django_db
+def test_preview_formula_returns_compiled_warnings(mocker):
+    obj = MonitorObject.objects.create(name="FormulaWarningObj", level="base")
+    plugin = MonitorPlugin.objects.create(name="FormulaWarningPlugin")
+    group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+    a = Metric.objects.create(
+        monitor_object=obj,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="a_metric",
+        query="a_metric{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    b = Metric.objects.create(
+        monitor_object=obj,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="b_metric",
+        query="b_metric{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+
+    mocker.patch.dict(
+        "apps.monitor.services.policy_preview.METHOD",
+        {"avg_over_time": lambda *args, **kwargs: {"status": "success", "data": {"result": []}}},
+        clear=False,
+    )
+
+    svc = PolicyPreviewService(
+        {
+            "query_condition": {
+                "type": "formula",
+                "result_name": "错误率",
+                "expression": "a / b",
+                "queries": [
+                    {
+                        "ref": "a",
+                        "metric_id": a.id,
+                        "filter": [],
+                        "group_algorithm": "sum",
+                        "group_by": ["instance_id", "status"],
+                    },
+                    {
+                        "ref": "b",
+                        "metric_id": b.id,
+                        "filter": [],
+                        "group_algorithm": "sum",
+                        "group_by": ["status"],
+                    },
+                ],
+            },
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "group_algorithm": "avg",
+            "group_by": ["instance_id"],
+            "preview": {"duration_points": 1},
+        }
+    )
+
+    out = svc.preview()
+
+    assert out["warnings"] == [
+        {
+            "code": "FORMULA_DIMENSION_REUSE",
+            "message": "指标 b 将按 status 对齐，并跨缺失维度复用数据",
+        }
+    ]
