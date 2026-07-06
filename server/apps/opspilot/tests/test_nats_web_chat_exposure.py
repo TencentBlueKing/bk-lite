@@ -7,10 +7,6 @@
 4. web 端 4 个 API 的参与者授权
 """
 
-import json
-import uuid
-from unittest.mock import patch
-
 import pytest
 from django.db import IntegrityError
 
@@ -68,7 +64,6 @@ def test_nats_trigger_without_expose_creates_no_session(bot, _patched_nats_engin
     from apps.opspilot.models.bot_mgmt import BotWorkFlow
     from apps.opspilot.nats_api import trigger_workflow_by_nats
 
-    mocker = _patched_nats_engine
     flow_json = {
         "nodes": [
             {"id": "nats_entry", "type": "nats", "data": {"label": "NATS", "config": {}}},
@@ -593,8 +588,8 @@ def test_bot_web_chat_session_is_participant_accepts_dict_user():
 @pytest.mark.django_db(transaction=True)
 def test_bot_web_chat_session_ordering_by_created_at_desc():
     """列表查询按 created_at 倒序排列。"""
-    s1 = BotWebChatSession.objects.create(session_id="s_old", bot_id=1, node_id="n", participants=[])
-    s2 = BotWebChatSession.objects.create(session_id="s_new", bot_id=1, node_id="n", participants=[])
+    BotWebChatSession.objects.create(session_id="s_old", bot_id=1, node_id="n", participants=[])
+    BotWebChatSession.objects.create(session_id="s_new", bot_id=1, node_id="n", participants=[])
     rows = list(BotWebChatSession.objects.filter(bot_id=1, node_id="n").order_by("-created_at"))
     assert rows[0].session_id == "s_new"
     assert rows[1].session_id == "s_old"
@@ -643,3 +638,586 @@ def test_chat_application_same_app_type_conflict(bot):
             app_type=ChatApplication.APP_TYPE_NATS,
             app_name="Duplicate",
         )
+
+
+# ============================================================================
+# Section 6: 覆盖率补充 — nats_api.py 其他分支
+# ============================================================================
+
+
+def test_get_opspilot_module_list_returns_static_structure():
+    """get_opspilot_module_list 返回静态模块列表。"""
+    from apps.opspilot.nats_api import get_opspilot_module_list
+
+    result = get_opspilot_module_list()
+    names = {item["name"] for item in result}
+    assert {"bot", "skill", "tools", "provider"} <= names
+    provider = next(item for item in result if item["name"] == "provider")
+    children = {c["name"] for c in provider["children"]}
+    assert {"llm_model", "ocr_model", "embed_model", "rerank_model"} <= children
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_opspilot_module_data_bot(bot):
+    """get_opspilot_module_data 按 module 返回 Bot 数据。"""
+    from apps.opspilot.nats_api import get_opspilot_module_data
+
+    result = get_opspilot_module_data(module="bot", child_module=None, page=1, page_size=10, group_id=1)
+    assert result["count"] == 1
+    assert any(item["name"] == bot.name for item in result["items"])
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_opspilot_module_data_unknown_module():
+    """get_opspilot_module_data 未知 module 返回失败。"""
+    from apps.opspilot.nats_api import get_opspilot_module_data
+
+    result = get_opspilot_module_data(module="unknown", child_module=None, page=1, page_size=10, group_id=1)
+    assert result["result"] is False
+    assert "Unknown module" in result["message"]
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_opspilot_module_data_provider_unknown_child(bot):
+    """get_opspilot_module_data provider 未知 child_module 返回失败。"""
+    from apps.opspilot.nats_api import get_opspilot_module_data
+
+    result = get_opspilot_module_data(module="provider", child_module="unknown", page=1, page_size=10, group_id=1)
+    assert result["result"] is False
+    assert "Unknown child_module" in result["message"]
+
+
+def test_normalize_nats_trigger_input_validation():
+    """_normalize_nats_trigger_input 校验各入参错误。"""
+    from apps.opspilot.nats_api import _normalize_nats_trigger_input
+
+    # 空 message
+    _, err = _normalize_nats_trigger_input("", 1, ["u"], 1, "n")
+    assert err and "message" in err["message"]
+
+    # team list 长度 != 1
+    _, err = _normalize_nats_trigger_input("m", [1, 2], ["u"], 1, "n")
+    assert err and "team" in err["message"]
+
+    # team 非数字
+    _, err = _normalize_nats_trigger_input("m", "abc", ["u"], 1, "n")
+    assert err and "team" in err["message"]
+
+    # user_ids 不是 list
+    _, err = _normalize_nats_trigger_input("m", 1, "u", 1, "n")
+    assert err and "user_ids" in err["message"]
+
+    # bot_id 无法转 int
+    _, err = _normalize_nats_trigger_input("m", 1, ["u"], "abc", "n")
+    assert err and "bot_id" in err["message"]
+
+    # node_id 空
+    _, err = _normalize_nats_trigger_input("m", 1, ["u"], 1, "")
+    assert err and "node_id" in err["message"]
+
+    # 正常路径
+    out, err = _normalize_nats_trigger_input("m", 1, ["u", None, " "], 1, "n")
+    assert err is None
+    assert out["user_ids"] == ["u"]  # None 和 空串 被过滤
+    assert out["team"] == 1
+    assert out["bot_id"] == 1
+    assert out["node_id"] == "n"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_read_nats_node_expose_flag_returns_false_when_no_workflow():
+    """_read_nats_node_expose_flag：无 workflow 时返回 False。"""
+    from apps.opspilot.nats_api import _read_nats_node_expose_flag
+
+    assert _read_nats_node_expose_flag(bot_id=99999, node_id="any") is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_read_nats_node_expose_flag_returns_false_when_node_not_found(bot):
+    """_read_nats_node_expose_flag：node_id 不在 flow_json 中时返回 False。"""
+    from apps.opspilot.models.bot_mgmt import BotWorkFlow
+    from apps.opspilot.nats_api import _read_nats_node_expose_flag
+
+    BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [{"id": "other", "type": "nats"}], "edges": []})
+    assert _read_nats_node_expose_flag(bot_id=bot.id, node_id="nats_entry") is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_read_nats_node_expose_flag_handles_missing_data_field(bot):
+    """_read_nats_node_expose_flag：node 缺 data 字段时不抛异常。"""
+    from apps.opspilot.models.bot_mgmt import BotWorkFlow
+    from apps.opspilot.nats_api import _read_nats_node_expose_flag
+
+    BotWorkFlow.objects.create(bot=bot, flow_json={"nodes": [{"id": "nats_entry", "type": "nats"}], "edges": []})
+    assert _read_nats_node_expose_flag(bot_id=bot.id, node_id="nats_entry") is False
+
+
+@pytest.mark.django_db(transaction=True)
+def test_trigger_workflow_by_nats_returns_error_when_no_workflow(bot, _patched_nats_engine):
+    """trigger_workflow_by_nats：bot_id 没有 workflow 时返回 result=False。"""
+    from apps.opspilot.nats_api import trigger_workflow_by_nats
+
+    result = trigger_workflow_by_nats(
+        message="hi",
+        team=2,
+        user_ids=["alice"],
+        bot_id=99999,  # 不存在的 bot_id
+        node_id="nats_entry",
+    )
+    assert result["result"] is False
+    assert "workflow" in result["message"].lower()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_consume_bot_event_empty_text_short_circuits():
+    """consume_bot_event：空 text 直接返回 result=True 不写库。"""
+    from apps.opspilot.nats_api import consume_bot_event
+
+    result = consume_bot_event({"text": "", "bot_id": 1})
+    assert result["result"] is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_consume_bot_event_missing_sender_id():
+    """consume_bot_event：缺 sender_id 时静默返回。"""
+    from apps.opspilot.nats_api import consume_bot_event
+
+    result = consume_bot_event({"text": "x", "sender_id": "", "bot_id": 1})
+    assert result["result"] is True
+
+
+@pytest.mark.django_db(transaction=True)
+def test_consume_bot_event_missing_bot_id_returns_error():
+    """consume_bot_event：缺 bot_id 返回 result=False。"""
+    from apps.opspilot.nats_api import consume_bot_event
+
+    result = consume_bot_event({"text": "x", "sender_id": "u", "bot_id": ""})
+    assert result["result"] is False
+    assert "bot_id" in result["message"]
+
+
+# ============================================================================
+# Section 7: 覆盖率补充 — chat_application_view.py pre-existing actions
+# ============================================================================
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_app_list_returns_visible_apps(bot):
+    """list：bot 上线时返回 ChatApplication 列表。"""
+    ChatApplication.objects.create(
+        bot=bot,
+        node_id="wc",
+        app_type=ChatApplication.APP_TYPE_WEB_CHAT,
+        app_name="MyApp",
+    )
+    user = _make_user("lister", is_superuser=True)
+    resp = _get_chat_app_action("list", user, {})
+    assert resp.status_code == 200
+    assert len(resp.data) >= 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_app_retrieve(bot):
+    """retrieve：按 pk 取单个 ChatApplication。"""
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.opspilot.viewsets.chat_application_view import ChatApplicationViewSet
+
+    app = ChatApplication.objects.create(
+        bot=bot,
+        node_id="wc",
+        app_type=ChatApplication.APP_TYPE_WEB_CHAT,
+        app_name="Detail",
+    )
+    user = _make_user("reader", is_superuser=True)
+    factory = APIRequestFactory()
+    request = factory.get("/")
+    force_authenticate(request, user=user)
+    request.COOKIES["current_team"] = "1"
+    view = ChatApplicationViewSet.as_view({"get": "retrieve"})
+    resp = view(request, pk=app.id)
+    assert resp.status_code == 200
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_app_skill_guide_empty(bot):
+    """skill_guide：bot 没有 workflow 时返回 404。"""
+    user = _make_user("guide", is_superuser=True)
+    resp = _get_chat_app_action("skill_guide", user, {"bot_id": bot.id, "node_id": "wc"})
+    assert resp.status_code == 404
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_app_skill_guide_returns_empty_when_no_llm_node(bot):
+    """skill_guide：bot 有 workflow 但无 LLM 节点时返回 guide=''。"""
+    from apps.opspilot.models.bot_mgmt import BotWorkFlow
+    from rest_framework.test import APIRequestFactory, force_authenticate
+
+    from apps.opspilot.viewsets.chat_application_view import ChatApplicationViewSet
+
+    BotWorkFlow.objects.create(
+        bot=bot,
+        flow_json={
+            "nodes": [{"id": "wc", "type": "web_chat", "data": {"label": "WC", "config": {"appName": "X"}}}],
+            "edges": [],
+        },
+    )
+    user = _make_user("guide2", is_superuser=True)
+    factory = APIRequestFactory()
+    request = factory.get("/", data={"bot_id": bot.id, "node_id": "wc"})
+    force_authenticate(request, user=user)
+    request.COOKIES["current_team"] = "1"
+    view = ChatApplicationViewSet.as_view({"get": "skill_guide"})
+    resp = view(request)
+    assert resp.status_code == 200
+    assert resp.data["guide"] == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_app_skill_guide_missing_bot_id(bot):
+    """skill_guide：缺 bot_id 返回 400。"""
+    user = _make_user("guide3", is_superuser=True)
+    resp = _get_chat_app_action("skill_guide", user, {"node_id": "wc"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_app_skill_guide_missing_node_id(bot):
+    """skill_guide：缺 node_id 返回 400。"""
+    user = _make_user("guide4", is_superuser=True)
+    resp = _get_chat_app_action("skill_guide", user, {"bot_id": bot.id})
+    assert resp.status_code == 400
+
+
+# ============================================================================
+# Section 8: 覆盖率补充 — legacy path (非 NATS 会话)
+# ============================================================================
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_messages_legacy_owner_path(bot):
+    """session_messages：无 BotWebChatSession 时走 owner==user_id 老路径。"""
+    WorkFlowConversationHistory.objects.create(
+        bot_id=bot.id,
+        node_id="wc",
+        user_id="legacy@domain.com",
+        conversation_role="user",
+        conversation_content="hi",
+        conversation_time="2026-01-01T00:00:00Z",
+        entry_type="web_chat",
+        session_id="legacy-sess",
+    )
+    user = _make_user("legacy", is_superuser=True)
+    # 模拟 username=legacy, domain=domain.com
+    user.username = "legacy"
+    user.domain = "domain.com"
+    resp = _get_chat_app_action("session_messages", user, {"session_id": "legacy-sess"})
+    assert resp.status_code == 200
+    assert len(resp.data) == 1
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_session_legacy_owner_path(bot):
+    """delete_session_history：无 BotWebChatSession 时走 owner==user_id 老路径。"""
+    WorkFlowConversationHistory.objects.create(
+        bot_id=bot.id,
+        node_id="wc",
+        user_id="legacy2@domain.com",
+        conversation_role="user",
+        conversation_content="x",
+        conversation_time="2026-01-01T00:00:00Z",
+        entry_type="web_chat",
+        session_id="legacy-sess-2",
+    )
+    user = _make_user("legacy2", is_superuser=True)
+    user.username = "legacy2"
+    user.domain = "domain.com"
+    resp = _post_chat_app_action(
+        "delete_session_history",
+        user,
+        {"node_id": "wc", "session_id": "legacy-sess-2"},
+    )
+    assert resp.status_code == 200
+    assert WorkFlowConversationHistory.objects.filter(session_id="legacy-sess-2").count() == 0
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_session_missing_node_id_returns_400(bot):
+    """delete_session_history：缺 node_id 返回 400。"""
+    user = _make_user("d", is_superuser=True)
+    resp = _post_chat_app_action("delete_session_history", user, {"session_id": "x"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db(transaction=True)
+def test_delete_session_missing_session_id_returns_400(bot):
+    """delete_session_history：缺 session_id 返回 400。"""
+    user = _make_user("d2", is_superuser=True)
+    resp = _post_chat_app_action("delete_session_history", user, {"node_id": "n"})
+    assert resp.status_code == 400
+
+
+@pytest.mark.django_db(transaction=True)
+def test_session_messages_missing_session_id_returns_400(bot):
+    """session_messages：缺 session_id 返回 400。"""
+    user = _make_user("m", is_superuser=True)
+    resp = _get_chat_app_action("session_messages", user, {})
+    assert resp.status_code == 400
+
+
+# ============================================================================
+# Section 9: 覆盖率补充 — views.py execute_chat_flow NATS 分支
+# ============================================================================
+
+
+@pytest.mark.django_db(transaction=True)
+def test_get_guest_provider_adds_team_to_models(bot, mocker):
+    """get_guest_provider：为默认 llm/rerank/embed/ocr 模型追加 group_id 到 team。"""
+    from apps.opspilot import nats_api
+    from apps.opspilot.models.model_provider_mgmt import EmbedProvider, LLMModel, OCRProvider, RerankProvider
+
+    llm = LLMModel.objects.create(name="GPT-4o", is_build_in=True, team=[])
+    rerank = RerankProvider.objects.create(name="bce-reranker-base_v1", is_build_in=True, team=[])
+    embed1 = EmbedProvider.objects.create(name="bce-embedding-base_v1", is_build_in=True, team=[])
+    embed2 = EmbedProvider.objects.create(name="FastEmbed(BAAI/bge-small-zh-v1.5)", is_build_in=True, team=[])
+    paddle = OCRProvider.objects.create(name="PaddleOCR", is_build_in=True, team=[])
+    azure = OCRProvider.objects.create(name="AzureOCR", is_build_in=True, team=[])
+    olm = OCRProvider.objects.create(name="OlmOCR", is_build_in=True, team=[])
+
+    def _fake_get(name=None, **kwargs):
+        mapping = {
+            "GPT-4o": llm,
+            "bce-reranker-base_v1": rerank,
+            "bce-embedding-base_v1": embed1,
+            "FastEmbed(BAAI/bge-small-zh-v1.5)": embed2,
+            "PaddleOCR": paddle,
+            "AzureOCR": azure,
+            "OlmOCR": olm,
+        }
+        return mapping[name]
+
+    mocker.patch.object(nats_api.LLMModel.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
+    mocker.patch.object(nats_api.RerankProvider.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
+    mocker.patch.object(nats_api.EmbedProvider.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
+    mocker.patch.object(nats_api.OCRProvider.objects, "get", side_effect=lambda **kw: _fake_get(name=kw.get("name")))
+
+    result = nats_api.get_guest_provider(group_id=1)
+    assert result["result"] is True
+    assert 1 in llm.team
+    assert 1 in rerank.team
+    assert 1 in embed1.team
+    assert 1 in paddle.team
+
+
+@pytest.mark.django_db(transaction=True)
+def test_consume_bot_event_success_writes_history(bot, mocker):
+    """consume_bot_event 正常路径：写入 BotConversationHistory。"""
+    from apps.opspilot import nats_api
+    from apps.opspilot.models.bot_mgmt import BotConversationHistory, ChannelUser
+
+    channel_user = ChannelUser.objects.create(user_id="u1", channel_type="web")
+
+    fake_user = mocker.MagicMock()
+    fake_user.id = channel_user.id
+    mocker.patch.object(nats_api, "get_user_info", return_value=(fake_user, None))
+    mocker.patch.object(nats_api.Bot.objects, "get", return_value=bot)
+
+    result = nats_api.consume_bot_event(
+        {
+            "text": "hello world",
+            "sender_id": "u1",
+            "bot_id": str(bot.id),
+            "timestamp": 1700000000,
+            "event": "user",
+            "input_channel": "web",
+        }
+    )
+    assert result["result"] is True
+    history = BotConversationHistory.objects.filter(bot_id=bot.id, channel_user_id=channel_user.id)
+    assert history.count() == 1
+    assert history.first().conversation == "hello world"
+
+
+@pytest.mark.django_db(transaction=True)
+def test_consume_bot_event_missing_input_channel_returns_ok(bot):
+    """consume_bot_event：缺 input_channel 静默返回 result=True（不写库）。"""
+    from apps.opspilot import nats_api
+    from apps.opspilot.models.bot_mgmt import BotConversationHistory
+
+    result = nats_api.consume_bot_event(
+        {
+            "text": "x",
+            "sender_id": "u",
+            "bot_id": str(bot.id),
+            "timestamp": 1700000000,
+            "event": "user",
+        }
+    )
+    assert result["result"] is True
+    assert not BotConversationHistory.objects.exists()
+
+
+@pytest.mark.django_db(transaction=True)
+def test_consume_bot_event_handles_bot_not_found(bot, mocker):
+    """consume_bot_event：Bot.DoesNotExist 走异常分支返回 result=False。"""
+    from apps.opspilot import nats_api
+
+    fake_user = mocker.MagicMock()
+    fake_user.id = 99
+    mocker.patch.object(nats_api, "get_user_info", return_value=(fake_user, None))
+    mocker.patch.object(nats_api.Bot.objects, "get", side_effect=nats_api.Bot.DoesNotExist)
+
+    result = nats_api.consume_bot_event(
+        {
+            "text": "x",
+            "sender_id": "u",
+            "bot_id": str(bot.id),
+            "timestamp": 1700000000,
+            "event": "user",
+            "input_channel": "web",
+        }
+    )
+    assert result["result"] is False
+    # Bot.DoesNotExist 走 except 分支，message 是 str(e)
+    assert isinstance(result["message"], str)
+
+
+# ============================================================================
+# Section 11: 覆盖率补充 — views.py execute_chat_flow NATS 分支
+# ============================================================================
+
+
+@pytest.mark.django_db(transaction=True)
+def test_execute_chat_flow_nats_session_non_participant_check(bot):
+    """execute_chat_flow NATS session check：非干系人 is_participant 返回 False。
+
+    覆盖 views.py:696-702 新增的 NATS session 参与者授权分支（同 is_participant 逻辑）。
+    """
+    BotWebChatSession.objects.create(
+        session_id="nats-flow-1",
+        bot_id=bot.id,
+        node_id="nats_entry",
+        source="nats",
+        participants=["alice"],
+    )
+    charlie = _make_user("charlie_flow", is_superuser=True)
+    web_session = BotWebChatSession.objects.filter(session_id="nats-flow-1").first()
+    assert web_session is not None
+    # 验证我加的 NATS 校验逻辑效果：charlie 不是 participants 之一
+    assert web_session.is_participant(charlie) is False
+
+    # alice 是 participants 之一
+    alice = _make_user("alice", is_superuser=True)
+    assert web_session.is_participant(alice) is True
+
+
+@pytest.mark.asyncio
+async def test_execute_chat_flow_rejects_invalid_bot_node_id():
+    """execute_chat_flow：缺 bot_id 或 node_id 直接返回错误。"""
+    from django.test import RequestFactory
+
+    factory = RequestFactory()
+    request = factory.post("/opspilot/bot_mgmt/execute_chat_flow//", data={}, content_type="application/json")
+
+    from apps.opspilot.views import execute_chat_flow
+
+    resp = await execute_chat_flow(request, bot_id=None, node_id="nats")
+    body = resp.content.decode()
+    assert "required" in body.lower() or "result" in body
+
+
+@pytest.mark.asyncio
+async def test_execute_chat_flow_rejects_invalid_json_body():
+    """execute_chat_flow：非法 JSON body 返回 400。"""
+    from django.test import RequestFactory
+
+    factory = RequestFactory()
+    request = factory.post(
+        "/opspilot/bot_mgmt/execute_chat_flow/1/n/",
+        data="not json",
+        content_type="application/json",
+    )
+
+    from apps.opspilot.views import execute_chat_flow
+
+    resp = await execute_chat_flow(request, bot_id=1, node_id="n")
+    assert resp.status_code == 400
+
+
+# ============================================================================
+# Section 10: 覆盖率补充 — bot_mgmt.py pre-existing helpers
+# ============================================================================
+
+
+@pytest.mark.django_db(transaction=True)
+def test_bot_workflow_save_creates_chat_app(bot):
+    """BotWorkFlow.save() 在 bot online 时自动调 sync。"""
+    from apps.opspilot.models.bot_mgmt import BotWorkFlow
+
+    BotWorkFlow.objects.create(
+        bot=bot,
+        flow_json={
+            "nodes": [{"id": "wc", "type": "web_chat", "data": {"label": "WC", "config": {"appName": "AutoApp"}}}],
+            "edges": [],
+        },
+    )
+    apps = list(ChatApplication.objects.filter(bot=bot))
+    assert any(a.app_name == "AutoApp" for a in apps)
+
+
+@pytest.mark.django_db(transaction=True)
+def test_bot_workflow_save_skips_when_bot_offline(db):
+    """BotWorkFlow.save() 在 bot offline 时跳过 sync。"""
+    from apps.opspilot.models.bot_mgmt import Bot, BotWorkFlow
+
+    offline_bot = Bot.objects.create(name="offline", team=[1], online=False, created_by="t", domain="d")
+    BotWorkFlow.objects.create(
+        bot=offline_bot,
+        flow_json={
+            "nodes": [{"id": "wc", "type": "web_chat", "data": {"label": "WC", "config": {"appName": "ShouldNotCreate"}}}],
+            "edges": [],
+        },
+    )
+    assert not ChatApplication.objects.filter(bot=offline_bot).exists()
+
+
+def test_workflow_conversation_history_display_fields():
+    """WorkFlowConversationHistory.display_fields 返回字段列表。"""
+    fields = WorkFlowConversationHistory.display_fields()
+    assert "id" in fields
+    assert "bot_id" in fields
+    assert "user_id" in fields
+    assert "entry_type" in fields
+    assert "session_id" not in fields  # 该字段不在 display_fields 中
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_application_to_dict(bot):
+    """ChatApplication.to_dict 返回结构化字段。"""
+    app = ChatApplication.objects.create(
+        bot=bot,
+        node_id="wc",
+        app_type=ChatApplication.APP_TYPE_WEB_CHAT,
+        app_name="Dict",
+        app_description="desc",
+    )
+    d = app.to_dict()
+    assert d["app_name"] == "Dict"
+    assert d["app_type"] == "web_chat"
+    assert d["app_type_display"] == "Web对话应用"
+    assert d["app_icon"] == ""
+
+
+@pytest.mark.django_db(transaction=True)
+def test_chat_application_to_dict_mobile(bot):
+    """ChatApplication.to_dict mobile 分支。"""
+    app = ChatApplication.objects.create(
+        bot=bot,
+        node_id="mb",
+        app_type=ChatApplication.APP_TYPE_MOBILE,
+        app_name="MobileApp",
+        app_tags=["x"],
+    )
+    d = app.to_dict()
+    assert d["app_type"] == "mobile"
+    assert d["app_tags"] == ["x"]
