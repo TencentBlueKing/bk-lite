@@ -30,6 +30,13 @@ SUPPORTED_BRAND_OPTIONS = [
 ]
 
 DANGEROUS_EXACT_COMMANDS = {"conf t", "write erase"}
+# P1-2.5: 补全真实高危操作,覆盖:
+# - 写配置: write memory (Cisco)
+# - 系统请求: request system (Junos 重启/关机/备份)
+# - 模式逃逸: do (Cisco 从 config 模式临时跑任意命令)
+# - shell 逃逸: sudo / bash / sh / python / perl / ruby
+# - 文件破坏: rm
+# - 跳转/隧道: telnet / ssh
 DANGEROUS_COMMAND_PREFIXES = {
     "configure",
     "reload",
@@ -49,6 +56,18 @@ DANGEROUS_COMMAND_PREFIXES = {
     "shutdown",
     "undo",
     "set",
+    "write",
+    "request",
+    "do",
+    "sudo",
+    "bash",
+    "sh",
+    "python",
+    "perl",
+    "ruby",
+    "rm",
+    "telnet",
+    "ssh",
 }
 MAX_ERROR_SUMMARY_LENGTH = 2000
 
