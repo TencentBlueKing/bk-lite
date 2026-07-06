@@ -482,7 +482,11 @@ def test_login_with_binding_creates_user_when_unmatched_action_is_create():
 
 
 @pytest.mark.django_db
-def test_login_with_binding_updates_existing_user_profile_before_token_issue():
+def test_login_with_binding_does_not_modify_existing_user_profile():
+    """登录认证不修改已有用户资料,只刷 last_login(由外层 login_with_binding 处理)。
+
+    详见 openspec/changes/wechat-login-auth-field-mapping/design.md 决策 3。
+    """
     instance = IntegrationInstance.objects.create(
         name="Feishu Login",
         provider_key="feishu",
@@ -519,9 +523,10 @@ def test_login_with_binding_updates_existing_user_profile_before_token_issue():
         result = login_with_binding(binding.id, "auth-code")
 
     user.refresh_from_db()
-    assert user.display_name == "New Name"
-    assert user.email == "new@example.com"
-    assert user.phone == "13800000000"
+    # 登录认证不修改 display_name / email / phone(新策略)
+    assert user.display_name == "Old Name"
+    assert user.email == "old@example.com"
+    assert user.phone == "13900000000"
     assert result["result"] is True
 
 

@@ -49,12 +49,23 @@ class LoginAuthBindingSerializer(UsernameSerializer):
         if instance.status != IntegrationInstanceStatusChoices.READY or instance.capability_status.get("login_auth") != IntegrationInstanceStatusChoices.READY:
             raise serializers.ValidationError({"integration_instance": "Integration instance login_auth capability is not ready"})
 
-        unmatched_action = attrs.get("unmatched_user_action") or getattr(
-            self.instance, "unmatched_user_action", LoginAuthBindingUnmatchedActionChoices.DENY
-        )
-        default_group_name = attrs.get("default_group_name") or getattr(self.instance, "default_group_name", "")
+        # 用 `in` 区分 "未提交" 与 "显式空字符串",避免 attrs.get(...) or getattr(...)
+        # 把显式空字符串误回退为旧值、导致非 WeChat create 在 update 场景绕过校验。
+        if "unmatched_user_action" in attrs:
+            unmatched_action = attrs["unmatched_user_action"]
+        else:
+            unmatched_action = getattr(
+                self.instance, "unmatched_user_action", LoginAuthBindingUnmatchedActionChoices.DENY
+            )
+        if "default_group_name" in attrs:
+            default_group_name = attrs["default_group_name"]
+        else:
+            default_group_name = getattr(self.instance, "default_group_name", "")
+
         if unmatched_action == LoginAuthBindingUnmatchedActionChoices.CREATE and not default_group_name:
-            raise serializers.ValidationError({"default_group_name": "Default group name is required when unmatched user action is create"})
+            # WeChat provider 允许 default_group_name 为空,运行时由后端 fallback 到 OpsPilotGuest
+            if instance.provider_key != "wechat":
+                raise serializers.ValidationError({"default_group_name": "Default group name is required when unmatched user action is create"})
 
         return attrs
 
