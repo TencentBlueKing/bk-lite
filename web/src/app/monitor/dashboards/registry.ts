@@ -30,6 +30,7 @@ import AccessDashboard from './objects/access';
 import NetworkServiceDashboard from './objects/network_service';
 import ConsoleServerDashboard from './objects/console_server';
 import VoiceGatewayDashboard from './objects/voice_gateway';
+import { ENTERPRISE_PROFESSIONAL_DASHBOARDS } from './objects/(enterprise)-registry';
 import { normalizeDashboardKey } from './shared/utils';
 
 export const PROFESSIONAL_DASHBOARD_GROUPS = {
@@ -41,7 +42,7 @@ export const PROFESSIONAL_DASHBOARD_GROUPS = {
   middleware: { label: '中间件', order: 50 }
 } as const;
 
-export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+const COMMUNITY_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
   {
     key: 'mysql',
     groupKey: 'database',
@@ -310,6 +311,11 @@ export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
     inheritedPermissionPath: '/monitor/view',
     component: K8sPodDashboard
   }
+];
+
+export const PROFESSIONAL_DASHBOARDS: ProfessionalDashboardRegistryItem[] = [
+  ...COMMUNITY_DASHBOARDS,
+  ...ENTERPRISE_PROFESSIONAL_DASHBOARDS,
 ];
 
 export const PROFESSIONAL_DASHBOARD_MAP = new Map(

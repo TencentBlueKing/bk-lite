@@ -53,6 +53,7 @@ interface NetworkTopologyX6CanvasProps {
   data: NetworkTopologyX6GraphData;
   centerId?: string;
   editing?: boolean;
+  nodeMovable?: boolean;
   graphRef?: React.MutableRefObject<Graph | null>;
   minimap?: {
     width: number;
@@ -318,6 +319,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
   fitViewOptions,
   fitViewKey,
   onGraphReady,
+  nodeMovable = true,
   onNodeClick,
   onNodeMouseEnter,
   onNodeMouseMove,
@@ -350,6 +352,11 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
     if (!graph) return undefined;
     if (graphRef) graphRef.current = graph;
     onGraphReady?.(graph);
+    graph.options.interacting = {
+      ...(typeof graph.options.interacting === 'object' ? graph.options.interacting : {}),
+      nodeMovable,
+      edgeMovable: false,
+    };
     if (!graph.getPlugin('export')) {
       graph.use(new Export());
     }
@@ -357,7 +364,7 @@ const GraphLoader: React.FC<NetworkTopologyX6CanvasProps> = ({
       if (graphRef) graphRef.current = null;
       onGraphReady?.(null);
     };
-  }, [graph, graphRef, onGraphReady]);
+  }, [graph, graphRef, nodeMovable, onGraphReady]);
 
   useEffect(() => {
     if (!graph) return undefined;

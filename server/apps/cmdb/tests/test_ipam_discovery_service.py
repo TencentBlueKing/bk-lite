@@ -14,7 +14,12 @@ class TestApplyIpDiscoveryVmRows:
 
         def fake_apply(subnet_id, alive):
             calls.append((str(subnet_id), alive))
-            return {"created": len(alive), "updated": 0, "offline": 1 if not alive else 0}
+            return {
+                "created": len(alive),
+                "updated": 0,
+                "offline": 1 if not alive else 0,
+                "format_data": {"add": [], "update": [], "delete": [], "association": [], "all": len(alive)},
+            }
 
         monkeypatch.setattr(ipam_discovery, "apply_discovery_result", fake_apply)
 
@@ -34,7 +39,9 @@ class TestApplyIpDiscoveryVmRows:
             ("1", [{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}]),
             ("2", []),
         ]
-        assert result == {"created": 1, "updated": 0, "offline": 1}
+        assert result["created"] == 1
+        assert result["offline"] == 1
+        assert set(result["format_data"].keys()) == {"add", "update", "delete", "association", "all"}
 
     def test_忽略失败行和缺少关键字段的行(self, monkeypatch):
         from apps.cmdb.services import ipam_discovery
@@ -44,7 +51,12 @@ class TestApplyIpDiscoveryVmRows:
         monkeypatch.setattr(
             ipam_discovery,
             "apply_discovery_result",
-            lambda subnet_id, alive: calls.append((subnet_id, alive)) or {"created": 0, "updated": 0, "offline": 0},
+            lambda subnet_id, alive: calls.append((subnet_id, alive)) or {
+                "created": 0,
+                "updated": 0,
+                "offline": 0,
+                "format_data": {"add": [], "update": [], "delete": [], "association": [], "all": 0},
+            },
         )
 
         result = ipam_discovery.apply_ip_discovery_vm_rows(
@@ -57,7 +69,8 @@ class TestApplyIpDiscoveryVmRows:
         )
 
         assert calls == []
-        assert result == {"created": 0, "updated": 0, "offline": 0}
+        assert result["created"] == 0
+        assert result["format_data"]["all"] == 0
 
 
 class TestApplyDiscoveryResult:
@@ -81,6 +94,8 @@ class TestApplyDiscoveryResult:
         assert {u["ip_addr"] for u in ups} == {"10.0.1.10", "10.0.1.40"}
         assert offs == [12]
         assert result["offline"] == 1
+        assert len(result["format_data"]["add"]) == 1
+        assert len(result["format_data"]["update"]) == 2
         assert 13 not in offs
 
     def test_auto_collect缺失的已有记录不被覆盖(self, monkeypatch):
@@ -102,6 +117,7 @@ class TestApplyDiscoveryResult:
         assert ups == []          # 探到同地址但记录非自动创建 -> 不覆盖
         assert offs == []         # 也不会被置离线（offline 仅作用于 auto_collect is True）
         assert result["created"] == 0 and result["updated"] == 0
+        assert result["format_data"]["all"] == 0
 
 
 # ---------------------------------------------------------------------------
@@ -143,13 +159,18 @@ class TestUpsertAliveIpCollectTime:
         from apps.cmdb.services import ipam_discovery
         from apps.cmdb.services.instance import InstanceManage
 
-        captured_payloads = []
+        captured_calls = []
 
         def fake_instance_create(model_id, payload, operator, **kw):
-            captured_payloads.append(payload)
+            captured_calls.append({"payload": payload, "kwargs": kw})
             return {"_id": 999}
 
         monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(fake_instance_create))
+        monkeypatch.setattr(
+            ipam_discovery,
+            "_ensure_subnet_ip_association",
+            lambda subnet_id, ip_id: {"success": [], "failed": []},
+        )
 
         ipam_discovery._upsert_alive_ip(
             existing_id=None,
@@ -159,6 +180,82 @@ class TestUpsertAliveIpCollectTime:
             organization=[1],
         )
 
-        assert len(captured_payloads) == 1
-        assert "collect_time" in captured_payloads[0]
-        assert captured_payloads[0]["collect_time"]  # non-empty
+        assert len(captured_calls) == 1
+        assert "collect_time" in captured_calls[0]["payload"]
+        assert captured_calls[0]["payload"]["collect_time"]  # non-empty
+        assert captured_calls[0]["kwargs"]["allowed_org_ids"] == [1]
+
+    def test_update_branch_passes_allowed_org_ids(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+        from apps.cmdb.services.instance import InstanceManage
+
+        captured_calls = []
+
+        def fake_instance_update(user_groups, roles, inst_id, payload, operator, **kw):
+            captured_calls.append({"inst_id": inst_id, "payload": payload, "kwargs": kw})
+
+        monkeypatch.setattr(InstanceManage, "instance_update", staticmethod(fake_instance_update))
+        monkeypatch.setattr(
+            ipam_discovery,
+            "_ensure_subnet_ip_association",
+            lambda subnet_id, ip_id: {"success": [], "failed": []},
+        )
+
+        ipam_discovery._upsert_alive_ip(
+            existing_id=88,
+            subnet_id=1,
+            ip_addr="10.0.1.88",
+            mac="",
+            organization=[7],
+        )
+
+        assert len(captured_calls) == 1
+        assert captured_calls[0]["inst_id"] == 88
+        assert captured_calls[0]["kwargs"]["allowed_org_ids"] == [7]
+
+
+class TestSubnetAssociation:
+    def test_upsert_alive_ip_ensure_subnet_association(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+        from apps.cmdb.services.instance import InstanceManage
+
+        monkeypatch.setattr(InstanceManage, "instance_create", staticmethod(lambda *a, **k: {"_id": 901}))
+        assoc_calls = []
+        monkeypatch.setattr(ipam_discovery, "_ensure_subnet_ip_association", lambda subnet_id, ip_id: assoc_calls.append((subnet_id, ip_id)) or {
+            "success": [{"model_asst_id": "subnet_group_ip", "src_inst_id": subnet_id, "dst_inst_id": ip_id}],
+            "failed": [],
+        })
+
+        out = ipam_discovery._upsert_alive_ip(
+            existing_id=None,
+            subnet_id=7,
+            ip_addr="10.0.7.1",
+            mac="",
+            organization=[1],
+        )
+
+        assert assoc_calls == [(7, 901)]
+        assert out["assos_result"]["success"][0]["model_asst_id"] == "subnet_group_ip"
+
+    def test_load_subnet_ips_merges_association_and_field_fallback(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(
+            ipam_discovery,
+            "_load_subnet_associated_ips",
+            lambda subnet_id: [
+                {"_id": 1, "ip_addr": "10.0.1.10", "subnet_id": "1"},
+            ],
+        )
+        monkeypatch.setattr(
+            ipam_discovery,
+            "_load_subnet_ips_by_field",
+            lambda subnet_id: [
+                {"_id": 1, "ip_addr": "10.0.1.10", "subnet_id": "1"},
+                {"_id": 2, "ip_addr": "10.0.1.20", "subnet_id": "1"},
+            ],
+        )
+
+        rows = ipam_discovery._load_subnet_ips(1)
+
+        assert {row["_id"] for row in rows} == {1, 2}

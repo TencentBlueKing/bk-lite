@@ -1,17 +1,9 @@
-import { COLORS, NODE_DEFAULTS, SPACING } from '../constants/nodeDefaults';
+import { COLORS, SPACING } from '../constants/nodeDefaults';
 import type {
   EdgeConnectionType,
   EdgeStyleConfig,
   TopologyEdgeVisual,
 } from '@/app/ops-analysis/types/topology';
-
-export const getTopologyDeviceNodeVisual = () => ({
-  width: NODE_DEFAULTS.ICON_NODE.width,
-  height: NODE_DEFAULTS.ICON_NODE.height,
-  borderRadius: NODE_DEFAULTS.ICON_NODE.borderRadius,
-  iconSize: 70,
-  labelDirection: 'bottom' as const,
-});
 
 export const getTopologyEdgeVisual = (
   connectionType: EdgeConnectionType = 'single',

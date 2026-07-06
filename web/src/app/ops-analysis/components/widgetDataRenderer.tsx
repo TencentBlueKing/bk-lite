@@ -18,6 +18,7 @@ import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransfor
 import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
 import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
 import {
+  buildWidgetRequestCacheKey,
   getCachedWidgetRequest,
   setWidgetRequestFailureCache,
   setWidgetRequestSuccessCache,
@@ -203,7 +204,6 @@ export interface WidgetWrapperProps {
 
 const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   dashboardId,
-  widgetId,
   chartType,
   config,
   onReady,
@@ -328,9 +328,10 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     return JSON.stringify({
       dataSourceId: normalizedDataSourceId,
+      compare: Boolean(config?.compare),
       requestParams: requestSignatureParams,
     });
-  }, [isSceneWidget, normalizedDataSourceId, requestSignatureParams]);
+  }, [config?.compare, isSceneWidget, normalizedDataSourceId, requestSignatureParams]);
 
   const hasEnabledFilterBindings = useMemo(() => {
     const bindings = config?.filterBindings;
@@ -362,8 +363,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return null;
     }
 
-    return `${dashboardId ?? 'dashboard'}:${widgetId}:${requestVersionKey}:${requestSignature}`;
-  }, [dashboardId, requestSignature, requestVersionKey, widgetId]);
+    return buildWidgetRequestCacheKey({
+      scopeId: dashboardId,
+      requestVersionKey,
+      requestSignature,
+    });
+  }, [dashboardId, requestSignature, requestVersionKey]);
 
   const handleTableQueryChange = useCallback((params: Record<string, any>) => {
     setTableQueryParams((prev) => {
@@ -405,12 +410,9 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   );
 
   const fetchDataRef = useRef<
-    (params: Record<string, any>, key: string) => Promise<void>
+    (key: string) => Promise<void>
       >(undefined!);
-  fetchDataRef.current = async (
-    nextRequestParams: Record<string, any>,
-    requestKey: string,
-  ) => {
+  fetchDataRef.current = async (requestKey: string) => {
     if (!normalizedDataSourceId) {
       return;
     }
@@ -454,7 +456,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setWidgetRequestSuccessCache(requestKey, {
         rawData: data.currentData,
         baselineData: data.baselineData,
-        dataValidation: validation,
       });
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
@@ -547,7 +548,14 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
 
     setRawData(cached.rawData);
     setBaselineData(cached.baselineData);
-    setDataValidation(cached.dataValidation);
+    setDataValidation(
+      cached.errorMessage
+        ? {
+          isValid: false,
+          message: cached.errorMessage,
+        }
+        : validateChartData(cached.rawData, chartType)
+    );
     setLoading(false);
     setTableLoading(false);
     previousRequestRef.current = {
@@ -559,7 +567,6 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       hasRequested: true,
     };
   }, [
-    dashboardId,
     filterSearchVersion,
     namespaceSearchVersion,
     reloadVersion,
@@ -567,6 +574,8 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     requestKey,
     requestSignature,
     tableQueryKey,
+    chartType,
+    validateChartData,
   ]);
 
   useEffect(() => {
@@ -618,7 +627,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       return;
     }
 
-    fetchDataRef.current(requestParams, requestKey);
+    fetchDataRef.current(requestKey);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [
     requestEnabled,

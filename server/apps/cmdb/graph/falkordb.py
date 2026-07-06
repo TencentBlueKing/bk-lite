@@ -981,6 +981,10 @@ class FalkorDBClient:
 
                 # 为每个字段补充默认值
                 for attr in attrs_list:
+                    if not isinstance(attr, dict):
+                        logger.warning(f"处理模型字段默认值时跳过非法字段定义，类型: {type(attr).__name__}")
+                        continue
+
                     # 1. 确保有 user_prompt 字段
                     if USER_PROMPT not in attr:
                         attr.update(DEFAULT_USER_PROMPT)
@@ -991,6 +995,24 @@ class FalkorDBClient:
 
                     option = attr["option"]
                     attr_type = attr.get("attr_type")
+
+                    # 历史字段类型可能发生漂移，兜底修正 option 结构，避免启动初始化因脏数据中断。
+                    if attr_type in ["str", "int", "float", "time"] and not isinstance(option, dict):
+                        default_option = {}
+                        if attr_type == "str":
+                            default_option = DEFAULT_STRING_CONSTRAINT.copy()
+                        elif attr_type in ["int", "float"]:
+                            default_option = DEFAULT_NUMBER_CONSTRAINT.copy()
+                        elif attr_type == "time":
+                            default_option = DEFAULT_TIME_CONSTRAINT.copy()
+                        logger.warning(
+                            "模型字段 option 类型异常，已重置为默认约束: attr_id=%s, attr_type=%s, option_type=%s",
+                            attr.get("attr_id"),
+                            attr_type,
+                            type(option).__name__,
+                        )
+                        option = default_option
+                        attr["option"] = option
 
                     # 3. 根据字段类型补充默认约束
                     if attr_type == "str" and option:

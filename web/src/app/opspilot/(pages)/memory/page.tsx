@@ -165,8 +165,8 @@ const MemoryPage = () => {
     <div className="w-full">
       <div className="flex justify-between items-center mb-4">
         <div className="flex flex-col">
-          <h2 className="text-lg font-bold text-gray-800 dark:text-gray-200">{t('memory.memoryList')}</h2>
-          <p className="text-sm text-gray-500 dark:text-gray-400">
+          <h2 className="text-lg font-bold text-(--color-text-1)">{t('memory.memoryList')}</h2>
+          <p className="text-sm text-(--color-text-3)">
             卡片代表一个可被工作流绑定和持续回写的记忆容器。
           </p>
         </div>
@@ -191,13 +191,13 @@ const MemoryPage = () => {
           {filteredSpaces.map((space) => (
             <div
               key={space.id}
-              className="relative flex flex-col cursor-pointer border border-[#d8e0ec] dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800 h-[216px] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_10px_20px_rgba(20,38,70,0.12)] hover:border-[#c7d4e6] dark:hover:border-gray-600 overflow-hidden"
+              className="relative flex flex-col cursor-pointer border border-(--color-border-1) rounded-xl bg-(--color-bg) h-[216px] transition-all duration-200 hover:-translate-y-px hover:shadow-[0_10px_20px_rgba(20,38,70,0.12)] hover:border-(--color-border-2) overflow-hidden"
               onClick={() => router.push(`/opspilot/memory/detail/config?id=${space.id}`)}
             >
-              <div 
-                className={`relative flex-shrink-0 h-[56px] border-b border-[rgba(213,222,235,0.9)] dark:border-gray-700 ${
-                  space.scope === 'team' 
-                    ? 'bg-gradient-to-br from-[#1e4fff] to-[#33a0ff]' 
+              <div
+                className={`relative flex-shrink-0 h-[56px] border-b border-(--color-border-1) ${
+                  space.scope === 'team'
+                    ? 'bg-gradient-to-br from-[#1e4fff] to-[#33a0ff]'
                     : 'bg-gradient-to-br from-[#d6e1f4] via-[#bed1f1] to-[#95b3ed]'
                 }`}
               >
@@ -222,18 +222,18 @@ const MemoryPage = () => {
               
               <div className="flex-1 p-[18px] flex flex-col min-h-0">
                 <div className="flex-1 min-h-0">
-                  <h3 className="text-[15px] font-bold text-[#243853] dark:text-gray-200 mb-1.5 truncate">
+                  <h3 className="text-[15px] font-bold text-(--color-text-1) mb-1.5 truncate">
                     {space.name}
                   </h3>
-                  <p className="text-[12px] leading-[1.7] text-[#7a8ca6] dark:text-gray-400 line-clamp-3">
+                  <p className="text-[12px] leading-[1.7] text-(--color-text-3) line-clamp-3">
                     {space.introduction || '-'}
                   </p>
                 </div>
-                <div className="mt-3 pt-3 border-t border-gray-100 dark:border-gray-700 flex justify-between items-center flex-shrink-0">
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">
+                <div className="mt-3 pt-3 border-t border-(--color-border-1) flex justify-between items-center flex-shrink-0">
+                  <span className="text-[12px] text-(--color-text-4)">
                     {t('memory.memoryCount')}: {space.memory_count || 0}
                   </span>
-                  <span className="text-[12px] text-gray-400 dark:text-gray-500">
+                  <span className="text-[12px] text-(--color-text-4)">
                     {space.created_by || '-'}
                   </span>
                 </div>

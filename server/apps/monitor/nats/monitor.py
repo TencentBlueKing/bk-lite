@@ -841,6 +841,11 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         return {"result": False, "data": [], "message": "没有权限访问指定的实例"}
 
     metrics = Metric.objects.filter(monitor_object=monitor_obj).select_related("metric_group").order_by("metric_group__sort_order", "sort_order")
+    if only_with_data:
+        total_count = metrics.count()
+        start = (page - 1) * page_size
+        end = start + page_size
+        metrics = metrics[start:end]
 
     result_metrics = []
     for metric in metrics:
@@ -894,7 +899,16 @@ def monitor_instance_metrics(query_data: dict, *args, **kwargs):
         "data": {
             "monitor_obj_id": str(monitor_obj.id),
             "instance_id": instance_id,
-            **_paginate_items(result_metrics, page, page_size),
+            **(
+                {
+                    "count": total_count,
+                    "page": page,
+                    "page_size": page_size,
+                    "items": result_metrics,
+                }
+                if only_with_data
+                else _paginate_items(result_metrics, page, page_size)
+            ),
         },
         "message": "",
     }
@@ -969,10 +983,19 @@ def query_monitor_alert_segments(query_data: dict, *args, **kwargs):
     if alert_type_values:
         queryset = queryset.filter(alert_type__in=alert_type_values)
 
-    items = [_build_monitor_alert_segment(alert) for alert in queryset.order_by("-start_event_time", "-created_at")]
+    ordered_queryset = queryset.order_by("-start_event_time", "-created_at")
+    total_count = ordered_queryset.count()
+    start = (page - 1) * page_size
+    end = start + page_size
+    items = [_build_monitor_alert_segment(alert) for alert in ordered_queryset[start:end]]
     return {
         "result": True,
-        "data": _paginate_items(items, page, page_size),
+        "data": {
+            "count": total_count,
+            "page": page,
+            "page_size": page_size,
+            "items": items,
+        },
         "message": "",
     }
 

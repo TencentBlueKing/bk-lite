@@ -62,7 +62,7 @@ export const useNodeConfigData = () => {
     }
   }, [fetchLlmModels, llmModelsLoaded, t]);
 
-  const loadChannels = useCallback(async (channelType: 'email' | 'enterprise_wechat_bot') => {
+  const loadChannels = useCallback(async (channelType: string) => {
     try {
       setLoadingChannels(true);
       const data = await getChannelData({ channel_type: channelType });

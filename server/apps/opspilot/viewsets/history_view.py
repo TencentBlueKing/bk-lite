@@ -2,7 +2,7 @@ from django.core.paginator import Paginator
 from django.db import connection, transaction
 from django.db.models import Count, Max, Min, OuterRef, Subquery
 from django.db.models.functions import TruncDay
-from django.http import JsonResponse
+from django.http import Http404, JsonResponse
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -186,7 +186,13 @@ class HistoryViewSet(TeamPermissionMixin, viewsets.ModelViewSet):
     @action(methods=["GET"], detail=False)
     @HasPermission("bot_conversation_log-View")
     def get_tag_detail(self, request):
-        tag_obj = ConversationTag.objects.get(id=request.GET.get("tag_id"))
+        current_team = self._validate_current_team_permission(request)
+        tag_obj = ConversationTag.objects.filter(
+            id=request.GET.get("tag_id"),
+            answer__bot__team__contains=[current_team],
+        ).first()
+        if not tag_obj:
+            raise Http404("Conversation tag not found")
         return JsonResponse(
             {
                 "result": True,

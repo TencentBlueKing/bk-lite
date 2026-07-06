@@ -12,29 +12,6 @@ import {
   getTopologyEdgeVisual,
 } from './topologyVisualStyles';
 
-// 通用工具函数
-export const getValueByPath = (obj: unknown, path: string): unknown => {
-  if (!obj || !path) return undefined;
-
-  return path.split('.').reduce((current, key) => {
-    if (current === null || current === undefined) return undefined;
-
-    // 处理数组索引
-    if (Array.isArray(current)) {
-      const index = parseInt(key, 10);
-      if (!isNaN(index) && index >= 0 && index < current.length) {
-        return current[index];
-      }
-      // 如果key不是数字，尝试在数组的每个元素中查找
-      return current.length > 0 && current[0] && typeof current[0] === 'object'
-        ? (current[0] as Record<string, unknown>)[key]
-        : undefined;
-    }
-
-    return (current as Record<string, unknown>)[key];
-  }, obj);
-};
-
 export const formatDisplayValue = (
   value: unknown,
   unit?: string,

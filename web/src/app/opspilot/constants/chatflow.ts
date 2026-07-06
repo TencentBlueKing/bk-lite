@@ -13,13 +13,72 @@ export const nodeConfig = {
   http: { icon: 'HTTP', color: 'cyan' as const },
   notification: { icon: 'alarm', color: 'pink' as const },
   enterprise_wechat: { icon: 'qiwei2', color: 'green' as const },
+  enterprise_wechat_aibot: { icon: 'qiwei2', color: 'green' as const },
   dingtalk: { icon: 'dingding', color: 'blue' as const },
   wechat_official: { icon: 'weixingongzhonghao', color: 'green' as const },
   memory_read: { icon: 'zhishiku2', color: 'teal' as const },
   memory_write: { icon: 'bianji', color: 'indigo' as const },
 } as const;
 
-export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'dingtalk', 'wechat_official'] as const;
+export const TRIGGER_NODE_TYPES = ['celery', 'nats', 'restful', 'openai', 'agui', 'embedded_chat', 'web_chat', 'mobile', 'enterprise_wechat', 'enterprise_wechat_aibot', 'dingtalk', 'wechat_official'] as const;
+
+export const nodeCategories = [
+  {
+    key: 'triggers',
+    labelKey: 'chatflow.triggers',
+    items: [
+      { type: 'celery', icon: 'a-icon-dingshichufa1x', labelKey: 'chatflow.celery' },
+      { type: 'nats', icon: 'WebSphereMQ', labelKey: 'chatflow.nats' },
+      { type: 'restful', icon: 'RESTfulAPI', labelKey: 'chatflow.restful' },
+      { type: 'openai', icon: 'icon-test2', labelKey: 'chatflow.openai' },
+      { type: 'agui', icon: 'huifu-copy', labelKey: 'chatflow.agui' },
+    ],
+  },
+  {
+    key: 'applications',
+    labelKey: 'chatflow.applications',
+    items: [
+      { type: 'embedded_chat', icon: 'wendaduihua', labelKey: 'chatflow.embeddedChat' },
+      { type: 'web_chat', icon: 'WebSphereMQ', labelKey: 'chatflow.webChat' },
+      { type: 'mobile', icon: 'zhuji', labelKey: 'chatflow.mobile' },
+      { type: 'enterprise_wechat', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechat' },
+      { type: 'enterprise_wechat_aibot', icon: 'qiwei2', labelKey: 'chatflow.enterpriseWechatAibot' },
+      { type: 'dingtalk', icon: 'dingding', labelKey: 'chatflow.dingtalk' },
+      { type: 'wechat_official', icon: 'weixingongzhonghao', labelKey: 'chatflow.wechatOfficial' },
+    ],
+  },
+  {
+    key: 'agents',
+    labelKey: 'chatflow.agents',
+    items: [
+      { type: 'agents', icon: 'zhinengti', labelKey: 'chatflow.agents' },
+    ],
+  },
+  {
+    key: 'logic',
+    labelKey: 'chatflow.logicNodes',
+    items: [
+      { type: 'condition', icon: 'tiaojianfenzhi', labelKey: 'chatflow.condition' },
+      { type: 'intent_classification', icon: 'question-circle-fill', labelKey: 'chatflow.intentClassification' },
+    ],
+  },
+  {
+    key: 'memory',
+    labelKey: 'chatflow.memoryNodes',
+    items: [
+      { type: 'memory_read', icon: 'zhishiku2', labelKey: 'chatflow.memoryRead' },
+      { type: 'memory_write', icon: 'bianji', labelKey: 'chatflow.memoryWrite' },
+    ],
+  },
+  {
+    key: 'actions',
+    labelKey: 'chatflow.actionNodes',
+    items: [
+      { type: 'http', icon: 'HTTP', labelKey: 'chatflow.http' },
+      { type: 'notification', icon: 'alarm', labelKey: 'chatflow.notification' },
+    ],
+  },
+] as const;
 
 export const handleColorClasses = {
   green: 'bg-green-500!',
@@ -73,7 +132,8 @@ export const getDefaultConfig = (nodeType: string) => {
         ...baseConfig,
         notificationType: 'email',
         notificationMethod: '',
-        notificationChannels: []
+        notificationChannels: [],
+        llmOptimizeModel: 0
       };
     case 'agui':
       return {
@@ -112,6 +172,20 @@ export const getDefaultConfig = (nodeType: string) => {
         aes_key: '',
         corp_id: '',
         agent_id: ''
+      };
+    case 'enterprise_wechat_aibot':
+      return {
+        ...baseConfig,
+        connectionMode: 'webhook',
+        webhook: {
+          token: '',
+          encodingAESKey: '',
+          aibotid: ''
+        },
+        websocket: {
+          botId: '',
+          secret: ''
+        }
       };
     case 'web_chat':
       return {

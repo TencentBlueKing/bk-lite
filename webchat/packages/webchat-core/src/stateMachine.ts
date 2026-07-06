@@ -41,6 +41,27 @@ export class StateMachine {
   }
 
   /**
+   * Move into chatting through the state machine's legal connection states.
+   */
+  public transitionToChatting(): boolean {
+    const pathByState: Partial<Record<ChatState, ChatState[]>> = {
+      idle: ['connecting', 'connected', 'chatting'],
+      connecting: ['connected', 'chatting'],
+      connected: ['chatting'],
+      chatting: [],
+      closed: ['idle', 'connecting', 'connected', 'chatting'],
+      error: ['idle', 'connecting', 'connected', 'chatting'],
+    };
+
+    const path = pathByState[this.state];
+    if (!path) {
+      return false;
+    }
+
+    return path.every((state) => this.transition(state));
+  }
+
+  /**
    * Subscribe to state changes
    */
   public on(listener: EventListener<StateChangeEvent>): () => void {

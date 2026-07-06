@@ -233,6 +233,30 @@ class TestModelMigrateParsing:
         assert existing["option"] == {"k": 1}
         assert existing["is_required"] is True
 
+    def test_merge_existing_attr_config_updates_attr_type(self, monkeypatch):
+        m = self._make(monkeypatch)
+        existing = {
+            "attr_id": "ip_status",
+            "attr_type": "str",
+            "attr_name": "旧状态",
+            "option": dict(DEFAULT_STRING_CONSTRAINT),
+        }
+        incoming = {
+            "attr_id": "ip_status",
+            "attr_type": "enum",
+            "attr_name": "IP状态",
+            "option": [{"id": "online", "name": "在线"}],
+            "enum_rule_type": "custom",
+            "public_library_id": None,
+            "enum_select_mode": "single",
+        }
+
+        changed = m._merge_existing_attr_config(existing, incoming)
+
+        assert changed is True
+        assert existing["attr_type"] == "enum"
+        assert existing["option"] == [{"id": "online", "name": "在线"}]
+
     def test_merge_existing_attr_config_no_change(self, monkeypatch):
         m = self._make(monkeypatch)
         existing = {"attr_id": "a", "attr_name": "same", "attr_type": "str"}
