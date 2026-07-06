@@ -84,6 +84,16 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
             # pmq 类型直接传原始 PromQL，不校验 filter
             return value
 
+        if query_type == "formula":
+            from apps.monitor.expression.errors import FormulaError
+            from apps.monitor.expression.validators import validate_formula_condition
+
+            try:
+                validate_formula_condition(value)
+            except FormulaError as err:
+                raise serializers.ValidationError(str(err)) from err
+            return value
+
         if "metric_id" not in value:
             raise serializers.ValidationError("query_condition 缺少 metric_id")
 

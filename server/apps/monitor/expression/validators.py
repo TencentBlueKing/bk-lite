@@ -1,0 +1,73 @@
+from dataclasses import dataclass
+
+from apps.monitor.expression.ast import BinaryOpNode, ExpressionNode, VariableNode
+from apps.monitor.expression.errors import FormulaValidationError
+from apps.monitor.expression.parser import parse_expression
+
+
+@dataclass(frozen=True)
+class FormulaValidationResult:
+    ast: ExpressionNode
+    anchor_ref: str
+    warnings: list[dict]
+
+
+def collect_variables(node: ExpressionNode) -> list[str]:
+    if isinstance(node, VariableNode):
+        return [node.name]
+    if isinstance(node, BinaryOpNode):
+        return collect_variables(node.left) + collect_variables(node.right)
+    return []
+
+
+def validate_formula_condition(query_condition: dict) -> FormulaValidationResult:
+    if query_condition.get("type") != "formula":
+        raise FormulaValidationError("query_condition.type 必须为 formula")
+    if not query_condition.get("result_name"):
+        raise FormulaValidationError("多指标策略必须填写结果名称")
+
+    ast = parse_expression(query_condition.get("expression") or "")
+    queries = query_condition.get("queries")
+    if not isinstance(queries, list) or len(queries) < 2:
+        raise FormulaValidationError("多指标策略至少需要两个指标")
+
+    by_ref: dict[str, dict] = {}
+    for index, item in enumerate(queries):
+        ref = str(item.get("ref") or "")
+        if not ref:
+            raise FormulaValidationError(f"queries[{index}].ref 不能为空")
+        if ref in by_ref:
+            raise FormulaValidationError(f"指标变量 {ref} 重复")
+        if not item.get("metric_id"):
+            raise FormulaValidationError(f"指标 {ref} 缺少 metric_id")
+        if not item.get("group_algorithm"):
+            raise FormulaValidationError(f"指标 {ref} 缺少 group_algorithm")
+        group_by = item.get("group_by")
+        if not isinstance(group_by, list) or not group_by:
+            raise FormulaValidationError(f"指标 {ref} 缺少 group_by")
+        by_ref[ref] = item
+
+    variables = collect_variables(ast)
+    if not variables:
+        raise FormulaValidationError("表达式必须引用指标变量")
+    for ref in variables:
+        if ref not in by_ref:
+            raise FormulaValidationError(f"表达式引用了不存在的指标变量 {ref}")
+
+    anchor_ref = variables[0]
+    anchor_group_by = set(by_ref[anchor_ref].get("group_by") or [])
+    warnings: list[dict] = []
+    for ref in dict.fromkeys(variables[1:]):
+        group_by = set(by_ref[ref].get("group_by") or [])
+        extra = sorted(group_by - anchor_group_by)
+        if extra:
+            raise FormulaValidationError(f"指标 {ref} 包含锚点外额外维度：{', '.join(extra)}")
+        if group_by != anchor_group_by and "instance_id" not in group_by:
+            warnings.append(
+                {
+                    "code": "FORMULA_DIMENSION_REUSE",
+                    "message": f"指标 {ref} 将按 {', '.join(sorted(group_by))} 对齐，并跨缺失维度复用数据",
+                }
+            )
+
+    return FormulaValidationResult(ast=ast, anchor_ref=anchor_ref, warnings=warnings)
