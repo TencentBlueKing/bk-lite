@@ -61,6 +61,22 @@ def _validate_group_by(ref: str, group_by: object) -> list[str]:
     return group_by
 
 
+def _normalize_metric_id(ref: str, value: object) -> int:
+    if value is None or value == "":
+        raise FormulaValidationError(f"指标 {ref} 缺少 metric_id")
+    if isinstance(value, bool):
+        raise FormulaValidationError(f"指标 {ref} metric_id 必须是正整数")
+    if isinstance(value, int):
+        metric_id = value
+    elif isinstance(value, str) and value.strip().isdigit():
+        metric_id = int(value.strip())
+    else:
+        raise FormulaValidationError(f"指标 {ref} metric_id 必须是正整数")
+    if metric_id <= 0:
+        raise FormulaValidationError(f"指标 {ref} metric_id 必须是正整数")
+    return metric_id
+
+
 def validate_formula_condition(query_condition: dict) -> FormulaValidationResult:
     if query_condition.get("type") != "formula":
         raise FormulaValidationError("query_condition.type 必须为 formula")
@@ -81,8 +97,7 @@ def validate_formula_condition(query_condition: dict) -> FormulaValidationResult
             raise FormulaValidationError(f"queries[{index}].ref 不能为空")
         if ref in by_ref:
             raise FormulaValidationError(f"指标变量 {ref} 重复")
-        if not item.get("metric_id"):
-            raise FormulaValidationError(f"指标 {ref} 缺少 metric_id")
+        item["metric_id"] = _normalize_metric_id(ref, item.get("metric_id"))
         group_algorithm = item.get("group_algorithm")
         if not group_algorithm:
             raise FormulaValidationError(f"指标 {ref} 缺少 group_algorithm")

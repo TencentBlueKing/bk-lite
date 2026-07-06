@@ -323,3 +323,56 @@ def test_validate_formula_rejects_invalid_group_algorithm():
         validate_formula_condition(payload)
 
     assert "group_algorithm" in str(exc.value)
+
+
+@pytest.mark.parametrize("bad_metric_id", ["abc", [1], 0, True])
+def test_validate_formula_rejects_invalid_metric_id(bad_metric_id):
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": bad_metric_id,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "metric_id" in str(exc.value)
+
+
+def test_validate_formula_normalizes_numeric_string_metric_id():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": "1",
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": "2",
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    validate_formula_condition(payload)
+
+    assert payload["queries"][0]["metric_id"] == 1
+    assert payload["queries"][1]["metric_id"] == 2
