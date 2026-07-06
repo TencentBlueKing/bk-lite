@@ -141,13 +141,144 @@ class PathRewritingBackend(SandboxBackendProtocol):
 
     def execute(self, command: str, *, timeout: int | None = None) -> Any:
         rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
+        self._validate_command(rewritten, original=command)
         self._ensure_sandbox_dirs(rewritten)
         return self._inner.execute(rewritten, timeout=timeout)
 
     async def aexecute(self, command: str, *, timeout: int | None = None) -> Any:
         rewritten = rewrite_sandbox_paths(command, self._sandbox_dir, self._skills_root)
+        self._validate_command(rewritten, original=command)
         self._ensure_sandbox_dirs(rewritten)
         return await self._inner.aexecute(rewritten, timeout=timeout)
+
+    # 沙箱安全：可执行命令白名单(防止 LLM 误操作 host)。
+    # 当前 sandbox 是 LocalShellBackend(virtual_mode),execute 直接跑 host shell,
+    # 白名单是 P0 短期方案,Phase 1 NATS worker + Docker 沙箱是长期方案。
+    _ALLOWED_COMMANDS = frozenset({
+        # 文件/文本
+        "ls", "cat", "head", "tail", "grep", "find", "wc", "echo", "pwd",
+        "less", "more", "file", "stat", "diff", "sort", "uniq", "cut",
+        "tr", "tee", "xargs", "tee",
+        # 目录/文件操作(受限,见 _BLOCKED_PATTERNS 里的 rm 限制)
+        "mkdir", "touch", "mv", "cp", "ln", "rm", "chmod", "chown",
+        # 解压/归档
+        "tar", "unzip", "zip", "gzip", "gunzip", "zcat",
+        # Python / Node 工具链
+        "python3", "python", "pip", "pip3", "uv", "uvx",
+        "node", "npm", "npx", "node-gyp",
+        # 浏览器 / 文档工具
+        "agent-browser", "ab", "playwright", "chromium", "google-chrome",
+        "pdftotext", "pdfinfo", "pdftoppm", "qpdf", "wkhtmltopdf",
+        "pdf2htmlEX", "mutool", "pandoc",
+        # k8s
+        "kubectl", "helm", "kustomize", "kubectx", "kubens",
+        # 网络(受 _BLOCKED_PATTERNS 限)
+        "curl", "wget",
+        # 其他常用
+        "git", "tar", "date", "echo", "true", "false", "test", "[",
+        "which", "whereis", "type",
+    })
+    # 黑名单正则(任何匹配都拒绝)
+    _BLOCKED_PATTERNS = (
+        r"\brm\s+(-[a-zA-Z]*r[a-zA-Z]*f|-[a-zA-Z]*f[a-zA-Z]*r|-rf|-fr)\s+/\s*",  # rm -rf /
+        r"\brm\s+-rf\s+/",
+        r"\brm\s+-rf\s+~",            # rm -rf ~
+        r"\brm\s+-rf\s+\$HOME",
+        r"\brm\s+-rf\s+/\*",
+        r"\bdd\s+",
+        r"\bmkfs(\.\w+)?\s+",
+        r"\bformat\s+",
+        r"\bshutdown\s+",
+        r"\breboot\s+",
+        r"\bpoweroff\s+",
+        r"\bhalt\s+",
+        r"\bsudo\s+",
+        r"\bsu\s+",
+        r"\bssh\s+",                   # 远程爆破
+        r"\bscp\s+",
+        r"\brsync\s+",
+        r"\bnc\s+",                    # netcat
+        r"\|\s*sh\b",
+        r"\|\s*bash\b",
+        r"\beval\s*\(",
+        r"\bexec\s*\(",
+        r"\bsource\s+",
+        r"\bchmod\s+(-R\s+)?777\b",
+        r"\bchown\s+(-R\s+)?root\b",
+        r"\buseradd\b",
+        r"\buserdel\b",
+        r"\bgroupadd\b",
+        r"\bpasswd\s+",
+        r"\bvisudo\b",
+        r"\biptables\b",
+        r"\bip\s+route\b",
+        r"\bifconfig\b",
+        r"\bmount\s+",
+        r"\bumount\s+",
+        r"\bswapon\s+",
+        r"\bmkfs\.ext",
+        r"\b>/dev/sd",
+        r"\bcrontab\s+",
+        r"\bat\s+now\b",              # at 立即执行
+    )
+
+    def _validate_command(self, rewritten_command: str, original: str) -> None:
+        """命令安全校验:黑名单 + 白名单 + 路径沙箱。
+
+        参数:
+            rewritten_command: rewrite_sandbox_paths 重写后的命令(实际给 host 跑)
+            original: LLM 原始写的命令(只含虚拟路径 /skills/ /tmp/)
+
+        校验策略:
+        - 黑名单查 original(防 LLM 用 curl|wget 等绕过白名单路径访问 host)
+        - 首命令白名单查 rewritten 的首 token
+        - 路径沙箱查 original(只允许 /skills/ /tmp/ 等虚拟根,不是物理 sandbox 路径)
+        """
+        # 1. 黑名单(防 LLM 用 sed/awk/python -c 等绕过)
+        for pattern in self._BLOCKED_PATTERNS:
+            if re.search(pattern, original) or re.search(pattern, rewritten_command):
+                raise PermissionError(
+                    f"[sandbox] 命令被黑名单拦截(模式 {pattern!r}): {original!r}"
+                )
+
+        # 2. 首命令白名单(查 rewritten 的首 token,去除路径前缀)
+        stripped = rewritten_command.strip()
+        if not stripped:
+            raise PermissionError("[sandbox] 空命令")
+        first_token = stripped.split()[0]
+        first_cmd = first_token.rsplit("/", 1)[-1]
+        # 处理 env/sudo/time 等前缀
+        skip_prefixes = {"env", "command", "sudo", "time", "nice", "nohup", "xargs"}
+        tokens = stripped.split()
+        idx = 0
+        while first_cmd in skip_prefixes and idx + 1 < len(tokens):
+            idx += 1
+            first_cmd = tokens[idx].rsplit("/", 1)[-1]
+        # 跳过 env KEY=VAL 这种赋值
+        while "=" in first_cmd and idx + 1 < len(tokens):
+            idx += 1
+            first_cmd = tokens[idx].rsplit("/", 1)[-1]
+
+        if first_cmd not in self._ALLOWED_COMMANDS:
+            raise PermissionError(
+                f"[sandbox] 命令 {first_cmd!r} 不在白名单。"
+                f"允许的命令: {sorted(self._ALLOWED_COMMANDS)}"
+            )
+
+        # 3. 路径沙箱(只查原 command,防止 LLM 访问 host 路径)
+        # 允许: /skills/xxx, /tmp/xxx(虚拟根,会被重写到 sandbox_dir),
+        # /dev/null, /dev/stdout, /dev/stderr, /dev/fd/*, 纯环境变量赋值, 注释
+        allowed_path_prefixes = (
+            "/skills/", "/tmp/", "/dev/null", "/dev/stdout",
+            "/dev/stderr", "/dev/fd/", "/proc/self/", "/dev/shm/",
+        )
+        for match in re.finditer(r"(?:^|\s)(/[^\s'\"]+)", original):
+            path = match.group(1)
+            if not any(path.startswith(p) for p in allowed_path_prefixes):
+                    raise PermissionError(
+                        f"[sandbox] 拒绝 host 路径 {path!r}。"
+                        f"只允许 {allowed_path_prefixes} 下的路径。"
+                    )
 
     def _ensure_sandbox_dirs(self, rewritten_command: str) -> None:
         """提前 mkdir sandbox_dir 下可能被写到的子目录,避免 open() 因父目录不存在而失败。
