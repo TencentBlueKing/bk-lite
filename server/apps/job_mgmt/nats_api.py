@@ -549,9 +549,9 @@ def job_detail_query(data: dict):
 def job_task_terminate(data=None, task_id=None, **kwargs):
     if isinstance(data, dict):
         task_id = data.get("task_id", task_id)
-        caller_team = data.get("caller_team", [])
+        caller_team = data.get("caller_team", kwargs.get("caller_team", []))
     else:
-        caller_team = []
+        caller_team = kwargs.get("caller_team", [])
     if task_id is None:
         task_id = kwargs.get("task_id")
     if not task_id:

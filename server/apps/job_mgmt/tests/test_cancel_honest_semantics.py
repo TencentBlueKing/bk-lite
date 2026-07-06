@@ -231,6 +231,16 @@ class TestTerminateTaskNatsAPI:
         execution.refresh_from_db()
         assert execution.status == ExecutionStatus.CANCELLED
 
+    def test_kwargs_caller_team_can_cancel(self):
+        """NATS request(..., task_id=..., caller_team=...) 的 kwargs 调用路径也必须可用。"""
+        execution = _make_execution(ExecutionStatus.PENDING, team=[1])
+
+        result = job_task_terminate(task_id=execution.id, caller_team=[1])
+
+        assert result["result"] is True
+        execution.refresh_from_db()
+        assert execution.status == ExecutionStatus.CANCELLED
+
 
 @pytest.mark.django_db
 class TestFinalizeExecutionConvergesCancelling:
