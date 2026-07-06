@@ -368,6 +368,7 @@ const MetricPreview: React.FC<MetricPreviewProps> = ({
   }, [
     selectedInstance,
     instances,
+    metrics,
     metric,
     groupBy,
     conditions,

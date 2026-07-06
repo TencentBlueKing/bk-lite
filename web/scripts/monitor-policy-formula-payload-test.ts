@@ -122,7 +122,7 @@ assert.deepEqual(formulaPayload.queries[1].group_by, ['instance_id']);
 const previewInstance = {
   instance_id: 'host-1',
   instance_name: 'host-1',
-  instance_id_values: ['host-1']
+  instance_id_values: ['host.1', 'tenant(a)']
 };
 
 const formulaPreviewPayload = buildMetricExpressionPreviewPayload({
@@ -146,7 +146,7 @@ const formulaPreviewPayload = buildMetricExpressionPreviewPayload({
       display_name: 'HTTP 请求',
       unit: 'short',
       dimensions: [],
-      instance_id_keys: ['instance_id']
+      instance_id_keys: ['node', 'tenant']
     }
   ],
   mode: 'formula',
@@ -163,13 +163,26 @@ const formulaPreviewPayload = buildMetricExpressionPreviewPayload({
 });
 
 assert.equal(formulaPreviewPayload?.query_condition.type, 'formula');
+if (formulaPreviewPayload?.query_condition.type === 'formula') {
+  assert.deepEqual(formulaPreviewPayload.query_condition.queries[0].filter, [
+    { name: 'service', method: '=', value: 'checkout' },
+    { logic: 'and', name: 'status', method: '=~', value: '5..' },
+    { name: 'instance_id', method: '=~', value: 'host\\.1' }
+  ]);
+  assert.deepEqual(formulaPreviewPayload.query_condition.queries[1].filter, [
+    { name: 'service', method: '=', value: 'checkout' },
+    { logic: 'or', name: 'status', method: '=', value: '200' },
+    { name: 'node', method: '=~', value: 'host\\.1' },
+    { name: 'tenant', method: '=~', value: 'tenant\\(a\\)' }
+  ]);
+}
 assert.equal(formulaPreviewPayload?.group_algorithm, 'sum');
 assert.deepEqual(formulaPreviewPayload?.group_by, ['instance_id', 'status']);
 assert.equal(formulaPreviewPayload?.metric_unit, '');
 assert.equal(formulaPreviewPayload?.calculation_unit, 'percent');
 assert.deepEqual(formulaPreviewPayload?.preview, {
   instance_id: 'host-1',
-  instance_id_values: ['host-1'],
+  instance_id_values: ['host.1', 'tenant(a)'],
   duration_points: 30
 });
 
@@ -206,6 +219,31 @@ assert.deepEqual(metricPreviewPayload?.query_condition, singlePayload);
 assert.equal(metricPreviewPayload?.group_algorithm, 'avg');
 assert.deepEqual(metricPreviewPayload?.group_by, ['instance_id']);
 assert.equal(metricPreviewPayload?.metric_unit, 'percent');
+
+assert.throws(
+  () =>
+    buildMetricExpressionPreviewPayload({
+      monitorObjId: 'linux',
+      source: {
+        type: 'instance',
+        values: ['host-1']
+      },
+      metrics: [],
+      mode: 'formula',
+      resultName: 'HTTP 5xx 错误率',
+      expression: 'a / b',
+      rows: formulaRows,
+      selectedInstance: previewInstance,
+      period: 5,
+      periodUnit: 'min',
+      algorithm: 'avg_over_time',
+      groupAlgorithm: 'avg',
+      groupBy: ['instance_id'],
+      calculationUnit: null
+    }),
+  (error) =>
+    error instanceof Error && error.message.includes('指标不存在或尚未加载')
+);
 
 assert.throws(
   () =>
