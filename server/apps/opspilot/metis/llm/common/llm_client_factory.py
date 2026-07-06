@@ -21,6 +21,25 @@ class LLMClientFactory:
     """LLM客户端工厂"""
 
     @staticmethod
+    def _resolve_timeout(request: BasicLLMRequest = None, timeout=None, default: float = 300.0) -> float:
+        """解析 LLM 客户端超时，允许请求级 extra_config 覆盖全局环境变量。"""
+        if timeout is not None:
+            raw_timeout = timeout
+        else:
+            extra_config = request.extra_config if request and request.extra_config else {}
+            raw_timeout = (
+                extra_config.get("timeout")
+                or extra_config.get("request_timeout")
+                or extra_config.get("llm_timeout")
+                or os.getenv("LLM_INVOKE_TIMEOUT", "300")
+            )
+        try:
+            resolved_timeout = float(raw_timeout)
+        except (TypeError, ValueError):
+            resolved_timeout = default
+        return max(resolved_timeout, 1.0)
+
+    @staticmethod
     def create_client(request: BasicLLMRequest, disable_stream=False, isolated=False, timeout=None) -> BaseChatModel:
         """
         创建LLM客户端
@@ -34,7 +53,7 @@ class LLMClientFactory:
         Returns:
             BaseChatModel客户端实例 (ChatOpenAI 或 ChatAnthropic)
         """
-        timeout = LLMClientFactory._resolve_timeout(timeout)
+        timeout = LLMClientFactory._resolve_timeout(request, timeout=timeout)
         capabilities = build_anthropic_runtime_capabilities(
             getattr(request, "vendor_type", ""),
             request.protocol_type,
@@ -53,12 +72,6 @@ class LLMClientFactory:
         return llm
 
     @staticmethod
-    def _resolve_timeout(timeout=None) -> int:
-        if timeout is not None:
-            return int(timeout)
-        return int(os.getenv("LLM_INVOKE_TIMEOUT", "300"))
-
-    @staticmethod
     def _create_openai_client(request: BasicLLMRequest, disable_stream: bool, timeout: int = None) -> ChatOpenAI:
         """创建 OpenAI 兼容客户端"""
         # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
@@ -72,7 +85,7 @@ class LLMClientFactory:
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=LLMClientFactory._resolve_timeout(timeout),
+            timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
         )
 
         if llm.extra_body is None:
@@ -118,7 +131,7 @@ class LLMClientFactory:
             api_key=request.openai_api_key,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=LLMClientFactory._resolve_timeout(timeout),
+            timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             model_kwargs=model_kwargs if model_kwargs else None,
         )
 
@@ -147,7 +160,7 @@ class LLMClientFactory:
             api_base=base_url,
             temperature=request.temperature,
             disable_streaming=disable_stream,
-            timeout=LLMClientFactory._resolve_timeout(timeout),
+            timeout=LLMClientFactory._resolve_timeout(request, timeout=timeout),
             vendor_type=getattr(request, "vendor_type", ""),
         )
 
@@ -171,7 +184,10 @@ class LLMClientFactory:
     @staticmethod
     def _create_isolated_openai_client(request: BasicLLMRequest) -> OpenAI:
         """创建独立的原生 OpenAI 客户端"""
-        kwargs = {"api_key": request.openai_api_key, "timeout": 60.0}
+        kwargs = {
+            "api_key": request.openai_api_key,
+            "timeout": LLMClientFactory._resolve_timeout(request),
+        }
         if request.openai_api_base:
             # SSRF 防护：验证 API base URL（宽松模式，允许内网 LLM 服务）
             SSRFValidator.validate_llm_endpoint(request.openai_api_base)
@@ -191,7 +207,7 @@ class LLMClientFactory:
         return anthropic.Anthropic(
             api_key=request.openai_api_key,
             base_url=base_url,
-            timeout=60.0,
+            timeout=LLMClientFactory._resolve_timeout(request),
         )
 
     @staticmethod

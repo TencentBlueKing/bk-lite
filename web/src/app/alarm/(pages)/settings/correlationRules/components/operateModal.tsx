@@ -622,7 +622,7 @@ const OperateModal: React.FC<OperateModalProps> = ({
       width={720}
       open={open}
       onClose={onClose}
-      destroyOnClose
+      destroyOnHidden
       maskClosable={false}
       footer={
         <div className="flex justify-end gap-2">

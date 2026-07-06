@@ -18,6 +18,7 @@ const mockAliases = [
   { name: '@/app/system-manager/api/user', alias: path.resolve(__dirname, './mocks/system-manager/user-api.ts'), onlyModule: true },
   { name: '@/app/system-manager/api/user/index', alias: path.resolve(__dirname, './mocks/system-manager/user-api.ts'), onlyModule: true },
   { name: '@/app/opspilot/api/provider', alias: path.resolve(__dirname, './mocks/opspilot/provider-api.ts'), onlyModule: true },
+  { name: '@/app/opspilot/api/wiki', alias: path.resolve(__dirname, './mocks/opspilot/wiki-api.ts'), onlyModule: true },
 ];
 
 const toAliasArray = (aliases: unknown) => {

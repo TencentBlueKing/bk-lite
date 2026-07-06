@@ -7,25 +7,23 @@ from apps.opspilot.viewsets import (
     ChannelViewSet,
     ChatApplicationViewSet,
     EmbedProviderViewSet,
-    FileKnowledgeViewSet,
     HistoryViewSet,
-    KnowledgeBaseViewSet,
-    KnowledgeDocumentViewSet,
-    KnowledgeGraphViewSet,
     LLMModelViewSet,
     LLMViewSet,
-    ManualKnowledgeViewSet,
     MemorySpaceViewSet,
     MemoryViewSet,
     ModelVendorViewSet,
     OCRProviderViewSet,
-    QAPairsViewSet,
     RasaModelViewSet,
     RerankProviderViewSet,
     SkillPackageViewSet,
     SkillRequestLogViewSet,
     SkillToolsViewSet,
-    WebPageKnowledgeViewSet,
+    WikiBuildRecordViewSet,
+    WikiCheckItemViewSet,
+    WikiKnowledgeBaseViewSet,
+    WikiMaterialViewSet,
+    WikiPageViewSet,
     WorkFlowTaskResultViewSet,
 )
 from apps.opspilot.viewsets.memory_engine_view import MemoryEngineViewSet
@@ -52,19 +50,17 @@ router.register(r"bot_mgmt/chat_application", ChatApplicationViewSet)
 # channel
 router.register(r"channel_mgmt/channel", ChannelViewSet)
 
-# knowledge
-router.register(r"knowledge_mgmt/knowledge_base", KnowledgeBaseViewSet)
-router.register(r"knowledge_mgmt/file_knowledge", FileKnowledgeViewSet)
-router.register(r"knowledge_mgmt/knowledge_document", KnowledgeDocumentViewSet)
-router.register(r"knowledge_mgmt/web_page_knowledge", WebPageKnowledgeViewSet)
-router.register(r"knowledge_mgmt/manual_knowledge", ManualKnowledgeViewSet)
-router.register(r"knowledge_mgmt/qa_pairs", QAPairsViewSet)
-router.register(r"knowledge_mgmt/knowledge_graph", KnowledgeGraphViewSet)
-
 # memory
 router.register(r"memory_mgmt/memory_space", MemorySpaceViewSet)
 router.register(r"memory_mgmt/memory", MemoryViewSet)
 router.register(r"memory_mgmt/memory_engines", MemoryEngineViewSet, basename="memory_engines")
+
+# wiki (new knowledge base)
+router.register(r"wiki_mgmt/knowledge_base", WikiKnowledgeBaseViewSet, basename="wiki_knowledge_base")
+router.register(r"wiki_mgmt/material", WikiMaterialViewSet, basename="wiki_material")
+router.register(r"wiki_mgmt/page", WikiPageViewSet, basename="wiki_page")
+router.register(r"wiki_mgmt/build_record", WikiBuildRecordViewSet, basename="wiki_build_record")
+router.register(r"wiki_mgmt/check_item", WikiCheckItemViewSet, basename="wiki_check_item")
 
 urlpatterns = router.urls
 

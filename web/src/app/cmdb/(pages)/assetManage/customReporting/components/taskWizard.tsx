@@ -210,7 +210,7 @@ export default function TaskWizard({
       maskClosable={false}
       keyboard={false}
       width={640}
-      destroyOnClose
+      destroyOnHidden
       extra={
         <Space size="middle" align="center">
           <Typography.Text

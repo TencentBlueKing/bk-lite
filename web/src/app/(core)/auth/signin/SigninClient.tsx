@@ -17,6 +17,7 @@ import {
 } from "./login-auth/orderedBindingState";
 import {useTheme} from '@/context/theme';
 import {usePortalBranding} from "@/hooks/usePortalBranding";
+import {useTranslation} from "@/utils/i18n";
 import {saveAuthToken} from "@/utils/crossDomainAuth";
 import {
   AUTH_POPUP_SUCCESS_MESSAGE,
@@ -85,6 +86,7 @@ export default function SigninClient({
   const [qrCodeUrl, setQrCodeUrl] = useState<string>("");
   const { themeName } = useTheme();
   const { logoUrl } = usePortalBranding();
+  const { t } = useTranslation();
   const isModalMode = mode === 'modal';
   const isDarkTheme = themeName === 'dark';
 
@@ -152,7 +154,7 @@ export default function SigninClient({
       });
 
       if (!success) {
-        setFormError("Authentication failed");
+        setFormError(t('signin.errors.authenticationFailed'));
       }
 
       return success;
@@ -187,7 +189,7 @@ export default function SigninClient({
       const responseData = await response.json();
 
       if (!response.ok || !responseData.result) {
-        setFormError(responseData.message || "Login failed");
+        setFormError(responseData.message || t('signin.errors.loginFailed'));
         setIsLoading(false);
         return;
       }
@@ -220,7 +222,7 @@ export default function SigninClient({
 
     } catch (error) {
       console.error("Login error:", error);
-      setFormError("An error occurred during login");
+      setFormError(t('signin.errors.loginError'));
       setIsLoading(false);
     }
   };
@@ -315,7 +317,7 @@ export default function SigninClient({
   const completeAuthentication = async (userData: LoginResponse) => {
     const success = await syncAuthenticatedSession(userData);
     if (!success) {
-      setFormError("Authentication failed");
+      setFormError(t('signin.errors.authenticationFailed'));
       setIsLoading(false);
     }
   };
@@ -437,7 +439,7 @@ export default function SigninClient({
     <div>
       {error && (
         <div className={`mb-6 rounded border text-red-700 ${isModalMode ? 'px-3 py-2.5 text-[12px]' : 'border-l-4 border-red-500 bg-red-50 p-4'}`} style={isModalMode ? { borderColor: isDarkTheme ? 'rgba(239, 68, 68, 0.35)' : '#F5D4D4', background: isDarkTheme ? 'rgba(127, 29, 29, 0.18)' : '#FFF7F7' } : undefined}>
-          <p className="font-medium">{signinErrors[error.toLowerCase()] || signinErrors.default || error}</p>
+          <p className="font-medium">{signinErrors[error.toLowerCase()] ? t(signinErrors[error.toLowerCase()]) : (signinErrors.default ? t(signinErrors.default) : error)}</p>
         </div>
       )}
 

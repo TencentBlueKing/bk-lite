@@ -113,6 +113,7 @@ opspilot = [
     "jpype1==1.5.2",
     "pymupdf==1.25.3",
     "markdownify==1.2.0",
+    "markitdown[docx,outlook,pdf,pptx,xls,xlsx,youtube-transcription]==0.1.6",
     "tabula-py==2.10.0",   
     "ag-ui-protocol==0.1.10",
     "langchain==1.0.5",

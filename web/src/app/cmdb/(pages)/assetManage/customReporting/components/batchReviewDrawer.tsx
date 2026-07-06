@@ -209,7 +209,7 @@ export default function BatchReviewDrawer({
       open={open}
       onClose={onClose}
       width={680}
-      destroyOnClose
+      destroyOnHidden
     >
       <Space direction="vertical" size={16} className="flex">
         {task ? (
