@@ -1,5 +1,8 @@
 # flake8: noqa
 from .common import *  # noqa: F401,F403
+# import * 默认不导入下划线名字；显式补回本文件真正使用的下划线符号，
+# 避免非超管分支 verify_token 调用 _collect_ancestor_group_ids 时 NameError。
+from .common import _collect_ancestor_group_ids  # noqa: F401
 
 
 @nats_client.register
