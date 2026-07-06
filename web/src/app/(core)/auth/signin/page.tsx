@@ -46,12 +46,7 @@ export default async function SigninPage({ searchParams }: SignInPageProp) {
     resolvedSearchParams.third_login,
   );
   const isPopupMode = resolvedSearchParams.popup === 'true' || resolvedSearchParams.popup === '1';
-  const shouldRedirectAuthenticatedUser = Boolean(
-    session
-    && session.user
-    && session.user.id
-    && (isPopupMode || !thirdLoginFlag || resolvedSearchParams.provider === 'wechat')
-  );
+  const shouldRedirectAuthenticatedUser = Boolean(session?.user?.id);
 
   if (shouldRedirectAuthenticatedUser) {
     if (isPopupMode) {

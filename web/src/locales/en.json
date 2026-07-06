@@ -309,6 +309,41 @@
       "qrLoadFailed": "Failed to load WeChat QR code",
       "loading": "Loading QR code...",
       "unableToDisplay": "Unable to display QR code"
+    },
+    "loginAuth": {
+      "methodsTitle": "Switch login method",
+      "bindingPassword": {
+        "usernameLabel": "{bindingName} Username",
+        "usernamePlaceholder": "Enter your {bindingName} username",
+        "passwordLabel": "{bindingName} Password",
+        "passwordPlaceholder": "Enter your {bindingName} password",
+        "submitText": "Sign in with {bindingName}",
+        "loadingText": "Signing in with {bindingName}..."
+      },
+      "bindingContent": {
+        "completingSignIn": "Completing sign-in",
+        "startingAuthentication": "Starting authentication",
+        "waitingForAuthentication": "Waiting for authentication",
+        "loadErrorTitle": "Unable to load login methods",
+        "loadErrorDescription": "Please retry to load the available sign-in options.",
+        "retry": "Retry",
+        "bindingTitle": "{bindingName} sign-in",
+        "bindingDescription": "Use your {bindingName} account to sign in",
+        "continueSignIn": "Click to continue sign in",
+        "waiting": "Waiting...",
+        "helperMessage": "After clicking, complete verification in the new window. If no window opens, check whether the browser blocked popups."
+      },
+      "validation": {
+        "loadMethodsFailed": "Failed to load login methods. Please refresh and try again.",
+        "timedOut": "Authentication timed out. Please try again.",
+        "cancelled": "Authentication was cancelled. Please try again.",
+        "failed": "Authentication failed. Please try again.",
+        "incompletePayload": "Authentication succeeded, but the returned login payload is incomplete.",
+        "syncFailed": "Authentication succeeded, but session synchronization failed.",
+        "queryStatusFailed": "Failed to query authentication status.",
+        "startFailed": "Failed to start authentication.",
+        "popupBlocked": "Unable to open the authentication page. Please allow new tabs and try again."
+      }
     }
   },
   "system": {

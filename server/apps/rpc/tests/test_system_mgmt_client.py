@@ -34,6 +34,15 @@ def test_login_转发方法名与参数(client):
     assert client.client.calls == [("login", (), {"username": "alice", "password": "pw"})]
 
 
+def test_login_with_binding_转发_auth_code_及可选凭据(client):
+    client.login_with_binding(8, "", username="alice", password="secret")
+    assert client.client.calls[0] == (
+        "login_with_binding",
+        (),
+        {"binding_id": 8, "auth_code": "", "username": "alice", "password": "secret"},
+    )
+
+
 def test_verify_token_转发(client):
     client.verify_token("tok")
     assert client.client.calls[0] == ("verify_token", (), {"token": "tok"})

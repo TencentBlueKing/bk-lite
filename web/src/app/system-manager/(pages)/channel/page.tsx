@@ -28,9 +28,20 @@ const ChannelPage = () => {
       icon: 'dongzuo1',
       description: t('system.channel.natsDesc')
     },
+    {
+      id: 'im_notification',
+      name: t('system.channel.imNotification'),
+      icon: 'liaotian',
+      description: t('system.channel.imNotificationDesc'),
+      url: '/system-manager/channel/im-notification',
+    },
   ]);
 
   const handleCardClick = (item: any) => {
+    if (item.url) {
+      router.push(item.url);
+      return;
+    }
     const { id, name, description } = item;
     router.push(`/system-manager/channel/detail?id=${id}&name=${name}&desc=${description}`);
   };
