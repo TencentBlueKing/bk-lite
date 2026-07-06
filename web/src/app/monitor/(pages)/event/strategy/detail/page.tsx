@@ -960,6 +960,10 @@ const StrategyOperation = () => {
                 algorithm={algorithm}
                 threshold={threshold}
                 calculationUnit={calculationUnit}
+                metricRows={metricRows}
+                metricExpressionMode={metricExpressionMode}
+                resultName={formulaResultName}
+                expression={formulaExpression}
                 scrollContainerRef={formContainerRef}
                 anchorRef={basicInfoRef}
                 fixedGroupByList={

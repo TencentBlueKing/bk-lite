@@ -4,6 +4,10 @@ import {
   MetricExpressionRow,
   MetricQueryCondition
 } from './metricExpressionTypes';
+import { MetricItem } from '@/app/monitor/types';
+import { SourceFeild } from '@/app/monitor/types/event';
+import { InstanceItem } from '@/app/monitor/types/search';
+import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 
 export type MetricExpressionMode = 'metric' | 'formula' | 'auto';
 
@@ -438,5 +442,87 @@ export const buildMetricExpressionQueryCondition = ({
     type: 'metric',
     metric_id: row.metricId,
     filter: row.filters
+  };
+};
+
+export const buildMetricExpressionPreviewPayload = ({
+  monitorObjId,
+  source,
+  metrics,
+  mode = 'auto',
+  resultName,
+  expression,
+  rows,
+  selectedInstance,
+  period,
+  periodUnit,
+  algorithm,
+  groupAlgorithm,
+  groupBy,
+  calculationUnit
+}: {
+  monitorObjId: string | number | null;
+  source: SourceFeild;
+  metrics: MetricItem[];
+  mode?: MetricExpressionMode;
+  resultName: string;
+  expression: string;
+  rows: MetricExpressionRow[];
+  selectedInstance: Pick<
+    InstanceItem,
+    'instance_id' | 'instance_id_values'
+  > | null;
+  period: number | null;
+  periodUnit: string;
+  algorithm: string | null;
+  groupAlgorithm: string | null;
+  groupBy: string[];
+  calculationUnit?: string | null;
+}) => {
+  if (!monitorObjId || !selectedInstance || !algorithm) {
+    return null;
+  }
+
+  const queryCondition = buildMetricExpressionQueryCondition({
+    mode,
+    resultName,
+    expression,
+    rows
+  });
+  const anchorRow = rows[0] || createMetricRow(0);
+  const anchorMetric = metrics.find(
+    (item) => item.id === anchorRow.metricId || item.name === anchorRow.metricName
+  );
+
+  if (!anchorMetric) {
+    return null;
+  }
+
+  const isFormula = queryCondition.type === 'formula';
+  const payloadGroupBy = isFormula
+    ? sanitizeGroupBy(anchorRow.groupBy || [])
+    : sanitizeGroupBy(groupBy);
+  const payloadGroupAlgorithm = isFormula
+    ? anchorRow.groupAlgorithm || 'avg'
+    : groupAlgorithm || 'avg';
+
+  return {
+    monitor_object: monitorObjId,
+    query_condition: queryCondition,
+    source,
+    period: {
+      type: periodUnit,
+      value: period || 5
+    },
+    algorithm,
+    group_algorithm: payloadGroupAlgorithm,
+    group_by: payloadGroupBy,
+    metric_unit: isFormula ? '' : anchorMetric.unit || '',
+    calculation_unit: calculationUnit || '',
+    preview: {
+      instance_id: selectedInstance.instance_id,
+      instance_id_values: selectedInstance.instance_id_values,
+      duration_points: 30
+    }
   };
 };

@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 
 import {
   assignMetricRowRefs,
+  buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
   extractFormulaRefs,
   shouldShowFormulaEditor,
@@ -117,6 +118,118 @@ assert.deepEqual(formulaPayload.queries[1].filter, [
   { logic: 'or', name: 'status', method: '=', value: '200' }
 ]);
 assert.deepEqual(formulaPayload.queries[1].group_by, ['instance_id']);
+
+const previewInstance = {
+  instance_id: 'host-1',
+  instance_name: 'host-1',
+  instance_id_values: ['host-1']
+};
+
+const formulaPreviewPayload = buildMetricExpressionPreviewPayload({
+  monitorObjId: 'linux',
+  source: {
+    type: 'instance',
+    values: ['host-1']
+  },
+  metrics: [
+    {
+      id: 1,
+      name: 'http_5xx_total',
+      display_name: 'HTTP 5xx',
+      unit: 'short',
+      dimensions: [],
+      instance_id_keys: ['instance_id']
+    },
+    {
+      id: 2,
+      name: 'http_requests_total',
+      display_name: 'HTTP 请求',
+      unit: 'short',
+      dimensions: [],
+      instance_id_keys: ['instance_id']
+    }
+  ],
+  mode: 'formula',
+  resultName: 'HTTP 5xx 错误率',
+  expression: 'a / b * 100',
+  rows: formulaRows,
+  selectedInstance: previewInstance,
+  period: 1,
+  periodUnit: 'min',
+  algorithm: 'avg_over_time',
+  groupAlgorithm: 'max',
+  groupBy: ['ignored_dimension'],
+  calculationUnit: 'percent'
+});
+
+assert.equal(formulaPreviewPayload?.query_condition.type, 'formula');
+assert.equal(formulaPreviewPayload?.group_algorithm, 'sum');
+assert.deepEqual(formulaPreviewPayload?.group_by, ['instance_id', 'status']);
+assert.equal(formulaPreviewPayload?.metric_unit, '');
+assert.equal(formulaPreviewPayload?.calculation_unit, 'percent');
+assert.deepEqual(formulaPreviewPayload?.preview, {
+  instance_id: 'host-1',
+  instance_id_values: ['host-1'],
+  duration_points: 30
+});
+
+const metricPreviewPayload = buildMetricExpressionPreviewPayload({
+  monitorObjId: 'linux',
+  source: {
+    type: 'instance',
+    values: ['host-1']
+  },
+  metrics: [
+    {
+      id: 10,
+      name: 'cpu_usage',
+      display_name: 'CPU 使用率',
+      unit: 'percent',
+      dimensions: [],
+      instance_id_keys: ['instance_id']
+    }
+  ],
+  mode: 'metric',
+  resultName: '',
+  expression: '',
+  rows: singleRows,
+  selectedInstance: previewInstance,
+  period: 5,
+  periodUnit: 'min',
+  algorithm: 'avg_over_time',
+  groupAlgorithm: 'avg',
+  groupBy: ['instance_id'],
+  calculationUnit: null
+});
+
+assert.deepEqual(metricPreviewPayload?.query_condition, singlePayload);
+assert.equal(metricPreviewPayload?.group_algorithm, 'avg');
+assert.deepEqual(metricPreviewPayload?.group_by, ['instance_id']);
+assert.equal(metricPreviewPayload?.metric_unit, 'percent');
+
+assert.throws(
+  () =>
+    buildMetricExpressionPreviewPayload({
+      monitorObjId: 'linux',
+      source: {
+        type: 'instance',
+        values: ['host-1']
+      },
+      metrics: [],
+      mode: 'formula',
+      resultName: '',
+      expression: 'a / b',
+      rows: formulaRows,
+      selectedInstance: previewInstance,
+      period: 5,
+      periodUnit: 'min',
+      algorithm: 'avg_over_time',
+      groupAlgorithm: 'avg',
+      groupBy: ['instance_id'],
+      calculationUnit: null
+    }),
+  (error) => error instanceof Error && error.message.includes('结果名称不能为空')
+);
 
 assert.deepEqual(
   validateMetricExpressionPayload({
