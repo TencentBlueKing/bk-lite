@@ -1,5 +1,6 @@
 # flake8: noqa
 from .common import *  # noqa: F401,F403
+from .common import _build_jwt_payload, _get_pwd_policy_settings, _verify_token
 
 
 @nats_client.register
@@ -215,7 +216,7 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
         # Include QR code for first-time binding
         if qr_code_base64:
             response_data["qr_code"] = qr_code_base64
-            response_data["need_bindng"] = True  # Flag to indicate first-time binding
+            response_data["need_binding"] = True  # Flag to indicate first-time binding
 
         return {
             "result": True,

@@ -427,6 +427,15 @@ class UserViewSet(ViewSetUtils):
             if not is_valid:
                 return error_response
 
+        synced_users = list(users.filter(sync_source__isnull=False).values_list("id", flat=True))
+        if synced_users:
+            return JsonResponse(
+                {
+                    "result": False,
+                    "message": "Synced users cannot be deleted directly. Please delete them from the user sync source.",
+                }
+            )
+
         usernames = list(users.values_list("username", flat=True))
 
         # 收集需要删除的用户信息（id, username和domain）

@@ -20,6 +20,7 @@ interface UserDataType {
   groups: Array<any>;
   last_login?: string;
   status?: UserStatus;
+  sync_source?: number | null;
 }
 
 interface ChangeUserStatusParams {

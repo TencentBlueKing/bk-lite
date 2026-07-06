@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" role="img" aria-label="Omnitron">
+  <rect width="1024" height="1024" rx="112" fill="#0B3D91"/>
+  <circle cx="512" cy="392" r="190" fill="none" stroke="#22D3EE" stroke-width="40"/>
+  <circle cx="512" cy="392" r="120" fill="none" stroke="#A5F3FC" stroke-width="22"/>
+  <circle cx="512" cy="392" r="60" fill="#FACC15"/>
+  <rect x="402" y="616" width="220" height="40" rx="8" fill="#22D3EE"/>
+  <rect x="402" y="676" width="220" height="40" rx="8" fill="#A5F3FC"/>
+  <rect x="402" y="736" width="220" height="40" rx="8" fill="#FACC15"/>
+  <rect x="402" y="796" width="220" height="40" rx="8" fill="#F8FAFC"/>
+</svg>
