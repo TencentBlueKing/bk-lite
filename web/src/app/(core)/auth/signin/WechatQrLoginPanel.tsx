@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useTheme } from '@/context/theme';
+import { useTranslation } from '@/utils/i18n';
 
 declare global {
   interface Window {
@@ -24,6 +25,7 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
   const { themeName } = useTheme();
+  const { t } = useTranslation();
   const isDarkTheme = themeName === 'dark';
   const containerRef = useRef<HTMLDivElement | null>(null);
 
@@ -56,7 +58,7 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
 
         if (!response.ok || !responseData?.result || !responseData?.data?.app_id) {
           setWechatSettings({ enabled: false });
-          setError('微信登录当前不可用');
+          setError(t('signin.wechatQr.unavailable'));
           return;
         }
 
@@ -67,14 +69,14 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
       } catch (wechatSettingsError) {
         console.error('Failed to fetch wechat settings:', wechatSettingsError);
         setWechatSettings({ enabled: false });
-        setError('微信登录配置获取失败');
+        setError(t('signin.wechatQr.settingsFailed'));
       } finally {
         setLoading(false);
       }
     };
 
     void fetchWechatSettings();
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     if (loading || !wechatSettings?.enabled || !wechatSettings.app_id || !containerRef.current || !redirectUri) {
@@ -112,7 +114,7 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
       script.src = 'https://res.wx.qq.com/connect/zh_CN/htmledition/js/wxLogin.js';
       script.async = true;
       script.onload = mountWechatQr;
-      script.onerror = () => setError('微信二维码加载失败');
+      script.onerror = () => setError(t('signin.wechatQr.qrLoadFailed'));
       document.body.appendChild(script);
     }
 
@@ -121,7 +123,7 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
         script.parentNode.removeChild(script);
       }
     };
-  }, [loading, redirectUri, wechatSettings]);
+  }, [loading, redirectUri, t, wechatSettings]);
 
   return (
     <div className="mx-auto w-full max-w-97">
@@ -135,7 +137,7 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
                 boxShadow: isDarkTheme ? '0 10px 24px rgba(0, 0, 0, 0.18)' : '0 10px 24px rgba(148, 163, 184, 0.10)',
               }}
             >
-              <div className="text-[11px] leading-5 text-(--color-text-3)">正在加载二维码...</div>
+              <div className="text-[11px] leading-5 text-(--color-text-3)">{t('signin.wechatQr.loading')}</div>
             </div>
           </div>
         ) : error ? (
@@ -147,7 +149,7 @@ export default function WechatQrLoginPanel({ callbackUrl, thirdLogin }: WechatQr
                 boxShadow: isDarkTheme ? '0 10px 24px rgba(0, 0, 0, 0.18)' : '0 10px 24px rgba(148, 163, 184, 0.10)',
               }}
             >
-              <div className="text-[11px] leading-5 text-(--color-text-3)">无法显示二维码</div>
+              <div className="text-[11px] leading-5 text-(--color-text-3)">{error || t('signin.wechatQr.unableToDisplay')}</div>
             </div>
           </div>
         ) : (
