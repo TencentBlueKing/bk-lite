@@ -3,6 +3,7 @@
 from datetime import datetime
 from apps.cmdb.constants.constants import INSTANCE
 from apps.cmdb.graph.drivers.graph_client import GraphClient
+from apps.core.logger import cmdb_logger as logger
 
 
 def extract_subnet_discovery_params(task) -> tuple:
@@ -109,11 +110,20 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
     - 手工记录（auto_collect=False）→ 永不修改。
     - IP 冲突（同地址多记录）不在此处裁决，交由 P1 周期对账任务处理。
     - 最后回写子网利用率统计（与 P1 reconcile 共享同一 _writeback_subnet_utilization）。
+
+    P0-1.2 兜底:子网不存在或子网无 organization 时(ip 模型 is_required=True),
+    早返回 skipped=True,避免 instance_create 抛「organization is empty」。
     """
     # DEFECT A fix: load subnet to extract organization so instance_create gets a
     # real org value (ip model has is_required=True for organization).
     subnet_rows = _load_subnets_by_ids([subnet_id])
-    organization = subnet_rows[0].get("organization", []) if subnet_rows else []
+    if not subnet_rows:
+        logger.warning("[IPDiscovery] 子网不存在,跳过 subnet_id=%s alive_count=%s", subnet_id, len(alive))
+        return {"created": 0, "updated": 0, "offline": 0, "skipped": True}
+    organization = subnet_rows[0].get("organization") or []
+    if not organization:
+        logger.warning("[IPDiscovery] 子网 %s 缺少 organization,ip 模型要求必填,跳过", subnet_id)
+        return {"created": 0, "updated": 0, "offline": 0, "skipped": True}
 
     existing = _load_subnet_ips(subnet_id)
     existing_by_addr = {i.get("ip_addr"): i for i in existing}

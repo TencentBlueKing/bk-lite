@@ -68,7 +68,8 @@ class TestApplyDiscoveryResult:
             {"_id": 12, "ip_addr": "10.0.1.20", "auto_collect": True, "subnet_id": "1"},
             {"_id": 13, "ip_addr": "10.0.1.30", "auto_collect": False, "subnet_id": "1"},
         ])
-        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": []}])
+        # P0-1.2 修复后,子网有 organization 时才能走 upsert 路径(空 org 会早返回 skipped=True)
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": [7]}])
         ups, offs = [], []
         monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups.append(kw))
         monkeypatch.setattr(ipam_discovery, "_mark_offline", lambda ip_id: offs.append(ip_id))
@@ -162,3 +163,50 @@ class TestUpsertAliveIpCollectTime:
         assert len(captured_payloads) == 1
         assert "collect_time" in captured_payloads[0]
         assert captured_payloads[0]["collect_time"]  # non-empty
+
+
+# ---------------------------------------------------------------------------
+# P0-1.2 — apply_discovery_result must guard against missing/empty-org subnet
+# ---------------------------------------------------------------------------
+
+class TestApplyDiscoveryResultSubnetMissing:
+    """P0-1.2: 子网被删/子网无 org 时,instance_create 会因 is_required 校验崩溃;
+    apply_discovery_result 必须早返回(不调 _upsert_alive_ip,避免污染 alive 集合),
+    并在 summary 里加 skipped=True 以便上层对账任务感知。"""
+
+    def test_subnet_missing_skips_upsert_and_returns_skipped(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        # 子网不存在
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [])
+        ups_calls = []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups_calls.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=999,
+            alive=[{"ip": "10.0.1.10", "mac": "AA:BB:CC:DD:EE:FF"}],
+        )
+
+        assert ups_calls == [], "子网不存在时不应调 _upsert_alive_ip(否则 instance_create 会因 org=[] 抛 is_required)"
+        assert result == {"created": 0, "updated": 0, "offline": 0, "skipped": True}
+
+    def test_subnet_with_empty_org_skips_upsert(self, monkeypatch):
+        """子网存在但 organization=[] 时,ip 模型 is_required 也会崩,同样要早返回。"""
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(
+            ipam_discovery, "_load_subnets_by_ids",
+            lambda ids: [{"_id": 1, "organization": []}],
+        )
+        ups_calls = []
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: ups_calls.append(kw))
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1,
+            alive=[{"ip": "10.0.1.10", "mac": ""}],
+        )
+
+        assert ups_calls == []
+        assert result.get("skipped") is True
