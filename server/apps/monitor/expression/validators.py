@@ -37,12 +37,11 @@ def _validate_filter(ref: str, filter_list: object) -> None:
             raise FormulaValidationError(f"指标 {ref} filter[{index}] 必须是对象")
         name = condition.get("name", "")
         method = condition.get("method", "")
-        value = condition.get("value")
         if not name:
             raise FormulaValidationError(f"指标 {ref} filter[{index}] 缺少 name")
         if not method:
             raise FormulaValidationError(f"指标 {ref} filter[{index}] 缺少 method")
-        if value is None or value == "":
+        if "value" not in condition:
             raise FormulaValidationError(f"指标 {ref} filter[{index}] 缺少 value")
         if name and not _LABEL_NAME_RE.match(str(name)):
             raise FormulaValidationError(

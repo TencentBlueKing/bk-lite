@@ -185,6 +185,31 @@ def test_validate_formula_rejects_empty_filter_object():
     assert "filter" in str(exc.value)
 
 
+def test_validate_formula_allows_empty_string_filter_value():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [{"name": "status", "method": "=", "value": ""}],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    result = validate_formula_condition(payload)
+
+    assert result.anchor_ref == "a"
+
+
 def test_validate_formula_rejects_query_item_not_object():
     payload = formula(
         queries=[
