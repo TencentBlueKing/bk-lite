@@ -1,3 +1,17 @@
+/**
+ * 已迁移：该 API Route 属于旧的微信独立扫码登录链路。
+ *
+ * 自 2026-06-18 signin validation cutover 后，微信登录已收敛到
+ * login-auth binding 统一流程（/auth/signin/login-auth/*），
+ * 通过微信作为标准 binding provider 完成
+ * start_login_auth -> callback -> poll status -> session sync。
+ *
+ * 本接口不再参与主登录流程，保留仅作为历史参考/兼容兜底，
+ * 新需求请直接使用 login-auth validation 链路。
+ *
+ * 相关文档：docs/superpowers/plans/2026-06-18-signin-validation-cutover.md
+ */
+
 import {NextRequest, NextResponse} from 'next/server';
 
 export async function POST(request: NextRequest) {

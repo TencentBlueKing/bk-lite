@@ -216,7 +216,7 @@ def get_user_login_token(user, username, skip_token_for_otp=False):
         # Include QR code for first-time binding
         if qr_code_base64:
             response_data["qr_code"] = qr_code_base64
-            response_data["need_bindng"] = True  # Flag to indicate first-time binding
+            response_data["need_binding"] = True  # Flag to indicate first-time binding
 
         return {
             "result": True,

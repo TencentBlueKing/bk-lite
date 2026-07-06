@@ -25,6 +25,7 @@ USER_PUBLIC_FIELDS = [
     "status",
     "group_role_list",
     "is_superuser",
+    "sync_source",
 ]
 
 
