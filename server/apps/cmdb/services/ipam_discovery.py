@@ -124,35 +124,48 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
 
     P0-1.2 兜底:子网不存在或子网无 organization 时(ip 模型 is_required=True),
     早返回 skipped=True,避免 instance_create 抛「organization is empty」。
+
+    P0-1.4 业务层补偿(选 B 路):多步图写无 atomic 包裹,单条 IP 写入失败
+    不能击穿整批。每个 upsert/mark_offline 独立 try/except,失败时记录
+    WARNING + 累加 failed 计数,继续处理其他 IP。summary 加 failed 字段
+    供上层对账任务感知与重试。
     """
     # DEFECT A fix: load subnet to extract organization so instance_create gets a
     # real org value (ip model has is_required=True for organization).
     subnet_rows = _load_subnets_by_ids([subnet_id])
     if not subnet_rows:
         logger.warning("[IPDiscovery] 子网不存在,跳过 subnet_id=%s alive_count=%s", subnet_id, len(alive))
-        return {"created": 0, "updated": 0, "offline": 0, "skipped": True}
+        return {"created": 0, "updated": 0, "offline": 0, "failed": 0, "skipped": True}
     organization = subnet_rows[0].get("organization") or []
     if not organization:
         logger.warning("[IPDiscovery] 子网 %s 缺少 organization,ip 模型要求必填,跳过", subnet_id)
-        return {"created": 0, "updated": 0, "offline": 0, "skipped": True}
+        return {"created": 0, "updated": 0, "offline": 0, "failed": 0, "skipped": True}
 
     existing = _load_subnet_ips(subnet_id)
     existing_by_addr = {i.get("ip_addr"): i for i in existing}
     alive_addrs = {a["ip"] for a in alive}
 
-    created = updated = offline = 0
+    created = updated = offline = failed = 0
     for a in alive:
         prev = existing_by_addr.get(a["ip"])
         if prev and prev.get("auto_collect") is not True:
-            # 手工录入不被自动发现覆盖（仅 auto_collect is True 的记录归发现采集所有、可写）
+            # 手工录入不被自动发现覆盖(仅 auto_collect is True 的记录归发现采集所有、可写)
             continue
-        _upsert_alive_ip(
-            existing_id=(prev or {}).get("_id"),
-            subnet_id=subnet_id,
-            ip_addr=a["ip"],
-            mac=a.get("mac", ""),
-            organization=organization,
-        )
+        try:
+            _upsert_alive_ip(
+                existing_id=(prev or {}).get("_id"),
+                subnet_id=subnet_id,
+                ip_addr=a["ip"],
+                mac=a.get("mac", ""),
+                organization=organization,
+            )
+        except Exception as err:
+            failed += 1
+            logger.warning(
+                "[IPDiscovery] upsert IP 失败 subnet_id=%s ip=%s err=%s,继续处理其他 IP",
+                subnet_id, a["ip"], err,
+            )
+            continue
         if prev:
             updated += 1
         else:
@@ -160,11 +173,19 @@ def apply_discovery_result(subnet_id, alive: list) -> dict:
 
     for ip in existing:
         if ip.get("auto_collect") is True and ip.get("ip_addr") not in alive_addrs:
-            _mark_offline(ip["_id"])
+            try:
+                _mark_offline(ip["_id"])
+            except Exception as err:
+                failed += 1
+                logger.warning(
+                    "[IPDiscovery] mark_offline 失败 subnet_id=%s ip_id=%s err=%s,继续处理其他 IP",
+                    subnet_id, ip["_id"], err,
+                )
+                continue
             offline += 1
 
     _writeback_subnet_utilization([subnet_id])
-    return {"created": created, "updated": updated, "offline": offline}
+    return {"created": created, "updated": updated, "offline": offline, "failed": failed}
 
 
 def apply_ip_discovery_vm_rows(task, rows: list[dict]) -> dict:

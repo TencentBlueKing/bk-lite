@@ -189,7 +189,7 @@ class TestApplyDiscoveryResultSubnetMissing:
         )
 
         assert ups_calls == [], "子网不存在时不应调 _upsert_alive_ip(否则 instance_create 会因 org=[] 抛 is_required)"
-        assert result == {"created": 0, "updated": 0, "offline": 0, "skipped": True}
+        assert result == {"created": 0, "updated": 0, "offline": 0, "failed": 0, "skipped": True}
 
     def test_subnet_with_empty_org_skips_upsert(self, monkeypatch):
         """子网存在但 organization=[] 时,ip 模型 is_required 也会崩,同样要早返回。"""
@@ -263,3 +263,91 @@ class TestLoadSubnetsByIdsRobustness:
 
         rows = ipam_discovery._load_subnets_by_ids(["abc", None, ""])
         assert rows == []
+
+
+# ---------------------------------------------------------------------------
+# P0-1.4 — apply_discovery_result 业务层补偿:单条 IP 失败不击穿整批
+# ---------------------------------------------------------------------------
+
+class TestApplyDiscoveryResultPartialFailure:
+    """P0-1.4: 选 B 路业务层补偿。多步图写无 atomic 包裹,中途崩台账不一致。
+    改成:每个 IP 的 upsert/mark_offline 独立 try/except,失败时跳过该条,
+    继续处理其他 IP,summary 加 failed 计数供上层对账任务感知。"""
+
+    def test_upsert_failure_for_one_ip_does_not_abort_batch(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": [7]}])
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [])
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        calls = []
+
+        def fake_upsert(**kw):
+            calls.append(kw["ip_addr"])
+            if kw["ip_addr"] == "10.0.1.20":
+                raise RuntimeError("模拟图驱动瞬时失败")
+
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", fake_upsert)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1,
+            alive=[
+                {"ip": "10.0.1.10", "mac": ""},
+                {"ip": "10.0.1.20", "mac": ""},
+                {"ip": "10.0.1.30", "mac": ""},
+            ],
+        )
+
+        # 3 个 IP 都被尝试,失败 1 个不影响其他
+        assert calls == ["10.0.1.10", "10.0.1.20", "10.0.1.30"]
+        assert result["created"] == 2
+        assert result["failed"] == 1
+
+    def test_mark_offline_failure_does_not_abort_batch(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": [7]}])
+        # 已存在 2 条 auto_collect=True 记录,本轮都没探到 → 都应 mark offline
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [
+            {"_id": 11, "ip_addr": "10.0.1.10", "auto_collect": True, "subnet_id": "1"},
+            {"_id": 12, "ip_addr": "10.0.1.20", "auto_collect": True, "subnet_id": "1"},
+        ])
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", lambda **kw: None)
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        offs_calls = []
+
+        def fake_mark_offline(ip_id):
+            offs_calls.append(ip_id)
+            if ip_id == 12:
+                raise RuntimeError("模拟离线写入失败")
+
+        monkeypatch.setattr(ipam_discovery, "_mark_offline", fake_mark_offline)
+
+        result = ipam_discovery.apply_discovery_result(subnet_id=1, alive=[])
+
+        assert offs_calls == [11, 12]
+        assert result["offline"] == 1
+        assert result["failed"] == 1
+
+    def test_partial_failure_summary_includes_failed(self, monkeypatch):
+        from apps.cmdb.services import ipam_discovery
+
+        monkeypatch.setattr(ipam_discovery, "_load_subnets_by_ids", lambda ids: [{"_id": 1, "organization": [7]}])
+        monkeypatch.setattr(ipam_discovery, "_load_subnet_ips", lambda sid: [])
+        monkeypatch.setattr(ipam_discovery, "_writeback_subnet_utilization", lambda sids: None)
+
+        def fake_upsert(**kw):
+            raise RuntimeError("全失败")
+
+        monkeypatch.setattr(ipam_discovery, "_upsert_alive_ip", fake_upsert)
+
+        result = ipam_discovery.apply_discovery_result(
+            subnet_id=1,
+            alive=[{"ip": "10.0.1.10", "mac": ""}],
+        )
+
+        assert result["created"] == 0
+        assert result["failed"] == 1
+        assert "failed" in result
