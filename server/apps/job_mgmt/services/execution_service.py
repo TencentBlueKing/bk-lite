@@ -17,6 +17,7 @@ from typing import List
 from apps.job_mgmt.constants import ExecutionStatus, JobType, TargetSource, TriggerSource
 from apps.job_mgmt.models import DistributionFile, JobExecution, Playbook, Script, Target
 from apps.job_mgmt.services.dangerous_checker import DangerousChecker
+from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 from apps.job_mgmt.services.script_params_service import ScriptParamsService
 from apps.job_mgmt.utils.team_authz import is_team_authorized
 
@@ -317,6 +318,10 @@ class ExecutionService:
         else:
             # 脚本执行（Playbook 暂不做高危检测，与原实现一致）
             cls.check_dangerous_command(original.script_content, original.team)
+            # re_execute 复制历史 JobExecution.script_content 时规范化,
+            # 避免历史脏数据(CRLF)被原样带入新副本;
+            # worker 兜底仍保留, 此处为入库前主修复
+            script_content = normalize_script_line_endings(original.script_content or "", original.script_type or "")
             execution = JobExecution.objects.create(
                 name=original.name,
                 job_type=JobType.SCRIPT,
@@ -325,7 +330,7 @@ class ExecutionService:
                 script=original.script,
                 params=original.params,
                 script_type=original.script_type,
-                script_content=original.script_content,
+                script_content=script_content,
                 timeout=original.timeout,
                 total_count=len(target_list),
                 target_source=original.target_source,

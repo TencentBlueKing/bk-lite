@@ -92,20 +92,22 @@ def login_with_binding(binding_id: int, auth_code: str = "", *, username: str = 
 
 def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     platform_field = binding.platform_field
-    external_value = external_user.get(binding.external_field) or external_user.get("user_id") or external_user.get("open_id") or ""
+    external_value = external_user.get(binding.external_field) or external_user.get("openid") or ""
     if not external_value:
         return None
 
     filter_kwargs = {platform_field: external_value}
     user = User.objects.filter(**filter_kwargs).first()
     if user:
-        return _update_user_profile(user, external_user)
+        # 登录认证不修改已有用户资料(display_name / email / phone / group_list / role_list),
+        # last_login 由 login_with_binding 外层刷。
+        return user
 
     if binding.unmatched_user_action != LoginAuthBindingUnmatchedActionChoices.CREATE:
         return None
 
-    # 微信登录认证未配置默认组织时，沿用旧微信扫码登录行为，
-    # 自动加入 OpsPilotGuest 组，以便进入 ops-console 首页后触发
+    # 微信登录认证未配置默认组织时,沿用旧微信扫码登录行为,
+    # 自动加入 OpsPilotGuest 组,以便进入 ops-console 首页后触发
     # init_user_set 首次登录创建组织弹窗。
     default_group_name = binding.default_group_name
     if not default_group_name and binding.integration_instance.provider_key == "wechat":
@@ -115,10 +117,15 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
     if default_group_name:
         default_group, _ = Group.objects.get_or_create(name=default_group_name, parent_id=0)
 
-    username = external_user.get("user_id") or external_user.get("open_id") or external_user.get("email") or external_value
-    email = external_user.get("email", "")
-    phone = external_user.get("mobile", "")
-    display_name = external_user.get("name") or username
+    provider_key = binding.integration_instance.provider_key
+    if provider_key == "wechat":
+        username = external_user.get("openid") or external_value
+        display_name = external_user.get("nickname") or username
+    else:
+        username = external_value
+        display_name = external_user.get("name") or username
+    email = external_user.get("email", "") if platform_field != "email" else external_value
+    phone = external_user.get("mobile", "") if platform_field != "phone" else external_value
     user = User.objects.create(
         username=username,
         display_name=display_name,
@@ -131,22 +138,6 @@ def _resolve_platform_user(binding: LoginAuthBinding, external_user: dict):
         group_list=[default_group.id] if default_group else [],
     )
     logger.info(f"Created platform user '{username}' from login auth binding '{binding.name}'")
-    return user
-
-
-def _update_user_profile(user: User, external_user: dict):
-    updated = False
-    if external_user.get("name") and user.display_name != external_user["name"]:
-        user.display_name = external_user["name"]
-        updated = True
-    if external_user.get("email") and user.email != external_user["email"]:
-        user.email = external_user["email"]
-        updated = True
-    if external_user.get("mobile") and getattr(user, "phone", "") != external_user["mobile"]:
-        user.phone = external_user["mobile"]
-        updated = True
-    if updated:
-        user.save()
     return user
 
 

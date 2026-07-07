@@ -8,6 +8,7 @@ from rest_framework import serializers
 
 from apps.job_mgmt.constants import CredentialSource, JobType, OSType, ScheduleType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import Target
+from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 
 
 def validate_manual_credentials(attrs: dict, *, require_cloud_region: bool = False) -> dict:
@@ -115,5 +116,13 @@ def validate_scheduled_task_payload(attrs: dict, *, instance=None) -> dict:
     params = attrs.get("params")
     if params:
         ScriptParamsService.validate_params_format(params)
+
+    # 脚本内容入库前规范化换行符（CRLF/CR → LF；bat/powershell 保留原样）。
+    # 仅在 attrs 显式提供 script_content 时处理；update 场景下未传则保留 instance 原值，
+    # 由 worker 兜底执行规范化。script_type 走 _resolve 取值，避免 PATCH 只改 content 时
+    # 误把 PowerShell 脚本里的 CRLF 当作 Unix 转 LF。
+    if "script_content" in attrs and attrs["script_content"]:
+        resolved_script_type = _resolve("script_type") or ""
+        attrs["script_content"] = normalize_script_line_endings(attrs["script_content"], resolved_script_type)
 
     return attrs

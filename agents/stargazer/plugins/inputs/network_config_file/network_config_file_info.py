@@ -41,12 +41,6 @@ class NetworkConfigFileInfo:
         return "\n\n".join(sections)
 
     @staticmethod
-    def _truthy(value) -> bool:
-        if isinstance(value, bool):
-            return value
-        return str(value or "").strip().lower() in {"1", "true", "yes", "on"}
-
-    @staticmethod
     def _has_command_error(output: str) -> bool:
         lowered = str(output or "").lower()
         return any(pattern in lowered for pattern in COMMAND_ERROR_PATTERNS)
@@ -99,7 +93,7 @@ class NetworkConfigFileInfo:
                 raise RuntimeError("netmiko is required for network config file collection")
 
             with ConnectHandler(**connect_params) as net_connect:
-                if self._truthy(self.params.get("need_enable")):
+                if self.params.get("enable_password"):
                     net_connect.enable()
                 paging_command = DEVICE_TYPE_DISABLE_PAGING.get(connect_params["device_type"])
                 if paging_command:

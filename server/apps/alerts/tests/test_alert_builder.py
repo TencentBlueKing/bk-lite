@@ -248,3 +248,92 @@ def test_create_or_update_alert_updates_existing(alert_levels, source, strategy)
     assert alert.pk == existing.pk
     assert alert.level == "1"
     assert alert.events.filter(event_id="E1").exists()
+
+
+# --------------------------------------------------------------------------
+# Level 信号驱动的缓存失效（Issue #3674）
+# --------------------------------------------------------------------------
+
+
+@pytest.mark.django_db
+def test_level_post_save_invalidates_cache():
+    """Level 保存后，_valid_alert_levels 应被清除为 None（重置为 None 就是缓存失效）。"""
+    from django.db.models.signals import post_save, post_delete
+    from apps.alerts.apps import _register_level_cache_signals
+    from apps.alerts.models.models import Level
+
+    # 确保信号已注册
+    _register_level_cache_signals()
+
+    # 预热缓存
+    AlertBuilder._valid_alert_levels = None
+    level = Level.objects.create(
+        level_id=10, level_name="测试级别", level_display_name="测试", level_type=LevelType.ALERT
+    )
+    _ = AlertBuilder._get_valid_alert_levels()
+    assert AlertBuilder._valid_alert_levels is not None, "缓存应已预热"
+
+    # 触发 post_save（模拟运维人员修改 Level）
+    level.level_name = "修改后"
+    level.save()
+
+    # 缓存应已被清除
+    assert AlertBuilder._valid_alert_levels is None, "post_save 后缓存应失效为 None"
+
+    # 清理
+    level.delete()
+    AlertBuilder._valid_alert_levels = None
+
+
+@pytest.mark.django_db
+def test_level_post_delete_invalidates_cache():
+    """删除 Level 后，_valid_alert_levels 应被清除为 None。"""
+    from apps.alerts.apps import _register_level_cache_signals
+    from apps.alerts.models.models import Level
+
+    _register_level_cache_signals()
+
+    # 预热缓存
+    AlertBuilder._valid_alert_levels = None
+    level = Level.objects.create(
+        level_id=11, level_name="待删除级别", level_display_name="待删除", level_type=LevelType.ALERT
+    )
+    _ = AlertBuilder._get_valid_alert_levels()
+    assert AlertBuilder._valid_alert_levels is not None, "缓存应已预热"
+
+    # 触发 post_delete
+    level.delete()
+
+    # 缓存应已被清除
+    assert AlertBuilder._valid_alert_levels is None, "post_delete 后缓存应失效为 None"
+    AlertBuilder._valid_alert_levels = None
+
+
+@pytest.mark.django_db
+def test_level_cache_refreshes_after_invalidation():
+    """缓存失效后，下次调用 _get_valid_alert_levels 应从 DB 重新加载最新数据。"""
+    from apps.alerts.apps import _register_level_cache_signals
+    from apps.alerts.models.models import Level
+
+    _register_level_cache_signals()
+
+    AlertBuilder._valid_alert_levels = None
+    # 初始：只有 level_id=0
+    Level.objects.create(
+        level_id=0, level_name="致命", level_display_name="致命", level_type=LevelType.ALERT
+    )
+    initial = AlertBuilder._get_valid_alert_levels()
+    assert initial == {0}
+
+    # 新增一个级别，触发信号使缓存失效
+    Level.objects.create(
+        level_id=1, level_name="错误", level_display_name="错误", level_type=LevelType.ALERT
+    )
+    # 缓存应已失效
+    assert AlertBuilder._valid_alert_levels is None
+
+    # 重新加载，应包含新级别
+    refreshed = AlertBuilder._get_valid_alert_levels()
+    assert refreshed == {0, 1}
+
+    AlertBuilder._valid_alert_levels = None
