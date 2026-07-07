@@ -207,7 +207,7 @@ class TestLoginAuthBindingViews:
     @patch("apps.core.views.index_view.build_login_auth_redirect")
     @patch("apps.core.views.index_view.create_auth_request")
     @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_drops_invalid_redirect_origin_falls_back_to_request(
+    def test_start_login_auth_uses_redirect_origin_even_when_browser_origin_differs(
         self,
         mock_get_binding,
         mock_create_auth_request,
@@ -248,10 +248,12 @@ class TestLoginAuthBindingViews:
         response = start_login_auth(request)
 
         assert response.status_code == 200
+        # validate_redirect_origin 只校验 URL 格式,跨域不再拦截,
+        # 因此 redirect_origin 原样入 cache 并用于构造 redirect_uri。
         assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "https://internal.example.test/api/v1/core/api/login_auth/callback/"
+            "https://evil.example/api/v1/core/api/login_auth/callback/"
         )
-        assert mock_create_auth_request.call_args.kwargs["redirect_origin"] is None
+        assert mock_create_auth_request.call_args.kwargs["redirect_origin"] == "https://evil.example"
 
     @patch.dict(os.environ, {}, clear=False)
     @patch("apps.core.views.index_view.build_login_auth_redirect")
@@ -834,93 +836,58 @@ class TestLoginAuthRequestService:
 
 
 class TestValidateRedirectOrigin:
-    """validate_redirect_origin 纯函数同源校验测试。
+    """validate_redirect_origin URL 格式校验测试。
 
-    覆盖 host 与 origin 的各种关系以及 origin 字段合法性。
+    历史上校验 redirect_origin 跟请求 header(HTTP_ORIGIN /
+    X-Forwarded-Host / HTTP_HOST)的一致性。生产环境反代链路会改写
+    Host header(X-Forwarded-Host 通常是反代或上游服务地址),无法
+    还原到用户真实域名。因此简化为只校验 redirect_origin 的 URL
+    格式合法性,跟 request 无关。
     """
 
     def _load_service(self):
         return _load_login_auth_request_service()
 
-    def test_accepts_same_origin_host_and_port(self):
-        service = self._load_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test:3000"
-
-        assert service.validate_redirect_origin(request, "http://bk.test:3000") is True
-
-    def test_accepts_redirect_origin_matching_browser_origin_when_proxy_host_differs(self):
-        service = self._load_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_ORIGIN"] = "https://bklite.canway.net"
-        request.META["HTTP_HOST"] = "internal.example.test"
-
-        assert service.validate_redirect_origin(request, "https://bklite.canway.net") is True
-
     @pytest.mark.parametrize(
-        ("browser_origin", "redirect_origin"),
+        "redirect_origin",
         [
-            ("https://bklite.canway.net:443", "https://bklite.canway.net"),
-            ("https://bklite.canway.net", "https://bklite.canway.net:443"),
+            "http://bk.test",
+            "https://bk.test",
+            "http://bk.test:3000",
+            "https://app.example.com",
+            "http://localhost:3000",
         ],
     )
-    def test_accepts_origin_and_redirect_origin_when_only_default_https_port_differs(
-        self,
-        browser_origin,
-        redirect_origin,
-    ):
+    def test_accepts_well_formed_origin(self, redirect_origin):
         service = self._load_service()
         request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_ORIGIN"] = browser_origin
-        request.META["HTTP_HOST"] = "internal.example.test"
 
         assert service.validate_redirect_origin(request, redirect_origin) is True
-
-    def test_accepts_https_origin_via_x_forwarded_host(self):
-        service = self._load_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_X_FORWARDED_HOST"] = "bk.test"
-        request.META["HTTP_X_FORWARDED_PROTO"] = "https"
-
-        assert service.validate_redirect_origin(request, "https://bk.test") is True
-
-    def test_rejects_cross_port_between_origin_and_request_host(self):
-        service = self._load_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test:8011"
-
-        assert service.validate_redirect_origin(request, "http://bk.test:3000") is False
-
-    def test_rejects_cross_host(self):
-        service = self._load_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "a.example"
-
-        assert service.validate_redirect_origin(request, "http://b.example") is False
 
     def test_rejects_origin_with_path(self):
         service = self._load_service()
         request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test"
 
         assert service.validate_redirect_origin(request, "http://bk.test/console") is False
 
     def test_rejects_origin_with_query(self):
         service = self._load_service()
         request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test"
 
         assert service.validate_redirect_origin(request, "http://bk.test?x=1") is False
 
     def test_rejects_origin_with_fragment(self):
         service = self._load_service()
         request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test"
 
         assert service.validate_redirect_origin(request, "http://bk.test#anchor") is False
 
     def test_rejects_non_http_scheme(self):
         service = self._load_service()
+        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
+
+        assert service.validate_redirect_origin(request, "javascript:alert(1)") is False
+        assert service.validate_redirect_origin(request, "file:///etc/passwd") is False
         request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
         request.META["HTTP_HOST"] = "bk.test"
 
