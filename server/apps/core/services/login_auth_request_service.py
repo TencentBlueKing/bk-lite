@@ -36,39 +36,90 @@ LOGIN_RESULT_ALLOWED_KEYS = {
 LOGIN_AUTH_CALLBACK_PATH = "/api/v1/core/api/login_auth/callback/"
 
 
-def validate_redirect_origin(request, redirect_origin) -> bool:
-    """同源校验:浏览器声明的 origin 是否可信任。
+def _split_first_header_value(value: str | None) -> str:
+    return (value or "").split(",", 1)[0].strip()
 
-    防止 OAuth open-redirector phishing:前端只能声明与请求同源的 origin,
-    不同源时调用方需降级到 env/request 兑底。
-    优先读 X-Forwarded-Host(反代场景),再回落到 request.get_host()。
-    """
-    if not redirect_origin or not isinstance(redirect_origin, str):
-        return False
+
+def _default_port(scheme: str) -> int | None:
+    if scheme == "http":
+        return 80
+    if scheme == "https":
+        return 443
+    return None
+
+
+def _parse_origin_parts(origin: str) -> tuple[str, str, int] | None:
+    if not isinstance(origin, str):
+        return None
     try:
-        parsed = urlparse(redirect_origin)
+        parsed = urlparse(origin)
+        port = parsed.port
     except (ValueError, TypeError):
-        return False
+        return None
     if parsed.scheme not in ("http", "https"):
-        return False
-    if not parsed.netloc:
-        return False
+        return None
+    if not parsed.hostname:
+        return None
     if parsed.path not in ("", "/"):
-        return False
+        return None
     if parsed.query or parsed.fragment:
+        return None
+    return parsed.scheme, parsed.hostname.lower(), port or _default_port(parsed.scheme)
+
+
+def _parse_request_origin_parts(scheme: str, host: str) -> tuple[str, str, int] | None:
+    scheme = (scheme or "").strip().lower()
+    host = _split_first_header_value(host)
+    if scheme not in ("http", "https") or not host:
+        return None
+    try:
+        parsed = urlparse(f"{scheme}://{host}")
+        port = parsed.port
+    except (ValueError, TypeError):
+        return None
+    if not parsed.hostname:
+        return None
+    return scheme, parsed.hostname.lower(), port or _default_port(scheme)
+
+def _normalize_public_base_url(base_url: str) -> str:
+    base_url = base_url.strip().rstrip("/")
+    try:
+        parsed = urlparse(base_url)
+        port = parsed.port
+    except (ValueError, TypeError):
+        return base_url
+    if parsed.scheme not in ("http", "https") or not parsed.hostname:
+        return base_url
+    if port == _default_port(parsed.scheme):
+        return f"{parsed.scheme}://{parsed.hostname.lower()}"
+    return base_url
+
+
+
+def validate_redirect_origin(request, redirect_origin) -> bool:
+    """同源校验:浏览器声明的 origin 是否可信任。"""
+    redirect_parts = _parse_origin_parts(redirect_origin)
+    if redirect_parts is None:
         return False
-    forwarded_host = request.META.get("HTTP_X_FORWARDED_HOST")
+
+    browser_origin = _split_first_header_value(request.META.get("HTTP_ORIGIN"))
+    if browser_origin:
+        return redirect_parts == _parse_origin_parts(browser_origin)
+
+    forwarded_host = _split_first_header_value(request.META.get("HTTP_X_FORWARDED_HOST"))
     if forwarded_host:
-        return parsed.netloc == forwarded_host
-    return parsed.netloc == request.get_host()
+        forwarded_proto = _split_first_header_value(request.META.get("HTTP_X_FORWARDED_PROTO")) or request.scheme
+        return redirect_parts == _parse_request_origin_parts(forwarded_proto, forwarded_host)
+
+    return redirect_parts == _parse_request_origin_parts(request.scheme, request.get_host())
 
 
 def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None) -> str:
     """生成 login_auth 回调地址。
 
     优先级:
-      1. ``redirect_origin``(同源校验通过时胜出,适用于反代/同源部署可见)
-      2. 环境变量 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL``
+      1. 环境变量 ``DEFAULT_ZONE_VAR_NODE_SERVER_URL``(单域名生产唯一可信源)
+      2. ``redirect_origin``(同源校验通过时作为 env 缺失 fallback)
       3. ``request.build_absolute_uri(...)``(典型 dev / 反代未配置场景)
       4. 空字符串
 
@@ -76,15 +127,15 @@ def get_login_auth_callback_uri(request=None, redirect_origin: str | None = None
       - 集成中心详情页「平台回调地址」展示
       - OAuth 启动流程中飞书/钉钉等 adapter 的 ``redirect_uri``
     """
-    base_url = os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", "").strip().rstrip("/")
+    base_url = _normalize_public_base_url(os.getenv("DEFAULT_ZONE_VAR_NODE_SERVER_URL", ""))
+    if base_url:
+        return f"{base_url}{LOGIN_AUTH_CALLBACK_PATH}"
     if (
         redirect_origin
         and request is not None
         and validate_redirect_origin(request, redirect_origin)
     ):
         return f"{redirect_origin.rstrip('/')}{LOGIN_AUTH_CALLBACK_PATH}"
-    if base_url:
-        return f"{base_url}{LOGIN_AUTH_CALLBACK_PATH}"
     if request is not None:
         return request.build_absolute_uri(LOGIN_AUTH_CALLBACK_PATH)
     return ""

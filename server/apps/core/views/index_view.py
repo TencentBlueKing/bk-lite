@@ -915,6 +915,8 @@ def start_login_auth(request):
 
         if not _is_safe_relative_callback_url(callback_url):
             return JsonResponse({"result": False, "message": "callback_url must be an in-site relative path"}, status=400)
+        if redirect_origin and not validate_redirect_origin(request, redirect_origin):
+            redirect_origin = None
 
         try:
             binding_id = int(binding_id)
