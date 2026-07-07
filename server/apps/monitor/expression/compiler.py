@@ -22,9 +22,15 @@ class _CompiledNode:
 
 
 class FormulaCompiler:
-    def __init__(self, query_condition: dict, metrics_by_id: dict[int, object]):
+    def __init__(
+        self,
+        query_condition: dict,
+        metrics_by_id: dict[int, object],
+        base_filters_by_ref: dict[str, list[dict]] | None = None,
+    ):
         self.query_condition = query_condition
         self.metrics_by_id = metrics_by_id
+        self.base_filters_by_ref = base_filters_by_ref or {}
         self.validation = validate_formula_condition(query_condition)
         self.inputs = {item["ref"]: item for item in query_condition["queries"]}
         self.anchor_group_by = self.inputs[self.validation.anchor_ref]["group_by"]
@@ -56,7 +62,11 @@ class FormulaCompiler:
     def _compile_variable(self, ref: str) -> _CompiledNode:
         item = self.inputs[ref]
         metric = self.metrics_by_id[item["metric_id"]]
-        base_query = compile_filter_to_query(metric.query, item.get("filter") or [])
+        base_query = compile_filter_to_query(
+            metric.query,
+            item.get("filter") or [],
+            base_filters=self.base_filters_by_ref.get(ref) or [],
+        )
         group_by = item.get("group_by") or []
         group_by_clause = ",".join(group_by)
         return _CompiledNode(query=f"{item['group_algorithm']}({base_query}) by ({group_by_clause})", group_by=list(group_by))

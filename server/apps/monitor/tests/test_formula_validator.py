@@ -37,6 +37,33 @@ def test_validate_formula_allows_subset_dimensions():
     assert result.warnings == []
 
 
+def test_validate_formula_uses_first_query_as_anchor_not_expression_order():
+    payload = formula(
+        expression="b / a * 100",
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ],
+    )
+
+    result = validate_formula_condition(payload)
+
+    assert result.anchor_ref == "a"
+    assert result.warnings == []
+
+
 def test_validate_formula_warns_cross_dimension_reuse():
     payload = formula(
         expression="a / b - c",
@@ -405,13 +432,12 @@ def test_validate_formula_normalizes_numeric_string_metric_id():
     assert payload["queries"][1]["metric_id"] == 2
 
 
-def test_validate_formula_rejects_expression_not_anchored_by_first_query():
+def test_validate_formula_allows_expression_not_anchored_by_first_query():
     payload = formula(expression="b / a * 100")
 
-    with pytest.raises(FormulaValidationError) as exc:
-        validate_formula_condition(payload)
+    result = validate_formula_condition(payload)
 
-    assert "首行指标变量 a" in str(exc.value)
+    assert result.anchor_ref == "a"
 
 
 def test_validate_formula_rejects_anchor_group_by_without_instance_id():

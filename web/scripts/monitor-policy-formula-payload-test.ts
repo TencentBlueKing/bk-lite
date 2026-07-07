@@ -170,14 +170,11 @@ assert.equal(formulaPreviewPayload?.query_condition.type, 'formula');
 if (formulaPreviewPayload?.query_condition.type === 'formula') {
   assert.deepEqual(formulaPreviewPayload.query_condition.queries[0].filter, [
     { name: 'service', method: '=', value: 'checkout' },
-    { logic: 'and', name: 'status', method: '=~', value: '5..' },
-    { name: 'instance_id', method: '=~', value: 'host\\.1' }
+    { logic: 'and', name: 'status', method: '=~', value: '5..' }
   ]);
   assert.deepEqual(formulaPreviewPayload.query_condition.queries[1].filter, [
     { name: 'service', method: '=', value: 'checkout' },
-    { logic: 'or', name: 'status', method: '=', value: '200' },
-    { name: 'node', method: '=~', value: 'host\\.1' },
-    { name: 'tenant', method: '=~', value: 'tenant\\(a\\)' }
+    { logic: 'or', name: 'status', method: '=', value: '200' }
   ]);
 }
 assert.equal(formulaPreviewPayload?.group_algorithm, 'sum');
@@ -189,6 +186,29 @@ assert.deepEqual(formulaPreviewPayload?.preview, {
   instance_id_values: ['host.1', 'tenant(a)'],
   duration_points: 30
 });
+
+const reversedExpressionPayload = buildMetricExpressionQueryCondition({
+  mode: 'formula',
+  resultName: 'HTTP 5xx 错误率',
+  expression: 'b / a * 100',
+  rows: formulaRows
+});
+
+assert.deepEqual(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'b / a * 100',
+    rows: formulaRows
+  }),
+  []
+);
+assert.equal(reversedExpressionPayload.type, 'formula');
+assert.equal(reversedExpressionPayload.expression, 'b / a * 100');
+assert.equal(reversedExpressionPayload.queries[0].ref, 'a');
+assert.deepEqual(reversedExpressionPayload.queries[0].group_by, [
+  'instance_id',
+  'status'
+]);
 
 const metricPreviewPayload = buildMetricExpressionPreviewPayload({
   monitorObjId: 'linux',
@@ -361,15 +381,6 @@ assertValidationIncludes(
     rows: formulaRows
   }),
   '表达式引用了不存在的变量：c'
-);
-
-assertValidationIncludes(
-  validateMetricExpressionPayload({
-    resultName: 'HTTP 5xx 错误率',
-    expression: 'b / a',
-    rows: formulaRows
-  }),
-  '表达式首个变量必须是首行指标变量 a'
 );
 
 assertValidationIncludes(

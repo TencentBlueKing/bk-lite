@@ -4,7 +4,9 @@ from copy import deepcopy
 
 from apps.core.exceptions.base_app_exception import BaseAppException
 from apps.monitor.expression.conditions import compile_filter_to_query
+from apps.monitor.expression.errors import FormulaError
 from apps.monitor.expression.query import build_formula_query
+from apps.monitor.expression.validators import validate_formula_condition
 from apps.monitor.models.monitor_metrics import Metric
 from apps.monitor.tasks.utils.policy_methods import (
     METHOD,
@@ -29,7 +31,10 @@ class PolicyPreviewService:
         group_algorithm = self.payload.get("group_algorithm")
         step = self._format_period(period)
         if query_condition.get("type") == "formula":
-            compiled_formula = build_formula_query(query_condition)
+            compiled_formula = build_formula_query(
+                query_condition,
+                base_filters_by_ref=self._build_formula_instance_filters(query_condition),
+            )
             metric_query = compiled_formula.query
             group_by = compiled_formula.group_by
             self.warnings.extend(compiled_formula.warnings)
@@ -109,6 +114,38 @@ class PolicyPreviewService:
                 }
             )
         return filters
+
+    def _build_formula_instance_filters(self, query_condition):
+        try:
+            validate_formula_condition(query_condition)
+        except FormulaError as exc:
+            raise BaseAppException(str(exc)) from exc
+
+        preview = self._require_dict("preview")
+        values = preview.get("instance_id_values")
+        if not values:
+            raise BaseAppException("preview.instance_id_values is required")
+
+        metric_ids = [item["metric_id"] for item in query_condition.get("queries") or []]
+        metrics = Metric.objects.filter(id__in=metric_ids)
+        metrics_by_id = {metric.id: metric for metric in metrics}
+
+        filters_by_ref = {}
+        for item in query_condition.get("queries") or []:
+            metric = metrics_by_id.get(item["metric_id"])
+            if not metric:
+                raise BaseAppException(f"metric does not exist [{item['metric_id']}]")
+            filters = []
+            for key, value in zip(getattr(metric, "instance_id_keys", []) or [], values):
+                filters.append(
+                    {
+                        "name": key,
+                        "method": "=~",
+                        "value": self._escape_regex_value(value),
+                    }
+                )
+            filters_by_ref[item["ref"]] = filters
+        return filters_by_ref
 
     @staticmethod
     def _escape_regex_value(value):

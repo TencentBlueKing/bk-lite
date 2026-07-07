@@ -64,7 +64,7 @@ def test_preview_formula_uses_compiled_query(mocker):
             "algorithm": "avg_over_time",
             "group_algorithm": "count",
             "group_by": ["instance_id"],
-            "preview": {"duration_points": 1},
+            "preview": {"duration_points": 1, "instance_id_values": ["host.1"]},
         }
     )
 
@@ -130,7 +130,7 @@ def test_preview_formula_returns_compiled_warnings(mocker):
             "algorithm": "avg_over_time",
             "group_algorithm": "avg",
             "group_by": ["instance_id"],
-            "preview": {"duration_points": 1},
+            "preview": {"duration_points": 1, "instance_id_values": ["host.1"]},
         }
     )
 
@@ -174,7 +174,7 @@ def test_preview_formula_rejects_invalid_metric_id_with_controlled_error(bad_met
             "algorithm": "avg_over_time",
             "group_algorithm": "avg",
             "group_by": ["instance_id"],
-            "preview": {"duration_points": 1},
+            "preview": {"duration_points": 1, "instance_id_values": ["host.1"]},
         }
     )
 
@@ -182,3 +182,80 @@ def test_preview_formula_rejects_invalid_metric_id_with_controlled_error(bad_met
         svc.preview()
 
     assert "metric_id" in str(exc.value)
+
+
+@pytest.mark.django_db
+def test_preview_formula_applies_instance_filter_to_each_or_branch(mocker):
+    obj = MonitorObject.objects.create(name="FormulaPreviewOrObj", level="base")
+    plugin = MonitorPlugin.objects.create(name="FormulaPreviewOrPlugin")
+    group = MetricGroup.objects.create(monitor_object=obj, monitor_plugin=plugin, name="g")
+    a = Metric.objects.create(
+        monitor_object=obj,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="a_metric",
+        query="a_metric{__$labels__}",
+        instance_id_keys=["instance_id"],
+    )
+    b = Metric.objects.create(
+        monitor_object=obj,
+        monitor_plugin=plugin,
+        metric_group=group,
+        name="b_metric",
+        query="b_metric{__$labels__}",
+        instance_id_keys=["node"],
+    )
+    captured = {}
+    api = mocker.patch("apps.monitor.tasks.utils.policy_methods.VictoriaMetricsAPI")
+
+    def fake_query_range(query, *args):
+        captured["query"] = query
+        return {"status": "success", "data": {"result": []}}
+
+    api.return_value.query_range.side_effect = fake_query_range
+
+    svc = PolicyPreviewService(
+        {
+            "query_condition": {
+                "type": "formula",
+                "result_name": "错误率",
+                "expression": "a / b",
+                "queries": [
+                    {
+                        "ref": "a",
+                        "metric_id": a.id,
+                        "filter": [
+                            {"name": "service", "method": "=", "value": "checkout"},
+                            {"logic": "or", "name": "status", "method": "=", "value": "500"},
+                        ],
+                        "group_algorithm": "sum",
+                        "group_by": ["instance_id", "status"],
+                    },
+                    {
+                        "ref": "b",
+                        "metric_id": b.id,
+                        "filter": [
+                            {"name": "service", "method": "=", "value": "checkout"},
+                            {"logic": "or", "name": "status", "method": "=", "value": "200"},
+                        ],
+                        "group_algorithm": "sum",
+                        "group_by": ["instance_id"],
+                    },
+                ],
+            },
+            "period": {"type": "min", "value": 5},
+            "algorithm": "avg_over_time",
+            "preview": {"instance_id_values": ["host.1"]},
+        }
+    )
+
+    svc.preview()
+
+    assert (
+        '(a_metric{instance_id=~"host\\\\.1",service="checkout"}) '
+        'or (a_metric{instance_id=~"host\\\\.1",status="500"})'
+    ) in captured["query"]
+    assert (
+        '(b_metric{node=~"host\\\\.1",service="checkout"}) '
+        'or (b_metric{node=~"host\\\\.1",status="200"})'
+    ) in captured["query"]

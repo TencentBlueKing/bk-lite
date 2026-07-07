@@ -129,13 +129,13 @@ def validate_formula_condition(query_condition: dict) -> FormulaValidationResult
         raise FormulaValidationError(f"指标变量 {', '.join(unused_refs)} 未被表达式引用")
 
     anchor_ref = str(queries[0].get("ref") or "")
-    if unique_variables[0] != anchor_ref:
-        raise FormulaValidationError(f"表达式首个变量必须是首行指标变量 {anchor_ref}")
     anchor_group_by = set(by_ref[anchor_ref].get("group_by") or [])
     if "instance_id" not in anchor_group_by:
         raise FormulaValidationError("公式锚点指标 group_by 必须包含 instance_id")
     warnings: list[dict] = []
-    for ref in unique_variables[1:]:
+    for ref in unique_variables:
+        if ref == anchor_ref:
+            continue
         group_by = set(by_ref[ref].get("group_by") or [])
         extra = sorted(group_by - anchor_group_by)
         if extra:
