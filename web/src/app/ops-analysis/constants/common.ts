@@ -13,6 +13,7 @@ export const getChartTypeList = (): ChartTypeItem[] => {
     { label: 'dataSource.table', value: 'table' },
     { label: 'dataSource.eventTable', value: 'eventTable' },
     { label: 'dataSource.topN', value: 'topN' },
+    { label: 'dataSource.room3D', value: 'room3D' },
   ];
 };
 

@@ -7,6 +7,7 @@ import type {
   NetworkStatusTopologyConfig,
   SceneWidgetType,
 } from './sceneWidget';
+import type { OpsAnalysisWidgetSurface } from '@/app/ops-analysis/utils/chartTypeSurface';
 
 export type FilterType = 'selector' | 'fixed';
 
@@ -112,6 +113,11 @@ export interface ValueConfig {
   gaugeMax?: number;
   gaugeShape?: 'semicircle' | 'circle';
   actions?: DashboardActionConfig[];
+  appearance?: ScreenWidgetAppearance;
+}
+
+export interface ScreenWidgetAppearance {
+  frame?: 'panel' | 'bare';
 }
 
 export interface ScreenRenderContext {
@@ -184,6 +190,7 @@ export interface ViewConfigProps {
   onClose?: () => void;
   builtinNamespaceId?: number;
   showChartThemeMode?: boolean;
+  surface?: OpsAnalysisWidgetSurface;
 }
 
 export interface ComponentSelectorConfigItem extends DatasourceItem {
@@ -198,6 +205,7 @@ export interface ComponentSelectorProps {
   visible: boolean;
   onCancel: () => void;
   onOpenConfig?: (item: ComponentSelectorConfigItem) => void;
+  surface?: OpsAnalysisWidgetSurface;
 }
 
 export interface BaseWidgetProps {

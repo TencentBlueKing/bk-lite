@@ -9,10 +9,12 @@ import {
 } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import type { ScreenWidgetItem } from '@/app/ops-analysis/types/screen';
+import { normalizeScreenWidgetAppearance } from '../utils/layout';
 
 interface ScreenWidgetFrameOptions {
   selected?: boolean;
   editMode?: boolean;
+  frame?: 'panel' | 'bare';
 }
 
 interface ScreenWidgetFrameProps extends ScreenWidgetFrameOptions {
@@ -42,6 +44,7 @@ export const getScreenWidgetFrameClassName = (
   return [
     'screen-widget-frame',
     emphasisClass,
+    options.frame === 'bare' ? 'screen-widget-frame--bare' : '',
     options.selected ? 'screen-widget-frame--selected' : '',
     options.editMode ? 'screen-widget-frame--editable' : '',
   ]
@@ -60,6 +63,8 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
   children,
 }) => {
   const { t } = useTranslation();
+  const frame = normalizeScreenWidgetAppearance(item.valueConfig?.appearance).frame;
+  const isBare = frame === 'bare';
   const menuItems: MenuProps['items'] = [
     {
       key: 'configure',
@@ -84,19 +89,43 @@ const ScreenWidgetFrame: React.FC<ScreenWidgetFrameProps> = ({
 
   return (
     <section
-      className={getScreenWidgetFrameClassName(item, { selected, editMode })}
+      className={getScreenWidgetFrameClassName(item, {
+        selected,
+        editMode,
+        frame,
+      })}
       style={{
         '--screen-widget-scale': screenDensity,
         '--screen-widget-ui-scale': screenUiScale,
       } as React.CSSProperties}
     >
-      <div className="screen-widget-frame__corners" aria-hidden="true" />
-      <header className="screen-widget-frame__header">
-        <span className="screen-widget-frame__title">
-          {item.title || item.chartType}
-        </span>
-        <span className="screen-widget-frame__signal" aria-hidden="true" />
-      </header>
+      {!isBare && (
+        <>
+          <div className="screen-widget-frame__corners" aria-hidden="true" />
+          <header className="screen-widget-frame__header screen-widget-frame__drag-handle">
+            <span className="screen-widget-frame__title">
+              {item.title || item.chartType}
+            </span>
+            <span className="screen-widget-frame__signal" aria-hidden="true" />
+          </header>
+        </>
+      )}
+      {isBare && editMode && (
+        <>
+          <div
+            className="screen-widget-frame__bare-header screen-widget-frame__drag-handle"
+            aria-hidden="true"
+          >
+            <span className="screen-widget-frame__title">
+              {item.title || item.chartType}
+            </span>
+          </div>
+          <div
+            className="screen-widget-frame__drag-surface screen-widget-frame__drag-handle"
+            aria-hidden="true"
+          />
+        </>
+      )}
       {editMode && (
         <div className="screen-widget-frame__actions">
           <Dropdown
