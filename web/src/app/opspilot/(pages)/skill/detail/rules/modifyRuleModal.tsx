@@ -5,10 +5,8 @@ import { Form, Input, Select, Button, Space, Row, Col, message } from 'antd';
 import { MinusCircleFilled, PlusOutlined } from '@ant-design/icons';
 import { useSearchParams } from 'next/navigation';
 import { useTranslation } from '@/utils/i18n';
-import { KnowledgeBase, KnowledgeBaseRagSource } from '@/app/opspilot/types/skill';
 import styles from './index.module.scss';
 import OperateModal from '@/components/operate-modal';
-import KnowledgeBaseSelector from '@/app/opspilot/components/skill/knowledgeBaseSelector';
 import { useSkillApi } from '@/app/opspilot/api/skill';
 
 const { Option } = Select;
@@ -22,34 +20,14 @@ interface ModifyRuleModalProps {
 
 const ModifyRuleModal: React.FC<ModifyRuleModalProps> = ({ visible, onCancel, onOk, initialValues }) => {
   const { t } = useTranslation();
-  const { fetchSkillDetail, fetchKnowledgeBases, createRule, updateRule } = useSkillApi(); // Use useSkillApi to access methods
+  const { createRule, updateRule } = useSkillApi(); // Use useSkillApi to access methods
   const searchParams = useSearchParams();
   const id = searchParams ? searchParams.get('id') : null;
   const [form] = Form.useForm();
-  const [loading, setLoading] = useState(false);
+  const [loading] = useState(false);
   const [confirmLoading, setConfirmLoading] = useState(false);
   const addButtonRef = useRef<{ add: () => void }>({ add: () => {} });
-  const [knowledgeBases, setKnowledgeBases] = useState<KnowledgeBase[]>([]);
-  const [ragSources, setRagSources] = useState<KnowledgeBaseRagSource[]>([]);
-  const [selectedKnowledgeBases, setSelectedKnowledgeBases] = useState<number[]>([]);
   const [conditionsCount, setConditionsCount] = useState(1);
-
-  useEffect(() => {
-    const fetchData = async () => {
-      setLoading(true);
-      try {
-        const { knowledge_base: knowledgeBase } = await fetchSkillDetail(id);
-        const data = await fetchKnowledgeBases();
-        setKnowledgeBases(data.filter((item: KnowledgeBase) => knowledgeBase.includes(item.id)));
-      } catch (error) {
-        console.error(t('common.fetchFailed'), error);
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    if (id) fetchData();
-  }, [id]);
 
   useEffect(() => {
     if (initialValues) {
@@ -57,20 +35,10 @@ const ModifyRuleModal: React.FC<ModifyRuleModalProps> = ({ visible, onCancel, on
         ...initialValues,
         skill_prompt: initialValues.action_set?.skill_prompt
       });
-      const { conditions, action_set: actionSet } = initialValues;
+      const { conditions } = initialValues;
       setConditionsCount(conditions?.length || 1);
-      const selectedKnowledgeBaseIds = actionSet?.knowledge_base_list || [];
-      setSelectedKnowledgeBases(selectedKnowledgeBaseIds);
-      const selectedRagSources = knowledgeBases.filter(source => selectedKnowledgeBaseIds.includes(source.id)).map(source => ({
-        id: source.id,
-        name: source.name,
-        introduction: source.introduction || '',
-      })) as KnowledgeBaseRagSource[];
-      setRagSources(selectedRagSources);
     } else {
       form.resetFields();
-      setRagSources([]);
-      setSelectedKnowledgeBases([]);
       setConditionsCount(1);
     }
   }, [visible, initialValues, form]);
@@ -105,7 +73,6 @@ const ModifyRuleModal: React.FC<ModifyRuleModalProps> = ({ visible, onCancel, on
         action: values.action,
         action_set: {
           skill_prompt: values.skill_prompt,
-          knowledge_base_list: selectedKnowledgeBases,
         },
       };
 
@@ -257,7 +224,7 @@ const ModifyRuleModal: React.FC<ModifyRuleModalProps> = ({ visible, onCancel, on
           rules={[{ required: true, message: t('common.inputRequired') }]}
         >
           <Select rootClassName='mb-5' placeholder={t('skill.rules.action')} className="w-full" defaultValue={0}>
-            <Option value={0}>Use defined knowledge and prompt</Option>
+            <Option value={0}>Use defined prompt</Option>
           </Select>
           <div className={`p-4 rounded-md ${styles.ruleContainer}`}>
             <Form.Item
@@ -265,18 +232,6 @@ const ModifyRuleModal: React.FC<ModifyRuleModalProps> = ({ visible, onCancel, on
               label={t('skill.rules.prompt')}
             >
               <Input.TextArea />
-            </Form.Item>
-            <Form.Item
-              label={t('skill.rules.knowledgeBase')}
-            >
-              <KnowledgeBaseSelector
-                showScore={false}
-                ragSources={ragSources}
-                setRagSources={setRagSources}
-                knowledgeBases={knowledgeBases}
-                selectedKnowledgeBases={selectedKnowledgeBases}
-                setSelectedKnowledgeBases={setSelectedKnowledgeBases}
-              />
             </Form.Item>
           </div>
         </Form.Item>

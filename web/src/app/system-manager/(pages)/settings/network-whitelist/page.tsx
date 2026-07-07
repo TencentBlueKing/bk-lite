@@ -151,7 +151,7 @@ const NetworkWhitelistPage: React.FC = () => {
         onOk={handleSave}
         confirmLoading={saving}
         onCancel={() => setModalOpen(false)}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical">
           <Form.Item

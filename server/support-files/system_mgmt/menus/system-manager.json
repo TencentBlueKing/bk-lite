@@ -37,8 +37,18 @@
           ]
         },
         {
-          "id": "auth_sources",
-          "name": "Auth Sources",
+          "id": "login_auth",
+          "name": "Login Auth",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
+        },
+        {
+          "id": "user_sync",
+          "name": "User Sync",
           "operation": [
             "View",
             "Edit",
@@ -130,6 +140,31 @@
             "Delete",
             "Add"
           ]
+        },
+        {
+          "id": "im_notification",
+          "name": "IM Notification",
+          "operation": [
+            "View",
+            "Edit",
+            "Delete",
+            "Add"
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Integration Center",
+      "children": [
+        {
+          "id": "integration_center",
+          "name": "Integration Center",
+          "operation": [
+            "View",
+            "Edit",
+            "Add",
+            "Delete"
+          ]
         }
       ]
     },
@@ -190,10 +225,14 @@
         "user_group-Edit Group",
         "user_group-Delete Group",
         "user_group-Delete User",
-        "auth_sources-View",
-        "auth_sources-Add",
-        "auth_sources-Edit",
-        "auth_sources-Delete",
+        "login_auth-View",
+        "login_auth-Add",
+        "login_auth-Edit",
+        "login_auth-Delete",
+        "user_sync-View",
+        "user_sync-Add",
+        "user_sync-Edit",
+        "user_sync-Delete",
         "security_settings-View",
         "security_settings-Add",
         "security_settings-Edit",

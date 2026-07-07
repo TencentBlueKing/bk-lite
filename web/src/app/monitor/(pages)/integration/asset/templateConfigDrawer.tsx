@@ -327,7 +327,7 @@ const TemplateConfigDrawer = forwardRef<TemplateDrawerRef, ModalSuccess>(
           title={instanceName || '--'}
           open={visible}
           width={showLeftPanel ? 800 : 600}
-          destroyOnClose
+          destroyOnHidden
           onClose={handleCancel}
         >
           <div className="flex h-full">

@@ -3,7 +3,7 @@
 from rest_framework.exceptions import PermissionDenied
 
 from apps.core.utils.team_utils import get_current_team
-from apps.opspilot.models import Bot, KnowledgeBase
+from apps.opspilot.models import Bot
 
 
 class TeamPermissionMixin:
@@ -58,24 +58,3 @@ class TeamPermissionMixin:
             msg = loader.get("error.no_permission_access_bot") if loader else "无权访问该 Bot 的数据"
             raise PermissionDenied(msg)
         return current_team
-
-    def _validate_knowledge_base_permission(self, request, knowledge_base_id):
-        """验证用户对知识库的 current_team 权限，返回 knowledge_base 对象"""
-        loader = getattr(self, "loader", None)
-        not_found_msg = loader.get("error.knowledge_base_not_found") if loader else "知识库不存在"
-        no_team_msg = loader.get("error.no_permission_access_team") if loader else "无权访问该团队数据"
-        no_kb_msg = loader.get("error.no_permission_access_knowledge_base") if loader else "无权访问该知识库"
-
-        knowledge_base = KnowledgeBase.objects.filter(id=knowledge_base_id).first()
-        if not knowledge_base:
-            raise PermissionDenied(not_found_msg)
-
-        if not getattr(request.user, "is_superuser", False):
-            current_team = self._parse_current_team_cookie(request)
-            user_group_ids = {g["id"] for g in getattr(request.user, "group_list", [])}
-            if current_team not in user_group_ids:
-                raise PermissionDenied(no_team_msg)
-            if current_team not in (knowledge_base.team or []):
-                raise PermissionDenied(no_kb_msg)
-
-        return knowledge_base

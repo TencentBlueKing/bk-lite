@@ -102,6 +102,27 @@ def test_init_source_api_data_creates_tags_and_sources(settings):
 
 
 @pytest.mark.django_db
+def test_init_source_api_data_creates_room3d_datasource(settings):
+    settings.NATS_SERVERS = "nats://admin:secret@127.0.0.1:4222"
+    call_command("init_default_namespace")
+    call_command("init_source_api_data")
+
+    source = DataSourceAPIModel.objects.get(name="CMDB 3D机房布局", rest_api="cmdb/get_room3d_layout")
+
+    assert source.chart_type == ["room3D"]
+    assert source.params == [
+        {
+            "name": "server_room_id",
+            "type": "string",
+            "value": "",
+            "alias_name": "机房ID",
+            "filterType": "params",
+        }
+    ]
+    assert list(source.tag.values_list("tag_id", flat=True)) == ["cmdb"]
+
+
+@pytest.mark.django_db
 def test_init_source_api_data_without_namespace_aborts():
     # 无默认命名空间 → 标签会创建，但数据源初始化提前返回
     call_command("init_source_api_data")

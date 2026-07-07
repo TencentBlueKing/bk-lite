@@ -278,7 +278,7 @@ const PortLinkModal: React.FC<PortLinkModalProps> = ({
         onCancel={onCancel}
         onOk={handleOk}
         confirmLoading={submitting}
-        destroyOnClose
+        destroyOnHidden
       >
         <Spin spinning={loading}>
           <div className={topoStyle.portLinkBody}>
@@ -299,7 +299,7 @@ const PortLinkModal: React.FC<PortLinkModalProps> = ({
         onCancel={closeCreateModal}
         onOk={handleCreateOk}
         confirmLoading={submitting}
-        destroyOnClose
+        destroyOnHidden
       >
         <Form form={form} layout="vertical" className={topoStyle.portCreateForm}>
           {miniFields.map((a) => (

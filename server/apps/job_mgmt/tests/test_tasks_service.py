@@ -11,7 +11,7 @@ from django.utils import timezone
 
 from apps.job_mgmt import tasks
 from apps.job_mgmt.constants import ConcurrencyPolicy, DangerousLevel, ExecutionStatus, JobType
-from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, ScheduledTask
+from apps.job_mgmt.models import DangerousPath, DangerousRule, DistributionFile, JobExecution, ScheduledTask, Script
 
 pytestmark = [pytest.mark.unit, pytest.mark.django_db]
 
@@ -102,6 +102,15 @@ class TestExecuteScheduledTask:
         DangerousRule.objects.create(name="no-rm", pattern="rm -rf", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
         st = _task(script_content="rm -rf /")
         tasks.execute_scheduled_task(st.id)
+        assert JobExecution.objects.filter(scheduled_task=st).count() == 0
+
+    def test_dangerous_script_library_content_blocks(self):
+        DangerousRule.objects.create(name="no-rm", pattern="rm -rf", level=DangerousLevel.FORBIDDEN, is_enabled=True, team=[])
+        script = Script.objects.create(name="lib", content="rm -rf /", script_type="shell", team=[1])
+        st = _task(script=script, script_content="")
+
+        tasks.execute_scheduled_task(st.id)
+
         assert JobExecution.objects.filter(scheduled_task=st).count() == 0
 
     def test_dangerous_path_blocks_file_distribution(self):

@@ -1,31 +1,37 @@
-import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
-import { Spin } from 'antd';
-import { useTranslation } from '@/utils/i18n';
+import React, {
+  useState,
+  useEffect,
+  useCallback,
+  useMemo,
+  useRef,
+} from "react";
+import { Spin } from "antd";
+import { useTranslation } from "@/utils/i18n";
 import {
   FilterValue,
   ScreenRenderContext,
   UnifiedFilterDefinition,
   ValueConfig,
-} from '@/app/ops-analysis/types/dashBoard';
-import { DatasourceItem } from '@/app/ops-analysis/types/dataSource';
+} from "@/app/ops-analysis/types/dashBoard";
+import { DatasourceItem } from "@/app/ops-analysis/types/dataSource";
 import {
   buildWidgetRequestParams,
   buildWidgetRequestSignatureParams,
-} from '@/app/ops-analysis/utils/widgetDataTransform';
-import { fetchCompareData } from '@/app/ops-analysis/utils/compareQuery';
-import { useDataSourceApi } from '@/app/ops-analysis/api/dataSource';
-import { ChartDataTransformer } from '@/app/ops-analysis/utils/chartDataTransform';
-import { getRequestErrorMessage } from '@/app/ops-analysis/utils/requestError';
-import { getValueByPath } from '@/app/ops-analysis/utils/objectPath';
+} from "@/app/ops-analysis/utils/widgetDataTransform";
+import { fetchCompareData } from "@/app/ops-analysis/utils/compareQuery";
+import { useDataSourceApi } from "@/app/ops-analysis/api/dataSource";
+import { ChartDataTransformer } from "@/app/ops-analysis/utils/chartDataTransform";
+import { getRequestErrorMessage } from "@/app/ops-analysis/utils/requestError";
+import { getValueByPath } from "@/app/ops-analysis/utils/objectPath";
 import {
   buildWidgetRequestCacheKey,
   getCachedWidgetRequest,
   setWidgetRequestFailureCache,
   setWidgetRequestSuccessCache,
-} from '@/app/ops-analysis/utils/widgetRequestCache';
-import { buildWidgetRequestVersionKey } from '@/app/ops-analysis/utils/widgetRequestVersion';
-import WidgetRenderer from '@/app/ops-analysis/components/widgetRenderer';
-import WidgetErrorState from '@/app/ops-analysis/components/widgetErrorState';
+} from "@/app/ops-analysis/utils/widgetRequestCache";
+import { buildWidgetRequestVersionKey } from "@/app/ops-analysis/utils/widgetRequestVersion";
+import WidgetRenderer from "@/app/ops-analysis/components/widgetRenderer";
+import WidgetErrorState from "@/app/ops-analysis/components/widgetErrorState";
 
 const validateTopNData = (
   data: unknown,
@@ -37,7 +43,7 @@ const validateTopNData = (
   }
 
   if (!Array.isArray(data)) {
-    return { isValid: false, message: errorMessage || '数据格式不匹配' };
+    return { isValid: false, message: errorMessage || "数据格式不匹配" };
   }
 
   const labelField = config?.topNLabelField;
@@ -48,26 +54,27 @@ const validateTopNData = (
       const rawName = getValueByPath(item, labelField);
       const rawValue = getValueByPath(item, valueField);
       const name =
-        rawName === undefined || rawName === null ? '' : String(rawName).trim();
+        rawName === undefined || rawName === null ? "" : String(rawName).trim();
       const value = Number(rawValue);
       return !!name && !Number.isNaN(value);
     }
 
-    if (!item || typeof item !== 'object') {
+    if (!item || typeof item !== "object") {
       return false;
     }
 
     const rawName = getValueByPath(item, labelField);
     const rawValue = getValueByPath(item, valueField);
 
-    const name = rawName === undefined || rawName === null ? '' : String(rawName).trim();
+    const name =
+      rawName === undefined || rawName === null ? "" : String(rawName).trim();
     const value = Number(rawValue);
     return !!name && !Number.isNaN(value);
   });
 
   return hasValidData
     ? { isValid: true }
-    : { isValid: false, message: errorMessage || '数据格式不匹配' };
+    : { isValid: false, message: errorMessage || "数据格式不匹配" };
 };
 
 const validateGaugeData = (
@@ -80,11 +87,11 @@ const validateGaugeData = (
 
   const selectedField = config?.selectedFields?.[0];
   const failMessage =
-    '数据结构不符：仪表盘期望 number，或包含数值字段的对象/数组（可通过“展示字段”指定）';
+    "数据结构不符：仪表盘期望 number，或包含数值字段的对象/数组（可通过“展示字段”指定）";
 
   const hasNumericValue = (value: unknown) => {
-    if (typeof value === 'number') return Number.isFinite(value);
-    if (typeof value === 'string') {
+    if (typeof value === "number") return Number.isFinite(value);
+    if (typeof value === "string") {
       const parsed = Number(value);
       return Number.isFinite(parsed);
     }
@@ -93,7 +100,7 @@ const validateGaugeData = (
 
   if (Array.isArray(data)) {
     const firstItem = data[0];
-    if (selectedField && firstItem && typeof firstItem === 'object') {
+    if (selectedField && firstItem && typeof firstItem === "object") {
       return hasNumericValue(getValueByPath(firstItem, selectedField))
         ? { isValid: true }
         : { isValid: false, message: failMessage };
@@ -103,7 +110,7 @@ const validateGaugeData = (
       return { isValid: true };
     }
 
-    if (firstItem && typeof firstItem === 'object') {
+    if (firstItem && typeof firstItem === "object") {
       const values = Object.values(firstItem as Record<string, unknown>);
       return values.some((item) => hasNumericValue(item))
         ? { isValid: true }
@@ -113,7 +120,7 @@ const validateGaugeData = (
     return { isValid: false, message: failMessage };
   }
 
-  if (typeof data === 'object') {
+  if (typeof data === "object") {
     if (selectedField) {
       return hasNumericValue(getValueByPath(data, selectedField))
         ? { isValid: true }
@@ -139,12 +146,12 @@ const validateEventTableData = (
   }
 
   const failMessage =
-    '数据结构不符：事件表期望数组，或包含 items 数组的分页结构';
+    "数据结构不符：事件表期望数组，或包含 items 数组的分页结构";
 
   const list = Array.isArray(data)
     ? data
     : data &&
-        typeof data === 'object' &&
+        typeof data === "object" &&
         Array.isArray((data as Record<string, unknown>).items)
       ? ((data as Record<string, unknown>).items as unknown[])
       : null;
@@ -158,7 +165,7 @@ const validateEventTableData = (
   }
 
   const hasExpectedRow = list.some((item) => {
-    return Boolean(item) && typeof item === 'object';
+    return Boolean(item) && typeof item === "object";
   });
 
   return hasExpectedRow
@@ -212,7 +219,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   filterDefinitions,
   filterSearchVersion = 0,
   namespaceSearchVersion = 0,
-  reloadVersion = '0:0',
+  reloadVersion = "0:0",
   builtinNamespaceId,
   screenRenderContext,
 }) => {
@@ -229,7 +236,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     { page: 1, page_size: 20 },
   );
   const { getSourceDataByApiId } = useDataSourceApi();
-  const isSceneWidget = config?.sceneWidgetType === 'networkStatusTopology';
+  const isSceneWidget = config?.sceneWidgetType === "networkStatusTopology";
 
   const fetchIdRef = useRef(0);
   const tableQueryKey = useMemo(
@@ -237,12 +244,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [tableQueryParams],
   );
   const normalizedDataSourceId = useMemo(() => {
-    if (typeof config?.dataSource === 'string') {
+    if (typeof config?.dataSource === "string") {
       return parseInt(config.dataSource, 10);
     }
     return config?.dataSource;
   }, [config?.dataSource]);
-  const isTableLikeChart = chartType === 'table' || chartType === 'eventTable';
+  const isTableLikeChart = chartType === "table" || chartType === "eventTable";
   const widgetUsesNamespace = useMemo(
     () =>
       Array.isArray(dataSource?.namespaces) && dataSource.namespaces.length > 0,
@@ -331,7 +338,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       compare: Boolean(config?.compare),
       requestParams: requestSignatureParams,
     });
-  }, [config?.compare, isSceneWidget, normalizedDataSourceId, requestSignatureParams]);
+  }, [
+    config?.compare,
+    isSceneWidget,
+    normalizedDataSourceId,
+    requestSignatureParams,
+  ]);
 
   const hasEnabledFilterBindings = useMemo(() => {
     const bindings = config?.filterBindings;
@@ -387,20 +399,20 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         return { isValid: true };
       }
 
-      const errorMessage = t('dashboard.dataFormatMismatch');
+      const errorMessage = t("dashboard.dataFormatMismatch");
       switch (type) {
-        case 'pie':
+        case "pie":
           return ChartDataTransformer.validatePieData(data, errorMessage);
-        case 'line':
-        case 'bar':
+        case "line":
+        case "bar":
           return ChartDataTransformer.validateLineBarData(data, errorMessage);
-        case 'topN':
+        case "topN":
           return validateTopNData(data, config, errorMessage);
-        case 'gauge':
+        case "gauge":
           return validateGaugeData(data, config);
-        case 'eventTable':
+        case "eventTable":
           return validateEventTableData(data);
-        case 'table':
+        case "table":
           return { isValid: true };
         default:
           return { isValid: true };
@@ -409,9 +421,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
     [config, t],
   );
 
-  const fetchDataRef = useRef<
-    (key: string) => Promise<void>
-      >(undefined!);
+  const fetchDataRef = useRef<(key: string) => Promise<void>>(undefined!);
   fetchDataRef.current = async (requestKey: string) => {
     if (!normalizedDataSourceId) {
       return;
@@ -437,7 +447,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
             ...(widgetUsesNamespace && effectiveNamespaceId !== undefined
               ? { namespace_id: effectiveNamespaceId }
               : {}),
-            ...(chartType === 'table' ? tableQueryParams : {}),
+            ...(chartType === "table" ? tableQueryParams : {}),
           },
           unifiedFilterValues,
           filterBindings: config?.filterBindings,
@@ -459,12 +469,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       });
     } catch (err) {
       if (currentFetchId !== fetchIdRef.current) return;
-      console.error('获取数据失败:', err);
+      console.error("获取数据失败:", err);
       setRawData(null);
       setBaselineData(null);
       const message = getRequestErrorMessage(
         err,
-        t('dashboard.dataFetchFailed'),
+        t("dashboard.dataFetchFailed"),
       );
       setDataValidation({
         isValid: false,
@@ -513,11 +523,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
       setTableLoading(false);
       setDataValidation({
         isValid: false,
-        message: t('common.noAuth'),
+        message: t("common.noAuth"),
       });
       return;
     }
-  }, [isSceneWidget, normalizedDataSourceId, dataSource, dataSource?.hasAuth, t]);
+  }, [
+    isSceneWidget,
+    normalizedDataSourceId,
+    dataSource,
+    dataSource?.hasAuth,
+    t,
+  ]);
 
   const previousRequestRef = useRef<{
     signature: string | null;
@@ -554,7 +570,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           isValid: false,
           message: cached.errorMessage,
         }
-        : validateChartData(cached.rawData, chartType)
+        : validateChartData(cached.rawData, chartType),
     );
     setLoading(false);
     setTableLoading(false);
@@ -647,10 +663,19 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   const renderError = (message: string) => (
     <WidgetErrorState message={message} />
   );
+  const hasRawPayload = rawData !== null && rawData !== undefined;
+  const isWaitingForRoom3DInitialData =
+    chartType === "room3D" &&
+    !isSceneWidget &&
+    !isTableLikeChart &&
+    Boolean(normalizedDataSourceId) &&
+    !hasRawPayload &&
+    !dataValidation &&
+    (!requestEnabled || !previousRequestRef.current.hasRequested);
 
   if (isSceneWidget) {
     return (
-      <div style={{ position: 'relative', height: '100%' }}>
+      <div style={{ position: "relative", height: "100%" }}>
         <WidgetRenderer
           chartType={chartType}
           rawData={null}
@@ -660,17 +685,17 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
           screenRenderContext={screenRenderContext}
           onReady={onReady}
           fallback={renderError(
-            `${t('dashboard.unknownComponentType')}: ${chartType}`,
+            `${t("dashboard.unknownComponentType")}: ${chartType}`,
           )}
         />
       </div>
     );
   }
 
-  if (loading && !isTableLikeChart) {
+  if ((loading && !isTableLikeChart) || isWaitingForRoom3DInitialData) {
     return (
       <div className="h-full flex items-center justify-center">
-        <Spin spinning={loading} />
+        <Spin spinning />
       </div>
     );
   }
@@ -678,12 +703,12 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
   // 如果数据校验失败，显示错误提示
   if (dataValidation && !dataValidation.isValid) {
     return renderError(
-      dataValidation.message || t('dashboard.dataCannotRenderAsChart'),
+      dataValidation.message || t("dashboard.dataCannotRenderAsChart"),
     );
   }
 
   return (
-    <div style={{ position: 'relative', height: '100%' }}>
+    <div style={{ position: "relative", height: "100%" }}>
       <WidgetRenderer
         chartType={chartType}
         rawData={rawData}
@@ -696,7 +721,7 @@ const WidgetWrapper: React.FC<WidgetWrapperProps> = ({
         onReady={onReady}
         onQueryChange={isTableLikeChart ? handleTableQueryChange : undefined}
         fallback={renderError(
-          `${t('dashboard.unknownComponentType')}: ${chartType}`,
+          `${t("dashboard.unknownComponentType")}: ${chartType}`,
         )}
       />
     </div>

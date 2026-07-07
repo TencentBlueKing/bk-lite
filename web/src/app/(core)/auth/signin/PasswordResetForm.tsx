@@ -1,6 +1,7 @@
 "use client";
 import { useState } from "react";
 import { Input, Button } from "antd";
+import { useTranslation } from "@/utils/i18n";
 
 interface LoginResponse {
   temporary_pwd?: boolean;
@@ -29,17 +30,18 @@ export default function PasswordResetForm({
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
   const [isLoading, setIsLoading] = useState(false);
+  const { t } = useTranslation();
 
   const handlePasswordReset = async (e: React.FormEvent) => {
     e.preventDefault();
     
     if (newPassword !== confirmPassword) {
-      onError("Passwords do not match");
+      onError(t('signin.errors.passwordMismatch'));
       return;
     }
     
     if (newPassword.length < 8) {
-      onError("Password must be at least 8 characters long");
+      onError(t('signin.errors.passwordTooShort'));
       return;
     }
     
@@ -61,7 +63,7 @@ export default function PasswordResetForm({
       const responseData = await response.json();
       
       if (!response.ok || !responseData.result) {
-        onError(responseData.message || "Password reset failed");
+        onError(responseData.message || t('signin.errors.passwordResetFailed'));
         setIsLoading(false);
         return;
       }
@@ -72,7 +74,7 @@ export default function PasswordResetForm({
       
     } catch (error) {
       console.error("Error resetting password:", error);
-      onError(error instanceof Error ? error.message : "An unknown error occurred");
+      onError(error instanceof Error ? error.message : t('signin.errors.unknown'));
       setIsLoading(false);
     }
   };
@@ -80,13 +82,13 @@ export default function PasswordResetForm({
   return (
     <div>
       <div className="text-center mb-6">
-        <h3 className="text-xl font-semibold text-[var(--color-text-1)]">Reset</h3>
-        <p className="text-gray-500 mt-2">You are using a temporary password. Please create a new password to continue.</p>
+        <h3 className="text-xl font-semibold text-[var(--color-text-1)]">{t('signin.passwordReset.title')}</h3>
+        <p className="text-gray-500 mt-2">{t('signin.passwordReset.description')}</p>
       </div>
       
       <form onSubmit={handlePasswordReset} className="flex flex-col space-y-6 w-full">
         <div className="space-y-2">
-          <label htmlFor="username-display" className="text-sm font-medium text-[var(--color-text-1)]">Username</label>
+          <label htmlFor="username-display" className="text-sm font-medium text-[var(--color-text-1)]">{t('signin.form.username')}</label>
           <Input
             id="username-display"
             type="text"
@@ -98,10 +100,10 @@ export default function PasswordResetForm({
         </div>
         
         <div className="space-y-2">
-          <label htmlFor="new-password" className="text-sm font-medium text-[var(--color-text-1)]">New Password</label>
+          <label htmlFor="new-password" className="text-sm font-medium text-[var(--color-text-1)]">{t('signin.passwordReset.newPassword')}</label>
           <Input.Password
             id="new-password"
-            placeholder="Enter new password"
+            placeholder={t('signin.passwordReset.newPasswordPlaceholder')}
             value={newPassword}
             onChange={(e) => setNewPassword(e.target.value)}
             className="w-full"
@@ -111,10 +113,10 @@ export default function PasswordResetForm({
         </div>
         
         <div className="space-y-2">
-          <label htmlFor="confirm-password" className="text-sm font-medium text-[var(--color-text-1)]">Confirm Password</label>
+          <label htmlFor="confirm-password" className="text-sm font-medium text-[var(--color-text-1)]">{t('signin.passwordReset.confirmPassword')}</label>
           <Input.Password
             id="confirm-password"
-            placeholder="Confirm new password"
+            placeholder={t('signin.passwordReset.confirmPasswordPlaceholder')}
             value={confirmPassword}
             onChange={(e) => setConfirmPassword(e.target.value)}
             className="w-full"
@@ -130,7 +132,7 @@ export default function PasswordResetForm({
           className="w-full"
           size="large"
         >
-          Reset Password
+          {t('signin.passwordReset.submit')}
         </Button>
       </form>
     </div>

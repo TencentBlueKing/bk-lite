@@ -1,0 +1,372 @@
+.room3D {
+  --room3d-ui-scale: var(--screen-widget-ui-scale, 1);
+
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 180px;
+  overflow: hidden;
+  color: rgba(235, 248, 255, 0.94);
+  background: #08111f;
+  border-radius: 6px;
+}
+
+.room3DImmersive {
+  background: transparent;
+  border-radius: 0;
+}
+
+.canvas {
+  width: 100%;
+  height: 100%;
+}
+
+.canvas canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.stateBox {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  min-height: 160px;
+  padding: 16px;
+  background: rgba(8, 17, 31, 0.96);
+}
+
+.stateContent {
+  display: grid;
+  gap: 14px;
+  width: min(560px, 100%);
+}
+
+.topBar {
+  position: absolute;
+  top: calc(10px * var(--room3d-ui-scale));
+  left: calc(10px * var(--room3d-ui-scale));
+  right: calc(10px * var(--room3d-ui-scale));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: calc(8px * var(--room3d-ui-scale));
+  pointer-events: none;
+}
+
+.room3DImmersive .topBar,
+.room3DImmersive .noticePanel,
+.room3DImmersive .legend {
+  opacity: 0;
+  transform: translateY(-4px);
+  transition:
+    opacity 140ms ease,
+    transform 140ms ease;
+}
+
+.room3DImmersive:hover .topBar,
+.room3DImmersive:focus-within .topBar,
+.room3DImmersive.room3DChromeVisible .topBar,
+.room3DImmersive:hover .noticePanel,
+.room3DImmersive:focus-within .noticePanel,
+.room3DImmersive.room3DChromeVisible .noticePanel,
+.room3DImmersive:hover .legend,
+.room3DImmersive:focus-within .legend,
+.room3DImmersive.room3DChromeVisible .legend {
+  opacity: 1;
+  transform: translateY(0);
+}
+
+.topBar :global(.ant-btn) {
+  pointer-events: auto;
+  width: calc(28px * var(--room3d-ui-scale));
+  min-width: calc(28px * var(--room3d-ui-scale));
+  height: calc(28px * var(--room3d-ui-scale));
+  padding: 0;
+  font-size: calc(14px * var(--room3d-ui-scale));
+  color: rgba(235, 248, 255, 0.88);
+  background: rgba(10, 22, 39, 0.82);
+  border-color: rgba(125, 211, 252, 0.28);
+  border-radius: calc(6px * var(--room3d-ui-scale));
+}
+
+.topBar :global(.ant-btn .anticon) {
+  font-size: inherit;
+}
+
+.roomTitle {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  max-width: calc(100% - (48px * var(--room3d-ui-scale)));
+  height: calc(28px * var(--room3d-ui-scale));
+  padding: 0 calc(10px * var(--room3d-ui-scale));
+  overflow: hidden;
+  font-size: calc(13px * var(--room3d-ui-scale));
+  line-height: calc(28px * var(--room3d-ui-scale));
+  color: rgba(235, 248, 255, 0.88);
+  pointer-events: none;
+  background: rgba(10, 22, 39, 0.78);
+  border: 1px solid rgba(125, 211, 252, 0.2);
+  border-radius: calc(6px * var(--room3d-ui-scale));
+}
+
+.roomTitleLabel,
+.roomTitleCount {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+.roomTitleLabel {
+  color: rgba(186, 230, 253, 0.78);
+}
+
+.roomTitleName {
+  min-width: 0;
+  overflow: hidden;
+  font-size: calc(13px * var(--room3d-ui-scale));
+  font-weight: 600;
+  color: #eafbff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.roomTitleCount {
+  margin-left: calc(8px * var(--room3d-ui-scale));
+  font-size: calc(13px * var(--room3d-ui-scale));
+  color: #7dd3fc;
+}
+
+.noticePanel {
+  position: absolute;
+  top: calc(48px * var(--room3d-ui-scale));
+  left: calc(10px * var(--room3d-ui-scale));
+  z-index: 2;
+  display: grid;
+  gap: calc(6px * var(--room3d-ui-scale));
+  width: min(
+    calc(460px * var(--room3d-ui-scale)),
+    calc(100% - (20px * var(--room3d-ui-scale)))
+  );
+  max-height: min(38%, 180px);
+  padding: calc(10px * var(--room3d-ui-scale))
+    calc(12px * var(--room3d-ui-scale));
+  overflow: auto;
+  font-size: calc(13px * var(--room3d-ui-scale));
+  line-height: calc(20px * var(--room3d-ui-scale));
+  color: rgba(255, 251, 235, 0.96);
+  background: rgba(56, 40, 11, 0.86);
+  border: 1px solid rgba(251, 191, 36, 0.42);
+  border-radius: calc(6px * var(--room3d-ui-scale));
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.24);
+}
+
+.noticePanel strong {
+  font-weight: 600;
+}
+
+.legend {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
+  max-width: 72%;
+  padding: 6px 8px;
+  font-size: 11px;
+  line-height: 16px;
+  background: rgba(10, 22, 39, 0.78);
+  border: 1px solid rgba(125, 211, 252, 0.18);
+  border-radius: 6px;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  white-space: nowrap;
+}
+
+.legendItem i {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  box-shadow: 0 0 8px currentColor;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 1200;
+  display: grid;
+  gap: 2px;
+  min-width: 108px;
+  max-width: 220px;
+  transform: translate(8px, -50%);
+  padding: 7px 9px;
+  font-size: 12px;
+  line-height: 18px;
+  color: rgba(235, 248, 255, 0.96);
+  pointer-events: none;
+  background: rgba(5, 12, 24, 0.92);
+  border: 1px solid rgba(125, 211, 252, 0.28);
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+}
+
+.tooltip strong {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tooltip span {
+  color: rgba(186, 230, 253, 0.84);
+}
+
+.infoPanel {
+  position: absolute;
+  left: 10px;
+  bottom: 10px;
+  width: min(270px, calc(100% - 20px));
+  padding: 12px 14px;
+  color: rgba(245, 250, 255, 0.98);
+  background:
+    linear-gradient(135deg, rgba(22, 48, 72, 0.98), rgba(5, 14, 26, 0.96)),
+    rgba(5, 14, 26, 0.96);
+  border: 1px solid rgba(113, 213, 255, 0.36);
+  border-radius: 6px;
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08);
+}
+
+.infoTitle {
+  margin-bottom: 8px;
+  overflow: hidden;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 20px;
+  color: #f8fbff;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.infoGrid {
+  display: grid;
+  grid-template-columns: 64px minmax(0, 1fr);
+  gap: 7px 12px;
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.infoGrid span {
+  color: rgba(204, 232, 248, 0.76);
+}
+
+.infoGrid strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  color: rgba(248, 251, 255, 0.98);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflictPanel {
+  background:
+    linear-gradient(135deg, rgba(112, 26, 26, 0.98), rgba(38, 10, 18, 0.96)),
+    rgba(38, 10, 18, 0.96);
+  border-color: rgba(248, 113, 113, 0.58);
+  box-shadow:
+    0 14px 34px rgba(0, 0, 0, 0.34),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 3px 0 0 rgba(248, 113, 113, 0.86);
+}
+
+.conflictRackList {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  font-size: 13px;
+  line-height: 19px;
+}
+
+.conflictRackList div {
+  display: grid;
+  gap: 2px;
+  padding: 7px 8px;
+  background: rgba(127, 29, 29, 0.34);
+  border: 1px solid rgba(248, 113, 113, 0.28);
+  border-radius: 5px;
+}
+
+.conflictRackList strong {
+  min-width: 0;
+  overflow: hidden;
+  color: #fff7ed;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.conflictRackList span {
+  min-width: 0;
+  overflow: hidden;
+  color: rgba(254, 226, 226, 0.84);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.devicePanel {
+  position: absolute;
+  top: calc(64px * var(--room3d-ui-scale));
+  right: calc(16px * var(--room3d-ui-scale));
+  width: min(320px, calc(100% - 32px));
+  padding: 15px 16px;
+  color: rgba(241, 248, 255, 0.96);
+  background:
+    linear-gradient(90deg, rgba(94, 234, 212, 0.32), transparent 1px),
+    linear-gradient(145deg, rgba(16, 36, 54, 0.98), rgba(4, 12, 23, 0.96)),
+    rgba(4, 12, 23, 0.96);
+  border: 1px solid rgba(94, 234, 212, 0.48);
+  border-radius: 6px;
+  box-shadow:
+    0 18px 44px rgba(0, 0, 0, 0.38),
+    inset 0 1px 0 rgba(255, 255, 255, 0.08),
+    inset 3px 0 0 rgba(94, 234, 212, 0.7);
+}
+
+.devicePanelHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 13px;
+  line-height: 20px;
+  color: rgba(207, 235, 250, 0.82);
+}
+
+.deviceGrid {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 8px 12px;
+  font-size: 13px;
+  line-height: 20px;
+}
+
+.deviceGrid span {
+  color: rgba(207, 235, 250, 0.78);
+}
+
+.deviceGrid strong {
+  min-width: 0;
+  overflow: hidden;
+  font-weight: 600;
+  color: rgba(248, 251, 255, 0.98);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

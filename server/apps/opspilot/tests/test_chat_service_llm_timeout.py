@@ -14,8 +14,12 @@
 
 import os
 import re
+from unittest.mock import MagicMock, patch
 
 import pytest
+
+from apps.opspilot.metis.llm.chain.entity import BasicLLMRequest
+from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 
 # ---------------------------------------------------------------------------
 # Lazy imports of the target modules to avoid Django bootstrap at collection time
@@ -137,3 +141,42 @@ class TestLLMClientFactoryTimeout:
     def test_os_is_imported_in_factory(self, factory_src):
         """os 模块必须被 import，用于 os.getenv()"""
         assert "import os" in factory_src, "llm_client_factory.py 缺少 import os，无法调用 os.getenv()"
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.OpenAI")
+    def test_isolated_openai_uses_request_timeout(self, mock_openai, monkeypatch):
+        """
+        知识库构建使用 invoke_isolated，isolated OpenAI 客户端也必须支持按请求覆盖 timeout。
+
+        revert 后（仍固定 timeout=60.0）此测试失败。
+        """
+        mock_openai.return_value = MagicMock()
+        monkeypatch.setenv("LLM_INVOKE_TIMEOUT", "61")
+        request = BasicLLMRequest(
+            protocol_type="openai",
+            openai_api_key="sk-key",
+            openai_api_base="https://api.openai.com",
+            extra_config={"timeout": 240},
+        )
+
+        LLMClientFactory.create_isolated_client(request)
+
+        assert mock_openai.call_args[1]["timeout"] == 240.0
+
+    @patch("apps.opspilot.metis.llm.common.llm_client_factory.anthropic.Anthropic")
+    def test_isolated_anthropic_uses_env_timeout(self, mock_anthropic, monkeypatch):
+        """
+        Anthropic isolated 客户端未显式传 request timeout 时，应回退 LLM_INVOKE_TIMEOUT。
+
+        revert 后（仍固定 timeout=60.0）此测试失败。
+        """
+        mock_anthropic.return_value = MagicMock()
+        monkeypatch.setenv("LLM_INVOKE_TIMEOUT", "180")
+        request = BasicLLMRequest(
+            protocol_type="anthropic",
+            openai_api_key="sk-key",
+            openai_api_base="https://api.anthropic.com",
+        )
+
+        LLMClientFactory.create_isolated_client(request)
+
+        assert mock_anthropic.call_args[1]["timeout"] == 180.0

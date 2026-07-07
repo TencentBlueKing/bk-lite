@@ -264,7 +264,7 @@ const User: React.FC = () => {
         open={addGroupModalOpen || addSubGroupModalOpen}
         onOk={onAddGroup}
         onCancel={closeGroupModals}
-        destroyOnClose={true}
+        destroyOnHidden={true}
       >
         <Form ref={addGroupFormRef}>
           <Form.Item

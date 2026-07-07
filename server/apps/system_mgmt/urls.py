@@ -7,12 +7,15 @@ from apps.system_mgmt.viewset import (
     ErrorLogViewSet,
     GroupDataRuleViewSet,
     GroupViewSet,
-    LoginModuleViewSet,
+    IMNotificationChannelViewSet,
+    IntegrationInstanceViewSet,
+    LoginAuthBindingViewSet,
     NetworkWhiteListViewSet,
     OperationLogViewSet,
     RoleViewSet,
     SystemSettingsViewSet,
     UserLoginLogViewSet,
+    UserSyncSourceViewSet,
     UserViewSet,
 )
 
@@ -20,11 +23,14 @@ router = routers.DefaultRouter()
 router.register(r"group", GroupViewSet, basename="group_mgmt")
 router.register(r"user", UserViewSet, basename="user_mgmt")
 router.register(r"role", RoleViewSet, basename="role_mgmt")
+router.register(r"integration_instance", IntegrationInstanceViewSet)
+router.register(r"im_notification_channel", IMNotificationChannelViewSet)
+router.register(r"login_auth_binding", LoginAuthBindingViewSet)
+router.register(r"user_sync_source", UserSyncSourceViewSet)
 router.register(r"channel", ChannelViewSet)
 router.register(r"group_data_rule", GroupDataRuleViewSet)
 router.register(r"system_settings", SystemSettingsViewSet)
 router.register(r"app", AppViewSet)
-router.register(r"login_module", LoginModuleViewSet)
 router.register(r"custom_menu_group", CustomMenuGroupViewSet)
 router.register(r"user_login_log", UserLoginLogViewSet)
 router.register(r"operation_log", OperationLogViewSet)

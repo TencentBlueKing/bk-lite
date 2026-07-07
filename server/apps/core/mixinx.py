@@ -115,6 +115,34 @@ class PeriodicTaskUtils:
         logger.info(f"已创建周期任务: {task_name}, 执行时间: {sync_time}")
 
     @staticmethod
+    def create_periodic_task_from_spec(schedule_spec, task_name, task_args, task_path):
+        from django.utils import timezone
+        from django_celery_beat.models import CrontabSchedule, PeriodicTask
+
+        if schedule_spec.get("kind") != "crontab":
+            raise ValueError(f"Unsupported schedule kind: {schedule_spec.get('kind')}")
+
+        schedule, _ = CrontabSchedule.objects.get_or_create(
+            minute=str(schedule_spec["minute"]),
+            hour=str(schedule_spec["hour"]),
+            day_of_week=str(schedule_spec.get("day_of_week", "*")),
+            day_of_month=str(schedule_spec.get("day_of_month", "*")),
+            month_of_year=str(schedule_spec.get("month_of_year", "*")),
+            timezone=schedule_spec.get("timezone") or timezone.get_current_timezone(),
+        )
+
+        PeriodicTask.objects.update_or_create(
+            name=task_name,
+            defaults={
+                "crontab": schedule,
+                "task": task_path,
+                "args": task_args,
+                "enabled": True,
+            },
+        )
+        logger.info(f"已创建周期任务: {task_name}, 调度配置: {schedule_spec}")
+
+    @staticmethod
     def delete_periodic_task(task_name):
         from django_celery_beat.models import PeriodicTask
 

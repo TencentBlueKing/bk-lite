@@ -12,6 +12,7 @@ _MODULES = (
     "channels",
     "permissions",
     "login",
+    "login_auth_bindings",
     "wechat",
     "otp",
     "settings",

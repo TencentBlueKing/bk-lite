@@ -225,22 +225,22 @@ const EntityList = <T,>({
           <Spin spinning={loading}></Spin>
         </div>
       ) : (
-        <>
+        <div className="@container">
           {filteredItems.length === 0 ? (
             openModal ? (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-6">
+              <div className="grid grid-cols-1 @sm:grid-cols-2 @md:grid-cols-3 @lg:grid-cols-4 @7xl:grid-cols-5 gap-6">
                 {renderAddButton()}
               </div>
             ) : (
               <Empty description={t('common.noData')} />
             )
           ) : (
-            <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 2xl:grid-cols-5 gap-6">
+            <div className="grid grid-cols-1 @sm:grid-cols-2 @md:grid-cols-3 @lg:grid-cols-4 @7xl:grid-cols-5 gap-6">
               {openModal && renderAddButton()}
               {filteredItems.map((item) => renderCard(item))}
             </div>
           )}
-        </>
+        </div>
       )}
     </div>
   );

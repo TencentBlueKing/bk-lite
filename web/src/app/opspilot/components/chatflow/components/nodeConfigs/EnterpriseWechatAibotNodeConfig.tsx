@@ -55,9 +55,6 @@ export const EnterpriseWechatAibotNodeConfig: React.FC<EnterpriseWechatAibotNode
       >
         <Input.Password autoComplete="new-password" />
       </Form.Item>
-      <Form.Item label={t('chatflow.nodeConfig.aibotId')} name={['webhook', 'aibotid']}>
-        <Input placeholder={t('chatflow.nodeConfig.enterAibotId')} />
-      </Form.Item>
     </div>
   );
 };

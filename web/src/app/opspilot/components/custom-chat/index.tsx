@@ -11,15 +11,12 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from './index.module.scss';
 import MessageActions from './actions';
-import KnowledgeBase from './knowledgeBase';
-import AnnotationModal from './annotationModal';
 import PermissionWrapper from '@/components/permission';
-import { CustomChatMessage, Annotation } from '@/app/opspilot/types/global';
+import { CustomChatMessage } from '@/app/opspilot/types/global';
 
 
 interface CustomChatProps {
   handleSendMessage?: (newMessages: CustomChatMessage[]) => Promise<CustomChatMessage[]>;
-  showMarkOnly?: boolean;
   initialMessages?: CustomChatMessage[];
   mode?: 'preview' | 'chat';
 }
@@ -47,14 +44,12 @@ const sanitizeHtml = (html: string): string => {
   });
 };
 
-const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly = false, initialMessages = [], mode = 'chat' }) => {
+const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, initialMessages = [], mode = 'chat' }) => {
   const { t } = useTranslation();
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [value, setValue] = useState('');
   const [loading, setLoading] = useState(false);
   const [messages, setMessages] = useState<CustomChatMessage[]>(initialMessages.length ? initialMessages : []);
-  const [annotationModalVisible, setAnnotationModalVisible] = useState(false);
-  const [annotation, setAnnotation] = useState<Annotation | null>(null);
 
   useEffect(() => {
     if (initialMessages.length > 0) {
@@ -147,15 +142,12 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
   }, [messages, handleSendMessage, handleSendComplete]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase } = msg;
+    const { content } = msg;
     return (
-      <>
-        <div
-          dangerouslySetInnerHTML={{ __html: sanitizeHtml(md.render(content)) }}
-          className={styles.markdownBody}
-        />
-        {(Array.isArray(knowledgeBase) && knowledgeBase.length) ? <KnowledgeBase knowledgeList={knowledgeBase} /> : null}
-      </>
+      <div
+        dangerouslySetInnerHTML={{ __html: sanitizeHtml(md.render(content)) }}
+        className={styles.markdownBody}
+      />
     );
   };
 
@@ -200,42 +192,6 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
     );
   };
 
-  const toggleAnnotationModal = (message: CustomChatMessage) => {
-    if (message?.annotation) {
-      setAnnotation(message.annotation);
-    } else {
-      const lastUserMessage = messages.slice(0, messages.indexOf(message)).reverse().find(msg => msg.role === 'user') as CustomChatMessage;
-      setAnnotation({
-        answer: message,
-        question: lastUserMessage,
-        selectedKnowledgeBase: '',
-        tagId: 0,
-      })
-    }
-    setAnnotationModalVisible(!annotationModalVisible);
-  };
-
-  const updateMessagesAnnotation = (id: string | undefined, newAnnotation?: Annotation) => {
-    if (!id) return;
-    setMessages((prevMessages) =>
-      prevMessages.map((msg) =>
-        msg.id === id
-          ? { ...msg, annotation: newAnnotation }
-          : msg
-      )
-    );
-    setAnnotationModalVisible(false);
-  };
-
-  const handleSaveAnnotation = (annotation?: Annotation) => {
-    updateMessagesAnnotation(annotation?.answer?.id, annotation);
-  };
-
-  const handleRemoveAnnotation = (id: string | undefined) => {
-    if (!id) return;
-    updateMessagesAnnotation(id, undefined);
-  };
-
   return (
     <div className={`rounded-lg h-full ${isFullscreen ? styles.fullscreen : ''}`}>
       {mode === 'chat' &&
@@ -265,8 +221,6 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
                     onCopy={handleCopyMessage}
                     onRegenerate={handleRegenerateMessage}
                     onDelete={handleDeleteMessage}
-                    onMark={toggleAnnotationModal}
-                    showMarkOnly={showMarkOnly}
                   />
                 )}
               />
@@ -298,16 +252,6 @@ const CustomChat: React.FC<CustomChatProps> = ({ handleSendMessage, showMarkOnly
           </>
         )}
       </div>
-      {annotation && (
-        <AnnotationModal
-          visible={annotationModalVisible}
-          showMarkOnly={showMarkOnly}
-          annotation={annotation}
-          onSave={handleSaveAnnotation}
-          onRemove={handleRemoveAnnotation}
-          onCancel={() => setAnnotationModalVisible(false)}
-        />
-      )}
     </div>
   );
 };
