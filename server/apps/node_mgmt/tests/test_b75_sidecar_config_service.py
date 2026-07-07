@@ -2,8 +2,12 @@
 
 仅 mock Executor RPC 边界。断言真实合并逻辑与命令构建/异常。
 """
-import pytest
+import base64
+import shlex
 from unittest.mock import MagicMock, patch
+
+import pytest
+import yaml
 
 from apps.node_mgmt.constants.controller import ControllerConstants
 from apps.node_mgmt.models import Node
@@ -127,6 +131,33 @@ def test_write_config_success(linux_node):
 
 
 @pytest.mark.django_db
+def test_write_config_linux_does_not_embed_yaml_in_shell(linux_node):
+    executor = MagicMock()
+    executor.execute_local.return_value = {"success": True}
+    injected_name = "safe\nEOF\nid > /tmp/pwned\n"
+
+    with patch("apps.node_mgmt.services.sidecar_config.Executor", return_value=executor):
+        SidecarConfigService._write_config(linux_node, {"node_name": injected_name})
+
+    command = executor.execute_local.call_args.args[0]
+    kwargs = executor.execute_local.call_args.kwargs
+    assert kwargs["shell"] == "bash"
+    assert "<< 'EOF'" not in command
+    assert injected_name not in command
+    assert "id > /tmp/pwned" not in command
+    command_parts = shlex.split(command)
+    encoded_content = command_parts[2]
+    assert yaml.safe_load(base64.b64decode(encoded_content).decode("utf-8")) == {
+        "node_name": injected_name
+    }
+
+
+def _load_linux_write_command_yaml(command):
+    encoded_content = shlex.split(command)[2]
+    return yaml.safe_load(base64.b64decode(encoded_content).decode("utf-8"))
+
+
+@pytest.mark.django_db
 def test_write_config_permission_denied_raises(linux_node):
     executor = MagicMock()
     executor.execute_local.return_value = {"success": False, "stderr": "Permission denied"}
@@ -194,11 +225,9 @@ def test_sync_node_properties_updates_name_and_orgs(linux_node):
         SidecarConfigService.sync_node_properties(linux_node, name="newname", organizations=["5", "6"])
     # 写配置时第二次调用，验证内容含新名称与新 group tags
     write_command = executor.execute_local.call_args_list[1].args[0]
-    assert "newname" in write_command
-    assert "group:5" in write_command
-    assert "group:6" in write_command
-    assert "keepme" in write_command
-    assert "group:1" not in write_command
+    written_config = _load_linux_write_command_yaml(write_command)
+    assert written_config["node_name"] == "newname"
+    assert written_config["tags"] == ["keepme", "group:5", "group:6"]
 
 
 @pytest.mark.django_db

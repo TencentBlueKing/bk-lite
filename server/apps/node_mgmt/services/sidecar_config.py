@@ -1,4 +1,6 @@
+import base64
 import logging
+import shlex
 
 import yaml
 
@@ -86,7 +88,13 @@ class SidecarConfigService:
             command = f"Set-Content -Path '{config_path}' -Value '{escaped_content}'"
             shell = "powershell"
         else:
-            command = f"cat > {config_path} << 'EOF'\n{config_content}EOF"
+            encoded_content = base64.b64encode(config_content.encode("utf-8")).decode(
+                "ascii"
+            )
+            command = (
+                f"printf %s {shlex.quote(encoded_content)} "
+                f"| base64 -d > {shlex.quote(config_path)}"
+            )
             shell = "bash"
 
         result = executor.execute_local(command, timeout=30, shell=shell)
