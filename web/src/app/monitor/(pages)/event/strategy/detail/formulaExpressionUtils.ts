@@ -380,9 +380,6 @@ export const validateMetricExpressionPayload = ({
 
   const anchorRef = normalizedRows[0]?.ref;
   const anchorGroupBy = normalizedRows[0]?.groupBy || [];
-  if (anchorRef && parsedExpression.refs[0] && parsedExpression.refs[0] !== anchorRef) {
-    errors.push(`表达式首个变量必须是首行指标变量 ${anchorRef}`);
-  }
   if (anchorRef && !anchorGroupBy.includes('instance_id')) {
     errors.push(`指标 ${anchorRef} 分组维度必须包含 instance_id`);
   }

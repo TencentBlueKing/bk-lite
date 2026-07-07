@@ -378,15 +378,6 @@ assertValidationIncludes(
 assertValidationIncludes(
   validateMetricExpressionPayload({
     resultName: 'HTTP 5xx 错误率',
-    expression: 'b / a',
-    rows: formulaRows
-  }),
-  '表达式首个变量必须是首行指标变量 a'
-);
-
-assertValidationIncludes(
-  validateMetricExpressionPayload({
-    resultName: 'HTTP 5xx 错误率',
     expression: 'a / b',
     rows: [{ ...formulaRows[0], groupBy: ['status'] }, formulaRows[1]]
   }),
