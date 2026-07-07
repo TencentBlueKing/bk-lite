@@ -148,61 +148,10 @@ class TestLoginAuthBindingViews:
         assert data["result"] is True
         assert response.cookies["bklite_token"].value == "ad-token"
 
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://public.example.test:443"}, clear=False)
     @patch("apps.core.views.index_view.build_login_auth_redirect")
     @patch("apps.core.views.index_view.create_auth_request")
     @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_calls_runtime_and_returns_public_payload(
-        self,
-        mock_get_binding,
-        mock_create_auth_request,
-        mock_build_redirect,
-    ):
-        from apps.core.views.index_view import start_login_auth
-
-        binding = MagicMock()
-        binding.id = 5
-        binding.integration_instance.provider_key = "feishu"
-        mock_get_binding.return_value = binding
-        mock_create_auth_request.return_value = {
-            "auth_request_id": "auth-1",
-            "poll_token": "poll-1",
-            "expires_at": "2026-06-12T10:00:00+00:00",
-        }
-        mock_build_redirect.return_value = MagicMock(
-            success=True,
-            payload={"login_url": "https://example.com/sso"},
-            summary="",
-            to_dict=MagicMock(return_value={"login_url": "https://example.com/sso"}),
-        )
-
-        request = RequestFactory().post(
-            "/api/v1/core/api/start_login_auth/",
-            data=json.dumps({"binding_id": 5, "callback_url": "/console"}),
-            content_type="application/json",
-        )
-        response = start_login_auth(request)
-        data = json.loads(response.content)
-
-        mock_build_redirect.assert_called_once_with(
-            binding,
-            redirect_uri="http://public.example.test:443/api/v1/core/api/login_auth/callback/",
-            state=mock_build_redirect.call_args.kwargs["state"],
-        )
-        assert response.status_code == 200
-        assert data["result"] is True
-        assert data["data"] == {
-            "auth_request_id": "auth-1",
-            "poll_token": "poll-1",
-            "login_url": "https://example.com/sso",
-            "expires_at": "2026-06-12T10:00:00+00:00",
-        }
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "https://bklite.canway.net/"}, clear=False)
-    @patch("apps.core.views.index_view.build_login_auth_redirect")
-    @patch("apps.core.views.index_view.create_auth_request")
-    @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_uses_env_redirect_uri_over_valid_redirect_origin(
+    def test_start_login_auth_uses_redirect_origin_for_redirect_uri(
         self,
         mock_get_binding,
         mock_create_auth_request,
@@ -232,25 +181,33 @@ class TestLoginAuthBindingViews:
                 {
                     "binding_id": 5,
                     "callback_url": "/console",
-                    "redirect_origin": "https://other.example",
+                    "redirect_origin": "https://app.example.com",
                 }
             ),
             content_type="application/json",
-            HTTP_ORIGIN="https://other.example",
-            HTTP_HOST="internal.example.test",
+            HTTP_ORIGIN="https://app.example.com",
         )
         response = start_login_auth(request)
+        data = json.loads(response.content)
 
-        assert response.status_code == 200
-        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "https://bklite.canway.net/api/v1/core/api/login_auth/callback/"
+        mock_build_redirect.assert_called_once_with(
+            binding,
+            redirect_uri="https://app.example.com/api/v1/core/api/login_auth/callback/",
+            state=mock_build_redirect.call_args.kwargs["state"],
         )
+        assert response.status_code == 200
+        assert data["result"] is True
+        assert data["data"] == {
+            "auth_request_id": "auth-1",
+            "poll_token": "poll-1",
+            "login_url": "https://example.com/sso",
+            "expires_at": "2026-06-12T10:00:00+00:00",
+        }
 
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "https://bklite.canway.net/"}, clear=False)
     @patch("apps.core.views.index_view.build_login_auth_redirect")
     @patch("apps.core.views.index_view.create_auth_request")
     @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_drops_invalid_redirect_origin_when_env_exists(
+    def test_start_login_auth_drops_invalid_redirect_origin_falls_back_to_request(
         self,
         mock_get_binding,
         mock_create_auth_request,
@@ -284,14 +241,15 @@ class TestLoginAuthBindingViews:
                 }
             ),
             content_type="application/json",
-            HTTP_ORIGIN="https://bklite.canway.net",
+            HTTP_ORIGIN="https://app.example.com",
             HTTP_HOST="internal.example.test",
         )
+        request.META["wsgi.url_scheme"] = "https"
         response = start_login_auth(request)
 
         assert response.status_code == 200
         assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "https://bklite.canway.net/api/v1/core/api/login_auth/callback/"
+            "https://internal.example.test/api/v1/core/api/login_auth/callback/"
         )
         assert mock_create_auth_request.call_args.kwargs["redirect_origin"] is None
 
@@ -665,27 +623,6 @@ class TestLoginAuthBindingViews:
         )
 
     @patch.dict(os.environ, {}, clear=False)
-    def test_build_login_auth_result_redirect_falls_back_to_relative_when_origin_rejected(self):
-        from apps.core.views.index_view import _build_login_auth_result_redirect
-
-        os.environ.pop("DEFAULT_ZONE_VAR_NODE_SERVER_URL", None)
-        request = RequestFactory().get("/api/v1/core/api/login_auth/callback/")
-        request.META["HTTP_HOST"] = "a.example"
-
-        response = _build_login_auth_result_redirect(
-            request,
-            "failed",
-            "认证失败，请返回原页面重试。",
-            redirect_origin="http://b.example",
-        )
-
-        # origin 跨 host 被拒,降级到相对路径
-        parsed = urlparse(response["Location"])
-        assert parsed.scheme == ""
-        assert parsed.netloc == ""
-        assert parsed.path == "/auth/signin/login-auth-result"
-
-    @patch.dict(os.environ, {}, clear=False)
     def test_build_login_auth_result_redirect_uses_relative_when_origin_missing(self):
         from apps.core.views.index_view import _build_login_auth_result_redirect
 
@@ -704,145 +641,6 @@ class TestLoginAuthBindingViews:
         assert parsed.scheme == ""
         assert parsed.netloc == ""
         assert parsed.path == "/auth/signin/login-auth-result"
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://public.example.test:443"}, clear=False)
-    @patch("apps.core.views.index_view.build_login_auth_redirect")
-    @patch("apps.core.views.index_view.create_auth_request")
-    @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_uses_env_redirect_uri_over_stale_frontend_origin(
-        self,
-        mock_get_binding,
-        mock_create_auth_request,
-        mock_build_redirect,
-    ):
-        from apps.core.views.index_view import start_login_auth
-
-        binding = MagicMock()
-        binding.id = 5
-        binding.integration_instance.provider_key = "feishu"
-        mock_get_binding.return_value = binding
-        mock_create_auth_request.return_value = {
-            "auth_request_id": "auth-1",
-            "poll_token": "poll-1",
-            "expires_at": "2026-06-12T10:00:00+00:00",
-        }
-        mock_build_redirect.return_value = MagicMock(
-            success=True,
-            payload={"login_url": "https://example.com/sso"},
-            summary="",
-            to_dict=MagicMock(return_value={"login_url": "https://example.com/sso"}),
-        )
-
-        request = RequestFactory().post(
-            "/api/v1/core/api/start_login_auth/",
-            data=json.dumps({
-                "binding_id": 5,
-                "callback_url": "/console",
-                "redirect_origin": "https://bklite.canway.net",
-            }),
-            content_type="application/json",
-        )
-        request.META["HTTP_ORIGIN"] = "https://bklite.canway.net"
-        request.META["HTTP_HOST"] = "internal.example.test"
-
-        response = start_login_auth(request)
-
-        assert response.status_code == 200
-        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "http://public.example.test:443/api/v1/core/api/login_auth/callback/"
-        )
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://public.example.test:443"}, clear=False)
-    @patch("apps.core.views.index_view.build_login_auth_redirect")
-    @patch("apps.core.views.index_view.create_auth_request")
-    @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_rejects_cross_origin_redirect_origin_and_falls_back_to_env(
-        self,
-        mock_get_binding,
-        mock_create_auth_request,
-        mock_build_redirect,
-    ):
-        from apps.core.views.index_view import start_login_auth
-
-        binding = MagicMock()
-        binding.id = 5
-        binding.integration_instance.provider_key = "feishu"
-        mock_get_binding.return_value = binding
-        mock_create_auth_request.return_value = {
-            "auth_request_id": "auth-1",
-            "poll_token": "poll-1",
-            "expires_at": "2026-06-12T10:00:00+00:00",
-        }
-        mock_build_redirect.return_value = MagicMock(
-            success=True,
-            payload={"login_url": "https://example.com/sso"},
-            summary="",
-            to_dict=MagicMock(return_value={"login_url": "https://example.com/sso"}),
-        )
-
-        request = RequestFactory().post(
-            "/api/v1/core/api/start_login_auth/",
-            data=json.dumps({
-                "binding_id": 5,
-                "callback_url": "/console",
-                "redirect_origin": "https://evil.example",
-            }),
-            content_type="application/json",
-        )
-        request.META["HTTP_ORIGIN"] = "https://bklite.canway.net"
-        request.META["HTTP_HOST"] = "internal.example.test"
-
-        response = start_login_auth(request)
-
-        assert response.status_code == 200
-        assert mock_create_auth_request.call_args.kwargs["redirect_origin"] in (None, "")
-        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "http://public.example.test:443/api/v1/core/api/login_auth/callback/"
-        )
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://public.example.test:443"}, clear=False)
-    @patch("apps.core.views.index_view.build_login_auth_redirect")
-    @patch("apps.core.views.index_view.create_auth_request")
-    @patch("apps.core.views.index_view._get_login_auth_binding_by_id")
-    def test_start_login_auth_compatible_without_redirect_origin(
-        self,
-        mock_get_binding,
-        mock_create_auth_request,
-        mock_build_redirect,
-    ):
-        from apps.core.views.index_view import start_login_auth
-
-        binding = MagicMock()
-        binding.id = 6
-        binding.integration_instance.provider_key = "feishu"
-        mock_get_binding.return_value = binding
-        mock_create_auth_request.return_value = {
-            "auth_request_id": "auth-2",
-            "poll_token": "poll-2",
-            "expires_at": "2026-06-12T10:00:00+00:00",
-        }
-        mock_build_redirect.return_value = MagicMock(
-            success=True,
-            payload={"login_url": "https://example.com/sso"},
-            summary="",
-            to_dict=MagicMock(return_value={"login_url": "https://example.com/sso"}),
-        )
-
-        # 老前端:不传 redirect_origin
-        request = RequestFactory().post(
-            "/api/v1/core/api/start_login_auth/",
-            data=json.dumps({"binding_id": 6, "callback_url": "/console"}),
-            content_type="application/json",
-        )
-
-        start_login_auth(request)
-
-        # mock_create_auth_request 收到 redirect_origin=None(后端降级到默认空字符串)
-        assert mock_create_auth_request.call_args.kwargs["redirect_origin"] in (None, "")
-        # redirect_uri 走 env 兑底
-        assert mock_build_redirect.call_args.kwargs["redirect_uri"] == (
-            "http://public.example.test:443/api/v1/core/api/login_auth/callback/"
-        )
 
 
 class FakeCache:
@@ -999,50 +797,9 @@ class TestLoginAuthRequestService:
         logged_messages = [call.args[0] for call in mock_logger.info.call_args_list]
         assert any("Updated login auth request status" in message for message in logged_messages)
 
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://public.example.test:443/"}, clear=False)
-    def test_get_login_auth_callback_uri_prefers_env_and_strips_trailing_slash(self):
+    def test_get_login_auth_callback_uri_uses_validated_redirect_origin(self):
         service = _load_login_auth_request_service()
 
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test"
-        request.META["wsgi.url_scheme"] = "https"
-
-        # 即使 request 提供了其他来源,env 仍优先,保证 OAuth 与详情页结果一致
-        assert service.get_login_auth_callback_uri(request=request) == (
-            "http://public.example.test:443/api/v1/core/api/login_auth/callback/"
-        )
-
-    @pytest.mark.parametrize(
-        ("env_url", "expected_callback_uri"),
-        [
-            (
-                "https://bklite.canway.net:443/",
-                "https://bklite.canway.net/api/v1/core/api/login_auth/callback/",
-            ),
-            (
-                "http://bklite.canway.net:80/",
-                "http://bklite.canway.net/api/v1/core/api/login_auth/callback/",
-            ),
-        ],
-    )
-    def test_get_login_auth_callback_uri_strips_default_port_from_env_origin(
-        self,
-        env_url,
-        expected_callback_uri,
-    ):
-        service = _load_login_auth_request_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test"
-        request.META["wsgi.url_scheme"] = "https"
-
-        with patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": env_url}, clear=False):
-            assert service.get_login_auth_callback_uri(request=request) == expected_callback_uri
-
-    @patch.dict(os.environ, {}, clear=False)
-    def test_get_login_auth_callback_uri_falls_back_to_validated_redirect_origin_when_env_missing(self):
-        service = _load_login_auth_request_service()
-
-        os.environ.pop("DEFAULT_ZONE_VAR_NODE_SERVER_URL", None)
         request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
         request.META["HTTP_HOST"] = "internal.example.test"
         request.META["HTTP_ORIGIN"] = "https://other.example"
@@ -1052,47 +809,10 @@ class TestLoginAuthRequestService:
             redirect_origin="https://other.example",
         ) == "https://other.example/api/v1/core/api/login_auth/callback/"
 
-    def test_get_login_auth_callback_uri_returns_empty_when_env_and_request_missing(self):
+    def test_get_login_auth_callback_uri_returns_empty_when_request_and_origin_missing(self):
         service = _load_login_auth_request_service()
 
-        with patch.dict(os.environ, {}, clear=False):
-            os.environ.pop("DEFAULT_ZONE_VAR_NODE_SERVER_URL", None)
-            assert service.get_login_auth_callback_uri() == ""
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "https://bklite.canway.net/"}, clear=False)
-    def test_get_login_auth_callback_uri_prefers_env_over_validated_redirect_origin(self):
-        service = _load_login_auth_request_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "internal.example.test"
-        request.META["HTTP_ORIGIN"] = "https://other.example"
-
-        assert service.get_login_auth_callback_uri(
-            request=request,
-            redirect_origin="https://other.example",
-        ) == "https://bklite.canway.net/api/v1/core/api/login_auth/callback/"
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://bk.test:443"}, clear=False)
-    def test_get_login_auth_callback_uri_falls_back_to_env_when_origin_rejected(self):
-        service = _load_login_auth_request_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test:8011"
-
-        # origin 跨端口(8011 vs 3000)被同源校验拒绝,降级到 env
-        assert service.get_login_auth_callback_uri(
-            request=request,
-            redirect_origin="http://bk.test:3000",
-        ) == "http://bk.test:443/api/v1/core/api/login_auth/callback/"
-
-    @patch.dict(os.environ, {"DEFAULT_ZONE_VAR_NODE_SERVER_URL": "http://bk.test:443"}, clear=False)
-    def test_get_login_auth_callback_uri_legacy_behavior_when_no_origin(self):
-        service = _load_login_auth_request_service()
-        request = RequestFactory().get("/api/v1/core/api/start_login_auth/")
-        request.META["HTTP_HOST"] = "bk.test:8011"
-
-        # 不传 redirect_origin 时,完全沿用上一轮既有的 env 兑底行为
-        assert service.get_login_auth_callback_uri(request=request) == (
-            "http://bk.test:443/api/v1/core/api/login_auth/callback/"
-        )
+        assert service.get_login_auth_callback_uri() == ""
 
     def test_create_auth_request_stores_redirect_origin_in_cache(self):
         service = _load_login_auth_request_service()
