@@ -22,8 +22,6 @@ import {
   VARIABLE_SEQUENCE
 } from './formulaExpressionUtils';
 
-const { Option } = Select;
-
 interface MetricExpressionEditorProps {
   rows: MetricExpressionRow[];
   mode: MetricExpressionMode;
@@ -167,21 +165,41 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
       (item) => ({ label: item, value: item })
     );
 
+  const translateWithFallback = (key: string, fallback: string) => {
+    const value = t(key);
+    return value === key ? fallback : value;
+  };
+
+  const groupMethodOptions = groupMethods.map((item) => ({
+    label: `${item.label.toString().toLowerCase()} by`,
+    value: item.value
+  }));
+
   return (
-    <div className="border border-[var(--color-border-2)] rounded-md bg-[var(--color-fill-1)] p-3">
+    <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-fill-1)]">
+      <div className="flex min-h-11 items-center justify-between border-b border-[var(--color-border-2)] px-3">
+        <span className="text-sm font-medium text-[var(--color-text-1)]">
+          {translateWithFallback('monitor.events.metricEditor', '指标编辑器')}
+        </span>
+        {showFormula && (
+          <span className="rounded border border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-2 py-0.5 text-xs text-[var(--color-text-2)]">
+            {translateWithFallback('monitor.events.expression', '表达式')}
+          </span>
+        )}
+      </div>
       <div className="flex flex-col gap-3">
         {rows.map((row, rowIndex) => (
           <div
             key={row.ref}
-            className="border border-[var(--color-border-2)] rounded-md bg-[var(--color-bg-1)] p-3"
+            className="mx-3 mt-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3"
           >
-            <div className="flex items-center gap-2">
+            <div className="grid grid-cols-[2rem_minmax(220px,1fr)_132px_minmax(220px,1fr)_2rem] items-center gap-2">
               <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-sm font-semibold text-[var(--color-primary)]">
                 {row.ref}
               </span>
               <Select
                 allowClear
-                className="min-w-0 flex-1"
+                className="min-w-0"
                 showSearch
                 value={row.metricName}
                 loading={metricsLoading}
@@ -196,23 +214,17 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                 onChange={(value) => handleMetricChange(rowIndex, value)}
               />
               <Select
-                className="w-[128px] shrink-0"
+                className="w-full"
                 value={row.groupAlgorithm || 'avg'}
                 placeholder={t('monitor.events.groupAggregationMethod')}
+                options={groupMethodOptions}
                 onChange={(value) =>
                   updateRow(rowIndex, { groupAlgorithm: value })
                 }
-              >
-                {groupMethods.map((item) => (
-                  <Option value={item.value} key={item.value}>
-                    {item.label}
-                  </Option>
-                ))}
-              </Select>
-              <span className="text-[var(--color-text-3)]">by</span>
+              />
               <Select
                 allowClear
-                className="min-w-0 flex-1"
+                className="min-w-0"
                 maxTagCount="responsive"
                 mode="multiple"
                 showSearch
@@ -223,20 +235,23 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                   updateRow(rowIndex, { groupBy: sanitizeGroupBy(value) })
                 }
               />
-              {rows.length > 1 && (
+              {rows.length > 1 ? (
                 <Tooltip title={t('common.delete')}>
                   <Button
                     aria-label={t('common.delete')}
+                    className="h-8 w-8"
                     icon={<CloseOutlined />}
                     onClick={() => removeMetricRow(rowIndex)}
                   />
                 </Tooltip>
+              ) : (
+                <span className="h-8 w-8" />
               )}
             </div>
             <div className="ml-10 mt-2 flex flex-col gap-2">
               {row.filters.map((filter, filterIndex) => (
                 <div
-                  className="flex items-center gap-2"
+                  className="grid grid-cols-[82px_minmax(150px,1fr)_104px_160px_2rem] items-center gap-2"
                   key={`${row.ref}-${filterIndex}`}
                 >
                   {filterIndex > 0 ? (
@@ -259,7 +274,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                     </span>
                   )}
                   <Select
-                    className="min-w-[150px] flex-1"
+                    className="min-w-0"
                     showSearch
                     value={filter.name}
                     placeholder={t('monitor.label')}
@@ -272,7 +287,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                     }
                   />
                   <Select
-                    className="w-[100px] shrink-0"
+                    className="w-full"
                     value={filter.method}
                     placeholder={t('monitor.term')}
                     options={conditionMethods.map((item) => ({
@@ -284,7 +299,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                     }
                   />
                   <Input
-                    className="w-[160px] shrink-0"
+                    className="w-full"
                     value={filter.value}
                     placeholder={t('monitor.value')}
                     onChange={(event) =>
@@ -296,6 +311,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
                   <Tooltip title={t('common.delete')}>
                     <Button
                       aria-label={t('common.delete')}
+                      className="h-8 w-8"
                       icon={<CloseOutlined />}
                       onClick={() => removeCondition(rowIndex, filterIndex)}
                     />
@@ -312,22 +328,28 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
             </div>
           </div>
         ))}
-        <Button className="w-fit" icon={<PlusOutlined />} onClick={addMetricRow}>
-          {t('monitor.events.addMetric')}
+        <Button
+          className="mx-3 w-fit"
+          icon={<PlusOutlined />}
+          onClick={addMetricRow}
+          type="dashed"
+        >
+          {translateWithFallback('monitor.events.addMetric', '添加指标')}
         </Button>
         {showFormula && (
-          <div className="flex items-center gap-2 border-t border-[var(--color-border-2)] pt-3">
+          <div className="grid grid-cols-[2rem_220px_16px_minmax(260px,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] px-3 py-3">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
               fx
             </span>
             <Input
-              className="w-[220px] shrink-0"
+              className="w-full"
               value={resultName}
               placeholder={t('monitor.events.formulaResultName')}
               onChange={(event) => onResultNameChange(event.target.value)}
             />
-            <span className="text-[var(--color-text-3)]">=</span>
+            <span className="text-center text-[var(--color-text-3)]">=</span>
             <Input
+              className="min-w-0"
               value={expression}
               placeholder="a / b * 100"
               onChange={(event) => onExpressionChange(event.target.value)}
