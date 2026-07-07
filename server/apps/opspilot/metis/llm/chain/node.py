@@ -74,9 +74,14 @@ from apps.opspilot.metis.llm.chain.message_trim import trim_messages
 from apps.opspilot.metis.llm.common.anthropic_capabilities import build_anthropic_runtime_capabilities, normalize_tool_choice_for_capabilities
 from apps.opspilot.metis.llm.common.llm_client_factory import LLMClientFactory
 from apps.opspilot.metis.llm.common.structured_output_parser import StructuredOutputParser
-from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
-from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+# from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag  # 暂时禁用,master 合并后文件被删除
 from apps.opspilot.metis.llm.tools.tools_loader import ToolsLoader
+
+# master 删除的 RAG 模块(占位,后续用 lazy import 避免启动失败)
+try:
+    from apps.opspilot.metis.llm.rag.naive_rag.pgvector.pgvector_rag import PgvectorRag
+except ImportError:
+    PgvectorRag = None
 from apps.opspilot.metis.utils.template_loader import TemplateLoader
 from apps.opspilot.services.approval import wait_for_approval
 from apps.opspilot.utils.execution_interrupt import is_interrupt_requested_async
@@ -230,6 +235,10 @@ class BasicNode:
                 logger.debug(f"智能知识路由判断:[{rag_search_request.index_name}]不适合当前问题,跳过检索")
                 continue
 
+            if PgvectorRag is None:
+                # master 删除 pgvector_rag 模块,降级跳过
+                logger.warning("[naive_rag] PgvectorRag 模块不可用,跳过")
+                continue
             rag = PgvectorRag()
             # PgvectorRag().search 为同步阻塞的向量库查询，async 节点中放入线程池避免阻塞事件循环。
             naive_rag_search_result = await asyncio.to_thread(rag.search, rag_search_request)
@@ -319,13 +328,17 @@ class BasicNode:
             return []
 
     async def _perform_graph_search(self, rag_search_request, config: RunnableConfig) -> list:
-        """执行图谱搜索"""
-        graphiti = GraphitiRAG()
-        rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
-        graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
-
-        logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
-        return graph_result
+        """执行图谱搜索(GraphRAG 模块上游已删除,降级返回空)"""
+        try:
+            from apps.opspilot.metis.llm.rag.graph_rag.graphiti.graphiti_rag import GraphitiRAG
+            graphiti = GraphitiRAG()
+            rag_search_request.graph_rag_request.search_query = rag_search_request.search_query
+            graph_result = await graphiti.search(req=rag_search_request.graph_rag_request)
+            logger.debug(f"GraphRAG模式检索知识库: {rag_search_request.graph_rag_request.group_ids}, 结果数量: {len(graph_result)}")
+            return graph_result
+        except ImportError:
+            logger.warning("[GraphRAG] graphiti_rag 模块不可用,降级返回空列表")
+            return []
 
     def _process_graph_results(self, graph_result: list, group_ids: list) -> list:
         """处理图谱检索结果"""
@@ -1962,6 +1975,8 @@ class ToolsNodes(BasicNode):
                         cloned.search_query = query
                     except Exception:
                         pass
+                if PgvectorRag is None:
+                    return []
                 results = PgvectorRag().search(cloned)
                 return self._normalize_kb_results(results)
 
