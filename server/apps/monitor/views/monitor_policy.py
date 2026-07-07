@@ -4,6 +4,8 @@ from datetime import datetime, timezone
 
 from django.db import transaction
 from django_celery_beat.models import PeriodicTask, CrontabSchedule
+from rest_framework import status
+from rest_framework.response import Response
 from rest_framework import viewsets
 from rest_framework.decorators import action
 
@@ -288,7 +290,8 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         self.close_alerts(policy, alerts_to_close, request.user.username, "policy_deleted")
         PeriodicTask.objects.filter(name=f"scan_policy_task_{policy_id}").delete()
         PolicyOrganization.objects.filter(policy_id=policy_id).delete()
-        return super().destroy(request, *args, **kwargs)
+        policy.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def is_no_data_alert_enabled(self, policy):
         return bool(policy and AlertConstants.NO_DATA in (policy.enable_alerts or []))

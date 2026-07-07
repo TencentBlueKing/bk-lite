@@ -1,4 +1,6 @@
 from rest_framework import viewsets
+from rest_framework import status
+from rest_framework.response import Response
 
 from apps.core.exceptions.base_app_exception import BaseAppException, UnauthorizedException
 from apps.core.utils.permission_utils import get_permission_rules, permission_filter
@@ -170,7 +172,8 @@ class MonitorConditionViewSet(viewsets.ModelViewSet):
         condition = self.get_object()
         condition_id = condition.id
         MonitorConditionOrganization.objects.filter(monitor_condition_id=condition_id).delete()
-        return super().destroy(request, *args, **kwargs)
+        condition.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)
 
     def update_condition_organizations(self, condition_id, organizations):
         """更新条件的组织"""
