@@ -1,0 +1,24 @@
+[
+  {
+    "id": "exporter_tonglink_linux",
+    "name": "TongLink-Exporter",
+    "controller_default_run": false,
+    "icon": "",
+    "node_operating_system": "linux",
+    "service_type": "exec",
+    "executable_path": "/opt/fusion-collectors/bin/tonglink_exporter",
+    "execute_parameters": "--host $HOST --port $PORT --web.listen-address 127.0.0.1:$LISTEN_PORT --bearer-token $BEARER_TOKEN --tls-skip-verify $TLS_SKIP_VERIFY",
+    "validation_parameters": "",
+    "default_template": "",
+    "introduction": "TongLink Exporter collects metrics from TongLink 9.0.5.1 message middleware, exposing cluster, broker, message, queue, link, resource, setting and license metrics in Prometheus text format.",
+    "tags": [
+      "linux",
+      "exporter",
+      "monitor",
+      "x86_64"
+    ],
+    "package_name": "tonglink_exporter",
+    "cpu_architecture": "x86_64",
+    "default_config": {}
+  }
+]

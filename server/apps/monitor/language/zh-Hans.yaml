@@ -2542,6 +2542,55 @@ monitor_object_metric:
     net_response_string_found:
       name: 返回匹配
       desc: 是否在响应内容中匹配到期望字符串。仅在配置了期望返回串时上报，1表示命中，0表示未命中。
+  TongLink:
+    object:
+      name: TongLink
+      name_zh: 东方通 TongLink
+      description: 东方通 TongLink 9.0.5.1 消息中间件监控
+      description_zh: 东方通 TongLink 9.0.5.1 消息中间件监控
+    plugin:
+      TongLink-Exporter: TongLink 监控
+    metric:
+      cluster_state: 集群管理节点状态
+      cluster_condition: Broker 节点 condition
+      alive_broker: 存活 Broker 数
+      cluster_alive_client: 集群活跃 Client 数
+      broker_monitor: Broker 健康度
+      broker_lookup: Broker Lookup 结果
+      register_count: 已注册 Broker 总数
+      topic_msg_num: 主题消息堆积数
+      queue_msg_num: 队列消息堆积数
+      queue_total_count: 队列总数
+      link_speed: 链路传输速度
+      send_link_count: 发送链路数
+      local_link_count: 本地链路数
+      route_link_count: 分发链路数
+      link_total_count: 链路总数
+      up_flow_total_bytes: 累计上行流量
+      down_flow_total_bytes: 累计下行流量
+      commitlog_disk_util: commitlog 磁盘占用率
+      consumequeue_disk_util: consumequeue 磁盘占用率
+      commitlog_total_size: commitlog 占用空间
+      consumequeue_total_size: consumequeue 占用空间
+      consume_offset_size: 消费历史文件大小
+      commitlog_alarm_action: commitlog 超阈值动作
+      consumequeue_alarm_action: consumequeue 超阈值动作
+      license_warning: License 告警状态
+      license_expiry_timestamp_seconds: License 到期时间戳
+      license_type_info: License 类型
+      up: Exporter 进程存活
+      scrape_errors_total: 抓取错误总数
+      scrape_duration_seconds: 抓取耗时
+    group:
+      cluster: 集群
+      broker: Broker
+      message: 消息
+      queue: 队列
+      link: 链路
+      resource: 资源
+      setting: 配置
+      license: License
+      process: 进程
   Nginx:
     nginx_active:
       name: 活跃连接数
@@ -4860,6 +4909,7 @@ monitor_object:
   Mysql: MySQL
   Website: 网站
   MSSQL: MSSQL
+  TongLink: 东方通 TongLink
 monitor_object_type:
   VMware: VMware（Telegraf）
   Middleware: 中间件

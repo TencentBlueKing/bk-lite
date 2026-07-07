@@ -1,0 +1,351 @@
+{
+  "plugin": "TongLink-Exporter",
+  "plugin_desc": "东方通 TongLink 9.0.5.1 消息中间件监控采集器,通过 Prometheus 文本格式暴露集群、Broker、消息、队列、链路、资源、配置、License 等运行指标。",
+  "status_query": "any({instance_type='tonglink', collect_type='exporter'}) by (instance_id)",
+  "name": "TongLink",
+  "icon": "mm-rabbitmq_Rabbitmq",
+  "type": "Middleware",
+  "description": "TongLink 9.0.5.1 消息中间件监控",
+  "default_metric": "any({instance_type='tonglink'}) by (instance_id)",
+  "instance_id_keys": ["instance_id"],
+  "supplementary_indicators": [
+    "tonglink_exporter_up",
+    "tonglink_exporter_cluster_state",
+    "tonglink_exporter_alive_broker",
+    "tonglink_exporter_license_expiry_timestamp_seconds"
+  ],
+  "display_fields": [
+    {"name": "Exporter 存活", "sort_order": 0, "metrics": [{"plugin": "TongLink-Exporter", "metric": "tonglink_exporter_up"}]},
+    {"name": "集群状态", "sort_order": 1, "metrics": [{"plugin": "TongLink-Exporter", "metric": "tonglink_exporter_cluster_state"}]},
+    {"name": "存活 Broker 数", "sort_order": 2, "metrics": [{"plugin": "TongLink-Exporter", "metric": "tonglink_exporter_alive_broker"}]},
+    {"name": "License 到期", "sort_order": 3, "metrics": [{"plugin": "TongLink-Exporter", "metric": "tonglink_exporter_license_expiry_timestamp_seconds"}]}
+  ],
+  "metrics": [
+    {
+      "metric_group": "Process",
+      "name": "tonglink_exporter_up",
+      "display_name": "Exporter 存活",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"异常\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"正常\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "description": "1 if all targets scraped successfully, 0 otherwise.",
+      "query": "tonglink_exporter_up{__$labels__}"
+    },
+    {
+      "metric_group": "Process",
+      "name": "tonglink_exporter_scrape_errors_total",
+      "display_name": "抓取错误总数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "errors",
+      "dimensions": [
+        {"name": "endpoint", "description": "TongLink API endpoint"},
+        {"name": "target", "description": "TongLink target host"}
+      ],
+      "description": "Total TongLink scrape errors by endpoint and target.",
+      "query": "sum by (endpoint, target) (tonglink_exporter_scrape_errors_total{__$labels__})"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "tonglink_exporter_cluster_state",
+      "display_name": "集群管理节点状态",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"离线\",\"id\":0,\"color\":\"#ff4d4f\"},{\"name\":\"在线\",\"id\":1,\"color\":\"#1ac44a\"}]",
+      "dimensions": [],
+      "description": "TongLink 集群管理节点在线状态,0/1",
+      "query": "tonglink_exporter_cluster_state{__$labels__}"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "tonglink_exporter_cluster_condition",
+      "display_name": "Broker 节点 condition",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "boolean",
+      "dimensions": [
+        {"name": "brokerName", "description": "Broker 名称"},
+        {"name": "brokerId", "description": "Broker ID"},
+        {"name": "is_proxy", "description": "是否代理节点"}
+      ],
+      "description": "集群 broker 节点 condition 状态",
+      "query": "tonglink_exporter_cluster_condition{__$labels__}"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "tonglink_exporter_alive_broker",
+      "display_name": "存活 Broker 数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 集群当前存活 broker 数量",
+      "query": "sum(tonglink_exporter_alive_broker{__$labels__})"
+    },
+    {
+      "metric_group": "Cluster",
+      "name": "tonglink_exporter_cluster_alive_client",
+      "display_name": "集群活跃 Client 数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 集群当前活跃 client 连接数",
+      "query": "sum(tonglink_exporter_cluster_alive_client{__$labels__})"
+    },
+    {
+      "metric_group": "Broker",
+      "name": "tonglink_exporter_broker_monitor",
+      "display_name": "Broker 健康度",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "boolean",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink broker 健康监控状态",
+      "query": "tonglink_exporter_broker_monitor{__$labels__}"
+    },
+    {
+      "metric_group": "Broker",
+      "name": "tonglink_exporter_broker_lookup",
+      "display_name": "Broker Lookup 结果",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "boolean",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink broker lookup 结果",
+      "query": "tonglink_exporter_broker_lookup{__$labels__}"
+    },
+    {
+      "metric_group": "Broker",
+      "name": "tonglink_exporter_register_count",
+      "display_name": "已注册 Broker 总数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 集群已注册 broker 数量",
+      "query": "sum(tonglink_exporter_register_count{__$labels__})"
+    },
+    {
+      "metric_group": "Message",
+      "name": "tonglink_exporter_topic_msg_num",
+      "display_name": "主题消息堆积数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "topic", "description": "主题名称"}],
+      "description": "TongLink 主题消息堆积数量",
+      "query": "sum by (topic) (tonglink_exporter_topic_msg_num{__$labels__})"
+    },
+    {
+      "metric_group": "Message",
+      "name": "tonglink_exporter_queue_msg_num",
+      "display_name": "队列消息堆积数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [{"name": "queue", "description": "队列名称"}],
+      "description": "TongLink 队列消息堆积数量",
+      "query": "sum by (queue) (tonglink_exporter_queue_msg_num{__$labels__})"
+    },
+    {
+      "metric_group": "Queue",
+      "name": "tonglink_exporter_queue_total_count",
+      "display_name": "队列总数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 集群队列总数",
+      "query": "sum(tonglink_exporter_queue_total_count{__$labels__})"
+    },
+    {
+      "metric_group": "Link",
+      "name": "tonglink_exporter_link_speed",
+      "display_name": "链路传输速度",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "B/s",
+      "dimensions": [{"name": "link", "description": "链路名称"}],
+      "description": "TongLink 链路当前传输速度",
+      "query": "tonglink_exporter_link_speed{__$labels__}"
+    },
+    {
+      "metric_group": "Link",
+      "name": "tonglink_exporter_send_link_count",
+      "display_name": "发送链路数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 发送链路数量",
+      "query": "sum(tonglink_exporter_send_link_count{__$labels__})"
+    },
+    {
+      "metric_group": "Link",
+      "name": "tonglink_exporter_local_link_count",
+      "display_name": "本地链路数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 本地链路数量",
+      "query": "sum(tonglink_exporter_local_link_count{__$labels__})"
+    },
+    {
+      "metric_group": "Link",
+      "name": "tonglink_exporter_route_link_count",
+      "display_name": "分发链路数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 分发链路数量",
+      "query": "sum(tonglink_exporter_route_link_count{__$labels__})"
+    },
+    {
+      "metric_group": "Link",
+      "name": "tonglink_exporter_link_total_count",
+      "display_name": "链路总数",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "counts",
+      "dimensions": [],
+      "description": "TongLink 链路总数",
+      "query": "sum(tonglink_exporter_link_total_count{__$labels__})"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "tonglink_exporter_up_flow_total_bytes",
+      "display_name": "累计上行流量",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "target", "description": "TongLink 目标"}],
+      "description": "TongLink 累计上行流量字节数",
+      "query": "sum by (target) (tonglink_exporter_up_flow_total_bytes{__$labels__})"
+    },
+    {
+      "metric_group": "Resource",
+      "name": "tonglink_exporter_down_flow_total_bytes",
+      "display_name": "累计下行流量",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "target", "description": "TongLink 目标"}],
+      "description": "TongLink 累计下行流量字节数",
+      "query": "sum by (target) (tonglink_exporter_down_flow_total_bytes{__$labels__})"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_commitlog_disk_util",
+      "display_name": "commitlog 磁盘占用率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink commitlog 目录磁盘占用百分比",
+      "query": "tonglink_exporter_commitlog_disk_util{__$labels__}"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_consumequeue_disk_util",
+      "display_name": "consumequeue 磁盘占用率",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "%",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink consumequeue 目录磁盘占用百分比",
+      "query": "tonglink_exporter_consumequeue_disk_util{__$labels__}"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_commitlog_total_size",
+      "display_name": "commitlog 占用空间",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink commitlog 目录占用磁盘字节数",
+      "query": "tonglink_exporter_commitlog_total_size{__$labels__}"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_consumequeue_total_size",
+      "display_name": "consumequeue 占用空间",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink consumequeue 目录占用磁盘字节数",
+      "query": "tonglink_exporter_consumequeue_total_size{__$labels__}"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_consume_offset_size",
+      "display_name": "消费历史文件大小",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "bytes",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink 消费历史文件占用字节数",
+      "query": "tonglink_exporter_consume_offset_size{__$labels__}"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_commitlog_alarm_action",
+      "display_name": "commitlog 超阈值动作",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "code",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink commitlog 触发告警后采取的动作码",
+      "query": "tonglink_exporter_commitlog_alarm_action{__$labels__}"
+    },
+    {
+      "metric_group": "Setting",
+      "name": "tonglink_exporter_consumequeue_alarm_action",
+      "display_name": "consumequeue 超阈值动作",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "code",
+      "dimensions": [{"name": "broker", "description": "Broker 标识"}],
+      "description": "TongLink consumequeue 触发告警后采取的动作码",
+      "query": "tonglink_exporter_consumequeue_alarm_action{__$labels__}"
+    },
+    {
+      "metric_group": "License",
+      "name": "tonglink_exporter_license_warning",
+      "display_name": "License 告警状态",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Enum",
+      "unit": "[{\"name\":\"正常\",\"id\":0,\"color\":\"#1ac44a\"},{\"name\":\"告警\",\"id\":1,\"color\":\"#faad14\"},{\"name\":\"即将到期\",\"id\":2,\"color\":\"#ff4d4f\"}]",
+      "dimensions": [],
+      "description": "TongLink license 告警状态码",
+      "query": "tonglink_exporter_license_warning{__$labels__}"
+    },
+    {
+      "metric_group": "License",
+      "name": "tonglink_exporter_license_expiry_timestamp_seconds",
+      "display_name": "License 到期时间戳",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "s",
+      "dimensions": [],
+      "description": "TongLink license 到期 Unix 时间戳(秒)",
+      "query": "tonglink_exporter_license_expiry_timestamp_seconds{__$labels__}"
+    },
+    {
+      "metric_group": "License",
+      "name": "tonglink_exporter_license_type_info",
+      "display_name": "License 类型",
+      "instance_id_keys": ["instance_id"],
+      "data_type": "Number",
+      "unit": "code",
+      "dimensions": [],
+      "description": "TongLink license 类型标识",
+      "query": "tonglink_exporter_license_type_info{__$labels__}"
+    }
+  ]
+}

@@ -2542,6 +2542,55 @@ monitor_object_metric:
     net_response_string_found:
       name: String Found
       desc: Whether the expected string was matched in the response. Reported only when an expect string is configured; 1 means found, 0 means not found.
+  TongLink:
+    object:
+      name: TongLink
+      name_zh: TongLink
+      description: TongLink 9.0.5.1 message middleware monitoring
+      description_zh: TongLink 9.0.5.1 message middleware monitoring
+    plugin:
+      TongLink-Exporter: TongLink Monitoring
+    metric:
+      cluster_state: Cluster Manager State
+      cluster_condition: Broker Node Condition
+      alive_broker: Alive Brokers
+      cluster_alive_client: Cluster Alive Clients
+      broker_monitor: Broker Health
+      broker_lookup: Broker Lookup Result
+      register_count: Registered Brokers
+      topic_msg_num: Topic Message Backlog
+      queue_msg_num: Queue Message Backlog
+      queue_total_count: Total Queues
+      link_speed: Link Throughput
+      send_link_count: Send Links
+      local_link_count: Local Links
+      route_link_count: Route Links
+      link_total_count: Total Links
+      up_flow_total_bytes: Total Upstream Flow
+      down_flow_total_bytes: Total Downstream Flow
+      commitlog_disk_util: commitlog Disk Usage
+      consumequeue_disk_util: consumequeue Disk Usage
+      commitlog_total_size: commitlog Disk Size
+      consumequeue_total_size: consumequeue Disk Size
+      consume_offset_size: Consume Offset Size
+      commitlog_alarm_action: commitlog Alarm Action
+      consumequeue_alarm_action: consumequeue Alarm Action
+      license_warning: License Warning State
+      license_expiry_timestamp_seconds: License Expiry Timestamp
+      license_type_info: License Type
+      up: Exporter Up
+      scrape_errors_total: Scrape Errors Total
+      scrape_duration_seconds: Scrape Duration Seconds
+    group:
+      cluster: Cluster
+      broker: Broker
+      message: Message
+      queue: Queue
+      link: Link
+      resource: Resource
+      setting: Setting
+      license: License
+      process: Process
   Nginx:
     nginx_active:
       name: Active Connections
@@ -4858,6 +4907,7 @@ monitor_object:
   Mysql: MySQL
   Website: Website
   MSSQL: MSSQL
+  TongLink: TongLink
 monitor_object_type:
   VMware: VMware(Telegraf)
   Middleware: Middleware
