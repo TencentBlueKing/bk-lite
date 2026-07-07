@@ -339,7 +339,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
           </div>
         ))}
         <Button
-          className="mx-3 w-fit"
+          className={showFormula ? 'mx-3 w-fit' : 'mx-3 mb-3 w-fit'}
           icon={<PlusOutlined />}
           onClick={addMetricRow}
           type="dashed"
