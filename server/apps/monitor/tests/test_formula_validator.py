@@ -37,6 +37,33 @@ def test_validate_formula_allows_subset_dimensions():
     assert result.warnings == []
 
 
+def test_validate_formula_uses_first_query_as_anchor_not_expression_order():
+    payload = formula(
+        expression="b / a * 100",
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ],
+    )
+
+    result = validate_formula_condition(payload)
+
+    assert result.anchor_ref == "a"
+    assert result.warnings == []
+
+
 def test_validate_formula_warns_cross_dimension_reuse():
     payload = formula(
         expression="a / b - c",

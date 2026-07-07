@@ -92,6 +92,40 @@ def test_compile_nested_formula_with_group_right():
     assert compiled.group_by == ["instance_id", "status"]
 
 
+def test_compile_formula_result_group_by_uses_first_query_when_expression_starts_with_subset():
+    metrics = {
+        1: MetricObj(1, "error_count{__$labels__}"),
+        2: MetricObj(2, "request_count{__$labels__}"),
+    }
+    condition = {
+        "type": "formula",
+        "result_name": "错误率",
+        "expression": "b / a * 100",
+        "queries": [
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ],
+    }
+
+    compiled = FormulaCompiler(condition, metrics).compile()
+
+    assert compiled.anchor_ref == "a"
+    assert compiled.group_by == ["instance_id", "status"]
+    assert "/ on(instance_id) group_right" in compiled.query
+
+
 def test_build_formula_query_rejects_invalid_query_shape_with_controlled_error():
     condition = {
         "type": "formula",

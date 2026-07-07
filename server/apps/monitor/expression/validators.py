@@ -123,10 +123,12 @@ def validate_formula_condition(query_condition: dict) -> FormulaValidationResult
     if unused_refs:
         raise FormulaValidationError(f"指标变量 {', '.join(unused_refs)} 未被表达式引用")
 
-    anchor_ref = unique_variables[0]
+    anchor_ref = str(queries[0].get("ref") or "")
     anchor_group_by = set(by_ref[anchor_ref].get("group_by") or [])
     warnings: list[dict] = []
-    for ref in unique_variables[1:]:
+    for ref in unique_variables:
+        if ref == anchor_ref:
+            continue
         group_by = set(by_ref[ref].get("group_by") or [])
         extra = sorted(group_by - anchor_group_by)
         if extra:
