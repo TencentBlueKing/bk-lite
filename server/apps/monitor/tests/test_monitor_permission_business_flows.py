@@ -17,7 +17,7 @@ BASE = "/api/v1/monitor"
 
 @pytest.fixture(autouse=True)
 def disable_error_log_async(mocker):
-    mocker.patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async")
+    return mocker.patch("apps.system_mgmt.middleware.error_log_middleware.write_error_log_async")
 
 
 def _name(prefix):
@@ -220,7 +220,7 @@ class TestMonitorPolicyBulkBusinessFlow:
         )
         return monitor_object, metric
 
-    def test_bulk_template_create_rejects_cross_team_asset_before_creating_policy(self, api_client, mocker):
+    def test_bulk_template_create_rejects_cross_team_asset_before_creating_policy(self, api_client, mocker, disable_error_log_async):
         api_client.cookies["current_team"] = "1"
         _patch_policy_business_permissions(mocker, teams=[1])
         monitor_object, metric = self._metric_template_context()
@@ -244,6 +244,8 @@ class TestMonitorPolicyBulkBusinessFlow:
         )
 
         assert resp.status_code == 401
+        assert resp.json()["message"].startswith("无权限访问指定监控资产")
+        disable_error_log_async.delay.assert_not_called()
         assert MonitorPolicy.objects.filter(monitor_object=monitor_object).count() == 0
         assert set(PeriodicTask.objects.values_list("name", flat=True)) == before_task_names
 

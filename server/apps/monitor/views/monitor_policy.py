@@ -537,6 +537,10 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
         if not asset_ids:
             raise BaseAppException("asset_ids 不能为空")
 
+        permission_error = self.get_bulk_policy_asset_permission_error(monitor_object_id, asset_ids)
+        if permission_error:
+            return WebUtils.response_401(permission_error)
+
         assets = self.get_bulk_policy_assets(monitor_object_id, asset_ids)
         enriched_templates = self.enrich_bulk_policy_templates(monitor_object_id, templates)
         payloads = build_bulk_policy_payloads(
@@ -568,6 +572,41 @@ class MonitorPolicyViewSet(viewsets.ModelViewSet):
                 "policy_ids": [policy.id for policy in created],
             }
         )
+
+    def get_bulk_policy_asset_permission_error(self, monitor_object_id, asset_ids):
+        from apps.monitor.models.monitor_object import MonitorInstance
+
+        normalized_ids = [str(asset_id) for asset_id in asset_ids if asset_id not in (None, "")]
+        request = getattr(self, "request", None)
+        if request is None or request.user.is_superuser or not normalized_ids:
+            return ""
+
+        actor_context = _build_actor_context(request)
+        authorized_ids = {
+            str(instance_id)
+            for instance_id in InstanceConfigService._get_authorized_monitor_instances(
+                actor_context,
+                monitor_object_id,
+                require_operate=False,
+            )
+            .filter(
+                id__in=normalized_ids,
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+            )
+            .values_list("id", flat=True)
+        }
+        existing_ids = set(
+            MonitorInstance.objects.filter(
+                id__in=normalized_ids,
+                monitor_object_id=monitor_object_id,
+                is_deleted=False,
+            ).values_list("id", flat=True)
+        )
+        unauthorized_ids = sorted(existing_ids - authorized_ids)
+        if unauthorized_ids:
+            return f"无权限访问指定监控资产: {', '.join(unauthorized_ids)}"
+        return ""
 
     @action(methods=["post"], detail=False, url_path="preview")
     def preview(self, request):
