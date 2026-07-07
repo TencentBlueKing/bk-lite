@@ -1,0 +1,944 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>资源费用 · 数据模型（实际 CMDB）</title>
+  <style>
+    /* ===== Design tokens (与报表页统一) ===== */
+    :root {
+      --bg:            oklch(0.985 0.003 250);
+      --surface:       oklch(1 0 0);
+      --surface-2:     oklch(0.972 0.004 250);
+      --surface-3:     oklch(0.962 0.005 250);
+      --border:        oklch(0.92 0.005 250);
+      --border-strong: oklch(0.85 0.008 250);
+      --ink:           oklch(0.20 0.02 250);
+      --ink-2:         oklch(0.40 0.015 250);
+      --ink-3:         oklch(0.55 0.012 250);
+      --ink-4:         oklch(0.68 0.01 250);
+      --accent:        oklch(0.55 0.16 200);
+      --accent-soft:   oklch(0.95 0.04 200);
+      --positive:      oklch(0.62 0.15 150);
+      --negative:      oklch(0.58 0.18 25);
+      --warning:       oklch(0.70 0.15 70);
+      --viz-1:         oklch(0.62 0.15 200);
+      --viz-2:         oklch(0.62 0.13 280);
+      --viz-3:         oklch(0.65 0.13 50);
+      --viz-4:         oklch(0.62 0.13 150);
+      --radius:        6px;
+      --radius-lg:     10px;
+      --shadow-1:      0 1px 2px rgba(15,23,42,0.04), 0 1px 1px rgba(15,23,42,0.03);
+
+      --font-display:  -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+      --font-body:     -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", "Segoe UI", system-ui, sans-serif;
+      --font-mono:     ui-monospace, "SF Mono", "JetBrains Mono", Menlo, Consolas, monospace;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html, body { background: var(--bg); color: var(--ink); }
+    body {
+      font-family: var(--font-body);
+      font-size: 14px;
+      line-height: 1.55;
+      -webkit-font-smoothing: antialiased;
+      letter-spacing: -0.005em;
+    }
+    .page { max-width: 1200px; margin: 0 auto; padding: 28px 32px 64px; }
+
+    /* ===== Page header ===== */
+    .page-header {
+      display: flex;
+      align-items: flex-end;
+      justify-content: space-between;
+      gap: 24px;
+      margin-bottom: 24px;
+      padding-bottom: 20px;
+      border-bottom: 1px solid var(--border);
+    }
+    .page-title-group { display: flex; flex-direction: column; gap: 6px; }
+    .page-title {
+      font-family: var(--font-display);
+      font-size: 22px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+    }
+    .page-subtitle { font-size: 13px; color: var(--ink-3); display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .page-subtitle .sep { color: var(--ink-4); }
+    .page-subtitle code, .page-subtitle .kbd {
+      font-family: var(--font-mono); font-size: 12px; background: var(--surface-2);
+      padding: 1px 5px; border-radius: 3px;
+    }
+    .page-actions { display: flex; gap: 8px; }
+    .btn {
+      font-family: var(--font-body); font-size: 13px; height: 32px; padding: 0 14px;
+      border-radius: 6px; border: 1px solid var(--border-strong); background: var(--surface);
+      color: var(--ink-2); cursor: pointer; display: inline-flex; align-items: center; gap: 6px;
+      transition: background .15s ease, color .15s ease;
+    }
+    .btn:hover { background: var(--surface-2); color: var(--ink); }
+    .btn-link { border-color: transparent; padding: 0 6px; }
+
+    /* ===== Section ===== */
+    .section { margin-bottom: 36px; }
+    .section-head {
+      display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
+      margin-bottom: 14px;
+    }
+    .section-title {
+      font-family: var(--font-display);
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.015em;
+      color: var(--ink);
+    }
+    .section-desc { font-size: 13px; color: var(--ink-3); max-width: 60ch; }
+    .section-desc code {
+      font-family: var(--font-mono); font-size: 12px; background: var(--surface-2);
+      padding: 1px 5px; border-radius: 3px;
+    }
+
+    /* ===== Pipeline / data flow ===== */
+    .pipeline {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .step {
+      padding: 18px 20px;
+      border-right: 1px solid var(--border);
+      position: relative;
+    }
+    .step:last-child { border-right: none; }
+    .step-num { font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); letter-spacing: 0.05em; }
+    .step-title { font-family: var(--font-display); font-size: 14px; font-weight: 600; color: var(--ink); margin: 4px 0 6px; }
+    .step-desc { font-size: 12px; color: var(--ink-3); line-height: 1.5; }
+    .step-desc code { font-family: var(--font-mono); font-size: 11.5px; }
+    .step-tag {
+      display: inline-block; margin-top: 10px;
+      padding: 2px 6px; border-radius: 4px;
+      background: var(--surface-2); color: var(--ink-2);
+      font-size: 11px; font-family: var(--font-mono);
+    }
+    .step.faded { opacity: 0.62; }
+    .step.faded .step-tag { background: oklch(0.95 0.05 70); color: oklch(0.40 0.13 70); }
+
+    /* ===== Classification + enum cards (3 cols) ===== */
+    .grid-3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 14px; }
+    .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+
+    .meta-card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      display: flex; flex-direction: column;
+      min-width: 0;
+    }
+    .meta-card-head {
+      padding: 12px 16px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: center; gap: 10px;
+      background: var(--surface-2);
+    }
+    .meta-card-icon {
+      width: 28px; height: 28px; border-radius: 6px;
+      background: oklch(0.94 0.04 200); color: oklch(0.36 0.10 200);
+      display: inline-flex; align-items: center; justify-content: center;
+      font-family: var(--font-mono); font-size: 12px; font-weight: 600;
+      flex-shrink: 0;
+    }
+    .meta-card-icon.enum { background: oklch(0.95 0.05 50); color: oklch(0.38 0.12 50); }
+    .meta-card-title {
+      font-family: var(--font-mono); font-size: 13px; font-weight: 600; color: var(--ink);
+    }
+    .meta-card-sub { font-size: 11px; color: var(--ink-3); }
+    .meta-card-body { padding: 14px 16px; font-size: 12.5px; color: var(--ink-2); }
+    .meta-card-body .row {
+      display: grid; grid-template-columns: 110px 1fr; gap: 10px;
+      padding: 4px 0;
+      align-items: baseline;
+    }
+    .meta-card-body .row .k { font-family: var(--font-mono); font-size: 12px; color: var(--ink-2); }
+    .meta-card-body .row .v { color: var(--ink); }
+
+    .enum-list { display: flex; flex-direction: column; gap: 6px; }
+    .enum-list .chip {
+      display: inline-flex; align-items: center;
+      padding: 2px 8px;
+      border-radius: 4px;
+      background: var(--surface-2);
+      color: var(--ink-2);
+      font-family: var(--font-mono);
+      font-size: 11px;
+      margin: 0 4px 4px 0;
+    }
+
+    /* ===== Table cards ===== */
+    .cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      display: flex; flex-direction: column;
+      min-width: 0;
+    }
+    .card-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border);
+      display: flex; align-items: flex-start; justify-content: space-between; gap: 10px;
+    }
+    .card-title-wrap { min-width: 0; }
+    .card-title { font-family: var(--font-mono); font-size: 14px; font-weight: 600; color: var(--ink); letter-spacing: -0.005em; }
+    .card-subtitle { font-size: 12px; color: var(--ink-3); margin-top: 2px; }
+    .card-tag {
+      display: inline-flex; align-items: center; gap: 5px;
+      padding: 3px 8px; border-radius: 4px;
+      font-size: 11px; font-family: var(--font-mono); white-space: nowrap;
+    }
+    .card-tag.primary   { background: oklch(0.94 0.04 200); color: oklch(0.36 0.10 200); }
+    .card-tag.secondary { background: oklch(0.95 0.04 280); color: oklch(0.38 0.10 280); }
+    .card-tag.rollup    { background: oklch(0.95 0.04 50); color: oklch(0.40 0.13 70); }
+    .card-tag.planned   { background: oklch(0.95 0.04 50); color: oklch(0.40 0.13 70); }
+
+    .card-body { padding: 0; }
+
+    /* ===== Field table ===== */
+    .fields { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    .fields th, .fields td {
+      padding: 8px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .fields th {
+      font-size: 11px; font-weight: 500; color: var(--ink-3);
+      background: var(--surface-2); letter-spacing: 0.02em;
+    }
+    .fields tr:last-child td { border-bottom: none; }
+    .fields td.field { font-family: var(--font-mono); color: var(--ink); font-size: 12px; white-space: nowrap; }
+    .fields td.type  { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); white-space: nowrap; }
+    .fields td.desc  { color: var(--ink-2); }
+    .fields td.req   { text-align: center; }
+    .fields td.req .y { color: var(--negative); font-family: var(--font-mono); font-size: 11px; }
+    .fields td.req .n { color: var(--ink-4); font-family: var(--font-mono); font-size: 11px; }
+
+    .pk, .fk, .uk {
+      display: inline-block;
+      padding: 1px 5px; margin-right: 4px;
+      border-radius: 3px;
+      font-size: 9px; font-family: var(--font-mono);
+      letter-spacing: 0.05em;
+      vertical-align: middle;
+    }
+    .pk { background: var(--ink); color: oklch(0.99 0 0); }
+    .fk { background: var(--accent-soft); color: oklch(0.36 0.10 200); }
+    .uk { background: oklch(0.95 0.05 50); color: oklch(0.38 0.12 50); }
+
+    .req-mark { color: var(--negative); margin-left: 4px; }
+
+    /* ===== ER diagram ===== */
+    .er-wrap {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 24px;
+      overflow-x: auto;
+    }
+    .er-svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+
+    /* ===== Index table ===== */
+    .index-table {
+      width: 100%; border-collapse: collapse; font-size: 13px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+    }
+    .index-table th, .index-table td {
+      padding: 10px 14px;
+      text-align: left;
+      border-bottom: 1px solid var(--border);
+    }
+    .index-table thead th {
+      font-size: 11px; font-weight: 500; color: var(--ink-3);
+      background: var(--surface-2); letter-spacing: 0.02em;
+    }
+    .index-table tr:last-child td { border-bottom: none; }
+    .index-table td.idx { font-family: var(--font-mono); font-size: 12px; color: var(--ink); }
+    .index-table td.note { color: var(--ink-3); font-size: 12.5px; }
+    .index-table td.scope { font-family: var(--font-mono); font-size: 11.5px; color: var(--ink-2); }
+    .index-table tr.dim td { color: var(--ink-4); background: var(--surface-2); }
+    .index-table tr.dim td.idx { font-style: italic; }
+
+    /* ===== Callouts ===== */
+    .callout {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      padding: 18px 20px;
+    }
+    .callout + .callout { margin-top: 14px; }
+    .callout-head {
+      display: flex; align-items: center; gap: 10px; margin-bottom: 10px;
+    }
+    .callout-marker {
+      width: 8px; height: 8px; border-radius: 50%;
+      background: var(--warning);
+      box-shadow: 0 0 0 4px oklch(0.94 0.06 70);
+      flex-shrink: 0;
+    }
+    .callout-marker.info {
+      background: var(--accent);
+      box-shadow: 0 0 0 4px var(--accent-soft);
+    }
+    .callout-title { font-family: var(--font-display); font-size: 14px; font-weight: 600; }
+    .callout-subtitle {
+      font-size: 12px; color: var(--ink-3);
+      margin-left: auto; font-family: var(--font-mono);
+    }
+    .callout-body { font-size: 13px; color: var(--ink-2); line-height: 1.6; }
+    .callout-body code, .callout-body .kbd {
+      font-family: var(--font-mono); font-size: 12px;
+      background: var(--surface-2);
+      padding: 1px 5px; border-radius: 3px;
+      color: var(--ink);
+    }
+    .callout-body table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: 12.5px; }
+    .callout-body th, .callout-body td {
+      padding: 6px 10px; border-bottom: 1px solid var(--border); text-align: left; vertical-align: top;
+    }
+    .callout-body th { font-size: 11px; font-weight: 500; color: var(--ink-3); background: var(--surface-2); }
+    .callout-body td:first-child { font-family: var(--font-mono); font-size: 12px; color: var(--ink); white-space: nowrap; }
+
+    /* ===== Strategy ===== */
+    .strategy { display: grid; grid-template-columns: 1.4fr 1fr; gap: 14px; }
+    .strategy-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 10px; }
+    .strategy-list li {
+      display: grid; grid-template-columns: 28px 1fr; gap: 10px;
+      font-size: 13px; color: var(--ink-2); line-height: 1.5;
+    }
+    .strategy-list li::before {
+      content: attr(data-num);
+      font-family: var(--font-mono); font-size: 11px; color: var(--ink-4); padding-top: 2px;
+    }
+    .strategy-list li code {
+      font-family: var(--font-mono); font-size: 12px;
+      background: var(--surface-2);
+      padding: 1px 5px; border-radius: 3px;
+      color: var(--ink);
+    }
+
+    .strategy-snippet {
+      background: oklch(0.18 0.015 250);
+      color: oklch(0.92 0.005 250);
+      border-radius: var(--radius);
+      padding: 14px 16px;
+      font-family: var(--font-mono);
+      font-size: 12px; line-height: 1.6;
+      overflow-x: auto;
+    }
+    .strategy-snippet .c { color: oklch(0.65 0.02 250); }
+    .strategy-snippet .k { color: oklch(0.75 0.10 200); }
+    .strategy-snippet .v { color: oklch(0.85 0.10 50); }
+    .strategy-snippet .f { color: oklch(0.85 0.08 150); }
+
+    /* ===== Responsive ===== */
+    @media (max-width: 980px) {
+      .cards { grid-template-columns: 1fr; }
+      .grid-3 { grid-template-columns: 1fr; }
+      .grid-2 { grid-template-columns: 1fr; }
+      .pipeline { grid-template-columns: 1fr 1fr; }
+      .step:nth-child(2) { border-right: none; }
+      .step:nth-child(1), .step:nth-child(2) { border-bottom: 1px solid var(--border); }
+      .strategy { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 640px) {
+      .page { padding: 20px 16px 40px; }
+      .page-header { flex-direction: column; align-items: flex-start; }
+      .pipeline { grid-template-columns: 1fr; }
+      .step { border-right: none; border-bottom: 1px solid var(--border); }
+      .step:last-child { border-bottom: none; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="page">
+
+    <header class="page-header">
+      <div class="page-title-group">
+        <h1 class="page-title">资源费用 · 数据模型（实际 CMDB）</h1>
+        <div class="page-subtitle">
+          <span>来源 <span class="kbd">model_config.xlsx</span></span>
+          <span class="sep">·</span>
+          <span>分类 <code>jifeiguanli</code> 计费管理</span>
+          <span class="sep">·</span>
+          <span>模型 <code>ziyuanfeiyong</code> / <code>Transaction_Log</code></span>
+          <span class="sep">·</span>
+          <span>关联 1 条自关联 + 1 条 1:n connect</span>
+        </div>
+      </div>
+      <div class="page-actions">
+        <a class="btn btn-link" href="./20260707.运营分析-资源费用分析报表HTML演示.html">→ 看报表效果</a>
+      </div>
+    </header>
+
+    <!-- ========== Section 1: 数据架构 pipeline ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">数据架构概览</h2>
+        <p class="section-desc">所有数据走 cmdb 自定义上报，落到 <code>ziyuanfeiyong</code> 与 <code>Transaction_Log</code> 两个 CMDB 模型实例表；rollup 表是设计文档中规划的降级方案，待评估。</p>
+      </div>
+
+      <div class="pipeline">
+        <div class="step">
+          <div class="step-num">STEP 01</div>
+          <div class="step-title">采集</div>
+          <div class="step-desc">ITSM / 财务平台手工录入或批量上报，调用 CMDB custom_reporting 接口落库。</div>
+          <span class="step-tag">cmdb/custom_reporting</span>
+        </div>
+        <div class="step">
+          <div class="step-num">STEP 02</div>
+          <div class="step-title">CMDB 实例落库</div>
+          <div class="step-desc">落到 <code>ziyuanfeiyong</code>（资源账单）与 <code>Transaction_Log</code>（流水记录），按 <code>group</code> n:n 自关联 + 1:n connect。</div>
+          <span class="step-tag">ziyuanfeiyong · Transaction_Log</span>
+        </div>
+        <div class="step">
+          <div class="step-num">STEP 03</div>
+          <div class="step-title">报表服务</div>
+          <div class="step-desc">三个 scene_widget 共用 filter 序列化器与 service 层，调用 CMDB 实例服务层读取数据。</div>
+          <span class="step-tag">operation_analysis/cloud_cost</span>
+        </div>
+        <div class="step faded">
+          <div class="step-num">STEP 04 · 待评估</div>
+          <div class="step-title">rollup 预聚合</div>
+          <div class="step-desc">设计文档中规划的降级表；实际 CMDB 尚未建模，待性能数据出来后评估。</div>
+          <span class="step-tag">规划中 · 待评估</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Section 2: 分类 + 公共选项库 ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">模型分类 &amp; 公共选项库</h2>
+        <p class="section-desc">两个 CMDB 模型都属于 <code>jifeiguanli</code> 计费管理分类，图标都是 <code>icon-cc-host</code>。4 个公共选项库被字段引用。</p>
+      </div>
+
+      <div class="grid-3">
+
+        <!-- 模型分类 -->
+        <article class="meta-card">
+          <header class="meta-card-head">
+            <span class="meta-card-icon">分</span>
+            <div>
+              <div class="meta-card-title">jifeiguanli</div>
+              <div class="meta-card-sub">模型分类 · classification_id</div>
+            </div>
+          </header>
+          <div class="meta-card-body">
+            <div class="row"><span class="k">name</span><span class="v">计费管理</span></div>
+            <div class="row"><span class="k">models</span><span class="v">ziyuanfeiyong, Transaction_Log</span></div>
+          </div>
+        </article>
+
+        <!-- 模型 1 -->
+        <article class="meta-card">
+          <header class="meta-card-head">
+            <span class="meta-card-icon">模</span>
+            <div>
+              <div class="meta-card-title">ziyuanfeiyong</div>
+              <div class="meta-card-sub">资源账单 · model_name</span></div>
+            </div>
+          </header>
+          <div class="meta-card-body">
+            <div class="row"><span class="k">model_id</span><span class="v">ziyuanfeiyong</span></div>
+            <div class="row"><span class="k">icon</span><span class="v">icon-cc-host</span></div>
+            <div class="row"><span class="k">classification</span><span class="v">jifeiguanli</span></div>
+            <div class="row"><span class="k">fields</span><span class="v">15</span></div>
+          </div>
+        </article>
+
+        <!-- 模型 2 -->
+        <article class="meta-card">
+          <header class="meta-card-head">
+            <span class="meta-card-icon">模</span>
+            <div>
+              <div class="meta-card-title">Transaction_Log</div>
+              <div class="meta-card-sub">流水记录 · model_name</span></div>
+            </div>
+          </header>
+          <div class="meta-card-body">
+            <div class="row"><span class="k">model_id</span><span class="v">Transaction_Log</span></div>
+            <div class="row"><span class="k">icon</span><span class="v">icon-cc-host</span></div>
+            <div class="row"><span class="k">classification</span><span class="v">jifeiguanli</span></div>
+            <div class="row"><span class="k">fields</span><span class="v">11</span></div>
+          </div>
+        </article>
+
+        <!-- enum 1 -->
+        <article class="meta-card">
+          <header class="meta-card-head">
+            <span class="meta-card-icon enum">选</span>
+            <div>
+              <div class="meta-card-title">opera_status</div>
+              <div class="meta-card-sub">公共选项库 · 运行状态</span></div>
+            </div>
+          </header>
+          <div class="meta-card-body">
+            <div class="enum-list">
+              <span class="chip">running</span><span class="chip">pending</span>
+              <span class="chip">maintenance</span><span class="chip">stopped</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- enum 2 -->
+        <article class="meta-card">
+          <header class="meta-card-head">
+            <span class="meta-card-icon enum">选</span>
+            <div>
+              <div class="meta-card-title">asset_status</div>
+              <div class="meta-card-sub">公共选项库 · 资产状态</span></div>
+            </div>
+          </header>
+          <div class="meta-card-body">
+            <div class="enum-list">
+              <span class="chip">purchased</span><span class="chip">in-stock</span>
+              <span class="chip">in-use</span><span class="chip">repairing</span>
+              <span class="chip">missing</span><span class="chip">disposed</span>
+            </div>
+          </div>
+        </article>
+
+        <!-- enum 3+4 combined card -->
+        <article class="meta-card">
+          <header class="meta-card-head">
+            <span class="meta-card-icon enum">选</span>
+            <div>
+              <div class="meta-card-title">vendor &amp; env</div>
+              <div class="meta-card-sub">公共选项库 · 厂商 / 环境</span></div>
+            </div>
+          </header>
+          <div class="meta-card-body">
+            <div style="margin-bottom: 8px; font-size: 11px; color: var(--ink-3);">vendor · 13 项</div>
+            <div class="enum-list" style="margin-bottom: 12px;">
+              <span class="chip">dell</span><span class="chip">hpe</span><span class="chip">lenovo</span>
+              <span class="chip">huawei</span><span class="chip">inspur</span><span class="chip">cisco</span>
+              <span class="chip">h3c</span><span class="chip">ruijie</span><span class="chip">juniper</span>
+              <span class="chip">sangfor</span><span class="chip">fortinet</span><span class="chip">paloalto</span>
+              <span class="chip">supermicro</span>
+            </div>
+            <div style="margin-bottom: 8px; font-size: 11px; color: var(--ink-3);">env · 5 项</div>
+            <div class="enum-list">
+              <span class="chip">prod</span><span class="chip">staging</span>
+              <span class="chip">test</span><span class="chip">dev</span>
+              <span class="chip">dr</span>
+            </div>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ========== Section 3: 两张表 + 降级表 ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">两张表 / 模型 + 降级表（规划）</h2>
+        <p class="section-desc">实际 CMDB 落地为 <code>ziyuanfeiyong</code> + <code>Transaction_Log</code>；rollup 是设计文档里 §5.2 的规划方案，待评估。</p>
+      </div>
+
+      <div class="cards">
+
+        <!-- ziyuanfeiyong -->
+        <article class="card">
+          <header class="card-head">
+            <div class="card-title-wrap">
+              <div class="card-title">ziyuanfeiyong</div>
+              <div class="card-subtitle">资源账单 · CMDB 模型实例表</div>
+            </div>
+            <span class="card-tag primary">主表 · 实例级</span>
+          </header>
+          <div class="card-body">
+            <table class="fields">
+              <thead>
+                <tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="field"><span class="uk">UQ</span>inst_name</td><td class="type">str</td><td class="req"><span class="y">Y</span></td><td class="desc">实例名（唯一）</td></tr>
+                <tr><td class="field">organization</td><td class="type">organization</td><td class="req"><span class="y">Y</span></td><td class="desc">所属组织（组织字段）</td></tr>
+                <tr><td class="field">SN</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">单号 SN</td></tr>
+                <tr><td class="field">object_type</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">对象类型（ECS/RDS/OSS…）</td></tr>
+                <tr><td class="field">object_name</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">对象名称（人类可读）</td></tr>
+                <tr><td class="field">applicant</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">申请人</td></tr>
+                <tr><td class="field">USER_DEPARTMENT</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">使用部门</td></tr>
+                <tr><td class="field">Affiliated_application</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">所属应用系统</td></tr>
+                <tr><td class="field">application_id</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">应用系统 ID</td></tr>
+                <tr><td class="field">Charging_start_time</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">开始计价时间</td></tr>
+                <tr><td class="field">Charging_end_time</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">结束计价时间</td></tr>
+                <tr><td class="field">Resource_unit_price</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">资源单价（元/天）</td></tr>
+                <tr><td class="field">Total_Accrued_Expenses</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">已发生总费用（元）</td></tr>
+                <tr><td class="field">object_id</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">实例 ID（关联上游 CMDB 对象）</td></tr>
+                <tr><td class="field">Scheduled_Resource_Recovery_Time</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">预计资源回收时间</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- Transaction_Log -->
+        <article class="card">
+          <header class="card-head">
+            <div class="card-title-wrap">
+              <div class="card-title">Transaction_Log</div>
+              <div class="card-subtitle">流水记录 · CMDB 模型实例表</div>
+            </div>
+            <span class="card-tag secondary">子表 · 1:n</span>
+          </header>
+          <div class="card-body">
+            <table class="fields">
+              <thead>
+                <tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="field"><span class="uk">UQ</span>inst_name</td><td class="type">str</td><td class="req"><span class="y">Y</span></td><td class="desc">实例名（唯一）</td></tr>
+                <tr><td class="field">organization</td><td class="type">organization</td><td class="req"><span class="n">N</span></td><td class="desc">组织</td></tr>
+                <tr><td class="field">object_id</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">实例 ID</td></tr>
+                <tr><td class="field">Billing_Date</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">计费日期</td></tr>
+                <tr><td class="field">Billing_Month</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">计费月份</td></tr>
+                <tr><td class="field">Total_Cost</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">总费用（元）</td></tr>
+                <tr><td class="field">Cost_Department</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">成本部门</td></tr>
+                <tr><td class="field">Applying_User</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">申请用户</td></tr>
+                <tr><td class="field">Affiliated_application</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">所属应用系统</td></tr>
+                <tr><td class="field">Application_id</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">应用系统 ID</td></tr>
+                <tr><td class="field">Department_Affiliation</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">所属部门</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+        <!-- CloudResourceCostDailyRollup (规划) -->
+        <article class="card" style="opacity: 0.78;">
+          <header class="card-head">
+            <div class="card-title-wrap">
+              <div class="card-title">CloudResourceCostDailyRollup</div>
+              <div class="card-subtitle">预聚合表 · 设计文档 §5.2 规划</div>
+            </div>
+            <span class="card-tag planned">规划 · 待评估</span>
+          </header>
+          <div class="card-body">
+            <table class="fields">
+              <thead>
+                <tr><th>字段</th><th>类型</th><th>必填</th><th>说明</th></tr>
+              </thead>
+              <tbody>
+                <tr><td class="field"><span class="uk">UQ</span>(rollup_date, inst_id, cost_type, group_id)</td><td class="type">—</td><td class="req"><span class="n">N</span></td><td class="desc">unique_together 约束</td></tr>
+                <tr><td class="field">rollup_date</td><td class="type">date</td><td class="req"><span class="n">N</span></td><td class="desc">聚合日期</td></tr>
+                <tr><td class="field">inst_id / instance_name</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">从 ziyuanfeiyong 拉平</td></tr>
+                <tr><td class="field">object_type / applicant / USER_DEPARTMENT</td><td class="type">str</td><td class="req"><span class="n">N</span></td><td class="desc">维度冗余字段</td></tr>
+                <tr><td class="field">daily_cost</td><td class="type">decimal(18,4)</td><td class="req"><span class="n">N</span></td><td class="desc">每日合计（来自 Transaction_Log.Total_Cost）</td></tr>
+                <tr><td class="field">group_id</td><td class="type">int</td><td class="req"><span class="n">N</span></td><td class="desc">租户隔离</td></tr>
+                <tr><td class="field">updated_at</td><td class="type">datetime</td><td class="req"><span class="n">N</span></td><td class="desc">auto_now</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </article>
+
+      </div>
+    </section>
+
+    <!-- ========== Section 4: ER 关系图 ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">实体关系图</h2>
+        <p class="section-desc">一张资源账单对应多条流水记录（计费日期维度 1:n）。ziyuanfeiyong 自关联 group 类型 n:n，用于按账单分组。</p>
+      </div>
+
+      <div class="er-wrap">
+        <svg class="er-svg" viewBox="0 0 940 460" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="资源费用数据模型 ER 图">
+
+          <!-- ziyuanfeiyong -->
+          <g transform="translate(40,40)">
+            <rect width="260" height="380" rx="10" fill="oklch(1 0 0)" stroke="oklch(0.85 0.008 250)" stroke-width="1"/>
+            <rect x="0" y="0" width="260" height="44" rx="10" fill="oklch(0.94 0.04 200)"/>
+            <rect x="0" y="34" width="260" height="10" fill="oklch(0.94 0.04 200)"/>
+            <text x="14" y="20" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="13" font-weight="600" fill="oklch(0.25 0.10 200)">ziyuanfeiyong</text>
+            <text x="14" y="36" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" fill="oklch(0.42 0.08 200)">资源账单 · 实例级 · jifeiguanli</text>
+
+            <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" fill="oklch(0.22 0.02 250)">
+              <text x="14" y="68"><tspan font-weight="600" fill="oklch(0.55 0.16 200)">UQ</tspan> inst_name</text>
+              <text x="14" y="86" fill="oklch(0.55 0.012 250)">  organization (org)</text>
+              <text x="14" y="104">  SN</text>
+              <text x="14" y="122">  object_type</text>
+              <text x="14" y="140">  object_name</text>
+              <text x="14" y="158">  applicant</text>
+              <text x="14" y="176">  USER_DEPARTMENT</text>
+              <text x="14" y="194">  Affiliated_application</text>
+              <text x="14" y="212">  application_id</text>
+              <text x="14" y="230">  Charging_start_time</text>
+              <text x="14" y="248">  Charging_end_time</text>
+              <text x="14" y="266">  Resource_unit_price</text>
+              <text x="14" y="284">  Total_Accrued_Expenses</text>
+              <text x="14" y="302">  object_id</text>
+              <text x="14" y="320">  Scheduled_Resource_</text>
+              <text x="14" y="334">  Recovery_Time</text>
+              <text x="14" y="358" font-size="10" fill="oklch(0.55 0.012 250)">15 字段 · 1 唯一约束</text>
+            </g>
+          </g>
+
+          <!-- Transaction_Log -->
+          <g transform="translate(440,120)">
+            <rect width="260" height="280" rx="10" fill="oklch(1 0 0)" stroke="oklch(0.85 0.008 250)" stroke-width="1"/>
+            <rect x="0" y="0" width="260" height="44" rx="10" fill="oklch(0.95 0.04 280)"/>
+            <rect x="0" y="34" width="260" height="10" fill="oklch(0.95 0.04 280)"/>
+            <text x="14" y="20" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="13" font-weight="600" fill="oklch(0.30 0.10 280)">Transaction_Log</text>
+            <text x="14" y="36" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" fill="oklch(0.45 0.08 280)">流水记录 · 每日一条 · jifeiguanli</text>
+
+            <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" fill="oklch(0.22 0.02 250)">
+              <text x="14" y="68"><tspan font-weight="600" fill="oklch(0.55 0.16 200)">UQ</tspan> inst_name</text>
+              <text x="14" y="86" fill="oklch(0.55 0.012 250)">  organization</text>
+              <text x="14" y="104">  object_id</text>
+              <text x="14" y="122">  Billing_Date</text>
+              <text x="14" y="140">  Billing_Month</text>
+              <text x="14" y="158">  Total_Cost</text>
+              <text x="14" y="176">  Cost_Department</text>
+              <text x="14" y="194">  Applying_User</text>
+              <text x="14" y="212">  Affiliated_application</text>
+              <text x="14" y="230">  Application_id</text>
+              <text x="14" y="248">  Department_Affiliation</text>
+              <text x="14" y="272" font-size="10" fill="oklch(0.55 0.012 250)">11 字段 · 1 唯一约束</text>
+            </g>
+          </g>
+
+          <!-- CloudResourceCostDailyRollup (规划) -->
+          <g transform="translate(740,160)" opacity="0.72">
+            <rect width="180" height="200" rx="10" fill="oklch(1 0 0)" stroke="oklch(0.85 0.008 250)" stroke-width="1" stroke-dasharray="4 3"/>
+            <rect x="0" y="0" width="180" height="44" rx="10" fill="oklch(0.95 0.05 50)"/>
+            <rect x="0" y="34" width="180" height="10" fill="oklch(0.95 0.05 50)"/>
+            <text x="14" y="20" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="600" fill="oklch(0.40 0.13 70)">CloudResourceCost</text>
+            <text x="14" y="36" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" font-weight="600" fill="oklch(0.40 0.13 70)">DailyRollup</text>
+
+            <g font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" fill="oklch(0.22 0.02 250)">
+              <text x="14" y="68"><tspan font-weight="600" fill="oklch(0.55 0.16 200)">UQ</tspan> rollup_date,</text>
+              <text x="14" y="82">  inst_id, cost_type</text>
+              <text x="14" y="100">  rollup_date</text>
+              <text x="14" y="118">  inst_id</text>
+              <text x="14" y="136">  daily_cost</text>
+              <text x="14" y="154">  group_id</text>
+              <text x="14" y="172" font-size="10" fill="oklch(0.55 0.012 250)">规划 · 待评估</text>
+            </g>
+          </g>
+
+          <!-- =========== Relations =========== -->
+
+          <!-- 自关联：ziyuanfeiyong 自循环 n:n (group) -->
+          <path d="M 170 100 C 170 40, 280 40, 280 100" fill="none" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <path d="M 275 95 L 282 100 L 275 105 Z" fill="oklch(0.55 0.012 250)"/>
+          <text x="200" y="30" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" fill="oklch(0.40 0.015 250)">self · group</text>
+          <text x="200" y="46" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" fill="oklch(0.55 0.012 250)">n : n · 分组聚合</text>
+
+          <!-- 1:n connect ziyuanfeiyong → Transaction_Log -->
+          <line x1="300" y1="260" x2="440" y2="260" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <circle cx="300" cy="260" r="4" fill="oklch(1 0 0)" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <line x1="406" y1="260" x2="416" y2="252" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <line x1="406" y1="260" x2="416" y2="268" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <line x1="416" y1="252" x2="416" y2="268" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <line x1="430" y1="260" x2="440" y2="260" stroke="oklch(0.55 0.012 250)" stroke-width="1.5"/>
+          <text x="318" y="252" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="11" fill="oklch(0.40 0.015 250)">connect · inst_name / object_id</text>
+          <text x="318" y="278" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" fill="oklch(0.55 0.012 250)">1 : n（每日一条流水）</text>
+
+          <!-- Transaction_Log → rollup (派生) -->
+          <path d="M 700 220 C 730 200, 730 200, 740 220" fill="none" stroke="oklch(0.62 0.13 50)" stroke-width="1.5" stroke-dasharray="4 3"/>
+          <path d="M 735 215 L 742 220 L 735 225 Z" fill="oklch(0.62 0.13 50)"/>
+          <text x="638" y="178" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10.5" fill="oklch(0.45 0.10 50)">每日 02:00 增量聚合</text>
+          <text x="638" y="194" font-family="ui-monospace, SF Mono, Menlo, monospace" font-size="10" fill="oklch(0.55 0.12 50)">route: 流水量 &gt; 阈值 或 query &gt; 3s</text>
+
+        </svg>
+      </div>
+    </section>
+
+    <!-- ========== Section 5: 设计文档 vs 实际 CMDB 差异 ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">设计文档 vs 实际 CMDB 模型</h2>
+        <p class="section-desc">差异点需要在评审时确认对齐口径。</p>
+      </div>
+
+      <div class="callout">
+        <div class="callout-head">
+          <span class="callout-marker info"></span>
+          <span class="callout-title">命名 / 模型差异</span>
+          <span class="callout-subtitle">docs/superpowers/specs/2026-07-06-cloud-resource-cost-report-design.md</span>
+        </div>
+        <div class="callout-body">
+          <table>
+            <thead>
+              <tr><th>维度</th><th>设计文档（计划）</th><th>实际 CMDB</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>主表</td>
+                <td>cloud_resource（云资源主体实例）</td>
+                <td><strong>ziyuanfeiyong</strong> 资源账单（不是主体）</td>
+              </tr>
+              <tr>
+                <td>子表</td>
+                <td>cloud_bill（每日一条账单）</td>
+                <td><strong>Transaction_Log</strong> 流水记录（每日一条流水）</td>
+              </tr>
+              <tr>
+                <td>关系</td>
+                <td>cloud_bill.resource_inst → cloud_resource.inst_id（1:n）</td>
+                <td><code>connect</code> 1:n + <code>group</code> n:n 自关联</td>
+              </tr>
+              <tr>
+                <td>主键</td>
+                <td>inst_id / bill_id</td>
+                <td>inst_name（UQ，唯一）</td>
+              </tr>
+              <tr>
+                <td>租户字段</td>
+                <td>group_id（int）</td>
+                <td>organization（organization 类型）</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="callout">
+        <div class="callout-head">
+          <span class="callout-marker info"></span>
+          <span class="callout-title">字段差异</span>
+          <span class="callout-subtitle">关键映射</span>
+        </div>
+        <div class="callout-body">
+          <table>
+            <thead>
+              <tr><th>设计文档字段</th><th>实际 CMDB 字段</th><th>说明</th></tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>instance_id / instance_name</td>
+                <td>object_id / inst_name</td>
+                <td>名称语义不同：object_id 是上游实例 ID，inst_name 是账单实例的实例名</td>
+              </tr>
+              <tr>
+                <td>instance_type / department / user</td>
+                <td>object_type / USER_DEPARTMENT / applicant</td>
+                <td>字段名大写、命名空间在 ziyuanfeiyong</td>
+              </tr>
+              <tr>
+                <td>daily_unit_price</td>
+                <td>Resource_unit_price（元/天）</td>
+                <td>语义一致，命名不同</td>
+              </tr>
+              <tr>
+                <td>—</td>
+                <td>Total_Accrued_Expenses</td>
+                <td>ziyuanfeiyong 上的累计费用（替代 daily_cost 聚合）</td>
+              </tr>
+              <tr>
+                <td>cloud_bill.daily_cost</td>
+                <td>Transaction_Log.Total_Cost</td>
+                <td>每日费用语义一致</td>
+              </tr>
+              <tr>
+                <td>region / status / cost_type / currency</td>
+                <td>—</td>
+                <td>实际 CMDB 未建模，需确认是省略还是缺失</td>
+              </tr>
+              <tr>
+                <td>—</td>
+                <td>SN / Charging_start_time / Charging_end_time / Scheduled_Resource_Recovery_Time</td>
+                <td>运维/财务专用字段，文档中未提及</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <!-- ========== Section 6: 索引清单 ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">索引需求</h2>
+        <p class="section-desc">以下索引覆盖报表 widget 的主要查询路径；具体由 CMDB 自定义上报的字段索引能力决定。</p>
+      </div>
+
+      <table class="index-table">
+        <thead>
+          <tr><th>索引</th><th>作用域</th><th>说明</th></tr>
+        </thead>
+        <tbody>
+          <tr><td class="idx">(inst_name) UNIQUE</td><td class="scope">ziyuanfeiyong</td><td class="note">实例名唯一约束</td></tr>
+          <tr><td class="idx">(organization)</td><td class="scope">ziyuanfeiyong</td><td class="note">按所属组织过滤</td></tr>
+          <tr><td class="idx">(USER_DEPARTMENT, object_type)</td><td class="scope">ziyuanfeiyong</td><td class="note">报表筛选用</td></tr>
+          <tr><td class="idx">(object_id)</td><td class="scope">ziyuanfeiyong</td><td class="note">关联上游 CMDB 对象</td></tr>
+          <tr><td class="idx">(inst_name) UNIQUE</td><td class="scope">Transaction_Log</td><td class="note">流水实例名唯一</td></tr>
+          <tr><td class="idx">(object_id, Billing_Date)</td><td class="scope">Transaction_Log</td><td class="note">按实例+日期聚合 / 范围过滤</td></tr>
+          <tr><td class="idx">(Billing_Month)</td><td class="scope">Transaction_Log</td><td class="note">月度汇总查询</td></tr>
+          <tr><td class="idx">(Cost_Department)</td><td class="scope">Transaction_Log</td><td class="note">按成本部门过滤</td></tr>
+          <tr><td class="idx">(Applying_User, Billing_Date)</td><td class="scope">Transaction_Log</td><td class="note">按申请人+日期聚合</td></tr>
+          <tr class="dim"><td class="idx">(rollup_date, inst_id, cost_type, group_id) UNIQUE</td><td class="scope">rollup · 规划</td><td class="note">降级表复合唯一约束（待评估）</td></tr>
+          <tr class="dim"><td class="idx">(group_id, rollup_date)</td><td class="scope">rollup · 规划</td><td class="note">rollup 主路径（待评估）</td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- ========== Section 7: 降级触发 + 刷新策略 ========== -->
+    <section class="section">
+      <div class="section-head">
+        <h2 class="section-title">降级策略（规划中）</h2>
+        <p class="section-desc">对应设计文档 §5.2。Transaction_Log 写入量或单次查询耗时达到阈值时，service 层切到预聚合 rollup 表。</p>
+      </div>
+
+      <div class="strategy">
+        <div>
+          <ol class="strategy-list">
+            <li data-num="01."><span>触发条件：任一 widget 查询耗时 &gt; <strong>3s</strong> 或 <code>Transaction_Log</code> 行数 &gt; <strong>500 万</strong>（临时阈值，可调）。</span></li>
+            <li data-num="02."><span>Service 路由：<code>get_query_source()</code> 检测后返回 rollup 表 queryset，正常仍走 CMDB 实例表。</span></li>
+            <li data-num="03."><span>刷新任务：Celery beat 每日 <strong>02:00</strong> 跑增量刷新，覆盖 <code>rollup_date &gt;= yesterday</code>。</span></li>
+            <li data-num="04."><span>失败处理：失败重试 3 次，告警到运维；rollup 当日未生成时返回 503「数据准备中，请稍后再试」。</span></li>
+            <li data-num="05."><span>全量重建：运维介入手动触发；UI「刷新」按钮走增量同步（不阻塞用户）。</span></li>
+            <li data-num="06."><span>数据延迟：报表 T+1，UI 标注「数据更新至 YYYY-MM-DD」。</span></li>
+            <li data-num="07."><span>依赖：CMDB 自定义上报需支持 <code>Total_Cost</code> / <code>object_type</code> 等字段索引；不支持时启用 rollup。</span></li>
+          </ol>
+        </div>
+
+        <pre class="strategy-snippet"><span class="c"># service 层路由</span>
+<span class="k">def</span> <span class="f">get_query_source</span>():
+    tx_count = <span class="v">TransactionLog</span>.<span class="f">objects</span>.<span class="f">filter</span>(
+        organization=<span class="v">organization</span>,
+    ).<span class="f">count</span>()
+    <span class="k">if</span> tx_count &gt; <span class="v">ROLLUP_TRIGGER_THRESHOLD</span>:
+        <span class="k">return</span> <span class="v">CloudResourceCostDailyRollup</span>.<span class="v">objects</span>
+    <span class="k">return</span> <span class="v">TransactionLog</span>.<span class="v">objects</span>  <span class="c"># 走 CMDB 实例服务</span>
+
+<span class="c"># rollup 刷新任务（Celery beat 02:00）</span>
+<span class="v">@shared_task</span>(bind=<span class="k">True</span>, max_retries=<span class="v">3</span>)
+<span class="k">def</span> <span class="f">refresh_rollup</span>(self):
+    yesterday = <span class="v">date</span>.<span class="f">today</span>() - <span class="v">timedelta</span>(days=<span class="v">1</span>)
+    <span class="v">CloudResourceCostDailyRollup</span>.<span class="v">objects</span>.<span class="f">filter</span>(
+        rollup_date__gte=yesterday,
+    ).<span class="f">delete</span>()
+    <span class="v">aggregate_into_rollup</span>(
+        since=yesterday,
+        source=<span class="v">TransactionLog</span>,
+        group_by=[<span class="s">"object_type"</span>, <span class="s">"USER_DEPARTMENT"</span>, <span class="s">"applicant"</span>],
+    )</pre>
+      </div>
+    </section>
+
+  </div>
+</body>
+</html>
