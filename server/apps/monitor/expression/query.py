@@ -11,7 +11,10 @@ def build_metric_query(metric, filters: list[dict]) -> str:
     return (metric.query or "").replace("__$labels__", vm_filter)
 
 
-def build_formula_query(query_condition: dict) -> CompiledFormula:
+def build_formula_query(
+    query_condition: dict,
+    base_filters_by_ref: dict[str, list[dict]] | None = None,
+) -> CompiledFormula:
     try:
         validate_formula_condition(query_condition)
     except FormulaError as exc:
@@ -24,6 +27,6 @@ def build_formula_query(query_condition: dict) -> CompiledFormula:
     if missing:
         raise BaseAppException(f"metric does not exist [{missing[0]}]")
     try:
-        return FormulaCompiler(query_condition, by_id).compile()
+        return FormulaCompiler(query_condition, by_id, base_filters_by_ref=base_filters_by_ref).compile()
     except FormulaError as exc:
         raise BaseAppException(str(exc)) from exc
