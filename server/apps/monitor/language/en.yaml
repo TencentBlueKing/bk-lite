@@ -4862,7 +4862,7 @@ monitor_object_type:
   VMware: VMware(Telegraf)
   Middleware: Middleware
   Web: Web
-  OS: OS
+  OS: Host Resource
   Container Management: Container Management
   Hardware Device: Hardware Device
   Database: Database
