@@ -784,6 +784,7 @@ class BasicGraph(ABC):
         event_data: Dict[str, Any],
         encoder: EventEncoder,
         current_tool_calls: Dict[str, Dict],
+        include_text: bool = True,
     ) -> list[str]:
         """把节点结束时返回的 LangChain messages 补成 AG-UI 事件。
 
@@ -852,7 +853,112 @@ class BasicGraph(ABC):
             emitted_tool_result = True
             latest_ai_message_after_tool_result = None
 
+        if include_text and latest_ai_message_after_tool_result is not None:
+            for ev in self._handle_chat_model_end_event(
+                {"output": latest_ai_message_after_tool_result},
+                encoder,
+                None,
+                current_tool_calls,
+                message_started=False,
+                allow_non_streaming_text=True,
+            ):
+                events.append(ev)
+
+        return events
+
+    def _handle_chain_end_tool_results_only(
+        self,
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_tool_calls: Dict[str, Dict],
+    ) -> list[str]:
+        """只回填 chain_end 里的 ToolMessage 结果,不重发 AI 文本。
+
+        当本轮 on_chat_model_end 已经 emit 过非流式 AI 文本时,需要这个变体
+        避免链尾再把同一份文本推一遍;但 ToolMessage 仍要补成 TOOL_CALL_RESULT,
+        否则前端的 tool_call 会停留在"未收到结果"。
+        """
+        return self._handle_chain_end_messages(
+            event_data, encoder, current_tool_calls, include_text=False
+        )
+
+    def _handle_chain_end_messages_dedup(
+        self,
+        event_data: Dict[str, Any],
+        encoder: EventEncoder,
+        current_tool_calls: Dict[str, Dict],
+        emitted_text_signatures: set[str],
+    ) -> list[str]:
+        """_handle_chain_end_messages 的去重包装:跳过已发过同内容的 AI 文本。
+
+        emit 顺序:ToolMessage 补发照常;最新的 AI 文本若在 emitted_text_signatures
+        里就跳过,避免 on_chat_model_end 已经发过的最终回答被父/子图的 chain_end
+        重复 emit。
+        """
+        output = event_data.get("output")
+        messages = []
+        if isinstance(output, dict):
+            messages = output.get("messages") or []
+        elif hasattr(output, "get"):
+            messages = output.get("messages") or []
+        elif hasattr(output, "messages"):
+            messages = getattr(output, "messages") or []
+
+        if not messages:
+            return []
+
+        events: list[str] = []
+        emitted_tool_result = False
+        latest_ai_message_after_tool_result: Optional[AIMessage] = None
+
+        for message in messages:
+            if isinstance(message, AIMessage):
+                if emitted_tool_result and (getattr(message, "content", "") or ""):
+                    latest_ai_message_after_tool_result = message
+                continue
+            if not isinstance(message, ToolMessage):
+                continue
+
+            tool_call_id = getattr(message, "tool_call_id", "")
+            if not tool_call_id or tool_call_id not in current_tool_calls:
+                continue
+            tool_info = current_tool_calls[tool_call_id]
+            if tool_info.get("result_sent"):
+                continue
+
+            if not tool_info.get("ended"):
+                events.append(
+                    encoder.encode(
+                        ToolCallEndEvent(
+                            type=EventType.TOOL_CALL_END,
+                            tool_call_id=tool_call_id,
+                            timestamp=int(time.time() * 1000),
+                        )
+                    )
+                )
+                tool_info["ended"] = True
+
+            events.append(
+                encoder.encode(
+                    ToolCallResultEvent(
+                        type=EventType.TOOL_CALL_RESULT,
+                        message_id=f"result_{uuid.uuid4()}",
+                        tool_call_id=tool_call_id,
+                        content=str(getattr(message, "content", "") or ""),
+                        role="tool",
+                        timestamp=int(time.time() * 1000),
+                    )
+                )
+            )
+            tool_info["result_sent"] = True
+            emitted_tool_result = True
+            latest_ai_message_after_tool_result = None
+
         if latest_ai_message_after_tool_result is not None:
+            content = str(getattr(latest_ai_message_after_tool_result, "content", "") or "")
+            # 关键:若这份文本 chat_model_end 或更早的 chain_end 已经发过,跳过 emit
+            if content and content in emitted_text_signatures:
+                return events
             for ev in self._handle_chat_model_end_event(
                 {"output": latest_ai_message_after_tool_result},
                 encoder,
@@ -987,6 +1093,11 @@ class BasicGraph(ABC):
         thinking_started = False
         suppress_text_after_tool_call = False
         tool_result_seen_since_model_end = False
+        # DeepAgent 场景下,on_chat_model_end 携带完整 AI 文本(allow_non_streaming_text=True
+        # 时)与 on_chain_end 的 output.messages 里的同一份 AIMessage 会重复 emit。
+        # 而且父/子图会多次触发 on_chain_end,都带同一份文本,所以用内容指纹去重:
+        # 任何源 emit 过这份文本后,后续 chain_end 再遇到相同内容就跳过。
+        emitted_text_signatures: set[str] = set()
         show_think = bool((request.extra_config or {}).get("show_think", True))
         execution_id = (request.extra_config or {}).get("execution_id") or request.thread_id
         # 创建浏览器步骤事件队列和回调
@@ -1085,20 +1196,49 @@ class BasicGraph(ABC):
                     tool_result_seen_since_model_end = True
 
                 elif event_type == "on_chat_model_end":
-                    for ev in self._handle_chat_model_end_event(
+                    chat_model_end_events = self._handle_chat_model_end_event(
                         event_data,
                         encoder,
                         current_message_id,
                         current_tool_calls,
                         message_started,
                         allow_non_streaming_text=tool_result_seen_since_model_end,
-                    ):
+                    )
+                    # 收集本轮 chat_model_end 实际 emit 的文本指纹,
+                    # 后续 on_chain_end 若再 emit 相同内容会基于此集合去重。
+                    for ev in chat_model_end_events:
+                        if "TEXT_MESSAGE_CONTENT" in ev:
+                            try:
+                                payload = json.loads(ev.split("data: ", 1)[1])
+                                content = payload.get("delta") or ""
+                                if content:
+                                    emitted_text_signatures.add(content)
+                            except (json.JSONDecodeError, IndexError):
+                                pass
+                    for ev in chat_model_end_events:
                         yield ev
                     suppress_text_after_tool_call = False
                     tool_result_seen_since_model_end = False
 
                 elif event_type == "on_chain_end":
-                    for ev in self._handle_chain_end_messages(event_data, encoder, current_tool_calls):
+                    # DeepAgent 父/子图会多次触发 on_chain_end,output.messages 都带同一份
+                    # 最终 AI 文本。先用已发过的文本指纹去重,避免重复 emit 整段回答。
+                    chain_events = self._handle_chain_end_messages_dedup(
+                        event_data,
+                        encoder,
+                        current_tool_calls,
+                        emitted_text_signatures,
+                    )
+                    # 把本次 chain_end emit 的文本也加入指纹,防止后续 chain_end 再发一遍
+                    for ev in chain_events:
+                        if "TEXT_MESSAGE_CONTENT" in ev:
+                            try:
+                                payload = json.loads(ev.split("data: ", 1)[1])
+                                content = payload.get("delta") or ""
+                                if content:
+                                    emitted_text_signatures.add(content)
+                            except (json.JSONDecodeError, IndexError):
+                                pass
                         yield ev
 
                 elif event_type == "on_custom_event":
