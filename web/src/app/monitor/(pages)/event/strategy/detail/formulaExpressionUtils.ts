@@ -4,7 +4,7 @@ import {
   MetricExpressionRow,
   MetricQueryCondition
 } from './metricExpressionTypes';
-import { FilterItem, MetricItem } from '@/app/monitor/types';
+import { MetricItem } from '@/app/monitor/types';
 import { SourceFeild } from '@/app/monitor/types/event';
 import { InstanceItem } from '@/app/monitor/types/search';
 import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
@@ -451,9 +451,6 @@ export const buildMetricExpressionQueryCondition = ({
   };
 };
 
-const escapeRegexValue = (value: unknown): string =>
-  String(value ?? '').replace(/([\\^$.*+?()[\]{}|"])/g, '\\$1');
-
 const findMetricForRow = (
   row: MetricExpressionRow,
   metrics: MetricItem[]
@@ -461,49 +458,6 @@ const findMetricForRow = (
   metrics.find(
     (item) => item.id === row.metricId || item.name === row.metricName
   );
-
-const buildPreviewInstanceFilters = (
-  metric: MetricItem,
-  selectedInstance: Pick<InstanceItem, 'instance_id_values'>
-): FilterItem[] => {
-  const keys = metric.instance_id_keys || [];
-  return keys.reduce<FilterItem[]>((filters, key, index) => {
-    if (!key || index >= selectedInstance.instance_id_values.length) {
-      return filters;
-    }
-
-    filters.push({
-      name: key,
-      method: '=~',
-      value: escapeRegexValue(selectedInstance.instance_id_values[index])
-    });
-    return filters;
-  }, []);
-};
-
-const appendFormulaPreviewInstanceFilters = (
-  queryCondition: FormulaQueryCondition,
-  rows: MetricExpressionRow[],
-  metrics: MetricItem[],
-  selectedInstance: Pick<InstanceItem, 'instance_id_values'>
-): FormulaQueryCondition => ({
-  ...queryCondition,
-  queries: queryCondition.queries.map((query, index) => {
-    const row = rows.find((item) => item.ref === query.ref) || rows[index];
-    const metric = row ? findMetricForRow(row, metrics) : undefined;
-    if (!metric) {
-      throw new Error(METRIC_NOT_READY_MESSAGE);
-    }
-
-    return {
-      ...query,
-      filter: [
-        ...(query.filter || []),
-        ...buildPreviewInstanceFilters(metric, selectedInstance)
-      ]
-    };
-  })
-});
 
 export const buildMetricExpressionPreviewPayload = ({
   monitorObjId,
@@ -557,14 +511,17 @@ export const buildMetricExpressionPreviewPayload = ({
   }
 
   const isFormula = queryCondition.type === 'formula';
-  const previewQueryCondition = isFormula
-    ? appendFormulaPreviewInstanceFilters(
-      queryCondition,
-      rows,
-      metrics,
-      selectedInstance
-    )
-    : queryCondition;
+  if (isFormula) {
+    queryCondition.queries.forEach((query, index) => {
+      const row = rows.find((item) => item.ref === query.ref) || rows[index];
+      const metric = row ? findMetricForRow(row, metrics) : undefined;
+      if (!metric) {
+        throw new Error(METRIC_NOT_READY_MESSAGE);
+      }
+    });
+  }
+
+  const previewQueryCondition = queryCondition;
   const payloadGroupBy = isFormula
     ? sanitizeGroupBy(anchorRow.groupBy || [])
     : sanitizeGroupBy(groupBy);
