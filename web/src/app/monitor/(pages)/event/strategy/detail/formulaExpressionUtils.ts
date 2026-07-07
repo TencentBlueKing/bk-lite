@@ -11,6 +11,8 @@ import { sanitizeGroupBy } from '@/app/monitor/utils/metricDimensions';
 
 export type MetricExpressionMode = 'metric' | 'formula' | 'auto';
 
+export const DEFAULT_FORMULA_RESULT_NAME = '计算指标';
+export const DEFAULT_FORMULA_EXPRESSION = 'a / b * 100';
 export const VARIABLE_SEQUENCE = 'abcdefghijklmnopqrstuvwxyz'.split('');
 export const SUPPORTED_GROUP_ALGORITHMS = [
   'sum',
@@ -338,7 +340,7 @@ export const toMetricExpressionStateFromQueryCondition = (
         })
       ),
       resultName: condition.result_name || '',
-      expression: condition.expression || 'a / b * 100'
+      expression: condition.expression || DEFAULT_FORMULA_EXPRESSION
     };
   }
 
@@ -348,7 +350,7 @@ export const toMetricExpressionStateFromQueryCondition = (
       options
     ),
     resultName: '',
-    expression: 'a / b * 100'
+    expression: DEFAULT_FORMULA_EXPRESSION
   };
 };
 

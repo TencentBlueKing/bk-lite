@@ -354,7 +354,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
             <Input
               className="min-w-0"
               value={resultName}
-              placeholder={t('monitor.events.formulaResultName')}
+              placeholder={t('monitor.events.formulaResultNamePlaceholder')}
               onChange={(event) => onResultNameChange(event.target.value)}
             />
             <span className="text-center text-[var(--color-text-3)]">=</span>

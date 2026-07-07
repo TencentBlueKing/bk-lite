@@ -51,6 +51,8 @@ import { MetricExpressionRow } from './metricExpressionTypes';
 import {
   buildMetricExpressionQueryCondition,
   createMetricRow,
+  DEFAULT_FORMULA_EXPRESSION,
+  DEFAULT_FORMULA_RESULT_NAME,
   getMetricExpressionModeForRows,
   MetricExpressionMode,
   toMetricExpressionStateFromQueryCondition
@@ -112,9 +114,13 @@ const StrategyOperation = () => {
   ]);
   const [metricExpressionMode, setMetricExpressionMode] =
     useState<MetricExpressionMode>('metric');
-  const [formulaResultName, setFormulaResultName] = useState<string>('');
+  const [formulaResultName, setFormulaResultName] = useState<string>(
+    () =>
+      t('monitor.events.formulaDefaultResultName') ||
+      DEFAULT_FORMULA_RESULT_NAME
+  );
   const [formulaExpression, setFormulaExpression] =
-    useState<string>('a / b * 100');
+    useState<string>(DEFAULT_FORMULA_EXPRESSION);
   const [labelsByRef, setLabelsByRef] = useState<Record<string, string[]>>({});
   const [noDataAlert, setNoDataAlert] = useState<number | null>(null);
   const [noDataRecovery, setNoDataRecovery] = useState<number | null>(null);
