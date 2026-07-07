@@ -5,6 +5,7 @@ import {
   buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
   extractFormulaRefs,
+  getMetricExpressionModeForRows,
   shouldShowFormulaEditor,
   toMetricExpressionStateFromQueryCondition,
   toMetricRowsFromMetricCondition,
@@ -55,6 +56,7 @@ const singleRows = toMetricRowsFromMetricCondition(
 assert.equal(singleRows.length, 1);
 assert.equal(singleRows[0].ref, 'a');
 assert.equal(singleRows[0].metricId, 10);
+assert.equal(getMetricExpressionModeForRows(singleRows), 'metric');
 
 const singlePayload = buildMetricExpressionQueryCondition({
   resultName: '',
@@ -101,6 +103,8 @@ assert.deepEqual(
   formulaRows.map((row) => row.ref),
   ['a', 'b']
 );
+assert.equal(getMetricExpressionModeForRows(formulaRows), 'formula');
+assert.equal(getMetricExpressionModeForRows(formulaRows.slice(0, 1)), 'metric');
 
 const formulaPayload = buildMetricExpressionQueryCondition({
   resultName: 'HTTP 5xx 错误率',
@@ -377,6 +381,15 @@ assertValidationIncludes(
   '指标 a 分组维度必须包含 instance_id'
 );
 
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: [{ ...formulaRows[0], groupBy: ['instance_id', 'x) or vector(1'] }, formulaRows[1]]
+  }),
+  '指标 a 分组维度 x) or vector(1 包含非法字符'
+);
+
 assert.deepEqual(
   validateMetricExpressionPayload({
     resultName: 'HTTP 5xx 错误率',
@@ -439,6 +452,25 @@ assert.deepEqual(
     resultName: 'HTTP 5xx 错误率',
     expression: 'a / b',
     rows: formulaRowsWithEmptyFilterValue
+  }),
+  []
+);
+
+const formulaRowsWithLegacyFilters = [
+  {
+    ...formulaRows[0],
+    filters: [
+      { name: 'service', method: '=', value: 'checkout' },
+      { name: 'status', method: '=~', value: '5..' }
+    ]
+  },
+  formulaRows[1]
+];
+assert.deepEqual(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: formulaRowsWithLegacyFilters
   }),
   []
 );

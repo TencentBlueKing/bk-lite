@@ -111,6 +111,12 @@ class TestMonitorPolicyValidators:
         s = self._s(initial={})
         assert s.validate_group_by(["x"]) == ["x"]
 
+    def test_validate_group_by_rejects_invalid_label_name(self):
+        with pytest.raises(serializers.ValidationError) as exc:
+            self._s(initial={}).validate_group_by(["instance_id", "x) or vector(1"])
+
+        assert "非法字符" in str(exc.value)
+
 
 class TestMetricGroupSerializer:
     def test_rejects_duplicate_name(self):

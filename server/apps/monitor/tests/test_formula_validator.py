@@ -438,3 +438,29 @@ def test_validate_formula_rejects_anchor_group_by_without_instance_id():
         validate_formula_condition(payload)
 
     assert "instance_id" in str(exc.value)
+
+
+def test_validate_formula_rejects_invalid_group_by_label_name():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "x) or vector(1"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "group_by 包含非法字符" in str(exc.value)

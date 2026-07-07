@@ -20,6 +20,7 @@ export const SUPPORTED_GROUP_ALGORITHMS = [
   'count'
 ];
 const METRIC_NOT_READY_MESSAGE = '指标不存在或尚未加载';
+const LABEL_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 type FormulaTokenType = 'identifier' | 'number' | 'operator' | 'leftParen' | 'rightParen';
 
@@ -39,6 +40,10 @@ export const getMetricRowRef = (index: number): string =>
 export const shouldShowFormulaEditor = (
   mode: MetricExpressionMode
 ): boolean => mode === 'formula';
+
+export const getMetricExpressionModeForRows = (
+  rows: MetricExpressionRow[]
+): MetricExpressionMode => (rows.length > 1 ? 'formula' : 'metric');
 
 export const createMetricRow = (
   index: number,
@@ -262,6 +267,12 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
       row.groupBy.some((item) => typeof item !== 'string' || !item.trim())
     ) {
       errors.push(`指标 ${row.ref} 缺少有效分组维度`);
+    } else {
+      row.groupBy.forEach((item) => {
+        if (!LABEL_NAME_PATTERN.test(item)) {
+          errors.push(`指标 ${row.ref} 分组维度 ${item} 包含非法字符`);
+        }
+      });
     }
 
     row.filters.forEach((filter, index) => {
@@ -273,7 +284,7 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
       ) {
         errors.push(`指标 ${row.ref} 的条件 ${index + 1} 未填写完整`);
       }
-      if (index > 0 && !['and', 'or'].includes(filter.logic || '')) {
+      if (index > 0 && filter.logic && !['and', 'or'].includes(filter.logic)) {
         errors.push(`指标 ${row.ref} 的条件 ${index + 1} 缺少 AND/OR 关系`);
       }
       if (

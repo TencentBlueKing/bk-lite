@@ -51,6 +51,7 @@ import { MetricExpressionRow } from './metricExpressionTypes';
 import {
   buildMetricExpressionQueryCondition,
   createMetricRow,
+  getMetricExpressionModeForRows,
   MetricExpressionMode,
   toMetricExpressionStateFromQueryCondition
 } from './formulaExpressionUtils';
@@ -607,9 +608,7 @@ const StrategyOperation = () => {
   const handleMetricRowsChange = (rows: MetricExpressionRow[]) => {
     const previousPrimaryMetricName = metricRows[0]?.metricName;
     const nextPrimaryMetricName = rows[0]?.metricName;
-    if (rows.length > metricRows.length || rows.length > 1) {
-      setMetricExpressionMode('formula');
-    }
+    setMetricExpressionMode(getMetricExpressionModeForRows(rows));
     setMetricRows(rows);
 
     if (

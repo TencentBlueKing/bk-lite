@@ -60,6 +60,9 @@ def _validate_group_by(ref: str, group_by: object) -> list[str]:
         raise FormulaValidationError(f"指标 {ref} 缺少 group_by")
     if not all(isinstance(item, str) and item for item in group_by):
         raise FormulaValidationError(f"指标 {ref} group_by 必须是非空字符串列表")
+    invalid_items = [item for item in group_by if not _LABEL_NAME_RE.match(item)]
+    if invalid_items:
+        raise FormulaValidationError(f"指标 {ref} group_by 包含非法字符：{', '.join(invalid_items)}")
     return group_by
 
 

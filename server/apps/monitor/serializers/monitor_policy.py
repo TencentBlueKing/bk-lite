@@ -152,6 +152,11 @@ class MonitorPolicySerializer(serializers.ModelSerializer):
         """校验 group_by 首位必须是监控对象的实例主键，防止下游扫描链路误判实例归属。"""
         if not value:
             return value
+        if not isinstance(value, list) or not all(isinstance(item, str) and item for item in value):
+            raise serializers.ValidationError("group_by 必须是非空字符串列表")
+        invalid_items = [item for item in value if not _LABEL_NAME_RE.match(item)]
+        if invalid_items:
+            raise serializers.ValidationError(f"group_by 包含非法字符：{', '.join(invalid_items)}")
 
         monitor_object = self._get_monitor_object()
         if monitor_object is None:
