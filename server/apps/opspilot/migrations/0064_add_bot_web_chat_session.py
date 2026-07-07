@@ -5,7 +5,7 @@ from django.db import migrations, models
 
 class Migration(migrations.Migration):
     dependencies = [
-        ("opspilot", "0062_buildrecord_checkitem_knowledgepage_material_and_more"),
+        ("opspilot", "0063_alter_workflowconversationhistory_entry_type"),
     ]
 
     operations = [
