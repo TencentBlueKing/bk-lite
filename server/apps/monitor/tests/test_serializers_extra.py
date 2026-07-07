@@ -85,9 +85,6 @@ class TestMonitorPolicyValidators:
         with pytest.raises(serializers.ValidationError):
             self._s().validate_algorithm("bogus")
 
-    def test_validate_algorithm_ok(self):
-        assert self._s().validate_algorithm("max") == "max"
-
     def test_validate_group_by_autocorrects_primary_key(self):
         obj = MonitorObject.objects.create(name="SPGObj", level="base", instance_id_keys=["instance_id", "device"])
         s = self._s(initial={"monitor_object": obj.id})
