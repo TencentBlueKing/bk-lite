@@ -58,12 +58,12 @@ class WikiMaterialViewSet(AuthViewSet):
         material = serializer.instance
         llm_model_id = material.knowledge_base.llm_model_id
         # 文本解析瞬时(无 loader/OCR/外网),同步摄取即得摘要;
-        # 文件解析较重(loader/OCR/LLM),转 Celery 异步,资料先置「解析中」,前端轮询出结果;
-        # 网页解析需外网抓取、耗时不可控,仍走手动 ingest。
+        # 文件/网页解析较重(loader/OCR/外网抓取/LLM),转 Celery 异步,资料先置「解析中」,前端轮询出结果。
         if material.material_type == "text":
             ingest_material(material, llm_model_id=llm_model_id)
             serializer = self.get_serializer(material)
-        elif material.material_type == "file":
+        else:
+            # file / web:统一走 Celery 异步解析,前端 status 轮询 + 失败重试
             self._enqueue_ingest(material, llm_model_id)
             serializer = self.get_serializer(material)
         log_operation(request, "create", "opspilot", f"新增资料: {material.name}")
