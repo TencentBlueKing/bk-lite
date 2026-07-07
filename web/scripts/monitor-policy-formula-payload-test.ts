@@ -194,6 +194,14 @@ const reversedExpressionPayload = buildMetricExpressionQueryCondition({
   rows: formulaRows
 });
 
+assert.deepEqual(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'b / a * 100',
+    rows: formulaRows
+  }),
+  []
+);
 assert.equal(reversedExpressionPayload.type, 'formula');
 assert.equal(reversedExpressionPayload.expression, 'b / a * 100');
 assert.equal(reversedExpressionPayload.queries[0].ref, 'a');
