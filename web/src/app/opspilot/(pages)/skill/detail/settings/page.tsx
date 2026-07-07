@@ -274,10 +274,6 @@ const SkillSettingsPage: React.FC = () => {
           required_tools: pkg.required_tools || [],
           triggers: pkg.triggers || [],
         })),
-        enable_rag: ragEnabled,
-        enable_rag_knowledge_source: showRagSource,
-        enable_rag_strict_mode: ragStrictMode,
-        rag_score_threshold: ragScoreThreshold,
         chat_history: chatHistory,
         conversation_window_size: chatHistoryEnabled ? quantity : undefined,
         temperature: temperature,
@@ -287,8 +283,6 @@ const SkillSettingsPage: React.FC = () => {
         group: values.group?.[0],
         skill_name: values.name,
         skill_id: id,
-        enable_km_route: enableKmRoute,
-        km_llm_model: enableKmRoute ? kmLlmModel : undefined,
         enable_suggest: values.enable_suggest,
         enable_query_rewrite: values.enable_query_rewrite,
         skill_params: (values.skill_params || []).filter((p: any) => p && p.key),
@@ -699,61 +693,8 @@ const SkillSettingsPage: React.FC = () => {
                   </Form>
                 </div>
                 {skillType !== 2 && (
-                  <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
-                    <Form labelCol={{flex: '0 0 135px'}} wrapperCol={{flex: '1'}}>
-                      <div className="flex justify-between">
-                        <h3 className="font-medium text-sm mb-4">{t('skill.rag')}</h3>
-                        <Switch size="small" className="ml-2" checked={ragEnabled} onChange={setRagEnabled}/>
-                      </div>
-                      <p className="pb-4 text-xs text-[var(--color-text-4)]">{t('skill.ragTip')}</p>
-                    {ragEnabled && (
-                      <div className="pb-2">
-                        <Form.Item
-                          label={t('skill.ragSource')}
-                          tooltip={t('skill.ragSourceTip')}>
-                          <Switch size="small" className="ml-2" checked={showRagSource} onChange={setRagSourceStatus}/>
-                        </Form.Item>
-                        <Form.Item
-                          label={t('skill.ragStrictMode')}
-                          tooltip={t('skill.ragStrictModeTip')}>
-                          <Switch size="small" className="ml-2" checked={ragStrictMode} onChange={setRagStrictMode}/>
-                        </Form.Item>
-                        <Form.Item
-                          label={t('skill.knowledgeRoute')}
-                          tooltip={t('skill.knowledgeRouteTip')}>
-                          <Switch size="small" className="ml-2" checked={enableKmRoute} onChange={handleKmRouteChange}/>
-                        </Form.Item>
-                        {enableKmRoute && (
-                          <Form.Item
-                            label={t('skill.kmLlmModel')}>
-                            <Select
-                              value={kmLlmModel}
-                              onChange={(value: number) => setKmLlmModel(value)}
-                              placeholder={t('common.select')}
-                            >
-                              {llmModels.map(model => (
-                                <Option key={model.id} value={model.id} disabled={!model.enabled} title={getModelOptionText(model)}>
-                                  {renderModelOptionLabel(model)}
-                                </Option>
-                              ))}
-                            </Select>
-                          </Form.Item>
-                        )}
-                        <Form.Item label={t('skill.knowledgeBase')} tooltip={t('skill.knowledgeBaseTip')}>
-                          <KnowledgeBaseSelector
-                            ragSources={ragSources}
-                            setRagSources={setRagSources}
-                            knowledgeBases={knowledgeBases}
-                            selectedKnowledgeBases={selectedKnowledgeBases}
-                            setSelectedKnowledgeBases={setSelectedKnowledgeBases}
-                          />
-                        </Form.Item>
-                      </div>
-                    )}
-                    </Form>
-                  </div>
+                  renderSkillPackageSelector()
                 )}
-                {skillType !== 2 && renderSkillPackageSelector()}
                 {skillType !== 2 && (
                   <div className={`p-4 rounded-md pb-0 ${styles.contentWrapper}`}>
                     <Form labelCol={{flex: '0 0 135px'}} wrapperCol={{flex: '1'}}>
