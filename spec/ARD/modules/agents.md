@@ -5,7 +5,8 @@
 ## stargazer —— 协议采集 agent【已实现/已存在】
 - 运行时：Python + Sanic（`server.py`，:8083）。
 - 通信：NATS pub/sub（`core/nats.py:NATSSanic`，`service/nats_server.py`）。
-- 注册处理函数（经 `@register_handler()`，主题由其派生）：`list_regions`、`test_connection`、`health_check`、`debug_snmp`、`debug_ipmi`、`handle_host_remote_callback`、`ip_scan`（IP 发现扫描入口，处理函数位于 `plugins/inputs/ip_discovery/ip_discovery_handler.py`）（证据：`agents/stargazer/service/nats_server.py:11,13,46-97`）。
+- 注册处理函数（经 `@register_handler()`，主题由其派生）：`list_regions`、`test_connection`、`health_check`、`debug_snmp`、`debug_ipmi`、`handle_host_remote_callback`（证据：`agents/stargazer/service/nats_server.py:46-97`）。
+- IP 发现扫描相关 Python 文件位于 `plugins/inputs/ip/`（`__init__.py`、`ip_discovery_scanner.py`、`scan_targets.py`、`plugin.yml`），是否经 NATS `ip_scan` handler 对外暴露【待确认】。
 - HTTP REST 接口面【已实现/已存在】：除 NATS 外，通过 Sanic Blueprint 暴露 HTTP 路由，统一挂载到 `/api` 前缀（`api/__init__.py:22`）。各蓝图：
   - health（`/health`）：`/`、`/ready`、`/stats`、`/metrics`（证据：`agents/stargazer/api/health.py:13,16,33,75,107`）。
   - collect（`/collect`）：`/credential_results`、`/collect_info`（证据：`agents/stargazer/api/collect.py:21,253,300`）。
@@ -42,7 +43,7 @@
 - 能力：接收外部 webhook/告警的 HTTP 端点；`bk-lite-resource-collector.yaml` 部署 kube-state-metrics 相关资源采集能力。
 
 ## 2026-07-01 Code-ARD 校准
-- `[agents#20260701-031]` 补录 Stargazer `ip_scan` NATS handler 与 IP 发现处理入口。
+- `[agents#20260701-031]` 移除 Stargazer `ip_scan` NATS handler 已落地结论：当前 `service/nats_server.py` 注册列表与 `plugins/inputs/ip_discovery/` 目录均不匹配（grep `ip_scan` 无命中），`plugins/inputs/ip/` 下的 IP 发现扫描文件是否经 NATS handler 暴露尚待确认。
 - `[agents#20260701-032]` 配置采集插件矩阵更新为 19 个 `*_info.py`，并修正华为云、VMware 等插件路径为当前 `hwcloud`、`vmware_vc` 目录。
 - `[agents#20260701-033]` 将 webhookd 资源采集 Kubernetes 清单纳入形态说明。
 
@@ -52,4 +53,4 @@
 - nats-executor 主代码以 pub/sub + KV 形态使用 NATS；JetStream 高级 API（Object Store）主要见于 sidecar-installer/job 日志路径【推断，需确认 KV 用法范围】。
 
 ## 证据来源
-`agents/stargazer/{server.py,core/nats.py,service/*,service/nats_server.py:11,13,plugins/inputs/ip_discovery/ip_discovery_handler.py,plugins/inputs/{hwcloud/huaweicloud_info.py,vmware_vc/vmware_info.py,config_file/config_file_info.py,vastbase/vastbase_info.py}}`、`agents/nats-executor/main.go`、`agents/ansible-executor/main.py`、`agents/fusion-collector/*`、`agents/sidecar-installer/setup-worker.go`、`agents/webhookd/{bk-lite-log-collector.yaml,bk-lite-metric-collector.yaml,bk-lite-resource-collector.yaml}`。
+`agents/stargazer/{server.py,core/nats.py,service/*,service/nats_server.py:46-97,plugins/inputs/ip/{__init__.py,ip_discovery_scanner.py,scan_targets.py,plugin.yml},plugins/inputs/{hwcloud/huaweicloud_info.py,vmware_vc/vmware_info.py,config_file/config_file_info.py,vastbase/vastbase_info.py}}`、`agents/nats-executor/main.go`、`agents/ansible-executor/main.py`、`agents/fusion-collector/*`、`agents/sidecar-installer/setup-worker.go`、`agents/webhookd/{bk-lite-log-collector.yaml,bk-lite-metric-collector.yaml,bk-lite-resource-collector.yaml}`。
