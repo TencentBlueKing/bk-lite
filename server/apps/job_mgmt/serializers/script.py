@@ -5,6 +5,7 @@ from rest_framework import serializers
 from apps.core.utils.serializers import TeamSerializer
 from apps.job_mgmt.models import Script
 from apps.job_mgmt.services.param_crypto import ParamCrypto
+from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
 
 
 class ScriptListSerializer(TeamSerializer):
@@ -77,10 +78,11 @@ class ScriptCreateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_content(self, value):
-        """验证脚本内容不能为空"""
+        """验证脚本内容不能为空,并按 script_type 规范化换行符"""
         if not value or not value.strip():
             raise serializers.ValidationError("脚本内容不能为空")
-        return value
+        script_type = self.initial_data.get("script_type", "") or ""
+        return normalize_script_line_endings(value, script_type)
 
     def validate_params(self, value):
         """加密参数定义中的默认值"""
@@ -112,10 +114,16 @@ class ScriptUpdateSerializer(serializers.ModelSerializer):
         ]
 
     def validate_content(self, value):
-        """验证脚本内容不能为空"""
+        """验证脚本内容不能为空,并按当前 script_type 规范化换行符"""
         if value is not None and not value.strip():
             raise serializers.ValidationError("脚本内容不能为空")
-        return value
+        if value is None:
+            return value
+        # update 场景下若用户未传 script_type,从已有 instance 读取,避免误规范化
+        script_type = self.initial_data.get("script_type")
+        if not script_type and self.instance is not None:
+            script_type = self.instance.script_type or ""
+        return normalize_script_line_endings(value, script_type or "")
 
     def validate_params(self, value):
         """加密参数定义中的默认值"""
