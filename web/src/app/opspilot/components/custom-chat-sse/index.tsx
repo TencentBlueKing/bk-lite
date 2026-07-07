@@ -115,7 +115,7 @@ const md = new MarkdownIt({
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
     ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
-    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
+    ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'data-has-detail', 'src', 'alt', 'width', 'height', 'aria-hidden'],
     ALLOW_DATA_ATTR: false,
   });
 };
@@ -152,6 +152,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   );
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
+  const scrollAnimationFrameRef = useRef<number | null>(null);
 
   // 监听 initialMessages 变化
   useEffect(() => {
@@ -168,29 +169,46 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     if (chatContentRef.current) {
       chatContentRef.current.scrollTo({
         top: chatContentRef.current.scrollHeight,
-        behavior: 'smooth'
+        behavior: 'auto'
       });
     }
   }, []);
 
+  const scheduleScrollToBottom = useCallback(() => {
+    if (scrollAnimationFrameRef.current !== null) {
+      cancelAnimationFrame(scrollAnimationFrameRef.current);
+    }
+
+    scrollAnimationFrameRef.current = requestAnimationFrame(() => {
+      scrollAnimationFrameRef.current = null;
+      scrollToBottom();
+    });
+  }, [scrollToBottom]);
+
   useEffect(() => {
     if (messages.length > 0) {
-      requestAnimationFrame(() => {
-        scrollToBottom();
-      });
+      scheduleScrollToBottom();
     }
-  }, [messages, scrollToBottom]);
+  }, [messages, scheduleScrollToBottom]);
+
+  useEffect(() => {
+    return () => {
+      if (scrollAnimationFrameRef.current !== null) {
+        cancelAnimationFrame(scrollAnimationFrameRef.current);
+      }
+    };
+  }, []);
 
   const updateMessages = useCallback(
     (newMessages: CustomChatMessage[] | ((prev: CustomChatMessage[]) => CustomChatMessage[])) => {
       setMessages(prevMessages => {
         const updatedMessages =
           typeof newMessages === 'function' ? newMessages(prevMessages) : newMessages;
-        setTimeout(() => scrollToBottom(), 50);
         return updatedMessages;
       });
+      scheduleScrollToBottom();
     },
-    [scrollToBottom]
+    [scheduleScrollToBottom]
   );
 
   // 使用自定义 Hooks
