@@ -18,9 +18,22 @@ from apps.cmdb.services.node_mgmt_sync_service import NodeMgmtSyncService
 from apps.core.logger import cmdb_logger as logger
 
 
+def _is_unhelpful_error_message(message: str) -> bool:
+    text = str(message or "").strip()
+    return text in {"0", "1", "None", "null", "False", "True"}
+
+
+def _build_exception_args_message(err: Exception) -> str:
+    args = getattr(err, "args", ()) or ()
+    if not args:
+        return ""
+    rendered = ", ".join(repr(arg) for arg in args)
+    return f"{err.__class__.__name__}({rendered})"
+
+
 def _build_safe_error_message(err: Exception) -> str:
     message = str(err).strip()
-    if message:
+    if message and not _is_unhelpful_error_message(message):
         return message
 
     attr_message = getattr(err, "message", None)
@@ -31,7 +44,28 @@ def _build_safe_error_message(err: Exception) -> str:
     if isinstance(detail, str) and detail.strip():
         return detail.strip()
 
+    args_message = _build_exception_args_message(err)
+    if args_message:
+        return args_message
+
     return err.__class__.__name__
+
+
+def _build_traceback_excerpt(traceback_text: str, max_lines: int = 16) -> str:
+    if not traceback_text:
+        return ""
+    lines = [line.rstrip() for line in str(traceback_text).splitlines() if line.strip()]
+    if not lines:
+        return ""
+    return "\n".join(lines[-max_lines:])
+
+
+def _build_traceback_location(traceback_text: str) -> str:
+    if not traceback_text:
+        return ""
+    lines = [line.strip() for line in str(traceback_text).splitlines() if line.strip()]
+    file_lines = [line for line in lines if line.startswith('File "')]
+    return file_lines[-1] if file_lines else ""
 
 
 @shared_task
@@ -62,6 +96,8 @@ def sync_collect_task(instance_id):
         exec_time=start_time,
     )
     exec_error_message = ""
+    exec_traceback_excerpt = ""
+    exec_traceback_location = ""
     task_exec_status = CollectRunStatusType.SUCCESS
     config_file_pending = False
     try:
@@ -87,14 +123,19 @@ def sync_collect_task(instance_id):
     except Exception as err:
         import traceback
 
+        traceback_text = traceback.format_exc()
         logger.error(
             "[CollectTask] 同步采集数据失败 task_id=%s, error=%s",
             instance_id,
-            traceback.format_exc(),
+            traceback_text,
         )
         exec_error_message = "采集任务执行失败（task_id={}）：{}".format(
             instance_id, _build_safe_error_message(err)
         )
+        exec_traceback_excerpt = _build_traceback_excerpt(traceback_text)
+        exec_traceback_location = _build_traceback_location(traceback_text)
+        if exec_traceback_location:
+            exec_error_message = f"{exec_error_message} @ {exec_traceback_location}"
         result = {}
         format_data = {}
         instance.exec_status = CollectRunStatusType.ERROR
@@ -122,6 +163,8 @@ def sync_collect_task(instance_id):
         # 如果任务执行失败，添加错误信息提示
         if task_exec_status == CollectRunStatusType.ERROR:
             collect_digest["message"] = exec_error_message
+            if exec_traceback_excerpt:
+                collect_digest["traceback"] = exec_traceback_excerpt
         elif config_file_pending:
             collect_digest["message"] = "配置文件采集已触发，等待回传中"
         elif format_data.get("__raw_data__", []).__len__() == 0:

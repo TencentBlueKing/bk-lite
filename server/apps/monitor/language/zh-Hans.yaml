@@ -4800,6 +4800,12 @@ monitor_object_plugin:
   Switch IP Infusion SNMP:
     name: IP Infusion（Telegraf）
     desc: IP Infusion OcNOS 白盒交换机 SNMP child 模板（企业号 PEN 36673）。通用 Switch SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；IPI-CMM-CHASSIS-MIB cmm 子树提供机箱级 PSU 1 温度标量（cmmSysPSTemperature1）。cmmFanTable（per-row 风扇）、cmmIpmiDeviceSensorTable（per-stack-unit 异构 sensor）、cmmTransTemperature（per-port）以及同命名 PSU 2/3 温度标量均不采集：telegraf inputs.snmp 不能可靠聚合行级索引或多类 sensor 到 bk-lite 单值 device_* 指标，故保持 N/A 不臆造。适用品牌型号——IP Infusion OcNOS 白盒交换机（Edgecore/Accton、UfiSpace、Delta、Celestica 等白盒硬件）。
+  Switch Omnitron SNMP:
+    name: Omnitron（Telegraf）
+    desc: Omnitron Systems Technology iConverter 管理模块与工业以太网光纤收发器/媒体转换器 SNMP 基线子模板（企业号 PEN 7342）。通用 Switch SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；私有 OMNITRON-MIB/OMNITRON-POE-MIB/OMNITRON-TC-MIB 公开 `omnitron OBJECT IDENTIFIER ::= { enterprises 7342 }` 与 `icAgent(1)/prodAgent(2)/omnitronProducts(5)/managementModule(1)/omnitronMIB(3)` 子树及 PoE 端口功率预算，但当前公开 raw MIB 中可用的健康 OID 均为 per-management-module / per-port 行级对象，telegraf inputs.snmp 不能将其聚合到 bk-lite 单值 device_* 指标，故保持 N/A 不臆造。适用品牌型号——Omnitron iConverter 工业以太网光纤收发器/媒体转换器管理模块及其他遵循 IF-MIB 标准的工业网络设备。
+  Switch Ubiquoss SNMP:
+    name: Ubiquoss（Telegraf）
+    desc: Ubiquoss GPON/EPON OLT 与 L2/L3 工业以太网交换机 SNMP 基线子模板（企业号 PEN 36141）。通用 Switch SNMP 底座提供 MIB-II 运行时长与 IF-MIB 64 位 HC 接口流量；私有 UBIQUOSS-SMI/UBQS-SMI/UBQS-PRODUCTS-MIB/UBQS-ENVMON-MIB/UBQS-CPU-STATS-MIB/UBQS-ENTITY-MIB/UBQS-ENTITY-ALARM-MIB/UBQS-INTERFACE-MIB/UBQS-SYSTEM-MIB/UBQS-SYSINFO-MIB 及 EPON/10GEPON 系列公开 `ubiquoss OBJECT IDENTIFIER ::= { enterprises 36141 }` 企业根与 per-stack-unit/per-fan/per-PSU/per-port/per-card/per-ONU 行级对象，telegraf inputs.snmp 不能将其聚合到 bk-lite 单值 device_* 指标，故保持 N/A 不臆造。适用品牌型号——Ubiquoss e3xxx/e5xxx/e6xxx/e7xxx/cs3400 系列以太网交换机与 GPON/EPON OLT/ONU。
 monitor_object:
   Wireless: 无线设备
   Transmission: 传输设备

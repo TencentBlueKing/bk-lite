@@ -9,6 +9,7 @@ import type {
 import { useUserApi } from '@/app/system-manager/api/user/index';
 import { useGroupApi } from '@/app/system-manager/api/group/index';
 import { useUserInfoContext } from '@/context/userInfo';
+import { shouldBlockBatchDelete } from '@/app/system-manager/utils/userDeleteGuards';
 import {
   ExtendedTreeDataNode,
   convertGroupsToTreeData,
@@ -170,6 +171,7 @@ export function useUserTable(
         roles: item.roles || [],
         last_login: item.last_login,
         status: item.status,
+        sync_source: item.sync_source ?? null,
       }));
       setTableData(data);
       setTotal(res.count);
@@ -215,6 +217,12 @@ export function useUserTable(
       return;
     }
 
+    const selectedUsers = tableData.filter((user) => selectedRowKeys.includes(user.key));
+    if (action === 'delete' && shouldBlockBatchDelete(selectedUsers)) {
+      message.error(t('system.user.deleteBlockedBySyncSource'));
+      return;
+    }
+
     confirm({
       title: action === 'delete' ? t('common.delConfirm') : getStatusConfirmTitle(action),
       content: action === 'delete' ? t('common.delConfirmCxt') : undefined,
@@ -247,6 +255,7 @@ export function useUserTable(
     searchValue,
     currentPage,
     pageSize,
+    tableData,
     t,
     getStatusConfirmTitle,
   ]);

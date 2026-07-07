@@ -517,7 +517,7 @@ const CollectorDetailDrawer = forwardRef<ModalRef, CollectorDetailDrawerProps>(
           }
           open={visible}
           width={800}
-          destroyOnClose
+          destroyOnHidden
           onClose={handleCancel}
         >
           <div className="flex h-full">

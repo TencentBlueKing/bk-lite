@@ -74,70 +74,15 @@
     },
     {
       "title": "知识库",
-      "icon": "zhishiku1",
-      "url": "/opspilot/knowledge",
-      "name": "knowledge_list",
-      "tour": {
-        "title": "第二步: 上传私域知识",
-        "description": "自定义上传并处理自己所需知识,支持本地文档,网页引用和自定义文本。",
-        "cover": "/app/tours/knowledge_tour.png",
-        "target": "knowledge_list",
-        "order": 2
-      },
+      "icon": "zhishiku",
+      "url": "/opspilot/wiki",
+      "name": "wiki_list",
       "hasDetail": true,
       "children": [
         {
-          "title": "文档",
-          "url": "/opspilot/knowledge/detail/documents",
-          "icon": "shiyongwendang",
-          "name": "knowledge_document"
-        },
-        {
-          "title": "文档编辑",
-          "url": "/opspilot/knowledge/detail/documents/modify",
-          "name": "knowledge_document_modify",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "文档详情",
-          "url": "/opspilot/knowledge/detail/documents/result",
-          "name": "knowledge_document_result",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "文件预览",
-          "url": "/opspilot/knowledge/preview",
-          "name": "file_preview",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "测试",
-          "url": "/opspilot/knowledge/detail/testing",
-          "icon": "ceshi",
-          "name": "knowledge_testing"
-        },
-        {
-          "title": "设置",
-          "url": "/opspilot/knowledge/detail/settings",
-          "icon": "shezhi",
-          "name": "knowledge_setting"
-        },
-        {
-          "title": "接口",
-          "url": "/opspilot/knowledge/detail/api",
-          "icon": "api",
-          "name": "knowledge_api"
-        },
-        {
-          "title": "问答对详情",
-          "url": "/opspilot/knowledge/detail/documents/qapair/result",
-          "name": "knowledge_qapair_result",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "知识图谱设置",
-          "url": "/opspilot/knowledge/detail/documents/graph/edit",
-          "name": "knowledge_graph_edit",
+          "title": "详情",
+          "url": "/opspilot/wiki/detail",
+          "name": "wiki_detail",
           "isNotMenuItem": true
         }
       ]
@@ -262,77 +207,16 @@
       ]
     },
     {
-      "title": "Knowledge",
-      "icon": "zhishiku1",
-      "url": "/opspilot/knowledge",
-      "name": "knowledge_list",
-      "tour": {
-        "title": "The Second Step: Upload Private Domain Knowledge",
-        "description": "Customize and upload the knowledge you need, support local documents, web references, and custom text.",
-        "cover": "/app/tours/knowledge_tour.png",
-        "target": "knowledge_list",
-        "order": 2
-      },
+      "title": "Knowledge Base",
+      "icon": "zhishiku",
+      "url": "/opspilot/wiki",
+      "name": "wiki_list",
       "hasDetail": true,
       "children": [
         {
-          "title": "Documents",
-          "url": "/opspilot/knowledge/detail/documents",
-          "icon": "shiyongwendang",
-          "name": "knowledge_document"
-        },
-        {
-          "title": "DocumentsModify",
-          "url": "/opspilot/knowledge/detail/documents/modify",
-          "name": "knowledge_document_modify",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "Result",
-          "url": "/opspilot/knowledge/detail/documents/result",
-          "name": "knowledge_document_result",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "File Preview",
-          "url": "/opspilot/knowledge/preview",
-          "name": "file_preview",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "Testing",
-          "url": "/opspilot/knowledge/detail/testing",
-          "icon": "ceshi",
-          "name": "knowledge_testing"
-        },
-        {
-          "title": "Settings",
-          "url": "/opspilot/knowledge/detail/settings",
-          "icon": "shezhi",
-          "name": "knowledge_setting"
-        },
-        {
-          "title": "API",
-          "url": "/opspilot/knowledge/detail/api",
-          "icon": "api",
-          "name": "knowledge_api"
-        },
-        {
-          "title": "Invocation Logs",
-          "url": "/opspilot/knowledge/detail/invocationLogs",
-          "icon": "talk-line",
-          "name": "knowledge_invocation_logs"
-        },
-        {
-          "title": "QAPair Result",
-          "url": "/opspilot/knowledge/detail/documents/qapair/result",
-          "name": "knowledge_qapair_result",
-          "isNotMenuItem": true
-        },
-        {
-          "title": "Knowledge Graph Edit",
-          "url": "/opspilot/knowledge/detail/documents/graph/edit",
-          "name": "knowledge_graph_edit",
+          "title": "Detail",
+          "url": "/opspilot/wiki/detail",
+          "name": "wiki_detail",
           "isNotMenuItem": true
         }
       ]

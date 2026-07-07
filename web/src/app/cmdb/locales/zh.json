@@ -574,6 +574,7 @@
             "selectK8S": "K8S",
             "second": "秒",
             "intervalRequired": "请输入执行间隔时间",
+            "everyMinuteMin": "执行间隔最小为1分钟",
             "timeRequired": "请选择执行时间",
             "timeoutRequired": "请输入超时时间",
             "accessConfig": "接入配置",

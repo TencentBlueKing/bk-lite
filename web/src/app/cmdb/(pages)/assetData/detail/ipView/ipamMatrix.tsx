@@ -1,10 +1,15 @@
 'use client';
 
-import React, { useEffect, useState, useCallback } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import { Spin, Tooltip, Drawer, Button, Tag, Empty } from 'antd';
 import { ArrowLeftOutlined, ArrowRightOutlined } from '@ant-design/icons';
 import { useTranslation } from '@/utils/i18n';
 import { useInstanceApi } from '@/app/cmdb/api/instance';
+import { useModelApi } from '@/app/cmdb/api';
+import { useCommon } from '@/app/cmdb/context/common';
+import { getFieldItem } from '@/app/cmdb/utils/common';
+import { useUserInfoContext } from '@/context/userInfo';
+import type { AttrFieldType, UserItem } from '@/app/cmdb/types/assetManage';
 import { useRouter } from 'next/navigation';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -172,6 +177,42 @@ interface IpDetailDrawerProps {
 const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) => {
   const { t } = useTranslation();
   const router = useRouter();
+  const { getModelAttrGroupsFullInfo } = useModelApi();
+  const { getInstanceShowFieldDetail } = useInstanceApi();
+  const commonContext = useCommon();
+  const { flatGroups } = useUserInfoContext();
+  const users = useRef(commonContext?.userList || []);
+  const userList: UserItem[] = users.current;
+  const [loading, setLoading] = useState(false);
+  const [ipAttrs, setIpAttrs] = useState<AttrFieldType[]>([]);
+  const [showFieldKeys, setShowFieldKeys] = useState<string[] | null>(null);
+  const metaLoadedRef = useRef(false);
+
+  useEffect(() => {
+    if (!open || metaLoadedRef.current) return;
+    let cancelled = false;
+    setLoading(true);
+    Promise.all([
+      getModelAttrGroupsFullInfo('ip').catch(() => null),
+      getInstanceShowFieldDetail('ip').catch(() => null),
+    ])
+      .then(([groupsResp, showFieldsResp]) => {
+        if (cancelled) return;
+        const groups = Array.isArray((groupsResp as any)?.groups) ? (groupsResp as any).groups : [];
+        const attrs = groups.flatMap((group: any) => group?.attrs || []) as AttrFieldType[];
+        setIpAttrs(attrs);
+        setShowFieldKeys(Array.isArray((showFieldsResp as any)?.show_fields) ? (showFieldsResp as any).show_fields : null);
+        metaLoadedRef.current = true;
+      })
+      .finally(() => {
+        if (!cancelled) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open]);
 
   const jump = useCallback(() => {
     if (!ip) return;
@@ -186,6 +227,46 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
     router.push(`/cmdb/assetData/detail/baseInfo?${params}`);
   }, [ip, router]);
 
+  const rows = useMemo(() => {
+    if (!ip) {
+      return [];
+    }
+    const attrMap = new Map(ipAttrs.map((attr) => [attr.attr_id, attr]));
+    const fieldOrder = showFieldKeys?.length
+      ? showFieldKeys
+      : ipAttrs.map((attr) => attr.attr_id);
+    const fieldKeys = fieldOrder.filter((key) => key !== 'inst_name' && key !== '_id' && !key.startsWith('_'));
+
+    return fieldKeys
+      .map((key) => {
+        const attr = attrMap.get(key);
+        if (!attr) return null;
+        const rawValue = ip[key];
+        if (
+          rawValue === null ||
+          rawValue === undefined ||
+          rawValue === '' ||
+          (Array.isArray(rawValue) && rawValue.length === 0)
+        ) {
+          return null;
+        }
+        return {
+          key,
+          label: attr.attr_name || attr.attr_id,
+          valueNode: getFieldItem({
+            fieldItem: attr,
+            userList,
+            isEdit: false,
+            value: rawValue,
+            hideUserAvatar: true,
+            flatGroups,
+            modelId: 'ip',
+          }),
+        };
+      })
+      .filter((item): item is { key: string; label: string; valueNode: React.ReactNode } => item !== null);
+  }, [flatGroups, ip, ipAttrs, showFieldKeys, userList]);
+
   if (!ip) return null;
 
   const kind = ipToCellKind(ip);
@@ -199,15 +280,6 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
     gateway: t('Model.ipViewGateway'),
     unknown: t('Model.ipViewUnknown'),
   };
-
-  const rows: Array<{ k: string; v: string }> = [];
-  for (const [key, val] of Object.entries(ip)) {
-    if (key === '_id' || key === 'inst_name') continue;
-    if (val === null || val === undefined || val === '') continue;
-    const display = Array.isArray(val) ? val.join(', ') : String(val);
-    if (display === '') continue;
-    rows.push({ k: key, v: display });
-  }
 
   return (
     <Drawer
@@ -235,9 +307,13 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
         <Tag color={color} style={{ color: '#fff' }}>{kindLabel[kind]}</Tag>
       </div>
       <div>
-        {rows.map(({ k, v }) => (
+        {loading ? (
+          <div style={{ padding: '24px 0', textAlign: 'center' }}>
+            <Spin spinning />
+          </div>
+        ) : rows.map(({ key, label, valueNode }) => (
           <div
-            key={k}
+            key={key}
             style={{
               display: 'flex',
               justifyContent: 'space-between',
@@ -246,15 +322,15 @@ const IpDetailDrawer: React.FC<IpDetailDrawerProps> = ({ ip, open, onClose }) =>
               gap: 12,
             }}
           >
-            <span style={{ color: 'var(--color-text-3)', fontSize: 13, flexShrink: 0 }}>{k}</span>
-            <span
+            <span style={{ color: 'var(--color-text-3)', fontSize: 13, flexShrink: 0 }}>{label}</span>
+            <div
               style={{
                 fontSize: 13, textAlign: 'right', wordBreak: 'break-all',
                 color: 'var(--color-text-1)',
               }}
             >
-              {v}
-            </span>
+              {valueNode}
+            </div>
           </div>
         ))}
       </div>

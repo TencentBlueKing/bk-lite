@@ -194,7 +194,7 @@ const SavedQueryDrawer = forwardRef<SavedQueryDrawerRef, SavedQueryDrawerProps>(
         title={t('monitor.search.loadSavedQuery')}
         open={visible}
         width={600}
-        destroyOnClose
+        destroyOnHidden
         footer={
           <div>
             <Button onClick={handleClose}>{t('common.cancel')}</Button>

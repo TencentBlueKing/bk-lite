@@ -21,6 +21,7 @@ _wechat = import_module("apps.system_mgmt.nats.wechat")
 _COMPAT_GLOBALS_BY_MODULE = {
     _auth: (
         "_verify_token",
+        "_collect_ancestor_group_ids",
         "get_user_all_roles",
     ),
     _login: (

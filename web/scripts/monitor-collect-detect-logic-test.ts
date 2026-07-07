@@ -5,6 +5,7 @@ import {
   getCollectDetectResultPresentation,
   getRowsForBatchCollectDetect,
   shouldAcceptCollectDetectResult,
+  shouldAutoShowCollectDetectResultOnComplete,
 } from '../src/app/monitor/(pages)/integration/list/detail/configure/automaticCollectDetect';
 
 const rowA = {
@@ -47,5 +48,17 @@ assert.deepEqual(getCollectDetectResultPresentation({ status: 'failed' }), {
   tone: 'error',
   titleKey: 'monitor.integrations.collectDetectFailed',
 });
+
+// 产品决策：测试完成不主动弹窗，由用户点击状态查看
+assert.equal(
+  shouldAutoShowCollectDetectResultOnComplete('single'),
+  false,
+  '单条测试完成不应自动弹窗'
+);
+assert.equal(
+  shouldAutoShowCollectDetectResultOnComplete('batch'),
+  false,
+  '批量测试完成不应自动弹窗'
+);
 
 console.log('monitor collect detect logic tests passed');

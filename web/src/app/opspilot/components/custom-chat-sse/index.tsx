@@ -1,5 +1,5 @@
-import React, {ReactNode, useCallback, useEffect, useRef, useState} from 'react';
-import {Button, ButtonProps, Drawer, Flex, Image, message as antMessage, Popconfirm, Spin, Tooltip, Upload} from 'antd';
+import React, {ReactNode, useCallback, useEffect, useMemo, useRef, useState} from 'react';
+import {Button, ButtonProps, Flex, Image, message as antMessage, Popconfirm, Tooltip, Upload} from 'antd';
 import {FullscreenExitOutlined, FullscreenOutlined, PictureOutlined, SendOutlined} from '@ant-design/icons';
 import type {UploadFile} from 'antd/es/upload/interface';
 import {Bubble, Sender} from '@ant-design/x';
@@ -11,27 +11,25 @@ import hljs from 'highlight.js';
 import 'highlight.js/styles/atom-one-dark.css';
 import styles from '../custom-chat/index.module.scss';
 import MessageActions from '../custom-chat/actions';
-import KnowledgeBase from '../custom-chat/knowledgeBase';
-import AnnotationModal from '../custom-chat/annotationModal';
-import KnowledgeGraphView from '../knowledge/knowledgeGraphView';
 import PermissionWrapper from '@/components/permission';
 import BrowserStepProgress from './BrowserStepProgress';
 import AgentStepProgress from './AgentStepProgress';
+import WikiCitations from './WikiCitations';
 import ApprovalCard from './ApprovalCard';
 import UserChoiceCard from './UserChoiceCard';
+import {postUserChoice} from './submitUserChoice';
 import DiffReportCard from './DiffReportCard';
 import ConfigAnalysisReportCard from './ConfigAnalysisReportCard';
 import ReportDownloadCard from './ReportDownloadCard';
 import RepairCommandsCard from './RepairCommandsCard';
 import SkillView from './SkillView';
 import { hydrateGeneratedFileLinks } from './downloadUrl';
-import {Annotation, CustomChatMessage} from '@/app/opspilot/types/global';
+import {CustomChatMessage} from '@/app/opspilot/types/global';
 import {useSession} from 'next-auth/react';
 import {useAuth} from '@/context/auth';
 import {CustomChatSSEProps, GuideParseResult} from '@/app/opspilot/types/chat';
 import {useSSEStream} from './hooks/useSSEStream';
 import {useSendMessage} from './hooks/useSendMessage';
-import {useReferenceHandler} from './hooks/useReferenceHandler';
 import {initToolCallTooltips} from './toolCallRenderer';
 
 const normalizeThinkingText = (value?: string) => {
@@ -110,18 +108,20 @@ const md = new MarkdownIt({
   },
 });
 
-// Sanitize HTML to prevent XSS
+// Sanitize HTML to prevent XSS and CSS injection.
+// SECURITY: 'style' tag (block CSS) is intentionally excluded: allowing it
+// enables CSS injection via LLM prompt injection.
+// Inline style attributes are kept because guide/reference link renderers use them.
 const sanitizeHtml = (html: string): string => {
   return DOMPurify.sanitize(html, {
-    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button', 'style'],
+    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 'code', 'pre', 'span', 'div', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'img', 'svg', 'use', 'button'],
     ALLOWED_ATTR: ['class', 'style', 'href', 'target', 'rel', 'data-ref-number', 'data-chunk-id', 'data-knowledge-id', 'data-chunk-type', 'data-content', 'data-suggestion', 'data-expanded', 'data-tool-id', 'src', 'alt', 'width', 'height', 'aria-hidden'],
-    ALLOW_DATA_ATTR: true,
+    ALLOW_DATA_ATTR: false,
   });
 };
 
 const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   handleSendMessage,
-  showMarkOnly = false,
   initialMessages = [],
   mode = 'chat',
   guide,
@@ -150,8 +150,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   const [messages, setMessages] = useState<CustomChatMessage[]>(
     initialMessages.length ? initialMessages : []
   );
-  const [annotationModalVisible, setAnnotationModalVisible] = useState(false);
-  const [annotation, setAnnotation] = useState<Annotation | null>(null);
   const currentBotMessageRef = useRef<CustomChatMessage | null>(null);
   const chatContentRef = useRef<HTMLDivElement>(null);
 
@@ -227,8 +225,16 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
     t
   });
 
-  const { referenceModal, drawerContent, handleReferenceClick, closeDrawer } =
-    useReferenceHandler(t);
+  const pendingChoice = useMemo(() => {
+    for (let i = messages.length - 1; i >= 0; i--) {
+      const requests = messages[i].userChoiceRequests;
+      if (requests?.length) {
+        const pending = requests.find(request => request.status === 'pending');
+        if (pending) return pending;
+      }
+    }
+    return null;
+  }, [messages]);
 
   // Parse guide with proper HTML escaping
   const parseGuideItems = useCallback((guideText: string): GuideParseResult => {
@@ -406,6 +412,32 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
 
   const handleSend = useCallback(
     async (msg: string, images?: UploadFile[]) => {
+      if (pendingChoice && msg.trim() && token) {
+        const answer = msg.trim();
+        try {
+          await postUserChoice(token, {
+            execution_id: pendingChoice.execution_id,
+            node_id: pendingChoice.node_id,
+            choice_id: pendingChoice.choice_id,
+            selected: [answer],
+          });
+          updateMessages(prev => prev.map(message => {
+            if (!message.userChoiceRequests) return message;
+            return {
+              ...message,
+              userChoiceRequests: message.userChoiceRequests.map(request =>
+                request.choice_id === pendingChoice.choice_id
+                  ? { ...request, status: 'submitted' as const, selected: [answer] }
+                  : request
+              ),
+            };
+          }));
+        } catch {
+          antMessage.error(t('chat.choiceSubmitFailed'));
+        }
+        return;
+      }
+
       if ((msg.trim() || (images && images.length > 0)) && !loading && token) {
         currentBotMessageRef.current = null;
 
@@ -435,7 +467,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         await sendMessage(msg, messages, imageData);
       }
     },
-    [loading, token, sendMessage, messages]
+    [pendingChoice, loading, token, sendMessage, messages, updateMessages, t]
   );
 
   const handleCopyMessage = (content: string) => {
@@ -503,7 +535,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
   }, [updateMessages]);
 
   const renderContent = (msg: CustomChatMessage) => {
-    const { content, knowledgeBase, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
+    const { content, images, browserStepsHistory, thinking, isThinking, approvalRequests, userChoiceRequests, configDiffReports, configAnalysisReports, reportFileDownloads, repairCommands, agentStepProgress, skillViews } = msg;
     const visibleReportFileDownloads = Array.isArray(reportFileDownloads)
       ? reportFileDownloads.filter(download => Boolean(download.content_base64))
       : [];
@@ -529,7 +561,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
-                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -615,7 +646,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
               className={styles.markdownBody}
               onClick={e => {
                 handleToolCallClick(e);
-                handleReferenceClick(e);
                 handleSuggestionClick(e);
               }}
             />
@@ -755,9 +785,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           <BrowserStepProgress history={browserStepsHistory} />
         )}
         {renderContentWithInlineComponents()}
-        {Array.isArray(knowledgeBase) && knowledgeBase.length ? (
-          <KnowledgeBase knowledgeList={knowledgeBase} />
-        ) : null}
+        {!!msg.wikiCitations?.length && <WikiCitations citations={msg.wikiCitations} content={msg.content} />}
       </>
     );
   };
@@ -835,14 +863,14 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           className={styles.sender}
           value={value}
           onChange={setValue}
-          loading={loading}
+          loading={loading && !pendingChoice}
           onSubmit={(msg: string) => {
             setValue('');
             const currentImages = [...imageList];
             setImageList([]);
             handleSend(msg, currentImages);
           }}
-          placeholder={placeholder}
+          placeholder={pendingChoice ? (t('chat.replyToPendingChoice') || '回复上面的问题...') : placeholder}
           onCancel={stopSSEConnection}
           prefix={uploadButton}
           onPaste={(event: React.ClipboardEvent) => {
@@ -880,7 +908,7 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
             }
           ) => {
             const { SendButton, LoadingButton } = info.components;
-            if (!ignoreLoading && loading) {
+            if (!ignoreLoading && loading && !pendingChoice) {
               return (
                 <Tooltip title={t('chat.clickCancel')}>
                   <LoadingButton />
@@ -906,41 +934,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
         {senderComponent}
       </PermissionWrapper>
     ) : senderComponent;
-  };
-
-  const toggleAnnotationModal = (message: CustomChatMessage) => {
-    if (message?.annotation) {
-      setAnnotation(message.annotation);
-    } else {
-      const lastUserMessage = messages
-        .slice(0, messages.indexOf(message))
-        .reverse()
-        .find(msg => msg.role === 'user') as CustomChatMessage;
-      setAnnotation({
-        answer: message,
-        question: lastUserMessage,
-        selectedKnowledgeBase: '',
-        tagId: 0,
-      });
-    }
-    setAnnotationModalVisible(!annotationModalVisible);
-  };
-
-  const updateMessagesAnnotation = (id: string | undefined, newAnnotation?: Annotation) => {
-    if (!id) return;
-    updateMessages(prevMessages =>
-      prevMessages.map(msg => (msg.id === id ? { ...msg, annotation: newAnnotation } : msg))
-    );
-    setAnnotationModalVisible(false);
-  };
-
-  const handleSaveAnnotation = (annotation?: Annotation) => {
-    updateMessagesAnnotation(annotation?.answer?.id, annotation);
-  };
-
-  const handleRemoveAnnotation = (id: string | undefined) => {
-    if (!id) return;
-    updateMessagesAnnotation(id, undefined);
   };
 
   useEffect(() => {
@@ -1009,8 +1002,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
                         onCopy={handleCopyMessage}
                         onRegenerate={handleRegenerateMessage}
                         onDelete={handleDeleteMessage}
-                        onMark={toggleAnnotationModal}
-                        showMarkOnly={showMarkOnly}
                       />
                     )
                   }
@@ -1046,46 +1037,6 @@ const CustomChatSSE: React.FC<CustomChatSSEProps> = ({
           </div>
         )}
       </div>
-      {annotation && (
-        <AnnotationModal
-          visible={annotationModalVisible}
-          showMarkOnly={showMarkOnly}
-          annotation={annotation}
-          onSave={handleSaveAnnotation}
-          onRemove={handleRemoveAnnotation}
-          onCancel={() => setAnnotationModalVisible(false)}
-        />
-      )}
-
-      <Drawer
-        width={drawerContent.chunkType === 'Graph' ? 800 : 480}
-        visible={drawerContent.visible}
-        title={drawerContent.title}
-        onClose={closeDrawer}
-        getContainer={isFullscreen ? false : undefined}
-        styles={{
-          body: drawerContent.chunkType === 'Graph' ? { padding: 0, height: '100%' } : undefined
-        }}
-      >
-        {referenceModal.loading ? (
-          <div className="flex justify-center items-center h-32">
-            <Spin size="large" />
-          </div>
-        ) : (
-          <>
-            {drawerContent.chunkType === 'Graph' ? (
-              <div style={{ height: '100%', padding: '16px' }}>
-                <KnowledgeGraphView
-                  data={drawerContent.graphData || { nodes: [], edges: [] }}
-                  height="100%"
-                />
-              </div>
-            ) : (
-              <div className="whitespace-pre-wrap leading-6">{drawerContent.content}</div>
-            )}
-          </>
-        )}
-      </Drawer>
     </div>
   );
 };

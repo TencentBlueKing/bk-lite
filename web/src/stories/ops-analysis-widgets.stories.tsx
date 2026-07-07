@@ -1,5 +1,5 @@
 import type { Meta, StoryObj } from '@storybook/nextjs';
-import ComGauge from '@/app/ops-analysis/(pages)/view/dashBoard/widgets/comGauge';
+import ComGauge from '@/app/ops-analysis/components/widgets/comGauge';
 
 const gaugeMeta: Meta<typeof ComGauge> = {
   title: 'OpsAnalysis/Widgets/Gauge',

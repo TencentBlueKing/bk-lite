@@ -190,7 +190,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
               onChange={(fields) => updateConfig({ attribute_change: { fields } })}
               options={modelFields.map((i) => ({ label: i.name, value: i.id }))}
               maxTagCount="responsive"
-              dropdownRender={(menu) => (
+              popupRender={(menu) => (
                 <SelectAllDropdown
                   menu={menu}
                   allSelected={allSelected}
@@ -292,7 +292,7 @@ const TriggerTypeConfigComp: React.FC<TriggerTypeConfigProps> = ({
                       }}
                       options={relationFields.map((field) => ({ label: field.name, value: field.id }))}
                       maxTagCount="responsive"
-                      dropdownRender={(menu) => (
+                      popupRender={(menu) => (
                         <SelectAllDropdown
                           menu={menu}
                           allSelected={allSelected}

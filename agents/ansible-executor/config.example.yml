@@ -19,6 +19,7 @@ security:
   # Keep this list narrow; append deployment-specific callback prefixes only after review.
   allowed_callback_subjects:
     - job.ansible_task_callback
+    - default_stargazer.host_remote.callback
   # Stream subjects are publish targets used for line-by-line command output.
   allowed_stream_subjects:
     - job.stream.>

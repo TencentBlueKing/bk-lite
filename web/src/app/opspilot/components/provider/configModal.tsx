@@ -143,7 +143,7 @@ const ProviderModal: React.FC<ProviderModalProps> = ({
       onCancel={onCancel}
       okText={t('common.confirm')}
       cancelText={t('common.cancel')}
-      destroyOnClose
+      destroyOnHidden
     >
       {modelDetailLoading ? (
         <FormSkeleton />

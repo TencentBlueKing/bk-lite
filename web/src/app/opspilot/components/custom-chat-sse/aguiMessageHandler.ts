@@ -33,7 +33,8 @@ import {
   RepairCommands,
   ReportFileDownload,
   SkillViewItem,
-  UserChoiceRequest
+  UserChoiceRequest,
+  WikiCitation
 } from '@/app/opspilot/types/global';
 import {
   closeActiveToolCallPanel,
@@ -162,6 +163,7 @@ export class AGUIMessageHandler {
   private repairCommandsList: RepairCommands[] = [];
   private agentStepProgressList: AgentStepProgressData[] = [];
   private skillViews: SkillViewItem[] = [];
+  private wikiCitations: WikiCitation[] = [];
 
   constructor(
     botMessage: CustomChatMessage,
@@ -226,6 +228,7 @@ export class AGUIMessageHandler {
               ? this.repairCommandsList
               : msgItem.repairCommands,
             skillViews: this.skillViews.length > 0 ? this.skillViews : msgItem.skillViews,
+            wikiCitations: this.wikiCitations.length > 0 ? this.wikiCitations : msgItem.wikiCitations,
             updateAt: new Date().toISOString()
           }
           : msgItem
@@ -548,6 +551,15 @@ export class AGUIMessageHandler {
   }
 
   /**
+   * 处理 Wiki 知识库引用事件:存下答案 [n] 对应的来源,供消息下方渲染可点「来源」列表
+   */
+  handleWikiCitations(value: { citations?: WikiCitation[] }) {
+    const items = Array.isArray(value.citations) ? value.citations : [];
+    this.wikiCitations = items.filter((c): c is WikiCitation => Boolean(c && typeof c.n === 'number' && c.id));
+    this.updateMessageContent(this.getFullContent(), undefined, undefined, this.thinkingContent, this.isThinking);
+  }
+
+  /**
    * 处理审批请求事件
    */
   handleApprovalRequest(value: ApprovalRequestValue) {
@@ -852,6 +864,8 @@ export class AGUIMessageHandler {
           this.handleSubAgentProgress(aguiData.value as SubAgentProgressValue);
         } else if (aguiData.name === 'skill_view' && aguiData.value) {
           this.handleSkillView(aguiData.value as SkillViewValue);
+        } else if (aguiData.name === 'wiki_citations' && aguiData.value) {
+          this.handleWikiCitations(aguiData.value as { citations?: WikiCitation[] });
         }
         return false;
 

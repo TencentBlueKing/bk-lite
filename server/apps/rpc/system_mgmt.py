@@ -9,6 +9,18 @@ class SystemMgmt(object):
         return_data = self.client.run("bk_lite_user_login", username=username, domain=domain)
         return return_data
 
+    def login_with_binding(self, binding_id, auth_code="", username="", password=""):
+        return self.client.run(
+            "login_with_binding",
+            binding_id=binding_id,
+            auth_code=auth_code,
+            username=username,
+            password=password,
+        )
+
+    def get_login_auth_bindings(self):
+        return self.client.run("get_login_auth_bindings")
+
     def create_default_rule(self, llm_model, ocr_model, embed_model, rerank_model):
         return_data = self.client.run(
             "create_default_rule",

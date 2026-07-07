@@ -186,10 +186,6 @@ class AgentNode(BaseNodeExecutor):
         Returns:
             LLM参数字典
         """
-        # 判断是否为第三方渠道调用，如果是则禁用知识来源显示
-        is_third_party = flow_input.get("is_third_party", False)
-        enable_rag_knowledge_source = False if is_third_party else skill.enable_rag_knowledge_source
-        logger.info(f"is_third_party：{is_third_party}")
         # 优先使用调用方传入的当前节点 ID；flow_input["node_id"] 存储的是入口节点 ID，
         # 不是当前智能体节点的 ID，直接使用会导致附件 source_node_id 错误。
         effective_node_id = node_id or self.variable_manager.get_variable("current_node_id", "")
@@ -214,16 +210,11 @@ class AgentNode(BaseNodeExecutor):
             "chat_history": [{"event": "user", "message": final_message}],
             "user_message": final_message,
             "conversation_window_size": skill.conversation_window_size,
-            "enable_rag": skill.enable_rag,
-            "rag_score_threshold": [{"knowledge_base": int(key), "score": float(value)} for key, value in skill.rag_score_threshold_map.items()],
-            "enable_rag_knowledge_source": enable_rag_knowledge_source,
             "show_think": skill.show_think,
             "tools": skill.tools,
             "skill_type": skill.skill_type,
             "group": skill.team[0],
             "user_id": flow_input.get("user_id", "anonymous"),
-            "enable_km_route": skill.enable_km_route,
-            "km_llm_model": skill.km_llm_model,
             "enable_suggest": skill.enable_suggest,
             "enable_query_rewrite": skill.enable_query_rewrite,
             "locale": flow_input.get("locale", "en"),  # 用户语言设置，用于 browser-use 输出国际化

@@ -302,7 +302,7 @@ const AssetDataContent = () => {
 
   useEffect(() => {
     // 主页中当模型为host时，获取云区域选项test8.7
-    if (modelId === 'host') {
+    if (['host', 'subnet'].includes(modelId)) {
       getInstanceProxys()
         .then((data: any[]) => {
           setProxyOptions(data || []);
@@ -1255,7 +1255,7 @@ const AssetDataContent = () => {
                 </Button>
               </Space>
             )}
-            destroyOnClose
+            destroyOnHidden
             styles={{
               body: {
                 maxHeight: 'calc(100vh - 220px)',

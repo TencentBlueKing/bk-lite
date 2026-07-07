@@ -296,7 +296,6 @@ class BasicGraph(ABC):
         """准备基础图结构，添加节点和边"""
         graph_builder.add_node("prompt_message_node", node_builder.prompt_message_node)
         graph_builder.add_node("add_chat_history_node", node_builder.add_chat_history_node)
-        graph_builder.add_node("naive_rag_node", node_builder.naive_rag_node)
         graph_builder.add_node("user_message_node", node_builder.user_message_node)
         graph_builder.add_node("suggest_question_node", node_builder.suggest_question_node)
 
@@ -304,9 +303,8 @@ class BasicGraph(ABC):
         graph_builder.add_edge("prompt_message_node", "suggest_question_node")
         graph_builder.add_edge("suggest_question_node", "add_chat_history_node")
         graph_builder.add_edge("add_chat_history_node", "user_message_node")
-        graph_builder.add_edge("user_message_node", "naive_rag_node")
 
-        return "naive_rag_node"
+        return "user_message_node"
 
     async def invoke(
         self,

@@ -159,5 +159,11 @@ LOGGING = {
         "alert": {"handlers": ["alert", "console"], "level": LOG_LEVEL, "propagate": True},
         "celery": {"handlers": ["root"], "level": "INFO", "propagate": True},
         "playground": {"handlers": ["playground", "console"], "level": LOG_LEVEL, "propagate": True},
+        # httpx 会在 INFO 级别输出每次成功请求:
+        # HTTP Request: POST ... "HTTP/1.1 200 OK"。解析/构建调用 LLM 时会刷屏,
+        # 这里仅保留 warning/error，异常仍可见。
+        "httpx": {"handlers": ["root", "console"], "level": "WARNING", "propagate": False},
+        "httpcore": {"handlers": ["root", "console"], "level": "WARNING", "propagate": False},
+        "openai": {"handlers": ["root", "console"], "level": "WARNING", "propagate": False},
     },
 }

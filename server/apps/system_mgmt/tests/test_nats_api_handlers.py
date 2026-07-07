@@ -3,6 +3,8 @@
 nats handler 直接可调用（@nats_client.register 返回原函数）。
 只 mock 真实外部边界（cache、send_msg、jwt token 验证等），断言真实 DB 行为与返回结构。
 """
+import types
+
 import nats_client
 import pytest
 
@@ -109,6 +111,54 @@ def test_get_user_all_roles_personal_and_group_inherit():
     roles = set(nats_api.get_user_all_roles(user))
     # 个人角色 + 子组角色 + 继承的父组角色（父 allow_inherit_roles=True）
     assert {role_personal.id, role_group.id, role_parent.id} <= roles
+
+
+def test_verify_token_regular_user_resolves_underscore_import(monkeypatch):
+    """回归测试：apps/system_mgmt/nats/auth.py 通过 `from .common import *` 引入
+    `_collect_ancestor_group_ids`，但 Python 的 import * 默认不导入下划线名字，
+    导致非超管用户的 verify_token 在调用 _collect_ancestor_group_ids 时抛 NameError，
+    上游 AuthBackend 捕获后返回 None → 前端表现为「登录持续过期」。
+
+    触发链路：
+        AuthBackend._verify_token_with_system_mgmt
+          → SystemMgmt().verify_token (RPC)
+            → apps.system_mgmt.nats.auth.verify_token
+              → _collect_ancestor_group_ids(user.group_list)  ← NameError
+
+    这里把 nats_api._verify_token 桩成 fake，强制走非超管分支
+    （is_superuser=False → 必须调用 _collect_ancestor_group_ids）。
+    """
+    from apps.core.utils.permission_cache import clear_token_info_cache
+
+    parent = Group.objects.create(name="VT_Parent", parent_id=0)
+    user = User.objects.create(
+        username="vt_regular", password="x", display_name="vt", email="vt@x.com",
+        domain="domain.com", role_list=[], group_list=[parent.id],
+    )
+    # 避免 get_cached_token_info 命中旧数据
+    clear_token_info_cache(user.username, user.domain)
+
+    fake_user = types.SimpleNamespace(
+        id=user.id,
+        username=user.username,
+        domain=user.domain,
+        display_name=user.display_name,
+        email=user.email,
+        role_list=user.role_list,
+        group_list=user.group_list,
+        locale=user.locale,
+        timezone=user.timezone,
+    )
+    # 同步到 _auth._verify_token（nats_api.verify_token 入口会 _sync_compat_globals）
+    monkeypatch.setattr(nats_api, "_verify_token", lambda token: fake_user)
+
+    # 修复前：此处抛 NameError: name '_collect_ancestor_group_ids' is not defined
+    # 修复后：返回成功结果，且 group_list 含 user 直属组
+    result = nats_api.verify_token("dummy-token")
+
+    assert result["result"] is True, f"verify_token 应返回成功，实际: {result}"
+    assert result["data"]["username"] == "vt_regular"
+    assert any(g["id"] == parent.id for g in result["data"]["group_list"])
 
 
 # ---------------------------------------------------------------------------

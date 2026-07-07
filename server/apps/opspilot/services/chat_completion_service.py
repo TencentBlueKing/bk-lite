@@ -120,8 +120,6 @@ class ChatCompletionService:
             else:
                 return JsonResponse({"choices": [{"message": {"role": "assistant", "content": str(e)}}]})
         params["user_id"] = get_user_id(user)
-        params["enable_km_route"] = skill_obj.enable_km_route
-        params["km_llm_model"] = skill_obj.km_llm_model
         params["enable_suggest"] = skill_obj.enable_suggest
         params["enable_query_rewrite"] = skill_obj.enable_query_rewrite
         user_message = params.get("user_message")

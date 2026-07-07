@@ -11,7 +11,7 @@ def test_ip_discovery_plugin_registered():
     plugin_cls = get_collection_plugin(CollectPluginTypes.IP, "ip")
     assert plugin_cls.supported_model_id == "ip"
     assert plugin_cls.supported_task_type == CollectPluginTypes.IP
-    assert tuple(plugin_cls.metric_names) == ("ip_info",)
+    assert tuple(plugin_cls.metric_names) == ("ip_info_gauge", "ip_info")
 
 
 def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
@@ -28,7 +28,12 @@ def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
     monkeypatch.setattr(IPAMDiscoveryCollectionPlugin, "get_collect_inst", lambda self: task)
     monkeypatch.setattr(
         "apps.cmdb.services.ipam_discovery.apply_ip_discovery_vm_rows",
-        lambda collect_task, rows: applied.update({"task": collect_task, "rows": rows}) or {"created": 1, "updated": 0, "offline": 0},
+        lambda collect_task, rows: applied.update({"task": collect_task, "rows": rows}) or {
+            "created": 1,
+            "updated": 0,
+            "offline": 0,
+            "format_data": {"add": [{"_status": "success", "ip_addr": "10.0.1.2"}], "update": [], "delete": [], "association": [], "all": 1},
+        },
     )
 
     runner = IPAMDiscoveryCollectionPlugin(inst_name="", inst_id=None, task_id=7001)
@@ -37,7 +42,7 @@ def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
             "result": [
                 {
                     "metric": {
-                        "__name__": "ip_info",
+                        "__name__": "ip_info_gauge",
                         "collect_status": "success",
                         "ip_addr": "10.0.1.2",
                         "ip_status": "online",
@@ -56,7 +61,7 @@ def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
     assert applied["task"] is task
     assert applied["rows"] == [
         {
-            "__name__": "ip_info",
+            "__name__": "ip_info_gauge",
             "collect_status": "success",
             "ip_addr": "10.0.1.2",
             "ip_status": "online",
@@ -66,4 +71,5 @@ def test_ip_discovery_plugin_applies_vm_rows(monkeypatch):
             "auto_collect": "true",
         }
     ]
-    assert runner.result == {"ip": []}
+    assert runner.result["ip"] == []
+    assert runner.result["__task_format_data__"]["all"] == 1

@@ -18,7 +18,11 @@ from apps.cmdb.models.collect_model import (
 )
 from apps.cmdb.services.collect_credential_pool_service import CollectCredentialPoolService
 from apps.cmdb.services.encrypt_collect_password import get_collect_model_passwords
-from apps.cmdb.services.network_config_file_policy import validate_commands, validate_network_config_instance
+from apps.cmdb.services.network_config_file_policy import (
+    normalize_network_config_instance,
+    validate_commands,
+    validate_network_config_instance,
+)
 from apps.cmdb.utils.config_file_path import validate_absolute_path
 from apps.core.utils.serializers import UsernameSerializer, AuthSerializer
 
@@ -138,7 +142,10 @@ class CollectModelSerializer(AuthSerializer):
             validated_instances = []
             for instance in raw_instances:
                 try:
-                    validated_instances.append(validate_network_config_instance(instance))
+                    # P2-2.1: validate 只校验不返回,显式 normalize 后放进结果列表
+                    # (落库时需要 host / device_type 字段,供下游 node_config 复用)
+                    validate_network_config_instance(instance)
+                    validated_instances.append(normalize_network_config_instance(instance))
                 except Exception as err:
                     raise serializers.ValidationError({"instances": str(err)}) from err
 
@@ -151,13 +158,15 @@ class CollectModelSerializer(AuthSerializer):
             except Exception as err:
                 raise serializers.ValidationError({"params": str(err)}) from err
 
-            need_enable = bool(params.get("need_enable"))
             credential_items = attrs.get("credential")
             if credential_items is None and self.instance is not None:
                 credential_items = self.instance.credential
             credential_pool = CollectCredentialPoolService.normalize_pool(copy.deepcopy(credential_items))
-            if need_enable and not any(item.get("enable_password") for item in credential_pool if isinstance(item, dict)):
-                raise serializers.ValidationError({"credential": "启用特权模式时必须配置特权密码"})
+            need_enable = any(
+                bool(item.get("enable_password"))
+                for item in credential_pool
+                if isinstance(item, dict)
+            )
 
             attrs["instances"] = validated_instances
             attrs["ip_range"] = ""

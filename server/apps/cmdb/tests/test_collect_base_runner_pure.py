@@ -53,6 +53,22 @@ def test_format_params_ip_range_falls_back_to_params_org():
     assert c.filter_collect_task is True  # not is_host
 
 
+def test_format_params_dict_instances_falls_back_to_task_mode():
+    t = _task(
+        instances={"subnet_ids": [101], "scan_method": "icmp"},
+        team=None,
+        params={"organization": 9},
+        model_id="ip",
+        is_host=False,
+    )
+    c = BaseCollect(instance_id=None, task=t)
+    assert c.model_id == "ip"
+    assert c.inst_name is None
+    assert c.inst_id is None
+    assert c.organization == [9]
+    assert c.filter_collect_task is True
+
+
 def test_format_params_instance_mode():
     t = _task(
         instances=[{"_id": "h1", "model_id": "host", "inst_name": "10.0.0.1", "organization": 3}],
@@ -150,6 +166,35 @@ def test_run_drives_metrics_cannula(monkeypatch):
     # manual = bool(input_method) → True
     assert captured["inst"].kwargs["manual"] is True
     assert captured["inst"].kwargs["plugin_kwargs"] == {}
+
+
+def test_run_merges_custom_task_format_data(monkeypatch):
+    t = _task(instances=[{"_id": "h", "model_id": "ip", "inst_name": "10.0.0.1"}], model_id="ip", input_method=1)
+    c = BaseCollect(instance_id=None, task=t)
+    c.COLLECT_PLUGIN = object()
+
+    class FakeCannula:
+        def __init__(self, **kw):
+            self.kwargs = kw
+            self.collect_data = {
+                "__task_format_data__": {
+                    "add": [{"_status": "success", "ip_addr": "10.0.0.2"}],
+                    "update": [],
+                    "delete": [],
+                    "association": [{"_status": "success", "model_asst_id": "subnet_group_ip"}],
+                    "all": 1,
+                }
+            }
+
+        def collect_controller(self):
+            return {"__raw_data__": [], "all": 0, "ip": {"add": {"success": []}}}
+
+    monkeypatch.setattr("apps.cmdb.collection.collect_tasks.base.MetricsCannula", lambda **kw: FakeCannula(**kw))
+    _, format_data = c.run()
+
+    assert format_data["add"][0]["ip_addr"] == "10.0.0.2"
+    assert format_data["association"][0]["model_asst_id"] == "subnet_group_ip"
+    assert format_data["all"] == 1
 
 
 # --------------------------------------------------------------------------
