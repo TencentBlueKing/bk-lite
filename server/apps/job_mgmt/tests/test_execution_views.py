@@ -19,6 +19,46 @@ def _node_target():
     return [{"node_id": "n1", "name": "n", "ip": "1.1.1.1"}]
 
 
+class TestQuickExecuteNormalizeLineEndings:
+    """入库前规范化临时输入脚本的换行符;script_id 模式由 Script 入口保证。"""
+
+    def test_script_content_mode_normalizes_crlf(self, su_client):
+        with patch(DISPATCH, return_value="celery-1"):
+            resp = su_client.post(
+                f"{URL}quick_execute/",
+                {
+                    "name": "j1",
+                    "target_source": "node_mgmt",
+                    "target_list": _node_target(),
+                    "script_content": "echo a\r\necho b\r\n",
+                    "script_type": "shell",
+                },
+                format="json",
+            )
+        assert resp.status_code == 201
+        e = JobExecution.objects.get(id=resp.data["id"])
+        assert "\r" not in e.script_content
+        assert e.script_content.startswith("echo a\necho b")
+
+    def test_script_content_mode_bat_keeps_crlf(self, su_client):
+        crlf = "@echo off\r\nset x=1\r\n"
+        with patch(DISPATCH, return_value="celery-1"):
+            resp = su_client.post(
+                f"{URL}quick_execute/",
+                {
+                    "name": "j2",
+                    "target_source": "node_mgmt",
+                    "target_list": _node_target(),
+                    "script_content": crlf,
+                    "script_type": "bat",
+                },
+                format="json",
+            )
+        assert resp.status_code == 201
+        e = JobExecution.objects.get(id=resp.data["id"])
+        assert "\r" in e.script_content
+
+
 class TestQuickExecute:
     def test_script_content_mode(self, su_client):
         with patch(DISPATCH, return_value="celery-1"):

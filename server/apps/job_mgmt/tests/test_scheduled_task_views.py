@@ -51,6 +51,75 @@ def _make_task(**over):
     return ScheduledTask.objects.create(**defaults)
 
 
+class TestScheduledTaskNormalizeLineEndings:
+    """入库前规范化 script_content 换行符;脚本类型走 _resolve 防 PATCH 误规范化。"""
+
+    def test_create_normalizes_crlf(self, su_client):
+        with patch(SVC + ".create_periodic_task", return_value=MagicMock(id=99)):
+            resp = su_client.post(
+                URL,
+                _create_payload(script_content="echo a\r\necho b\r\n"),
+                format="json",
+            )
+        assert resp.status_code == 201
+        t = ScheduledTask.objects.get(name="task1")
+        assert "\r" not in t.script_content
+        assert t.script_content.startswith("echo a\necho b")
+
+    def test_create_powershell_keeps_crlf(self, su_client):
+        crlf = "Write-Host hi\r\n$x = 1\r\n"
+        with patch(SVC + ".create_periodic_task", return_value=MagicMock(id=99)):
+            resp = su_client.post(
+                URL,
+                _create_payload(script_type="powershell", script_content=crlf),
+                format="json",
+            )
+        assert resp.status_code == 201
+        t = ScheduledTask.objects.get(name="task1")
+        # powershell 保留 CRLF
+        assert "\r" in t.script_content
+
+    def test_update_normalizes_crlf(self, su_client):
+        t = _make_task(script_content="echo", script_type="shell")
+        with patch(SVC + ".update_periodic_task", return_value=MagicMock(id=99)):
+            resp = su_client.put(
+                f"{URL}{t.id}/",
+                _create_payload(name="t2", script_content="echo 1\r\necho 2\r\n"),
+                format="json",
+            )
+        assert resp.status_code == 200
+        t.refresh_from_db()
+        assert "\r" not in t.script_content
+        assert t.script_content.startswith("echo 1\necho 2")
+
+    def test_update_powershell_preserves_crlf(self, su_client):
+        """PATCH 只改 content(不传 script_type),instance 是 powershell → 走 _resolve 不误规范"""
+        crlf = "Write-Host hi\r\n$x = 1\r\n"
+        t = _make_task(script_type="powershell", script_content=crlf)
+        with patch(SVC + ".update_periodic_task", return_value=MagicMock(id=99)):
+            resp = su_client.put(
+                f"{URL}{t.id}/",
+                _create_payload(name="t2", script_content=crlf, script_type="powershell"),
+                format="json",
+            )
+        assert resp.status_code == 200
+        t.refresh_from_db()
+        assert "\r" in t.script_content
+
+    def test_update_partial_no_content_keeps_existing(self, su_client):
+        """PATCH 不传 script_content 时 instance 原值保留,不被规范化。"""
+        t = _make_task(script_content="echo", script_type="shell")
+        with patch(SVC + ".update_periodic_task", return_value=MagicMock(id=99)):
+            resp = su_client.patch(
+                f"{URL}{t.id}/",
+                {"description": "no-content-change"},
+                format="json",
+            )
+        assert resp.status_code == 200
+        t.refresh_from_db()
+        assert t.script_content == "echo"
+
+
 class TestScheduledTaskCrud:
     def test_create(self, su_client):
         with patch(SVC + ".create_periodic_task", return_value=MagicMock(id=99)):
