@@ -193,129 +193,139 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
             key={row.ref}
             className="mx-3 mt-3 rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] p-3"
           >
-            <div className="grid grid-cols-[2rem_minmax(220px,1fr)_132px_minmax(220px,1fr)_2rem] items-center gap-2">
-              <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-sm font-semibold text-[var(--color-primary)]">
-                {row.ref}
-              </span>
-              <Select
-                allowClear
-                className="min-w-0"
-                showSearch
-                value={row.metricName}
-                loading={metricsLoading}
-                placeholder={t('monitor.metric')}
-                options={metricOptions}
-                filterOption={(input, option) =>
-                  (option?.label || '')
-                    .toString()
-                    .toLowerCase()
-                    .includes(input.toLowerCase())
-                }
-                onChange={(value) => handleMetricChange(rowIndex, value)}
-              />
-              <Select
-                className="w-full"
-                value={row.groupAlgorithm || 'avg'}
-                placeholder={t('monitor.events.groupAggregationMethod')}
-                options={groupMethodOptions}
-                onChange={(value) =>
-                  updateRow(rowIndex, { groupAlgorithm: value })
-                }
-              />
-              <Select
-                allowClear
-                className="min-w-0"
-                maxTagCount="responsive"
-                mode="multiple"
-                showSearch
-                value={row.groupBy}
-                placeholder={t('monitor.events.groupDimension')}
-                options={getRowGroupByOptions(row)}
-                onChange={(value) =>
-                  updateRow(rowIndex, { groupBy: sanitizeGroupBy(value) })
-                }
-              />
-              {rows.length > 1 ? (
-                <Tooltip title={t('common.delete')}>
-                  <Button
-                    aria-label={t('common.delete')}
-                    className="h-8 w-8"
-                    icon={<CloseOutlined />}
-                    onClick={() => removeMetricRow(rowIndex)}
-                  />
-                </Tooltip>
-              ) : (
-                <span className="h-8 w-8" />
-              )}
-            </div>
-            <div className="ml-10 mt-2 flex flex-col gap-2">
-              {row.filters.map((filter, filterIndex) => (
-                <div
-                  className="grid grid-cols-[82px_minmax(150px,1fr)_104px_160px_2rem] items-center gap-2"
-                  key={`${row.ref}-${filterIndex}`}
-                >
-                  {filterIndex > 0 ? (
-                    <Select
-                      className="w-[82px] shrink-0"
-                      value={filter.logic || 'and'}
-                      options={[
-                        { label: 'AND', value: 'and' },
-                        { label: 'OR', value: 'or' }
-                      ]}
-                      onChange={(value) =>
-                        updateCondition(rowIndex, filterIndex, {
-                          logic: value
-                        })
-                      }
-                    />
-                  ) : (
-                    <span className="w-[82px] shrink-0 text-xs text-[var(--color-text-3)]">
-                      {t('monitor.events.conditionDimension')}
-                    </span>
-                  )}
-                  <Select
-                    className="min-w-0"
-                    showSearch
-                    value={filter.name}
-                    placeholder={t('monitor.label')}
-                    options={(labelsByRef[row.ref] || []).map((item) => ({
-                      label: item,
-                      value: item
-                    }))}
-                    onChange={(value) =>
-                      updateCondition(rowIndex, filterIndex, { name: value })
-                    }
-                  />
-                  <Select
-                    className="w-full"
-                    value={filter.method}
-                    placeholder={t('monitor.term')}
-                    options={conditionMethods.map((item) => ({
-                      label: item.name,
-                      value: item.id
-                    }))}
-                    onChange={(value) =>
-                      updateCondition(rowIndex, filterIndex, { method: value })
-                    }
-                  />
-                  <Input
-                    className="w-full"
-                    value={filter.value}
-                    placeholder={t('monitor.value')}
-                    onChange={(event) =>
-                      updateCondition(rowIndex, filterIndex, {
-                        value: event.target.value
-                      })
-                    }
-                  />
+            <div className="flex flex-col gap-2">
+              <div className="grid grid-cols-[2rem_minmax(0,1fr)_2rem] items-center gap-2">
+                <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-sm font-semibold text-[var(--color-primary)]">
+                  {row.ref}
+                </span>
+                <Select
+                  allowClear
+                  className="min-w-0"
+                  showSearch
+                  value={row.metricName}
+                  loading={metricsLoading}
+                  placeholder={t('monitor.metric')}
+                  options={metricOptions}
+                  filterOption={(input, option) =>
+                    (option?.label || '')
+                      .toString()
+                      .toLowerCase()
+                      .includes(input.toLowerCase())
+                  }
+                  onChange={(value) => handleMetricChange(rowIndex, value)}
+                />
+                {rows.length > 1 ? (
                   <Tooltip title={t('common.delete')}>
                     <Button
                       aria-label={t('common.delete')}
                       className="h-8 w-8"
                       icon={<CloseOutlined />}
-                      onClick={() => removeCondition(rowIndex, filterIndex)}
+                      onClick={() => removeMetricRow(rowIndex)}
                     />
                   </Tooltip>
+                ) : (
+                  <span className="h-8 w-8" />
+                )}
+              </div>
+              <div className="ml-10 grid grid-cols-[132px_minmax(0,1fr)] items-center gap-2">
+                <Select
+                  className="w-full"
+                  value={row.groupAlgorithm || 'avg'}
+                  placeholder={t('monitor.events.groupAggregationMethod')}
+                  options={groupMethodOptions}
+                  onChange={(value) =>
+                    updateRow(rowIndex, { groupAlgorithm: value })
+                  }
+                />
+                <Select
+                  allowClear
+                  className="min-w-0"
+                  maxTagCount="responsive"
+                  mode="multiple"
+                  showSearch
+                  value={row.groupBy}
+                  placeholder={t('monitor.events.groupDimension')}
+                  options={getRowGroupByOptions(row)}
+                  onChange={(value) =>
+                    updateRow(rowIndex, { groupBy: sanitizeGroupBy(value) })
+                  }
+                />
+              </div>
+            </div>
+            <div className="ml-10 mt-2 flex flex-col gap-2">
+              {row.filters.map((filter, filterIndex) => (
+                <div
+                  className="flex flex-col gap-2"
+                  key={`${row.ref}-${filterIndex}`}
+                >
+                  <div className="grid grid-cols-[82px_minmax(0,1fr)_2rem] items-center gap-2">
+                    {filterIndex > 0 ? (
+                      <Select
+                        className="w-[82px] shrink-0"
+                        value={filter.logic || 'and'}
+                        options={[
+                          { label: 'AND', value: 'and' },
+                          { label: 'OR', value: 'or' }
+                        ]}
+                        onChange={(value) =>
+                          updateCondition(rowIndex, filterIndex, {
+                            logic: value
+                          })
+                        }
+                      />
+                    ) : (
+                      <span className="w-[82px] shrink-0 text-xs text-[var(--color-text-3)]">
+                        {t('monitor.events.conditionDimension')}
+                      </span>
+                    )}
+                    <Select
+                      className="min-w-0"
+                      showSearch
+                      value={filter.name}
+                      placeholder={t('monitor.label')}
+                      options={(labelsByRef[row.ref] || []).map((item) => ({
+                        label: item,
+                        value: item
+                      }))}
+                      onChange={(value) =>
+                        updateCondition(rowIndex, filterIndex, { name: value })
+                      }
+                    />
+                    <Tooltip title={t('common.delete')}>
+                      <Button
+                        aria-label={t('common.delete')}
+                        className="h-8 w-8"
+                        icon={<CloseOutlined />}
+                        onClick={() => removeCondition(rowIndex, filterIndex)}
+                      />
+                    </Tooltip>
+                  </div>
+                  <div className="ml-[90px] grid grid-cols-[104px_minmax(0,1fr)] items-center gap-2">
+                    <Select
+                      className="w-full"
+                      value={filter.method}
+                      placeholder={t('monitor.term')}
+                      options={conditionMethods.map((item) => ({
+                        label: item.name,
+                        value: item.id
+                      }))}
+                      onChange={(value) =>
+                        updateCondition(rowIndex, filterIndex, {
+                          method: value
+                        })
+                      }
+                    />
+                    <Input
+                      className="min-w-0"
+                      value={filter.value}
+                      placeholder={t('monitor.value')}
+                      onChange={(event) =>
+                        updateCondition(rowIndex, filterIndex, {
+                          value: event.target.value
+                        })
+                      }
+                    />
+                  </div>
                 </div>
               ))}
               <Button
@@ -337,12 +347,12 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
           {translateWithFallback('monitor.events.addMetric', '添加指标')}
         </Button>
         {showFormula && (
-          <div className="grid grid-cols-[2rem_220px_16px_minmax(260px,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] px-3 py-3">
+          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] px-3 py-3">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
               fx
             </span>
             <Input
-              className="w-full"
+              className="min-w-0"
               value={resultName}
               placeholder={t('monitor.events.formulaResultName')}
               onChange={(event) => onResultNameChange(event.target.value)}
