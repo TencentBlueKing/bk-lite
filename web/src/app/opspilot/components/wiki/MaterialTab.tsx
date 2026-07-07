@@ -296,7 +296,10 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         <List.Item>
           <div className="min-w-0">
             <div className="truncate font-medium">{pageItem.title}</div>
-            <Space size={[4, 4]} wrap>
+            {pageItem.reason && (
+              <div className="text-xs text-[var(--color-text-3)] mt-0.5">{pageItem.reason}</div>
+            )}
+            <Space size={[4, 4]} wrap className="mt-1">
               <Tag className="m-0">#{pageItem.id}</Tag>
               <Tag className="m-0">{pageItem.page_type}</Tag>
               <Tag className="m-0">{pageItem.status}</Tag>
@@ -354,7 +357,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
               {t('wiki.detail')}
             </Button>
             <Button type="link" size="small" disabled={busy} onClick={() => handleIngest(record.id)}>
-              {record.material_type === 'web' ? t('wiki.refreshSnapshot') : t('wiki.ingest')}
+              {t('wiki.ingest')}
             </Button>
             <Button
               type="link"
@@ -427,6 +430,8 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         onCancel={closeDeleteImpact}
         maskClosable={false}
         destroyOnHidden
+        // 弹窗禁止触底:限制最大高度,主体内部滚动(前端规范:弹窗禁止触底)
+        styles={{ body: { maxHeight: 'calc(100vh - 280px)', overflowY: 'auto', overflowX: 'hidden' } }}
       >
         {deleteImpactLoading ? (
           <div className="py-6 text-center text-[var(--color-text-3)]">
@@ -504,9 +509,15 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
         destroyOnHidden
       >
         <Form form={form} layout="vertical">
-          <Form.Item label={t('wiki.name')} name="name" rules={type === 'file' ? [] : [{ required: true }]}>
-            <Input />
-          </Form.Item>
+          {type !== 'file' && (
+            <Form.Item
+              label={t('wiki.name')}
+              name="name"
+              rules={[{ required: true, message: `${t('common.inputMsg')}${t('wiki.name')}` }]}
+            >
+              <Input />
+            </Form.Item>
+          )}
           <Form.Item label={t('wiki.materialType')} name="material_type" initialValue="file">
             <Select
               onChange={(v: MaterialType) => {
@@ -558,6 +569,7 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                   beforeUpload={() => false}
                   onChange={({ fileList: fl }) => {
                     setFileList(fl);
+                    // 上传文件后自动用文件名作为名称,无需用户额外填写
                     const fname = fl.length === 1 ? fl[0]?.name : '';
                     if (fname && !form.getFieldValue('name')) form.setFieldsValue({ name: fname });
                     if (fl.length > 1) form.setFieldsValue({ name: '' });
@@ -576,17 +588,18 @@ const MaterialTab: React.FC<{ kbId: number }> = ({ kbId }) => {
                   )}
                 </Upload.Dragger>
               </Form.Item>
-              <Form.Item
-                label={t('wiki.imageEnhance')}
-                name="ocr_enhance"
-                valuePropName="checked"
-                initialValue={false}
-                tooltip={hasVisionModel ? t('wiki.imageEnhanceTip') : t('wiki.imageEnhanceDisabledTip')}
-              >
-                <Switch disabled={!hasVisionModel} />
-              </Form.Item>
             </>
           )}
+          {/* 图片增强:file / text / web 通用,KB 配了 vision_model 才可选 */}
+          <Form.Item
+            label={t('wiki.imageEnhance')}
+            name="ocr_enhance"
+            valuePropName="checked"
+            initialValue={false}
+            tooltip={hasVisionModel ? t('wiki.imageEnhanceTip') : t('wiki.imageEnhanceDisabledTip')}
+          >
+            <Switch disabled={!hasVisionModel} />
+          </Form.Item>
         </Form>
       </Modal>
 

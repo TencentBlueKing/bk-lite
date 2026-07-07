@@ -46,7 +46,6 @@ export const Online: Story = {
 export const WithSkillType: Story = {
   args: {
     ...baseArgs,
-    skillType: 'Q&A',
     skill_type: 1,
   },
 };
