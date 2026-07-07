@@ -176,8 +176,8 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
   }));
 
   return (
-    <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-fill-1)]">
-      <div className="flex min-h-11 items-center justify-between border-b border-[var(--color-border-2)] px-3">
+    <div className="rounded-md border border-[var(--color-border-2)] bg-[var(--color-bg-1)] shadow-sm">
+      <div className="flex min-h-11 items-center justify-between border-b border-[var(--color-border-2)] bg-[var(--color-bg-1)] px-3">
         <span className="text-sm font-medium text-[var(--color-text-1)]">
           {translateWithFallback('monitor.events.metricEditor', '指标编辑器')}
         </span>
@@ -347,7 +347,7 @@ const MetricExpressionEditor: React.FC<MetricExpressionEditorProps> = ({
           {translateWithFallback('monitor.events.addMetric', '添加指标')}
         </Button>
         {showFormula && (
-          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] px-3 py-3">
+          <div className="grid grid-cols-[2rem_minmax(0,220px)_16px_minmax(0,1fr)] items-center gap-2 border-t border-[var(--color-border-2)] bg-[rgba(255,255,255,0.68)] px-3 py-3">
             <span className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded border border-[var(--color-border-2)] font-mono text-xs font-semibold text-[var(--color-primary)]">
               fx
             </span>
