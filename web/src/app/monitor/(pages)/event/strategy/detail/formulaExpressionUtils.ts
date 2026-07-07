@@ -20,6 +20,7 @@ export const SUPPORTED_GROUP_ALGORITHMS = [
   'count'
 ];
 const METRIC_NOT_READY_MESSAGE = '指标不存在或尚未加载';
+const LABEL_NAME_PATTERN = /^[a-zA-Z_][a-zA-Z0-9_]*$/;
 
 type FormulaTokenType = 'identifier' | 'number' | 'operator' | 'leftParen' | 'rightParen';
 
@@ -39,6 +40,10 @@ export const getMetricRowRef = (index: number): string =>
 export const shouldShowFormulaEditor = (
   mode: MetricExpressionMode
 ): boolean => mode === 'formula';
+
+export const getMetricExpressionModeForRows = (
+  rows: MetricExpressionRow[]
+): MetricExpressionMode => (rows.length > 1 ? 'formula' : 'metric');
 
 export const createMetricRow = (
   index: number,
@@ -236,6 +241,9 @@ const parseFormulaExpression = (expression: string): ParsedFormula => {
 const isPositiveInteger = (value: number | null): value is number =>
   Number.isInteger(value) && !!value && value > 0;
 
+const isScalarFilterValue = (value: unknown): value is string | number | boolean =>
+  ['string', 'number', 'boolean'].includes(typeof value);
+
 const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
   const errors: string[] = [];
 
@@ -259,6 +267,12 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
       row.groupBy.some((item) => typeof item !== 'string' || !item.trim())
     ) {
       errors.push(`指标 ${row.ref} 缺少有效分组维度`);
+    } else {
+      row.groupBy.forEach((item) => {
+        if (!LABEL_NAME_PATTERN.test(item)) {
+          errors.push(`指标 ${row.ref} 分组维度 ${item} 包含非法字符`);
+        }
+      });
     }
 
     row.filters.forEach((filter, index) => {
@@ -270,8 +284,15 @@ const validateMetricRows = (rows: MetricExpressionRow[]): string[] => {
       ) {
         errors.push(`指标 ${row.ref} 的条件 ${index + 1} 未填写完整`);
       }
-      if (index > 0 && !['and', 'or'].includes(filter.logic || '')) {
+      if (index > 0 && filter.logic && !['and', 'or'].includes(filter.logic)) {
         errors.push(`指标 ${row.ref} 的条件 ${index + 1} 缺少 AND/OR 关系`);
+      }
+      if (
+        filter.value !== undefined &&
+        filter.value !== null &&
+        !isScalarFilterValue(filter.value)
+      ) {
+        errors.push(`指标 ${row.ref} 的条件 ${index + 1} 的值必须是字符串、数字或布尔值`);
       }
     });
   });
@@ -356,6 +377,15 @@ export const validateMetricExpressionPayload = ({
 
   const parsedExpression = parseFormulaExpression(expression);
   errors.push(...parsedExpression.errors);
+
+  const anchorRef = normalizedRows[0]?.ref;
+  const anchorGroupBy = normalizedRows[0]?.groupBy || [];
+  if (anchorRef && parsedExpression.refs[0] && parsedExpression.refs[0] !== anchorRef) {
+    errors.push(`表达式首个变量必须是首行指标变量 ${anchorRef}`);
+  }
+  if (anchorRef && !anchorGroupBy.includes('instance_id')) {
+    errors.push(`指标 ${anchorRef} 分组维度必须包含 instance_id`);
+  }
 
   const availableRefs = new Set(normalizedRows.map((row) => row.ref));
   const expressionRefs = new Set(parsedExpression.refs);

@@ -69,6 +69,18 @@ class TestMonitorPolicyValidators:
                 "filter": [{"name": "instance_id", "method": "LIKE", "value": "x"}],
             })
 
+    def test_validate_query_condition_rejects_structured_filter_value(self):
+        with pytest.raises(serializers.ValidationError) as exc:
+            self._s().validate_query_condition(
+                {
+                    "type": "metric",
+                    "metric_id": 1,
+                    "filter": [{"name": "service", "method": "=", "value": ["checkout"]}],
+                }
+            )
+
+        assert "必须是标量" in str(exc.value)
+
     def test_validate_source_requires_type_and_values(self):
         with pytest.raises(serializers.ValidationError):
             self._s().validate_source({"type": "instance"})
@@ -95,6 +107,12 @@ class TestMonitorPolicyValidators:
     def test_validate_group_by_no_object_passthrough(self):
         s = self._s(initial={})
         assert s.validate_group_by(["x"]) == ["x"]
+
+    def test_validate_group_by_rejects_invalid_label_name(self):
+        with pytest.raises(serializers.ValidationError) as exc:
+            self._s(initial={}).validate_group_by(["instance_id", "x) or vector(1"])
+
+        assert "非法字符" in str(exc.value)
 
 
 class TestMetricGroupSerializer:

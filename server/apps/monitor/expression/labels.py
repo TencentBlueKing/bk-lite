@@ -1,11 +1,12 @@
 import re
 
-
 VALID_LABEL_METHODS = {"=", "!=", "=~", "!~"}
 LABEL_NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]*$")
 
 
 def escape_label_value(value) -> str:
+    if isinstance(value, (list, tuple, set, dict)):
+        raise ValueError("label value 必须是标量")
     return str(value).replace("\\", "\\\\").replace('"', '\\"')
 
 

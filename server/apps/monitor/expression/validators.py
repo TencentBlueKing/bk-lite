@@ -43,6 +43,8 @@ def _validate_filter(ref: str, filter_list: object) -> None:
             raise FormulaValidationError(f"指标 {ref} filter[{index}] 缺少 method")
         if "value" not in condition:
             raise FormulaValidationError(f"指标 {ref} filter[{index}] 缺少 value")
+        if isinstance(condition.get("value"), (list, tuple, set, dict)):
+            raise FormulaValidationError(f"指标 {ref} filter[{index}].value 必须是标量")
         if name and not _LABEL_NAME_RE.match(str(name)):
             raise FormulaValidationError(
                 f"指标 {ref} filter[{index}].name={name!r} 包含非法字符，只允许 [a-zA-Z_][a-zA-Z0-9_]*"
@@ -58,6 +60,9 @@ def _validate_group_by(ref: str, group_by: object) -> list[str]:
         raise FormulaValidationError(f"指标 {ref} 缺少 group_by")
     if not all(isinstance(item, str) and item for item in group_by):
         raise FormulaValidationError(f"指标 {ref} group_by 必须是非空字符串列表")
+    invalid_items = [item for item in group_by if not _LABEL_NAME_RE.match(item)]
+    if invalid_items:
+        raise FormulaValidationError(f"指标 {ref} group_by 包含非法字符：{', '.join(invalid_items)}")
     return group_by
 
 
@@ -124,7 +129,11 @@ def validate_formula_condition(query_condition: dict) -> FormulaValidationResult
         raise FormulaValidationError(f"指标变量 {', '.join(unused_refs)} 未被表达式引用")
 
     anchor_ref = str(queries[0].get("ref") or "")
+    if unique_variables[0] != anchor_ref:
+        raise FormulaValidationError(f"表达式首个变量必须是首行指标变量 {anchor_ref}")
     anchor_group_by = set(by_ref[anchor_ref].get("group_by") or [])
+    if "instance_id" not in anchor_group_by:
+        raise FormulaValidationError("公式锚点指标 group_by 必须包含 instance_id")
     warnings: list[dict] = []
     for ref in unique_variables:
         if ref == anchor_ref:

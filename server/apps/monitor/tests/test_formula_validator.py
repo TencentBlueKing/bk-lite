@@ -237,6 +237,33 @@ def test_validate_formula_allows_empty_string_filter_value():
     assert result.anchor_ref == "a"
 
 
+@pytest.mark.parametrize("bad_value", [["checkout", "cart"], {"name": "checkout"}])
+def test_validate_formula_rejects_structured_filter_value(bad_value):
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [{"name": "service", "method": "=", "value": bad_value}],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "必须是标量" in str(exc.value)
+
+
 def test_validate_formula_rejects_query_item_not_object():
     payload = formula(
         queries=[
@@ -403,3 +430,64 @@ def test_validate_formula_normalizes_numeric_string_metric_id():
 
     assert payload["queries"][0]["metric_id"] == 1
     assert payload["queries"][1]["metric_id"] == 2
+
+
+def test_validate_formula_rejects_expression_not_anchored_by_first_query():
+    payload = formula(expression="b / a * 100")
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "首行指标变量 a" in str(exc.value)
+
+
+def test_validate_formula_rejects_anchor_group_by_without_instance_id():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["status"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["status"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "instance_id" in str(exc.value)
+
+
+def test_validate_formula_rejects_invalid_group_by_label_name():
+    payload = formula(
+        queries=[
+            {
+                "ref": "a",
+                "metric_id": 1,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id", "x) or vector(1"],
+            },
+            {
+                "ref": "b",
+                "metric_id": 2,
+                "filter": [],
+                "group_algorithm": "sum",
+                "group_by": ["instance_id"],
+            },
+        ]
+    )
+
+    with pytest.raises(FormulaValidationError) as exc:
+        validate_formula_condition(payload)
+
+    assert "group_by 包含非法字符" in str(exc.value)

@@ -5,6 +5,7 @@ import {
   buildMetricExpressionPreviewPayload,
   buildMetricExpressionQueryCondition,
   extractFormulaRefs,
+  getMetricExpressionModeForRows,
   shouldShowFormulaEditor,
   toMetricExpressionStateFromQueryCondition,
   toMetricRowsFromMetricCondition,
@@ -55,6 +56,7 @@ const singleRows = toMetricRowsFromMetricCondition(
 assert.equal(singleRows.length, 1);
 assert.equal(singleRows[0].ref, 'a');
 assert.equal(singleRows[0].metricId, 10);
+assert.equal(getMetricExpressionModeForRows(singleRows), 'metric');
 
 const singlePayload = buildMetricExpressionQueryCondition({
   resultName: '',
@@ -101,6 +103,8 @@ assert.deepEqual(
   formulaRows.map((row) => row.ref),
   ['a', 'b']
 );
+assert.equal(getMetricExpressionModeForRows(formulaRows), 'formula');
+assert.equal(getMetricExpressionModeForRows(formulaRows.slice(0, 1)), 'metric');
 
 const formulaPayload = buildMetricExpressionQueryCondition({
   resultName: 'HTTP 5xx 错误率',
@@ -371,6 +375,33 @@ assertValidationIncludes(
   '表达式引用了不存在的变量：c'
 );
 
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'b / a',
+    rows: formulaRows
+  }),
+  '表达式首个变量必须是首行指标变量 a'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: [{ ...formulaRows[0], groupBy: ['status'] }, formulaRows[1]]
+  }),
+  '指标 a 分组维度必须包含 instance_id'
+);
+
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: [{ ...formulaRows[0], groupBy: ['instance_id', 'x) or vector(1'] }, formulaRows[1]]
+  }),
+  '指标 a 分组维度 x) or vector(1 包含非法字符'
+);
+
 assert.deepEqual(
   validateMetricExpressionPayload({
     resultName: 'HTTP 5xx 错误率',
@@ -435,6 +466,41 @@ assert.deepEqual(
     rows: formulaRowsWithEmptyFilterValue
   }),
   []
+);
+
+const formulaRowsWithLegacyFilters = [
+  {
+    ...formulaRows[0],
+    filters: [
+      { name: 'service', method: '=', value: 'checkout' },
+      { name: 'status', method: '=~', value: '5..' }
+    ]
+  },
+  formulaRows[1]
+];
+assert.deepEqual(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: formulaRowsWithLegacyFilters
+  }),
+  []
+);
+
+const formulaRowsWithStructuredFilterValue = [
+  {
+    ...formulaRows[0],
+    filters: [{ name: 'service', method: '=', value: ['checkout'] as never }]
+  },
+  formulaRows[1]
+];
+assertValidationIncludes(
+  validateMetricExpressionPayload({
+    resultName: 'HTTP 5xx 错误率',
+    expression: 'a / b',
+    rows: formulaRowsWithStructuredFilterValue
+  }),
+  '指标 a 的条件 1 的值必须是字符串、数字或布尔值'
 );
 
 const explicitMetricPayload = buildMetricExpressionQueryCondition({
