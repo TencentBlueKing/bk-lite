@@ -9,6 +9,7 @@ from rest_framework import serializers
 from apps.job_mgmt.constants import CredentialSource, JobType, OSType, ScheduleType, SSHCredentialType, TargetSource
 from apps.job_mgmt.models import Target
 from apps.job_mgmt.services.script_normalize import normalize_script_line_endings
+from apps.job_mgmt.services.script_params_service import ScriptParamsService
 
 
 def validate_manual_credentials(attrs: dict, *, require_cloud_region: bool = False) -> dict:
@@ -70,7 +71,6 @@ def validate_scheduled_task_payload(attrs: dict, *, instance=None) -> dict:
             未在 ``attrs`` 中提供的字段会回退到 ``instance`` 上对应属性。
             创建场景传 ``None``，所有字段均必须出现在 ``attrs`` 中。
     """
-    from apps.job_mgmt.services.script_params_service import ScriptParamsService
 
     def _resolve(key):
         if key in attrs:
