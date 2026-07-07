@@ -3,6 +3,8 @@ from copy import deepcopy
 from apps.cmdb.collect.extensions import get_collect_enterprise_extension
 from apps.cmdb.constants.constants import COLLECT_OBJ_TREE
 
+HOST_COLLECT_OBJECTS_MERGED_TO_HOST = {"aix", "hpux", "domestic_linux"}
+
 
 def _get_enterprise_collect_obj_tree():
     return deepcopy(get_collect_enterprise_extension().collect_tree)
@@ -28,6 +30,10 @@ def _normalize_enterprise_children(children):
     return []
 
 
+def _should_skip_enterprise_child(category_id, model_id):
+    return category_id == "host_manage" and model_id in HOST_COLLECT_OBJECTS_MERGED_TO_HOST
+
+
 def get_collect_obj_tree():
     tree = deepcopy(COLLECT_OBJ_TREE)
     enterprise_tree = _get_enterprise_collect_obj_tree()
@@ -47,6 +53,8 @@ def get_collect_obj_tree():
         for child in _normalize_enterprise_children(enterprise_group.get("children")):
             model_id = child.get("model_id")
             if not model_id:
+                continue
+            if _should_skip_enterprise_child(category_id, model_id):
                 continue
             if model_id in existing_model_ids:
                 existing_children[existing_model_ids[model_id]] = child
